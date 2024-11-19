@@ -3,6 +3,7 @@ from abc import ABC
 from typing import Literal, Union
 from wandelbots.types.pose import Pose
 # TODO: derive motions from corresponding API models
+import wandelbots_api_client as ws
 
 
 class MotionSettings(pydantic.BaseModel):
@@ -57,7 +58,7 @@ class Motion(pydantic.BaseModel, ABC):
         return isinstance(self.target, Pose)
 
 
-class Linear(Motion):
+class Linear(Motion, ws.models.PathLine):
     """A linear motion
 
     Examples:
@@ -67,6 +68,7 @@ class Linear(Motion):
     """
 
     type: Literal["linear"] = "linear"
+    # TODO: needs to be serialized to "target_pose"
     target: Pose
 
 
