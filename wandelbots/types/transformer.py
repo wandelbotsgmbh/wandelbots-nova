@@ -117,6 +117,7 @@ def _(motion: PTP):
 
 @motion_to_rae_command.register
 def _(motion: Circular):
+    # TODO: return MoveCommand
     return wb.models.Command(
         settings=motion_settings_to_rae_command_settings(motion.settings),
         circle=wb.models.Circle(via_pose=motion.intermediate, target_pose=motion.target),

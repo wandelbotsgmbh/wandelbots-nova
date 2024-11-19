@@ -2,6 +2,7 @@ import pydantic
 from abc import ABC
 from typing import Literal, Union
 from wandelbots.types.pose import Pose
+# TODO: derive motions from corresponding API models
 
 
 class MotionSettings(pydantic.BaseModel):

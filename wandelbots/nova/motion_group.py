@@ -95,13 +95,10 @@ class MotionGroup:
 
         current_joints = await self._get_current_joints(tcp=tcp)
         robot_setup = await self._get_optimizer_setup(tcp=tcp)
+
         # TODO: transform path
-
-
-
-        path = wb.models.MotionCommandPath(motions=[motion for motion in path.motions])
-
-        motion_commands = [wb.models.MotionCommand(motion=motion) for motion in path.motions]
+        # path = wb.models.MotionCommandPath(motions=[motion for motion in path.motions])
+        # motion_commands = [wb.models.MotionCommand(motion=motion) for motion in path.motions]
 
         request = wb.models.PlanTrajectoryRequest(
             robot_setup=robot_setup,
@@ -110,8 +107,9 @@ class MotionGroup:
             motion_commands=[],
             tcp=tcp,
         )
+
         motion_api_client = wb.MotionApi(api_client=self._api_client)
-        plan_response = await motion_api_client.plan_trajectory(cell=self._cell, request=request)
+        plan_response = await motion_api_client.plan_trajectory(cell=self._cell, plan_trajectory_request=request)
 
         self._current_motion = plan_response.plan_successful_response.motion
 
