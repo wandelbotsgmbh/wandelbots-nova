@@ -58,7 +58,7 @@ class Motion(pydantic.BaseModel, ABC):
         return isinstance(self.target, Pose)
 
 
-class Linear(Motion, ws.models.PathLine):
+class Linear(Motion):
     """A linear motion
 
     Examples:
@@ -68,8 +68,18 @@ class Linear(Motion, ws.models.PathLine):
     """
 
     type: Literal["linear"] = "linear"
-    # TODO: needs to be serialized to "target_pose"
     target: Pose
+
+    @pydantic.model_serializer
+    def custom_serialize(self):
+        return {
+            "target_pose": {
+                "position": list(self.target.position.to_tuple()),
+                "orientation": list(self.target.orientation.to_tuple())
+            },
+            "path_definition_name": "PathLine",
+        }
+
 
 
 def lin(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) -> Linear:
@@ -102,6 +112,15 @@ class PTP(Motion):
 
     type: Literal["ptp"] = "ptp"
 
+    @pydantic.model_serializer
+    def custom_serialize(self):
+        return {
+            "target_pose": {
+                "position": list(self.target.position.to_tuple()),
+                "orientation": list(self.target.orientation.to_tuple())
+            },
+            "path_definition_name": "PathCartesianPTP",
+        }
 
 def ptp(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) -> PTP:
     """Convenience function to create a point-to-point motion
@@ -132,6 +151,16 @@ class Circular(Motion):
 
     type: Literal["circular"] = "circular"
     intermediate: Pose
+
+    @pydantic.model_serializer
+    def custom_serialize(self):
+        return {
+            "target_pose": {
+                "position": list(self.target.position.to_tuple()),
+                "orientation": list(self.target.orientation.to_tuple())
+            },
+            "path_definition_name": "PathCircle",
+        }
 
 
 def cir(
@@ -169,6 +198,17 @@ class JointPTP(Motion):
 
     type: Literal["joint_ptp"] = "joint_ptp"
 
+    @pydantic.model_serializer
+    def custom_serialize(self):
+        return {
+            "target_pose": {
+                "position": list(self.target.position.to_tuple()),
+                "orientation": list(self.target.orientation.to_tuple())
+            },
+            "path_definition_name": "PathJointPTP",
+        }
+
+
 
 def jnt(target: tuple[float, ...], settings: MotionSettings = MotionSettings()) -> JointPTP:
     """Convenience function to create a joint PTP motion
@@ -199,6 +239,17 @@ class Spline(Motion):
     type: Literal["spline"] = "spline"
     path_parameter: float = pydantic.Field(1, ge=0)
     time: float | None = pydantic.Field(default=None, ge=0)
+
+    @pydantic.model_serializer
+    def custom_serialize(self):
+        return {
+            "target_pose": {
+                "position": list(self.target.position.to_tuple()),
+                "orientation": list(self.target.orientation.to_tuple())
+            },
+            "path_definition_name": "PathCubicSpline",
+        }
+
 
 
 def spl(

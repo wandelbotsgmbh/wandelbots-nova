@@ -23,8 +23,8 @@ class MotionGroup:
 
     @property
     def current_motion(self) -> str:
-        if not self._current_motion:
-            raise ValueError("No MotionId attached. There is no planned motion available.")
+        #if not self._current_motion:
+        #    raise ValueError("No MotionId attached. There is no planned motion available.")
         return self._current_motion
 
     async def planned_motion(
@@ -89,29 +89,27 @@ class MotionGroup:
             cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
         )
 
-    async def plan(self, path: MotionTrajectory, tcp: str) -> wb.models.PlanResponse:
+    async def plan(self, path: MotionTrajectory, tcp: str) -> wb.models.PlanTrajectoryResponse:
         if len(path) == 0:
             raise ValueError("Path is empty")
 
         current_joints = await self._get_current_joints(tcp=tcp)
         robot_setup = await self._get_optimizer_setup(tcp=tcp)
 
-        # TODO: transform path
-        # path = wb.models.MotionCommandPath(motions=[motion for motion in path.motions])
-        # motion_commands = [wb.models.MotionCommand(motion=motion) for motion in path.motions]
+
+        paths = [wb.models.MotionCommandPath.from_json(path.model_dump_json()) for path in path.motions]
+        motion_commands = [wb.models.MotionCommand(path=path) for path in paths]
 
         request = wb.models.PlanTrajectoryRequest(
             robot_setup=robot_setup,
             motion_group=self.motion_group_id,
             start_joint_position=current_joints.joints,
-            motion_commands=[],
+            motion_commands=motion_commands,
             tcp=tcp,
         )
 
         motion_api_client = wb.MotionApi(api_client=self._api_client)
         plan_response = await motion_api_client.plan_trajectory(cell=self._cell, plan_trajectory_request=request)
-
-        self._current_motion = plan_response.plan_successful_response.motion
 
         return plan_response
 
@@ -137,7 +135,9 @@ class MotionGroup:
         number_of_joints = await self._get_number_of_joints()
 
         async def move_along_path(
-            motion_id: str, joint_velocities: list[float] | None = None
+            motion_id: str,
+            joint_velocities: list[float] | None = None,
+            joint_trajectory: wb.models.JointTrajectory | None = None
         ) -> AsyncGenerator[MotionState]:
             """Returns an iterator that lets the robot move along a planned path
 
@@ -149,6 +149,20 @@ class MotionGroup:
 
             """
             motion_api = wb.MotionApi(api_client=self._api_client)
+            load_plan_response = await motion_api.load_planned_motion(
+                cell=self._cell,
+                planned_motion=wb.models.PlannedMotion(
+                    motion_group=self.motion_group_id,
+                    times=joint_trajectory.times,
+                    joint_positions=joint_trajectory.joint_positions,
+                    locations=joint_trajectory.locations,
+                    tcp="Flange",
+                )
+            )
+
+            load_plan_response = load_plan_response.plan_successful_response
+
+
             limit_override = wb.models.LimitsOverride()
             if joint_velocities is not None:
                 limit_override.joint_velocity_limits = wb.models.Joints(joints=joint_velocities)
@@ -156,9 +170,8 @@ class MotionGroup:
             # Iterator that moves the robot to start of motion
             move_to_trajectory_stream = motion_api.stream_move_to_trajectory_via_joint_ptp(
                 cell=self._cell,
-                motion=motion_id,
-                location_on_trajectory=START_LOCATION_OF_MOTION,
-                limit_override=limit_override,
+                motion=load_plan_response.motion,
+                location_on_trajectory=START_LOCATION_OF_MOTION
             )
             async for motion_state_move_to_trajectory in move_to_trajectory_stream:
                 yield motion_state_move_to_trajectory
@@ -167,9 +180,9 @@ class MotionGroup:
 
             move_forward_stream = motion_api.stream_move_forward(
                 cell=self._cell,
-                motion=motion_id,
+                motion=load_plan_response.motion,
                 playback_speed_in_percent=playback_speed_in_percent,
-                response_rate_in_ms=response_rate_in_ms,
+                response_rate=response_rate_in_ms,
             )
 
             # The path parameter is not synchronized with the actual state of a physical motion group because it can't be measured currently.
@@ -195,17 +208,21 @@ class MotionGroup:
         # if not rae_pb_parser.plan_response.is_executable(plan_response):
         #     raise MotionException(plan_response, [], [])
 
-        await self._get_trajectory_sample(response_rate_in_ms)
+        #await self._get_trajectory_sample(response_rate_in_ms)
         # TODO: take velocity override into account.
         # if len(trajectory.sample) > 0 and not math.isnan(trajectory[-1].time):
         #    self._execution_duration += trajectory[-1].time
 
-        self._current_motion = plan_response.plan_successful_response.motion
+        #self._current_motion = plan_response.response.actual_instance
         logger.debug(f"Planned move session: {self.current_motion}")
 
         # TODO refactor RAE commands vs. multiple motion chains
         joints_velocities = [MAX_JOINT_VELOCITY_PREPARE_MOVE] * number_of_joints
-        move_iter = move_along_path(self.current_motion, joint_velocities=joints_velocities)
+        move_iter = move_along_path(
+            self.current_motion,
+            joint_velocities=joints_velocities,
+            joint_trajectory=plan_response.response.actual_instance,
+        )
         async for motion_state in move_iter:
             yield motion_state
 

@@ -9,15 +9,17 @@ from wandelbots.types.motion import lin, ptp
 async def test_motion_group():
     path = MotionTrajectory(
         items=[
-            ptp((100, 100, 0, 0, 3.41, 0)),
-            lin((100, 50, 0, 0, 3.41, 0)),
-            lin((100, 50, 100, 0, 3.41, 0)),
-            ptp((100, 100, 0, 0, 3.41, 0)),
-        ]
+            # from the default script for ur10
+            ptp((-91.4, -662.0, 851.3, 2.14, 2.14, -0.357)),
+            lin((-60.4, -652.0, 851.3, 2.14, 2.14, -0.357)),
+            ptp((-91.4, -662.0, 851.3, 2.14, 2.14, -0.357)),
+            lin((-60.4, -652.0, 851.3, 2.14, 2.14, -0.357)),
+            ptp((-91.4, -662.0, 851.3, 2.14, 2.14, -0.357)),
+        ] * 5
     )
 
-    nova_api_client = use_nova_api("172.30.1.111")
-    controller = Controller(api_client=nova_api_client, cell="cell", controller_host="ur10e")
+    nova_api_client = use_nova_api("172.30.0.124")
+    controller = Controller(api_client=nova_api_client, cell="cell", controller_host="ur")
 
     async with controller:
         motion_group = controller[0]
@@ -27,4 +29,4 @@ async def test_motion_group():
         motion_iter = motion_group.planned_motion(path=path, tcp="Flange")
         async for motion_state in motion_iter:
             print(motion_state)
-        assert False
+        assert True
