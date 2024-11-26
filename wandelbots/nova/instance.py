@@ -9,6 +9,7 @@ def use_nova_api(host) -> wb.ApiClient:
     return wb.ApiClient(config)
 
 
+# TODO: what is we read the instance from env varaibles?
 class Instance:
     def __init__(
         self, host="http://api-gateway.wandelbots.svc.cluster.local:8080", user=None, password=None, access_token=None

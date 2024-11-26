@@ -1,14 +1,10 @@
 from abc import ABC, abstractmethod
 
-class Planner(ABC):
 
+class Planner(ABC):
     @abstractmethod
     def plan(self):
         pass
-
-
-
-
 
 
 class DefaultPlanner(Planner):

@@ -1,4 +1,4 @@
-from wandelbots.nova.instance import Instance, use_nova_api
+from wandelbots.nova.instance import Instance
 from wandelbots.nova.controller import Controller
 import pytest
 
@@ -7,7 +7,7 @@ import wandelbots_api_client
 
 @pytest.fixture()
 def instance():
-    host = "172.30.1.200"
+    host = "172.30.0.124"
     user = None
     password = None
     access_token = None
@@ -15,8 +15,7 @@ def instance():
 
 
 @pytest.mark.asyncio
-async def test_instance():
-    nova_api_client = use_nova_api("172.30.1.200")
+async def test_instance(nova_api_client):
     controller_api = wandelbots_api_client.ControllerApi(api_client=nova_api_client)
     controllers = await controller_api.list_controllers(cell="cell")
     print(controllers)
@@ -24,8 +23,7 @@ async def test_instance():
 
 
 @pytest.mark.asyncio
-async def test_controller():
-    nova_api_client = use_nova_api("172.30.1.200")
+async def test_controller(nova_api_client):
     controller = Controller(api_client=nova_api_client, cell="cell", controller_host="ur10e")
     async with controller:
         motion_groups = controller.get_motion_groups()
