@@ -23,7 +23,7 @@ class MotionGroup:
 
     @property
     def current_motion(self) -> str:
-        #if not self._current_motion:
+        # if not self._current_motion:
         #    raise ValueError("No MotionId attached. There is no planned motion available.")
         return self._current_motion
 
@@ -96,7 +96,7 @@ class MotionGroup:
         current_joints = await self._get_current_joints(tcp=tcp)
         robot_setup = await self._get_optimizer_setup(tcp=tcp)
 
-
+        # TODO: paths = [wb.models.MotionCommandPath(**path.model_dump()) for path in path.motions]
         paths = [wb.models.MotionCommandPath.from_json(path.model_dump_json()) for path in path.motions]
         motion_commands = [wb.models.MotionCommand(path=path) for path in paths]
 
@@ -137,7 +137,7 @@ class MotionGroup:
         async def move_along_path(
             motion_id: str,
             joint_velocities: list[float] | None = None,
-            joint_trajectory: wb.models.JointTrajectory | None = None
+            joint_trajectory: wb.models.JointTrajectory | None = None,
         ) -> AsyncGenerator[MotionState]:
             """Returns an iterator that lets the robot move along a planned path
 
@@ -157,11 +157,10 @@ class MotionGroup:
                     joint_positions=joint_trajectory.joint_positions,
                     locations=joint_trajectory.locations,
                     tcp="Flange",
-                )
+                ),
             )
 
             load_plan_response = load_plan_response.plan_successful_response
-
 
             limit_override = wb.models.LimitsOverride()
             if joint_velocities is not None:
@@ -169,9 +168,7 @@ class MotionGroup:
 
             # Iterator that moves the robot to start of motion
             move_to_trajectory_stream = motion_api.stream_move_to_trajectory_via_joint_ptp(
-                cell=self._cell,
-                motion=load_plan_response.motion,
-                location_on_trajectory=START_LOCATION_OF_MOTION
+                cell=self._cell, motion=load_plan_response.motion, location_on_trajectory=START_LOCATION_OF_MOTION
             )
             async for motion_state_move_to_trajectory in move_to_trajectory_stream:
                 yield motion_state_move_to_trajectory
@@ -208,12 +205,12 @@ class MotionGroup:
         # if not rae_pb_parser.plan_response.is_executable(plan_response):
         #     raise MotionException(plan_response, [], [])
 
-        #await self._get_trajectory_sample(response_rate_in_ms)
+        # await self._get_trajectory_sample(response_rate_in_ms)
         # TODO: take velocity override into account.
         # if len(trajectory.sample) > 0 and not math.isnan(trajectory[-1].time):
         #    self._execution_duration += trajectory[-1].time
 
-        #self._current_motion = plan_response.response.actual_instance
+        # self._current_motion = plan_response.response.actual_instance
         logger.debug(f"Planned move session: {self.current_motion}")
 
         # TODO refactor RAE commands vs. multiple motion chains

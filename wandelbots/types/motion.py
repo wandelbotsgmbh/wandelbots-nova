@@ -2,6 +2,7 @@ import pydantic
 from abc import ABC
 from typing import Literal, Union
 from wandelbots.types.pose import Pose
+
 # TODO: derive motions from corresponding API models
 import wandelbots_api_client as ws
 
@@ -75,11 +76,10 @@ class Linear(Motion):
         return {
             "target_pose": {
                 "position": list(self.target.position.to_tuple()),
-                "orientation": list(self.target.orientation.to_tuple())
+                "orientation": list(self.target.orientation.to_tuple()),
             },
             "path_definition_name": "PathLine",
         }
-
 
 
 def lin(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) -> Linear:
@@ -117,10 +117,11 @@ class PTP(Motion):
         return {
             "target_pose": {
                 "position": list(self.target.position.to_tuple()),
-                "orientation": list(self.target.orientation.to_tuple())
+                "orientation": list(self.target.orientation.to_tuple()),
             },
             "path_definition_name": "PathCartesianPTP",
         }
+
 
 def ptp(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) -> PTP:
     """Convenience function to create a point-to-point motion
@@ -157,7 +158,7 @@ class Circular(Motion):
         return {
             "target_pose": {
                 "position": list(self.target.position.to_tuple()),
-                "orientation": list(self.target.orientation.to_tuple())
+                "orientation": list(self.target.orientation.to_tuple()),
             },
             "path_definition_name": "PathCircle",
         }
@@ -203,11 +204,10 @@ class JointPTP(Motion):
         return {
             "target_pose": {
                 "position": list(self.target.position.to_tuple()),
-                "orientation": list(self.target.orientation.to_tuple())
+                "orientation": list(self.target.orientation.to_tuple()),
             },
             "path_definition_name": "PathJointPTP",
         }
-
 
 
 def jnt(target: tuple[float, ...], settings: MotionSettings = MotionSettings()) -> JointPTP:
@@ -245,11 +245,10 @@ class Spline(Motion):
         return {
             "target_pose": {
                 "position": list(self.target.position.to_tuple()),
-                "orientation": list(self.target.orientation.to_tuple())
+                "orientation": list(self.target.orientation.to_tuple()),
             },
             "path_definition_name": "PathCubicSpline",
         }
-
 
 
 def spl(
