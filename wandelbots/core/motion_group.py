@@ -1,6 +1,7 @@
 from collections.abc import AsyncGenerator
 from wandelbots.types.state import MotionState
 from wandelbots.types.trajectory import MotionTrajectory
+from wandelbots.types.pose import Pose, Position, Orientation
 from wandelbots.types.collision_scene import CollisionScene
 from loguru import logger
 import wandelbots_api_client as wb
@@ -10,9 +11,9 @@ START_LOCATION_OF_MOTION = 0.0
 
 
 class MotionGroup:
-    def __init__(self, api_client: wb.ApiClient, cell: str, motion_group_id: str):
-        self._api_client = api_client
-        self._motion_api_client = wb.MotionApi(api_client=self._api_client)
+    def __init__(self, nova: wb.ApiClient, cell: str, motion_group_id: str):
+        self._nova_client = nova
+        self._motion_api_client = wb.MotionApi(api_client=self._nova_client)
         self._cell = cell
         self._motion_group_id = motion_group_id
         self._current_motion: str | None = None
@@ -27,7 +28,7 @@ class MotionGroup:
         #    raise ValueError("No MotionId attached. There is no planned motion available.")
         return self._current_motion
 
-    async def planned_motion(
+    async def stream_move(
         self,
         path: MotionTrajectory,
         tcp: str,
@@ -66,25 +67,35 @@ class MotionGroup:
             yield motion_state
 
     async def get_state(self, tcp: str) -> wb.models.MotionGroupStateResponse:
-        motion_group_infos_api_client = wb.MotionGroupInfosApi(api_client=self._api_client)
+        motion_group_infos_api_client = wb.MotionGroupInfosApi(api_client=self._nova_client)
         response = await motion_group_infos_api_client.get_current_motion_group_state(
             cell=self._cell, motion_group=self.motion_group_id, tcp=tcp
         )
         return response
 
-    async def _get_current_joints(self, tcp: str) -> wb.models.Joints:
+    async def joints(self, tcp: str) -> wb.models.Joints:
         state = await self.get_state(tcp=tcp)
         return state.state.joint_position
 
+    async def tcp_pose(self, tcp: str) -> Pose:
+        state = await self.get_state(tcp=tcp)
+        tcp_pose = state.state.tcp_pose
+        # TODO: improve conversion
+        return Pose(
+            position=Position(**tcp_pose.position.model_dump()),
+            orientation=Orientation(**tcp_pose.orientation.model_dump()),
+            coordinate_system=tcp_pose.coordinate_system,
+        )
+
     async def _get_number_of_joints(self) -> int:
-        motion_group_infos_api_client = wb.MotionGroupInfosApi(api_client=self._api_client)
+        motion_group_infos_api_client = wb.MotionGroupInfosApi(api_client=self._nova_client)
         spec = await motion_group_infos_api_client.get_motion_group_specification(
             cell=self._cell, motion_group=self.motion_group_id
         )
         return len(spec.mechanical_joint_limits)
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
-        motion_group_infos_api_client = wb.MotionGroupInfosApi(api_client=self._api_client)
+        motion_group_infos_api_client = wb.MotionGroupInfosApi(api_client=self._nova_client)
         return await motion_group_infos_api_client.get_optimizer_configuration(
             cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
         )
@@ -93,7 +104,7 @@ class MotionGroup:
         if len(path) == 0:
             raise ValueError("Path is empty")
 
-        current_joints = await self._get_current_joints(tcp=tcp)
+        current_joints = await self.joints(tcp=tcp)
         robot_setup = await self._get_optimizer_setup(tcp=tcp)
 
         # TODO: paths = [wb.models.MotionCommandPath(**path.model_dump()) for path in path.motions]
@@ -108,12 +119,12 @@ class MotionGroup:
             tcp=tcp,
         )
 
-        motion_api_client = wb.MotionApi(api_client=self._api_client)
+        motion_api_client = wb.MotionApi(api_client=self._nova_client)
         plan_response = await motion_api_client.plan_trajectory(cell=self._cell, plan_trajectory_request=request)
 
         return plan_response
 
-    async def _get_trajectory_sample(self, location: float) -> wb.models.TrajectorySample:
+    async def _get_trajectory_sample(self, location: float) -> wb.models.GetTrajectorySampleResponse:
         """Call the RAE to get single sample of trajectory from a previously planned path
 
         Args:
@@ -148,7 +159,7 @@ class MotionGroup:
             Returns: an iterator that lets the robot move along a planned path
 
             """
-            motion_api = wb.MotionApi(api_client=self._api_client)
+            motion_api = wb.MotionApi(api_client=self._nova_client)
             load_plan_response = await motion_api.load_planned_motion(
                 cell=self._cell,
                 planned_motion=wb.models.PlannedMotion(

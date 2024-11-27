@@ -1,5 +1,5 @@
 import pytest
-from wandelbots.nova.instance import use_nova_api
+from wandelbots import use_nova_api
 
 
 @pytest.fixture()

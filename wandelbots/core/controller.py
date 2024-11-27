@@ -1,15 +1,15 @@
 from typing import final
 
 import wandelbots_api_client as wb
-from wandelbots.nova.motion_group import MotionGroup
+from wandelbots.core.motion_group import MotionGroup
 from loguru import logger
 
 
 class Controller:
-    def __init__(self, api_client: wb.ApiClient, cell: str, controller_host: str):
-        self._api_client = api_client
-        self._controller_api = wb.ControllerApi(api_client=api_client)
-        self._motion_group_api = wb.MotionGroupApi(api_client=api_client)
+    def __init__(self, nova: wb.ApiClient, cell: str, controller_host: str):
+        self._nova_client = nova
+        self._controller_api = wb.ControllerApi(api_client=self._nova_client)
+        self._motion_group_api = wb.MotionGroupApi(api_client=self._nova_client)
         self._cell = cell
         self._controller_host = controller_host
         self._motion_groups: dict[str, MotionGroup] = {}
@@ -33,13 +33,13 @@ class Controller:
         motion_groups = activate_all_motion_groups_response.instances
         for mg in motion_groups:
             logger.info(f"Found motion group {mg.motion_group}")
-            motion_group = MotionGroup(api_client=self._api_client, cell=self._cell, motion_group_id=mg.motion_group)
+            motion_group = MotionGroup(nova=self._nova_client, cell=self._cell, motion_group_id=mg.motion_group)
             self._motion_groups[motion_group.motion_group_id] = motion_group
         return self
 
     @final
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self._api_client.close()
+        await self._nova_client.close()
         pass
 
     def get_motion_groups(self) -> dict[str, MotionGroup]:
