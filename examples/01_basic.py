@@ -4,7 +4,7 @@ import asyncio
 
 
 async def main():
-    nova = use_nova_access_token(config("NOVA_HOST"), access_token=config("NOVA_ACCESS_TOKEN"))
+    nova = use_nova_access_token()
     controller = Controller(nova, cell=config("CELL_ID"), controller_host=config("CONTROLLER_HOST"))
 
     # Connect to the controller and activate motion groups

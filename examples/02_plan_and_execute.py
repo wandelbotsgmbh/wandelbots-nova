@@ -7,8 +7,12 @@ import asyncio
 import numpy as np
 
 
+async def run_wandelscript(file: str, variables: dict[str, str | int | float]) -> str:
+    pass
+
+
 async def main():
-    nova = use_nova_access_token(config("NOVA_HOST"), access_token=config("NOVA_ACCESS_TOKEN"))
+    nova = use_nova_access_token()
     controller = Controller(nova, cell=config("CELL_ID"), controller_host=config("CONTROLLER_HOST"))
 
     # Define a home position
@@ -32,6 +36,16 @@ async def main():
         async for motion_state in motion_iter:
             print(motion_state)
 
+        result = await run_wandelscript("ws/move.ws", {"box_size": 20})
+        print(result)
+
+
+"""
+move via p2p() to home
+...
+python_function()
+...
+"""
 
 if __name__ == "__main__":
     asyncio.run(main())
