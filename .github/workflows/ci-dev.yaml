@@ -1,0 +1,43 @@
+name: ci-dev
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Set up Python environment
+        run: |
+          pip install poetry
+          poetry install
+          mkdir envs
+          touch envs/.env.tests
+          echo "NOVA_HOST=test.instance.mock.io" > envs/.env.tests
+          echo "CELL_ID=cell" >> envs/.env.tests
+          echo "MOTION_GROUP=virtual-robot" >> envs/.env.tests
+          echo "TCP=Flange" >> envs/.env.tests
+
+      - name: Check formatting with ruff
+        run: poetry run ruff format --check .
+
+      - name: Check ruff for linting
+        run: poetry run ruff check .
+
+      - name: Run tests
+        run: |
+          cp envs/.env.tests envs/test_.env.tests
+          # poetry run pytest -rs -v
