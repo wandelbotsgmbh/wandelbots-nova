@@ -8,7 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 httpx = "^0.27.2"
-wandelbots_api_client = "24.8.0rc6"
+wandelbots_api_client = "24.9.0rc3"
 websockets = ">=14.0.0"
 loguru = "^0.7.2"
 pydantic = "^2.9.2"

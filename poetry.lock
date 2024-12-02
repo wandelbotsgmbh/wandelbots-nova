@@ -1876,13 +1876,13 @@ zstd = ["zstandard (>=0.18.0)"]
 
 [[package]]
 name = "wandelbots-api-client"
-version = "24.8.0rc6"
+version = "24.9.0rc3"
 description = "Wandelbots Python Client: Interact with robots in an easy and intuitive way."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "wandelbots_api_client-24.8.0rc6-py3-none-any.whl", hash = "sha256:f2d287ac1473653df0cb5d234865240cce4516fa0e1fb7adaff7137a7a300e2a"},
-    {file = "wandelbots_api_client-24.8.0rc6.tar.gz", hash = "sha256:1506e3b926186fa26482fe64026ca780091ce76daa10b8fb77e5ab797ef9b86f"},
+    {file = "wandelbots_api_client-24.9.0rc3-py3-none-any.whl", hash = "sha256:8494adac80937dbb536c484779b9d56e007b26e2e6d1bd5fc5c6dd046fc0b2de"},
+    {file = "wandelbots_api_client-24.9.0rc3.tar.gz", hash = "sha256:b11f9e8743d32bf7ef6f44da88dd4d0bad968b740e10b1541c2634ecf64ced9d"},
 ]
 
 [package.dependencies]
@@ -2100,4 +2100,4 @@ propcache = ">=0.2.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "298be596b763e91d3aae3342da7a5c5601189b061e51fb456c2a90fa117a1aeb"
+content-hash = "d5a8115e3d4c7187799c900804fed7d7f03f0457c8a1d885e9718bf3beabac87"
