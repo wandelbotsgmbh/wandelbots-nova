@@ -7,8 +7,8 @@ on:
   pull_request:
     branches:
       - main
-      - develop
-      - feature/*
+      - feat/*
+      - fix/*
 
 jobs:
   test_integration:
