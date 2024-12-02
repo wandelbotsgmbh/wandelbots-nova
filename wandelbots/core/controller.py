@@ -6,10 +6,10 @@ from loguru import logger
 
 
 class Controller:
-    def __init__(self, nova: wb.ApiClient, cell: str, controller_host: str):
-        self._nova_client = nova
-        self._controller_api = wb.ControllerApi(api_client=self._nova_client)
-        self._motion_group_api = wb.MotionGroupApi(api_client=self._nova_client)
+    def __init__(self, *, api_client: wb.ApiClient, cell: str, controller_host: str):
+        self._api_client = api_client
+        self._controller_api = wb.ControllerApi(api_client=self._api_client)
+        self._motion_group_api = wb.MotionGroupApi(api_client=self._api_client)
         self._cell = cell
         self._controller_host = controller_host
         self._motion_groups: dict[str, MotionGroup] = {}
@@ -21,12 +21,6 @@ class Controller:
 
     @final
     async def __aenter__(self):
-        logger.info(f"Get controller {self._controller_host}...")
-        controller = await self._get_controller(self._controller_host)
-        if not controller:
-            raise RuntimeError(f"Controller host {self._controller_host} could not be registered.")
-
-        logger.info("Activate all motion groups...")
         activate_all_motion_groups_response = await self._motion_group_api.activate_all_motion_groups(
             cell=self._cell, controller=self._controller_host
         )
@@ -45,7 +39,7 @@ class Controller:
     def get_motion_groups(self) -> dict[str, MotionGroup]:
         return self._motion_groups
 
-    def get_motion_group(self, motion_group_id: str) -> MotionGroup:
+    def get_motion_group(self, motion_group_id: str = "0") -> MotionGroup:
         return self._motion_groups[motion_group_id]
 
     def __getitem__(self, item):
