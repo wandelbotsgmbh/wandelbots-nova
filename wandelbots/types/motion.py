@@ -38,7 +38,7 @@ class MotionSettings(pydantic.BaseModel):
 
 
 MS = MotionSettings
-PoseOrVectorTuple = Union[tuple[float, float, float, float, float, float], tuple[float, float, float]]
+PoseOrVectorTuple = Union[Pose, tuple[float, float, float, float, float, float], tuple[float, float, float]]
 
 
 class Motion(pydantic.BaseModel, ABC):
@@ -138,6 +138,9 @@ def ptp(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) 
     >>> assert ptp((1, 2, 3)) == ptp((1, 2, 3, 0, 0, 0))
 
     """
+    if isinstance(target, Pose):
+        target = target.to_tuple()
+
     t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
     return PTP(target=Pose.from_tuple(t), settings=settings)
 
@@ -202,10 +205,7 @@ class JointPTP(Motion):
     @pydantic.model_serializer
     def custom_serialize(self):
         return {
-            "target_pose": {
-                "position": list(self.target.position.to_tuple()),
-                "orientation": list(self.target.orientation.to_tuple()),
-            },
+            "target_joint_position": list(self.target),
             "path_definition_name": "PathJointPTP",
         }
 

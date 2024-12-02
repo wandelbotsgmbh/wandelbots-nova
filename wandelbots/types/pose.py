@@ -3,6 +3,7 @@ from wandelbots.types.vector3d import Vector3d
 from typing import Any
 import numpy as np
 
+from scipy.spatial.transform import Rotation as R
 
 class Position(Vector3d):
     """A position
@@ -68,6 +69,7 @@ class Pose(PoseBase):
             tuple([round(a, 1) for a in pos_and_rot_vector[:3]] + [round(a, 3) for a in pos_and_rot_vector[3:]])
         )
 
+
     def to_tuple(self) -> tuple[float, float, float, float, float, float]:
         """Return the pose as a tuple
 
@@ -97,3 +99,42 @@ class Pose(PoseBase):
 
     def __getitem__(self, item):
         return self.to_tuple()[item]
+
+
+    def __matmul__(self, other):
+        if isinstance(other, Pose):
+            transformed_matrix = np.dot(self.matrix, other.matrix)
+            return self._matrix_to_pose(transformed_matrix)
+        elif isinstance(other, np.ndarray):
+            assert other.shape == (4, 4)
+            transformed_matrix = np.dot(self.matrix, other)
+            return self._matrix_to_pose(transformed_matrix)
+        else:
+            raise ValueError(f"Cannot multiply Pose with {type(other)}")
+
+
+    def _to_homogenous_transformation_matrix(self):
+        """Converts the pose (position and rotation vector) to a 4x4 homogeneous transformation matrix."""
+        rotation_vec = [self.orientation.x, self.orientation.y, self.orientation.z]
+        rotation_matrix = R.from_rotvec(rotation_vec).as_matrix()
+        mat = np.eye(4)
+        mat[:3, :3] = rotation_matrix
+        mat[:3, 3] = [self.position.x, self.position.y, self.position.z]
+        return mat
+
+
+
+    def _matrix_to_pose(self, matrix: np.ndarray) -> "Pose":
+        """Converts a homogeneous transformation matrix to a Pose."""
+        rotation_matrix = matrix[:3, :3]
+        position = matrix[:3, 3]
+        rotation_vec = R.from_matrix(rotation_matrix).as_rotvec()
+        return Pose.from_tuple(
+            (position[0], position[1], position[2], rotation_vec[0], rotation_vec[1], rotation_vec[2])
+        )
+
+
+    @property
+    def matrix(self) -> np.ndarray:
+        """Returns the homogeneous transformation matrix."""
+        return self._to_homogenous_transformation_matrix()
