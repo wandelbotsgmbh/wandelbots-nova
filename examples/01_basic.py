@@ -6,7 +6,7 @@ from wandelbots.core.nova import Nova
 async def main():
     nova = Nova()
     cell = nova.cell()
-    async with cell.controller("ur10e") as controller:
+    async with await cell.controller("ur") as controller:
         motion_group = controller.get_motion_group()
 
         # Current motion group state

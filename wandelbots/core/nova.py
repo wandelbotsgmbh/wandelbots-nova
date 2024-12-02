@@ -1,6 +1,6 @@
 import wandelbots_api_client as wb
 from decouple import config
-from controller import Controller
+from wandelbots.core.controller import Controller
 from wandelbots.core.exceptions import ControllerNotFoundException
 
 NOVA_HOST = config("NOVA_HOST")
@@ -100,4 +100,4 @@ class Cell:
         if found_controller is None:
             raise ControllerNotFoundException(controller=controller_host)
 
-        return Controller(api_client=self._api_client, cell=self._cell_id, controller_host=found_controller.id)
+        return Controller(api_client=self._api_client, cell=self._cell_id, controller_host=found_controller.host)
