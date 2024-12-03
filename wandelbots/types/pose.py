@@ -5,6 +5,7 @@ import numpy as np
 
 from scipy.spatial.transform import Rotation as R
 
+
 class Position(Vector3d):
     """A position
 
@@ -69,7 +70,6 @@ class Pose(PoseBase):
             tuple([round(a, 1) for a in pos_and_rot_vector[:3]] + [round(a, 3) for a in pos_and_rot_vector[3:]])
         )
 
-
     def to_tuple(self) -> tuple[float, float, float, float, float, float]:
         """Return the pose as a tuple
 
@@ -100,7 +100,6 @@ class Pose(PoseBase):
     def __getitem__(self, item):
         return self.to_tuple()[item]
 
-
     def __matmul__(self, other):
         if isinstance(other, Pose):
             transformed_matrix = np.dot(self.matrix, other.matrix)
@@ -112,7 +111,6 @@ class Pose(PoseBase):
         else:
             raise ValueError(f"Cannot multiply Pose with {type(other)}")
 
-
     def _to_homogenous_transformation_matrix(self):
         """Converts the pose (position and rotation vector) to a 4x4 homogeneous transformation matrix."""
         rotation_vec = [self.orientation.x, self.orientation.y, self.orientation.z]
@@ -122,8 +120,6 @@ class Pose(PoseBase):
         mat[:3, 3] = [self.position.x, self.position.y, self.position.z]
         return mat
 
-
-
     def _matrix_to_pose(self, matrix: np.ndarray) -> "Pose":
         """Converts a homogeneous transformation matrix to a Pose."""
         rotation_matrix = matrix[:3, :3]
@@ -132,7 +128,6 @@ class Pose(PoseBase):
         return Pose.from_tuple(
             (position[0], position[1], position[2], rotation_vec[0], rotation_vec[1], rotation_vec[2])
         )
-
 
     @property
     def matrix(self) -> np.ndarray:

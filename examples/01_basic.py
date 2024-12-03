@@ -22,6 +22,5 @@ async def main():
         print(tcp_pose)
 
 
-
 if __name__ == "__main__":
     asyncio.run(main())

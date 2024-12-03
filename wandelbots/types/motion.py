@@ -204,10 +204,7 @@ class JointPTP(Motion):
 
     @pydantic.model_serializer
     def custom_serialize(self):
-        return {
-            "target_joint_position": list(self.target),
-            "path_definition_name": "PathJointPTP",
-        }
+        return {"target_joint_position": list(self.target), "path_definition_name": "PathJointPTP"}
 
 
 def jnt(target: tuple[float, ...], settings: MotionSettings = MotionSettings()) -> JointPTP:

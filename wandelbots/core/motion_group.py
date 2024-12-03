@@ -107,8 +107,6 @@ class MotionGroup:
         current_joints = await self.joints(tcp=tcp)
         robot_setup = await self._get_optimizer_setup(tcp=tcp)
 
-
-
         # TODO: paths = [wb.models.MotionCommandPath(**path.model_dump()) for path in path.motions]
         paths = [wb.models.MotionCommandPath.from_json(path.model_dump_json()) for path in path.motions]
         motion_commands = [wb.models.MotionCommand(path=path) for path in paths]
@@ -170,7 +168,6 @@ class MotionGroup:
             if joint_velocities is not None:
                 limit_override.joint_velocity_limits = wb.models.Joints(joints=joint_velocities)
 
-
             # Iterator that moves the robot to start of motion
             move_to_trajectory_stream = motion_api.stream_move_to_trajectory_via_joint_ptp(
                 cell=self._cell, motion=load_plan_response.motion, location_on_trajectory=0
@@ -181,14 +178,11 @@ class MotionGroup:
             playback_speed_in_percent = 100
 
             responses = []
-            async def movement_controller(
-                    response_stream: AsyncGenerator,
-            ) -> (AsyncGenerator)[wb.models.ExecuteTrajectoryRequest, wb.models.ExecuteTrajectoryResponse]:
-                yield wb.models.InitializeMovementRequest(
-                    trajectory=load_plan_response.motion,
-                    initial_location=0,
-                )
 
+            async def movement_controller(
+                response_stream: AsyncGenerator,
+            ) -> (AsyncGenerator)[wb.models.ExecuteTrajectoryRequest, wb.models.ExecuteTrajectoryResponse]:
+                yield wb.models.InitializeMovementRequest(trajectory=load_plan_response.motion, initial_location=0)
 
                 initialize_movement_response = await anext(response_stream)
                 print(f"initial move response {initialize_movement_response}")
@@ -200,9 +194,7 @@ class MotionGroup:
                     for action in path.actions
                 ]
 
-                yield wb.models.StartMovementRequest(
-                    set_ios=set_io_list,
-                )
+                yield wb.models.StartMovementRequest(set_ios=set_io_list)
 
                 async for execute_trajectory_response in response_stream:
                     response = execute_trajectory_response.actual_instance
@@ -215,7 +207,6 @@ class MotionGroup:
                             return
 
             await motion_api.execute_trajectory(self._cell, movement_controller)
-
 
         """
         if any(isinstance(motion, dts.UnresolvedMotion) for motion in path.motions) or collision_scene is not None:

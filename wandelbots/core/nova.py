@@ -53,8 +53,8 @@ class Nova:
     ):
         self._api_client = self._init_api_client(host, username, password, access_token, version)
 
-
-    def _init_api_client(self,
+    def _init_api_client(
+        self,
         host: str | None = None,
         username: str | None = None,
         password: str | None = None,
@@ -82,10 +82,10 @@ class Nova:
         )
         return wb.ApiClient(api_client_config)
 
-
     def cell(self, cell_id: str = "cell") -> "Cell":
         # TODO check if the cell exists
         return Cell(self._api_client, cell_id)
+
 
 class Cell:
     def __init__(self, api_client: wb.ApiClient, cell_id: str):
