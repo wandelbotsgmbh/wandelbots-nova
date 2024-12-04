@@ -11,7 +11,7 @@ httpx = "^0.27.2"
 wandelbots_api_client = "24.9.0rc3"
 websockets = ">=14.0.0"
 loguru = "^0.7.2"
-pydantic = "^2.9.2"
+pydantic = "^2.10.3"
 numpy = "^2.1.3"
 python-decouple = "^3.8"
 scipy = "^1.14.1"
@@ -45,7 +45,7 @@ testpaths = """
 """
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 ignore_missing_imports = true
 warn_unreachable = true
 warn_unused_configs = true

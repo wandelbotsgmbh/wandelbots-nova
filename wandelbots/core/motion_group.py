@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator
 from wandelbots.types.state import MotionState
-from wandelbots.types.trajectory import MotionTrajectory
-from wandelbots.types.pose import Pose, Position, Orientation
+from wandelbots.types.action import Action, CombinedActions
+from wandelbots.types.pose import Pose
 from wandelbots.types.collision_scene import CollisionScene
 from loguru import logger
 import wandelbots_api_client as wb
@@ -28,9 +28,9 @@ class MotionGroup:
         #    raise ValueError("No MotionId attached. There is no planned motion available.")
         return self._current_motion
 
-    async def stream_move(
+    async def stream_run(
         self,
-        path: MotionTrajectory,
+        actions: list[Action] | Action,
         tcp: str,
         # collision_scene: dts.CollisionScene | None,
         response_rate_in_ms: int = 200,
@@ -44,7 +44,7 @@ class MotionGroup:
         is reached.
 
         Args:
-            path: the motion defining the path
+            actions: the motion defining the path
             tcp (Optional[str]): The tool center point (TCP) to be used for the motion.
             collision_scene (Optional[CollisionScene]): The collision scene to be used for collision detection.
             response_rate_in_ms (int): The sample time in milliseconds to be used for the motion.
@@ -58,13 +58,19 @@ class MotionGroup:
                     StopAsyncIteration: If the motion path iteration is completed.
 
         """
+        if not isinstance(actions, list):
+            actions = [actions]
 
         # TODO get default tcp if tcp is not set
         motion_iter = self._planned_motion_iter(
-            path=path, tcp=tcp, collision_scene=None, response_rate_in_ms=response_rate_in_ms
+            actions=actions, tcp=tcp, collision_scene=None, response_rate_in_ms=response_rate_in_ms
         )
         async for motion_state in motion_iter:
             yield motion_state
+
+    async def run(self, actions: list[Action] | Action, tcp: str):
+        async for _ in self.stream_run(actions=actions, tcp=tcp):
+            pass
 
     async def get_state(self, tcp: str) -> wb.models.MotionGroupStateResponse:
         motion_group_infos_api_client = wb.MotionGroupInfosApi(api_client=self._nova_client)
@@ -79,13 +85,7 @@ class MotionGroup:
 
     async def tcp_pose(self, tcp: str) -> Pose:
         state = await self.get_state(tcp=tcp)
-        tcp_pose = state.state.tcp_pose
-        # TODO: improve conversion
-        return Pose(
-            position=Position(**tcp_pose.position.model_dump()),
-            orientation=Orientation(**tcp_pose.orientation.model_dump()),
-            coordinate_system=tcp_pose.coordinate_system,
-        )
+        return Pose(state.state.tcp_pose)
 
     async def _get_number_of_joints(self) -> int:
         motion_group_infos_api_client = wb.MotionGroupInfosApi(api_client=self._nova_client)
@@ -100,16 +100,26 @@ class MotionGroup:
             cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
         )
 
-    async def plan(self, path: MotionTrajectory, tcp: str) -> wb.models.PlanTrajectoryResponse:
-        if len(path) == 0:
-            raise ValueError("Path is empty")
+    async def plan(
+        self, actions: list[Action] | Action, tcp: str
+    ) -> wb.models.PlanTrajectoryResponse:
+        if not isinstance(actions, list):
+            actions = [actions]
+
+        if len(actions) == 0:
+            raise ValueError("Actions are empty")
 
         current_joints = await self.joints(tcp=tcp)
         robot_setup = await self._get_optimizer_setup(tcp=tcp)
 
         # TODO: paths = [wb.models.MotionCommandPath(**path.model_dump()) for path in path.motions]
-        paths = [wb.models.MotionCommandPath.from_json(path.model_dump_json()) for path in path.motions]
-        motion_commands = [wb.models.MotionCommand(path=path) for path in paths]
+        combined_actions = CombinedActions(items=actions)
+        motions = [
+            wb.models.MotionCommandPath(**motion.model_dump())
+            for motion in combined_actions.motions
+        ]
+        print(motions)
+        motion_commands = [wb.models.MotionCommand(path=motion) for motion in motions]
 
         request = wb.models.PlanTrajectoryRequest(
             robot_setup=robot_setup,
@@ -120,11 +130,15 @@ class MotionGroup:
         )
 
         motion_api_client = wb.MotionApi(api_client=self._nova_client)
-        plan_response = await motion_api_client.plan_trajectory(cell=self._cell, plan_trajectory_request=request)
+        plan_response = await motion_api_client.plan_trajectory(
+            cell=self._cell, plan_trajectory_request=request
+        )
 
         return plan_response
 
-    async def _get_trajectory_sample(self, location: float) -> wb.models.GetTrajectorySampleResponse:
+    async def _get_trajectory_sample(
+        self, location: float
+    ) -> wb.models.GetTrajectorySampleResponse:
         """Call the RAE to get single sample of trajectory from a previously planned path
 
         Args:
@@ -141,7 +155,11 @@ class MotionGroup:
         )
 
     async def _planned_motion_iter(
-        self, path: MotionTrajectory, tcp: str, collision_scene: CollisionScene | None, response_rate_in_ms: int
+        self,
+        actions: list[Action],
+        tcp: str,
+        collision_scene: CollisionScene | None,
+        response_rate_in_ms: int,
     ) -> AsyncGenerator[MotionState]:
         number_of_joints = await self._get_number_of_joints()
 
@@ -181,20 +199,24 @@ class MotionGroup:
 
             async def movement_controller(
                 response_stream: AsyncGenerator,
-            ) -> (AsyncGenerator)[wb.models.ExecuteTrajectoryRequest, wb.models.ExecuteTrajectoryResponse]:
-                yield wb.models.InitializeMovementRequest(trajectory=load_plan_response.motion, initial_location=0)
+            ) -> (AsyncGenerator)[
+                wb.models.ExecuteTrajectoryRequest, wb.models.ExecuteTrajectoryResponse
+            ]:
+                yield wb.models.InitializeMovementRequest(
+                    trajectory=load_plan_response.motion, initial_location=0
+                )
 
+                combined_actions = CombinedActions(items=actions)
                 initialize_movement_response = await anext(response_stream)
                 print(f"initial move response {initialize_movement_response}")
                 set_io_list = [
-                    wb.models.SetIO(
-                        io=wb.models.IOValue(io=action.action.key, boolean_value=action.action.value),
-                        location=action.path_parameter,
-                    )
-                    for action in path.actions
+                    wb.models.SetIO(io=action.model_dump(), location=action.path_parameter)
+                    for action in combined_actions.actions
                 ]
 
-                yield wb.models.StartMovementRequest(set_ios=set_io_list)
+                yield wb.models.StartMovementRequest(
+                    set_ios=set_io_list, start_on_io=None, pause_on_io=None
+                )
 
                 async for execute_trajectory_response in response_stream:
                     response = execute_trajectory_response.actual_instance
@@ -203,7 +225,10 @@ class MotionGroup:
 
                     # Terminate the generator
                     if isinstance(response, wb.models.Standstill):
-                        if response.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
+                        if (
+                            response.standstill.reason
+                            == wb.models.StandstillReason.REASON_MOTION_ENDED
+                        ):
                             return
 
             await motion_api.execute_trajectory(self._cell, movement_controller)
@@ -221,7 +246,7 @@ class MotionGroup:
             )
         """
 
-        plan_response = await self.plan(path, tcp)
+        plan_response = await self.plan(actions, tcp)
 
         # if not rae_pb_parser.plan_response.is_executable(plan_response):
         #     raise MotionException(plan_response, [], [])
@@ -250,7 +275,9 @@ class MotionGroup:
     async def stop(self):
         logger.debug(f"Stopping motion of {self}...")
         try:
-            await self._motion_api_client.stop_execution(cell=self._cell, motion=self.current_motion)
+            await self._motion_api_client.stop_execution(
+                cell=self._cell, motion=self.current_motion
+            )
             logger.debug(f"Motion {self.current_motion} stopped.")
         except ValueError as e:
             logger.debug(f"No motion to stop for {self}: {e}")

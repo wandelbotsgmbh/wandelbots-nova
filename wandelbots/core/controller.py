@@ -21,8 +21,10 @@ class Controller:
 
     @final
     async def __aenter__(self):
-        activate_all_motion_groups_response = await self._motion_group_api.activate_all_motion_groups(
-            cell=self._cell, controller=self._controller_host
+        activate_all_motion_groups_response = (
+            await self._motion_group_api.activate_all_motion_groups(
+                cell=self._cell, controller=self._controller_host
+            )
         )
         # TODO: should we store these states? I dont like storing state, then you have to manage them
         #       stateless looks simpler
@@ -30,7 +32,9 @@ class Controller:
         motion_groups = activate_all_motion_groups_response.instances
         for mg in motion_groups:
             logger.info(f"Found motion group {mg.motion_group}")
-            motion_group = MotionGroup(nova=self._api_client, cell=self._cell, motion_group_id=mg.motion_group)
+            motion_group = MotionGroup(
+                nova=self._api_client, cell=self._cell, motion_group_id=mg.motion_group
+            )
             self._motion_groups[motion_group.motion_group_id] = motion_group
         return self
 

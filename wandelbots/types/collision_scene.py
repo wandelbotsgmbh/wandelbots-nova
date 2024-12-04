@@ -2,9 +2,9 @@ from abc import ABC, abstractmethod
 from typing import Literal
 
 import pydantic
-
-from wandelbots.types.pose import Pose, Position
-from wandelbots.types.motion import Motion
+import wandelbots_api_client as wb
+from wandelbots.types.pose import Pose
+from wandelbots.types.action import Motion
 
 
 class DhParameter(pydantic.BaseModel):
@@ -19,7 +19,9 @@ class DhParameter(pydantic.BaseModel):
 
 
 class Sphere(pydantic.BaseModel):
-    shape_type: Literal["sphere"] = "sphere"  # this allows shape type identification from Union of shapes
+    shape_type: Literal["sphere"] = (
+        "sphere"  # this allows shape type identification from Union of shapes
+    )
     radius: float
 
 
@@ -62,7 +64,7 @@ class RectangularCapsule(pydantic.BaseModel):
 
 class ConvexHull(pydantic.BaseModel):
     shape_type: Literal["convex_hull"] = "convex_hull"
-    vertices: list[Position]
+    vertices: list[wb.models.Vector3d]
 
 
 class Collider(pydantic.BaseModel):

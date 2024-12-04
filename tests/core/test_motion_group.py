@@ -1,16 +1,15 @@
 import pytest
-from wandelbots.core.controller import Controller
-from wandelbots.types.trajectory import MotionTrajectory
-from wandelbots.types.motion import lin, ptp
-from wandelbots import use_nova
+from wandelbots import Nova, combine_actions, lin, ptp
 
 
 @pytest.mark.asyncio
 async def test_motion_group():
-    nova = use_nova("172.30.1.65")
+    nova = Nova(host="172.30.1.65")
+    cell = nova.cell()
+    controller = await cell.controller("ur")
 
-    path = MotionTrajectory(
-        items=[
+    path = combine_actions(
+        [
             # from the default script for ur10
             ptp((-91.4, -662.0, 851.3, 2.14, 2.14, -0.357)),
             lin((-160.4, -652.0, 851.3, 2.14, 2.14, -0.357)),
@@ -20,8 +19,6 @@ async def test_motion_group():
         ]
         * 5
     )
-
-    controller = Controller(nova, cell="cell", controller_host="ur")
 
     async with controller:
         motion_group = controller[0]

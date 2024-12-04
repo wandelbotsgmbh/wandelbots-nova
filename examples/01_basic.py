@@ -1,12 +1,14 @@
 import asyncio
 
-from wandelbots.core.nova import Nova
+from wandelbots import Nova
 
 
 async def main():
     nova = Nova()
     cell = nova.cell()
-    async with await cell.controller("ur") as controller:
+    controller = await cell.controller("ur")
+
+    async with controller:
         motion_group = controller.get_motion_group()
 
         # Current motion group state
