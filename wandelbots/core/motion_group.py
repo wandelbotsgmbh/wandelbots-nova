@@ -1,6 +1,7 @@
 from collections.abc import AsyncGenerator
 
 from wandelbots.core.exceptions import PlanTrajectoryFailed
+from wandelbots.gateway.api_gateway import ApiGateway
 from wandelbots.types.state import MotionState
 from wandelbots.types.action import Action, CombinedActions
 from wandelbots.types.pose import Pose
@@ -13,9 +14,9 @@ START_LOCATION_OF_MOTION = 0.0
 
 
 class MotionGroup:
-    def __init__(self, nova: wb.ApiClient, cell: str, motion_group_id: str):
-        self._nova_client = nova
-        self._motion_api_client = wb.MotionApi(api_client=self._nova_client)
+    def __init__(self, api_gateway: ApiGateway, cell: str, motion_group_id: str):
+        self._api_gateway = api_gateway
+        self._motion_api_client = api_gateway.motion_api
         self._cell = cell
         self._motion_group_id = motion_group_id
         self._current_motion: str | None = None
@@ -75,8 +76,7 @@ class MotionGroup:
             pass
 
     async def get_state(self, tcp: str) -> wb.models.MotionGroupStateResponse:
-        motion_group_infos_api_client = wb.MotionGroupInfosApi(api_client=self._nova_client)
-        response = await motion_group_infos_api_client.get_current_motion_group_state(
+        response = await self._api_gateway.motion_group_infos_api.get_current_motion_group_state(
             cell=self._cell, motion_group=self.motion_group_id, tcp=tcp
         )
         return response
@@ -90,15 +90,13 @@ class MotionGroup:
         return Pose(state.state.tcp_pose)
 
     async def _get_number_of_joints(self) -> int:
-        motion_group_infos_api_client = wb.MotionGroupInfosApi(api_client=self._nova_client)
-        spec = await motion_group_infos_api_client.get_motion_group_specification(
+        spec = await self._api_gateway.motion_group_infos_api.get_motion_group_specification(
             cell=self._cell, motion_group=self.motion_group_id
         )
         return len(spec.mechanical_joint_limits)
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
-        motion_group_infos_api_client = wb.MotionGroupInfosApi(api_client=self._nova_client)
-        return await motion_group_infos_api_client.get_optimizer_configuration(
+        return await self._api_gateway.motion_group_infos_api.get_optimizer_configuration(
             cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
         )
 
@@ -131,7 +129,7 @@ class MotionGroup:
             tcp=tcp,
         )
 
-        motion_api_client = wb.MotionApi(api_client=self._nova_client)
+        motion_api_client = self._api_gateway.motion_api
         plan_response = await motion_api_client.plan_trajectory(
             cell=self._cell, plan_trajectory_request=request
         )
@@ -174,7 +172,7 @@ class MotionGroup:
             joint_velocities: list[float] | None = None,
             joint_trajectory: wb.models.JointTrajectory | None = None,
         ) -> AsyncGenerator[MotionState]:
-            motion_api = wb.MotionApi(api_client=self._nova_client)
+            motion_api = self._api_gateway.motion_api
             load_plan_response = await motion_api.load_planned_motion(
                 cell=self._cell,
                 planned_motion=wb.models.PlannedMotion(

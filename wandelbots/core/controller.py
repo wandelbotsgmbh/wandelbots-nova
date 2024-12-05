@@ -4,12 +4,14 @@ import wandelbots_api_client as wb
 from wandelbots.core.motion_group import MotionGroup
 from loguru import logger
 
+from wandelbots.gateway.api_gateway import ApiGateway
+
 
 class Controller:
-    def __init__(self, *, api_client: wb.ApiClient, cell: str, controller_host: str):
-        self._api_client = api_client
-        self._controller_api = wb.ControllerApi(api_client=self._api_client)
-        self._motion_group_api = wb.MotionGroupApi(api_client=self._api_client)
+    def __init__(self, *, api_gateway: ApiGateway, cell: str, controller_host: str):
+        self._api_gateway = api_gateway
+        self._controller_api = api_gateway.controller_api
+        self._motion_group_api = api_gateway.motion_group_api
         self._cell = cell
         self._controller_host = controller_host
         self._motion_groups: dict[str, MotionGroup] = {}
@@ -33,7 +35,7 @@ class Controller:
         for mg in motion_groups:
             logger.info(f"Found motion group {mg.motion_group}")
             motion_group = MotionGroup(
-                nova=self._api_client, cell=self._cell, motion_group_id=mg.motion_group
+                api_gateway=self._api_gateway, cell=self._cell, motion_group_id=mg.motion_group
             )
             self._motion_groups[motion_group.motion_group_id] = motion_group
         return self
@@ -41,7 +43,6 @@ class Controller:
     @final
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         # TODO: should we deactivate these motions groups? what does wandelscript does?
-        await self._api_client.close()
         pass
 
     def get_motion_groups(self) -> dict[str, MotionGroup]:
