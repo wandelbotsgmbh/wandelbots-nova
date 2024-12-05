@@ -32,6 +32,7 @@ def _parse_args(*args):
         raise ValueError("Invalid number of arguments for Pose")
 
 
+# TODO: how to handle the coordinate system and the tcp, check wandelscript - it is around the pose not in the pose
 class Pose(pydantic.BaseModel):
     """A pose (position and orientation)
 
@@ -43,6 +44,7 @@ class Pose(pydantic.BaseModel):
     position: Vector3d
     orientation: Vector3d
 
+    # TODO: add doc tests to the models, doc tests should not be too complex
     def __init__(self, *args, **kwargs):
         """Parse a tuple into a dict
 
@@ -101,6 +103,15 @@ class Pose(pydantic.BaseModel):
         else:
             raise ValueError(f"Cannot multiply Pose with {type(other)}")
 
+    # TODO: how much should the user be aware of the different types of poses?
+    #       he should not be aware, the user should only be aware of a single pose type
+    # def to_model(self, Type[pydantic.BaseModel]) -> T:
+    #     if isinstance(Type, wb.models.Pose):
+    #         ...
+    #     if isinstance(...)
+    #         return
+
+    # Make this private
     def to_wb_pose(self) -> wb.models.Pose:
         """Convert to wandelbots_api_client Pose
 
@@ -112,6 +123,7 @@ class Pose(pydantic.BaseModel):
             position=self.position.model_dump(), orientation=self.orientation.model_dump()
         )
 
+    # Make this private
     def to_wb_pose2(self) -> wb.models.Pose2:
         """Convert to wandelbots_api_client Pose
 

@@ -1,4 +1,6 @@
 from collections.abc import AsyncGenerator
+
+from wandelbots.core.exceptions import PlanTrajectoryFailed
 from wandelbots.types.state import MotionState
 from wandelbots.types.action import Action, CombinedActions
 from wandelbots.types.pose import Pose
@@ -115,7 +117,7 @@ class MotionGroup:
         # TODO: paths = [wb.models.MotionCommandPath(**path.model_dump()) for path in path.motions]
         combined_actions = CombinedActions(items=actions)
         motions = [
-            wb.models.MotionCommandPath(**motion.model_dump())
+            wb.models.MotionCommandPath.from_dict(motion.model_dump())
             for motion in combined_actions.motions
         ]
         print(motions)
@@ -133,6 +135,10 @@ class MotionGroup:
         plan_response = await motion_api_client.plan_trajectory(
             cell=self._cell, plan_trajectory_request=request
         )
+
+        if isinstance(plan_response.response.actual_instance, wb.models.PlanTrajectoryFailedResponse):
+            failed_response = plan_response.response.actual_instance
+            raise PlanTrajectoryFailed(failed_response)
 
         return plan_response
 
