@@ -2,7 +2,13 @@
 name = "wandelbots"
 version = "0.0.1"
 description = "Official Python SDK for the Wandelbots"
-authors = ["Wandelbots GmbH"]
+authors = [
+    "Wandelbots GmbH",
+    "Christoph Biering <christoph.biering@wandelbots.com>",
+    "Mahsum Demir <mahsum.demir@wandelbots.com>",
+    "Dirk Sonnemann <dirk.sonnemann@wandelbots.com>",
+    "Andreas Langenhagen <andreas.langenhagen@wandelbots.com>"
+]
 readme = "README.md"
 
 [tool.poetry.dependencies]
