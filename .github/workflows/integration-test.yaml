@@ -8,8 +8,9 @@ on:
 #  pull_request:
 #    branches:
 #      - main
-#      - develop
-#      - feature/*
+#      - feat/*
+#      - fix/*
+#      - chore/*
 
 jobs:
   test_integration:
