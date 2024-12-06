@@ -199,8 +199,6 @@ class MotionGroup:
             async for motion_state_move_to_trajectory in move_to_trajectory_stream:
                 yield motion_state_move_to_trajectory
 
-            playback_speed_in_percent = 100
-
             responses = []
 
             async def movement_controller(

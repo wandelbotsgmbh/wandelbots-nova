@@ -1,7 +1,6 @@
 import asyncio
 import functools
-from typing import TypeVar, Generic, Any
-from venv import logger
+from typing import TypeVar
 
 import wandelbots_api_client as wb
 from decouple import config
