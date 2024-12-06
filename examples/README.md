@@ -1,4 +1,6 @@
-# nova-python-sdk examples
+# nova-py examples
+
+Examples on how to use the nova-py library.
 
 ## Usage
 
