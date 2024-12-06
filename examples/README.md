@@ -1,4 +1,4 @@
-# nova-py examples
+# nova-python examples
 
 Examples on how to use the nova-py library.
 

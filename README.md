@@ -1,4 +1,4 @@
-# nova-py
+# nova-python
 
 This library provides an SDK for the Wandelbots NOVA API.
 
@@ -14,7 +14,7 @@ This library requires
 To use the library, first install it using the following command
 
 ```bash
-pip install nova-py
+pip install nova-python
 ```
 
 Then import the library in your code
