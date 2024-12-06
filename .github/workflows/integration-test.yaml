@@ -1,14 +1,15 @@
 name: Test Integration
 
 on:
-  push:
-    tags:
-      - '*-*'  # Matches tags containing a hyphen
-  pull_request:
-    branches:
-      - main
-      - develop
-      - feature/*
+  workflow_dispatch:
+#  push:
+#    tags:
+#      - '*-*'  # Matches tags containing a hyphen
+#  pull_request:
+#    branches:
+#      - main
+#      - develop
+#      - feature/*
 
 jobs:
   test_integration:
