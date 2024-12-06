@@ -1,7 +1,7 @@
 import pytest
-from wandelbots import use_nova
+from nova import Nova
 
 
 @pytest.fixture()
-def nova_api_client():
-    return use_nova()
+def nova():
+    return Nova()

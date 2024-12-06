@@ -1,5 +1,5 @@
 import pydantic
-from wandelbots.types.pose import Pose
+from nova.types.pose import Pose
 
 
 class RobotState(pydantic.BaseModel):

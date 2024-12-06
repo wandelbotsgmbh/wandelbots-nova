@@ -1,0 +1,37 @@
+---
+name: 'Validate PR Title'
+
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+
+jobs:
+  validate-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Validate PR Title'
+        shell: bash
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          echo "PR Title: $PR_TITLE"
+
+          # Define the allowed pattern
+          PATTERN='^(chore|feat|fix)(!?)((\([A-Za-z0-9-]+\)))?: .+'
+
+          if [[ "$PR_TITLE" =~ $PATTERN ]]; then
+            echo "✅ PR title is valid."
+          else
+            echo "❌ PR title is invalid."
+            echo ""
+            echo "Allowed formats:"
+            echo "- chore: Description"
+            echo "- feat: Description"
+            echo "- fix: Description"
+            echo "- chore(scope): Description"
+            echo "- feat(scope): Description"
+            echo "- fix(scope): Description"
+            echo ""
+            echo "Scope can include letters, numbers, and hyphens."
+            echo "An optional '!' can be included before the ':' to indicate breaking changes."
+            exit 1
+          fi

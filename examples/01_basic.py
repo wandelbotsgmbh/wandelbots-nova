@@ -1,15 +1,15 @@
-from wandelbots import use_nova_access_token, Controller
-from decouple import config
 import asyncio
+
+from nova import Nova
 
 
 async def main():
-    nova = use_nova_access_token()
-    controller = Controller(nova, cell=config("CELL_ID"), controller_host=config("CONTROLLER_HOST"))
+    nova = Nova()
+    cell = nova.cell()
+    controller = await cell.controller("ur")
 
-    # Connect to the controller and activate motion groups
     async with controller:
-        motion_group = controller[0]
+        motion_group = controller.get_motion_group()
 
         # Current motion group state
         state = await motion_group.get_state("Flange")
