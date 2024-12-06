@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.1.1 (2024-12-06)
+
+### Chores
+
+* chore: updated README.md ([`1ab8485`](https://github.com/wandelbotsgmbh/nova-py/commit/1ab8485d451bdf9cb55d3706a4d62cd916b25442))
+
+
 ## v0.1.0 (2024-12-06)
 
 ### Chores
