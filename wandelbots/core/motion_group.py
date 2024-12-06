@@ -134,7 +134,9 @@ class MotionGroup:
             cell=self._cell, plan_trajectory_request=request
         )
 
-        if isinstance(plan_response.response.actual_instance, wb.models.PlanTrajectoryFailedResponse):
+        if isinstance(
+            plan_response.response.actual_instance, wb.models.PlanTrajectoryFailedResponse
+        ):
             failed_response = plan_response.response.actual_instance
             raise PlanTrajectoryFailed(failed_response)
 

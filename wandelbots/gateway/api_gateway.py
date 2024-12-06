@@ -11,6 +11,7 @@ from loguru import logger
 
 T = TypeVar("T")
 
+
 # TODO: this is just a poc, the idea is to have a central place
 #       to enhance the auto generated package without changing the type system
 def enhance_with_logging(api_instance: T) -> T:
@@ -32,8 +33,8 @@ def enhance_with_logging(api_instance: T) -> T:
                     finally:
                         end_time = time.time()
                         logger.info(f"{name} took {end_time - start_time:.2f} seconds")
-                return timer
 
+                return timer
 
             # Handle synchronous functions
             @functools.wraps(original_attr)
@@ -46,6 +47,7 @@ def enhance_with_logging(api_instance: T) -> T:
                 finally:
                     end_time = time.time()
                     logger.debug(f"{name} took {end_time - start_time:.2f} seconds")
+
             return timer
 
     return EnhancedApi()
@@ -53,13 +55,13 @@ def enhance_with_logging(api_instance: T) -> T:
 
 class ApiGateway:
     def __init__(
-            self,
-            *,
-            host: str | None,
-            username: str | None,
-            password: str | None,
-            access_token: str | None,
-            version: str = "v1",
+        self,
+        *,
+        host: str | None,
+        username: str | None,
+        password: str | None,
+        access_token: str | None,
+        version: str = "v1",
     ):
         if host is None:
             host = config("NOVA_HOST")
@@ -84,4 +86,6 @@ class ApiGateway:
         self.controller_api = enhance_with_logging(wb.ControllerApi(api_client=self._api_client))
         self.motion_group_api = enhance_with_logging(wb.MotionGroupApi(api_client=self._api_client))
         self.motion_api = enhance_with_logging(wb.MotionApi(api_client=self._api_client))
-        self.motion_group_infos_api = enhance_with_logging(wb.MotionGroupInfosApi(api_client=self._api_client))
+        self.motion_group_infos_api = enhance_with_logging(
+            wb.MotionGroupInfosApi(api_client=self._api_client)
+        )

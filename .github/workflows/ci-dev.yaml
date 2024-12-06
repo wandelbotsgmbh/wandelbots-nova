@@ -1,4 +1,4 @@
-name: ci-dev
+name: Test, Lint and Format
 
 on:
   pull_request:

@@ -9,10 +9,7 @@ async def main():
     ur = await cell.controller("ur")
     kuka = await cell.controller("kuka")
 
-    await asyncio.gather(
-        move_robot(ur),
-        move_robot(kuka)
-    )
+    await asyncio.gather(move_robot(ur), move_robot(kuka))
 
 
 async def move_robot(controller: Controller):

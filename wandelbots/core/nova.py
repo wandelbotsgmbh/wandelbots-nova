@@ -3,6 +3,7 @@ from wandelbots.core.controller import Controller
 from wandelbots.core.exceptions import ControllerNotFoundException
 from wandelbots.gateway.api_gateway import ApiGateway
 
+
 class Nova:
     def __init__(
         self,
@@ -18,7 +19,7 @@ class Nova:
             username=username,
             password=password,
             access_token=access_token,
-            version=version
+            version=version,
         )
 
     def cell(self, cell_id: str = "cell") -> "Cell":
