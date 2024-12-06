@@ -1,6 +1,6 @@
 # wandelbots-nova examples
 
-Examples on how to use the nova-py library.
+Examples on how to use the wandelbots-nova library.
 
 ## Usage
 

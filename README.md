@@ -33,4 +33,4 @@ poetry install
 
 ## Usage
 
-Have a look at the [examples](/examples) directory to see how to use the library.
+Have a look at the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) directory to see how to use the library.
