@@ -4,7 +4,7 @@ import wandelbots_api_client as wb
 from nova.core.motion_group import MotionGroup
 from loguru import logger
 
-from nova.gateway.api_gateway import ApiGateway
+from nova.gateway import ApiGateway
 
 
 class Controller:

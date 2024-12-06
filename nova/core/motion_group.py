@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator
 
 from nova.core.exceptions import PlanTrajectoryFailed
-from nova.gateway.api_gateway import ApiGateway
+from nova.gateway import ApiGateway
 from nova.types.state import MotionState
 from nova.types.action import Action, CombinedActions
 from nova.types.pose import Pose
