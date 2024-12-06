@@ -1,7 +1,7 @@
-from wandelbots import Nova, Pose, ptp, jnt
+from nova import Nova, Pose, ptp, jnt
 
 # TODO: public interface
-from wandelbots.types.action import WriteAction
+from nova.types.action import WriteAction
 import asyncio
 import numpy as np
 

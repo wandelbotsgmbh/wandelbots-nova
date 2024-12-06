@@ -1,4 +1,4 @@
-from wandelbots.core.controller import Controller
+from nova.core.controller import Controller
 import pytest
 
 import wandelbots_api_client

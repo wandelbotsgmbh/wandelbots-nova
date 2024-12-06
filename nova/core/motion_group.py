@@ -1,11 +1,11 @@
 from collections.abc import AsyncGenerator
 
-from wandelbots.core.exceptions import PlanTrajectoryFailed
-from wandelbots.gateway.api_gateway import ApiGateway
-from wandelbots.types.state import MotionState
-from wandelbots.types.action import Action, CombinedActions
-from wandelbots.types.pose import Pose
-from wandelbots.types.collision_scene import CollisionScene
+from nova.core.exceptions import PlanTrajectoryFailed
+from nova.gateway.api_gateway import ApiGateway
+from nova.types.state import MotionState
+from nova.types.action import Action, CombinedActions
+from nova.types.pose import Pose
+from nova.types.collision_scene import CollisionScene
 from loguru import logger
 import wandelbots_api_client as wb
 

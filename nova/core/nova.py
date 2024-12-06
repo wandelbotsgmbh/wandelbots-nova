@@ -1,7 +1,7 @@
 import wandelbots_api_client as wb
-from wandelbots.core.controller import Controller
-from wandelbots.core.exceptions import ControllerNotFoundException
-from wandelbots.gateway.api_gateway import ApiGateway
+from nova.core.controller import Controller
+from nova.core.exceptions import ControllerNotFoundException
+from nova.gateway.api_gateway import ApiGateway
 
 
 class Nova:

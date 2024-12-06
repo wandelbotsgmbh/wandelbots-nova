@@ -1,5 +1,5 @@
 import pytest
-from wandelbots import Nova
+from nova import Nova
 
 
 @pytest.fixture()

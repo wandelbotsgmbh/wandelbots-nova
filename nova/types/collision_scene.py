@@ -3,8 +3,8 @@ from typing import Literal
 
 import pydantic
 import wandelbots_api_client as wb
-from wandelbots.types.pose import Pose
-from wandelbots.types.action import Motion
+from nova.types.pose import Pose
+from nova.types.action import Motion
 
 
 class DhParameter(pydantic.BaseModel):

@@ -1,5 +1,5 @@
 import pytest
-from wandelbots import Nova, combine_actions, lin, ptp
+from nova import Nova, combine_actions, lin, ptp
 
 
 @pytest.mark.asyncio

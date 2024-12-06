@@ -1,6 +1,6 @@
 import asyncio
 
-from wandelbots import Nova
+from nova import Nova
 
 
 async def main():

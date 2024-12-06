@@ -1,4 +1,4 @@
-from wandelbots.types.vector3d import Vector3d
+from nova.types.vector3d import Vector3d
 import numpy as np
 import pydantic
 import wandelbots_api_client as wb

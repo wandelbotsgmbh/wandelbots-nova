@@ -1,6 +1,6 @@
 import pydantic
 from typing import Annotated, Literal, Any, Union
-from wandelbots.types.pose import Pose
+from nova.types.pose import Pose
 import wandelbots_api_client as wb
 from abc import ABC, abstractmethod
 

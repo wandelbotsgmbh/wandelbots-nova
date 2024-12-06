@@ -1,10 +1,10 @@
 from typing import final
 
 import wandelbots_api_client as wb
-from wandelbots.core.motion_group import MotionGroup
+from nova.core.motion_group import MotionGroup
 from loguru import logger
 
-from wandelbots.gateway.api_gateway import ApiGateway
+from nova.gateway.api_gateway import ApiGateway
 
 
 class Controller:

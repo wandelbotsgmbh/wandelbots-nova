@@ -1,4 +1,4 @@
-from wandelbots import Nova, ptp, jnt, Pose, Controller
+from nova import Nova, ptp, jnt, Pose, Controller
 import asyncio
 import numpy as np
 
