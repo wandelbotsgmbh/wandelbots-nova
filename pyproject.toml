@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "nova-py"
+name = "novapy"
 version = "0.1.1"
 description = "Official Python SDK for the Wandelbots"
 authors = [
