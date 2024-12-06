@@ -10,6 +10,9 @@ authors = [
     "Andreas Langenhagen <andreas.langenhagen@wandelbots.com>"
 ]
 readme = "README.md"
+packages = [
+    { include = "nova" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
