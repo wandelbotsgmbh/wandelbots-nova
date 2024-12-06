@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.1.2 (2024-12-06)
+
+### Chores
+
+* chore: try novapy for pypi upload ([`f93107b`](https://github.com/wandelbotsgmbh/nova-py/commit/f93107b49a7cb1eb48ddb47cc936f5058bbaca36))
+
+
 ## v0.1.1 (2024-12-06)
 
 ### Chores
