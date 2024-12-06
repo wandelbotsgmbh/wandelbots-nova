@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.1.4 (2024-12-06)
+
+### Chores
+
+* chore: try wandelbots-nova for pypi upload ([`a583702`](https://github.com/wandelbotsgmbh/nova-py/commit/a5837020d9c2640e5646ec78cdf269d13c1fadb8))
+
+
 ## v0.1.3 (2024-12-06)
 
 ### Chores
