@@ -448,3 +448,18 @@ class CombinedActions(pydantic.BaseModel):
 
     def __add__(self, other: "CombinedActions") -> "CombinedActions":
         return CombinedActions(items=self.items + other.items)
+
+
+    def to_motion_command(self) -> list[wb.models.MotionCommand]:
+        motions = [
+            wb.models.MotionCommandPath.from_dict(motion.model_dump())
+            for motion in self.motions
+        ]
+        return [wb.models.MotionCommand(path=motion) for motion in motions]
+
+
+    def to_set_io(self) -> list[wb.models.SetIO]:
+        return [
+            wb.models.SetIO(io=action.action.model_dump(exclude_unset=True), location=action.path_parameter)
+            for action in self.actions
+        ]

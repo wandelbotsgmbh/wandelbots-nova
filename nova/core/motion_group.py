@@ -1,14 +1,19 @@
 from collections.abc import AsyncGenerator
+from typing import Callable
+
+import pydantic
 
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.gateway import ApiGateway
 from nova.types.state import MotionState
 from nova.types.action import Action, CombinedActions
 from nova.types.pose import Pose
+from nova.types.types import MovementController, LoadPlanResponse, InitialMovementStream, InitialMovementConsumer
 from nova.types.collision_scene import CollisionScene
 from loguru import logger
 import wandelbots_api_client as wb
 
+from nova.core.movement_controller import move_forward, MovementControllerContext
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
 
@@ -37,43 +42,42 @@ class MotionGroup:
         tcp: str,
         # collision_scene: dts.CollisionScene | None,
         response_rate_in_ms: int = 200,
-    ) -> AsyncGenerator[MotionState, None]:
-        """An asynchronous generator that tracks and yields motion states along a given path.
-
-        This method iterates over the motion states of a given path while handling motion events
-        associated with specific path parameters. It tracks the motion states in the `_motion_recording`
-        attribute and yields each state as it progresses through the path. Additionally, if there are any
-        motion events defined in the path tags, they will be executed when the corresponding path parameter
-        is reached.
-
-        Args:
-            actions: the motion defining the path
-            tcp (Optional[str]): The tool center point (TCP) to be used for the motion.
-            collision_scene (Optional[CollisionScene]): The collision scene to be used for collision detection.
-            response_rate_in_ms (int): The sample time in milliseconds to be used for the motion.
-
-        Returns:
-            Context manager returns an iterator
-                Yields:
-                    MotionState: The current motion state along the path.
-                Raises:
-                    RobotMotionError: if the robot motion stop without reaching the target and stops motion then on exit
-                    StopAsyncIteration: If the motion path iteration is completed.
-
-        """
+        movement_controller: MovementController = move_forward,
+        initial_movement_consumer: InitialMovementConsumer | None = None,
+    ):
         if not isinstance(actions, list):
             actions = [actions]
 
-        # TODO get default tcp if tcp is not set
-        motion_iter = self._planned_motion_iter(
-            actions=actions, tcp=tcp, collision_scene=None, response_rate_in_ms=response_rate_in_ms
+        if len(actions) == 0:
+            raise ValueError("No actions provided")
+
+        # PLAN MOTION
+        joint_trajectory = await self._plan(actions, tcp)
+
+        # LOAD MOTION
+        load_plan_response = await self.load(joint_trajectory)
+
+        # MOVE TO START POSITION
+        number_of_joints = await self._get_number_of_joints()
+        joints_velocities = [MAX_JOINT_VELOCITY_PREPARE_MOVE] * number_of_joints
+        movement_stream = await self.move_to_start_position(joints_velocities, load_plan_response)
+        if initial_movement_consumer is not None:
+            async for move_to_response in movement_stream:
+                initial_movement_consumer(move_to_response)
+
+
+        # EXECUTE MOTION
+        movement_controller_context = MovementControllerContext(
+            combined_actions=CombinedActions(items=actions),
+            motion_id=load_plan_response.motion
         )
-        async for motion_state in motion_iter:
-            yield motion_state
+        _movement_controller = movement_controller(movement_controller_context)
+        await self._api_gateway.motion_api.execute_trajectory(self._cell, _movement_controller)
+
 
     async def run(self, actions: list[Action] | Action, tcp: str):
-        async for _ in self.stream_run(actions=actions, tcp=tcp):
-            pass
+        await self.stream_run(actions=actions, tcp=tcp)
+
 
     async def get_state(self, tcp: str) -> wb.models.MotionGroupStateResponse:
         response = await self._api_gateway.motion_group_infos_api.get_current_motion_group_state(
@@ -100,26 +104,12 @@ class MotionGroup:
             cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
         )
 
-    async def plan(
-        self, actions: list[Action] | Action, tcp: str
-    ) -> wb.models.PlanTrajectoryResponse:
-        if not isinstance(actions, list):
-            actions = [actions]
 
-        if len(actions) == 0:
-            raise ValueError("Actions are empty")
 
+    async def _plan(self, actions: list[Action], tcp: str) -> wb.models.JointTrajectory:
         current_joints = await self.joints(tcp=tcp)
         robot_setup = await self._get_optimizer_setup(tcp=tcp)
-
-        # TODO: paths = [wb.models.MotionCommandPath(**path.model_dump()) for path in path.motions]
-        combined_actions = CombinedActions(items=actions)
-        motions = [
-            wb.models.MotionCommandPath.from_dict(motion.model_dump())
-            for motion in combined_actions.motions
-        ]
-        print(motions)
-        motion_commands = [wb.models.MotionCommand(path=motion) for motion in motions]
+        motion_commands = CombinedActions(items=actions).to_motion_command()
 
         request = wb.models.PlanTrajectoryRequest(
             robot_setup=robot_setup,
@@ -140,7 +130,8 @@ class MotionGroup:
             failed_response = plan_response.response.actual_instance
             raise PlanTrajectoryFailed(failed_response)
 
-        return plan_response
+        return plan_response.response.actual_instance
+
 
     async def _get_trajectory_sample(
         self, location: float
@@ -160,121 +151,36 @@ class MotionGroup:
             cell=self._cell, motion=self.current_motion, location_on_trajectory=location
         )
 
-    async def _planned_motion_iter(
-        self,
-        actions: list[Action],
-        tcp: str,
-        collision_scene: CollisionScene | None,
-        response_rate_in_ms: int,
-    ) -> AsyncGenerator[MotionState]:
-        number_of_joints = await self._get_number_of_joints()
 
-        async def move_along_path(
-            motion_id: str,
-            joint_velocities: list[float] | None = None,
-            joint_trajectory: wb.models.JointTrajectory | None = None,
-        ) -> AsyncGenerator[MotionState]:
-            motion_api = self._api_gateway.motion_api
-            load_plan_response = await motion_api.load_planned_motion(
-                cell=self._cell,
-                planned_motion=wb.models.PlannedMotion(
-                    motion_group=self.motion_group_id,
-                    times=joint_trajectory.times,
-                    joint_positions=joint_trajectory.joint_positions,
-                    locations=joint_trajectory.locations,
-                    tcp="Flange",
-                ),
-            )
-
-            load_plan_response = load_plan_response.plan_successful_response
-
-            limit_override = wb.models.LimitsOverride()
-            if joint_velocities is not None:
-                limit_override.joint_velocity_limits = wb.models.Joints(joints=joint_velocities)
-
-            # Iterator that moves the robot to start of motion
-            move_to_trajectory_stream = motion_api.stream_move_to_trajectory_via_joint_ptp(
-                cell=self._cell, motion=load_plan_response.motion, location_on_trajectory=0
-            )
-            async for motion_state_move_to_trajectory in move_to_trajectory_stream:
-                yield motion_state_move_to_trajectory
-
-            responses = []
-
-            async def movement_controller(
-                response_stream: AsyncGenerator,
-            ) -> (AsyncGenerator)[
-                wb.models.ExecuteTrajectoryRequest, wb.models.ExecuteTrajectoryResponse
-            ]:
-                yield wb.models.InitializeMovementRequest(
-                    trajectory=load_plan_response.motion, initial_location=0
-                )
-
-                combined_actions = CombinedActions(items=actions)
-                initialize_movement_response = await anext(response_stream)
-                print(f"initial move response {initialize_movement_response}")
-                set_io_list = [
-                    wb.models.SetIO(io=action.model_dump(), location=action.path_parameter)
-                    for action in combined_actions.actions
-                ]
-
-                yield wb.models.StartMovementRequest(
-                    set_ios=set_io_list, start_on_io=None, pause_on_io=None
-                )
-
-                async for execute_trajectory_response in response_stream:
-                    response = execute_trajectory_response.actual_instance
-                    print(f"execute_trajectory_response {response}")
-                    responses.append(response)
-
-                    # Terminate the generator
-                    if isinstance(response, wb.models.Standstill):
-                        if (
-                            response.standstill.reason
-                            == wb.models.StandstillReason.REASON_MOTION_ENDED
-                        ):
-                            return
-
-            await motion_api.execute_trajectory(self._cell, movement_controller)
-
-        """
-        if any(isinstance(motion, dts.UnresolvedMotion) for motion in path.motions) or collision_scene is not None:
-            current_joints = await self._get_current_joints()
-            optimizer_setup = await self.get_optimizer_setup(tcp)
-            path = await resolve_motions_and_check_collisions(
-                initial_joints=current_joints,
-                motion_trajectory=path,
-                collision_scene=collision_scene,
-                optimizer_setup=optimizer_setup,
-                moving_robot_identifier=self.identifier,
-            )
-        """
-
-        plan_response = await self.plan(actions, tcp)
-
-        # if not rae_pb_parser.plan_response.is_executable(plan_response):
-        #     raise MotionException(plan_response, [], [])
-
-        # await self._get_trajectory_sample(response_rate_in_ms)
-        # TODO: take velocity override into account.
-        # if len(trajectory.sample) > 0 and not math.isnan(trajectory[-1].time):
-        #    self._execution_duration += trajectory[-1].time
-
-        # self._current_motion = plan_response.response.actual_instance
-        logger.debug(f"Planned move session: {self.current_motion}")
-
-        # TODO refactor RAE commands vs. multiple motion chains
-        joints_velocities = [MAX_JOINT_VELOCITY_PREPARE_MOVE] * number_of_joints
-        move_iter = move_along_path(
-            self.current_motion,
-            joint_velocities=joints_velocities,
-            joint_trajectory=plan_response.response.actual_instance,
+    async def load(self, joint_trajectory: wb.models.JointTrajectory) -> wb.models.PlanSuccessfulResponse:
+        load_plan_response = await self._api_gateway.motion_api.load_planned_motion(
+            cell=self._cell,
+            planned_motion=wb.models.PlannedMotion(
+                motion_group=self.motion_group_id,
+                times=joint_trajectory.times,
+                joint_positions=joint_trajectory.joint_positions,
+                locations=joint_trajectory.locations,
+                tcp="Flange",
+            ),
         )
-        async for motion_state in move_iter:
-            yield motion_state
 
-        logger.debug(f"Move session '{self.current_motion}' was successfully executed.")
-        self._current_motion = None
+        load_plan_response = load_plan_response.plan_successful_response
+        return load_plan_response
+
+    async def move_to_start_position(
+        self,
+        joint_velocities,
+        load_plan_response: LoadPlanResponse
+    ) -> InitialMovementStream:
+        limit_override = wb.models.LimitsOverride()
+        if joint_velocities is not None:
+            limit_override.joint_velocity_limits = wb.models.Joints(joints=joint_velocities)
+
+        move_to_trajectory_stream = self._api_gateway.motion_api.stream_move_to_trajectory_via_joint_ptp(
+            cell=self._cell, motion=load_plan_response.motion, location_on_trajectory=0
+        )
+        return move_to_trajectory_stream
+
 
     async def stop(self):
         logger.debug(f"Stopping motion of {self}...")
@@ -285,3 +191,5 @@ class MotionGroup:
             logger.debug(f"Motion {self.current_motion} stopped.")
         except ValueError as e:
             logger.debug(f"No motion to stop for {self}: {e}")
+
+
