@@ -107,6 +107,10 @@ class Pose(pydantic.BaseModel):
         >>> Pose((1, 2, 3, 4, 5, 6)) @ Pose((1, 2, 3, 4, 5, 6))
         >>> Pose((1, 2, 3, 4, 5, 6)) @ [1, 2, 3, 4, 5, 6]
         >>> Pose((1, 2, 3, 4, 5, 6)) @ (1, 2, 3, 4, 5, 6)
+        >>> def as_iterator(data):
+                for d in data:
+                    yield d
+            Pose((1, 2, 3, 4, 5, 6)) @ as_iterator([1, 2, 3, 4, 5, 6])
 
         """
         if isinstance(other, Pose):
