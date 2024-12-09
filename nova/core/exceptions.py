@@ -12,9 +12,11 @@ class PlanTrajectoryFailed(Exception):
     def __init__(self, error: wb.models.PlanTrajectoryFailedResponse):
         super().__init__(f"Plan trajectory failed: {json.dumps(error.to_dict(), indent=2)}")
 
+
 class InitMovementFailed(Exception):
     def __init__(self, error: wb.models.InitializeMovementResponseInitResponse):
         super().__init__(f"Initial movement failed: {json.dumps(error.to_dict(), indent=2)}")
+
 
 class LoadPlanFailed(Exception):
     def __init__(self, error: wb.models.PlanSuccessfulResponse):

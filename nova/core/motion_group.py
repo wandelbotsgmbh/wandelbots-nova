@@ -1,5 +1,3 @@
-
-
 from nova.core.exceptions import PlanTrajectoryFailed, LoadPlanFailed
 from nova.gateway import ApiGateway
 from nova.types.action import Action, CombinedActions
@@ -127,7 +125,6 @@ class MotionGroup:
 
         return plan_response.response.actual_instance
 
-
     async def _load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory
     ) -> wb.models.PlanSuccessfulResponse:
@@ -142,11 +139,8 @@ class MotionGroup:
             ),
         )
 
-        if not isinstance(
-            load_plan_response.actual_instance, wb.models.PlanSuccessfulResponse
-        ):
+        if not isinstance(load_plan_response.actual_instance, wb.models.PlanSuccessfulResponse):
             raise LoadPlanFailed(load_plan_response)
-
 
         return load_plan_response.plan_successful_response
 

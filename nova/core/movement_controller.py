@@ -1,4 +1,3 @@
-
 from nova.core.exceptions import InitMovementFailed
 from nova.types.movement_controller_context import MovementControllerContext
 from nova.types.types import (
@@ -19,7 +18,9 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
         # then we get the response
         initialize_movement_response = await anext(response_stream)
-        if isinstance(initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse):
+        if isinstance(
+            initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
+        ):
             response = initialize_movement_response.actual_instance
             if not response.init_response.succeeded:
                 raise InitMovementFailed(response.init_response)
@@ -50,7 +51,9 @@ def speed_up(context: MovementControllerContext) -> MovementControllerFunction:
 
         # then we get the response
         initialize_movement_response = await anext(response_stream)
-        if isinstance(initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse):
+        if isinstance(
+            initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
+        ):
             response = initialize_movement_response.actual_instance
             if not response.init_response.succeeded:
                 raise InitMovementFailed(response.init_response)

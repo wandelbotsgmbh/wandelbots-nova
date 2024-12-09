@@ -2,6 +2,7 @@ from nova import Nova, ptp, jnt, Pose, Controller, speed_up_movement_controller
 import asyncio
 import numpy as np
 
+
 async def main():
     nova = Nova()
     cell = nova.cell()
@@ -21,7 +22,9 @@ async def move_robot(controller: Controller):
         target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
         actions = [jnt(home_joints), ptp(target_pose), jnt(home_joints)]
 
-        await motion_group.stream_run(actions, tcp="Flange", movement_controller=speed_up_movement_controller)
+        await motion_group.stream_run(
+            actions, tcp="Flange", movement_controller=speed_up_movement_controller
+        )
 
 
 if __name__ == "__main__":
