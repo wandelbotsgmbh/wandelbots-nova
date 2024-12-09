@@ -1,3 +1,5 @@
+from typing import Iterable
+
 from nova.types.vector3d import Vector3d
 import numpy as np
 import pydantic
@@ -93,15 +95,17 @@ class Pose(pydantic.BaseModel):
         return self.to_tuple()[item]
 
     def __matmul__(self, other):
-        if isinstance(other, tuple):
-            return self.__matmul__(Pose(other))
-        elif isinstance(other, Pose):
+        if isinstance(other, Pose):
             transformed_matrix = np.dot(self.matrix, other.matrix)
             return self._matrix_to_pose(transformed_matrix)
         elif isinstance(other, np.ndarray):
             assert other.shape == (4, 4)
             transformed_matrix = np.dot(self.matrix, other)
             return self._matrix_to_pose(transformed_matrix)
+        elif isinstance(other, Iterable):
+            seq = tuple(other)
+            return self.__matmul__(Pose(seq))
+
         else:
             raise ValueError(f"Cannot multiply Pose with {type(other)}")
 
