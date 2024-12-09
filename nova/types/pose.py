@@ -93,7 +93,9 @@ class Pose(pydantic.BaseModel):
         return self.to_tuple()[item]
 
     def __matmul__(self, other):
-        if isinstance(other, Pose):
+        if isinstance(other, tuple):
+            return self.__matmul__(Pose(other))
+        elif isinstance(other, Pose):
             transformed_matrix = np.dot(self.matrix, other.matrix)
             return self._matrix_to_pose(transformed_matrix)
         elif isinstance(other, np.ndarray):

@@ -19,7 +19,7 @@ async def main():
 
         # Get current TCP pose and offset it slightly along the x-axis
         current_pose = await motion_group.tcp_pose("Flange")
-        target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
+        target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
 
         actions = [
             jnt(home_joints),
@@ -27,7 +27,7 @@ async def main():
             jnt(home_joints),
             ptp(target_pose @ Pose((200, 0, 0, 0, 0, 0))),
             jnt(home_joints),
-            ptp(target_pose @ Pose((300, 0, 0, 0, 0, 0))),
+            ptp(target_pose @ (300, 0, 0, 0, 0, 0)),
             jnt(home_joints),
             ptp(target_pose @ Pose((300, 0, 0, 0, 0, 0))),
             jnt(home_joints),
@@ -37,18 +37,12 @@ async def main():
             jnt(home_joints),
             ptp(target_pose),
             jnt(home_joints),
-            ptp(target_pose),
-            jnt(home_joints),
-            ptp(target_pose),
-            jnt(home_joints),
-            ptp(target_pose),
-            jnt(home_joints),
         ]
 
         # plan_response = await motion_group.plan(trajectory, tcp="Flange")
         # print(plan_response)
 
-        await motion_group.stream_run(actions, tcp="Flange", movement_controller=move_forward)
+        await motion_group.run(actions, tcp="Flange", movement_controller=move_forward)
 
 
 if __name__ == "__main__":

@@ -37,7 +37,7 @@ async def main():
         def print_motion(motion):
             print(motion)
 
-        await motion_group.stream_run(actions, tcp="Flange", initial_movement_consumer=print_motion)
+        await motion_group.run(actions, tcp="Flange", initial_movement_consumer=print_motion)
         await motion_group.run(actions, tcp="Flange")
         await motion_group.run(ptp(target_pose), tcp="Flange")
 

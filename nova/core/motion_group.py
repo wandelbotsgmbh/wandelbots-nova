@@ -35,7 +35,7 @@ class MotionGroup:
         #    raise ValueError("No MotionId attached. There is no planned motion available.")
         return self._current_motion
 
-    async def stream_run(
+    async def run(
         self,
         actions: list[Action] | Action,
         tcp: str,
@@ -70,9 +70,6 @@ class MotionGroup:
         )
         _movement_controller = movement_controller(movement_controller_context)
         await self._api_gateway.motion_api.execute_trajectory(self._cell, _movement_controller)
-
-    async def run(self, actions: list[Action] | Action, tcp: str):
-        await self.stream_run(actions=actions, tcp=tcp)
 
     async def get_state(self, tcp: str) -> wb.models.MotionGroupStateResponse:
         response = await self._api_gateway.motion_group_infos_api.get_current_motion_group_state(
@@ -139,7 +136,8 @@ class MotionGroup:
             ),
         )
 
-        if not isinstance(load_plan_response.actual_instance, wb.models.PlanSuccessfulResponse):
+        if (load_plan_response.plan_failed_on_trajectory_response is not None or
+                load_plan_response.plan_failed_on_trajectory_response is not None):
             raise LoadPlanFailed(load_plan_response)
 
         return load_plan_response.plan_successful_response

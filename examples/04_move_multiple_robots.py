@@ -22,7 +22,7 @@ async def move_robot(controller: Controller):
         target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
         actions = [jnt(home_joints), ptp(target_pose), jnt(home_joints)]
 
-        await motion_group.stream_run(
+        await motion_group.run(
             actions, tcp="Flange", movement_controller=speed_up_movement_controller
         )
 
