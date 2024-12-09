@@ -22,7 +22,6 @@ class Nova:
         )
 
     def cell(self, cell_id: str = "cell") -> "Cell":
-        # TODO check if the cell exists
         return Cell(self._api_client, cell_id)
 
 
