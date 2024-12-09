@@ -2,20 +2,21 @@ import pydantic
 
 from nova.types.action import CombinedActions
 from nova.types.movement_controller_context import MovementControllerContext
-from nova.types.types import MovementControllerFunction, ExecuteTrajectoryResponseStream, ExecuteTrajectoryRequestStream
+from nova.types.types import (
+    MovementControllerFunction,
+    ExecuteTrajectoryResponseStream,
+    ExecuteTrajectoryRequestStream,
+)
 import wandelbots_api_client as wb
 from loguru import logger
 
-def move_forward(
-    context: MovementControllerContext,
-) -> MovementControllerFunction:
+
+def move_forward(context: MovementControllerContext) -> MovementControllerFunction:
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
         # The first request is to initialize the movement
-        yield wb.models.InitializeMovementRequest(
-            trajectory=context.motion_id, initial_location=0
-        )
+        yield wb.models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)
 
         # then we get the response
         initialize_movement_response = await anext(response_stream)
@@ -32,24 +33,18 @@ def move_forward(
             response = execute_trajectory_response.actual_instance
             # Terminate the generator
             if isinstance(response, wb.models.Standstill):
-                if (
-                    response.standstill.reason
-                    == wb.models.StandstillReason.REASON_MOTION_ENDED
-                ):
+                if response.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
                     return
 
     return movement_controller
 
-def speed_up(
-    context: MovementControllerContext,
-) -> MovementControllerFunction:
+
+def speed_up(context: MovementControllerContext) -> MovementControllerFunction:
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
         # The first request is to initialize the movement
-        yield wb.models.InitializeMovementRequest(
-            trajectory=context.motion_id, initial_location=0
-        )
+        yield wb.models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)
 
         # then we get the response
         initialize_movement_response = await anext(response_stream)
@@ -69,10 +64,7 @@ def speed_up(
             response = execute_trajectory_response.actual_instance
             # Terminate the generator
             if isinstance(response, wb.models.Standstill):
-                if (
-                    response.standstill.reason
-                    == wb.models.StandstillReason.REASON_MOTION_ENDED
-                ):
+                if response.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
                     return
 
             if isinstance(response, wb.models.PlaybackSpeedResponse):

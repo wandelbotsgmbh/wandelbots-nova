@@ -11,7 +11,9 @@ ExecuteTrajectoryResponseStream = AsyncGenerator[wb.models.ExecuteTrajectoryResp
 
 # A movement controller manages how the movement should happen using the execute_trajectory websocket
 # We can decide to speed up move forward, slow down, stop, etc.
-MovementControllerFunction = Callable[[ExecuteTrajectoryResponseStream], ExecuteTrajectoryRequestStream]
+MovementControllerFunction = Callable[
+    [ExecuteTrajectoryResponseStream], ExecuteTrajectoryRequestStream
+]
 
 # This is the response we get when the plan loaded successfully
 LoadPlanResponse = wb.models.PlanSuccessfulResponse

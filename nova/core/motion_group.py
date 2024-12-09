@@ -8,12 +8,18 @@ from nova.gateway import ApiGateway
 from nova.types.state import MotionState
 from nova.types.action import Action, CombinedActions
 from nova.types.pose import Pose
-from nova.types.types import MovementController, LoadPlanResponse, InitialMovementStream, InitialMovementConsumer
+from nova.types.types import (
+    MovementController,
+    LoadPlanResponse,
+    InitialMovementStream,
+    InitialMovementConsumer,
+)
 from nova.types.collision_scene import CollisionScene
 from loguru import logger
 import wandelbots_api_client as wb
 
 from nova.core.movement_controller import move_forward, MovementControllerContext
+
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
 
@@ -65,19 +71,15 @@ class MotionGroup:
             async for move_to_response in movement_stream:
                 initial_movement_consumer(move_to_response)
 
-
         # EXECUTE MOTION
         movement_controller_context = MovementControllerContext(
-            combined_actions=CombinedActions(items=actions),
-            motion_id=load_plan_response.motion
+            combined_actions=CombinedActions(items=actions), motion_id=load_plan_response.motion
         )
         _movement_controller = movement_controller(movement_controller_context)
         await self._api_gateway.motion_api.execute_trajectory(self._cell, _movement_controller)
 
-
     async def run(self, actions: list[Action] | Action, tcp: str):
         await self.stream_run(actions=actions, tcp=tcp)
-
 
     async def get_state(self, tcp: str) -> wb.models.MotionGroupStateResponse:
         response = await self._api_gateway.motion_group_infos_api.get_current_motion_group_state(
@@ -103,8 +105,6 @@ class MotionGroup:
         return await self._api_gateway.motion_group_infos_api.get_optimizer_configuration(
             cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
         )
-
-
 
     async def _plan(self, actions: list[Action], tcp: str) -> wb.models.JointTrajectory:
         current_joints = await self.joints(tcp=tcp)
@@ -132,7 +132,6 @@ class MotionGroup:
 
         return plan_response.response.actual_instance
 
-
     async def _get_trajectory_sample(
         self, location: float
     ) -> wb.models.GetTrajectorySampleResponse:
@@ -151,8 +150,9 @@ class MotionGroup:
             cell=self._cell, motion=self.current_motion, location_on_trajectory=location
         )
 
-
-    async def load(self, joint_trajectory: wb.models.JointTrajectory) -> wb.models.PlanSuccessfulResponse:
+    async def load(
+        self, joint_trajectory: wb.models.JointTrajectory
+    ) -> wb.models.PlanSuccessfulResponse:
         load_plan_response = await self._api_gateway.motion_api.load_planned_motion(
             cell=self._cell,
             planned_motion=wb.models.PlannedMotion(
@@ -168,19 +168,18 @@ class MotionGroup:
         return load_plan_response
 
     async def move_to_start_position(
-        self,
-        joint_velocities,
-        load_plan_response: LoadPlanResponse
+        self, joint_velocities, load_plan_response: LoadPlanResponse
     ) -> InitialMovementStream:
         limit_override = wb.models.LimitsOverride()
         if joint_velocities is not None:
             limit_override.joint_velocity_limits = wb.models.Joints(joints=joint_velocities)
 
-        move_to_trajectory_stream = self._api_gateway.motion_api.stream_move_to_trajectory_via_joint_ptp(
-            cell=self._cell, motion=load_plan_response.motion, location_on_trajectory=0
+        move_to_trajectory_stream = (
+            self._api_gateway.motion_api.stream_move_to_trajectory_via_joint_ptp(
+                cell=self._cell, motion=load_plan_response.motion, location_on_trajectory=0
+            )
         )
         return move_to_trajectory_stream
-
 
     async def stop(self):
         logger.debug(f"Stopping motion of {self}...")
@@ -191,5 +190,3 @@ class MotionGroup:
             logger.debug(f"Motion {self.current_motion} stopped.")
         except ValueError as e:
             logger.debug(f"No motion to stop for {self}: {e}")
-
-
