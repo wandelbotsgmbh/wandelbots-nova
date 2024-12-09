@@ -34,7 +34,6 @@ def _parse_args(*args):
         raise ValueError("Invalid number of arguments for Pose")
 
 
-# TODO: how to handle the coordinate system and the tcp, check wandelscript - it is around the pose not in the pose
 class Pose(pydantic.BaseModel):
     """A pose (position and orientation)
 
@@ -46,7 +45,6 @@ class Pose(pydantic.BaseModel):
     position: Vector3d
     orientation: Vector3d
 
-    # TODO: add doc tests to the models, doc tests should not be too complex
     def __init__(self, *args, **kwargs):
         """Parse a tuple into a dict
 

@@ -15,7 +15,6 @@ class Controller:
         self._controller_host = controller_host
         self._motion_groups: dict[str, MotionGroup] = {}
 
-    # TODO, its probably not a good idea to activate every motion group, we should probably only activate the ones we need
     @final
     async def __aenter__(self):
         activate_all_motion_groups_response = (
@@ -38,8 +37,7 @@ class Controller:
             logger.info(f"Deactivating motion group {motion_group_id}")
             await self._motion_group_api.deactivate_motion_group(self._cell, motion_group_id)
 
-        # TODO: this shouldnt happen here
-        await self._api_gateway._api_client.close()
+        await self._api_gateway.close()
 
     def get_motion_groups(self) -> dict[str, MotionGroup]:
         return self._motion_groups
