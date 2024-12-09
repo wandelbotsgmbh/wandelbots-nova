@@ -1,6 +1,5 @@
 from typing import final
 
-import wandelbots_api_client as wb
 from nova.core.motion_group import MotionGroup
 from loguru import logger
 

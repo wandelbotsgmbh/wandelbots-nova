@@ -1,11 +1,7 @@
-from collections.abc import AsyncGenerator
-from typing import Callable
 
-import pydantic
 
-from nova.core.exceptions import PlanTrajectoryFailed
+from nova.core.exceptions import PlanTrajectoryFailed, LoadPlanFailed
 from nova.gateway import ApiGateway
-from nova.types.state import MotionState
 from nova.types.action import Action, CombinedActions
 from nova.types.pose import Pose
 from nova.types.types import (
@@ -14,7 +10,6 @@ from nova.types.types import (
     InitialMovementStream,
     InitialMovementConsumer,
 )
-from nova.types.collision_scene import CollisionScene
 from loguru import logger
 import wandelbots_api_client as wb
 
@@ -61,7 +56,7 @@ class MotionGroup:
         joint_trajectory = await self._plan(actions, tcp)
 
         # LOAD MOTION
-        load_plan_response = await self.load(joint_trajectory)
+        load_plan_response = await self._load_planned_motion(joint_trajectory)
 
         # MOVE TO START POSITION
         number_of_joints = await self._get_number_of_joints()
@@ -150,7 +145,7 @@ class MotionGroup:
             cell=self._cell, motion=self.current_motion, location_on_trajectory=location
         )
 
-    async def load(
+    async def _load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory
     ) -> wb.models.PlanSuccessfulResponse:
         load_plan_response = await self._api_gateway.motion_api.load_planned_motion(
@@ -164,8 +159,13 @@ class MotionGroup:
             ),
         )
 
-        load_plan_response = load_plan_response.plan_successful_response
-        return load_plan_response
+        if not isinstance(
+            load_plan_response.actual_instance, wb.models.PlanSuccessfulResponse
+        ):
+            raise LoadPlanFailed(load_plan_response)
+
+
+        return load_plan_response.plan_successful_response
 
     async def move_to_start_position(
         self, joint_velocities, load_plan_response: LoadPlanResponse

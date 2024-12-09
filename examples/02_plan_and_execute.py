@@ -2,7 +2,7 @@ from nova import Nova, ptp, jnt, Pose
 import asyncio
 import numpy as np
 
-from nova.core.movement_controller import speed_up, move_forward
+from nova.core.movement_controller import move_forward
 
 
 async def main():
