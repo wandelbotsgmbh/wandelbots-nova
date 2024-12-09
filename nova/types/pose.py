@@ -113,7 +113,7 @@ class Pose(pydantic.BaseModel):
         """Convert to wandelbots_api_client Pose
 
         Examples:
-        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).to_wb_pose()
+        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3))._to_wb_pose()
         Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3), coordinate_system=None)
         """
         return wb.models.Pose(
@@ -124,7 +124,7 @@ class Pose(pydantic.BaseModel):
         """Convert to wandelbots_api_client Pose
 
         Examples:
-        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).to_wb_pose2()
+        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3))._to_wb_pose2()
         Pose2(position=[10, 20, 30], orientation=[1, 2, 3])
         """
         return wb.models.Pose2(
