@@ -127,23 +127,6 @@ class MotionGroup:
 
         return plan_response.response.actual_instance
 
-    async def _get_trajectory_sample(
-        self, location: float
-    ) -> wb.models.GetTrajectorySampleResponse:
-        """Call the RAE to get single sample of trajectory from a previously planned path
-
-        Args:
-            location: The path parameter along the trajectory to sample
-
-        Returns:
-            The trajectory sample at the specified location
-        """
-        if location < 0:
-            raise ValueError("location cannot be negative")
-
-        return await self._motion_api_client.get_motion_trajectory_sample(
-            cell=self._cell, motion=self.current_motion, location_on_trajectory=location
-        )
 
     async def _load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory
