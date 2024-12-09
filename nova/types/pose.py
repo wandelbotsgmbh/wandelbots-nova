@@ -93,12 +93,24 @@ class Pose(pydantic.BaseModel):
         return self.to_tuple()[item]
 
     def __matmul__(self, other):
+        """
+        Pose concatenation combines two poses into a single pose that represents the cumulative effect of both
+        transformations applied sequentially.
+
+        Args:
+            other: can be a Pose, or an iterable with 6 elements
+
+        Returns:
+            Pose: the result of the concatenation
+
+        Examples:
+        >>> Pose((1, 2, 3, 4, 5, 6)) @ Pose((1, 2, 3, 4, 5, 6))
+        >>> Pose((1, 2, 3, 4, 5, 6)) @ [1, 2, 3, 4, 5, 6]
+        >>> Pose((1, 2, 3, 4, 5, 6)) @ (1, 2, 3, 4, 5, 6)
+
+        """
         if isinstance(other, Pose):
             transformed_matrix = np.dot(self.matrix, other.matrix)
-            return self._matrix_to_pose(transformed_matrix)
-        elif isinstance(other, np.ndarray):
-            assert other.shape == (4, 4)
-            transformed_matrix = np.dot(self.matrix, other)
             return self._matrix_to_pose(transformed_matrix)
         elif isinstance(other, Iterable):
             seq = tuple(other)
