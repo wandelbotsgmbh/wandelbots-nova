@@ -29,8 +29,6 @@ async def main():
             jnt(home_joints),
             ptp(target_pose @ (300, 0, 0, 0, 0, 0)),
             jnt(home_joints),
-            ptp(target_pose @ as_iterator((400, 0, 0, 0, 0, 0))),
-            jnt(home_joints),
             ptp(target_pose @ Pose((300, 0, 0, 0, 0, 0))),
             jnt(home_joints),
             ptp(target_pose @ Pose((400, 0, 0, 0, 0, 0))),
@@ -43,11 +41,6 @@ async def main():
         # print(plan_response)
 
         await motion_group.run(actions, tcp="Flange", movement_controller=move_forward)
-
-
-def as_iterator(data: list | tuple):
-    for item in data:
-        yield item
 
 
 if __name__ == "__main__":
