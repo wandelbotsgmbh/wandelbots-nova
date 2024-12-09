@@ -109,16 +109,7 @@ class Pose(pydantic.BaseModel):
         else:
             raise ValueError(f"Cannot multiply Pose with {type(other)}")
 
-    # TODO: how much should the user be aware of the different types of poses?
-    #       he should not be aware, the user should only be aware of a single pose type
-    # def to_model(self, Type[pydantic.BaseModel]) -> T:
-    #     if isinstance(Type, wb.models.Pose):
-    #         ...
-    #     if isinstance(...)
-    #         return
-
-    # Make this private
-    def to_wb_pose(self) -> wb.models.Pose:
+    def _to_wb_pose(self) -> wb.models.Pose:
         """Convert to wandelbots_api_client Pose
 
         Examples:
@@ -129,8 +120,7 @@ class Pose(pydantic.BaseModel):
             position=self.position.model_dump(), orientation=self.orientation.model_dump()
         )
 
-    # Make this private
-    def to_wb_pose2(self) -> wb.models.Pose2:
+    def _to_wb_pose2(self) -> wb.models.Pose2:
         """Convert to wandelbots_api_client Pose
 
         Examples:
@@ -148,7 +138,7 @@ class Pose(pydantic.BaseModel):
         >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).model_dump()
         {'position': [10, 20, 30], 'orientation': [1, 2, 3]}
         """
-        return self.to_wb_pose2().model_dump()
+        return self._to_wb_pose2().model_dump()
 
     def _to_homogenous_transformation_matrix(self):
         """Converts the pose (position and rotation vector) to a 4x4 homogeneous transformation matrix."""
