@@ -136,8 +136,10 @@ class MotionGroup:
             ),
         )
 
-        if (load_plan_response.plan_failed_on_trajectory_response is not None or
-                load_plan_response.plan_failed_on_trajectory_response is not None):
+        if (
+            load_plan_response.plan_failed_on_trajectory_response is not None
+            or load_plan_response.plan_failed_on_trajectory_response is not None
+        ):
             raise LoadPlanFailed(load_plan_response)
 
         return load_plan_response.plan_successful_response
