@@ -1,4 +1,4 @@
-from nova import Nova, ptp, jnt, Pose
+from nova import Nova, ptp, jnt, Pose, pi
 import asyncio
 import numpy as np
 
@@ -11,7 +11,7 @@ async def main():
     controller = await cell.controller("ur")
 
     # Define a home position
-    home_joints = (0, -np.pi / 4, -np.pi / 4, -np.pi / 4, np.pi / 4, 0)
+    home_joints = (0, -pi / 4, -pi / 4, -pi / 4, pi / 4, 0)
 
     # Connect to the controller and activate motion groups
     async with controller:

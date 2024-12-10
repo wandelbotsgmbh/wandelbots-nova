@@ -1,6 +1,6 @@
 from nova.core.exceptions import InitMovementFailed
 from nova.types.movement_controller_context import MovementControllerContext
-from nova.types.types import (
+from nova.types import (
     MovementControllerFunction,
     ExecuteTrajectoryResponseStream,
     ExecuteTrajectoryRequestStream,

@@ -2,7 +2,7 @@ from nova.core.exceptions import PlanTrajectoryFailed, LoadPlanFailed
 from nova.gateway import ApiGateway
 from nova.types.action import Action, CombinedActions
 from nova.types.pose import Pose
-from nova.types.types import (
+from nova.types import (
     MovementController,
     LoadPlanResponse,
     InitialMovementStream,
