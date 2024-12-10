@@ -74,7 +74,7 @@ class ApiGateway:
             password = config("NOVA_PASSWORD", default=None)
 
         if access_token is None:
-            access_token = config("NOVA_ACCESS", default=None)
+            access_token = config("NOVA_ACCESS_TOKEN", default=None)
 
         api_client_config = wb.Configuration(
             host=f"http://{host}/api/{version}",
