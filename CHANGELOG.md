@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.1.6 (2024-12-10)
+
+### Chores
+
+* chore: updated README and env variable handling (#7)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`a30cfd3`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a30cfd34e4d36e78316b37b1e8dd61ce0cb47f1e))
+
+* chore: add examples and refactoring (#5)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`66f8a6e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/66f8a6e71d2069ccc754f56c97a928da55d18598))
+
+* chore: add license file (#6)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`dc9401b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/dc9401bfa5bd2239feb612f71b122e2eb59cd452))
+
+
 ## v0.1.5 (2024-12-06)
 
 ### Chores
