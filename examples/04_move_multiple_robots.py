@@ -1,6 +1,5 @@
-from nova import Nova, ptp, jnt, Pose, Controller, speed_up_movement_controller, pi
+from nova import Nova, ptp, jnt, Controller, speed_up_movement_controller, pi
 import asyncio
-import numpy as np
 
 
 async def move_robot(controller: Controller):

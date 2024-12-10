@@ -3,7 +3,6 @@ from nova import Nova, Pose, ptp, jnt, pi
 # TODO: public interface
 from nova.types.action import WriteAction
 import asyncio
-import numpy as np
 
 
 async def main():
