@@ -91,3 +91,6 @@ class ApiGateway:
         self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client))
         self.motion_api = intercept(wb.MotionApi(api_client=self._api_client))
         self.motion_group_infos_api = intercept(wb.MotionGroupInfosApi(api_client=self._api_client))
+
+    async def close(self):
+        await self._api_client.close()

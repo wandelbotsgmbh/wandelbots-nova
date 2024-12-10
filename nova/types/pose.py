@@ -1,3 +1,5 @@
+from typing import Iterable
+
 from nova.types.vector3d import Vector3d
 import numpy as np
 import pydantic
@@ -32,7 +34,6 @@ def _parse_args(*args):
         raise ValueError("Invalid number of arguments for Pose")
 
 
-# TODO: how to handle the coordinate system and the tcp, check wandelscript - it is around the pose not in the pose
 class Pose(pydantic.BaseModel):
     """A pose (position and orientation)
 
@@ -44,7 +45,6 @@ class Pose(pydantic.BaseModel):
     position: Vector3d
     orientation: Vector3d
 
-    # TODO: add doc tests to the models, doc tests should not be too complex
     def __init__(self, *args, **kwargs):
         """Parse a tuple into a dict
 
@@ -93,42 +93,55 @@ class Pose(pydantic.BaseModel):
         return self.to_tuple()[item]
 
     def __matmul__(self, other):
+        """
+        Pose concatenation combines two poses into a single pose that represents the cumulative effect of both
+        transformations applied sequentially.
+
+        Args:
+            other: can be a Pose, or an iterable with 6 elements
+
+        Returns:
+            Pose: the result of the concatenation
+
+        Examples:
+        >>> Pose((1, 2, 3, 0, 0, 0)) @ Pose((1, 2, 3, 0, 0, 0))
+        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        >>> Pose((1, 2, 3, 0, 0, 0)) @ [1, 2, 3, 0, 0, 0]
+        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        >>> Pose((1, 2, 3, 0, 0, 0)) @ (1, 2, 3, 0, 0, 0)
+        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        >>> def as_iterator(data):
+        ...     for d in data:
+        ...         yield d
+        >>> Pose((1, 2, 3, 0, 0, 0)) @ as_iterator([1, 2, 3, 0, 0, 0])
+        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        """
         if isinstance(other, Pose):
             transformed_matrix = np.dot(self.matrix, other.matrix)
             return self._matrix_to_pose(transformed_matrix)
-        elif isinstance(other, np.ndarray):
-            assert other.shape == (4, 4)
-            transformed_matrix = np.dot(self.matrix, other)
-            return self._matrix_to_pose(transformed_matrix)
+        elif isinstance(other, Iterable):
+            seq = tuple(other)
+            return self.__matmul__(Pose(seq))
+
         else:
             raise ValueError(f"Cannot multiply Pose with {type(other)}")
 
-    # TODO: how much should the user be aware of the different types of poses?
-    #       he should not be aware, the user should only be aware of a single pose type
-    # def to_model(self, Type[pydantic.BaseModel]) -> T:
-    #     if isinstance(Type, wb.models.Pose):
-    #         ...
-    #     if isinstance(...)
-    #         return
-
-    # Make this private
-    def to_wb_pose(self) -> wb.models.Pose:
+    def _to_wb_pose(self) -> wb.models.Pose:
         """Convert to wandelbots_api_client Pose
 
         Examples:
-        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).to_wb_pose()
+        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3))._to_wb_pose()
         Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3), coordinate_system=None)
         """
         return wb.models.Pose(
             position=self.position.model_dump(), orientation=self.orientation.model_dump()
         )
 
-    # Make this private
-    def to_wb_pose2(self) -> wb.models.Pose2:
+    def _to_wb_pose2(self) -> wb.models.Pose2:
         """Convert to wandelbots_api_client Pose
 
         Examples:
-        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).to_wb_pose2()
+        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3))._to_wb_pose2()
         Pose2(position=[10, 20, 30], orientation=[1, 2, 3])
         """
         return wb.models.Pose2(
@@ -142,7 +155,7 @@ class Pose(pydantic.BaseModel):
         >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).model_dump()
         {'position': [10, 20, 30], 'orientation': [1, 2, 3]}
         """
-        return self.to_wb_pose2().model_dump()
+        return self._to_wb_pose2().model_dump()
 
     def _to_homogenous_transformation_matrix(self):
         """Converts the pose (position and rotation vector) to a 4x4 homogeneous transformation matrix."""
