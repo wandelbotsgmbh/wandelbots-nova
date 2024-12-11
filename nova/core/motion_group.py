@@ -54,7 +54,7 @@ class MotionGroup:
         joint_trajectory = await self._plan(actions, tcp)
 
         # LOAD MOTION
-        load_plan_response = await self._load_planned_motion(joint_trajectory)
+        load_plan_response = await self._load_planned_motion(joint_trajectory, tcp)
 
         # MOVE TO START POSITION
         number_of_joints = await self._get_number_of_joints()
@@ -123,7 +123,7 @@ class MotionGroup:
         return plan_response.response.actual_instance
 
     async def _load_planned_motion(
-        self, joint_trajectory: wb.models.JointTrajectory
+        self, joint_trajectory: wb.models.JointTrajectory, tcp: str
     ) -> wb.models.PlanSuccessfulResponse:
         load_plan_response = await self._api_gateway.motion_api.load_planned_motion(
             cell=self._cell,
@@ -132,7 +132,7 @@ class MotionGroup:
                 times=joint_trajectory.times,
                 joint_positions=joint_trajectory.joint_positions,
                 locations=joint_trajectory.locations,
-                tcp="Flange",
+                tcp=tcp,
             ),
         )
 
