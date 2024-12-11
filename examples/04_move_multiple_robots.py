@@ -1,4 +1,5 @@
-from nova import Nova, ptp, jnt, Controller, speed_up_movement_controller, pi
+from nova import Nova, ptp, jnt, Controller, speed_up_movement_controller
+from math import pi
 import asyncio
 
 

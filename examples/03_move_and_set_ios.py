@@ -1,4 +1,5 @@
-from nova import Nova, Pose, ptp, jnt, pi
+from nova import Nova, Pose, ptp, jnt
+from math import pi
 
 # TODO: public interface
 from nova.types.action import WriteAction
