@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.1.7 (2024-12-11)
+
+### Chores
+
+* chore: don't publish pi from nova package (#8)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`32f7404`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/32f740427b95abeed7ff63564a5912fb0ed17f37))
+
+
 ## v0.1.6 (2024-12-10)
 
 ### Chores
