@@ -1,4 +1,5 @@
-from nova import Nova, ptp, jnt, Pose, pi
+from nova import Nova, ptp, jnt, Pose
+from math import pi
 import asyncio
 
 from nova.core.movement_controller import move_forward
