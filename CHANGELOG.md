@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.1.8 (2024-12-12)
+
+### Fixes
+
+* fix: not always use "Flange" as a parameter for tcp in _load_planned_motion (#9)
+
+Co-authored-by: Ronny Kaiser <ronny.kaiser@wandelbots.com> ([`9eb7ef1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9eb7ef1ccd3a7c21618c8cf3c3c156928606299a))
+
+
 ## v0.1.7 (2024-12-11)
 
 ### Chores
