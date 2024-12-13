@@ -84,11 +84,11 @@ poetry install
 | `NOVA_PASSWORD`     | The password credential used in conjunction with `NOVA_USERNAME`.         | Yes*     | None    | `my_password`              |
 | `NOVA_ACCESS_TOKEN` | A pre-obtained access token for NOVA if using token-based authentication. | Yes*     | None    | `eyJhbGciOi...`            |
 
-> **Note on Authentication:**  
+> **Note on Authentication:**
 > You can authenticate with NOVA using either **username/password** credentials or a pre-obtained **access token**, depending on your setup and security model:
 > - If using **username/password**: Ensure both `NOVA_USERNAME` and `NOVA_PASSWORD` are set, and leave `NOVA_ACCESS_TOKEN` unset.
 > - If using an **access token**: Ensure `NOVA_ACCESS_TOKEN` is set, and leave `NOVA_USERNAME` and `NOVA_PASSWORD` unset.
->  
+>
 > **Only one method should be used at a time.** If both methods are set, the token-based authentication (`NOVA_ACCESS_TOKEN`) will typically take precedence.
 
 
