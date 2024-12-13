@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.1.9 (2024-12-13)
+
+### Chores
+
+* chore: add pre-commit (#10) ([`44e7b6d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/44e7b6de2a9dd179ce1ea9afa1277cc077cee497))
+
+
 ## v0.1.8 (2024-12-12)
 
 ### Fixes
