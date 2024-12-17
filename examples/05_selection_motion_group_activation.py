@@ -18,7 +18,7 @@ import asyncio
 async def move_robot(motion_group: MotionGroup):
     home_pose = Pose((200, 200, 600, 0, pi, 0))
     target_pose = home_pose @ (100, 0, 0, 0, 0, 0)
-    actions = [ptp(home_pose), ptp(target_pose), ptp(home_pose)]
+    actions = [ptp(home_pose), ptp(target_pose), ptp(target_pose @ (0, 0, 100, 0, 0, 0)), ptp(target_pose @ (0, 100, 0, 0, 0, 0)), ptp(home_pose)]
 
     await motion_group.run(actions, tcp="Flange")
 
@@ -29,14 +29,38 @@ async def main():
     ur = await cell.controller("ur")
     kuka = await cell.controller("kuka")
 
-    ur_0_mg = ur.get_motion_group()
-    kuka_0_mg = kuka.get_motion_group()
+    flange_state = await ur[0].get_state("Flange")
+    print(flange_state)
 
-    async with AsyncExitStack() as stack:
-        await stack.enter_async_context(ur_0_mg)
-        await stack.enter_async_context(kuka_0_mg)
+    kuka_0_mg = kuka.motion_group()
 
-        await asyncio.gather(move_robot(ur_0_mg), move_robot(kuka_0_mg))
+    # activate all motion groups
+    async with ur:
+        await move_robot(ur.motion_group(0))
+
+    # activate motion group 0
+    async with ur.motion_group(0) as mg_0:
+        await move_robot(mg_0)
+
+    # activate motion group 0
+    async with ur[0] as mg_0:
+        await move_robot(mg_0)
+
+    # activate motion group 0 from two different controllers
+    async with (ur[0] as ur_0_mg, kuka[0] as kuka_0_mg):
+        await asyncio.gather(
+            move_robot(ur_0_mg),
+            move_robot(kuka_0_mg)
+        )
+
+    # activate motion group 0 from two different controllers
+    mg_0 = ur.motion_group(0)
+    mg_1 = kuka.motion_group(0)
+    async with (mg_0, mg_1):
+        await asyncio.gather(
+            move_robot(mg_0),
+            move_robot(mg_1)
+        )
 
 
 if __name__ == "__main__":

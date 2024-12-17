@@ -13,7 +13,7 @@ class Controller:
         self._motion_group_api = api_gateway.motion_group_api
         self._cell = cell
         self._controller_host = controller_host
-        self._motion_groups: dict[str, MotionGroup] = {}
+        self._activated_motion_groups: dict[str, MotionGroup] = {}
 
     @final
     async def __aenter__(self):
@@ -31,25 +31,23 @@ class Controller:
                 motion_group_id=mg.motion_group,
                 is_activated=True,
             )
-            self._motion_groups[motion_group.motion_group_id] = motion_group
+            self._activated_motion_groups[motion_group.motion_group_id] = motion_group
         return self
 
     @final
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        for motion_group_id in self._motion_groups.keys():
+        for motion_group_id in self._activated_motion_groups.keys():
             logger.info(f"Deactivating motion group {motion_group_id}")
             await self._motion_group_api.deactivate_motion_group(self._cell, motion_group_id)
 
-        await self._api_gateway.close()
 
-    def get_motion_groups(self) -> dict[str, MotionGroup]:
-        return self._motion_groups
+    def __getitem__(self, motion_group_id: int) -> MotionGroup:
+        return self.motion_group(motion_group_id)
 
-    def get_motion_group(self, motion_group_id: str = "0") -> MotionGroup | None:
-        key = f"{motion_group_id}@{self._controller_host}"
-        if key in self._motion_groups:
-            return self._motion_groups[key]
 
+    def motion_group(self, motion_group_id: int = 0) -> MotionGroup | None:
         return MotionGroup(
-            api_gateway=self._api_gateway, cell=self._cell, motion_group_id=key, is_activated=False
+            api_gateway=self._api_gateway,
+            cell=self._cell,
+            motion_group_id=f"{motion_group_id}@{self._controller_host}"
         )

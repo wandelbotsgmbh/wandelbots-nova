@@ -7,7 +7,7 @@ async def move_robot(controller: Controller):
     home_joints = (0, -pi / 4, -pi / 4, -pi / 4, pi / 4, 0)
 
     async with controller:
-        motion_group = controller.get_motion_group()
+        motion_group = controller.motion_group()
 
         current_pose = await motion_group.tcp_pose("Flange")
         target_pose = current_pose @ (100, 0, 0, 0, 0, 0)

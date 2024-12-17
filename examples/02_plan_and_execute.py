@@ -15,7 +15,7 @@ async def main():
 
     # Connect to the controller and activate motion groups
     async with controller:
-        motion_group = controller.get_motion_group()
+        motion_group = controller.motion_group()
 
         # Get current TCP pose and offset it slightly along the x-axis
         current_pose = await motion_group.tcp_pose("Flange")

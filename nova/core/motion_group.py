@@ -29,24 +29,15 @@ class MotionGroup:
         self.is_activated = is_activated
 
     async def __aenter__(self):
-        if self.is_activated:
-            return self
-
         await self._api_gateway.motion_group_api.activate_motion_group(
             cell=self._cell, motion_group=self._motion_group_id
         )
-        self.is_activated = True
-
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if not self.is_activated:
-            return
-
         await self._api_gateway.motion_group_api.deactivate_motion_group(
             cell=self._cell, motion_group=self._motion_group_id
         )
-        self.is_activated = False
 
     @property
     def motion_group_id(self) -> str:

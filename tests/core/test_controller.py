@@ -12,12 +12,3 @@ async def test_instance(nova_api_client):
     print(controllers)
     assert False
 
-
-@pytest.mark.asyncio
-@pytest.mark.skip
-async def test_controller(nova_api_client):
-    controller = Controller(nova_api_client, cell="cell", controller_host="ur10e")
-    async with controller:
-        motion_groups = controller.get_motion_groups()
-        print(motion_groups)
-    assert False

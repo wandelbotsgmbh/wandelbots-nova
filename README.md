@@ -33,33 +33,33 @@ import asyncio
 
 
 async def main():
-    nova = Nova()
-    cell = nova.cell()
-    controller = await cell.controller("ur")
+  nova = Nova()
+  cell = nova.cell()
+  controller = await cell.controller("ur")
 
-    # Define a home position
-    home_joints = (0, -pi / 4, -pi / 4, -pi / 4, pi / 4, 0)
+  # Define a home position
+  home_joints = (0, -pi / 4, -pi / 4, -pi / 4, pi / 4, 0)
 
-    # Connect to the controller and activate motion groups
-    async with controller:
-        motion_group = controller.get_motion_group()
+  # Connect to the controller and activate motion groups
+  async with controller:
+    motion_group = controller.motion_group()
 
-        # Get current TCP pose and offset it slightly along the x-axis
-        current_pose = await motion_group.tcp_pose("Flange")
-        target_pose = current_pose @ Pose((100, 50, 0, 0, 0, 0))
+    # Get current TCP pose and offset it slightly along the x-axis
+    current_pose = await motion_group.tcp_pose("Flange")
+    target_pose = current_pose @ Pose((100, 50, 0, 0, 0, 0))
 
-        actions = [
-            jnt(home_joints),
-            ptp(target_pose),
-            ptp(target_pose @ (200, 0, 0, 0, 0, 0)),
-            jnt(home_joints),
-        ]
+    actions = [
+      jnt(home_joints),
+      ptp(target_pose),
+      ptp(target_pose @ (200, 0, 0, 0, 0, 0)),
+      jnt(home_joints),
+    ]
 
-        await motion_group.run(actions, tcp="Flange")
+    await motion_group.run(actions, tcp="Flange")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+  asyncio.run(main())
 ```
 
 Have a look at the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) directory to see how to use the library.
