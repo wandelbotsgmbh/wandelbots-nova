@@ -26,7 +26,7 @@ class Controller:
         for mg in motion_groups:
             logger.info(f"Found motion group {mg.motion_group}")
             motion_group = MotionGroup(
-                api_gateway=self._api_gateway, cell=self._cell, motion_group_id=mg.motion_group
+                api_gateway=self._api_gateway, cell=self._cell, motion_group_id=mg.motion_group, is_activated=True
             )
             self._motion_groups[motion_group.motion_group_id] = motion_group
         return self
@@ -43,4 +43,13 @@ class Controller:
         return self._motion_groups
 
     def get_motion_group(self, motion_group_id: str = "0") -> MotionGroup | None:
-        return self._motion_groups.get(f"{motion_group_id}@{self._controller_host}", None)
+        key = f"{motion_group_id}@{self._controller_host}"
+        if key in self._motion_groups:
+            return self._motion_groups[key]
+
+        return MotionGroup(
+            api_gateway=self._api_gateway,
+            cell=self._cell,
+            motion_group_id=motion_group_id,
+            is_activated=False
+        )
