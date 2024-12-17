@@ -29,17 +29,14 @@ async def main():
     ur = await cell.controller("ur")
     kuka = await cell.controller("kuka")
 
-    ur_0_mg =ur.get_motion_group("0@ur")
+    ur_0_mg = ur.get_motion_group("0@ur")
     kuka_0_mg = kuka.get_motion_group("0@kuka")
 
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(ur_0_mg)
         await stack.enter_async_context(kuka_0_mg)
 
-        await asyncio.gather(
-            move_robot(ur_0_mg),
-            move_robot(kuka_0_mg)
-        )
+        await asyncio.gather(move_robot(ur_0_mg), move_robot(kuka_0_mg))
 
 
 if __name__ == "__main__":

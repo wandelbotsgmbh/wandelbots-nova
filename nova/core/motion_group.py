@@ -22,11 +22,7 @@ START_LOCATION_OF_MOTION = 0.0
 
 class MotionGroup:
     def __init__(
-        self,
-        api_gateway: ApiGateway,
-        cell: str,
-        motion_group_id: str,
-        is_activated: bool = False
+        self, api_gateway: ApiGateway, cell: str, motion_group_id: str, is_activated: bool = False
     ):
         self._api_gateway = api_gateway
         self._motion_api_client = api_gateway.motion_api
@@ -40,8 +36,7 @@ class MotionGroup:
             return self
 
         await self._api_gateway.motion_group_api.activate_motion_group(
-            cell=self._cell,
-            motion_group=self._motion_group_id
+            cell=self._cell, motion_group=self._motion_group_id
         )
         self.is_activated = True
 
@@ -52,8 +47,7 @@ class MotionGroup:
             return
 
         await self._api_gateway.motion_group_api.deactivate_motion_group(
-            cell=self._cell,
-            motion_group=self._motion_group_id
+            cell=self._cell, motion_group=self._motion_group_id
         )
         self.is_activated = False
 
