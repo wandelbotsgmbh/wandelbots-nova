@@ -1,8 +1,9 @@
-from nova import Nova, Pose, ptp, jnt
+from nova import Nova
+from nova.types import Pose
 from math import pi
 
-# TODO: public interface
-from nova.types.action import WriteAction
+# TODO: update I/O interaction interface
+from nova.actions import WriteAction, ptp, jnt
 import asyncio
 
 
@@ -23,7 +24,7 @@ async def main():
         target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
         actions = [
             jnt(home_joints),
-            # controller.write_on_path("digital_out[0]", value=False),
+            # TODO: controller.write_on_path("digital_out[0]", value=False),
             WriteAction(device_id="ur", key="digital_out[0]", value=False),
             ptp(target_pose),
             jnt(home_joints),

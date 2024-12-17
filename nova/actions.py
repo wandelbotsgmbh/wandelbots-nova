@@ -1,6 +1,7 @@
 import pydantic
-from typing import Annotated, Literal, Any, Union
+from typing import Annotated, Literal, Any, Union, AsyncGenerator, Callable
 from nova.types.pose import Pose
+from nova.types.collision_scene import CollisionScene
 import wandelbots_api_client as wb
 from abc import ABC, abstractmethod
 
@@ -99,6 +100,29 @@ class Motion(Action, ABC):
     @property
     def is_cartesian(self):
         return isinstance(self.target, Pose)
+
+
+class UnresolvedMotion(Motion, ABC):
+    @abstractmethod
+    async def resolve(
+        self,
+        initial_joints: tuple[float, ...],
+        collision_scene: CollisionScene | None,
+        configuration: dict,
+        moving_robot_identifier: str,
+    ) -> tuple[list[Motion], tuple[float, ...]] | None:
+        """Convert the motion to a list of motion primitives
+
+        Args:
+            initial_joints: Joint positions at start of motion
+            collision_scene: The collision scene used to check collisions
+            configuration: E.g. data of physical setup of robot system, cell, etc.
+            moving_robot_identifier: The identifier of the robot that is moving in the scene
+
+        Returns:
+            Tuple of resolved motions and the joint position at the end of the motions. None, if the motion can't be resolved
+
+        """
 
 
 class Linear(Motion):
@@ -462,3 +486,16 @@ class CombinedActions(pydantic.BaseModel):
             )
             for action in self.actions
         ]
+
+
+class MovementControllerContext(pydantic.BaseModel):
+    combined_actions: CombinedActions
+    motion_id: str
+
+
+ExecuteTrajectoryRequestStream = AsyncGenerator[wb.models.ExecuteTrajectoryRequest, None]
+ExecuteTrajectoryResponseStream = AsyncGenerator[wb.models.ExecuteTrajectoryResponse, None]
+MovementControllerFunction = Callable[
+    [ExecuteTrajectoryResponseStream], ExecuteTrajectoryRequestStream
+]
+MovementController = Callable[[MovementControllerContext], MovementControllerFunction]

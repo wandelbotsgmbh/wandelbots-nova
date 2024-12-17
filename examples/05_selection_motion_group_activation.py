@@ -10,7 +10,9 @@ Each robot moves between a predefined home pose and a target pose sequentially.
 """
 
 from math import pi
-from nova import Nova, ptp, MotionGroup, Pose
+from nova import Nova, MotionGroup
+from nova.types import Pose
+from nova.actions import ptp
 import asyncio
 
 
