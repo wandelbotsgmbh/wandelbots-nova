@@ -1,12 +1,12 @@
 import pytest
 
-import wandelbots_api_client
+from nova import api
 
 
 @pytest.mark.asyncio
 @pytest.mark.skip
 async def test_instance(nova_api_client):
-    controller_api = wandelbots_api_client.ControllerApi(api_client=nova_api_client)
+    controller_api = api.ControllerApi(api_client=nova_api_client)
     controllers = await controller_api.list_controllers(cell="cell")
     print(controllers)
     assert False
