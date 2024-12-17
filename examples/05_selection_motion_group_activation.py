@@ -29,8 +29,8 @@ async def main():
     ur = await cell.controller("ur")
     kuka = await cell.controller("kuka")
 
-    ur_0_mg = ur.get_motion_group("0@ur")
-    kuka_0_mg = kuka.get_motion_group("0@kuka")
+    ur_0_mg = ur.get_motion_group()
+    kuka_0_mg = kuka.get_motion_group()
 
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(ur_0_mg)

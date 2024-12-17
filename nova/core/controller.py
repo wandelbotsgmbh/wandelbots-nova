@@ -51,8 +51,5 @@ class Controller:
             return self._motion_groups[key]
 
         return MotionGroup(
-            api_gateway=self._api_gateway,
-            cell=self._cell,
-            motion_group_id=motion_group_id,
-            is_activated=False,
+            api_gateway=self._api_gateway, cell=self._cell, motion_group_id=key, is_activated=False
         )
