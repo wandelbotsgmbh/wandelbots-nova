@@ -18,12 +18,26 @@ START_LOCATION_OF_MOTION = 0.0
 
 
 class MotionGroup:
-    def __init__(self, api_gateway: ApiGateway, cell: str, motion_group_id: str):
+    def __init__(
+        self, api_gateway: ApiGateway, cell: str, motion_group_id: str, is_activated: bool = False
+    ):
         self._api_gateway = api_gateway
         self._motion_api_client = api_gateway.motion_api
         self._cell = cell
         self._motion_group_id = motion_group_id
         self._current_motion: str | None = None
+        self.is_activated = is_activated
+
+    async def __aenter__(self):
+        await self._api_gateway.motion_group_api.activate_motion_group(
+            cell=self._cell, motion_group=self._motion_group_id
+        )
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self._api_gateway.motion_group_api.deactivate_motion_group(
+            cell=self._cell, motion_group=self._motion_group_id
+        )
 
     @property
     def motion_group_id(self) -> str:

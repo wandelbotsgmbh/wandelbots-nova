@@ -9,7 +9,7 @@ async def main():
     controller = await cell.controller("ur")
 
     async with controller:
-        motion_group = controller.get_motion_group()
+        motion_group = controller.motion_group()
 
         # Current motion group state
         state = await motion_group.get_state("Flange")
