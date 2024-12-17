@@ -1,4 +1,3 @@
-from nova.core.controller import Controller
 import pytest
 
 import wandelbots_api_client
@@ -11,4 +10,3 @@ async def test_instance(nova_api_client):
     controllers = await controller_api.list_controllers(cell="cell")
     print(controllers)
     assert False
-

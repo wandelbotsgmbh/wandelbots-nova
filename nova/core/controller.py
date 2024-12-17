@@ -40,14 +40,12 @@ class Controller:
             logger.info(f"Deactivating motion group {motion_group_id}")
             await self._motion_group_api.deactivate_motion_group(self._cell, motion_group_id)
 
-
     def __getitem__(self, motion_group_id: int) -> MotionGroup:
         return self.motion_group(motion_group_id)
-
 
     def motion_group(self, motion_group_id: int = 0) -> MotionGroup | None:
         return MotionGroup(
             api_gateway=self._api_gateway,
             cell=self._cell,
-            motion_group_id=f"{motion_group_id}@{self._controller_host}"
+            motion_group_id=f"{motion_group_id}@{self._controller_host}",
         )
