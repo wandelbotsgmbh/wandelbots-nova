@@ -1,5 +1,6 @@
 import pytest
-from nova import Nova, lin, ptp
+from nova import Nova
+from nova.actions import lin, ptp
 
 
 @pytest.mark.asyncio
