@@ -1,4 +1,3 @@
-
 from nova.core.exceptions import PlanTrajectoryFailed, LoadPlanFailed
 from nova.gateway import ApiGateway
 from nova.types.action import Action, CombinedActions
