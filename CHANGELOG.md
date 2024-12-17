@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.2.0 (2024-12-17)
+
+### Features
+
+* feat(RPS-999): activate motion groups seperatly (#11) ([`e7a77ba`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e7a77baaa9fed33f151e48103b7bc0f5d3b04c58))
+
+
 ## v0.1.9 (2024-12-13)
 
 ### Chores
