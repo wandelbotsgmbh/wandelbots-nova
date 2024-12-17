@@ -10,7 +10,7 @@ async def test_motion_group():
     cell = nova.cell()
     controller = await cell.controller("ur")
 
-    path = [
+    actions = [
         # from the default script for ur10
         ptp((-91.4, -662.0, 851.3, 2.14, 2.14, -0.357)),
         lin((-160.4, -652.0, 851.3, 2.14, 2.14, -0.357)),
@@ -24,7 +24,5 @@ async def test_motion_group():
         state = await motion_group.get_state("Flange")
         print(state)
 
-        motion_iter = motion_group.stream_move(path=path, tcp="Flange")
-        async for motion_state in motion_iter:
-            print(motion_state)
+        await motion_group.run(actions=actions, tcp="Flange")
         assert True
