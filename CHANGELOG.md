@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.2.2 (2024-12-19)
+
+### Chores
+
+* chore: make motion_group plan call public (#13)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`8c464ba`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8c464ba5c3c05f59b68bbb0458db11f3e2422c97))
+
+
 ## v0.2.1 (2024-12-19)
 
 ### Chores
