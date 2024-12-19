@@ -1,9 +1,9 @@
 from nova.core.exceptions import InitMovementFailed
-from nova.types.movement_controller_context import MovementControllerContext
-from nova.types import (
+from nova.actions import (
     MovementControllerFunction,
     ExecuteTrajectoryResponseStream,
     ExecuteTrajectoryRequestStream,
+    MovementControllerContext,
 )
 import wandelbots_api_client as wb
 from loguru import logger

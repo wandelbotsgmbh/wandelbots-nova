@@ -1,10 +1,8 @@
-from abc import ABC, abstractmethod
 from typing import Literal
 
 import pydantic
 import wandelbots_api_client as wb
 from nova.types.pose import Pose
-from nova.types.action import Motion
 
 
 class DhParameter(pydantic.BaseModel):
@@ -130,30 +128,6 @@ scene = read(arg...)
 add_static_collider(scene, "box", Box(size_x=1, size_y=1, size_z=1), Pose.from_tuple([0, 0, 0, 0, 0, 0]))
 """
 
-
-class UnresolvedMotion(Motion, ABC):
-    @abstractmethod
-    async def resolve(
-        self,
-        initial_joints: tuple[float, ...],
-        collision_scene: CollisionScene | None,
-        configuration: dict,
-        moving_robot_identifier: str,
-    ) -> tuple[list[Motion], tuple[float, ...]] | None:
-        """Convert the motion to a list of motion primitives
-
-        Args:
-            initial_joints: Joint positions at start of motion
-            collision_scene: The collision scene used to check collisions
-            configuration: E.g. data of physical setup of robot system, cell, etc.
-            moving_robot_identifier: The identifier of the robot that is moving in the scene
-
-        Returns:
-            Tuple of resolved motions and the joint position at the end of the motions. None, if the motion can't be resolved
-
-        """
-
-
 __all__ = [
     "Box",
     "Capsule",
@@ -167,5 +141,4 @@ __all__ = [
     "Rectangle",
     "RectangularCapsule",
     "Sphere",
-    "UnresolvedMotion",
 ]
