@@ -60,7 +60,7 @@ class MotionGroup:
             raise ValueError("No actions provided")
 
         # PLAN MOTION
-        joint_trajectory = await self._plan(actions, tcp)
+        joint_trajectory = await self.plan(actions, tcp)
 
         # LOAD MOTION
         load_plan_response = await self._load_planned_motion(joint_trajectory, tcp)
@@ -105,7 +105,7 @@ class MotionGroup:
             cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
         )
 
-    async def _plan(self, actions: list[Action], tcp: str) -> wb.models.JointTrajectory:
+    async def plan(self, actions: list[Action], tcp: str) -> wb.models.JointTrajectory:
         current_joints = await self.joints(tcp=tcp)
         robot_setup = await self._get_optimizer_setup(tcp=tcp)
         motion_commands = CombinedActions(items=actions).to_motion_command()
