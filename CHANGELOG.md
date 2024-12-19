@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.2.1 (2024-12-19)
+
+### Chores
+
+* chore: updated nova interface and simplified examples (#12)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`2e096bb`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2e096bb326094345bd6c30f922a5593ca46224e1))
+
+
 ## v0.2.0 (2024-12-17)
 
 ### Features
