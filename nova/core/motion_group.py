@@ -163,7 +163,7 @@ class MotionGroup:
         except ValueError as e:
             logger.debug(f"No motion to stop for {self}: {e}")
 
-    async def get_state(self, tcp: str | None) -> wb.models.MotionGroupStateResponse:
+    async def get_state(self, tcp: str | None = None) -> wb.models.MotionGroupStateResponse:
         """Get the current state of the motion group
 
         Args:
@@ -175,9 +175,9 @@ class MotionGroup:
         )
         return response
 
-    async def joints(self, tcp: str | None = None) -> wb.models.Joints:
+    async def joints(self) -> wb.models.Joints:
         """Get the current joint positions"""
-        state = await self.get_state(tcp=tcp)
+        state = await self.get_state()
         return state.state.joint_position
 
     async def tcp_pose(self, tcp: str | None = None) -> Pose:

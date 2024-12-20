@@ -81,13 +81,18 @@ class ApiGateway:
         if (username is None or password is None) and access_token is None:
             raise ValueError("Please provide either username and password or an access token")
 
+        # Access token has more prio than username and password if both are provided at the same time, set username and
+        # password to None
+        if access_token is not None:
+            username = None
+            password = None
+
         stripped_host = host.rstrip("/")
         api_client_config = wb.Configuration(
             host=f"{stripped_host}/api/{version}",
             username=username,
             password=password,
             access_token=access_token,
-            ssl_ca_cert=False,
         )
 
         self._api_client = wb.ApiClient(api_client_config)
