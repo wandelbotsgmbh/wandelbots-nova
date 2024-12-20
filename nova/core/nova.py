@@ -33,8 +33,7 @@ class Cell:
         self._cell_id = cell_id
 
     async def _get_controllers(self) -> list[wb.models.ControllerInstance]:
-        controller_api = self._api_gateway.controller_api
-        response = await controller_api.list_controllers(cell=self._cell_id)
+        response = await self._api_gateway.controller_api.list_controllers(cell=self._cell_id)
         return response.instances
 
     async def controllers(self) -> list["Controller"]:
