@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.2.3 (2024-12-20)
+
+### Chores
+
+* chore: added yamllint (#14)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`4c9b66e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4c9b66eea27e25666d09d5ab70352988edacb8d4))
+
+
 ## v0.2.2 (2024-12-19)
 
 ### Chores
