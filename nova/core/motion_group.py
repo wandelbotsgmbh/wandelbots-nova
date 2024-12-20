@@ -176,18 +176,22 @@ class MotionGroup:
         return response
 
     async def joints(self, tcp: str | None = None) -> wb.models.Joints:
+        """Get the current joint positions"""
         state = await self.get_state(tcp=tcp)
         return state.state.joint_position
 
-    async def tcp_pose(self, tcp: str) -> Pose:
+    async def tcp_pose(self, tcp: str | None = None) -> Pose:
+        """Get the current TCP pose"""
         state = await self.get_state(tcp=tcp)
         return Pose(state.state.tcp_pose)
 
     async def tcps(self) -> list[wb.models.RobotTcp]:
+        """Get the available tool center points (TCPs)"""
         response = await self._api_gateway.motion_group_infos_api.list_tcps(
             cell=self._cell, motion_group=self.motion_group_id
         )
         return response.tcps
 
     async def tcp_names(self) -> list[str]:
+        """Get the names of the available tool center points (TCPs)"""
         return [tcp.id for tcp in await self.tcps()]
