@@ -4,7 +4,7 @@ from nova import Nova
 
 
 async def main():
-    nova = Nova(host="172.30.0.135")
+    nova = Nova()
     cell = nova.cell()
     controllers = await cell.controllers()
     controller = controllers[0]

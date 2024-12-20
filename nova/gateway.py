@@ -9,6 +9,8 @@ from decouple import config
 
 T = TypeVar("T")
 
+INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
+
 
 def intercept(api_instance: T) -> T:
     class Interceptor:
@@ -54,23 +56,20 @@ def intercept(api_instance: T) -> T:
     return Interceptor(api_instance)
 
 
-def _validate_host(host: str) -> str:
-    """Remove any trailing slashes and validate scheme"""
-    _url = host.rstrip("/")
-    return _url
-
 class ApiGateway:
     def __init__(
         self,
         *,
-        host: str = "http://api-gateway.wandelbots.svc.cluster.local:8080",
+        host: str | None = None,
         username: str | None = None,
         password: str | None = None,
         access_token: str | None = None,
         version: str = "v1",
     ):
         if host is None:
-            host = config("NOVA_API")
+            host = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
+
+        print()
 
         if username is None:
             username = config("NOVA_USERNAME", default=None)

@@ -23,7 +23,7 @@ class Nova:
             version=version,
         )
 
-    def cell(self, cell_id: str = config("CELL_NAME", "cell")) -> "Cell":
+    def cell(self, cell_id: str = config("CELL_NAME", default="cell")) -> "Cell":
         return Cell(self._api_client, cell_id)
 
 
@@ -46,9 +46,7 @@ class Cell:
 
     async def controller(self, controller_host: str = None) -> "Controller":
         controllers = await self._get_controllers()
-        found_controller = next(
-            (c for c in controllers if c.host == controller_host), None
-        )
+        found_controller = next((c for c in controllers if c.host == controller_host), None)
 
         if found_controller is None:
             raise ControllerNotFoundException(controller=controller_host)
