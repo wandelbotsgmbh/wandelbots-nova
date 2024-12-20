@@ -69,8 +69,6 @@ class ApiGateway:
         if host is None:
             host = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
 
-        print()
-
         if username is None:
             username = config("NOVA_USERNAME", default=None)
 
@@ -93,6 +91,7 @@ class ApiGateway:
         )
 
         self._api_client = wb.ApiClient(api_client_config)
+        self._host = host
 
         # Use the intercept function to wrap each API client
         self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client))
