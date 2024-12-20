@@ -1,0 +1,28 @@
+---
+extends: default
+
+ignore: |
+  coverage
+  node_modules
+  dist
+  build
+  .git
+  poetry.lock
+
+rules:
+  line-length:
+    level: warning
+    max: 100
+
+  brackets:
+    max-spaces-inside: 1
+    level: error
+
+  quoted-strings:
+    quote-type: any
+    required: false
+    level: warning
+
+  trailing-spaces:
+    level: error
+...
