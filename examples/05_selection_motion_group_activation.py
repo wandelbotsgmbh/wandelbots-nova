@@ -16,7 +16,7 @@ from nova.actions import ptp
 import asyncio
 
 
-async def move_robot(motion_group: MotionGroup):
+async def move_robot(motion_group: MotionGroup, tcp: str):
     home_pose = Pose((200, 200, 600, 0, pi, 0))
     target_pose = home_pose @ (100, 0, 0, 0, 0, 0)
     actions = [
@@ -27,7 +27,7 @@ async def move_robot(motion_group: MotionGroup):
         ptp(home_pose),
     ]
 
-    await motion_group.run(actions, tcp="Flange")
+    await motion_group.run(actions, tcp=tcp)
 
 
 async def main():
@@ -35,8 +35,9 @@ async def main():
     cell = nova.cell()
     ur = await cell.controller("ur")
     kuka = await cell.controller("kuka")
+    tcp = "Flange"
 
-    flange_state = await ur[0].get_state("Flange")
+    flange_state = await ur[0].get_state(tcp=tcp)
     print(flange_state)
 
     # activate all motion groups
@@ -53,13 +54,13 @@ async def main():
 
     # activate motion group 0 from two different controllers
     async with ur[0] as ur_0_mg, kuka[0] as kuka_0_mg:
-        await asyncio.gather(move_robot(ur_0_mg), move_robot(kuka_0_mg))
+        await asyncio.gather(move_robot(ur_0_mg, tcp), move_robot(kuka_0_mg, tcp))
 
     # activate motion group 0 from two different controllers
     mg_0 = ur.motion_group(0)
     mg_1 = kuka.motion_group(0)
     async with mg_0, mg_1:
-        await asyncio.gather(move_robot(mg_0), move_robot(mg_1))
+        await asyncio.gather(move_robot(mg_0, tcp), move_robot(mg_1, tcp))
 
 
 if __name__ == "__main__":
