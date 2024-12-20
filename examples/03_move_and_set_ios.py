@@ -10,7 +10,8 @@ import asyncio
 async def main():
     nova = Nova()
     cell = nova.cell()
-    controller = await cell.controller("ur")
+    controllers = await cell.controllers()
+    controller = controllers[0]
 
     # Define a home position
     home_joints = (0, -pi / 4, -pi / 4, -pi / 4, pi / 4, 0)

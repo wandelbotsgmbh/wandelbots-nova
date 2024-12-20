@@ -54,18 +54,23 @@ def intercept(api_instance: T) -> T:
     return Interceptor(api_instance)
 
 
+def _validate_host(host: str) -> str:
+    """Remove any trailing slashes and validate scheme"""
+    _url = host.rstrip("/")
+    return _url
+
 class ApiGateway:
     def __init__(
         self,
         *,
-        host: str | None = None,
+        host: str = "http://api-gateway.wandelbots.svc.cluster.local:8080",
         username: str | None = None,
         password: str | None = None,
         access_token: str | None = None,
         version: str = "v1",
     ):
         if host is None:
-            host = config("NOVA_HOST")
+            host = config("NOVA_API")
 
         if username is None:
             username = config("NOVA_USERNAME", default=None)
@@ -76,8 +81,12 @@ class ApiGateway:
         if access_token is None:
             access_token = config("NOVA_ACCESS_TOKEN", default=None)
 
+        if (username is None or password is None) and access_token is None:
+            raise ValueError("Please provide either username and password or an access token")
+
+        stripped_host = host.rstrip("/")
         api_client_config = wb.Configuration(
-            host=f"http://{host}/api/{version}",
+            host=f"{stripped_host}/api/{version}",
             username=username,
             password=password,
             access_token=access_token,

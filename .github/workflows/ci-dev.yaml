@@ -26,8 +26,8 @@ jobs:
           poetry install
           mkdir envs
           touch envs/.env.tests
-          echo "NOVA_HOST=test.instance.mock.io" > envs/.env.tests
-          echo "CELL_ID=cell" >> envs/.env.tests
+          echo "NOVA_API=test.instance.mock.io" > envs/.env.tests
+          echo "CELL_NAME=cell" >> envs/.env.tests
           echo "MOTION_GROUP=virtual-robot" >> envs/.env.tests
           echo "TCP=Flange" >> envs/.env.tests
 

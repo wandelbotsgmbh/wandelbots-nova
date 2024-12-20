@@ -4,10 +4,10 @@ from nova import Nova
 
 
 async def main():
-    nova = Nova()
+    nova = Nova(host="172.30.0.135")
     cell = nova.cell()
-    controller = await cell.controller("ur")
-
+    controllers = await cell.controllers()
+    controller = controllers[0]
     motion_group = controller[0]
 
     # Current motion group state
