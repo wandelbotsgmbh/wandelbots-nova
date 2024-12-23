@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.3.0 (2024-12-23)
+
+### Features
+
+* feat(RPS-1004): handle https, add some convenience methods (#15)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`e46cc90`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e46cc901923d290a99a06cc8fc5fa08ff6ee4502))
+
+
 ## v0.2.3 (2024-12-20)
 
 ### Chores
