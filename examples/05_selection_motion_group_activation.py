@@ -27,7 +27,7 @@ async def move_robot(motion_group: MotionGroup, tcp: str):
         ptp(home_pose),
     ]
 
-    await motion_group.run(actions, tcp=tcp)
+    await motion_group.plan_and_execute(actions, tcp=tcp)
 
 
 async def main():
@@ -37,7 +37,7 @@ async def main():
     kuka = await cell.controller("kuka")
     tcp = "Flange"
 
-    flange_state = await ur[0].get_state(tcp=tcp)
+    flange_state = await ur[0].get_state(tcp)
     print(flange_state)
 
     # activate all motion groups
@@ -46,11 +46,11 @@ async def main():
 
     # activate motion group 0
     async with ur.motion_group(0) as mg_0:
-        await move_robot(mg_0)
+        await move_robot(mg_0, tcp)
 
     # activate motion group 0
     async with ur[0] as mg_0:
-        await move_robot(mg_0)
+        await move_robot(mg_0, tcp)
 
     # activate motion group 0 from two different controllers
     async with ur[0] as ur_0_mg, kuka[0] as kuka_0_mg:

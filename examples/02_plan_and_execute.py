@@ -4,8 +4,6 @@ from nova.types import Pose
 from math import pi
 import asyncio
 
-from nova.core.movement_controller import move_forward
-
 
 async def main():
     nova = Nova()
@@ -39,7 +37,8 @@ async def main():
             jnt(home_joints),
         ]
 
-        await motion_group.run(actions, tcp=tcp, movement_controller=move_forward)
+        joint_trajectory = await motion_group.plan(actions, tcp)
+        await motion_group.execute(joint_trajectory, tcp, actions=actions)
 
 
 if __name__ == "__main__":

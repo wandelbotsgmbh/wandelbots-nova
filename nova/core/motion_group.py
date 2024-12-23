@@ -45,49 +45,66 @@ class MotionGroup:
         #    raise ValueError("No MotionId attached. There is no planned motion available.")
         return self._current_motion
 
-    async def plan(self, actions: list[Action], tcp: str) -> wb.models.JointTrajectory:
-        current_joints = await self.joints(tcp=tcp)
-        robot_setup = await self._get_optimizer_setup(tcp=tcp)
-        motion_commands = CombinedActions(items=actions).to_motion_command()
+    async def plan(self, actions: list[Action] | Action, tcp: str) -> wb.models.JointTrajectory:
+        """Plan a trajectory for the given actions
 
-        request = wb.models.PlanTrajectoryRequest(
-            robot_setup=robot_setup,
-            motion_group=self.motion_group_id,
-            start_joint_position=current_joints.joints,
-            motion_commands=motion_commands,
-            tcp=tcp,
-        )
+        Args:
+            actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
+                Only motion actions are considered for planning.
+            tcp (str): The identifier of the tool center point (TCP)
 
-        motion_api_client = self._api_gateway.motion_api
-        plan_response = await motion_api_client.plan_trajectory(
-            cell=self._cell, plan_trajectory_request=request
-        )
-
-        if isinstance(
-            plan_response.response.actual_instance, wb.models.PlanTrajectoryFailedResponse
-        ):
-            failed_response = plan_response.response.actual_instance
-            raise PlanTrajectoryFailed(failed_response)
-
-        return plan_response.response.actual_instance
-
-    async def run(
-        self,
-        actions: list[Action] | Action,
-        tcp: str,
-        # collision_scene: dts.CollisionScene | None,
-        response_rate_in_ms: int = 200,
-        movement_controller: MovementController = move_forward,
-        initial_movement_consumer: InitialMovementConsumer | None = None,
-    ):
+        Returns:
+            wb.models.JointTrajectory: The planned joint trajectory
+        """
         if not isinstance(actions, list):
             actions = [actions]
 
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        # PLAN MOTION
-        joint_trajectory = await self.plan(actions, tcp)
+        motion_commands = CombinedActions(items=actions).to_motion_command()
+        joints = await self.joints()
+        robot_setup = await self._get_optimizer_setup(tcp=tcp)
+        request = wb.models.PlanTrajectoryRequest(
+            robot_setup=robot_setup,
+            motion_group=self.motion_group_id,
+            motion_commands=motion_commands,
+            start_joint_position=joints.joints,
+            tcp=tcp,
+        )
+
+        plan_trajectory_response = await self._motion_api_client.plan_trajectory(
+            cell=self._cell, plan_trajectory_request=request
+        )
+        if isinstance(
+            plan_trajectory_response.response.actual_instance,
+            wb.models.PlanTrajectoryFailedResponse,
+        ):
+            raise PlanTrajectoryFailed(plan_trajectory_response.response.actual_instance)
+        return plan_trajectory_response.response.actual_instance
+
+    async def execute(
+        self,
+        joint_trajectory: wb.models.JointTrajectory,
+        tcp: str,
+        actions: list[Action] | Action | None = None,
+        # collision_scene: dts.CollisionScene | None,
+        movement_controller: MovementController = move_forward,
+        initial_movement_consumer: InitialMovementConsumer | None = None,
+    ):
+        """Execute a planned motion
+
+        Args:
+            joint_trajectory (wb.models.JointTrajectory): The planned joint trajectory
+            tcp (str): The identifier of the tool center point (TCP)
+            actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
+            movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
+            initial_movement_consumer (InitialMovementConsumer): A consumer for the initial movement
+        """
+        if actions is None:
+            actions = []
+        elif not isinstance(actions, list):
+            actions = [actions]
 
         # LOAD MOTION
         load_plan_response = await self._load_planned_motion(joint_trajectory, tcp)
@@ -96,8 +113,8 @@ class MotionGroup:
         number_of_joints = await self._get_number_of_joints()
         joints_velocities = [MAX_JOINT_VELOCITY_PREPARE_MOVE] * number_of_joints
         movement_stream = await self.move_to_start_position(joints_velocities, load_plan_response)
-        if initial_movement_consumer is not None:
-            async for move_to_response in movement_stream:
+        async for move_to_response in movement_stream:
+            if initial_movement_consumer is not None:
                 initial_movement_consumer(move_to_response)
 
         # EXECUTE MOTION
@@ -106,6 +123,10 @@ class MotionGroup:
         )
         _movement_controller = movement_controller(movement_controller_context)
         await self._api_gateway.motion_api.execute_trajectory(self._cell, _movement_controller)
+
+    async def plan_and_execute(self, actions: list[Action] | Action, tcp: str):
+        joint_trajectory = await self.plan(actions, tcp)
+        await self.execute(joint_trajectory, tcp, actions=actions)
 
     async def _get_number_of_joints(self) -> int:
         spec = await self._api_gateway.motion_group_infos_api.get_motion_group_specification(

@@ -21,8 +21,9 @@ async def test_motion_group():
 
     async with controller:
         motion_group = controller[0]
-        state = await motion_group.get_state("Flange")
+        tcp = "Flange"
+        state = await motion_group.get_state(tcp)
         print(state)
 
-        await motion_group.run(actions=actions, tcp="Flange")
+        await motion_group.plan_and_execute(actions, tcp)
         assert True
