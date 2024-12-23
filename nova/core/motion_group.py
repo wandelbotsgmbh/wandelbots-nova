@@ -21,6 +21,7 @@ class MotionGroup:
         self._cell = cell
         self._motion_group_id = motion_group_id
         self._current_motion: str | None = None
+        self._optimizer_setup: wb.models.OptimizerSetup | None = None
         self.is_activated = is_activated
 
     async def __aenter__(self):
@@ -113,9 +114,13 @@ class MotionGroup:
         return len(spec.mechanical_joint_limits)
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
-        return await self._api_gateway.motion_group_infos_api.get_optimizer_configuration(
-            cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
-        )
+        if self._optimizer_setup is None:
+            self._optimizer_setup = (
+                await self._api_gateway.motion_group_infos_api.get_optimizer_configuration(
+                    cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
+                )
+            )
+        return self._optimizer_setup
 
     async def _load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str
