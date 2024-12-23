@@ -1,4 +1,4 @@
-from nova import Nova, Controller, speed_up_movement_controller
+from nova import Nova, Controller
 from nova.actions import ptp, jnt
 from math import pi
 import asyncio
@@ -15,7 +15,7 @@ async def move_robot(controller: Controller):
         target_pose = current_pose @ (100, 0, 0, 0, 0, 0)
         actions = [jnt(home_joints), ptp(target_pose), jnt(home_joints)]
 
-        await motion_group.run(actions, tcp=tcp, movement_controller=speed_up_movement_controller)
+        await motion_group.plan_and_execute(actions, tcp)
 
 
 async def main():
