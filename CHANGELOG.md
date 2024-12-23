@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.4.0 (2024-12-23)
+
+### Features
+
+* feat(RPS-1027): separated plan and execute in motion group (#16)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`69da340`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/69da34055c00ab5c5917b6e32e1c2fa6e8f9dc16))
+
+
 ## v0.3.0 (2024-12-23)
 
 ### Features
