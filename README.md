@@ -79,7 +79,7 @@ poetry install
 
 | Variable            | Description                                                               | Required | Default | Example                    |
 |---------------------|---------------------------------------------------------------------------|----------|---------|----------------------------|
-| `NOVA_HOST`         | The base URL or hostname of the NOVA server instance.                     | Yes      | None    | `https://nova.example.com` |
+| `NOVA_API`         | The base URL or hostname of the NOVA server instance.                     | Yes      | None    | `https://nova.example.com` |
 | `NOVA_USERNAME`     | The username credential used for authentication with the NOVA service.    | Yes*     | None    | `my_username`              |
 | `NOVA_PASSWORD`     | The password credential used in conjunction with `NOVA_USERNAME`.         | Yes*     | None    | `my_password`              |
 | `NOVA_ACCESS_TOKEN` | A pre-obtained access token for NOVA if using token-based authentication. | Yes*     | None    | `eyJhbGciOi...`            |

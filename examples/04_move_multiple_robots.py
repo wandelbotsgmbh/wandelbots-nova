@@ -7,12 +7,15 @@ import asyncio
 async def move_robot(controller: Controller):
     home_joints = (0, -pi / 4, -pi / 4, -pi / 4, pi / 4, 0)
 
-    async with controller[0] as mg:
-        current_pose = await mg.tcp_pose("Flange")
+    async with controller[0] as motion_group:
+        tcp_names = await motion_group.tcp_names()
+        tcp = tcp_names[0]
+
+        current_pose = await motion_group.tcp_pose(tcp)
         target_pose = current_pose @ (100, 0, 0, 0, 0, 0)
         actions = [jnt(home_joints), ptp(target_pose), jnt(home_joints)]
 
-        await mg.run(actions, tcp="Flange", movement_controller=speed_up_movement_controller)
+        await motion_group.run(actions, tcp=tcp, movement_controller=speed_up_movement_controller)
 
 
 async def main():

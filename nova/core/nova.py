@@ -1,6 +1,8 @@
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFoundException
 from nova.gateway import ApiGateway
+import wandelbots_api_client as wb
+from decouple import config
 
 
 class Nova:
@@ -21,7 +23,7 @@ class Nova:
             version=version,
         )
 
-    def cell(self, cell_id: str = "cell") -> "Cell":
+    def cell(self, cell_id: str = config("CELL_NAME", default="cell")) -> "Cell":
         return Cell(self._api_client, cell_id)
 
 
@@ -30,12 +32,20 @@ class Cell:
         self._api_gateway = api_gateway
         self._cell_id = cell_id
 
+    async def _get_controllers(self) -> list[wb.models.ControllerInstance]:
+        response = await self._api_gateway.controller_api.list_controllers(cell=self._cell_id)
+        return response.instances
+
+    async def controllers(self) -> list["Controller"]:
+        controllers = await self._get_controllers()
+        return [
+            Controller(api_gateway=self._api_gateway, cell=self._cell_id, controller_host=c.host)
+            for c in controllers
+        ]
+
     async def controller(self, controller_host: str = None) -> "Controller":
-        controller_api = self._api_gateway.controller_api
-        controller_list = await controller_api.list_controllers(cell=self._cell_id)
-        found_controller = next(
-            (c for c in controller_list.instances if c.host == controller_host), None
-        )
+        controllers = await self._get_controllers()
+        found_controller = next((c for c in controllers if c.host == controller_host), None)
 
         if found_controller is None:
             raise ControllerNotFoundException(controller=controller_host)

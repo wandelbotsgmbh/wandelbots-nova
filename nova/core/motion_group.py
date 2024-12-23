@@ -21,6 +21,7 @@ class MotionGroup:
         self._cell = cell
         self._motion_group_id = motion_group_id
         self._current_motion: str | None = None
+        self._optimizer_setup: wb.models.OptimizerSetup | None = None
         self.is_activated = is_activated
 
     async def __aenter__(self):
@@ -43,6 +44,32 @@ class MotionGroup:
         # if not self._current_motion:
         #    raise ValueError("No MotionId attached. There is no planned motion available.")
         return self._current_motion
+
+    async def plan(self, actions: list[Action], tcp: str) -> wb.models.JointTrajectory:
+        current_joints = await self.joints(tcp=tcp)
+        robot_setup = await self._get_optimizer_setup(tcp=tcp)
+        motion_commands = CombinedActions(items=actions).to_motion_command()
+
+        request = wb.models.PlanTrajectoryRequest(
+            robot_setup=robot_setup,
+            motion_group=self.motion_group_id,
+            start_joint_position=current_joints.joints,
+            motion_commands=motion_commands,
+            tcp=tcp,
+        )
+
+        motion_api_client = self._api_gateway.motion_api
+        plan_response = await motion_api_client.plan_trajectory(
+            cell=self._cell, plan_trajectory_request=request
+        )
+
+        if isinstance(
+            plan_response.response.actual_instance, wb.models.PlanTrajectoryFailedResponse
+        ):
+            failed_response = plan_response.response.actual_instance
+            raise PlanTrajectoryFailed(failed_response)
+
+        return plan_response.response.actual_instance
 
     async def run(
         self,
@@ -80,20 +107,6 @@ class MotionGroup:
         _movement_controller = movement_controller(movement_controller_context)
         await self._api_gateway.motion_api.execute_trajectory(self._cell, _movement_controller)
 
-    async def get_state(self, tcp: str) -> wb.models.MotionGroupStateResponse:
-        response = await self._api_gateway.motion_group_infos_api.get_current_motion_group_state(
-            cell=self._cell, motion_group=self.motion_group_id, tcp=tcp
-        )
-        return response
-
-    async def joints(self, tcp: str) -> wb.models.Joints:
-        state = await self.get_state(tcp=tcp)
-        return state.state.joint_position
-
-    async def tcp_pose(self, tcp: str) -> Pose:
-        state = await self.get_state(tcp=tcp)
-        return Pose(state.state.tcp_pose)
-
     async def _get_number_of_joints(self) -> int:
         spec = await self._api_gateway.motion_group_infos_api.get_motion_group_specification(
             cell=self._cell, motion_group=self.motion_group_id
@@ -101,35 +114,13 @@ class MotionGroup:
         return len(spec.mechanical_joint_limits)
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
-        return await self._api_gateway.motion_group_infos_api.get_optimizer_configuration(
-            cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
-        )
-
-    async def plan(self, actions: list[Action], tcp: str) -> wb.models.JointTrajectory:
-        current_joints = await self.joints(tcp=tcp)
-        robot_setup = await self._get_optimizer_setup(tcp=tcp)
-        motion_commands = CombinedActions(items=actions).to_motion_command()
-
-        request = wb.models.PlanTrajectoryRequest(
-            robot_setup=robot_setup,
-            motion_group=self.motion_group_id,
-            start_joint_position=current_joints.joints,
-            motion_commands=motion_commands,
-            tcp=tcp,
-        )
-
-        motion_api_client = self._api_gateway.motion_api
-        plan_response = await motion_api_client.plan_trajectory(
-            cell=self._cell, plan_trajectory_request=request
-        )
-
-        if isinstance(
-            plan_response.response.actual_instance, wb.models.PlanTrajectoryFailedResponse
-        ):
-            failed_response = plan_response.response.actual_instance
-            raise PlanTrajectoryFailed(failed_response)
-
-        return plan_response.response.actual_instance
+        if self._optimizer_setup is None:
+            self._optimizer_setup = (
+                await self._api_gateway.motion_group_infos_api.get_optimizer_configuration(
+                    cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
+                )
+            )
+        return self._optimizer_setup
 
     async def _load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str
@@ -176,3 +167,36 @@ class MotionGroup:
             logger.debug(f"Motion {self.current_motion} stopped.")
         except ValueError as e:
             logger.debug(f"No motion to stop for {self}: {e}")
+
+    async def get_state(self, tcp: str | None = None) -> wb.models.MotionGroupStateResponse:
+        """Get the current state of the motion group
+
+        Args:
+            tcp (str): The identifier of the tool center point (TCP) to be used for tcp_pose in response. If not set,
+                the flange pose is returned as tcp_pose.
+        """
+        response = await self._api_gateway.motion_group_infos_api.get_current_motion_group_state(
+            cell=self._cell, motion_group=self.motion_group_id, tcp=tcp
+        )
+        return response
+
+    async def joints(self) -> wb.models.Joints:
+        """Get the current joint positions"""
+        state = await self.get_state()
+        return state.state.joint_position
+
+    async def tcp_pose(self, tcp: str | None = None) -> Pose:
+        """Get the current TCP pose"""
+        state = await self.get_state(tcp=tcp)
+        return Pose(state.state.tcp_pose)
+
+    async def tcps(self) -> list[wb.models.RobotTcp]:
+        """Get the available tool center points (TCPs)"""
+        response = await self._api_gateway.motion_group_infos_api.list_tcps(
+            cell=self._cell, motion_group=self.motion_group_id
+        )
+        return response.tcps
+
+    async def tcp_names(self) -> list[str]:
+        """Get the names of the available tool center points (TCPs)"""
+        return [tcp.id for tcp in await self.tcps()]

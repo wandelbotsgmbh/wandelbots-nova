@@ -9,6 +9,8 @@ from decouple import config
 
 T = TypeVar("T")
 
+INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
+
 
 def intercept(api_instance: T) -> T:
     class Interceptor:
@@ -65,7 +67,7 @@ class ApiGateway:
         version: str = "v1",
     ):
         if host is None:
-            host = config("NOVA_HOST")
+            host = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
 
         if username is None:
             username = config("NOVA_USERNAME", default=None)
@@ -76,15 +78,25 @@ class ApiGateway:
         if access_token is None:
             access_token = config("NOVA_ACCESS_TOKEN", default=None)
 
+        if (username is None or password is None) and access_token is None:
+            raise ValueError("Please provide either username and password or an access token")
+
+        # Access token has more prio than username and password if both are provided at the same time, set username and
+        # password to None
+        if access_token is not None:
+            username = None
+            password = None
+
+        stripped_host = host.rstrip("/")
         api_client_config = wb.Configuration(
-            host=f"http://{host}/api/{version}",
+            host=f"{stripped_host}/api/{version}",
             username=username,
             password=password,
             access_token=access_token,
-            ssl_ca_cert=False,
         )
 
         self._api_client = wb.ApiClient(api_client_config)
+        self._host = host
 
         # Use the intercept function to wrap each API client
         self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client))
