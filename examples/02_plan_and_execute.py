@@ -1,7 +1,6 @@
 from nova import Nova
 from nova.actions import ptp, jnt
 from nova.types import Pose
-from math import pi
 import asyncio
 
 
@@ -12,10 +11,10 @@ async def main():
     controller = controllers[0]
 
     # Define a home position
-    home_joints = (0, -pi / 4, -pi / 4, -pi / 4, pi / 4, 0)
 
     # Connect to the controller and activate motion groups
     async with controller[0] as motion_group:
+        home_joints = await motion_group.joints()
         tcp_names = await motion_group.tcp_names()
         tcp = tcp_names[0]
 
@@ -27,13 +26,13 @@ async def main():
             jnt(home_joints),
             ptp(target_pose),
             jnt(home_joints),
-            ptp(target_pose @ [200, 0, 0, 0, 0, 0]),
+            ptp(target_pose @ [20, 0, 0, 0, 0, 0]),
             jnt(home_joints),
-            ptp(target_pose @ (300, 0, 0, 0, 0, 0)),
+            ptp(target_pose @ (30, 0, 0, 0, 0, 0)),
             jnt(home_joints),
-            ptp(target_pose @ Pose((300, 0, 0, 0, 0, 0))),
+            ptp(target_pose @ Pose((30, 0, 0, 0, 0, 0))),
             jnt(home_joints),
-            ptp(target_pose @ Pose((400, 0, 0, 0, 0, 0))),
+            ptp(target_pose @ Pose((40, 0, 0, 0, 0, 0))),
             jnt(home_joints),
         ]
 

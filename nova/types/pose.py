@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Iterable, Sized
 
 from nova.types.vector3d import Vector3d
 import numpy as np
@@ -34,7 +34,7 @@ def _parse_args(*args):
         raise ValueError("Invalid number of arguments for Pose")
 
 
-class Pose(pydantic.BaseModel):
+class Pose(pydantic.BaseModel, Sized):
     """A pose (position and orientation)
 
     Example:
@@ -79,6 +79,9 @@ class Pose(pydantic.BaseModel):
                 + [round(a, 3) for a in pos_and_rot_vector[3:]]
             )
         )
+
+    def __len__(self):
+        return 6
 
     def to_tuple(self) -> tuple[float, float, float, float, float, float]:
         """Return the pose as a tuple
@@ -137,7 +140,8 @@ class Pose(pydantic.BaseModel):
         Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3), coordinate_system=None)
         """
         return wb.models.Pose(
-            position=Vector3d(**self.position.model_dump()), orientation=Vector3d(**self.orientation.model_dump())
+            position=wb.models.Vector3d(**self.position.model_dump()),
+            orientation=wb.models.Vector3d(**self.orientation.model_dump()),
         )
 
     def _to_wb_pose2(self) -> wb.models.Pose2:
@@ -148,7 +152,7 @@ class Pose(pydantic.BaseModel):
         Pose2(position=[10, 20, 30], orientation=[1, 2, 3])
         """
         return wb.models.Pose2(
-            position=self.position.to_tuple(), orientation=self.orientation.to_tuple()
+            position=list(self.position.to_tuple()), orientation=list(self.orientation.to_tuple())
         )
 
     @pydantic.model_serializer

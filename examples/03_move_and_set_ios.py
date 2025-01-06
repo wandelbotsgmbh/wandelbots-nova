@@ -1,6 +1,5 @@
 from nova import Nova
 from nova.types import Pose
-from math import pi
 
 # TODO: update I/O interaction interface
 from nova.actions import WriteAction, ptp, jnt
@@ -13,11 +12,9 @@ async def main():
     controllers = await cell.controllers()
     controller = controllers[0]
 
-    # Define a home position
-    home_joints = (0, -pi / 4, -pi / 4, -pi / 4, pi / 4, 0)
-
     # Connect to the controller and activate motion groups
     async with controller[0] as motion_group:
+        home_joints = await motion_group.joints()
         tcp_names = await motion_group.tcp_names()
         tcp = tcp_names[0]
 

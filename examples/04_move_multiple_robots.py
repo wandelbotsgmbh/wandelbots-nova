@@ -1,13 +1,11 @@
 from nova import Nova, Controller
 from nova.actions import ptp, jnt
-from math import pi
 import asyncio
 
 
 async def move_robot(controller: Controller):
-    home_joints = (0, -pi / 4, -pi / 4, -pi / 4, pi / 4, 0)
-
     async with controller[0] as motion_group:
+        home_joints = await motion_group.joints()
         tcp_names = await motion_group.tcp_names()
         tcp = tcp_names[0]
 
