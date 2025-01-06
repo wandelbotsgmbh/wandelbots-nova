@@ -490,14 +490,10 @@ class CombinedActions(pydantic.BaseModel):
         """
         return [pose.orientation for pose in self.poses()]
 
-    # def to_posetensor(self) -> PoseTensor:
-    #     return PoseTensor.from_sequence([pose.to_posetensor() for pose in self.poses()])
-
     def __add__(self, other: "CombinedActions") -> "CombinedActions":
         return CombinedActions(items=self.items + other.items)
 
     def to_motion_command(self) -> list[wb.models.MotionCommand]:
-        print(self.motions)
         motions = [
             wb.models.MotionCommandPath.from_dict(motion.model_dump()) for motion in self.motions
         ]

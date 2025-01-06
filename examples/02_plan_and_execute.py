@@ -26,13 +26,11 @@ async def main():
             jnt(home_joints),
             ptp(target_pose),
             jnt(home_joints),
-            ptp(target_pose @ [20, 0, 0, 0, 0, 0]),
+            ptp(target_pose @ [100, 0, 0, 0, 0, 0]),
             jnt(home_joints),
-            ptp(target_pose @ (30, 0, 0, 0, 0, 0)),
+            ptp(target_pose @ (100, 100, 0, 0, 0, 0)),
             jnt(home_joints),
-            ptp(target_pose @ Pose((30, 0, 0, 0, 0, 0))),
-            jnt(home_joints),
-            ptp(target_pose @ Pose((40, 0, 0, 0, 0, 0))),
+            ptp(target_pose @ Pose((0, 100, 0, 0, 0, 0))),
             jnt(home_joints),
         ]
 
