@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 class Action(pydantic.BaseModel, ABC):
     @abstractmethod
     @pydantic.model_serializer
-    def serialize_model(self) -> dict:
+    def serialize_model(self):
         """Serialize the model to a dictionary"""
 
 
@@ -20,8 +20,8 @@ class WriteAction(Action):
     value: Any
 
     @pydantic.model_serializer
-    def serialize_model(self) -> wb.models.IOValue:
-        return wb.models.IOValue(io=self.key, boolean_value=self.value)
+    def serialize_model(self):
+        return wb.models.IOValue(io=self.key, boolean_value=self.value).model_dump()
 
 
 class ReadAction(Action):
@@ -64,13 +64,13 @@ class MotionSettings(pydantic.BaseModel):
         optimize_approach: define approach axis as DoF and optimize for executable path
     """
 
-    velocity: float | None = pydantic.Field(None, ge=0)
-    acceleration: float | None = pydantic.Field(None, ge=0)
-    orientation_velocity: float | None = pydantic.Field(None, ge=0)
-    orientation_acceleration: float | None = pydantic.Field(None, ge=0)
+    velocity: float | None = pydantic.Field(default=None, ge=0)
+    acceleration: float | None = pydantic.Field(default=None, ge=0)
+    orientation_velocity: float | None = pydantic.Field(default=None, ge=0)
+    orientation_acceleration: float | None = pydantic.Field(default=None, ge=0)
     joint_velocities: tuple[float, ...] | None = None
     joint_accelerations: tuple[float, ...] | None = None
-    blending: float = pydantic.Field(0, ge=0)
+    blending: float = pydantic.Field(default=0, ge=0)
     optimize_approach: bool = False
 
     @classmethod
@@ -136,17 +136,20 @@ class Linear(Motion):
     type: Literal["linear"] = "linear"
     target: Pose
 
-    @pydantic.model_serializer
-    def serialize_model(self) -> dict:
-        """Serialize the model to a dictionary
+    def _to_api_model(self) -> wb.models.PathLine:
+        """Serialize the model to the API model
 
         Examples:
-        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=10)).model_dump()
-        {'target_pose': {'position': [1, 2, 3], 'orientation': [4, 5, 6]}, 'path_definition_name': 'PathLine'}
+        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=10))._to_api_model()
+        PathLine(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathLine')
         """
         return wb.models.PathLine(
-            target_pose=self.target.model_dump(), path_definition_name="PathLine"
+            target_pose=wb.models.Pose2(**self.target.model_dump()), path_definition_name="PathLine"
         )
+
+    @pydantic.model_serializer
+    def serialize_model(self):
+        return self._to_api_model().model_dump()
 
 
 def lin(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) -> Linear:
@@ -178,27 +181,23 @@ class PTP(Motion):
 
     type: Literal["ptp"] = "ptp"
 
-    @pydantic.model_serializer
-    def custom_serialize(self):
-        return {
-            "target_pose": {
-                "position": list(self.target.position.to_tuple()),
-                "orientation": list(self.target.orientation.to_tuple()),
-            },
-            "path_definition_name": "PathCartesianPTP",
-        }
-
-    @pydantic.model_serializer
-    def serialize_model(self) -> dict:
-        """Serialize the model to a dictionary
+    def _to_api_model(self) -> wb.models.PathCartesianPTP:
+        """Serialize the model to the API model
 
         Examples:
-        >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=30)).model_dump()
-        {'target_pose': {'position': [1, 2, 3], 'orientation': [4, 5, 6]}, 'path_definition_name': 'PathCartesianPTP'}
+        >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=30))._to_api_model()
+        PathCartesianPTP(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCartesianPTP')
         """
-        return wb.models.MotionCommandPath(
-            target_pose=self.target.model_dump(), path_definition_name="PathCartesianPTP"
+        if not isinstance(self.target, Pose):
+            raise ValueError("Target must be a Pose object")
+        return wb.models.PathCartesianPTP(
+            target_pose=wb.models.Pose2(**self.target.model_dump()),
+            path_definition_name="PathCartesianPTP",
         )
+
+    @pydantic.model_serializer
+    def serialize_model(self):
+        return self._to_api_model().model_dump()
 
 
 def ptp(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) -> PTP:
@@ -234,15 +233,26 @@ class Circular(Motion):
     type: Literal["circular"] = "circular"
     intermediate: Pose
 
+    def _to_api_model(self) -> wb.models.PathCircle:
+        """Serialize the model to a dictionary
+
+        Examples:
+        >>> Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((10, 20, 30, 40, 50, 60)), settings=MotionSettings(velocity=30))._to_api_model()
+        PathCircle(via_pose=Pose2(position=[10, 20, 30], orientation=[40, 50, 60]), target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCircle')
+        """
+        if not isinstance(self.target, Pose):
+            raise ValueError("Target must be a Pose object")
+        if not isinstance(self.intermediate, Pose):
+            raise ValueError("Intermediate must be a Pose object")
+        return wb.models.PathCircle(
+            target_pose=wb.models.Pose2(**self.target.model_dump()),
+            via_pose=wb.models.Pose2(**self.intermediate.model_dump()),
+            path_definition_name="PathCircle",
+        )
+
     @pydantic.model_serializer
-    def custom_serialize(self):
-        return {
-            "target_pose": {
-                "position": list(self.target.position.to_tuple()),
-                "orientation": list(self.target.orientation.to_tuple()),
-            },
-            "path_definition_name": "PathCircle",
-        }
+    def serialize_model(self):
+        return self._to_api_model().model_dump()
 
 
 def cir(
@@ -282,9 +292,22 @@ class JointPTP(Motion):
 
     type: Literal["joint_ptp"] = "joint_ptp"
 
+    def _to_api_model(self) -> wb.models.PathJointPTP:
+        """Serialize the model to the API model
+
+        Examples:
+        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(velocity=30))._to_api_model()
+        PathJointPTP(target_joint_position=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], path_definition_name='PathJointPTP')
+        """
+        if not isinstance(self.target, tuple):
+            raise ValueError("Target must be a tuple object")
+        return wb.models.PathJointPTP(
+            target_joint_position=list(self.target), path_definition_name="PathJointPTP"
+        )
+
     @pydantic.model_serializer
-    def custom_serialize(self):
-        return {"target_joint_position": list(self.target), "path_definition_name": "PathJointPTP"}
+    def serialize_model(self):
+        return self._to_api_model().model_dump()
 
 
 def jnt(target: tuple[float, ...], settings: MotionSettings = MotionSettings()) -> JointPTP:
@@ -318,14 +341,14 @@ class Spline(Motion):
     time: float | None = pydantic.Field(default=None, ge=0)
 
     @pydantic.model_serializer
-    def custom_serialize(self):
-        return {
-            "target_pose": {
-                "position": list(self.target.position.to_tuple()),
-                "orientation": list(self.target.orientation.to_tuple()),
-            },
-            "path_definition_name": "PathCubicSpline",
-        }
+    def serialize_model(self):
+        """Serialize the model to a dictionary
+
+        Examples:
+        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(velocity=30)).model_dump()
+        {'target_joint_position': [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], 'path_definition_name': 'PathJointPTP'}
+        """
+        raise NotImplementedError("Spline motion is not yet implemented")
 
 
 def spl(
@@ -467,9 +490,6 @@ class CombinedActions(pydantic.BaseModel):
         """
         return [pose.orientation for pose in self.poses()]
 
-    # def to_posetensor(self) -> PoseTensor:
-    #     return PoseTensor.from_sequence([pose.to_posetensor() for pose in self.poses()])
-
     def __add__(self, other: "CombinedActions") -> "CombinedActions":
         return CombinedActions(items=self.items + other.items)
 
@@ -482,7 +502,8 @@ class CombinedActions(pydantic.BaseModel):
     def to_set_io(self) -> list[wb.models.SetIO]:
         return [
             wb.models.SetIO(
-                io=action.action.model_dump(exclude_unset=True), location=action.path_parameter
+                io=wb.models.IOValue(**action.action.model_dump(exclude_unset=True)),
+                location=action.path_parameter,
             )
             for action in self.actions
         ]

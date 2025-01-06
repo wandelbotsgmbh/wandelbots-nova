@@ -37,6 +37,9 @@ jobs:
       - name: Check ruff for linting
         run: poetry run ruff check .
 
+      - name: Typecheck
+        run: poetry run mypy
+
       - name: Run tests
         run: |
           cp envs/.env.tests envs/test_.env.tests

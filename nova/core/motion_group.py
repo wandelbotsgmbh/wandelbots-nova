@@ -40,7 +40,7 @@ class MotionGroup:
         return self._motion_group_id
 
     @property
-    def current_motion(self) -> str:
+    def current_motion(self) -> str | None:
         # if not self._current_motion:
         #    raise ValueError("No MotionId attached. There is no planned motion available.")
         return self._current_motion
@@ -62,15 +62,13 @@ class MotionGroup:
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        motion_commands = CombinedActions(items=actions).to_motion_command()
+        motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
         joints = await self.joints()
         robot_setup = await self._get_optimizer_setup(tcp=tcp)
         request = wb.models.PlanTrajectoryRequest(
             robot_setup=robot_setup,
-            motion_group=self.motion_group_id,
+            start_joint_position=list(joints),
             motion_commands=motion_commands,
-            start_joint_position=joints.joints,
-            tcp=tcp,
         )
 
         plan_trajectory_response = await self._motion_api_client.plan_trajectory(
@@ -106,10 +104,8 @@ class MotionGroup:
         elif not isinstance(actions, list):
             actions = [actions]
 
-        # LOAD MOTION
         load_plan_response = await self._load_planned_motion(joint_trajectory, tcp)
 
-        # MOVE TO START POSITION
         number_of_joints = await self._get_number_of_joints()
         joints_velocities = [MAX_JOINT_VELOCITY_PREPARE_MOVE] * number_of_joints
         movement_stream = await self.move_to_start_position(joints_velocities, load_plan_response)
@@ -117,9 +113,9 @@ class MotionGroup:
             if initial_movement_consumer is not None:
                 initial_movement_consumer(move_to_response)
 
-        # EXECUTE MOTION
         movement_controller_context = MovementControllerContext(
-            combined_actions=CombinedActions(items=actions), motion_id=load_plan_response.motion
+            combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
+            motion_id=load_plan_response.motion,
         )
         _movement_controller = movement_controller(movement_controller_context)
         await self._api_gateway.motion_api.execute_trajectory(self._cell, _movement_controller)
@@ -201,10 +197,10 @@ class MotionGroup:
         )
         return response
 
-    async def joints(self) -> wb.models.Joints:
+    async def joints(self) -> tuple:
         """Get the current joint positions"""
         state = await self.get_state()
-        return state.state.joint_position
+        return tuple(state.state.joint_position.joints)
 
     async def tcp_pose(self, tcp: str | None = None) -> Pose:
         """Get the current TCP pose"""

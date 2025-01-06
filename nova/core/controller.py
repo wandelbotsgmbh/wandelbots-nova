@@ -37,7 +37,7 @@ class Controller:
     def __getitem__(self, motion_group_id: int) -> MotionGroup:
         return self.motion_group(motion_group_id)
 
-    def motion_group(self, motion_group_id: int = 0) -> MotionGroup | None:
+    def motion_group(self, motion_group_id: int = 0) -> MotionGroup:
         return MotionGroup(
             api_gateway=self._api_gateway,
             cell=self._cell,
