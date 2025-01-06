@@ -12,7 +12,7 @@ T = TypeVar("T")
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 
 
-def intercept(api_instance: T) -> T:
+def intercept(api_instance: T):
     class Interceptor:
         def __init__(self, instance: T):
             self._instance = instance

@@ -4,7 +4,7 @@ import wandelbots_api_client as wb
 
 
 class ControllerNotFoundException(Exception):
-    def __init__(self, controller: str = None):
+    def __init__(self, controller: str):
         super().__init__(f"Controller {controller} not found.")
 
 

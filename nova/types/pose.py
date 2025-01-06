@@ -126,6 +126,9 @@ class Pose(pydantic.BaseModel):
         else:
             raise ValueError(f"Cannot multiply Pose with {type(other)}")
 
+    def transform(self, other) -> "Pose":
+        return self @ other
+
     def _to_wb_pose(self) -> wb.models.Pose:
         """Convert to wandelbots_api_client Pose
 
@@ -134,7 +137,7 @@ class Pose(pydantic.BaseModel):
         Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3), coordinate_system=None)
         """
         return wb.models.Pose(
-            position=self.position.model_dump(), orientation=self.orientation.model_dump()
+            position=Vector3d(**self.position.model_dump()), orientation=Vector3d(**self.orientation.model_dump())
         )
 
     def _to_wb_pose2(self) -> wb.models.Pose2:

@@ -17,7 +17,7 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.10"
 httpx = "^0.28.0"
-wandelbots_api_client = "24.9.0rc3"
+wandelbots_api_client = "24.10.0"
 websockets = "^14.1.0"
 loguru = "^0.7.2"
 pydantic = "^2.10.3"
@@ -63,7 +63,7 @@ show_error_context = true
 warn_unused_ignores = true
 strict_equality = true
 mypy_path = ".mypy_stubs"
-files = "wandelbots, tests"
+files = "nova, tests"
 namespace_packages = true
 explicit_package_bases = true
 

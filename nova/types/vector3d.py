@@ -23,7 +23,7 @@ class Vector3d(pydantic.BaseModel):
     def __mul__(self, other: Any) -> "Vector3d":
         if not isinstance(other, (float, int)):
             return NotImplemented
-        return type(self)(other * self.x, other * self.y, other * self.z)
+        return type(self)(x=other * self.x, y=other * self.y, z=other * self.z)
 
     def __rmul__(self, other: Any) -> "Vector3d":
         return self * other

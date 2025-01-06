@@ -43,7 +43,7 @@ class Cell:
             for c in controllers
         ]
 
-    async def controller(self, controller_host: str = None) -> "Controller":
+    async def controller(self, controller_host: str) -> "Controller":
         controllers = await self._get_controllers()
         found_controller = next((c for c in controllers if c.host == controller_host), None)
 
