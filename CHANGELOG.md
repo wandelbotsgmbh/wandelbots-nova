@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.5.0 (2025-01-06)
+
+### Features
+
+* feat(RPS-1034): added mypy check to CI * updated API * added pose transform (#17)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`8838bbf`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8838bbf4b60ab5475ef72a48700384b33a43beda))
+
+
 ## v0.4.0 (2024-12-23)
 
 ### Features
