@@ -233,29 +233,26 @@ class Circular(Motion):
     type: Literal["circular"] = "circular"
     intermediate: Pose
 
-    @pydantic.model_serializer
-    def serialize_model(self):
+    def _to_api_model(self) -> wb.models.PathCircle:
         """Serialize the model to a dictionary
 
         Examples:
-        >>> Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((10, 20, 30, 40, 50, 60)), settings=MotionSettings(velocity=30)).model_dump()
-        {'via_pose': {'position': [10, 20, 30], 'orientation': [40, 50, 60]}, 'target_pose': {'position': [1, 2, 3], 'orientation': [4, 5, 6]}, 'path_definition_name': 'PathCircle'}
+        >>> Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((10, 20, 30, 40, 50, 60)), settings=MotionSettings(velocity=30))._to_api_model()
+        PathCircle(via_pose=Pose2(position=[10, 20, 30], orientation=[40, 50, 60]), target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCircle')
         """
-        if isinstance(self.target, tuple):
+        if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
-        if isinstance(self.intermediate, tuple):
+        if not isinstance(self.intermediate, Pose):
             raise ValueError("Intermediate must be a Pose object")
-        target_pose = wb.models.Pose2(
-            position=list(self.target.position.to_tuple()),
-            orientation=list(self.target.orientation.to_tuple()),
-        )
-        via_pose = wb.models.Pose2(
-            position=list(self.intermediate.position.to_tuple()),
-            orientation=list(self.intermediate.orientation.to_tuple()),
-        )
         return wb.models.PathCircle(
-            target_pose=target_pose, via_pose=via_pose, path_definition_name="PathCircle"
-        ).model_dump()
+            target_pose=wb.models.Pose2(**self.target.model_dump()),
+            via_pose=wb.models.Pose2(**self.intermediate.model_dump()),
+            path_definition_name="PathCircle",
+        )
+
+    @pydantic.model_serializer
+    def serialize_model(self):
+        return self._to_api_model().model_dump()
 
 
 def cir(
