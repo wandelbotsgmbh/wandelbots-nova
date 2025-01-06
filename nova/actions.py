@@ -1,5 +1,5 @@
 import pydantic
-from typing import Annotated, Literal, Any, Union, AsyncGenerator, Callable, Optional
+from typing import Annotated, Literal, Any, Union, AsyncGenerator, Callable
 from nova.types.pose import Pose
 from nova.types.collision_scene import CollisionScene
 import wandelbots_api_client as wb
