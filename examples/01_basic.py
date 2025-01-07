@@ -7,6 +7,11 @@ async def main():
     cell = nova.cell()
     controllers = await cell.controllers()
     controller = controllers[0]
+
+    async with controller:
+        activated_motion_group_ids = controller.activated_motion_group_ids()
+        print(activated_motion_group_ids)
+
     motion_group = controller[0]
 
     tcp_names = await motion_group.tcp_names()
