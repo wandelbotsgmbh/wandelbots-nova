@@ -17,15 +17,9 @@ class Controller(Sized):
 
     @final
     async def __aenter__(self):
-        activate_all_motion_groups_response = (
-            await self._motion_group_api.activate_all_motion_groups(
-                cell=self._cell, controller=self._controller_host
-            )
-        )
-        motion_groups = activate_all_motion_groups_response.instances
-        for mg in motion_groups:
-            logger.info(f"Found motion group {mg.motion_group}")
-            self._activated_motion_group_ids.append(mg.motion_group)
+        motion_group_ids = await self.activated_motion_group_ids()
+        self._activated_motion_group_ids = motion_group_ids
+        logger.info(f"Found motion group {motion_group_ids}")
         return self
 
     @final
@@ -47,8 +41,15 @@ class Controller(Sized):
     def __getitem__(self, motion_group_id: int) -> MotionGroup:
         return self.motion_group(motion_group_id)
 
-    def activated_motion_group_ids(self) -> list[str]:
-        return self._activated_motion_group_ids
+    async def activated_motion_group_ids(self) -> list[str]:
+        activate_all_motion_groups_response = (
+            await self._motion_group_api.activate_all_motion_groups(
+                cell=self._cell, controller=self._controller_host
+            )
+        )
+        motion_groups = activate_all_motion_groups_response.instances
+        return [mg.motion_group for mg in motion_groups]
 
-    def activated_motion_groups(self) -> list[MotionGroup]:
-        return [self.motion_group(int(mg.split("@")[0])) for mg in self._activated_motion_group_ids]
+    async def activated_motion_groups(self) -> list[MotionGroup]:
+        motion_group_ids = await self.activated_motion_group_ids()
+        return [self.motion_group(int(mg.split("@")[0])) for mg in motion_group_ids]
