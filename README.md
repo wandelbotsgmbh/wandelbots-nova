@@ -17,52 +17,23 @@ To use the library, first install it using the following command
 pip install wandelbots-nova
 ```
 
-Then import the library in your code
-
-```python
-from nova import Nova, MotionGroup
-```
-
 ## Usage
 
-Here is an example of how to use the library to connect to a robot controller and move the robot.
+Import the library in your code to get started.
 
 ```python
-from nova import Nova, pi, jnt, ptp
-import asyncio
-
-
-async def main():
-  nova = Nova()
-  cell = nova.cell()
-  controller = await cell.controller("ur")
-
-  # Define a home position
-  home_joints = (0, -pi / 4, -pi / 4, -pi / 4, pi / 4, 0)
-
-  # Connect to the controller and activate motion groups
-  async with controller:
-    motion_group = controller.motion_group()
-
-    # Get current TCP pose and offset it slightly along the x-axis
-    current_pose = await motion_group.tcp_pose("Flange")
-    target_pose = current_pose @ Pose((100, 50, 0, 0, 0, 0))
-
-    actions = [
-      jnt(home_joints),
-      ptp(target_pose),
-      ptp(target_pose @ (200, 0, 0, 0, 0, 0)),
-      jnt(home_joints),
-    ]
-
-    await motion_group.run(actions, tcp="Flange")
-
-
-if __name__ == "__main__":
-  asyncio.run(main())
+from nova import Nova
 ```
 
-Have a look at the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) directory to see how to use the library.
+The SDK also includes an auto-generated API client for the NOVA API. You can access the API client using the `api` module.
+
+```python
+from nova import api
+```
+
+Checkout the [01_basic](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/01_basic.py) and [02_plan_and_execute](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/02_plan_and_execute.py) examples to learn how to use the library.
+
+In the [this](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) directory are more examples to explain the advanced usage of the SDK.
 
 ## Development
 
