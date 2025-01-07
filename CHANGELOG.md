@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.6.0 (2025-01-07)
+
+### Features
+
+* feat: added .activated_motion_groups to fetch all motion groups from con (#18)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`beac2e3`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/beac2e3a45b2143c6ed9fe4a2b1fd810b5f11b0e))
+
+
 ## v0.5.0 (2025-01-06)
 
 ### Features
