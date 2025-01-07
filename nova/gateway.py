@@ -30,10 +30,14 @@ def intercept(api_instance: T):
 
                 @functools.wraps(original_attr)
                 async def async_wrapper(*args, **kwargs):
+                    #logger.info("jussting the API")
+                    #logger.debug("params...")
                     logger.info(f"Calling {name} with args={args}, kwargs={kwargs}")
                     start = time.time()
                     try:
                         return await original_attr(*args, **kwargs)
+                    #except:
+                    #    logger.error("...")
                     finally:
                         duration = time.time() - start
                         logger.info(f"{name} took {duration:.2f} seconds")
@@ -94,8 +98,9 @@ class ApiGateway:
             password=password,
             access_token=access_token,
         )
+        api_client_config.verify_ssl = False
 
-        self._api_client = wb.ApiClient(api_client_config)
+        self._api_client = wb.ApiClient(configuration=api_client_config)
         self._host = host
 
         # Use the intercept function to wrap each API client
