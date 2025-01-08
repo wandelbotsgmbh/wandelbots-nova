@@ -10,6 +10,7 @@ Prerequisites:
 - At least one robot added to the cell.
 """
 
+
 async def main():
     nova = Nova()
     cell = nova.cell()

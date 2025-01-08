@@ -14,6 +14,7 @@ Prerequisites:
 - The robot must have a digital output named "digital_out[0]".
 """
 
+
 async def main():
     nova = Nova()
     cell = nova.cell()

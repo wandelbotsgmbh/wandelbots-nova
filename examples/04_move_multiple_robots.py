@@ -9,6 +9,7 @@ Prerequisites:
 - A cell with two robots: one named "ur" and another named "kuka".
 """
 
+
 async def move_robot(controller: Controller):
     async with controller[0] as motion_group:
         home_joints = await motion_group.joints()

@@ -11,6 +11,7 @@ Prerequisites:
 - A cell with two robots named "ur" and "kuka".
 """
 
+
 async def move_robot(motion_group: MotionGroup, tcp: str):
     home_pose = Pose((200, 200, 600, 0, pi, 0))
     target_pose = home_pose @ (100, 0, 0, 0, 0, 0)
