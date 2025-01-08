@@ -1,3 +1,7 @@
+import sys
+
+from loguru import logger
+
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFoundException
 from nova.gateway import ApiGateway
@@ -14,13 +18,19 @@ class Nova:
         password: str | None = None,
         access_token: str | None = None,
         version: str = "v1",
+        verify_ssl: bool = True,
+        log_level: str = "INFO",
     ):
+        logger.remove()
+        logger.add(sys.stdout, level=log_level)
+
         self._api_client = ApiGateway(
             host=host,
             username=username,
             password=password,
             access_token=access_token,
             version=version,
+            verify_ssl=verify_ssl,
         )
 
     def cell(self, cell_id: str = config("CELL_NAME", default="cell")) -> "Cell":

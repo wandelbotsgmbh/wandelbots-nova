@@ -10,8 +10,6 @@ async def main():
     controllers = await cell.controllers()
     controller = controllers[0]
 
-    # Define a home position
-
     # Connect to the controller and activate motion groups
     async with controller[0] as motion_group:
         home_joints = await motion_group.joints()
