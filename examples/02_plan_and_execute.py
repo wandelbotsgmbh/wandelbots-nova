@@ -3,6 +3,12 @@ from nova.actions import ptp, jnt
 from nova.types import Pose
 import asyncio
 
+"""
+Example: Perform relative movements with a robot.
+
+Prerequisites:
+- At least one robot added to the cell.
+"""
 
 async def main():
     nova = Nova()

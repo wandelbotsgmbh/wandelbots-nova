@@ -1,6 +1,12 @@
 import asyncio
 from nova import Nova
 
+"""
+Example: Getting the current state of a robot.
+
+Prerequisites:
+- At least one robot added to the cell.
+"""
 
 async def main():
     nova = Nova()
