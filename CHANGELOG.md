@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.7.0 (2025-01-09)
+
+### Features
+
+* feat: add documentation to the examples (#21)
+
+Co-authored-by: Christoph Biering <1353438+biering@users.noreply.github.com>
+Co-authored-by: Marielle Muschko <marielle.muschko@wandelbots.com> ([`6b43084`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6b4308407e2eb0f03ad6321e829f8ce6d5abe7ec))
+
+
 ## v0.6.1 (2025-01-08)
 
 ### Fixes
