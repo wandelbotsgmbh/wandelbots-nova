@@ -1,7 +1,3 @@
-import sys
-
-from loguru import logger
-
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFoundException
 from nova.core.logging_setup import configure_logging
