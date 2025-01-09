@@ -4,6 +4,7 @@ from loguru import logger
 
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFoundException
+from nova.core.logging_setup import configure_logging
 from nova.gateway import ApiGateway
 import wandelbots_api_client as wb
 from decouple import config
@@ -21,9 +22,7 @@ class Nova:
         verify_ssl: bool = True,
         log_level: str = "INFO",
     ):
-        logger.remove()
-        logger.add(sys.stdout, level=log_level)
-
+        configure_logging(log_level)
         self._api_client = ApiGateway(
             host=host,
             username=username,
