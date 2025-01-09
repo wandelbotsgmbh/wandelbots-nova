@@ -1,5 +1,6 @@
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFoundException
+from nova.core.logging_setup import configure_logging
 from nova.gateway import ApiGateway
 import wandelbots_api_client as wb
 from decouple import config
@@ -14,13 +15,17 @@ class Nova:
         password: str | None = None,
         access_token: str | None = None,
         version: str = "v1",
+        verify_ssl: bool = True,
+        log_level: str = "INFO",
     ):
+        configure_logging(log_level)
         self._api_client = ApiGateway(
             host=host,
             username=username,
             password=password,
             access_token=access_token,
             version=version,
+            verify_ssl=verify_ssl,
         )
 
     def cell(self, cell_id: str = config("CELL_NAME", default="cell")) -> "Cell":

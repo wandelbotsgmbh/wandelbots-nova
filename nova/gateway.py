@@ -30,26 +30,33 @@ def intercept(api_instance: T):
 
                 @functools.wraps(original_attr)
                 async def async_wrapper(*args, **kwargs):
-                    logger.info(f"Calling {name} with args={args}, kwargs={kwargs}")
                     start = time.time()
                     try:
                         return await original_attr(*args, **kwargs)
+                    except Exception as e:
+                        logger.error(f"API CALL: {name} failed with error: {e}")
+                        logger.debug(f"API CALL FAILED: {name} with args={args}, kwargs={kwargs}")
+                        raise e
                     finally:
                         duration = time.time() - start
-                        logger.info(f"{name} took {duration:.2f} seconds")
+                        logger.info(f"API CALL: {name} took {duration:.2f} seconds")
+                        logger.debug(f"API CALL: {name} with args={args}, kwargs={kwargs}")
 
                 return async_wrapper
 
             # Wrap sync callables
             @functools.wraps(original_attr)
             def sync_wrapper(*args, **kwargs):
-                logger.debug(f"Calling {name} with args={args}, kwargs={kwargs}")
                 start = time.time()
                 try:
                     return original_attr(*args, **kwargs)
+                except Exception as e:
+                    logger.error(f"API CALL: {name} failed with error: {e}")
+                    raise e
                 finally:
                     duration = time.time() - start
-                    logger.debug(f"{name} took {duration:.2f} seconds")
+                    logger.info(f"API CALL: {name} took {duration:.2f} seconds")
+                    logger.debug(f"API CALL: {name} with args={args}, kwargs={kwargs}")
 
             return sync_wrapper
 
@@ -65,6 +72,7 @@ class ApiGateway:
         password: str | None = None,
         access_token: str | None = None,
         version: str = "v1",
+        verify_ssl: bool = True,
     ):
         if host is None:
             host = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
@@ -77,9 +85,6 @@ class ApiGateway:
 
         if access_token is None:
             access_token = config("NOVA_ACCESS_TOKEN", default=None)
-
-        if (username is None or password is None) and access_token is None:
-            raise ValueError("Please provide either username and password or an access token")
 
         # Access token has more prio than username and password if both are provided at the same time, set username and
         # password to None
@@ -94,8 +99,9 @@ class ApiGateway:
             password=password,
             access_token=access_token,
         )
+        api_client_config.verify_ssl = verify_ssl
 
-        self._api_client = wb.ApiClient(api_client_config)
+        self._api_client = wb.ApiClient(configuration=api_client_config)
         self._host = host
 
         # Use the intercept function to wrap each API client
