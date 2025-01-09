@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.8.0 (2025-01-09)
+
+### Features
+
+* feat: add flag to control ssl and improve the logging (#20) ([`e302fa7`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e302fa79f375e9ec1616c5a1e2b5ede9347bb7e3))
+
+
 ## v0.7.0 (2025-01-09)
 
 ### Features
