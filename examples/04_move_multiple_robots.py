@@ -2,6 +2,13 @@ from nova import Nova, Controller
 from nova.actions import ptp, jnt
 import asyncio
 
+"""
+Example: Move multiple robots simultaneously.
+
+Prerequisites:
+- A cell with two robots: one named "ur" and another named "kuka".
+"""
+
 
 async def move_robot(controller: Controller):
     async with controller[0] as motion_group:

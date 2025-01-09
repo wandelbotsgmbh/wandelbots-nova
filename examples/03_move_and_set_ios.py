@@ -6,6 +6,15 @@ from nova.actions import WriteAction, ptp, jnt
 import asyncio
 
 
+"""
+Example: Move the robot and set I/Os on the path.
+
+Prerequisites:
+- At least one robot added to the cell.
+- The robot must have a digital output named "digital_out[0]".
+"""
+
+
 async def main():
     nova = Nova()
     cell = nova.cell()
@@ -23,7 +32,6 @@ async def main():
         target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
         actions = [
             jnt(home_joints),
-            # TODO: controller.write_on_path("digital_out[0]", value=False),
             WriteAction(device_id="ur", key="digital_out[0]", value=False),
             ptp(target_pose),
             jnt(home_joints),

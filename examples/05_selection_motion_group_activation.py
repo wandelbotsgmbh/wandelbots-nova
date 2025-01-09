@@ -1,19 +1,15 @@
-"""
-This example demonstrates how to activate specific motion groups for two robot controllers
-and execute simultaneous movements for both robots.
-
-The robots used in this example are:
-- A Universal Robots (UR) controller
-- A KUKA controller
-
-Each robot moves between a predefined home pose and a target pose sequentially.
-"""
-
 from math import pi
 from nova import Nova, MotionGroup
 from nova.types import Pose
 from nova.actions import ptp
 import asyncio
+
+"""
+Example: Move multiple robots to perform coordinated movements.
+
+Prerequisites:
+- A cell with two robots named "ur" and "kuka".
+"""
 
 
 async def move_robot(motion_group: MotionGroup, tcp: str):
@@ -42,7 +38,7 @@ async def main():
 
     # activate all motion groups
     async with ur:
-        await move_robot(ur.motion_group(0))
+        await move_robot(ur.motion_group(0), tcp)
 
     # activate motion group 0
     async with ur.motion_group(0) as mg_0:
