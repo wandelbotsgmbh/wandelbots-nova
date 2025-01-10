@@ -1,12 +1,13 @@
-from nova.core.exceptions import InitMovementFailed
-from nova.actions import (
-    MovementControllerFunction,
-    ExecuteTrajectoryResponseStream,
-    ExecuteTrajectoryRequestStream,
-    MovementControllerContext,
-)
 import wandelbots_api_client as wb
 from loguru import logger
+
+from nova.actions import (
+    ExecuteTrajectoryRequestStream,
+    ExecuteTrajectoryResponseStream,
+    MovementControllerContext,
+    MovementControllerFunction,
+)
+from nova.core.exceptions import InitMovementFailed
 
 
 def move_forward(context: MovementControllerContext) -> MovementControllerFunction:
