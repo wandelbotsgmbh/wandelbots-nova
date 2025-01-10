@@ -3,9 +3,9 @@ import functools
 import time
 from typing import TypeVar
 
-from loguru import logger
 import wandelbots_api_client as wb
 from decouple import config
+from loguru import logger
 
 T = TypeVar("T")
 

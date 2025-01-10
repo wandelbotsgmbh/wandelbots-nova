@@ -1,8 +1,9 @@
-from math import pi
-from nova import Nova, MotionGroup
-from nova.types import Pose
-from nova.actions import ptp
 import asyncio
+from math import pi
+
+from nova import MotionGroup, Nova
+from nova.actions import ptp
+from nova.types import Pose
 
 """
 Example: Move multiple robots to perform coordinated movements.

@@ -1,4 +1,5 @@
 import pytest
+
 from nova import Nova
 
 

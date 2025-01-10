@@ -1,8 +1,8 @@
-from typing import final, Sized
+from typing import Sized, final
 
-from nova.core.motion_group import MotionGroup
 from loguru import logger
 
+from nova.core.motion_group import MotionGroup
 from nova.gateway import ApiGateway
 
 

@@ -1,4 +1,5 @@
 import pytest
+
 from nova import Nova
 from nova.actions import lin, ptp
 

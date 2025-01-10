@@ -1,9 +1,10 @@
+import wandelbots_api_client as wb
+from decouple import config
+
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFoundException
 from nova.core.logging_setup import configure_logging
 from nova.gateway import ApiGateway
-import wandelbots_api_client as wb
-from decouple import config
 
 
 class Nova:
