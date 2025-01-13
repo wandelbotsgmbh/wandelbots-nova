@@ -18,21 +18,21 @@ class Trajectory:
         # Combine default settings with user overrides.
         # User overrides in kwargs take precedence if there's a conflict.
         combined_settings = (
-            {**self._in_context_settings, **kwargs} if self._in_context_settings else kwargs # type: ignore
+            {**self._in_context_settings, **kwargs} if self._in_context_settings else kwargs  # type: ignore
         )
         settings = MotionSettings(**combined_settings)
 
         match via:
             case "ptp":
-                action = ptp(to, settings=settings) # type: ignore
+                action = ptp(to, settings=settings)  # type: ignore
             case "lin":
-                action = lin(to, settings=settings) # type: ignore
+                action = lin(to, settings=settings)  # type: ignore
             case "jnt":
-                action = jnt(to, settings=settings) # type: ignore
+                action = jnt(to, settings=settings)  # type: ignore
             case "cir":
-                action = cir(to, settings=settings) # type: ignore
+                action = cir(to, settings=settings)  # type: ignore
             case "spl":
-                action = spl(to, settings=settings) # type: ignore
+                action = spl(to, settings=settings)  # type: ignore
             case _:
                 raise ValueError(f"Unknown via option: {via}")
 
@@ -54,7 +54,7 @@ class Trajectory:
 
     def _context_aware_settings(self, **kwargs) -> MotionSettings:
         combined_settings = (
-            {**self._in_context_settings, **kwargs} if self._in_context_settings else kwargs # type: ignore
+            {**self._in_context_settings, **kwargs} if self._in_context_settings else kwargs  # type: ignore
         )
         return MotionSettings(**combined_settings)
 
