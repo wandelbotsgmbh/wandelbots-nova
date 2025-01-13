@@ -106,7 +106,8 @@ class Linear(Motion):
 
     Examples:
     >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=10))
-    Linear(type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(velocity=10.0, acceleration=None, orientation_velocity=None, orientation_acceleration=None, joint_velocities=None, joint_accelerations=None, blending=0, optimize_approach=False))
+    Linear(type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, blending=None, joint_velocities=None, joint_accelerations=None, velocity=10.0, acceleration=None, orientation_velocity=None, orientation_acceleration=None))
+
     """
 
     type: Literal["linear"] = "linear"
@@ -152,7 +153,8 @@ class PTP(Motion):
 
     Examples:
     >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=30))
-    PTP(type='ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(velocity=30.0, acceleration=None, orientation_velocity=None, orientation_acceleration=None, joint_velocities=None, joint_accelerations=None, blending=0, optimize_approach=False))
+    PTP(type='ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, blending=None, joint_velocities=None, joint_accelerations=None, velocity=30.0, acceleration=None, orientation_velocity=None, orientation_acceleration=None))
+
     """
 
     type: Literal["ptp"] = "ptp"
@@ -262,7 +264,7 @@ class JointPTP(Motion):
 
     Examples:
     >>> JointPTP(target=(1, 2, 3, 4, 5, 6), settings=MotionSettings(velocity=30))
-    JointPTP(type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(velocity=30.0, acceleration=None, orientation_velocity=None, orientation_acceleration=None, joint_velocities=None, joint_accelerations=None, blending=0, optimize_approach=False))
+    JointPTP(type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(min_blending_velocity=None, blending=None, joint_velocities=None, joint_accelerations=None, velocity=30.0, acceleration=None, orientation_velocity=None, orientation_acceleration=None))
 
     """
 
