@@ -4,7 +4,7 @@ from nova.types import Pose
 import asyncio
 
 """
-Example: Perform relative movements with a robot.
+Example: Perform relative movements with a robot using settings.
 
 Prerequisites:
 - At least one robot added to the cell.
@@ -29,7 +29,8 @@ async def main():
 
         actions = [
             jnt(home_joints),
-            ptp(target_pose),
+            # give your settings to this motion only
+            ptp(target_pose, settings=MotionSettings(velocity=50)),
             jnt(home_joints),
             ptp(target_pose @ [100, 0, 0, 0, 0, 0]),
             jnt(home_joints),

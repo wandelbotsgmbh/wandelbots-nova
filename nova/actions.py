@@ -4,6 +4,8 @@ from nova.types.pose import Pose
 from nova.types.collision_scene import CollisionScene
 import wandelbots_api_client as wb
 from abc import ABC, abstractmethod
+from nova.motion_settings import MotionSettings
+
 
 
 class Action(pydantic.BaseModel, ABC):
@@ -12,10 +14,14 @@ class Action(pydantic.BaseModel, ABC):
     def serialize_model(self):
         """Serialize the model to a dictionary"""
 
+    def with_settings(self, settings: MotionSettings):
+        if isinstance(self, Motion):
+            self.settings = settings
+
+        return self
 
 class WriteAction(Action):
     type: Literal["Write"] = "Write"
-    device_id: str
     key: str
     value: Any
 
@@ -46,36 +52,6 @@ class CallAction(Action):
     device_id: str
     key: str
     arguments: list
-
-
-class MotionSettings(pydantic.BaseModel):
-    """Settings to customize motions.
-
-    Attributes:
-        velocity: the cartesian velocity of the TCP on the segment in mm/s
-        acceleration: the cartesian acceleration of the TCP on the segment in mm/s
-        orientation_velocity: the (tcp) orientation velocity on the segment in rad/s
-        orientation_acceleration: the tcp orientation acceleration on the segment in rad/s
-        joint_velocities: the joint velocities on the segment in rad/s
-        joint_accelerations: the joint accelerations on the segment in rad/s
-        blending: the blending radius to connect the previous segment to this one. If blending == 0, blending is
-            disabled. If blending == math.inf, blending is enabled and the radius is automatically determined
-            based on the robot velocity.
-        optimize_approach: define approach axis as DoF and optimize for executable path
-    """
-
-    velocity: float | None = pydantic.Field(default=None, ge=0)
-    acceleration: float | None = pydantic.Field(default=None, ge=0)
-    orientation_velocity: float | None = pydantic.Field(default=None, ge=0)
-    orientation_acceleration: float | None = pydantic.Field(default=None, ge=0)
-    joint_velocities: tuple[float, ...] | None = None
-    joint_accelerations: tuple[float, ...] | None = None
-    blending: float = pydantic.Field(default=0, ge=0)
-    optimize_approach: bool = False
-
-    @classmethod
-    def field_to_varname(cls, field):
-        return f"__ms_{field}"
 
 
 MS = MotionSettings
@@ -494,10 +470,19 @@ class CombinedActions(pydantic.BaseModel):
         return CombinedActions(items=self.items + other.items)
 
     def to_motion_command(self) -> list[wb.models.MotionCommand]:
-        motions = [
-            wb.models.MotionCommandPath.from_dict(motion.model_dump()) for motion in self.motions
-        ]
-        return [wb.models.MotionCommand(path=motion) for motion in motions]
+        motion_commands = []
+        for motion in self.motions:
+            path = wb.models.MotionCommandPath.from_dict(motion.model_dump())
+            blending = motion.settings.has_blending_settings if motion.settings.has_blending_settings() else None
+            limits_override = motion.settings.as_limits_settings() if motion.settings.has_limits_override() else None
+            motion_commands.append(
+                wb.models.MotionCommand(
+                    path=path,
+                    blending=blending,
+                    limits_override=limits_override,
+                )
+            )
+        return motion_commands
 
     def to_set_io(self) -> list[wb.models.SetIO]:
         return [

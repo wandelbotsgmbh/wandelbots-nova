@@ -5,6 +5,7 @@ from nova import types
 from nova import actions
 from nova.core.movement_controller import speed_up as speed_up_movement_controller
 from nova import api
+from nova.motion_settings import MotionSettings
 
 __all__ = [
     "Nova",
@@ -15,4 +16,5 @@ __all__ = [
     "api",
     "types",
     "actions",
+    "MotionSettings"
 ]
