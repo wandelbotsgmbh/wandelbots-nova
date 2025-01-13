@@ -1,6 +1,7 @@
 import pydantic
 import wandelbots_api_client as wb
 
+
 class MotionSettings(pydantic.BaseModel):
     # blending settings
     min_blending_velocity: int | None = pydantic.Field(default=None)
@@ -14,7 +15,6 @@ class MotionSettings(pydantic.BaseModel):
 
     # max_joint_acceleration in the API
     joint_accelerations: tuple[float, ...] | None = pydantic.Field(default=None)
-
 
     # max_tcp_velocity in the API
     velocity: float | None = pydantic.Field(default=None)
@@ -33,12 +33,7 @@ class MotionSettings(pydantic.BaseModel):
         return f"__ms_{field}"
 
     def has_blending_settings(self) -> bool:
-        return any(
-            [
-                self.min_blending_velocity,
-                self.blending,
-            ]
-        )
+        return any([self.min_blending_velocity, self.blending])
 
     def has_limits_override(self) -> bool:
         return any(
@@ -54,8 +49,12 @@ class MotionSettings(pydantic.BaseModel):
 
     def as_limits_settings(self) -> wb.models.LimitsOverride:
         return wb.models.LimitsOverride(
-            joint_velocity_limits=wb.models.Joints(joints=self.joint_velocities) if self.joint_velocities else None,
-            joint_acceleration_limits=wb.models.Joints(joints=self.joint_accelerations) if self.joint_accelerations else None,
+            joint_velocity_limits=wb.models.Joints(joints=self.joint_velocities)
+            if self.joint_velocities
+            else None,
+            joint_acceleration_limits=wb.models.Joints(joints=self.joint_accelerations)
+            if self.joint_accelerations
+            else None,
             tcp_velocity_limit=self.velocity,
             tcp_acceleration_limit=self.acceleration,
             tcp_orientation_velocity_limit=self.orientation_velocity,
@@ -69,11 +68,9 @@ class MotionSettings(pydantic.BaseModel):
 
         if self.blending:
             return wb.models.BlendingPosition(
-                max_position_zone_radius=self.blending,
-                blending_name="BlendingPosition",
+                max_position_zone_radius=self.blending, blending_name="BlendingPosition"
             )
 
         return wb.models.BlendingAuto(
-            min_velocity_in_percent=self.min_blending_velocity,
-            blending_name="BlendingAuto",
+            min_velocity_in_percent=self.min_blending_velocity, blending_name="BlendingAuto"
         )

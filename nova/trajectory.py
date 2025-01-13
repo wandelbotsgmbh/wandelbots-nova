@@ -5,6 +5,7 @@ from nova.actions import ptp, jnt, lin, cir, spl, MotionSettings
 
 JntTarget = tuple[float, ...]
 
+
 class Trajectory:
     def __init__(self, actions: list[Action] = []):
         self._actions: list[Action] = actions
@@ -16,7 +17,9 @@ class Trajectory:
 
         # Combine default settings with user overrides.
         # User overrides in kwargs take precedence if there's a conflict.
-        combined_settings = {**self._in_context_settings, **kwargs} if self._in_context_settings else kwargs
+        combined_settings = (
+            {**self._in_context_settings, **kwargs} if self._in_context_settings else kwargs
+        )
         settings = MotionSettings(**combined_settings)
 
         match via:
@@ -35,7 +38,6 @@ class Trajectory:
 
         self._actions.append(action)
 
-
     @contextmanager
     def using_settings(self, **kwargs):
         """
@@ -50,12 +52,11 @@ class Trajectory:
         yield
         self._in_context_settings = None
 
-
     def _context_aware_settings(self, **kwargs) -> MotionSettings:
-        combined_settings = {**self._in_context_settings, **kwargs} if self._in_context_settings else kwargs
+        combined_settings = (
+            {**self._in_context_settings, **kwargs} if self._in_context_settings else kwargs
+        )
         return MotionSettings(**combined_settings)
-
-
 
     def write(self, io_name: str, value: bool | int | float):
         self._actions.append(WriteAction(key=io_name, value=value))

@@ -16,5 +16,5 @@ __all__ = [
     "api",
     "types",
     "actions",
-    "MotionSettings"
+    "MotionSettings",
 ]

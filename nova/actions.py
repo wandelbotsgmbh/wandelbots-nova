@@ -7,7 +7,6 @@ from abc import ABC, abstractmethod
 from nova.motion_settings import MotionSettings
 
 
-
 class Action(pydantic.BaseModel, ABC):
     @abstractmethod
     @pydantic.model_serializer
@@ -19,6 +18,7 @@ class Action(pydantic.BaseModel, ABC):
             self.settings = settings
 
         return self
+
 
 class WriteAction(Action):
     type: Literal["Write"] = "Write"
@@ -473,13 +473,19 @@ class CombinedActions(pydantic.BaseModel):
         motion_commands = []
         for motion in self.motions:
             path = wb.models.MotionCommandPath.from_dict(motion.model_dump())
-            blending = motion.settings.has_blending_settings if motion.settings.has_blending_settings() else None
-            limits_override = motion.settings.as_limits_settings() if motion.settings.has_limits_override() else None
+            blending = (
+                motion.settings.has_blending_settings
+                if motion.settings.has_blending_settings()
+                else None
+            )
+            limits_override = (
+                motion.settings.as_limits_settings()
+                if motion.settings.has_limits_override()
+                else None
+            )
             motion_commands.append(
                 wb.models.MotionCommand(
-                    path=path,
-                    blending=blending,
-                    limits_override=limits_override,
+                    path=path, blending=blending, limits_override=limits_override
                 )
             )
         return motion_commands

@@ -41,8 +41,7 @@ async def main():
 
         # apply settings to all actions
         action_with_settings = [
-            action.with_settings(MotionSettings(velocity=200))
-            for action in actions
+            action.with_settings(MotionSettings(velocity=200)) for action in actions
         ]
 
         joint_trajectory = await motion_group.plan(action_with_settings, tcp)

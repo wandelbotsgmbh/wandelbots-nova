@@ -28,7 +28,7 @@ async def main():
 
         # You can provide settings which are applied to that specific motion only
         trajectory.move(via="jnt", to=home_joints, velocity=10)
-        trajectory.move(via="ptp", to=current_pose @ (1,0,0,0,0,0), velocity=50)
+        trajectory.move(via="ptp", to=current_pose @ (1, 0, 0, 0, 0, 0), velocity=50)
 
         # You can move without any additional settings
         trajectory.move(via="ptp", to=current_pose @ (100, 0, 0, 0, 0, 0))
@@ -44,7 +44,6 @@ async def main():
 
         # You can continue building your trajectory
         trajectory.move(via="jnt", to=home_joints)
-
 
         # Build you actions to execute on a real/virtual robot
         actions = trajectory.build()
