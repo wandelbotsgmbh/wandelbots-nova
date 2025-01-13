@@ -49,10 +49,10 @@ class MotionSettings(pydantic.BaseModel):
 
     def as_limits_settings(self) -> wb.models.LimitsOverride:
         return wb.models.LimitsOverride(
-            joint_velocity_limits=wb.models.Joints(joints=self.joint_velocities)
+            joint_velocity_limits=wb.models.Joints(joints=self.joint_velocities) # type: ignore
             if self.joint_velocities
             else None,
-            joint_acceleration_limits=wb.models.Joints(joints=self.joint_accelerations)
+            joint_acceleration_limits=wb.models.Joints(joints=self.joint_accelerations) # type: ignore
             if self.joint_accelerations
             else None,
             tcp_velocity_limit=self.velocity,
@@ -61,16 +61,20 @@ class MotionSettings(pydantic.BaseModel):
             tcp_orientation_acceleration_limit=self.orientation_acceleration,
         )
 
-    def as_blending_setting(self) -> wb.models.BlendingAuto | wb.models.BlendingPosition:
+    def as_blending_setting(self) -> wb.models.MotionCommandBlending:
         # don't allow setting both, API only accepts one at a time
         if self.min_blending_velocity and self.blending:
             raise ValueError("Can't set both min_blending_velocity and blending")
 
         if self.blending:
-            return wb.models.BlendingPosition(
-                max_position_zone_radius=self.blending, blending_name="BlendingPosition"
+            return wb.models.MotionCommandBlending(
+                wb.models.BlendingPosition(
+                    position_zone_radius=self.blending, blending_name="BlendingPosition"
+                )
             )
 
-        return wb.models.BlendingAuto(
-            min_velocity_in_percent=self.min_blending_velocity, blending_name="BlendingAuto"
+        return wb.models.MotionCommandBlending(
+            wb.models.BlendingAuto(
+                min_velocity_in_percent=self.min_blending_velocity, blending_name="BlendingAuto"
+            )
         )

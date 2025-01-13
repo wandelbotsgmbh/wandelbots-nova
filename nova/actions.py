@@ -474,7 +474,7 @@ class CombinedActions(pydantic.BaseModel):
         for motion in self.motions:
             path = wb.models.MotionCommandPath.from_dict(motion.model_dump())
             blending = (
-                motion.settings.has_blending_settings
+                motion.settings.as_blending_setting()
                 if motion.settings.has_blending_settings()
                 else None
             )
