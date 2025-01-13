@@ -7,6 +7,10 @@ repos:
       - id: ruff
       # Run the formatter.
       - id: ruff-format
+      # Run the import sorter.
+      - id: ruff
+        name: ruff-import-sorting
+        args: [--select, I, --fix]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
