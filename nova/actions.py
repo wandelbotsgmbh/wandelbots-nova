@@ -13,12 +13,6 @@ class Action(pydantic.BaseModel, ABC):
     def serialize_model(self):
         """Serialize the model to a dictionary"""
 
-    def with_settings(self, settings: MotionSettings):
-        if isinstance(self, Motion):
-            self.settings = settings
-
-        return self
-
 
 class WriteAction(Action):
     type: Literal["Write"] = "Write"

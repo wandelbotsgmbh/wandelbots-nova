@@ -11,6 +11,11 @@ Prerequisites:
 """
 
 
+# the actions will be in the array
+# an action will have a setting
+
+
+
 async def main():
     nova = Nova()
     cell = nova.cell()
@@ -38,15 +43,16 @@ async def main():
             jnt(home_joints),
             ptp(target_pose @ Pose((0, 100, 0, 0, 0, 0))),
             jnt(home_joints),
+
         ]
 
-        # apply settings to all actions
-        action_with_settings = [
-            action.with_settings(MotionSettings(velocity=200)) for action in actions
-        ]
+        # you can update the settings of the action
+        for action in actions:
+            action.settings = MotionSettings(velocity=200)
 
-        joint_trajectory = await motion_group.plan(action_with_settings, tcp)
-        await motion_group.execute(joint_trajectory, tcp, actions=action_with_settings)
+
+        joint_trajectory = await motion_group.plan(actions, tcp)
+        await motion_group.execute(joint_trajectory, tcp, actions=actions)
 
 
 if __name__ == "__main__":

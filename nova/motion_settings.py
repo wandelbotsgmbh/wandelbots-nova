@@ -3,6 +3,11 @@ import wandelbots_api_client as wb
 
 
 class MotionSettings(pydantic.BaseModel):
+
+    # Motion setting is immutable, if you need to change it, copy it and then update the new object
+    class Config:
+        frozen: True
+
     # blending settings
     min_blending_velocity: int | None = pydantic.Field(default=None)
 
