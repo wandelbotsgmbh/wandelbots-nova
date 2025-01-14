@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Retrieve Access Token
+      - name: Retrieve access token
         run: |
           echo "## Updating the refresh token..."
           PORTAL_STG_ACCESS_TOKEN=$(curl --request POST \
@@ -36,7 +36,7 @@ jobs:
           # Expose the new token to subsequent steps
           echo "PORTAL_STG_ACCESS_TOKEN=${PORTAL_STG_ACCESS_TOKEN}" >> $GITHUB_ENV
 
-      - name: Create Instance
+      - name: Create instance
         run: |
           echo "Create instance with Service Manager $PROJECT_VERSION"
           response=$(curl -X "POST" "https://io.stg.wandelbots.io/instance" \
@@ -56,7 +56,7 @@ jobs:
           echo "PORTAL_STG_HOST=${PORTAL_STG_HOST}" >> $GITHUB_ENV
           echo "PORTAL_STG_INSTANCE_ID=${PORTAL_STG_INSTANCE_ID}" >> $GITHUB_ENV
 
-      - name: Check Service Availability
+      - name: Check service availability
         run: |
           API_URL="https://${{ env.PORTAL_STG_HOST }}/api/${{ env.API_VERSION }}"
           echo "API URL: ${API_URL}"
@@ -67,7 +67,7 @@ jobs:
             --header "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}" \
             "${API_URL}/cells"
 
-      - name: Create and Remove Test Cell
+      - name: Create and remove test cell
         run: |
           TEST_CELL_NAME="testcell$((RANDOM % 1001))"
           echo "Testcell name: ${TEST_CELL_NAME}"
@@ -90,7 +90,7 @@ jobs:
           pip install poetry
           poetry install
           touch ./.env
-          echo "NOVA_API=${ env.PORTAL_STG_HOST }" > ./.env
+          echo "NOVA_API=${{ env.PORTAL_STG_HOST }}" > ./.env
           echo "CELL_NAME=cell" >> ./.env
           cat ./.env
 
@@ -100,7 +100,7 @@ jobs:
           PYTHONPATH=. poetry run pytest -v examples/
 
       # Always run cleanup, whether success or failure
-      - name: Cleanup - Delete Instance
+      - name: Cleanup - delete instance
         if: always()
         run: |
           echo "Delete instance ${{ env.PORTAL_STG_INSTANCE_ID }}"
