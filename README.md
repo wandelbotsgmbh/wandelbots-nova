@@ -48,12 +48,12 @@ poetry install
 1. **Copy the Template:** Make a copy of the provided `.env.template` file and rename it to `.env` with `cp .env.template .env`.
 2. **Fill in the Values:** Open the `.env` file in a text editor and provide the necessary values for each variable. The table below describes each variable and its usage.
 
-| Variable            | Description                                                               | Required | Default | Example                    |
-|---------------------|---------------------------------------------------------------------------|----------|---------|----------------------------|
-| `NOVA_API`         | The base URL or hostname of the NOVA server instance.                     | Yes      | None    | `https://nova.example.com` |
-| `NOVA_USERNAME`     | The username credential used for authentication with the NOVA service.    | Yes*     | None    | `my_username`              |
-| `NOVA_PASSWORD`     | The password credential used in conjunction with `NOVA_USERNAME`.         | Yes*     | None    | `my_password`              |
-| `NOVA_ACCESS_TOKEN` | A pre-obtained access token for NOVA if using token-based authentication. | Yes*     | None    | `eyJhbGciOi...`            |
+| Variable            | Description                                                               | Required | Default | Example                                          |
+|---------------------|---------------------------------------------------------------------------|----------|---------|--------------------------------------------------|
+| `NOVA_API`         | The base URL or hostname of the NOVA server instance.                     | Yes      | None    | `https://nova.example.com` or `http://172.0.0.1` |
+| `NOVA_USERNAME`     | The username credential used for authentication with the NOVA service.    | Yes*     | None    | `my_username`                                    |
+| `NOVA_PASSWORD`     | The password credential used in conjunction with `NOVA_USERNAME`.         | Yes*     | None    | `my_password`                                    |
+| `NOVA_ACCESS_TOKEN` | A pre-obtained access token for NOVA if using token-based authentication. | Yes*     | None    | `eyJhbGciOi...`                                  |
 
 > **Note on Authentication:**
 > You can authenticate with NOVA using either **username/password** credentials or a pre-obtained **access token**, depending on your setup and security model:
