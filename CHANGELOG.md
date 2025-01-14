@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.9.1 (2025-01-14)
+
+### Chores
+
+* chore: updated readme (#24)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`fe17057`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fe170573ecfabb06df46fae11ebf7905af7f9b0e))
+
+
 ## v0.9.0 (2025-01-13)
 
 ### Chores
