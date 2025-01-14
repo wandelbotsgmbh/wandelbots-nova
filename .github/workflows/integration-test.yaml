@@ -1,25 +1,19 @@
-name: Test Integration
+name: Integration Test
 
 on:
-  workflow_dispatch:
-#  push:
-#    tags:
-#      - '*-*'  # Matches tags containing a hyphen
-#  pull_request:
-#    branches:
-#      - main
-#      - feat/*
-#      - fix/*
-#      - chore/*
+  push:
+    branches:
+      - main
 
 jobs:
-  test_integration:
+  integration-test:
     runs-on: ubuntu-latest
     env:
-      CI_JOB_TIMEOUT: 3600  # Set your desired job timeout in seconds
+      API_VERSION: "v1"
+      API_URL: ""
 
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -27,59 +21,90 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install required system packages
+      - name: Retrieve Access Token
         run: |
-          sudo apt-get update
-          sudo apt-get install -y yq jq curl
+          echo "## Updating the refresh token..."
+          PORTAL_STG_ACCESS_TOKEN=$(curl --request POST \
+            --url "${{ env.PORTAL_REFRESH_URL }}" \
+            --header 'content-type: application/x-www-form-urlencoded' \
+            --data grant_type=refresh_token \
+            --data "client_id=${{ secrets.PORTAL_STG_REFRESH_CLIENT_ID }}" \
+            --data "refresh_token=${{ secrets.PORTAL_STG_REFRESH_TOKEN }}" | jq -r .access_token)
 
-      - name: Install Poetry
-        run: pip install poetry
+          echo "Access token = ${PORTAL_STG_ACCESS_TOKEN}"
 
-      - name: Create Kubernetes instance
+          # Expose the new token to subsequent steps
+          echo "PORTAL_STG_ACCESS_TOKEN=${PORTAL_STG_ACCESS_TOKEN}" >> $GITHUB_ENV
+
+      - name: Create Instance
         run: |
-          JOB_TIMEOUT_MINUTES=$(( ${{ env.CI_JOB_TIMEOUT }} / 60 ))
-          JOB_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          curl --fail -s -X 'GET' "https://k8s.wabo.run/instance?duration=${JOB_TIMEOUT_MINUTES}&comment=${JOB_URL}&install_service_manager=true" > k8s.response
+          echo "Create instance with Service Manager $PROJECT_VERSION"
+          response=$(curl -X "POST" "https://io.stg.wandelbots.io/instance" \
+            -H "accept: application/json" \
+            -H "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"sandbox_name\": \"svcmgr-${{ github.run_id }}\"}")
 
-      - name: Extract Kubernetes configuration
+          echo "Response = ${response}"
+          PORTAL_STG_HOST=$(echo "$response" | jq -r .host)
+          PORTAL_STG_INSTANCE_ID=$(echo "$response" | jq -r .instance_id)
+
+          echo "Host = $PORTAL_STG_HOST"
+          echo "Instance ID = $PORTAL_STG_INSTANCE_ID"
+
+          # Write host and instance variables to the GitHub Actions environment
+          echo "PORTAL_STG_HOST=${PORTAL_STG_HOST}" >> $GITHUB_ENV
+          echo "PORTAL_STG_INSTANCE_ID=${PORTAL_STG_INSTANCE_ID}" >> $GITHUB_ENV
+
+      - name: Check Service Availability
         run: |
-          cat k8s.response | jq -r '.kubeconfig' | base64 -d > /tmp/kube.conf
-          echo "KUBECONFIG=/tmp/kube.conf" >> $GITHUB_ENV
-          API_URL="http://$(cat k8s.response | jq -r '.ip')/api/v1"
+          API_URL="https://${{ env.PORTAL_STG_HOST }}/api/${{ env.API_VERSION }}"
+          echo "API URL: ${API_URL}"
           echo "API_URL=${API_URL}" >> $GITHUB_ENV
 
-      - name: Install Python dependencies
-        run: |
-          poetry lock --no-update
-          poetry install --no-root --only dev
+          # Wait for the service-manager-backend to become available
+          curl --fail --retry-all-errors --retry 7 --retry-max-time 10 \
+            --header "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}" \
+            "${API_URL}/cells"
 
-      - name: Wait for Service Manager Backend
+      - name: Create and Remove Test Cell
         run: |
-          sleep 10  # Wait a bit for the service to start
-          curl --fail --retry 7 --retry-all-errors --retry-delay 5 "${{ env.API_URL }}/internal/cells"
+          TEST_CELL_NAME="testcell$((RANDOM % 1001))"
+          echo "Testcell name: ${TEST_CELL_NAME}"
 
-      - name: Run Integration Tests
-        env:
-          PYTHONPATH: .
+          # Create cell
+          curl --request POST \
+            --url "${API_URL}/cells?completionTimeout=200" \
+            --header "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}" \
+            --header "Content-Type: application/json" \
+            --data "{ \"name\": \"${TEST_CELL_NAME}\" }"
+
+          # Remove cell to save resources
+          curl --request DELETE \
+            --url "${API_URL}/cells/${TEST_CELL_NAME}" \
+            --header "Accept: application/json" \
+            --header "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}"
+
+      - name: Set up Python environment
         run: |
-          poetry run pytest --api_url=${{ env.API_URL }} -m "integration" tests/integration
+          pip install poetry
+          poetry install
+          touch ./.env
+          echo "NOVA_API=${ env.PORTAL_STG_HOST }" > ./.env
+          echo "CELL_NAME=cell" >> ./.env
+          cat ./.env
 
-      - name: Download Diagnosis Package
+      - name: Test examples
+        run: |
+          echo "Running test examples"
+          PYTHONPATH=. poetry run pytest -v examples/
+
+      # Always run cleanup, whether success or failure
+      - name: Cleanup - Delete Instance
         if: always()
         run: |
-          curl --fail --request GET \
-            --url "${{ env.API_URL }}/internal/system/diagnosis-package/zip" \
-            --header 'Accept: application/zip' -o diagnose-${{ github.run_id }}.zip
-
-      - name: Upload Diagnosis Artifact
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: diagnosis-package
-          path: diagnose-${{ github.run_id }}.zip
-
-      - name: Terminate Kubernetes Instance
-        if: always()
-        run: |
-          INSTANCE_ID=$(cat k8s.response | jq -r '.id')
-          curl --fail -s -X 'PUT' "https://k8s.wabo.run/instance?instance_id=${INSTANCE_ID}&duration=0"
+          echo "Delete instance ${{ env.PORTAL_STG_INSTANCE_ID }}"
+          curl -X 'DELETE' \
+            "https://io.stg.wandelbots.io/instance/${{ env.PORTAL_STG_INSTANCE_ID }}" \
+            -H 'accept: application/json' \
+            -H "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}"
