@@ -47,10 +47,11 @@ class MotionSettings(pydantic.BaseModel):
     class Config:
         frozen = True
 
-    @pydantic.model_validator(mode="after")  # type: ignore
-    def validate_blending_settings(self) -> None:
+    @pydantic.model_validator(mode="after")
+    def validate_blending_settings(self) -> "MotionSettings":
         if self.min_blending_velocity and self.blending:
             raise ValueError("Can't set both min_blending_velocity and blending")
+        return self
 
     def has_blending_settings(self) -> bool:
         return any([self.min_blending_velocity, self.blending])
