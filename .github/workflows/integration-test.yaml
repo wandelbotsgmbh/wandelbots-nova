@@ -25,7 +25,7 @@ jobs:
         run: |
           echo "## Updating the refresh token..."
           PORTAL_STG_ACCESS_TOKEN=$(curl --request POST \
-            --url "${{ env.PORTAL_REFRESH_URL }}" \
+            --url "${{ secrets.PORTAL_STG_REFRESH_URL }}" \
             --header 'content-type: application/x-www-form-urlencoded' \
             --data grant_type=refresh_token \
             --data "client_id=${{ secrets.PORTAL_STG_REFRESH_CLIENT_ID }}" \
