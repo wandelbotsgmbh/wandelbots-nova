@@ -3,39 +3,54 @@ import wandelbots_api_client as wb
 
 
 class MotionSettings(pydantic.BaseModel):
+    """
+    Settings for an action. This is closely related to the `MotionCommand` in the API.
+    See planTrajectory.motion_commands for more information.
 
-    # Motion setting is immutable, if you need to change it, copy it and then update the new object
-    class Config:
-        frozen: True
+    Motion settings are immutable; if you need to change a setting, create a copy and update the new object.
 
-    # blending settings
+    Attributes:
+        min_blending_velocity:
+            A minimum velocity for blending, in percent. Cannot be used if `blending` is set.
+
+        blending:
+            Defines the position zone radius.
+
+        joint_velocities:
+            Maximum joint velocities (corresponds to `max_joint_velocity` in the API).
+
+        joint_accelerations:
+            Maximum joint accelerations (corresponds to `max_joint_acceleration` in the API).
+
+        velocity:
+            Maximum TCP velocity (corresponds to `max_tcp_velocity` in the API).
+
+        acceleration:
+            Maximum TCP acceleration (corresponds to `max_tcp_acceleration` in the API).
+
+        orientation_velocity:
+            Maximum TCP orientation velocity (corresponds to `max_tcp_orientation_velocity` in the API).
+
+        orientation_acceleration:
+            Maximum TCP orientation acceleration (corresponds to `max_tcp_orientation_acceleration` in the API).
+    """
+
     min_blending_velocity: int | None = pydantic.Field(default=None)
-
-    # max_position_zone_radius in the API, from the docs it looks like this is old 'blending' setting
     blending: float | None = pydantic.Field(default=None)
-
-    # limits override
-    # max_joint_velocity in the API
     joint_velocities: tuple[float, ...] | None = pydantic.Field(default=None)
-
-    # max_joint_acceleration in the API
     joint_accelerations: tuple[float, ...] | None = pydantic.Field(default=None)
-
-    # max_tcp_velocity in the API
     velocity: float | None = pydantic.Field(default=None)
-
-    # max_tcp_acceleration in the API
     acceleration: float | None = pydantic.Field(default=None)
-
-    # max_tcp_orientation_velocity in the API
     orientation_velocity: float | None = pydantic.Field(default=None)
-
-    # max_tcp_orientation_acceleration in the API
     orientation_acceleration: float | None = pydantic.Field(default=None)
 
-    @classmethod
-    def field_to_varname(cls, field):
-        return f"__ms_{field}"
+    class Config:
+        frozen = True
+
+    @pydantic.model_validator(mode="after")
+    def validate_blending_settings(self) -> None:
+        if self.min_blending_velocity and self.blending:
+            raise ValueError("Can't set both min_blending_velocity and blending")
 
     def has_blending_settings(self) -> bool:
         return any([self.min_blending_velocity, self.blending])
@@ -67,17 +82,12 @@ class MotionSettings(pydantic.BaseModel):
         )
 
     def as_blending_setting(self) -> wb.models.MotionCommandBlending:
-        # don't allow setting both, API only accepts one at a time
-        if self.min_blending_velocity and self.blending:
-            raise ValueError("Can't set both min_blending_velocity and blending")
-
         if self.blending:
             return wb.models.MotionCommandBlending(
                 wb.models.BlendingPosition(
                     position_zone_radius=self.blending, blending_name="BlendingPosition"
                 )
             )
-
         return wb.models.MotionCommandBlending(
             wb.models.BlendingAuto(
                 min_velocity_in_percent=self.min_blending_velocity, blending_name="BlendingAuto"
