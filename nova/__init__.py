@@ -1,11 +1,10 @@
-from nova.core.nova import Nova, Cell
-from nova.core.motion_group import MotionGroup
+from nova import actions, api, types
 from nova.core.controller import Controller
-from nova import types
-from nova import actions
+from nova.core.motion_group import MotionGroup
 from nova.core.movement_controller import speed_up as speed_up_movement_controller
 from nova import api
 from nova.motion_settings import MotionSettings
+from nova.core.nova import Cell, Nova
 
 __all__ = [
     "Nova",

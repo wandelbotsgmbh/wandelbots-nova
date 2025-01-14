@@ -1,7 +1,8 @@
-from nova import Nova
-from nova.actions import ptp, jnt, MotionSettings
-from nova.types import Pose
 import asyncio
+
+from nova import Nova
+from nova.actions import jnt, ptp
+from nova.types import Pose
 
 """
 Example: Perform relative movements with a robot.

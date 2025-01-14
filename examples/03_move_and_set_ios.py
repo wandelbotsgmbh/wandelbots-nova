@@ -1,10 +1,10 @@
-from nova import Nova
-from nova.types import Pose
-
-# TODO: update I/O interaction interface
-from nova.actions import WriteAction, ptp, jnt
 import asyncio
 
+from nova import Nova
+
+# TODO: update I/O interaction interface
+from nova.actions import WriteAction, jnt, ptp
+from nova.types import Pose
 
 """
 Example: Move the robot and set I/Os on the path.

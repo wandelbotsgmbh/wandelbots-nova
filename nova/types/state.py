@@ -1,4 +1,5 @@
 import pydantic
+
 from nova.types.pose import Pose
 
 

@@ -1,6 +1,68 @@
 # CHANGELOG
 
 
+## v0.9.0 (2025-01-13)
+
+### Chores
+
+* chore: Add pre-commit hook to sort imports
+
+...with ruff. ([`1a190f5`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1a190f5ed87d05082f883d081645017af3ede72f))
+
+* chore: Add yamllint to pre-commit
+
+CI reported yaml issues when I changed the `.pre-commit-config.yaml` in
+the last commit. Thus, I decided to also add yamllint as a check for
+pre-commit, so next time I get quicker feedback.
+
+See:
+https://yamllint.readthedocs.io/en/stable/integration.html ([`aa552fe`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/aa552fe121f81d45674be13903f61b54c782010d))
+
+* chore: Add mypy checks to pre-commit
+
+Not thaaat fast, but quicker than CI.
+
+Because pre-commit runs mypy from an isolated virtualenv (without our
+dependencies), a run to `pre-commit run --all` made this mypy complain
+about unused ignores in 2 files. These are false positives. Since I
+don't want to maintain our all dependencies for pre-commit's mypy as
+well, I made the rules for mypy a bit less strict, namely via
+`--no-warn-unused-ignores`. This effectively means that mypy via
+pre-commit checks less sophisticated than `poetry run mypy .` but better
+not checking at all.
+
+See:
+https://github.com/python/mypy?tab=readme-ov-file#integrations
+https://github.com/pre-commit/mirrors-mypy?tab=readme-ov-file ([`6dc3601`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6dc36015d76a85397640dfc136e33b9a043ecfed))
+
+* chore: run isort across the project
+
+Namely:
+
+    poetry run isort --profile=black .
+
+What also works is ruff:
+
+    poetry run ruff check --select I --fix
+
+To get that out of the way when autoformatting the files I will work on. ([`a4a0a31`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a4a0a31c3a159cf39926182f649b41718f095508))
+
+### Features
+
+* feat: Extend `Vector3d`
+
+Give it capabilities that formerly was split between `Orientation` and
+`Position` types. We decided to consolidate those into Vector3d because,
+technically, all of them are just 3-vectors. The semantic
+differentiation may be nice on paper but turned out to be unnecessarily
+complex and all-over-the-place. Instead, have one powerful vector3d type
+for all of them.
+
+Also allow for some new, common functions like negation and substractions.
+
+Don't add this geometricalgebra stuff and related to it, though. ([`59e813c`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/59e813c71ce191f67c266e8887dbffeebf819d62))
+
+
 ## v0.8.0 (2025-01-09)
 
 ### Features

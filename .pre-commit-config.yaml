@@ -7,9 +7,25 @@ repos:
       - id: ruff
       # Run the formatter.
       - id: ruff-format
+      # Run the import sorter.
+      - id: ruff
+        name: ruff-import-sorting
+        args: [--select, I, --fix]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
       - id: check-json
         files: \.json$
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: 'v1.14.1'
+    hooks:
+      - id: mypy
+        args: [--no-warn-unused-ignores]
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        entry: yamllint
+        language: python
+        types: [file, yaml]

@@ -1,11 +1,11 @@
 from typing import Iterable, Sized
 
-from nova.types.vector3d import Vector3d
 import numpy as np
 import pydantic
 import wandelbots_api_client as wb
-
 from scipy.spatial.transform import Rotation
+
+from nova.types.vector3d import Vector3d
 
 
 def _parse_args(*args):
