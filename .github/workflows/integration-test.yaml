@@ -63,7 +63,8 @@ jobs:
           echo "API_URL=${API_URL}" >> $GITHUB_ENV
 
           # Wait for the service-manager-backend to become available
-          curl --fail --retry-all-errors --retry 7 --retry-max-time 10 \
+          # TODO: Add or trust the self-signed certificate (long-term secure fix)
+          curl --insecure --location --fail --retry-all-errors --retry 7 --retry-max-time 10 \
             --header "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}" \
             "${API_URL}/cells"
 
