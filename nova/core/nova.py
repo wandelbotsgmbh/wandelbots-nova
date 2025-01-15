@@ -32,6 +32,15 @@ class Nova:
     def cell(self, cell_id: str = config("CELL_NAME", default="cell")) -> "Cell":
         return Cell(self._api_client, cell_id)
 
+    async def close(self):
+        return await self._api_client.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
 
 class Cell:
     def __init__(self, api_gateway: ApiGateway, cell_id: str):
