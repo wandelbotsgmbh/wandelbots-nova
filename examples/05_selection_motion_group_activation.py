@@ -59,6 +59,8 @@ async def main():
     async with mg_0, mg_1:
         await asyncio.gather(move_robot(mg_0, tcp), move_robot(mg_1, tcp))
 
+    await nova.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

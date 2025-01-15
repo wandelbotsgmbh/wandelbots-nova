@@ -29,8 +29,8 @@ async def main():
     cell = nova.cell()
     ur = await cell.controller("ur")
     kuka = await cell.controller("kuka")
-
     await asyncio.gather(move_robot(ur), move_robot(kuka))
+    await nova.close()
 
 
 if __name__ == "__main__":

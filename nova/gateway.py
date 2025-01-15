@@ -114,4 +114,4 @@ class ApiGateway:
         )
 
     async def close(self):
-        await self._api_client.close()
+        return await self._api_client.close()
