@@ -94,7 +94,7 @@ jobs:
         run: |
           echo "Running test examples"
           touch ./.env
-          echo "NOVA_API=${{ env.PORTAL_STG_HOST }}" >> ./.env
+          echo "NOVA_API=https://${{ env.PORTAL_STG_HOST }}" >> ./.env
           echo "NOVA_USERNAME=${{ secrets.NOVA_USERNAME }}" >> ./.env
           echo "NOVA_PASSWORD=${{ secrets.NOVA_PASSWORD }}" >> ./.env
           echo "CELL_NAME=cell" >> ./.env
