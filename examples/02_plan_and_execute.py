@@ -1,6 +1,6 @@
 import asyncio
 
-from nova import Nova
+from nova import Nova, MotionSettings
 from nova.actions import jnt, ptp
 from nova.types import Pose
 
@@ -39,6 +39,11 @@ async def main():
             ptp(target_pose @ Pose((0, 100, 0, 0, 0, 0))),
             jnt(home_joints),
         ]
+
+        # you can update the settings of the action
+        for action in actions:
+            action.settings = MotionSettings(velocity=200)
+
 
         joint_trajectory = await motion_group.plan(actions, tcp)
         await motion_group.execute(joint_trajectory, tcp, actions=actions)
