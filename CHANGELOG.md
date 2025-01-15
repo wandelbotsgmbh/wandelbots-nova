@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.10.1 (2025-01-15)
+
+### Fixes
+
+* fix(RPS-1086): add option to close the nova object (#27)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`e30eabc`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e30eabc9fb35e07e9def4fc52e29b1e3aa60ed24))
+
+
 ## v0.10.0 (2025-01-15)
 
 ### Features
