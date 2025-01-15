@@ -13,80 +13,80 @@ class MotionSettings(pydantic.BaseModel):
         min_blending_velocity:
             A minimum velocity for blending, in percent. Cannot be used if `blending` is set.
 
-        blending:
+        position_zone_radius:
             Defines the position zone radius.
 
-        joint_velocities:
-            Maximum joint velocities (corresponds to `max_joint_velocity` in the API).
+        joint_velocity_limits:
+            Maximum joint velocities
 
-        joint_accelerations:
-            Maximum joint accelerations (corresponds to `max_joint_acceleration` in the API).
+        joint_acceleration_limits:
+            Maximum joint accelerations
 
-        velocity:
-            Maximum TCP velocity (corresponds to `max_tcp_velocity` in the API).
+        tcp_velocity_limit:
+            Maximum TCP velocity
 
-        acceleration:
-            Maximum TCP acceleration (corresponds to `max_tcp_acceleration` in the API).
+        tcp_acceleration_limit:
+            Maximum TCP acceleration
 
-        orientation_velocity:
-            Maximum TCP orientation velocity (corresponds to `max_tcp_orientation_velocity` in the API).
+        tcp_orientation_velocity_limit:
+            Maximum TCP orientation velocity
 
-        orientation_acceleration:
-            Maximum TCP orientation acceleration (corresponds to `max_tcp_orientation_acceleration` in the API).
+        tcp_orientation_acceleration_limit:
+            Maximum TCP orientation acceleration
     """
 
     min_blending_velocity: int | None = pydantic.Field(default=None)
-    blending: float | None = pydantic.Field(default=None)
-    joint_velocities: tuple[float, ...] | None = pydantic.Field(default=None)
-    joint_accelerations: tuple[float, ...] | None = pydantic.Field(default=None)
-    velocity: float | None = pydantic.Field(default=None)
-    acceleration: float | None = pydantic.Field(default=None)
-    orientation_velocity: float | None = pydantic.Field(default=None)
-    orientation_acceleration: float | None = pydantic.Field(default=None)
+    position_zone_radius: float | None = pydantic.Field(default=None)
+    joint_velocity_limits: tuple[float, ...] | None = pydantic.Field(default=None)
+    joint_acceleration_limits: tuple[float, ...] | None = pydantic.Field(default=None)
+    tcp_velocity_limit: float | None = pydantic.Field(default=None)
+    tcp_acceleration_limit: float | None = pydantic.Field(default=None)
+    tcp_orientation_velocity_limit: float | None = pydantic.Field(default=None)
+    tcp_orientation_acceleration_limit: float | None = pydantic.Field(default=None)
 
     class Config:
         frozen = True
 
     @pydantic.model_validator(mode="after")
     def validate_blending_settings(self) -> "MotionSettings":
-        if self.min_blending_velocity and self.blending:
+        if self.min_blending_velocity and self.position_zone_radius:
             raise ValueError("Can't set both min_blending_velocity and blending")
         return self
 
     def has_blending_settings(self) -> bool:
-        return any([self.min_blending_velocity, self.blending])
+        return any([self.min_blending_velocity, self.position_zone_radius])
 
     def has_limits_override(self) -> bool:
         return any(
             [
-                self.velocity,
-                self.acceleration,
-                self.orientation_velocity,
-                self.orientation_acceleration,
-                self.joint_velocities,
-                self.joint_accelerations,
+                self.tcp_velocity_limit,
+                self.tcp_acceleration_limit,
+                self.tcp_orientation_velocity_limit,
+                self.tcp_orientation_acceleration_limit,
+                self.joint_velocity_limits,
+                self.joint_acceleration_limits,
             ]
         )
 
     def as_limits_settings(self) -> wb.models.LimitsOverride:
         return wb.models.LimitsOverride(
-            joint_velocity_limits=wb.models.Joints(joints=self.joint_velocities)  # type: ignore
-            if self.joint_velocities
+            joint_velocity_limits=wb.models.Joints(joints=self.joint_velocity_limits)  # type: ignore
+            if self.joint_velocity_limits
             else None,
-            joint_acceleration_limits=wb.models.Joints(joints=self.joint_accelerations)  # type: ignore
-            if self.joint_accelerations
+            joint_acceleration_limits=wb.models.Joints(joints=self.joint_acceleration_limits)  # type: ignore
+            if self.joint_acceleration_limits
             else None,
-            tcp_velocity_limit=self.velocity,
-            tcp_acceleration_limit=self.acceleration,
-            tcp_orientation_velocity_limit=self.orientation_velocity,
-            tcp_orientation_acceleration_limit=self.orientation_acceleration,
+            tcp_velocity_limit=self.tcp_velocity_limit,
+            tcp_acceleration_limit=self.tcp_acceleration_limit,
+            tcp_orientation_velocity_limit=self.tcp_orientation_velocity_limit,
+            tcp_orientation_acceleration_limit=self.tcp_orientation_acceleration_limit,
         )
 
     def as_blending_setting(self) -> wb.models.MotionCommandBlending:
-        if self.blending:
+        if self.position_zone_radius:
             return wb.models.MotionCommandBlending(
                 wb.models.BlendingPosition(
-                    position_zone_radius=self.blending, blending_name="BlendingPosition"
+                    position_zone_radius=self.position_zone_radius, blending_name="BlendingPosition"
                 )
             )
         return wb.models.MotionCommandBlending(

@@ -100,7 +100,7 @@ class Linear(Motion):
     """A linear motion
 
     Examples:
-    >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=10))
+    >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10))
     Linear(type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, blending=None, joint_velocities=None, joint_accelerations=None, velocity=10.0, acceleration=None, orientation_velocity=None, orientation_acceleration=None))
 
     """
@@ -112,7 +112,7 @@ class Linear(Motion):
         """Serialize the model to the API model
 
         Examples:
-        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=10))._to_api_model()
+        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10))._to_api_model()
         PathLine(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathLine')
         """
         return wb.models.PathLine(
@@ -134,7 +134,7 @@ def lin(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) 
     Returns: the linear motion
 
     Examples:
-    >>> ms = MotionSettings(velocity=10)
+    >>> ms = MotionSettings(tcp_velocity_limit=10)
     >>> assert lin((1, 2, 3, 4, 5, 6), settings=ms) == Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
     >>> assert lin((1, 2, 3)) == lin((1, 2, 3, 0, 0, 0))
 
@@ -147,7 +147,7 @@ class PTP(Motion):
     """A point-to-point motion
 
     Examples:
-    >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=30))
+    >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))
     PTP(type='ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, blending=None, joint_velocities=None, joint_accelerations=None, velocity=30.0, acceleration=None, orientation_velocity=None, orientation_acceleration=None))
 
     """
@@ -158,7 +158,7 @@ class PTP(Motion):
         """Serialize the model to the API model
 
         Examples:
-        >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=30))._to_api_model()
+        >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))._to_api_model()
         PathCartesianPTP(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCartesianPTP')
         """
         if not isinstance(self.target, Pose):
@@ -183,7 +183,7 @@ def ptp(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) 
     Returns: the point-to-point motion
 
     Examples:
-    >>> ms = MotionSettings(acceleration=10)
+    >>> ms = MotionSettings(tcp_acceleration_limit=10)
     >>> assert ptp((1, 2, 3, 4, 5, 6), settings=ms) == PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
     >>> assert ptp((1, 2, 3)) == ptp((1, 2, 3, 0, 0, 0))
 
@@ -210,7 +210,7 @@ class Circular(Motion):
         """Serialize the model to a dictionary
 
         Examples:
-        >>> Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((10, 20, 30, 40, 50, 60)), settings=MotionSettings(velocity=30))._to_api_model()
+        >>> Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((10, 20, 30, 40, 50, 60)), settings=MotionSettings(tcp_velocity_limit=30))._to_api_model()
         PathCircle(via_pose=Pose2(position=[10, 20, 30], orientation=[40, 50, 60]), target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCircle')
         """
         if not isinstance(self.target, Pose):
@@ -244,7 +244,7 @@ def cir(
     Returns: the circular motion
 
     Examples:
-    >>> ms = MotionSettings(acceleration=10)
+    >>> ms = MotionSettings(tcp_acceleration_limit=10)
     >>> assert cir((1, 2, 3, 4, 5, 6), (7, 8, 9, 10, 11, 12), settings=ms) == Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((7, 8, 9, 10, 11, 12)), settings=ms)
     >>> assert cir((1, 2, 3), (4, 5, 6)) == cir((1, 2, 3, 0, 0, 0), (4, 5, 6, 0, 0, 0))
 
@@ -258,7 +258,7 @@ class JointPTP(Motion):
     """A joint PTP motion
 
     Examples:
-    >>> JointPTP(target=(1, 2, 3, 4, 5, 6), settings=MotionSettings(velocity=30))
+    >>> JointPTP(target=(1, 2, 3, 4, 5, 6), settings=MotionSettings(tcp_velocity_limit=30))
     JointPTP(type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(min_blending_velocity=None, blending=None, joint_velocities=None, joint_accelerations=None, velocity=30.0, acceleration=None, orientation_velocity=None, orientation_acceleration=None))
 
     """
@@ -269,7 +269,7 @@ class JointPTP(Motion):
         """Serialize the model to the API model
 
         Examples:
-        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(velocity=30))._to_api_model()
+        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(tcp_velocity_limit=30))._to_api_model()
         PathJointPTP(target_joint_position=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], path_definition_name='PathJointPTP')
         """
         if not isinstance(self.target, tuple):
@@ -293,7 +293,7 @@ def jnt(target: tuple[float, ...], settings: MotionSettings = MotionSettings()) 
     Returns: the joint PTP motion
 
     Examples:
-    >>> ms = MotionSettings(acceleration=10)
+    >>> ms = MotionSettings(tcp_acceleration_limit=10)
     >>> assert jnt((1, 2, 3, 4, 5, 6), settings=ms) == JointPTP(target=(1, 2, 3, 4, 5, 6), settings=ms)
 
     """
@@ -318,7 +318,7 @@ class Spline(Motion):
         """Serialize the model to a dictionary
 
         Examples:
-        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(velocity=30)).model_dump()
+        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(tcp_velocity_limit=30)).model_dump()
         {'target_joint_position': [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], 'path_definition_name': 'PathJointPTP'}
         """
         raise NotImplementedError("Spline motion is not yet implemented")
@@ -341,7 +341,7 @@ def spl(
     Returns: the spline motion
 
     Examples:
-    >>> ms = MotionSettings(acceleration=10)
+    >>> ms = MotionSettings(tcp_acceleration_limit=10)
     >>> assert spl((1, 2, 3, 4, 5, 6), settings=ms) == Spline(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
     >>> assert spl((1, 2, 3)) == spl((1, 2, 3, 0, 0, 0))
 
