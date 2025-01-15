@@ -89,16 +89,16 @@ jobs:
         run: |
           pip install poetry
           poetry install
-          touch ./.env
-          echo "NOVA_API=${{ env.PORTAL_STG_HOST }}" > $GITHUB_ENV
-          echo "NOVA_USERNAME=${{ secrets.NOVA_USERNAME }}" > $GITHUB_ENV
-          echo "NOVA_PASSWORD=${{ secrets.NOVA_PASSWORD }}" > $GITHUB_ENV
-          echo "CELL_NAME=cell" >> $GITHUB_ENV
-          echo $GITHUB_ENV
 
       - name: Test examples
         run: |
           echo "Running test examples"
+          touch ./.env
+          echo "NOVA_API=${{ env.PORTAL_STG_HOST }}" > ./.env
+          echo "NOVA_USERNAME=${{ secrets.NOVA_USERNAME }}" > ./.env
+          echo "NOVA_PASSWORD=${{ secrets.NOVA_PASSWORD }}" > ./.env
+          echo "CELL_NAME=cell" >> ./.env
+          echo | cat ./.env
           PYTHONPATH=. poetry run python examples/01_basic.py
 
       # Always run cleanup, whether success or failure
