@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.11.0 (2025-01-16)
+
+### Features
+
+* feat: add support for motion setting (#23) ([`dbbe8a6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/dbbe8a637608b5ef2e649739c353b63a84169ebc))
+
+
 ## v0.10.1 (2025-01-15)
 
 ### Fixes
