@@ -1,6 +1,7 @@
 import asyncio
 
 from nova import Nova
+from nova.api import models
 
 """
 Example: Getting the current state of a robot.
@@ -13,7 +14,22 @@ Prerequisites:
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
+
+        # TODO: add a controller
+        await nova._api_client.controller_api.add_robot_controller(
+            cell="cell",
+            robot_controller=models.RobotController(
+                name="ur",
+                configuration=models.RobotControllerConfiguration(
+                    models.VirtualController(
+                        type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                        manufacturer=models.Manufacturer.UNIVERSALROBOTS,
+                    )
+                ),
+            ),
+        )
         controllers = await cell.controllers()
+        print(controllers)
         controller = controllers[0]
 
         async with controller:
