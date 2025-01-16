@@ -112,6 +112,9 @@ class ApiGateway:
         self.store_collision_components_api = intercept(
             wb.StoreCollisionComponentsApi(api_client=self._api_client)
         )
+        self.store_collision_scenes_api = intercept(
+            wb.StoreCollisionScenesApi(api_client=self._api_client)
+        )
 
     async def close(self):
         return await self._api_client.close()
