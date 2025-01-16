@@ -38,25 +38,6 @@ jobs:
           echo "PORTAL_STG_ACCESS_TOKEN=$PORTAL_STG_ACCESS_TOKEN" >> $GITHUB_ENV
           echo $GITHUB_ENV
 
-      - name: Create and remove test cell
-        run: |
-          TEST_CELL_NAME="testcell$((RANDOM % 1001))"
-          TEST_CELL_NAME="cell"
-          echo "Testcell name: ${TEST_CELL_NAME}"
-
-          # Create cell
-          curl --request POST \
-            --url "${API_URL}/cells?completionTimeout=200" \
-            --header "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}" \
-            --header "Content-Type: application/json" \
-            --data "{ \"name\": \"${TEST_CELL_NAME}\" }"
-
-          # Remove cell to save resources
-          # curl --request DELETE \
-          #   --url "${API_URL}/cells/${TEST_CELL_NAME}" \
-          #   --header "Accept: application/json" \
-          #   --header "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}"
-
       - name: Set up Python environment
         run: |
           pip install poetry
