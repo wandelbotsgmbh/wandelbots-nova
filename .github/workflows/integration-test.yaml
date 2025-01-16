@@ -109,7 +109,7 @@ jobs:
         if: always()
         run: |
           echo "Delete instance ${{ env.PORTAL_STG_INSTANCE_ID }}"
-          #curl -X 'DELETE' \
-          #  "https://io.stg.wandelbots.io/instance/${{ env.PORTAL_STG_INSTANCE_ID }}" \
-          #  -H 'accept: application/json' \
-          #  -H "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}"
+          curl -X 'DELETE' \
+            "https://io.stg.wandelbots.io/instance/${{ env.PORTAL_STG_INSTANCE_ID }}" \
+            -H 'accept: application/json' \
+            -H "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}"
