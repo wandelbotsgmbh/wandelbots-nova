@@ -109,5 +109,3 @@ export PORTAL_STG_ACCESS_TOKEN
 export PORTAL_STG_HOST
 export PORTAL_STG_INSTANCE_ID
 echo "All done."
-
-# End of script
