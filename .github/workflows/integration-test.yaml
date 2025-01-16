@@ -62,8 +62,6 @@ jobs:
           echo "API URL: ${API_URL}"
           echo "API_URL=${API_URL}" >> $GITHUB_ENV
 
-          echo "Access token = ${{ env.PORTAL_STG_ACCESS_TOKEN }}"
-
           # Wait for the service-manager-backend to become available
           # TODO: Add or trust the self-signed certificate (long-term secure fix)
           curl --fail --retry-all-errors --retry 10 --retry-max-time 20 \
@@ -99,8 +97,9 @@ jobs:
           echo "Running test examples"
           touch ./.env
           echo "NOVA_API=https://${{ env.PORTAL_STG_HOST }}" >> ./.env
-          echo "NOVA_USERNAME=${{ secrets.NOVA_USERNAME }}" >> ./.env
-          echo "NOVA_PASSWORD=${{ secrets.NOVA_PASSWORD }}" >> ./.env
+          echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_STG_ACCESS_TOKEN }}" >> ./.env
+          # echo "NOVA_USERNAME=${{ secrets.NOVA_USERNAME }}" >> ./.env
+          # echo "NOVA_PASSWORD=${{ secrets.NOVA_PASSWORD }}" >> ./.env
           echo "CELL_NAME=cell" >> ./.env
           echo | cat ./.env
           PYTHONPATH=. poetry run python examples/01_basic.py
