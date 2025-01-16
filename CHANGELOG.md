@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.12.0 (2025-01-16)
+
+### Features
+
+* feat: expose store collision scene api (#28) ([`d92b4dc`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d92b4dcda1e56246230d2ad99fb502cb3da755f2))
+
+
 ## v0.11.0 (2025-01-16)
 
 ### Features
