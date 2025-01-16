@@ -108,4 +108,4 @@ echo "Service is up and reachable."
 export PORTAL_STG_ACCESS_TOKEN
 export PORTAL_STG_HOST
 export PORTAL_STG_INSTANCE_ID
-echo "All done."
+echo "NOVA instance created successfully"

@@ -33,11 +33,10 @@ jobs:
           INSECURE_CURL: "true"   # If you need to skip SSL verification
         run: |
           source ./scripts/create_nova_instance.sh
-          echo "HOST = $PORTAL_STG_HOST"
+          echo $PORTAL_STG_HOST
           echo "PORTAL_STG_HOST=$PORTAL_STG_HOST" >> $GITHUB_ENV
           echo "PORTAL_STG_INSTANCE_ID=$PORTAL_STG_INSTANCE_ID" >> $GITHUB_ENV
           echo "PORTAL_STG_ACCESS_TOKEN=$PORTAL_STG_ACCESS_TOKEN" >> $GITHUB_ENV
-          echo $GITHUB_ENV
 
       - name: Set up Python environment
         run: |
