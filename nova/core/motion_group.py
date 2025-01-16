@@ -78,6 +78,7 @@ class MotionGroup:
             plan_trajectory_response.response.actual_instance,
             wb.models.PlanTrajectoryFailedResponse,
         ):
+            # TODO: handle partially executable path
             raise PlanTrajectoryFailed(plan_trajectory_response.response.actual_instance)
         return plan_trajectory_response.response.actual_instance
 

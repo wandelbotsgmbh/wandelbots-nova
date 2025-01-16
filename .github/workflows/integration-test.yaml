@@ -21,52 +21,22 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Retrieve access token
+      - name: Create NOVA instance and check connection
+        env:
+          PORTAL_STG_REFRESH_URL: ${{ secrets.PORTAL_STG_REFRESH_URL }}
+          PORTAL_STG_REFRESH_CLIENT_ID: ${{ secrets.PORTAL_STG_REFRESH_CLIENT_ID }}
+          PORTAL_STG_REFRESH_TOKEN: ${{ secrets.PORTAL_STG_REFRESH_TOKEN }}
+          API_VERSION: "v1"
+          # Optional
+          PROJECT_VERSION: "1.0.0"
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          INSECURE_CURL: "true"   # If you need to skip SSL verification
         run: |
-          echo "## Updating the refresh token..."
-          PORTAL_STG_ACCESS_TOKEN=$(curl --request POST \
-            --url "${{ secrets.PORTAL_STG_REFRESH_URL }}" \
-            --header 'content-type: application/x-www-form-urlencoded' \
-            --data grant_type=refresh_token \
-            --data "client_id=${{ secrets.PORTAL_STG_REFRESH_CLIENT_ID }}" \
-            --data "refresh_token=${{ secrets.PORTAL_STG_REFRESH_TOKEN }}" | jq -r .access_token)
-
-          echo "Access token = ${PORTAL_STG_ACCESS_TOKEN}"
-
-          # Expose the new token to subsequent steps
-          echo "PORTAL_STG_ACCESS_TOKEN=${PORTAL_STG_ACCESS_TOKEN}" >> $GITHUB_ENV
-
-      - name: Create instance
-        run: |
-          echo "Create instance with Service Manager $PROJECT_VERSION"
-          response=$(curl -X "POST" "https://io.stg.wandelbots.io/instance" \
-            -H "accept: application/json" \
-            -H "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"sandbox_name\": \"svcmgr-${{ github.run_id }}\"}")
-
-          echo "Response = ${response}"
-          PORTAL_STG_HOST=$(echo "$response" | jq -r .host)
-          PORTAL_STG_INSTANCE_ID=$(echo "$response" | jq -r .instance_id)
-
-          echo "Host = $PORTAL_STG_HOST"
-          echo "Instance ID = $PORTAL_STG_INSTANCE_ID"
-
-          # Write host and instance variables to the GitHub Actions environment
-          echo "PORTAL_STG_HOST=${PORTAL_STG_HOST}" >> $GITHUB_ENV
-          echo "PORTAL_STG_INSTANCE_ID=${PORTAL_STG_INSTANCE_ID}" >> $GITHUB_ENV
-
-      - name: Check service availability
-        run: |
-          API_URL="https://${{ env.PORTAL_STG_HOST }}/api/${{ env.API_VERSION }}"
-          echo "API URL: ${API_URL}"
-          echo "API_URL=${API_URL}" >> $GITHUB_ENV
-
-          # Wait for the service-manager-backend to become available
-          # TODO: Add or trust the self-signed certificate (long-term secure fix)
-          curl --insecure --location --fail --retry-all-errors --retry 7 --retry-max-time 200 \
-            --header "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}" \
-            "${API_URL}/cells"
+          ./scripts/create_nova_instance.sh
+          echo "PORTAL_STG_HOST=$PORTAL_STG_HOST" >> $GITHUB_ENV
+          echo "PORTAL_STG_INSTANCE_ID=$PORTAL_STG_INSTANCE_ID" >> $GITHUB_ENV
+          echo "PORTAL_STG_ACCESS_TOKEN=$PORTAL_STG_ACCESS_TOKEN" >> $GITHUB_ENV
+          echo $GITHUB_ENV
 
       - name: Create and remove test cell
         run: |
@@ -105,11 +75,10 @@ jobs:
           PYTHONPATH=. poetry run python examples/01_basic.py
 
       # Always run cleanup, whether success or failure
-      - name: Cleanup - delete instance
+      - name: Cleanup - Delete instance
         if: always()
         run: |
-          echo "Delete instance ${{ env.PORTAL_STG_INSTANCE_ID }}"
-          #curl -X 'DELETE' \
-          #  "https://io.stg.wandelbots.io/instance/${{ env.PORTAL_STG_INSTANCE_ID }}" \
-          #  -H 'accept: application/json' \
-          #  -H "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}"
+          ./scripts/delete_nova_instance.sh
+        env:
+          PORTAL_STG_INSTANCE_ID: ${{ env.PORTAL_STG_INSTANCE_ID }}
+          PORTAL_STG_ACCESS_TOKEN: ${{ env.PORTAL_STG_ACCESS_TOKEN }}

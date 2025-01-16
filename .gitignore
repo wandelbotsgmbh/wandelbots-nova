@@ -1,3 +1,4 @@
+devportal.env
 .devcontainer/devcontainer.env
 # from Makefile generated
 .formatted
