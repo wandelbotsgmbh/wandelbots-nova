@@ -66,6 +66,7 @@ class Cell:
                 ),
             ),
         )
+        # TODO: the controller needs some time to be available -> wait for it
 
     async def controllers(self) -> list["Controller"]:
         controllers = await self._get_controllers()
