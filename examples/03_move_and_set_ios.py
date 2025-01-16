@@ -32,7 +32,7 @@ async def main():
         target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
         actions = [
             jnt(home_joints),
-            WriteAction(device_id="ur", key="digital_out[0]", value=False),
+            WriteAction(key="digital_out[0]", value=False),
             ptp(target_pose),
             jnt(home_joints),
         ]

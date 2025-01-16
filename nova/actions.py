@@ -3,7 +3,7 @@ from typing import Annotated, Any, AsyncGenerator, Callable, Literal, Union
 
 import pydantic
 import wandelbots_api_client as wb
-
+from nova.motion_settings import MotionSettings
 from nova.types.collision_scene import CollisionScene
 from nova.types.pose import Pose
 
@@ -17,7 +17,6 @@ class Action(pydantic.BaseModel, ABC):
 
 class WriteAction(Action):
     type: Literal["Write"] = "Write"
-    device_id: str
     key: str
     value: Any
 
@@ -48,36 +47,6 @@ class CallAction(Action):
     device_id: str
     key: str
     arguments: list
-
-
-class MotionSettings(pydantic.BaseModel):
-    """Settings to customize motions.
-
-    Attributes:
-        velocity: the cartesian velocity of the TCP on the segment in mm/s
-        acceleration: the cartesian acceleration of the TCP on the segment in mm/s
-        orientation_velocity: the (tcp) orientation velocity on the segment in rad/s
-        orientation_acceleration: the tcp orientation acceleration on the segment in rad/s
-        joint_velocities: the joint velocities on the segment in rad/s
-        joint_accelerations: the joint accelerations on the segment in rad/s
-        blending: the blending radius to connect the previous segment to this one. If blending == 0, blending is
-            disabled. If blending == math.inf, blending is enabled and the radius is automatically determined
-            based on the robot velocity.
-        optimize_approach: define approach axis as DoF and optimize for executable path
-    """
-
-    velocity: float | None = pydantic.Field(default=None, ge=0)
-    acceleration: float | None = pydantic.Field(default=None, ge=0)
-    orientation_velocity: float | None = pydantic.Field(default=None, ge=0)
-    orientation_acceleration: float | None = pydantic.Field(default=None, ge=0)
-    joint_velocities: tuple[float, ...] | None = None
-    joint_accelerations: tuple[float, ...] | None = None
-    blending: float = pydantic.Field(default=0, ge=0)
-    optimize_approach: bool = False
-
-    @classmethod
-    def field_to_varname(cls, field):
-        return f"__ms_{field}"
 
 
 MS = MotionSettings
@@ -131,8 +100,9 @@ class Linear(Motion):
     """A linear motion
 
     Examples:
-    >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=10))
-    Linear(type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(velocity=10.0, acceleration=None, orientation_velocity=None, orientation_acceleration=None, joint_velocities=None, joint_accelerations=None, blending=0, optimize_approach=False))
+    >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10))
+    Linear(type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=10.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None))
+
     """
 
     type: Literal["linear"] = "linear"
@@ -142,7 +112,7 @@ class Linear(Motion):
         """Serialize the model to the API model
 
         Examples:
-        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=10))._to_api_model()
+        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10))._to_api_model()
         PathLine(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathLine')
         """
         return wb.models.PathLine(
@@ -164,7 +134,7 @@ def lin(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) 
     Returns: the linear motion
 
     Examples:
-    >>> ms = MotionSettings(velocity=10)
+    >>> ms = MotionSettings(tcp_velocity_limit=10)
     >>> assert lin((1, 2, 3, 4, 5, 6), settings=ms) == Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
     >>> assert lin((1, 2, 3)) == lin((1, 2, 3, 0, 0, 0))
 
@@ -177,8 +147,9 @@ class PTP(Motion):
     """A point-to-point motion
 
     Examples:
-    >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=30))
-    PTP(type='ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(velocity=30.0, acceleration=None, orientation_velocity=None, orientation_acceleration=None, joint_velocities=None, joint_accelerations=None, blending=0, optimize_approach=False))
+    >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))
+    PTP(type='ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None))
+
     """
 
     type: Literal["ptp"] = "ptp"
@@ -187,7 +158,7 @@ class PTP(Motion):
         """Serialize the model to the API model
 
         Examples:
-        >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(velocity=30))._to_api_model()
+        >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))._to_api_model()
         PathCartesianPTP(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCartesianPTP')
         """
         if not isinstance(self.target, Pose):
@@ -212,7 +183,7 @@ def ptp(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) 
     Returns: the point-to-point motion
 
     Examples:
-    >>> ms = MotionSettings(acceleration=10)
+    >>> ms = MotionSettings(tcp_acceleration_limit=10)
     >>> assert ptp((1, 2, 3, 4, 5, 6), settings=ms) == PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
     >>> assert ptp((1, 2, 3)) == ptp((1, 2, 3, 0, 0, 0))
 
@@ -239,7 +210,7 @@ class Circular(Motion):
         """Serialize the model to a dictionary
 
         Examples:
-        >>> Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((10, 20, 30, 40, 50, 60)), settings=MotionSettings(velocity=30))._to_api_model()
+        >>> Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((10, 20, 30, 40, 50, 60)), settings=MotionSettings(tcp_velocity_limit=30))._to_api_model()
         PathCircle(via_pose=Pose2(position=[10, 20, 30], orientation=[40, 50, 60]), target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCircle')
         """
         if not isinstance(self.target, Pose):
@@ -273,7 +244,7 @@ def cir(
     Returns: the circular motion
 
     Examples:
-    >>> ms = MotionSettings(acceleration=10)
+    >>> ms = MotionSettings(tcp_acceleration_limit=10)
     >>> assert cir((1, 2, 3, 4, 5, 6), (7, 8, 9, 10, 11, 12), settings=ms) == Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((7, 8, 9, 10, 11, 12)), settings=ms)
     >>> assert cir((1, 2, 3), (4, 5, 6)) == cir((1, 2, 3, 0, 0, 0), (4, 5, 6, 0, 0, 0))
 
@@ -287,8 +258,8 @@ class JointPTP(Motion):
     """A joint PTP motion
 
     Examples:
-    >>> JointPTP(target=(1, 2, 3, 4, 5, 6), settings=MotionSettings(velocity=30))
-    JointPTP(type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(velocity=30.0, acceleration=None, orientation_velocity=None, orientation_acceleration=None, joint_velocities=None, joint_accelerations=None, blending=0, optimize_approach=False))
+    >>> JointPTP(target=(1, 2, 3, 4, 5, 6), settings=MotionSettings(tcp_velocity_limit=30))
+    JointPTP(type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None))
 
     """
 
@@ -298,7 +269,7 @@ class JointPTP(Motion):
         """Serialize the model to the API model
 
         Examples:
-        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(velocity=30))._to_api_model()
+        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(tcp_velocity_limit=30))._to_api_model()
         PathJointPTP(target_joint_position=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], path_definition_name='PathJointPTP')
         """
         if not isinstance(self.target, tuple):
@@ -322,7 +293,7 @@ def jnt(target: tuple[float, ...], settings: MotionSettings = MotionSettings()) 
     Returns: the joint PTP motion
 
     Examples:
-    >>> ms = MotionSettings(acceleration=10)
+    >>> ms = MotionSettings(tcp_acceleration_limit=10)
     >>> assert jnt((1, 2, 3, 4, 5, 6), settings=ms) == JointPTP(target=(1, 2, 3, 4, 5, 6), settings=ms)
 
     """
@@ -347,7 +318,7 @@ class Spline(Motion):
         """Serialize the model to a dictionary
 
         Examples:
-        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(velocity=30)).model_dump()
+        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(tcp_velocity_limit=30)).model_dump()
         {'target_joint_position': [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], 'path_definition_name': 'PathJointPTP'}
         """
         raise NotImplementedError("Spline motion is not yet implemented")
@@ -370,7 +341,7 @@ def spl(
     Returns: the spline motion
 
     Examples:
-    >>> ms = MotionSettings(acceleration=10)
+    >>> ms = MotionSettings(tcp_acceleration_limit=10)
     >>> assert spl((1, 2, 3, 4, 5, 6), settings=ms) == Spline(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
     >>> assert spl((1, 2, 3)) == spl((1, 2, 3, 0, 0, 0))
 
@@ -496,10 +467,25 @@ class CombinedActions(pydantic.BaseModel):
         return CombinedActions(items=self.items + other.items)
 
     def to_motion_command(self) -> list[wb.models.MotionCommand]:
-        motions = [
-            wb.models.MotionCommandPath.from_dict(motion.model_dump()) for motion in self.motions
-        ]
-        return [wb.models.MotionCommand(path=motion) for motion in motions]
+        motion_commands = []
+        for motion in self.motions:
+            path = wb.models.MotionCommandPath.from_dict(motion.model_dump())
+            blending = (
+                motion.settings.as_blending_setting()
+                if motion.settings.has_blending_settings()
+                else None
+            )
+            limits_override = (
+                motion.settings.as_limits_settings()
+                if motion.settings.has_limits_override()
+                else None
+            )
+            motion_commands.append(
+                wb.models.MotionCommand(
+                    path=path, blending=blending, limits_override=limits_override
+                )
+            )
+        return motion_commands
 
     def to_set_io(self) -> list[wb.models.SetIO]:
         return [
