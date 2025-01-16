@@ -15,7 +15,9 @@ async def main():
     async with Nova() as nova:
         cell = nova.cell()
         # TODO: add a controller
-        await cell.add_virtual_controller("ur", models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E)
+        await cell.add_virtual_controller(
+            "ur", models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E
+        )
         await asyncio.sleep(30)
 
         controllers = await cell.controllers()
