@@ -62,6 +62,8 @@ jobs:
           echo "API URL: ${API_URL}"
           echo "API_URL=${API_URL}" >> $GITHUB_ENV
 
+          echo "Access token = ${{ env.PORTAL_STG_ACCESS_TOKEN }}"
+
           # Wait for the service-manager-backend to become available
           # TODO: Add or trust the self-signed certificate (long-term secure fix)
           curl --insecure --location --fail --retry-all-errors --retry 10 --retry-max-time 20 \
