@@ -5,6 +5,7 @@ from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFoundException
 from nova.core.logging_setup import configure_logging
 from nova.gateway import ApiGateway
+from nova.api import models
 
 
 class Nova:
@@ -50,6 +51,21 @@ class Cell:
     async def _get_controllers(self) -> list[wb.models.ControllerInstance]:
         response = await self._api_gateway.controller_api.list_controllers(cell=self._cell_id)
         return response.instances
+
+    async def add_virtual_controller(self, name: str, type: models.VirtualControllerTypes):
+        await self._api_gateway.controller_api.add_robot_controller(
+            cell=self._cell_id,
+            robot_controller=models.RobotController(
+                name=name,
+                configuration=models.RobotControllerConfiguration(
+                    models.VirtualController(
+                        type=type,
+                        # TODO: can we derive that from the type?
+                        manufacturer=models.Manufacturer.UNIVERSALROBOTS,
+                    )
+                ),
+            ),
+        )
 
     async def controllers(self) -> list["Controller"]:
         controllers = await self._get_controllers()
