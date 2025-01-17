@@ -115,6 +115,14 @@ class ApiGateway:
         self.store_collision_scenes_api = intercept(
             wb.StoreCollisionScenesApi(api_client=self._api_client)
         )
+        self.virtual_robot_api = intercept(wb.VirtualRobotApi(api_client=self._api_client))
+        self.virtual_robot_behavior_api = intercept(
+            wb.VirtualRobotBehaviorApi(api_client=self._api_client)
+        )
+        self.virtual_robot_mode_api = intercept(wb.VirtualRobotModeApi(api_client=self._api_client))
+        self.virtual_robot_setup_api = intercept(
+            wb.VirtualRobotSetupApi(api_client=self._api_client)
+        )
 
     async def close(self):
         return await self._api_client.close()
