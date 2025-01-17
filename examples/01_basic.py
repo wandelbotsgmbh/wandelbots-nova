@@ -14,15 +14,11 @@ Prerequisites:
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        # TODO: add a controller
-        await cell.add_virtual_controller(
-            "ur", models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E
+        controller = await cell.ensure_virtual_robot_controller(
+            "ur",
+            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            models.Manufacturer.UNIVERSALROBOTS,
         )
-        await asyncio.sleep(30)
-
-        controllers = await cell.controllers()
-        print(controllers)
-        controller = controllers[0]
 
         async with controller:
             activated_motion_group_ids = await controller.activated_motion_group_ids()
@@ -46,6 +42,8 @@ async def main():
         # Current TCP pose
         tcp_pose = await motion_group.tcp_pose(tcp)
         print(tcp_pose)
+
+        await cell.delete_robot_controller(controller.name)
 
 
 if __name__ == "__main__":
