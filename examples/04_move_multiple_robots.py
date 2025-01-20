@@ -28,17 +28,19 @@ async def move_robot(controller: Controller):
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        ur = await cell.ensure_virtual_robot_controller(
-            "ur",
+        ur10 = await cell.ensure_virtual_robot_controller(
+            "ur10",
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
-        kuka = await cell.ensure_virtual_robot_controller(
-            "kuka", models.VirtualControllerTypes.KUKA_MINUS_KR6_R700_2, models.Manufacturer.KUKA
+        ur5 = await cell.ensure_virtual_robot_controller(
+            "ur5",
+            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
+            models.Manufacturer.UNIVERSALROBOTS,
         )
-        await asyncio.gather(move_robot(ur), move_robot(kuka))
-        await cell.delete_robot_controller(ur.name)
-        await cell.delete_robot_controller(kuka.name)
+        await asyncio.gather(move_robot(ur5), move_robot(ur10))
+        await cell.delete_robot_controller(ur5.name)
+        await cell.delete_robot_controller(ur10.name)
 
 
 if __name__ == "__main__":
