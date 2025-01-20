@@ -54,6 +54,7 @@ jobs:
           echo "CELL_NAME=cell" >> ./.env
           echo | cat ./.env
           PYTHONPATH=. poetry run python examples/01_basic.py
+          PYTHONPATH=. poetry run python examples/02_plan_and_execute.py
 
       # Always run cleanup, whether success or failure
       - name: Cleanup - Delete instance
