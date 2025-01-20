@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.13.0 (2025-01-20)
+
+### Features
+
+* feat: expose virtual robot api (#30) ([`a43f73a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a43f73aa055aae2811e93d9f5dff6a8f9c8511f1))
+
+
 ## v0.12.0 (2025-01-16)
 
 ### Features
