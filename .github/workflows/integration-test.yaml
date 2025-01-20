@@ -52,9 +52,16 @@ jobs:
           # echo "NOVA_USERNAME=${{ secrets.NOVA_USERNAME }}" >> ./.env
           # echo "NOVA_PASSWORD=${{ secrets.NOVA_PASSWORD }}" >> ./.env
           echo "CELL_NAME=cell" >> ./.env
-          echo | cat ./.env
-          PYTHONPATH=. poetry run python examples/01_basic.py
-          PYTHONPATH=. poetry run python examples/02_plan_and_execute.py
+
+          echo "Contents of .env:"
+          cat ./.env
+
+          # Loop through all Python scripts in 'examples/' and run each
+          for script in examples/*.py; do
+            echo "Running $script..."
+            PYTHONPATH=. poetry run python "$script"
+            echo
+          done
 
       # Always run cleanup, whether success or failure
       - name: Cleanup - Delete instance

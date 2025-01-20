@@ -1,6 +1,7 @@
 import asyncio
 
 from nova import Controller, Nova
+from nova.api import models
 from nova.actions import jnt, ptp
 
 """
@@ -25,12 +26,19 @@ async def move_robot(controller: Controller):
 
 
 async def main():
-    nova = Nova()
-    cell = nova.cell()
-    ur = await cell.controller("ur")
-    kuka = await cell.controller("kuka")
-    await asyncio.gather(move_robot(ur), move_robot(kuka))
-    await nova.close()
+    async with Nova() as nova:
+        cell = nova.cell()
+        ur = await cell.ensure_virtual_robot_controller(
+            "ur",
+            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            models.Manufacturer.UNIVERSALROBOTS,
+        )
+        kuka = await cell.ensure_virtual_robot_controller(
+            "kuka", models.VirtualControllerTypes.KUKA_MINUS_KR6_R700_2, models.Manufacturer.KUKA
+        )
+        await asyncio.gather(move_robot(ur), move_robot(kuka))
+        await cell.delete_robot_controller(ur.name)
+        await cell.delete_robot_controller(kuka.name)
 
 
 if __name__ == "__main__":
