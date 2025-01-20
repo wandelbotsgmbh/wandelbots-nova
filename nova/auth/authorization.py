@@ -1,7 +1,6 @@
 import time
 import httpx
 from pydantic import BaseModel, Field, ValidationError
-from typing import Optional
 
 
 class DeviceCodeInfo(BaseModel):
@@ -33,7 +32,7 @@ class TokenInfo(BaseModel):
     """
 
     access_token: str
-    refresh_token: Optional[str] = None
+    refresh_token: str | None = None
 
 
 class Auth0Parameters(BaseModel):
@@ -93,7 +92,7 @@ class Auth0DeviceAuthorization:
         self.auth0_client_id = auth0_client_id
         self.auth0_audience = auth0_audience
         self.headers = {"content-type": "application/x-www-form-urlencoded"}
-        self.device_code_info: Optional[DeviceCodeInfo] = None
+        self.device_code_info: DeviceCodeInfo | None = None
         self.interval = 5
 
     def request_device_code(self):
