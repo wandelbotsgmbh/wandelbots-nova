@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.14.0 (2025-01-20)
+
+### Features
+
+* feat: Add Auth0 device code authorization and refresh token flow (#31)
+
+Co-authored-by: Christoph Biering <1353438+biering@users.noreply.github.com> ([`06f42ab`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/06f42ab2f22511ad7c8ed6fc4ad673008b9f49e9))
+
+
 ## v0.13.0 (2025-01-20)
 
 ### Features
