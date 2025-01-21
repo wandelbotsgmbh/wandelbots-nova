@@ -1,4 +1,4 @@
-name: Integration Test
+name: Run examples
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  integration-test:
+  run-examples:
     runs-on: ubuntu-latest
 
     concurrency:
