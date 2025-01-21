@@ -20,28 +20,23 @@ async def main():
             models.Manufacturer.UNIVERSALROBOTS,
         )
 
-        async with controller:
-            activated_motion_group_ids = await controller.activated_motion_group_ids()
-            print(activated_motion_group_ids)
+        async with controller[0] as motion_group:
+            tcp_names = await motion_group.tcp_names()
+            print(tcp_names)
+    
+            tcp = tcp_names[0]
 
-        motion_group = controller[0]
+            # Current motion group state
+            state = await motion_group.get_state(tcp)
+            print(state)
 
-        tcp_names = await motion_group.tcp_names()
-        print(tcp_names)
+            # Current joints positions
+            joints = await motion_group.joints()
+            print(joints)
 
-        tcp = tcp_names[0]
-
-        # Current motion group state
-        state = await motion_group.get_state(tcp)
-        print(state)
-
-        # Current joints positions
-        joints = await motion_group.joints()
-        print(joints)
-
-        # Current TCP pose
-        tcp_pose = await motion_group.tcp_pose(tcp)
-        print(tcp_pose)
+            # Current TCP pose
+            tcp_pose = await motion_group.tcp_pose(tcp)
+            print(tcp_pose)
 
         await cell.delete_robot_controller(controller.name)
 
