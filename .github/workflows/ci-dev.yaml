@@ -36,5 +36,4 @@ jobs:
 
       - name: Run tests
         run: |
-          # cp envs/.env.tests envs/test_.env.tests
           PYTHONPATH=. poetry run pytest -rs -v
