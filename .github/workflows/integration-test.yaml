@@ -17,12 +17,12 @@ jobs:
       max-parallel: 1
       matrix:
           example_file:
-          - "01_basic.py"
-          - "02_plan_and_execute.py"
-          - "03_move_and_set_ios.py"
-          - "04_move_multiple_robots.py"
-          - "05_selection_motion_group_activation.py"
-          - "06_api_usage.py"
+            - "01_basic.py"
+            - "02_plan_and_execute.py"
+            - "03_move_and_set_ios.py"
+            - "04_move_multiple_robots.py"
+            - "05_selection_motion_group_activation.py"
+            - "06_api_usage.py"
 
     steps:
       - name: Check out repository
