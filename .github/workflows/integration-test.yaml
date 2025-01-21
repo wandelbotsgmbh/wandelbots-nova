@@ -49,19 +49,8 @@ jobs:
           touch ./.env
           echo "NOVA_API=https://${{ env.PORTAL_STG_HOST }}" >> ./.env
           echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_STG_ACCESS_TOKEN }}" >> ./.env
-          # echo "NOVA_USERNAME=${{ secrets.NOVA_USERNAME }}" >> ./.env
-          # echo "NOVA_PASSWORD=${{ secrets.NOVA_PASSWORD }}" >> ./.env
           echo "CELL_NAME=cell" >> ./.env
-
-          echo "Contents of .env:"
-          cat ./.env
-
-          # Loop through all Python scripts in 'examples/' and run each
-          for script in examples/*.py; do
-            echo "Running $script..."
-            PYTHONPATH=. poetry run python "$script"
-            echo
-          done
+          source ./scripts/run_examples.sh
 
       # Always run cleanup, whether success or failure
       - name: Cleanup - Delete instance
