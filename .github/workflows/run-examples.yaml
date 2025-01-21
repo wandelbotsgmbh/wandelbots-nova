@@ -62,7 +62,23 @@ jobs:
           echo "NOVA_API=https://${{ env.PORTAL_STG_HOST }}" >> ./.env
           echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_STG_ACCESS_TOKEN }}" >> ./.env
           echo "CELL_NAME=cell" >> ./.env
-          PYTHONPATH=. poetry run python examples/${{ matrix.example_file }}
+
+          n=0
+          max_retries=3
+          until [ $n -ge $max_retries ]
+          do
+            echo "Attempt $((n+1)) to run ${{ matrix.example_file }}..."
+            PYTHONPATH=. poetry run python examples/${{ matrix.example_file }} && break
+
+            n=$((n+1))
+            echo "Failed attempt $n. Retrying in 5s..."
+            sleep 5
+          done
+
+          if [ $n -ge $max_retries ]; then
+            echo "Failed after $max_retries attempts."
+            exit 1
+          fi
 
       # Always run cleanup, whether success or failure
       - name: Cleanup - Delete instance
