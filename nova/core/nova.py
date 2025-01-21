@@ -104,6 +104,10 @@ class Cell:
         controller_type: models.VirtualControllerTypes,
         controller_manufacturer: models.Manufacturer,
         timeout: int = 25,
+        # TODO: This is not optimal yet and will be automatically resolved in the new v2 API. The default configuration
+        #   is only valid for UR.
+        #   See: https://code.wabo.run/robotics/wbr/-/blob/develop/wbr/src/service/internal/config/HomeJoints.h
+        position: str = "[1.170,-1.6585,1.4051,-1.5707,-1.5709,1.170,0]",
     ) -> "Controller":
         """Add a virtual robot controller to the cell
 
@@ -112,6 +116,7 @@ class Cell:
             controller_type (models.VirtualControllerTypes): The type of the controller
             controller_manufacturer (models.Manufacturer): The manufacturer of the controller
             timeout (int): The time to wait for the controller to be available in seconds
+            position (str): The initial position of the robot
 
         """
         await self._api_gateway.controller_api.add_robot_controller(
@@ -122,10 +127,7 @@ class Cell:
                     models.VirtualController(
                         type=controller_type,
                         manufacturer=controller_manufacturer,
-                        # TODO: This is not optimal yet and will be improved with the v2 API. This configuration is
-                        #   not valid for all robots.
-                        #   See: https://code.wabo.run/robotics/wbr/-/blob/develop/wbr/src/service/internal/config/HomeJoints.h
-                        position="[1.170,-1.6585,1.4051,-1.5707,-1.5709,1.170,0]",
+                        position=position,
                     )
                 ),
             ),
