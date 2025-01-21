@@ -23,7 +23,7 @@ async def main():
         async with controller[0] as motion_group:
             tcp_names = await motion_group.tcp_names()
             print(tcp_names)
-    
+
             tcp = tcp_names[0]
 
             # Current motion group state
