@@ -12,6 +12,17 @@ jobs:
       API_VERSION: "v1"
       API_URL: ""
 
+    strategy:
+      fail-fast: false
+      matrix:
+          example_file:
+          - "01_basic.py"
+          - "02_plan_and_execute.py"
+          - "03_move_and_set_ios.py"
+          - "04_move_multiple_robots.py"
+          - "05_selection_motion_group_activation.py"
+          - "06_api_usage.py"
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -43,14 +54,13 @@ jobs:
           pip install poetry
           poetry install
 
-      - name: Test examples
+      - name: "Run example: ${{ matrix.example_file }}"
         run: |
-          echo "Running test examples"
           touch ./.env
           echo "NOVA_API=https://${{ env.PORTAL_STG_HOST }}" >> ./.env
           echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_STG_ACCESS_TOKEN }}" >> ./.env
           echo "CELL_NAME=cell" >> ./.env
-          source ./scripts/run_examples.sh
+          PYTHONPATH=. poetry run python examples/${{ matrix.example_file }}
 
       # Always run cleanup, whether success or failure
       - name: Cleanup - Delete instance
