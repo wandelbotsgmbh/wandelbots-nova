@@ -125,7 +125,7 @@ class Cell:
                         # TODO: This is not optimal yet and will be improved with the v2 API. This configuration is
                         #   not valid for all robots.
                         #   See: https://code.wabo.run/robotics/wbr/-/blob/develop/wbr/src/service/internal/config/HomeJoints.h
-                        position="[1.170, -1.6585, 1.4051, -1.5707, -1.5709, 1.170]",
+                        position="[1.170,-1.6585,1.4051,-1.5707,-1.5709,1.170,0]",
                     )
                 ),
             ),
