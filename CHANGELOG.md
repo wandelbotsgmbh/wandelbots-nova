@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.15.1 (2025-01-22)
+
+### Chores
+
+* chore: improved example descriptions (#33)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`c73faa5`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c73faa5669de8e1d98c6057ebee40783749cb83c))
+
+
 ## v0.15.0 (2025-01-22)
 
 ### Features
