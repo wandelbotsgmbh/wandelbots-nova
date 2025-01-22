@@ -1,6 +1,7 @@
 import asyncio
 from math import pi
 
+from nova.api import models
 from nova import MotionGroup, Nova
 from nova.actions import ptp
 from nova.types import Pose
@@ -28,38 +29,47 @@ async def move_robot(motion_group: MotionGroup, tcp: str):
 
 
 async def main():
-    nova = Nova()
-    cell = nova.cell()
-    ur = await cell.controller("ur")
-    kuka = await cell.controller("kuka")
-    tcp = "Flange"
+    async with Nova() as nova:
+        cell = nova.cell()
+        ur10 = await cell.ensure_virtual_robot_controller(
+            "ur10",
+            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            models.Manufacturer.UNIVERSALROBOTS,
+        )
+        ur5 = await cell.ensure_virtual_robot_controller(
+            "ur5",
+            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
+            models.Manufacturer.UNIVERSALROBOTS,
+        )
+        tcp = "Flange"
 
-    flange_state = await ur[0].get_state(tcp)
-    print(flange_state)
+        flange_state = await ur10[0].get_state(tcp)
+        print(flange_state)
 
-    # activate all motion groups
-    async with ur:
-        await move_robot(ur.motion_group(0), tcp)
+        # activate all motion groups
+        async with ur10:
+            await move_robot(ur10.motion_group(0), tcp)
 
-    # activate motion group 0
-    async with ur.motion_group(0) as mg_0:
-        await move_robot(mg_0, tcp)
+        # activate motion group 0
+        async with ur10.motion_group(0) as mg_0:
+            await move_robot(mg_0, tcp)
 
-    # activate motion group 0
-    async with ur[0] as mg_0:
-        await move_robot(mg_0, tcp)
+        # activate motion group 0
+        async with ur10[0] as mg_0:
+            await move_robot(mg_0, tcp)
 
-    # activate motion group 0 from two different controllers
-    async with ur[0] as ur_0_mg, kuka[0] as kuka_0_mg:
-        await asyncio.gather(move_robot(ur_0_mg, tcp), move_robot(kuka_0_mg, tcp))
+        # activate motion group 0 from two different controllers
+        async with ur10[0] as ur_0_mg, ur5[0] as kuka_0_mg:
+            await asyncio.gather(move_robot(ur_0_mg, tcp), move_robot(kuka_0_mg, tcp))
 
-    # activate motion group 0 from two different controllers
-    mg_0 = ur.motion_group(0)
-    mg_1 = kuka.motion_group(0)
-    async with mg_0, mg_1:
-        await asyncio.gather(move_robot(mg_0, tcp), move_robot(mg_1, tcp))
+        # activate motion group 0 from two different controllers
+        mg_0 = ur10.motion_group(0)
+        mg_1 = ur5.motion_group(0)
+        async with mg_0, mg_1:
+            await asyncio.gather(move_robot(mg_0, tcp), move_robot(mg_1, tcp))
 
-    await nova.close()
+        await cell.delete_robot_controller(ur5.name)
+        await cell.delete_robot_controller(ur10.name)
 
 
 if __name__ == "__main__":

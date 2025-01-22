@@ -1,4 +1,4 @@
-name: Test, Lint and Format
+name: Typecheck, Lint and Format
 
 on:
   pull_request:
@@ -15,7 +15,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
@@ -24,12 +24,6 @@ jobs:
         run: |
           pip install poetry
           poetry install
-          mkdir envs
-          touch envs/.env.tests
-          echo "NOVA_API=test.instance.mock.io" > envs/.env.tests
-          echo "CELL_NAME=cell" >> envs/.env.tests
-          echo "MOTION_GROUP=virtual-robot" >> envs/.env.tests
-          echo "TCP=Flange" >> envs/.env.tests
 
       - name: Check formatting with ruff
         run: poetry run ruff format --check .
@@ -42,5 +36,4 @@ jobs:
 
       - name: Run tests
         run: |
-          cp envs/.env.tests envs/test_.env.tests
           PYTHONPATH=. poetry run pytest -rs -v

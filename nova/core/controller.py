@@ -3,17 +3,24 @@ from typing import Sized, final
 from loguru import logger
 
 from nova.core.motion_group import MotionGroup
+from nova.api import models
 from nova.gateway import ApiGateway
 
 
 class Controller(Sized):
-    def __init__(self, *, api_gateway: ApiGateway, cell: str, controller_host: str):
+    def __init__(
+        self, *, api_gateway: ApiGateway, cell: str, controller_instance: models.ControllerInstance
+    ):
         self._api_gateway = api_gateway
         self._controller_api = api_gateway.controller_api
         self._motion_group_api = api_gateway.motion_group_api
         self._cell = cell
-        self._controller_host = controller_host
+        self._name = controller_instance.controller
         self._activated_motion_group_ids: list[str] = []
+
+    @property
+    def name(self) -> str:
+        return self._name
 
     @final
     async def __aenter__(self):
@@ -35,7 +42,7 @@ class Controller(Sized):
         return MotionGroup(
             api_gateway=self._api_gateway,
             cell=self._cell,
-            motion_group_id=f"{motion_group_id}@{self._controller_host}",
+            motion_group_id=f"{motion_group_id}@{self._name}",
         )
 
     def __getitem__(self, motion_group_id: int) -> MotionGroup:
@@ -44,7 +51,7 @@ class Controller(Sized):
     async def activated_motion_group_ids(self) -> list[str]:
         activate_all_motion_groups_response = (
             await self._motion_group_api.activate_all_motion_groups(
-                cell=self._cell, controller=self._controller_host
+                cell=self._cell, controller=self._name
             )
         )
         motion_groups = activate_all_motion_groups_response.instances
