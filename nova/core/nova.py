@@ -65,7 +65,7 @@ class Cell:
         controller = next((c for c in controllers if c.controller == name), None)
         return controller
 
-    async def _wait_for_controller_to_be_ready(self, name: str, timeout: int):
+    async def _wait_for_controller_ready(self, name: str, timeout: int):
         """Waits for the controller to be available
 
         Args:
