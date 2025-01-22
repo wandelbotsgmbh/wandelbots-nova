@@ -10,7 +10,10 @@ from nova.types import Pose
 Example: Move multiple robots to perform coordinated movements.
 
 Prerequisites:
-- A cell with two robots named "ur" and "kuka".
+- Create an NOVA instance
+- Set env variables (you can specify them in an .env file):
+    - NOVA_API=<api>
+    - NOVA_ACCESS_TOKEN=<token>
 """
 
 
