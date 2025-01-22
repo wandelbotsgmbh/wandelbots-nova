@@ -18,6 +18,7 @@ class PlanTrajectoryFailed(Exception):
         """Return the original PlanTrajectoryFailedResponse object."""
         return self._error
 
+
 class InitMovementFailed(Exception):
     def __init__(self, error: wb.models.InitializeMovementResponseInitResponse):
         self._error = error
