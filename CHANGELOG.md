@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.15.0 (2025-01-22)
+
+### Features
+
+* feat(RPS-976): added integration test CI (#25)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`15fc353`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/15fc35340c485ba6ceda241039bff5a468018b24))
+
+
 ## v0.14.0 (2025-01-20)
 
 ### Features
