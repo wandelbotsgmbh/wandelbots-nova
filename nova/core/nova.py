@@ -134,7 +134,7 @@ class Cell:
             completion_timeout=timeout,
         )
         # Technically not needed because of the completion_timeout but it handles edge cases right now
-        await self._wait_for_controller_to_be_ready(name, timeout)
+        await self._wait_for_controller_ready(name, timeout)
         controller_instance = await self._get_controller_instance(name)
         if controller_instance is None:
             raise ControllerNotFoundException(controller=name)
