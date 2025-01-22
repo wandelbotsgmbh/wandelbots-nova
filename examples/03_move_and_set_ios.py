@@ -10,8 +10,10 @@ from nova.types import Pose
 Example: Move the robot and set I/Os on the path.
 
 Prerequisites:
-- At least one robot added to the cell.
-- The robot must have a digital output named "digital_out[0]".
+- Create an NOVA instance
+- Set env variables (you can specify them in an .env file):
+    - NOVA_API=<api>
+    - NOVA_ACCESS_TOKEN=<token>
 """
 
 

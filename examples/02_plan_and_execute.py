@@ -8,7 +8,10 @@ from nova.types import Pose
 Example: Perform relative movements with a robot.
 
 Prerequisites:
-- At least one robot added to the cell.
+- Create an NOVA instance
+- Set env variables (you can specify them in an .env file):
+    - NOVA_API=<api>
+    - NOVA_ACCESS_TOKEN=<token>
 """
 
 

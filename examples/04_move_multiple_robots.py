@@ -7,7 +7,10 @@ from nova.actions import jnt, ptp
 Example: Move multiple robots simultaneously.
 
 Prerequisites:
-- A cell with two robots: one named "ur" and another named "kuka".
+- Create an NOVA instance
+- Set env variables (you can specify them in an .env file):
+    - NOVA_API=<api>
+    - NOVA_ACCESS_TOKEN=<token>
 """
 
 
