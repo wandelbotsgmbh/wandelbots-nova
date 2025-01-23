@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.16.0 (2025-01-23)
+
+### Features
+
+* feat: expose error object in exception (#32) ([`0b7351f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0b7351f3520bf96e5331c1693c7e6dd2c8d477da))
+
+
 ## v0.15.1 (2025-01-22)
 
 ### Chores
