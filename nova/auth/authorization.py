@@ -1,5 +1,5 @@
-import time
 import httpx
+import asyncio
 from pydantic import BaseModel, Field, ValidationError
 
 
@@ -120,7 +120,16 @@ class Auth0DeviceAuthorization:
         else:
             raise Exception("Error requesting device code:", response.json())
 
-    def display_user_instructions(self):
+    def get_device_code_info(self) -> DeviceCodeInfo | None:
+        """
+        Returns the device code information.
+
+        Returns:
+            DeviceCodeInfo | None: The device code information.
+        """
+        return self.device_code_info
+
+    def display_user_instructions(self) -> None:
         """
         Displays instructions for the user to authenticate.
 
@@ -136,7 +145,7 @@ class Auth0DeviceAuthorization:
         else:
             raise Exception("Device code information is not available.")
 
-    def poll_token_endpoint(self):
+    async def poll_token_endpoint(self):
         """
         Polls the token endpoint to obtain an access token.
 
@@ -156,34 +165,30 @@ class Auth0DeviceAuthorization:
             "client_id": self.auth0_client_id,
         }
 
-        while True:
-            token_response = httpx.post(token_url, headers=self.headers, data=token_data)
-            if token_response.status_code == 200:
-                # If the response status is 200, it means the access token is successfully obtained.
-                token_info = TokenInfo(**token_response.json())
-                self.refresh_token = token_info.refresh_token
-                print("Access Token received:", token_info.access_token)
-                print("Refresh Token received:", self.refresh_token)
-                return token_info.access_token
-            elif token_response.status_code == 400:
-                # If the response status is 400, check the error type.
-                error = token_response.json().get("error")
-                if error == "authorization_pending":
-                    # If the error is 'authorization_pending', it means the user has not yet authorized.
-                    print("Waiting for user confirmation...")
-                    time.sleep(self.interval)
-                elif error == "slow_down":
-                    # If the error is 'slow_down', it means the server requests to slow down polling.
-                    print("Server requests to slow down polling. Increasing wait time.")
-                    self.interval += 5
-                    time.sleep(self.interval)
-            elif token_response.status_code == 403:
-                # If the response status is 403, it means the request is forbidden, wait and retry.
-                print("Waiting...")
-                time.sleep(self.interval)
-            else:
-                # For other status codes, raise an exception with the error details.
-                raise Exception("Error:", token_response.status_code, token_response.json())
+        async with httpx.AsyncClient() as client:
+            while True:
+                token_response = await client.post(token_url, headers=self.headers, data=token_data)
+                if token_response.status_code == 200:
+                    # If the response status is 200, it means the access token is successfully obtained.
+                    token_info = TokenInfo(**token_response.json())
+                    self.refresh_token = token_info.refresh_token
+                    return token_info.access_token
+                elif token_response.status_code == 400:
+                    # If the response status is 400, check the error type.
+                    error = token_response.json().get("error")
+                    if error == "authorization_pending":
+                        # If the error is 'authorization_pending', it means the user has not yet authorized.
+                        await asyncio.sleep(self.interval)
+                    elif error == "slow_down":
+                        # If the error is 'slow_down', it means the server requests to slow down polling.
+                        self.interval += 5
+                        await asyncio.sleep(self.interval)
+                elif token_response.status_code == 403:
+                    # If the response status is 403, it means the request is forbidden, wait and retry.
+                    await asyncio.sleep(self.interval)
+                else:
+                    # For other status codes, raise an exception with the error details.
+                    raise Exception("Error:", token_response.status_code, token_response.json())
 
     def refresh_access_token(self, refresh_token: str):
         """
@@ -211,7 +216,6 @@ class Auth0DeviceAuthorization:
         response = httpx.post(token_url, headers=self.headers, data=token_data)
         if response.status_code == 200:
             token_info = TokenInfo(**response.json())
-            print("New Access Token received:", token_info.access_token)
             return token_info.access_token
         else:
             raise Exception("Error refreshing access token:", response.json())
