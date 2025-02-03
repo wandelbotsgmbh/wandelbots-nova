@@ -42,7 +42,6 @@ async def main():
                 jnt(home_joints),
             ]
 
-            # io_value = await controller.read_io("digital_out[0]")
             await motion_group.plan_and_execute(actions, tcp)
 
         await cell.delete_robot_controller(controller.name)
