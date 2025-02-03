@@ -123,6 +123,7 @@ class ApiGateway:
         self.virtual_robot_setup_api = intercept(
             wb.VirtualRobotSetupApi(api_client=self._api_client)
         )
+        self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client))
 
     async def close(self):
         return await self._api_client.close()
