@@ -1,9 +1,10 @@
 name: Run examples
 
 on:
-  pull_request:
-    branches:
-      - main
+  # we are unable to create cloud instances as of now
+  #pull_request:
+  #  branches:
+  #    - main
 
 jobs:
   run-examples:
@@ -45,7 +46,11 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           INSECURE_CURL: "true"   # If you need to skip SSL verification
         run: |
-          source ./scripts/create_nova_instance.sh
+          if ! source ./scripts/create_nova_instance.sh; then
+            echo "Failed to create NOVA instance."
+            exit 1
+          fi
+
           echo $PORTAL_STG_HOST
           echo "PORTAL_STG_HOST=$PORTAL_STG_HOST" >> $GITHUB_ENV
           echo "PORTAL_STG_INSTANCE_ID=$PORTAL_STG_INSTANCE_ID" >> $GITHUB_ENV

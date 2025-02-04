@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.16.1 (2025-02-04)
+
+### Fixes
+
+* fix(RPS-1174): dont deactivate motion groups (#35) ([`67b6535`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/67b6535a3f519b74807ab54db0df4e48458a06a5))
+
+
 ## v0.16.0 (2025-01-23)
 
 ### Features

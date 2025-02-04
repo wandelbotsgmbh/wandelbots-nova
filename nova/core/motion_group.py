@@ -31,9 +31,10 @@ class MotionGroup:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self._api_gateway.motion_group_api.deactivate_motion_group(
-            cell=self._cell, motion_group=self._motion_group_id
-        )
+        # RPS-1174: when a motion group is deactivated, RAE closes all open connections
+        #           this behaviour is not desired in some cases,
+        #           so for now we will not deactivate for the user
+        pass
 
     @property
     def motion_group_id(self) -> str:

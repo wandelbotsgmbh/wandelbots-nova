@@ -62,11 +62,15 @@ echo "Access token received."
 SANDBOX_NAME="svcmgr-${GITHUB_RUN_ID:-local-run}"
 echo "Creating instance with sandbox name: ${SANDBOX_NAME}"
 
-INSTANCE_RESPONSE="$(curl -X "POST" "https://io.stg.wandelbots.io/instance" \
+if ! INSTANCE_RESPONSE="$(curl -X "POST" "https://io.stg.wandelbots.io/instance" \
   -H "accept: application/json" \
   -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "{\"sandbox_name\": \"${SANDBOX_NAME}\"}")"
+  -d "{\"sandbox_name\": \"${SANDBOX_NAME}\"}")"; then
+  echo "Failed to create a new instance."
+  echo "Response from create instance: ${INSTANCE_RESPONSE}"
+  exit 1
+fi
 
 echo "Response from create instance: ${INSTANCE_RESPONSE}"
 PORTAL_STG_HOST="$(echo "${INSTANCE_RESPONSE}" | jq -r .host)"
