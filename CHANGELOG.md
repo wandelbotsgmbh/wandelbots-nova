@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.17.1 (2025-02-04)
+
+### Fixes
+
+* fix: exception naming (#36)
+
+Co-authored-by: Dirk Sonnemann <dirk.sonnemann@wandelbots.com> ([`723b2d8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/723b2d8fff88a32c44003b6e3bbf4499396f7890))
+
+
 ## v0.17.0 (2025-02-04)
 
 ### Features
