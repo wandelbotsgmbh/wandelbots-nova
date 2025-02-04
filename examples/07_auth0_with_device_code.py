@@ -32,13 +32,6 @@ async def main():
         access_token = await auth0_device_auth.poll_token_endpoint()
         print(f"Access Token: {access_token}")
 
-        # Optionally, refresh the access token using the refresh token
-        if auth0_device_auth.refresh_token:
-            new_access_token = auth0_device_auth.refresh_access_token(
-                auth0_device_auth.refresh_token
-            )
-            print(f"New Access Token: {new_access_token}")
-
     except Exception as e:
         print(f"An error occurred: {e}")
 
