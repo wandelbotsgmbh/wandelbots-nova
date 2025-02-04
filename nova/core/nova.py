@@ -2,7 +2,7 @@ from decouple import config
 import asyncio
 
 from nova.core.controller import Controller
-from nova.core.exceptions import ControllerNotFoundException
+from nova.core.exceptions import ControllerNotFound
 from nova.core.logging_setup import configure_logging
 from nova.gateway import ApiGateway
 from nova.api import models
@@ -137,7 +137,7 @@ class Cell:
         await self._wait_for_controller_ready(name, timeout)
         controller_instance = await self._get_controller_instance(name)
         if controller_instance is None:
-            raise ControllerNotFoundException(controller=name)
+            raise ControllerNotFound(controller=name)
 
         return Controller(
             api_gateway=self._api_gateway,
@@ -171,7 +171,7 @@ class Cell:
         controller = await self._get_controller_instance(name)
 
         if controller is None:
-            raise ControllerNotFoundException(controller=name)
+            raise ControllerNotFound(controller=name)
 
         return Controller(
             api_gateway=self._api_gateway, cell=self._cell_id, controller_instance=controller
