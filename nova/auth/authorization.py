@@ -1,9 +1,9 @@
 import httpx
 import asyncio
-from pydantic import BaseModel, Field, ValidationError
+import pydantic
 
 
-class Auth0DeviceCodeInfo(BaseModel):
+class Auth0DeviceCodeInfo(pydantic.BaseModel):
     """
     Model to store device code information.
 
@@ -19,10 +19,10 @@ class Auth0DeviceCodeInfo(BaseModel):
     user_code: str
     verification_uri: str
     expires_in: int
-    interval: int = Field(default=5)
+    interval: int = pydantic.Field(default=5)
 
 
-class Auth0TokenInfo(BaseModel):
+class Auth0TokenInfo(pydantic.BaseModel):
     """
     Model to store token information.
 
@@ -35,7 +35,7 @@ class Auth0TokenInfo(BaseModel):
     refresh_token: str | None = None
 
 
-class Auth0Parameters(BaseModel):
+class Auth0Parameters(pydantic.BaseModel):
     """
     Model to store Auth0 parameters.
 
@@ -85,7 +85,7 @@ class Auth0DeviceAuthorization:
                 auth0_client_id=auth0_client_id,
                 auth0_audience=auth0_audience,
             )
-        except ValidationError as e:
+        except pydantic.ValidationError as e:
             raise ValueError(f"Error: The following parameters are not set correctly: {e}")
 
         self.auth0_domain = auth0_domain
