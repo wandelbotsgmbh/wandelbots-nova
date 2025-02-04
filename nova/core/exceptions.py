@@ -3,7 +3,7 @@ import json
 import wandelbots_api_client as wb
 
 
-class ControllerNotFoundException(Exception):
+class ControllerNotFound(Exception):
     def __init__(self, controller: str):
         super().__init__(f"Controller {controller} not found.")
 
