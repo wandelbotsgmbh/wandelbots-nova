@@ -31,9 +31,10 @@ class Controller(Sized):
 
     @final
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        for motion_group_id in self._activated_motion_group_ids:
-            logger.info(f"Deactivating motion group {motion_group_id}")
-            await self._motion_group_api.deactivate_motion_group(self._cell, motion_group_id)
+        # RPS-1174: when a motion group is deactivated, RAE closes all open connections
+        #           this behaviour is not desired in some cases,
+        #           so for now we will not deactivate for the user
+        pass
 
     def __len__(self) -> int:
         return len(self._activated_motion_group_ids)
