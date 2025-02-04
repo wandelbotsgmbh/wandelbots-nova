@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.17.0 (2025-02-04)
+
+### Features
+
+* feat: Make authorization flow asynchron. (#34)
+
+Co-authored-by: mahsumdemir <mahsum.demir@wandelbots.com> ([`2e0dae6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2e0dae6b1c2ddb56ff66cbcf4a3033165a414a55))
+
+
 ## v0.16.1 (2025-02-04)
 
 ### Fixes
