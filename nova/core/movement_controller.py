@@ -41,7 +41,6 @@ def motion_group_state_to_motion_state(
     )
 
 
-# TODO: generalize common functionality
 def move_forward(
     context: MovementControllerContext, on_movement: Callable[[MotionState], None] | None
 ) -> MovementControllerFunction:

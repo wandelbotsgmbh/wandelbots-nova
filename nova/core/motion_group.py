@@ -84,23 +84,25 @@ class MotionGroup(AbstractRobot):
 
         # If there's an initial consumer, feed it the data
         async for move_to_response in movement_stream:
-            if on_movement is not None:
-                # TODO: refactor
-                if (
-                    move_to_response.state is None
-                    or move_to_response.state.motion_groups is None
-                    or len(move_to_response.state.motion_groups) == 0
-                    or move_to_response.move_response is None
-                    or move_to_response.move_response.current_location_on_trajectory is None
-                ):
-                    continue
+            if on_movement is None:
+                continue
 
-                # TODO: maybe 1-...
-                motion_state = motion_group_state_to_motion_state(
-                    move_to_response.state.motion_groups[0],
-                    float(move_to_response.move_response.current_location_on_trajectory),
-                )
-                on_movement(motion_state)
+            # TODO: refactor
+            if (
+                move_to_response.state is None
+                or move_to_response.state.motion_groups is None
+                or len(move_to_response.state.motion_groups) == 0
+                or move_to_response.move_response is None
+                or move_to_response.move_response.current_location_on_trajectory is None
+            ):
+                continue
+
+            # TODO: maybe 1-...
+            motion_state = motion_group_state_to_motion_state(
+                move_to_response.state.motion_groups[0],
+                float(move_to_response.move_response.current_location_on_trajectory),
+            )
+            on_movement(motion_state)
 
         controller = movement_controller(
             MovementControllerContext(
