@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.17.2 (2025-02-05)
+
+### Chores
+
+* chore: update wandelbots_api_client to version 25.1.0 (#37) ([`ec3fd3d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ec3fd3d4482c900915f0a32f3cb763529d585618))
+
+
 ## v0.17.1 (2025-02-04)
 
 ### Fixes
