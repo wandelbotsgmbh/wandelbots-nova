@@ -6,6 +6,7 @@ import wandelbots_api_client as wb
 from nova.motion_settings import MotionSettings
 from nova.types.collision_scene import CollisionScene
 from nova.types.pose import Pose
+from nova.types.state import MotionState
 
 
 class Action(pydantic.BaseModel, ABC):
@@ -497,6 +498,7 @@ class CombinedActions(pydantic.BaseModel):
         ]
 
 
+# TODO: should not be located here
 class MovementControllerContext(pydantic.BaseModel):
     combined_actions: CombinedActions
     motion_id: str
@@ -507,4 +509,6 @@ ExecuteTrajectoryResponseStream = AsyncGenerator[wb.models.ExecuteTrajectoryResp
 MovementControllerFunction = Callable[
     [ExecuteTrajectoryResponseStream], ExecuteTrajectoryRequestStream
 ]
-MovementController = Callable[[MovementControllerContext], MovementControllerFunction]
+MovementController = Callable[
+    [MovementControllerContext, Callable[[MotionState], None] | None], MovementControllerFunction
+]

@@ -3,14 +3,14 @@ from typing import AsyncGenerator, Callable
 
 import wandelbots_api_client as wb
 
-from nova.types.collision_scene import CollisionScene
+from nova.types.collision_scene import CollisionScene, DhParameter
 from nova.types.pose import Pose
 from nova.types.vector3d import Vector3d
+from nova.types.state import MotionState, RobotState
 
 LoadPlanResponse = wb.models.PlanSuccessfulResponse
 InitialMovementStream = AsyncGenerator[wb.models.StreamMoveResponse, None]
 InitialMovementConsumer = Callable[[wb.models.StreamMoveResponse], None]
-
 
 __all__ = [
     "Vector3d",
@@ -19,4 +19,7 @@ __all__ = [
     "LoadPlanResponse",
     "InitialMovementStream",
     "InitialMovementConsumer",
+    "MotionState",
+    "RobotState",
+    "DhParameter",
 ]
