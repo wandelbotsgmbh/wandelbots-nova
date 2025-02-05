@@ -1,11 +1,4 @@
-from typing import (
-    final,
-    Union,
-    Protocol,
-    runtime_checkable,
-    AsyncIterable,
-    Callable,
-)
+from typing import final, Union, Protocol, runtime_checkable, AsyncIterable, Callable
 from abc import ABC, abstractmethod
 import asyncio
 from contextlib import AsyncExitStack

@@ -5,12 +5,7 @@ from nova.actions import Action, CombinedActions, MovementController, MovementCo
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.movement_controller import move_forward, motion_group_state_to_motion_state
 from nova.gateway import ApiGateway
-from nova.types import (
-    InitialMovementStream,
-    LoadPlanResponse,
-    Pose,
-    MotionState,
-)
+from nova.types import InitialMovementStream, LoadPlanResponse, Pose, MotionState
 from nova.core.robot_cell import AbstractRobot
 from typing import Callable
 
