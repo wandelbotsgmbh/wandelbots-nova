@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.17.4 (2025-02-05)
+
+### Chores
+
+* chore: enable example tests in CI (#39)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`929db4e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/929db4e2b8d71137b4bf2f5dd20c9248ca661e30))
+
+
 ## v0.17.3 (2025-02-05)
 
 ### Chores
