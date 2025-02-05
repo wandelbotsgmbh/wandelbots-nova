@@ -7,10 +7,49 @@ from nova.actions import (
     MovementControllerContext,
     MovementControllerFunction,
 )
+from nova.types import MotionState, Pose, RobotState
 from nova.core.exceptions import InitMovementFailed
+from typing import Callable
 
 
-def move_forward(context: MovementControllerContext) -> MovementControllerFunction:
+def movement_to_motion_state(movement: wb.models.Movement) -> MotionState | None:
+    """Convert a wb.models.Movement to a MotionState."""
+    if (
+        movement.movement.state is None
+        or movement.movement.state.motion_groups is None
+        or len(movement.movement.state.motion_groups) == 0
+        or movement.movement.current_location is None
+    ):
+        return None
+
+    # TODO: in which cases do we have more than one motion group here?
+    motion_group = movement.movement.state.motion_groups[0]
+    return motion_group_state_to_motion_state(
+        motion_group, float(movement.movement.current_location)
+    )
+
+
+def motion_group_state_to_motion_state(
+    motion_group_state: wb.models.MotionGroupState, path_parameter: float
+) -> MotionState:
+    tcp_pose = Pose(motion_group_state.tcp_pose)
+    joints = (
+        tuple(motion_group_state.joint_current.joints) if motion_group_state.joint_current else None
+    )
+    return MotionState(
+        path_parameter=path_parameter, state=RobotState(pose=tcp_pose, joints=joints)
+    )
+
+
+def move_forward(
+    context: MovementControllerContext, on_movement: Callable[[MotionState], None] | None
+) -> MovementControllerFunction:
+    """
+    movement_controller is an async function that yields requests to the server.
+    If a movement_consumer is provided, we'll asend() each wb.models.MovementMovement to it,
+    letting it produce MotionState objects.
+    """
+
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
@@ -34,16 +73,25 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
         # then we wait until the movement is finished
         async for execute_trajectory_response in response_stream:
-            r2 = execute_trajectory_response.actual_instance
-            # Terminate the generator
-            if isinstance(r2, wb.models.Standstill):
-                if r2.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
+            instance = execute_trajectory_response.actual_instance
+
+            # Send the current location to the consumer
+            if isinstance(instance, wb.models.Movement) and instance.movement and on_movement:
+                motion_state = movement_to_motion_state(instance)
+                if motion_state:
+                    on_movement(motion_state)
+
+            # Stop when standstill indicates motion ended
+            if isinstance(instance, wb.models.Standstill):
+                if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
                     return
 
     return movement_controller
 
 
-def speed_up(context: MovementControllerContext) -> MovementControllerFunction:
+def speed_up(
+    context: MovementControllerContext, on_movement: Callable[[MotionState], None] | None
+) -> MovementControllerFunction:
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
@@ -70,14 +118,20 @@ def speed_up(context: MovementControllerContext) -> MovementControllerFunction:
         # then we wait until the movement is finished
         async for execute_trajectory_response in response_stream:
             counter += 1
-            response = execute_trajectory_response.actual_instance
+            instance = execute_trajectory_response.actual_instance
+            # Send the current location to the consumer
+            if isinstance(instance, wb.models.Movement) and on_movement:
+                motion_state = movement_to_motion_state(instance)
+                if motion_state:
+                    on_movement(motion_state)
+
             # Terminate the generator
-            if isinstance(response, wb.models.Standstill):
-                if response.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
+            if isinstance(instance, wb.models.Standstill):
+                if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
                     return
 
-            if isinstance(response, wb.models.PlaybackSpeedResponse):
-                playback_speed = response.playback_speed_response
+            if isinstance(instance, wb.models.PlaybackSpeedResponse):
+                playback_speed = instance.playback_speed_response
                 logger.info(f"Current playback speed: {playback_speed}")
 
             if counter % 10 == 0:

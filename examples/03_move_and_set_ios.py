@@ -18,6 +18,9 @@ Prerequisites:
 
 
 async def main():
+    def on_movement(motion_state):
+        print(motion_state)
+
     async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.ensure_virtual_robot_controller(
@@ -42,7 +45,7 @@ async def main():
                 jnt(home_joints),
             ]
 
-            await motion_group.plan_and_execute(actions, tcp)
+            await motion_group.plan_and_execute(actions, tcp, on_movement=on_movement)
 
         await cell.delete_robot_controller(controller.name)
 
