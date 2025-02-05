@@ -84,9 +84,6 @@ class MotionGroup(AbstractRobot):
 
         # If there's an initial consumer, feed it the data
         async for move_to_response in movement_stream:
-            if on_movement is None:
-                continue
-
             # TODO: refactor
             if (
                 move_to_response.state is None
