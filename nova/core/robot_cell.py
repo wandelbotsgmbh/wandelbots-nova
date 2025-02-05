@@ -230,8 +230,8 @@ class AbstractRobot(Device):
         joint_trajectory: models.JointTrajectory,
         tcp: str,
         actions: list[Action] | Action | None,
-        on_movement: Callable[[MotionState], None] | None,
-        movement_controller: MovementController | None,
+        on_movement: Callable[[MotionState], None] | None = None,
+        movement_controller: MovementController | None = None,
     ):
         """Execute a planned motion
 
@@ -263,7 +263,10 @@ class AbstractRobot(Device):
         )
 
     async def plan_and_execute(
-        self, actions: list[Action] | Action, tcp: str, on_movement: Callable[[MotionState], None]
+        self,
+        actions: list[Action] | Action,
+        tcp: str,
+        on_movement: Callable[[MotionState], None] | None = None,
     ):
         joint_trajectory = await self.plan(actions, tcp)
         await self.execute(joint_trajectory, tcp, actions, on_movement, movement_controller=None)

@@ -72,8 +72,11 @@ class MotionGroup(AbstractRobot):
         tcp: str,
         actions: list[Action],
         on_movement: Callable[[MotionState], None],
-        movement_controller: MovementController | None = move_forward,
+        movement_controller: MovementController | None,
     ):
+        if movement_controller is None:
+            movement_controller = move_forward
+
         # Load planned trajectory
         load_plan_response = await self._load_planned_motion(joint_trajectory, tcp)
 

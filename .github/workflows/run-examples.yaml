@@ -1,10 +1,9 @@
 name: Run examples
 
 on:
-  # we are unable to create cloud instances as of now
-  #pull_request:
-  #  branches:
-  #    - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   run-examples:
