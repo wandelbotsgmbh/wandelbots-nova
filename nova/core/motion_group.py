@@ -9,9 +9,7 @@ from nova.types import (
     InitialMovementStream,
     LoadPlanResponse,
     Pose,
-    DhParameter,
     MotionState,
-    RobotState,
 )
 from nova.core.robot_cell import AbstractRobot
 from typing import Callable

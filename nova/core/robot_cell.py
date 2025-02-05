@@ -4,7 +4,6 @@ from typing import (
     Protocol,
     runtime_checkable,
     AsyncIterable,
-    AsyncGenerator,
     Callable,
 )
 from abc import ABC, abstractmethod
@@ -17,7 +16,7 @@ import asyncstdlib
 from dataclasses import dataclass
 
 from typing import Any, ClassVar, Literal, get_origin, get_type_hints
-from nova.types import Pose, MotionState, DhParameter, InitialMovementConsumer, RobotState
+from nova.types import Pose, MotionState
 from nova.actions import Action, MovementController
 import pydantic
 import anyio
