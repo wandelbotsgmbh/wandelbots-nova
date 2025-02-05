@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.17.3 (2025-02-05)
+
+### Chores
+
+* chore(RPS-898): implemented robotcell + execute * abstract robot and deps (#38)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`45eec6a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/45eec6aad6fb5576210176e2eab1d0d062e33fff))
+
+
 ## v0.17.2 (2025-02-05)
 
 ### Chores
