@@ -230,8 +230,8 @@ class AbstractRobot(Device):
         joint_trajectory: models.JointTrajectory,
         tcp: str,
         actions: list[Action] | Action | None,
-        on_movement: Callable[[MotionState], None] | None,
-        movement_controller: MovementController | None,
+        on_movement: Callable[[MotionState], None] | None = None,
+        movement_controller: MovementController | None = None,
     ):
         """Execute a planned motion
 
