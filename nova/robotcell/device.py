@@ -62,7 +62,7 @@ class Device(ABC):
         await self.close()
 
     def __del__(self):
-        # TODO: this cannt be async, hence awaiting close is not possible
+        # TODO: this cannot be async, hence awaiting close is not possible
         if self._is_active:
             # TODO(async) intentionally leaving this here to see if it matters
             self.close()
