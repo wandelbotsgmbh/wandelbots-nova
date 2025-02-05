@@ -17,7 +17,7 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.10"
 httpx = "^0.28.0"
-wandelbots_api_client = "24.10.0"
+wandelbots_api_client = "25.1.0"
 websockets = "^14.1.0"
 loguru = "^0.7.2"
 pydantic = "^2.10.3"
