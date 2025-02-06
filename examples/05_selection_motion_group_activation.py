@@ -71,8 +71,8 @@ async def main():
         async with mg_0, mg_1:
             await asyncio.gather(move_robot(mg_0, tcp), move_robot(mg_1, tcp))
 
-        await cell.delete_robot_controller(ur5.name)
-        await cell.delete_robot_controller(ur10.name)
+        await cell.delete_robot_controller(ur5.controller_id)
+        await cell.delete_robot_controller(ur10.controller_id)
 
 
 if __name__ == "__main__":

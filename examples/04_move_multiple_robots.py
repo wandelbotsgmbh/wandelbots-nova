@@ -42,8 +42,8 @@ async def main():
             models.Manufacturer.UNIVERSALROBOTS,
         )
         await asyncio.gather(move_robot(ur5), move_robot(ur10))
-        await cell.delete_robot_controller(ur5.name)
-        await cell.delete_robot_controller(ur10.name)
+        await cell.delete_robot_controller(ur5.controller_id)
+        await cell.delete_robot_controller(ur10.controller_id)
 
 
 if __name__ == "__main__":

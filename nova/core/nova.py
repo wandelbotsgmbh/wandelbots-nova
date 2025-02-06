@@ -49,6 +49,10 @@ class Cell:
         self._api_gateway = api_gateway
         self._cell_id = cell_id
 
+    @property
+    def cell_id(self) -> str:
+        return self._cell_id
+
     async def _get_controller_instances(self) -> list[models.ControllerInstance]:
         response = await self._api_gateway.controller_api.list_controllers(cell=self._cell_id)
         return response.instances

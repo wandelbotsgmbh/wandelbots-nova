@@ -41,7 +41,7 @@ async def main():
             tcp_pose = await motion_group.tcp_pose(tcp)
             print(tcp_pose)
 
-        await cell.delete_robot_controller(controller.name)
+        await cell.delete_robot_controller(controller.controller_id)
 
 
 if __name__ == "__main__":
