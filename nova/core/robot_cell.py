@@ -202,6 +202,24 @@ class StateStreamingDevice(Protocol):
         """
 
 
+class Callerator():
+    def __init__(self, callback : Callable[[Any | None], None] | None):
+        self._q = asyncio.Queue()
+        self.callback = callback
+
+    def __call__(self, value):
+        if self.callback:
+            self.callback(value)
+        self._q.put_nowait(value)
+
+    async def stream(self):
+        while True:
+            value = await self._q.get()
+            if value is None:
+                break
+            yield value
+
+
 class AbstractRobot(Device):
     """An interface for real and simulated robots"""
 
@@ -257,7 +275,7 @@ class AbstractRobot(Device):
         joint_trajectory: models.JointTrajectory,
         tcp: str,
         actions: list[Action],
-        on_movement: Callable[[MotionState], None],
+        on_movement: Callable[[MotionState | None], None],
         movement_controller: MovementController | None,
     ):
         """Execute a planned motion
@@ -275,7 +293,7 @@ class AbstractRobot(Device):
         joint_trajectory: models.JointTrajectory,
         tcp: str,
         actions: list[Action] | Action | None,
-        on_movement: Callable[[MotionState], None] | None = None,
+        on_movement: Callable[[MotionState | None], None] | None = None,
         movement_controller: MovementController | None = None,
     ):
         """Execute a planned motion
@@ -299,22 +317,27 @@ class AbstractRobot(Device):
             if on_movement:
                 on_movement(motion_state_)
 
-        await self._execute(
+        callerator = Callerator(_on_movement)
+        execution_task = asyncio.create_task(self._execute(
             joint_trajectory,
             tcp,
             actions,
             movement_controller=movement_controller,
-            on_movement=_on_movement,
-        )
+            on_movement=callerator,
+        ))
+        async for motion_state in callerator.stream():
+            yield motion_state
+        await execution_task
 
     async def plan_and_execute(
         self,
         actions: list[Action] | Action,
         tcp: str,
-        on_movement: Callable[[MotionState], None] | None = None,
+        on_movement: Callable[[MotionState | None], None] | None = None,
     ):
         joint_trajectory = await self.plan(actions, tcp)
-        await self.execute(joint_trajectory, tcp, actions, on_movement, movement_controller=None)
+        async for motion_state in self.execute(joint_trajectory, tcp, actions, on_movement, movement_controller=None):
+            yield motion_state
 
     @abstractmethod
     async def get_state(self, tcp: str | None = None) -> models.MotionGroupStateResponse:

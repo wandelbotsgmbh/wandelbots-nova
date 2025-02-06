@@ -71,7 +71,7 @@ class MotionGroup(AbstractRobot):
         joint_trajectory: wb.models.JointTrajectory,
         tcp: str,
         actions: list[Action],
-        on_movement: Callable[[MotionState], None],
+        on_movement: Callable[[MotionState | None], None],
         movement_controller: MovementController | None,
     ):
         if movement_controller is None:

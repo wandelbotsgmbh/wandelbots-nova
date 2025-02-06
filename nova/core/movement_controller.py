@@ -42,7 +42,7 @@ def motion_group_state_to_motion_state(
 
 
 def move_forward(
-    context: MovementControllerContext, on_movement: Callable[[MotionState], None] | None
+    context: MovementControllerContext, on_movement: Callable[[MotionState | None], None] | None
 ) -> MovementControllerFunction:
     """
     movement_controller is an async function that yields requests to the server.
@@ -84,13 +84,14 @@ def move_forward(
             # Stop when standstill indicates motion ended
             if isinstance(instance, wb.models.Standstill):
                 if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
+                    on_movement(None)
                     return
 
     return movement_controller
 
 
 def speed_up(
-    context: MovementControllerContext, on_movement: Callable[[MotionState], None] | None
+    context: MovementControllerContext, on_movement: Callable[[MotionState | None], None] | None
 ) -> MovementControllerFunction:
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,
@@ -128,6 +129,7 @@ def speed_up(
             # Terminate the generator
             if isinstance(instance, wb.models.Standstill):
                 if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
+                    on_movement(None)
                     return
 
             if isinstance(instance, wb.models.PlaybackSpeedResponse):
