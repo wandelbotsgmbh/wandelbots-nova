@@ -15,15 +15,15 @@ from nova.core.robot_cell import (
 from nova.core.io import IOAccess
 
 
+# TODO: Device is not associated to IODevice so it is pretty confusing and we should change it
 class Controller(Sized, AbstractController, ConfigurablePeriphery, Device, IODevice):
     class Configuration(ConfigurablePeriphery.Configuration):
         type: Literal["controller"] = "controller"
         identifier: str = "controller"
-        controller_id: str = "controller"
+        controller_id: str
         # TODO: needs to be removed
         plan: bool = False
 
-    _configuration: Configuration
     _io_access: IOAccess
 
     def __init__(

@@ -47,7 +47,7 @@ async def main():
 
             await motion_group.plan_and_execute(actions, tcp, on_movement=on_movement)
 
-        await cell.delete_robot_controller(controller.name)
+        await cell.delete_robot_controller(controller.controller_id)
 
 
 if __name__ == "__main__":

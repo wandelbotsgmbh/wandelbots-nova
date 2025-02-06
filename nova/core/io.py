@@ -66,7 +66,7 @@ class IOAccess(Device):
             io.id
             for io in io_descriptions.values()
             if filter_value_type is None
-            or (io.value_type == filter_value_type and io.type == filter_type)
+            or (IOValueType(io.value_type) == filter_value_type and IOType(io.type) == filter_type)
         ]
 
     async def read(self, key: str) -> bool | int | float:
