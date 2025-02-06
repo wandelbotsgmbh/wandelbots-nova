@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.18.0 (2025-02-06)
+
+### Features
+
+* feat(RPS-1206): implemented I/O access, read & write (#41)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`25e6caa`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/25e6caace690d607a1ea44eb72ab521e8bc35da8))
+
+
 ## v0.17.5 (2025-02-06)
 
 ### Chores
