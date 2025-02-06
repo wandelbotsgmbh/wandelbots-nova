@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.17.5 (2025-02-06)
+
+### Chores
+
+* chore: make robot cell devices readable (#40)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`b7bbbbf`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b7bbbbf9b2db6a0d76c99acd232a7bdeb61180d3))
+
+
 ## v0.17.4 (2025-02-05)
 
 ### Chores
