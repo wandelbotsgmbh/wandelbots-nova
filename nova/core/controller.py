@@ -25,8 +25,6 @@ class Controller(Sized, AbstractController, ConfigurablePeriphery, Device, IODev
         # TODO: needs to be removed
         plan: bool = False
 
-    _io_access: IOAccess
-
     def __init__(
         self, *, api_gateway: ApiGateway, cell: str, controller_instance: models.ControllerInstance
     ):
@@ -36,6 +34,9 @@ class Controller(Sized, AbstractController, ConfigurablePeriphery, Device, IODev
         self._cell = cell
         self._controller_id = controller_instance.controller
         self._activated_motion_group_ids: list[str] = []
+        self._io_access = IOAccess(
+            api_gateway=api_gateway, cell=cell, controller_id=controller_instance.controller
+        )
 
         configuration = self.Configuration(
             identifier=controller_instance.controller,

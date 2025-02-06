@@ -47,6 +47,12 @@ async def main():
 
             await motion_group.plan_and_execute(actions, tcp, on_movement=on_movement)
 
+            io_value = await controller.read("tool_out[0]")
+            print(io_value)
+            await controller.write("tool_out[0]", True)
+            written_io_value = await controller.read("tool_out[0]")
+            print(written_io_value)
+
         await cell.delete_robot_controller(controller.controller_id)
 
 

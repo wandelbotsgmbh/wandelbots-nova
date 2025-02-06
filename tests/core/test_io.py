@@ -6,6 +6,7 @@ from decouple import config
 NOVA_API = config("NOVA_API")
 
 
+@pytest.mark.skip("TODO: Setup integration tests")
 @pytest.mark.asyncio
 async def test_get_io_descriptions():
     nova = Nova(host=NOVA_API)
@@ -21,6 +22,7 @@ async def test_get_io_descriptions():
         assert len(filtered_io_descriptions) < len(io_descriptions)
 
 
+@pytest.mark.skip("TODO: Setup integration tests")
 @pytest.mark.asyncio
 async def test_read():
     nova = Nova(host=NOVA_API)
@@ -34,6 +36,7 @@ async def test_read():
         assert value2 is False
 
 
+@pytest.mark.skip("TODO: Setup integration tests")
 @pytest.mark.asyncio
 async def test_write():
     nova = Nova(host=NOVA_API)
