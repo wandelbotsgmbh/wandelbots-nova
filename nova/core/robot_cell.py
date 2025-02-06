@@ -384,6 +384,10 @@ class RobotCell:
         self._devices = devices
         self._device_exit_stack = AsyncExitStack()
 
+    @property
+    def devices(self) -> dict:
+        return self._devices
+
     def set_configurations(self, configurations: list[ConfigurablePeriphery.Configuration]):
         """Set the configurations of all devices that are attached to the robot cell
 
