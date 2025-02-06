@@ -1,4 +1,14 @@
-from typing import final, Union, Protocol, runtime_checkable, AsyncIterable, Callable
+from typing import (
+    final,
+    Union,
+    Protocol,
+    runtime_checkable,
+    AsyncIterable,
+    Callable,
+    TypeVar,
+    Awaitable,
+    Generic,
+)
 from abc import ABC, abstractmethod
 import asyncio
 from contextlib import AsyncExitStack
@@ -15,6 +25,18 @@ import pydantic
 import anyio
 from functools import reduce
 from nova.api import models
+
+
+class RobotCellError(Exception):
+    """Base exception for all robot cell specific error"""
+
+
+class RobotMotionError(RobotCellError):
+    """Robot can not move as requested"""
+
+
+class RobotCellKeyError(KeyError):
+    pass
 
 
 class ConfigurablePeriphery:
@@ -105,6 +127,29 @@ class Device(ABC):
     @final
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
+
+
+T = TypeVar("T")
+
+
+class AsyncCallableDevice(Generic[T], Device):
+    """An awaitable external function or service in the robot cell"""
+
+    async def __call__(self, *args, **kwargs) -> Awaitable[T]:
+        if not self._is_active:
+            raise ValueError("The device is not activated.")
+        return await self._call(*args)
+
+    @abstractmethod
+    async def _call(self, key, *args) -> Awaitable[T]:
+        """The implementation of the call method. AbstractAwaitable guarantees that the device is activated.
+
+        Args:
+            key: A key that represents the identifier of the external function or service that is called
+            *args: Parameters of the external callable
+
+        Returns: the returned values of the external called function or service
+        """
 
 
 ValueType = Union[int, str, bool, float, Pose]
@@ -360,10 +405,6 @@ class ExecutionResult:
     motion_group_id: str
     motion_duration: float
     recorded_trajectories: list[list[MotionState]]
-
-
-class RobotCellKeyError(KeyError):
-    pass
 
 
 class RobotCell:
