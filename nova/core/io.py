@@ -80,9 +80,9 @@ class IOAccess(Device):
         if io_value.boolean_value is not None:
             return io_value.boolean_value
         if io_value.integer_value is not None:
-            return io_value.integer_value
+            return int(io_value.integer_value)
         if io_value.floating_value is not None:
-            return io_value.floating_value
+            return float(io_value.floating_value)
         raise ValueError(f"IO value for {key} is of an unexpected type.")
 
     async def write(self, key: str, value: ValueType):
@@ -101,7 +101,7 @@ class IOAccess(Device):
                 raise ValueError(
                     f"Integer value can only be set at an IO_VALUE_ANALOG_INTEGER IO and not to {io_value_type}"
                 )
-            io_value = models.IOValue(io=key, integer_value=value)  # TODO: handle mask
+            io_value = models.IOValue(io=key, integer_value=str(value))  # TODO: handle mask
         elif isinstance(value, float):
             if io_value_type is not IOValueType.IO_VALUE_ANALOG_FLOATING:
                 raise ValueError(

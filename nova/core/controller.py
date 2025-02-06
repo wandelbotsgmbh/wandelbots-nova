@@ -11,6 +11,7 @@ from nova.core.robot_cell import (
     Device,
     IODevice,
     AbstractRobot,
+    ValueType,
 )
 from nova.core.io import IOAccess
 
@@ -91,3 +92,9 @@ class Controller(Sized, AbstractController, ConfigurablePeriphery, Device, IODev
             motion_group_id: self.motion_group(int(motion_group_id.split("@")[0]))
             for motion_group_id in self._activated_motion_group_ids
         }
+
+    async def read(self, key: str) -> ValueType:
+        return await self._io_access.read(key)
+
+    async def write(self, key: str, value: ValueType) -> None:
+        return await self._io_access.write(key, value)
