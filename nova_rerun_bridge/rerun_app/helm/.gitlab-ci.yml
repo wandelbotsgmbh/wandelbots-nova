@@ -1,0 +1,39 @@
+variables:
+  HELM_IMAGE: container-registry.wabo.run/docker-hub/dtzar/helm-kubectl:3.13
+
+lint-chart:
+  stage: test
+  image: $HELM_IMAGE
+  script:
+    - cd helm
+    - helm lint .
+
+build-chart:
+  stage: build
+  image: $HELM_IMAGE
+  dependencies:
+    - bump-version
+  script:
+    - !reference [.autoversion-version-var]
+    - cd helm
+    - helm package . --version ${version} --app-version ${version}
+  artifacts:
+    paths:
+      - helm/${APP_NAME}-*.tgz
+
+deploy-chart:
+  stage: deploy
+  image: container-registry.wabo.run/docker-hub/curlimages/curl:8.4.0
+  only:
+    - main
+  dependencies:
+    - bump-version
+    - build-chart
+  script:
+    - !reference [.autoversion-version-var]
+    - cd helm
+    - echo "uploading ${APP_NAME}-${version}.tgz"
+    - curl --request POST 
+      --user gitlab-ci-token:${CI_JOB_TOKEN} 
+      --form "chart=@${APP_NAME}-${version}.tgz" 
+      ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/helm/api/release/charts

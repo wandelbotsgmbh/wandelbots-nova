@@ -1,0 +1,29 @@
+{{ if .Values.ingress.enabled }}
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "rerun-nova.fullname" . }}-route
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match:  PathPrefix(`{{ .Values.ingress.path }}`)
+      services:
+        - kind: Service
+          name: {{ include "rerun-nova.fullname" . }}
+          port: http
+    - kind: Rule
+      match:  PathPrefix(`{{ .Values.ingress.path }}/sdk`)
+      services:
+        - kind: Service
+          name: {{ include "rerun-nova.fullname" . }}
+          port: sdk
+    - kind: Rule
+      match:  PathPrefix(`{{ .Values.ingress.path }}/ws`)
+      services:
+        - kind: Service
+          name: {{ include "rerun-nova.fullname" . }}
+          port: ws
+{{ end }}

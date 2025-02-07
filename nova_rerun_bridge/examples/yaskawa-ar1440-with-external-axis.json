@@ -1,0 +1,774 @@
+[
+  {
+    "request": "{'variable':'ADMIN_GET_SERVER_VERSION'}",
+    "response": "{'variable':'ADMIN_GET_SERVER_VERSION','status':{'code':'CODE_OK','message':''},'version':{'major_version':2,'minor_version':4,'patch_version':100,'build_version':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'controller':'CONTROLLER_GET_VERSION'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'controller':'CONTROLLER_GET_VERSION'},'data':{'version':{'major_version':4,'minor_version':24,'patch_version':0,'build_version':0,'version_string':'YAS4.24.00A(EN/DE)-00'},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'controller':'CONTROLLER_GET_PROTOCOL_VERSION'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'controller':'CONTROLLER_GET_PROTOCOL_VERSION'},'data':{'version':{'major_version':3,'minor_version':3,'patch_version':0,'build_version':0,'version_string':'3.3.0.0'},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'controller':'CONTROLLER_LIST_MOTION_GROUP_UIDS'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'controller':'CONTROLLER_LIST_MOTION_GROUP_UIDS'},'data':{'uint32_list':{'uint32_list':[0,16]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'DESCRIPTION_GET_MODEL_NAME'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'DESCRIPTION_GET_MODEL_NAME'},'data':{'string64_val':{'value':'AR1440'},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'DESCRIPTION_GET_NAME'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'DESCRIPTION_GET_NAME'},'data':{'string64_val':{'value':'R1: 1-06VXH12-A0*(AR1440)'},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'DESCRIPTION_GET_DOF'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'DESCRIPTION_GET_DOF'},'data':{'part':0,'count':0,'uint8_val':6}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'DESCRIPTION_GET_DH_A'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'DESCRIPTION_GET_DH_A'},'data':{'joints':{'values':[155.064,615.491,199.325,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'DESCRIPTION_GET_DH_D'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'DESCRIPTION_GET_DH_D'},'data':{'joints':{'values':[0,0,0,640.604,0,100,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'DESCRIPTION_GET_DH_ALPHA'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'DESCRIPTION_GET_DH_ALPHA'},'data':{'joints':{'values':[1.57079637,0,1.57079637,-1.57079637,1.57079637,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'DESCRIPTION_GET_DH_THETA'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'DESCRIPTION_GET_DH_THETA'},'data':{'joints':{'values':[0,1.57079637,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'DESCRIPTION_GET_AXIS_TYPES'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'DESCRIPTION_GET_AXIS_TYPES'},'data':{'axis_types':{'types':['AXIS_LINEAR','AXIS_LINEAR','AXIS_LINEAR','AXIS_LINEAR','AXIS_LINEAR','AXIS_LINEAR','AXIS_LINEAR']},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'MECHANICALLIMIT_GET_MIN_JOINT_POSITION_LIMITS'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'MECHANICALLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[-2.96706486,-1.57080209,-1.48353124,-3.4906745,-2.61799574,-7.94128084,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'MECHANICALLIMIT_GET_MAX_JOINT_POSITION_LIMITS'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'MECHANICALLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[2.96706486,2.70527101,2.61800218,3.4906745,2.61799574,7.94128084,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'MECHANICALLIMIT_GET_MAX_JOINT_VELOCITIES'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'MECHANICALLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'joints':{'values':[4.53786707,4.01427031,4.53785896,8.20306301,8.20305634,12.217308,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'MECHANICALLIMIT_GET_MAX_JOINT_TORQUES_FORCES'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'MECHANICALLIMIT_GET_MAX_JOINT_TORQUES_FORCES'},'data':{'joints':{'values':[1010.24,1601.6,1001,95.2072,96.2166138,44.6369629,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'MECHANICALLIMIT_GET_MAX_TCP_VELOCITY'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'MECHANICALLIMIT_GET_MAX_TCP_VELOCITY'},'data':{'part':0,'count':0,'uint16_val':1500}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'control':'CONTROL_ENABLE_MONITORING'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'control':'CONTROL_ENABLE_MONITORING'}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'control':'CONTROL_DISABLE_MONITORING'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'control':'CONTROL_DISABLE_MONITORING'}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'control':'CONTROL_CLIENT_IS_ALIVE'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'control':'CONTROL_CLIENT_IS_ALIVE'}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_LIST_UIDS'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_LIST_UIDS'},'data':{'string32_list':{'string32_list':[{'value':'TOOL 0'},{'value':'TOOL 1'},{'value':'TOOL 2'},{'value':'TOOL 3'},{'value':'TOOL 4'},{'value':'TOOL 5'},{'value':'TOOL 6'},{'value':'TOOL 7'},{'value':'TOOL 8'},{'value':'TOOL 9'},{'value':'TOOL 10'},{'value':'TOOL 11'},{'value':'TOOL 12'},{'value':'TOOL 13'},{'value':'TOOL 14'},{'value':'TOOL 15'},{'value':'TOOL 16'},{'value':'TOOL 17'},{'value':'TOOL 18'},{'value':'TOOL 19'},{'value':'TOOL 20'},{'value':'TOOL 21'},{'value':'TOOL 22'},{'value':'TOOL 23'},{'value':'TOOL 24'},{'value':'TOOL 25'},{'value':'TOOL 26'},{'value':'TOOL 27'},{'value':'TOOL 28'},{'value':'TOOL 29'},{'value':'TOOL 30'},{'value':'TOOL 31'},{'value':'TOOL 32'},{'value':'TOOL 33'},{'value':'TOOL 34'},{'value':'TOOL 35'},{'value':'TOOL 36'},{'value':'TOOL 37'},{'value':'TOOL 38'},{'value':'TOOL 39'},{'value':'TOOL 40'},{'value':'TOOL 41'},{'value':'TOOL 42'},{'value':'TOOL 43'},{'value':'TOOL 44'},{'value':'TOOL 45'},{'value':'TOOL 46'},{'value':'TOOL 47'},{'value':'TOOL 48'},{'value':'TOOL 49'},{'value':'TOOL 50'},{'value':'TOOL 51'},{'value':'TOOL 52'},{'value':'TOOL 53'},{'value':'TOOL 54'},{'value':'TOOL 55'},{'value':'TOOL 56'},{'value':'TOOL 57'},{'value':'TOOL 58'},{'value':'TOOL 59'},{'value':'TOOL 60'},{'value':'TOOL 61'},{'value':'TOOL 62'},{'value':'TOOL 63'}]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_CURRENT_TOOL_CENTER_POINT'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_CURRENT_TOOL_CENTER_POINT'},'data':{'tcp':{'uid':{'value':'TOOL 3'},'name':{'value':'03 LORCH BURNER'},'position_offset':{'values':[-111.932,1.247,366.353]},'rotation_offset':{'values':[0,-0.78539816339744828,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'flange_payload':'FP_GET_CURRENT_PAYLOAD'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'flange_payload':'FP_GET_CURRENT_PAYLOAD'},'data':{'flange_payload':{'uid':{'value':'TOOL 3'},'name':{'value':'LORCH BURNER'},'mass':1.689,'center_of_mass':{'values':[0,0,0]},'moment_of_inertia':{'values':[0,0,0]}},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'safety':'SAFETY_GET_CHECKSUM'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETY_GET_CHECKSUM'},'data':{'string32_val':{'value':'4289346082'},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'safety':'SAFETY_LIST_ZONE_IDS'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETY_LIST_ZONE_IDS'},'data':{'uint32_list':{'uint32_list':[1,2]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'safety':'SAFETY_GET_ROBOT_MODEL_GEOMETRY'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETY_GET_ROBOT_MODEL_GEOMETRY'},'data':{'robot_model_geometry_list':{'robot_model_geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'description':'DESCRIPTION_GET_MODEL_NAME'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'DESCRIPTION_GET_MODEL_NAME'},'data':{'string64_val':{'value':'TURN-2'},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'description':'DESCRIPTION_GET_NAME'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'DESCRIPTION_GET_NAME'},'data':{'string64_val':{'value':'S1: TURN-2'},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'description':'DESCRIPTION_GET_DOF'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'DESCRIPTION_GET_DOF'},'data':{'part':0,'count':0,'uint8_val':2}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'description':'MECHANICALLIMIT_GET_MIN_JOINT_POSITION_LIMITS'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'MECHANICALLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[-1.57079625,-6.28318548,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'description':'MECHANICALLIMIT_GET_MAX_JOINT_POSITION_LIMITS'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'MECHANICALLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[1.57079625,6.28318548,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'description':'MECHANICALLIMIT_GET_MAX_JOINT_VELOCITIES'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'MECHANICALLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'joints':{'values':[2.8398509,3.01734018,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'description':'MECHANICALLIMIT_GET_MAX_JOINT_TORQUES_FORCES'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'MECHANICALLIMIT_GET_MAX_JOINT_TORQUES_FORCES'},'data':{'joints':{'values':[3690.45,1908.06,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_LIST_UIDS'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_LIST_UIDS'},'data':{'string32_list':{'string32_list':[{'value':'TOOL 0'},{'value':'TOOL 1'},{'value':'TOOL 2'},{'value':'TOOL 3'},{'value':'TOOL 4'},{'value':'TOOL 5'},{'value':'TOOL 6'},{'value':'TOOL 7'},{'value':'TOOL 8'},{'value':'TOOL 9'},{'value':'TOOL 10'},{'value':'TOOL 11'},{'value':'TOOL 12'},{'value':'TOOL 13'},{'value':'TOOL 14'},{'value':'TOOL 15'},{'value':'TOOL 16'},{'value':'TOOL 17'},{'value':'TOOL 18'},{'value':'TOOL 19'},{'value':'TOOL 20'},{'value':'TOOL 21'},{'value':'TOOL 22'},{'value':'TOOL 23'},{'value':'TOOL 24'},{'value':'TOOL 25'},{'value':'TOOL 26'},{'value':'TOOL 27'},{'value':'TOOL 28'},{'value':'TOOL 29'},{'value':'TOOL 30'},{'value':'TOOL 31'},{'value':'TOOL 32'},{'value':'TOOL 33'},{'value':'TOOL 34'},{'value':'TOOL 35'},{'value':'TOOL 36'},{'value':'TOOL 37'},{'value':'TOOL 38'},{'value':'TOOL 39'},{'value':'TOOL 40'},{'value':'TOOL 41'},{'value':'TOOL 42'},{'value':'TOOL 43'},{'value':'TOOL 44'},{'value':'TOOL 45'},{'value':'TOOL 46'},{'value':'TOOL 47'},{'value':'TOOL 48'},{'value':'TOOL 49'},{'value':'TOOL 50'},{'value':'TOOL 51'},{'value':'TOOL 52'},{'value':'TOOL 53'},{'value':'TOOL 54'},{'value':'TOOL 55'},{'value':'TOOL 56'},{'value':'TOOL 57'},{'value':'TOOL 58'},{'value':'TOOL 59'},{'value':'TOOL 60'},{'value':'TOOL 61'},{'value':'TOOL 62'},{'value':'TOOL 63'}]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'safety':'SAFETY_GET_ROBOT_MODEL_GEOMETRY'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETY_GET_ROBOT_MODEL_GEOMETRY'},'data':{'robot_model_geometry_list':{'robot_model_geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'custom':'CUSTOM_GET_VARIABLE'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'custom':'CUSTOM_GET_VARIABLE'},'data':{'double_list':{'double_list':[0,12.5,25,50,100,200,300,400,500]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'safety':'SAFETY_GET_ZONE'},'data':{'part':0,'count':0,'uint32_val':1}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETY_GET_ZONE'},'data':{'safety_zone':{'id':1,'name':{'value':''},'priority':0,'restricted':true,'geometry':{'prism':{'point':[{'values':[1300,550]},{'values':[1300,1700]},{'values':[-1600,1700]},{'values':[-1600,-1400]},{'values':[2400,-1400]},{'values':[2400,550]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]}],'size':6,'top':1550,'bottom':-475},'inverted':true},'mg_uid':0},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'safety':'SAFETY_GET_ZONE'},'data':{'part':0,'count':0,'uint32_val':2}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETY_GET_ZONE'},'data':{'safety_zone':{'id':2,'name':{'value':''},'priority':0,'restricted':true,'geometry':{'prism':{'point':[{'values':[-600,0]},{'values':[-1600,0]},{'values':[-1600,1700]},{'values':[-600,1700]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]},{'values':[0,0]}],'size':4,'top':1550,'bottom':-475},'inverted':false},'mg_uid':0},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'safety':'SAFETY_IS_ZONE_ACTIVE'},'data':{'part':0,'count':0,'uint32_val':1}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETY_IS_ZONE_ACTIVE'},'data':{'bool_val':true,'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'safety':'SAFETY_IS_ZONE_ACTIVE'},'data':{'part':0,'count':0,'uint32_val':2}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETY_IS_ZONE_ACTIVE'},'data':{'bool_val':true,'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_MANUAL'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[-2.96706486,-1.57080209,-1.48353124,-3.4906745,-2.61799574,-7.94128084,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_AUTO'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[-2.96706486,-1.57080209,-1.48353124,-3.4906745,-2.61799574,-7.94128084,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_MANUAL'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[2.96706486,2.70527101,2.61800218,3.4906745,2.61799574,7.94128084,'NaN']},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_AUTO'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[2.96706486,2.70527101,2.61800218,3.4906745,2.61799574,7.94128084,'NaN']},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_MANUAL'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'joints':{'values':[0.907573402,0.802854121,0.907571793,1.6406126,1.64061141,2.44346166,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_AUTO'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'joints':{'values':[4.53786707,4.01427031,4.53785896,8.20306301,8.20305634,12.217308,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'OPERATIONLIMIT_GET_MAX_TCP_VELOCITY'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_MANUAL'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MAX_TCP_VELOCITY'},'data':{'part':0,'count':0,'uint16_val':249}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'description':'OPERATIONLIMIT_GET_MAX_TCP_VELOCITY'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_AUTO'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MAX_TCP_VELOCITY'},'data':{'part':0,'count':0,'uint16_val':1500}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'description':'OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_MANUAL'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[-1.57079625,-6.28318548,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'description':'OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_AUTO'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[-1.57079625,-6.28318548,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_MANUAL'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[1.57079625,6.28318548,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_AUTO'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[1.57079625,6.28318548,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_MANUAL'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'joints':{'values':[0.567970157,0.60346806,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'part':0,'count':0,'operation_mode':'OPERATION_MODE_AUTO'}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'description':'OPERATIONLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'joints':{'values':[2.8398509,3.01734018,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'control':'CONTROL_SELECT_ACTIVE_MOTION_GROUPS'},'data':{'uint32_list':{'uint32_list':[0]},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'control':'CONTROL_SELECT_ACTIVE_MOTION_GROUPS'}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'control':'CONTROL_SELECT_ACTIVE_MOTION_GROUPS'},'data':{'uint32_list':{'uint32_list':[0,16]},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'control':'CONTROL_SELECT_ACTIVE_MOTION_GROUPS'}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'safety':'SAFETYLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'safety_setup_identifier':{'safety_zone_uid':0,'safety_state':'SAFETY_STATE_NORMAL'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETYLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[-2.96706486,-1.57080209,-1.48353124,-3.4906745,-2.61799574,-7.94128084,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'safety':'SAFETYLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'safety_setup_identifier':{'safety_zone_uid':0,'safety_state':'SAFETY_STATE_NORMAL'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETYLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[2.96706486,2.70527101,2.61800218,3.4906745,2.61799574,7.94128084,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'safety':'SAFETYLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'safety_setup_identifier':{'safety_zone_uid':0,'safety_state':'SAFETY_STATE_NORMAL'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETYLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'joints':{'values':[4.53786707,4.01427031,4.53785896,8.20306301,8.20305634,12.217308,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'safety':'SAFETYLIMIT_GET_MAX_TCP_VELOCITY'},'data':{'safety_setup_identifier':{'safety_zone_uid':0,'safety_state':'SAFETY_STATE_NORMAL'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETYLIMIT_GET_MAX_TCP_VELOCITY'},'data':{'part':0,'count':0,'uint16_val':1500}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'safety':'SAFETYLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'safety_setup_identifier':{'safety_zone_uid':0,'safety_state':'SAFETY_STATE_NORMAL'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETYLIMIT_GET_MIN_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[-1.57079625,-6.28318548,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'safety':'SAFETYLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'safety_setup_identifier':{'safety_zone_uid':0,'safety_state':'SAFETY_STATE_NORMAL'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETYLIMIT_GET_MAX_JOINT_POSITION_LIMITS'},'data':{'joints':{'values':[1.57079625,6.28318548,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'safety':'SAFETYLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'safety_setup_identifier':{'safety_zone_uid':0,'safety_state':'SAFETY_STATE_NORMAL'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'safety':'SAFETYLIMIT_GET_MAX_JOINT_VELOCITIES'},'data':{'joints':{'values':[2.8398509,3.01734018,0,0,0,0,0]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 0'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[{'capsule':{'top':{'values':[0,0,0]},'bottom':{'values':[0,0,500]},'radius':90},'inverted':false}]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 1'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[{'capsule':{'top':{'values':[0,0,0]},'bottom':{'values':[0,0,0]},'radius':90},'inverted':false}]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 2'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[{'capsule':{'top':{'values':[0,0,0]},'bottom':{'values':[0,0,0]},'radius':90},'inverted':false},{'capsule':{'top':{'values':[0,0,0]},'bottom':{'values':[0,0,270]},'radius':50},'inverted':false},{'capsule':{'top':{'values':[0,0,270]},'bottom':{'values':[80,50,370]},'radius':50},'inverted':false}]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 3'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[{'capsule':{'top':{'values':[0,0,0]},'bottom':{'values':[0,0,0]},'radius':90},'inverted':false},{'capsule':{'top':{'values':[0,0,0]},'bottom':{'values':[0,0,200]},'radius':60},'inverted':false},{'capsule':{'top':{'values':[0,0,230]},'bottom':{'values':[-120,0,370]},'radius':20},'inverted':false}]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 4'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 5'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 6'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 7'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 8'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 9'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 0'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[{'capsule':{'top':{'values':[0,0,0]},'bottom':{'values':[0,0,500]},'radius':90},'inverted':false}]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 1'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[{'capsule':{'top':{'values':[0,0,0]},'bottom':{'values':[0,0,0]},'radius':90},'inverted':false}]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 2'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[{'capsule':{'top':{'values':[0,0,0]},'bottom':{'values':[0,0,0]},'radius':90},'inverted':false},{'capsule':{'top':{'values':[0,0,0]},'bottom':{'values':[0,0,270]},'radius':50},'inverted':false},{'capsule':{'top':{'values':[0,0,270]},'bottom':{'values':[80,50,370]},'radius':50},'inverted':false}]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 3'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[{'capsule':{'top':{'values':[0,0,0]},'bottom':{'values':[0,0,0]},'radius':90},'inverted':false},{'capsule':{'top':{'values':[0,0,0]},'bottom':{'values':[0,0,200]},'radius':60},'inverted':false},{'capsule':{'top':{'values':[0,0,230]},'bottom':{'values':[-120,0,370]},'radius':20},'inverted':false}]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 4'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 5'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 6'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 7'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 8'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 9'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 10'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 11'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 12'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 13'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 14'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 15'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 16'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 17'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 18'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 19'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 20'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 21'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 22'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 23'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 24'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 25'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 26'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 27'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 28'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 29'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 30'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 31'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 32'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 33'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 34'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 35'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 36'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 37'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 38'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 39'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 40'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 41'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 42'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 43'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 44'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 45'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 46'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 47'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 48'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 49'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 50'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 51'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 52'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 53'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 54'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 55'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 56'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 57'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 58'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 59'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 60'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 61'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 62'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 63'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 10'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 11'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 12'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 13'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 14'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 15'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 16'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 17'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 18'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 19'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 20'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 21'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 22'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 23'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 24'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 25'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 26'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 27'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 28'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 29'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 30'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 31'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 32'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 33'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 34'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 35'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 36'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 37'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 38'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 39'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 40'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 41'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 42'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 43'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 44'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 45'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 46'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 47'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 48'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 49'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 50'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 51'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 52'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 53'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 54'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 55'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 56'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 57'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 58'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 59'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 60'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 61'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 62'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':16,'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'string32_val':{'value':'TOOL 63'},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_GET_TOOL_CENTER_POINT_GEOMETRY'},'data':{'geometry_list':{'geometry':[]},'part':0,'count':0}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'control':'CONTROL_SET_RTI_CLIENT_ADDRESS'},'data':{'address':{'ip':{'ipv4_a':127,'ipv4_b':0,'ipv4_c':0,'ipv4_d':1},'port':30651},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'control':'CONTROL_SET_RTI_CLIENT_ADDRESS'}}"
+  },
+  {
+    "request": "{'uid':0,'service':{'tcp':'TCP_LIST_TOOL_CENTER_POINTS'},'data':{'string32_list':{'string32_list':[{'value':'TOOL 0'},{'value':'TOOL 1'},{'value':'TOOL 2'},{'value':'TOOL 3'},{'value':'TOOL 4'},{'value':'TOOL 5'},{'value':'TOOL 6'},{'value':'TOOL 7'},{'value':'TOOL 8'},{'value':'TOOL 9'},{'value':'TOOL 10'},{'value':'TOOL 11'},{'value':'TOOL 12'},{'value':'TOOL 13'},{'value':'TOOL 14'},{'value':'TOOL 15'},{'value':'TOOL 16'},{'value':'TOOL 17'},{'value':'TOOL 18'},{'value':'TOOL 19'},{'value':'TOOL 20'},{'value':'TOOL 21'},{'value':'TOOL 22'},{'value':'TOOL 23'},{'value':'TOOL 24'},{'value':'TOOL 25'},{'value':'TOOL 26'},{'value':'TOOL 27'},{'value':'TOOL 28'},{'value':'TOOL 29'},{'value':'TOOL 30'},{'value':'TOOL 31'},{'value':'TOOL 32'},{'value':'TOOL 33'},{'value':'TOOL 34'},{'value':'TOOL 35'},{'value':'TOOL 36'},{'value':'TOOL 37'},{'value':'TOOL 38'},{'value':'TOOL 39'},{'value':'TOOL 40'},{'value':'TOOL 41'},{'value':'TOOL 42'},{'value':'TOOL 43'},{'value':'TOOL 44'},{'value':'TOOL 45'},{'value':'TOOL 46'},{'value':'TOOL 47'},{'value':'TOOL 48'},{'value':'TOOL 49'},{'value':'TOOL 50'},{'value':'TOOL 51'},{'value':'TOOL 52'},{'value':'TOOL 53'},{'value':'TOOL 54'},{'value':'TOOL 55'},{'value':'TOOL 56'},{'value':'TOOL 57'},{'value':'TOOL 58'},{'value':'TOOL 59'},{'value':'TOOL 60'},{'value':'TOOL 61'},{'value':'TOOL 62'},{'value':'TOOL 63'}]},'part':0,'count':0}}",
+    "response": "{'status':{'code':'CODE_OK','message':''},'service':{'tcp':'TCP_LIST_TOOL_CENTER_POINTS'},'data':{'tcp_list':{'tcps':[{'uid':{'value':'TOOL 0'},'name':{'value':'00 CALIB-ADAPTER'},'position_offset':{'values':[0,0,19]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 1'},'name':{'value':'01 BURNER-FLANGE'},'position_offset':{'values':[0,0,59]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 2'},'name':{'value':'02 BURNER'},'position_offset':{'values':[76.012,43.114000000000004,349.834]},'rotation_offset':{'values':[0,0.78539816339744828,0.3490658503988659,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 3'},'name':{'value':'03 LORCH BURNER'},'position_offset':{'values':[-111.932,1.247,366.353]},'rotation_offset':{'values':[0,-0.78539816339744828,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 4'},'name':{'value':'04 TEST-IVAN'},'position_offset':{'values':[0,0,100]},'rotation_offset':{'values':[-3.1415926535897931,-0.78539816339744828,3.1415926535897931,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 5'},'name':{'value':'05 GUNTHER-WERK'},'position_offset':{'values':[-114.153,0.39,367.863]},'rotation_offset':{'values':[0,-0.78539816339744828,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 6'},'name':{'value':'06 GUNTHER-KORREKT'},'position_offset':{'values':[-114.81400000000001,0.521,368.472]},'rotation_offset':{'values':[0,-0.78539816339744828,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 7'},'name':{'value':'07 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 8'},'name':{'value':'08 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 9'},'name':{'value':'09 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 10'},'name':{'value':'10 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 11'},'name':{'value':'11 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 12'},'name':{'value':'12 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 13'},'name':{'value':'13 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 14'},'name':{'value':'14 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 15'},'name':{'value':'15 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 16'},'name':{'value':'16 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 17'},'name':{'value':'17 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 18'},'name':{'value':'18 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 19'},'name':{'value':'19 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 20'},'name':{'value':'20 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 21'},'name':{'value':'21 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 22'},'name':{'value':'22 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 23'},'name':{'value':'23 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 24'},'name':{'value':'24 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 25'},'name':{'value':'25 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 26'},'name':{'value':'26 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 27'},'name':{'value':'27 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 28'},'name':{'value':'28 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 29'},'name':{'value':'29 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 30'},'name':{'value':'30 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 31'},'name':{'value':'31 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 32'},'name':{'value':'32 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 33'},'name':{'value':'33 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 34'},'name':{'value':'34 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 35'},'name':{'value':'35 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 36'},'name':{'value':'36 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 37'},'name':{'value':'37 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 38'},'name':{'value':'38 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 39'},'name':{'value':'39 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 40'},'name':{'value':'40 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 41'},'name':{'value':'41 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 42'},'name':{'value':'42 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 43'},'name':{'value':'43 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 44'},'name':{'value':'44 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 45'},'name':{'value':'45 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 46'},'name':{'value':'46 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 47'},'name':{'value':'47 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 48'},'name':{'value':'48 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 49'},'name':{'value':'49 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 50'},'name':{'value':'50 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 51'},'name':{'value':'51 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 52'},'name':{'value':'52 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 53'},'name':{'value':'53 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 54'},'name':{'value':'54 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 55'},'name':{'value':'55 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 56'},'name':{'value':'56 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 57'},'name':{'value':'57 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 58'},'name':{'value':'58 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 59'},'name':{'value':'59 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 60'},'name':{'value':'60 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 61'},'name':{'value':'61 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 62'},'name':{'value':'62 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'},{'uid':{'value':'TOOL 63'},'name':{'value':'63 '},'position_offset':{'values':[0,0,0]},'rotation_offset':{'values':[0,0,0,0]},'rotation_type':'ROTATION_EULER_ANGLES_EXTRINSIC_XYZ'}]},'part':0,'count':0}}"
+  }
+]

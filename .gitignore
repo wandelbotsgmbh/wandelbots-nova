@@ -155,3 +155,20 @@ dmypy.json
 .engine
 services/helm/charts
 Chart.lock
+
+
+# test files
+*PointCloud-cropped-0.ply
+nova_rerun_bridge/minimal_example/models
+
+nova_rerun_bridge/rerun_app/models
+nova_rerun_bridge/rerun_app/nova_rerun_bridge
+nova_rerun_bridge/rerun_app/pyproject.toml
+nova_rerun_bridge/rerun_app/poetry.lock
+nova_rerun_bridge/nova_rerun_bridge_app/README.md
+
+nova_rerun_bridge/nova_rerun_bridge_app/models
+nova_rerun_bridge/nova_rerun_bridge_app/nova_rerun_bridge
+nova_rerun_bridge/nova_rerun_bridge_app/pyproject.toml
+nova_rerun_bridge/nova_rerun_bridge_app/poetry.lock
+nova_rerun_bridge/nova_rerun_bridge_app/README.md

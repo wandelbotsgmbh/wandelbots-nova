@@ -1,0 +1,18 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: nova-rerun-bridge
+build:
+  artifacts:
+    - image: registry.code.wabo.run/ai/nova-rerun-bridge/nova-rerun-bridge
+      context: .
+      docker:
+        dockerfile: Dockerfile
+        buildArgs:
+          platform: "linux/amd64"
+  local:
+    useBuildkit: true
+manifests:
+  kustomize:
+    paths:
+      - ./k8s

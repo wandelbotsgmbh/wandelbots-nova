@@ -1,0 +1,12 @@
+appIcon: app_icon.png
+containerImage:
+  credentials:
+    password: ""
+    registry: ""
+    user: ""
+  image: andiikaa/nova-rerun-bridge:0.0.5
+  secrets:
+    - name: pull-secret-registry-1-docker-io
+environment: []
+name: nova-rerun-bridge
+port: 3001

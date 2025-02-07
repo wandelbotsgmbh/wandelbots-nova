@@ -1,0 +1,4 @@
+SIZE = 10
+RECORDING_INTERVAL = 0.016  # 16ms per point
+SCHEDULE_INTERVAL = 5  # seconds
+TIME_INTERVAL_NAME = f"time_interval_{RECORDING_INTERVAL}"

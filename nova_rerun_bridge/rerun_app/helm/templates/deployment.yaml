@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rerun-nova.fullname" . }}
+  labels:
+{{ include "rerun-nova.labels" . | indent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "rerun-nova.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "rerun-nova.labels" . | nindent 8 }}
+    spec:
+      dnsPolicy: "ClusterFirst"
+      imagePullSecrets:
+        - name: {{.Values.secretsName}}
+      containers:
+        - name: rerun-nova
+          image: "{{ .Values.registry }}:{{ if eq .Values.tag "" }}{{ .Chart.AppVersion }}{{ else }}{{ .Values.tag }}{{ end }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+              name: http
+            - containerPort: 9876
+              protocol: TCP
+              name: sdk
+            - containerPort: 9877
+              protocol: TCP
+              name: ws
+          env:
+            - name: LOG_LEVEL
+              value: {{ quote .Values.logLevel }}
+            {{- if .Values.ingress.enabled }}
+            - name: BASE_PATH
+              value: {{ quote .Values.ingress.path }}
+            {{- end }}
+

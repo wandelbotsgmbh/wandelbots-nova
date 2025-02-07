@@ -1,0 +1,25 @@
+logLevel: info
+
+service:
+  # Use LoadBalancer to publish the service via the given port. Use ClusterIP when using ingress
+  type: LoadBalancer
+  # Port where the service will be exposed to.
+  port: 3000
+
+registry: wandelbots.azurecr.io/nova-apps/rerun
+tag: ""
+
+# NOTE: Ingress doesn't work with rerun currently
+ingress:
+  # If true, an ingress route will be created.
+  enabled: false
+  # The path under which the service will be available.
+  path: "/rerun-nova"
+
+# Provides the secrets name required for pulling the image.
+# Normally they are distributed with the service manager https://code.wabo.run/wandelos/service-manager
+# but are also available here: https://code.wabo.run/shared-content/registry-credentials/-/raw/main/pull-secrets.yaml
+secretsName: pull-secret-wandelbots-azurecr-io
+# Overrides default name for the service
+nameOverride: ""
+fullnameOverride: ""
