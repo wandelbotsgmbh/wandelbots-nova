@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.19.1 (2025-02-07)
+
+### Chores
+
+* chore: added active tcp to abstract robot (#46)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`f64cb39`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f64cb393164cb92ae8ec5173ca32ce912c390420))
+
+
 ## v0.19.0 (2025-02-07)
 
 ### Features
