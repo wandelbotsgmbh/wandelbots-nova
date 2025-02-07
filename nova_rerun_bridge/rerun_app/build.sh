@@ -1,8 +1,8 @@
 #!/bin/sh
 
 # Copy directories from parent folder
-PARENT_DIR=".."
-DIRS_TO_COPY=("nova_rerun_bridge")
+PARENT_DIR="../.."
+DIRS_TO_COPY=("nova_rerun_bridge" "nova")
 FILES_TO_COPY=("pyproject.toml" "poetry.lock" "README.md")
 
 for dir in "${DIRS_TO_COPY[@]}"; do
