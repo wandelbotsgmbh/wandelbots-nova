@@ -45,13 +45,18 @@ jobs:
 
       - name: Create and populate nova_rerun_bridge_app directory
         run: |
-          DIRS_TO_COPY=("models" "nova_rerun_bridge" "nova")
+          # Create temp directory
+          rm -rf temp_build
+          mkdir -p temp_build
+
+          DIRS_TO_COPY=("models" "nova" "nova_rerun_bridge")
           FILES_TO_COPY=("pyproject.toml" "poetry.lock" "README.md")
 
+          # Copy to temp directory first
           for dir in "${DIRS_TO_COPY[@]}"; do
             if [ -d "$dir" ]; then
               echo "Copying $dir..."
-              cp -r "$dir" nova_rerun_bridge/nova_rerun_bridge_app/
+              cp -r "$dir" temp_build/
             else
               echo "Warning: Directory $dir not found"
             fi
@@ -60,11 +65,15 @@ jobs:
           for file in "${FILES_TO_COPY[@]}"; do
             if [ -f "$file" ]; then
               echo "Copying $file..."
-              cp "$file" nova_rerun_bridge/nova_rerun_bridge_app/
+              cp "$file" temp_build/
             else
               echo "Warning: File $file not found"
             fi
           done
+
+          # Move to final destination
+          mv temp_build/* nova_rerun_bridge/nova_rerun_bridge_app/
+          rm -rf temp_build
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
