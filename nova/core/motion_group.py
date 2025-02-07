@@ -199,3 +199,13 @@ class MotionGroup(AbstractRobot):
     async def tcp_names(self) -> list[str]:
         """Get the names of the available tool center points (TCPs)"""
         return [tcp.id for tcp in await self.tcps()]
+
+    async def active_tcp(self) -> wb.models.RobotTcp:
+        active_tcp = await self._api_gateway.motion_group_infos_api.get_active_tcp(
+            cell=self._cell, motion_group=self.motion_group_id
+        )
+        return active_tcp
+
+    async def active_tcp_name(self) -> str:
+        active_tcp = await self.active_tcp()
+        return active_tcp.id

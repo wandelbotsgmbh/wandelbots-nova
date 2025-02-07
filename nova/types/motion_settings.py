@@ -47,6 +47,10 @@ class MotionSettings(pydantic.BaseModel):
     class Config:
         frozen = True
 
+    @classmethod
+    def field_to_varname(cls, field):
+        return f"__ms_{field}"
+
     @pydantic.model_validator(mode="after")
     def validate_blending_settings(self) -> "MotionSettings":
         if self.min_blending_velocity and self.position_zone_radius:
