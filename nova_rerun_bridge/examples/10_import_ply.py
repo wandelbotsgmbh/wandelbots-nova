@@ -3,12 +3,12 @@ import asyncio
 import numpy as np
 import rerun as rr
 import trimesh
+
 from nova import MotionSettings
 from nova.actions import jnt, ptp
 from nova.api import models
 from nova.core.nova import Nova
 from nova.types import Pose
-
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 
@@ -22,7 +22,7 @@ async def test():
         await bridge.setup_blueprint()
 
         # Load PLY file
-        mesh = trimesh.load("example_data/bin_everything_05.ply")
+        mesh = trimesh.load("nova_rerun_bridge/example_data/bin_everything_05.ply")
 
         # Extract vertex positions and colors
         positions = np.array(mesh.vertices)
