@@ -5,6 +5,12 @@ from zipfile import ZipFile
 
 import requests
 
+"""
+This script downloads the latest robot models from the wandelbots-js-react-components repository
+and processes them using gltf-transform to make them compatible with the Wandelbots SDK.
+Install gltf-transform with: npm install -g @gltf-transform/cli
+"""
+
 
 def get_project_root() -> Path:
     """Get the root directory of the user's project"""

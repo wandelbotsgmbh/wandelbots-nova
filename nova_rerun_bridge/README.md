@@ -1,9 +1,5 @@
 # Nova Rerun Bridge
 
-[![PyPI version](https://badge.fury.io/py/nova-rerun-bridge.svg)](https://badge.fury.io/py/nova-rerun-bridge)
-[![License](https://img.shields.io/github/license/wandelbotsgmbh/nova-rerun-bridge.svg)](https://github.com/wandelbotsgmbh/nova-rerun-bridge/blob/main/LICENSE)
-[![Build Status](https://github.com/wandelbotsgmbh/nova-rerun-bridge/actions/workflows/release.yml/badge.svg)](https://github.com/wandelbotsgmbh/nova-rerun-bridge/actions/workflows/release.yml)
-
 A visualization extension for [wandelbots-nova](https://github.com/wandelbotsgmbh/wandelbots-nova) that enables real-time 3D visualization of robot trajectories using [rerun.io](https://rerun.io).
 
 https://github.com/user-attachments/assets/ab527bc4-720a-41f2-9499-54d6ed027163
