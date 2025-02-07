@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.19.0 (2025-02-07)
+
+### Features
+
+* feat: get active_tcp_name & added motion_settings to var name (#44)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`352b17b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/352b17b5ee63e3e747b7ef19f85226b644db3b07))
+
+
 ## v0.18.0 (2025-02-06)
 
 ### Features
