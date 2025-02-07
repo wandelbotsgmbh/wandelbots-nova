@@ -5,7 +5,7 @@ from nova.actions import Action, CombinedActions, MovementController, MovementCo
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.movement_controller import move_forward, motion_group_state_to_motion_state
 from nova.gateway import ApiGateway
-from nova.types import InitialMovementStream, LoadPlanResponse, Pose, MotionState
+from nova.types import InitialMovementStream, LoadPlanResponse, Pose, MotionState, RobotState
 from nova.core.robot_cell import AbstractRobot
 from typing import Callable
 
@@ -175,19 +175,25 @@ class MotionGroup(AbstractRobot):
         except ValueError as e:
             logger.debug(f"No motion to stop for {self}: {e}")
 
-    async def get_state(self, tcp: str | None = None) -> wb.models.MotionGroupStateResponse:
+    async def get_state(self, tcp: str | None = None) -> RobotState:
         response = await self._api_gateway.motion_group_infos_api.get_current_motion_group_state(
             cell=self._cell, motion_group=self.motion_group_id, tcp=tcp
         )
-        return response
+        return RobotState(
+            pose=Pose(response.state.tcp_pose), joints=tuple(response.state.joint_position.joints)
+        )
 
     async def joints(self) -> tuple:
         state = await self.get_state()
-        return tuple(state.state.joint_position.joints)
+        if state.joints is None:
+            raise ValueError(
+                f"No joint positions available for motion group {self._motion_group_id}"
+            )
+        return state.joints
 
     async def tcp_pose(self, tcp: str | None = None) -> Pose:
         state = await self.get_state(tcp=tcp)
-        return Pose(state.state.tcp_pose)
+        return state.pose
 
     async def tcps(self) -> list[wb.models.RobotTcp]:
         """Get the available tool center points (TCPs)"""

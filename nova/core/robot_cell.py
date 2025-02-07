@@ -19,7 +19,7 @@ import asyncstdlib
 from dataclasses import dataclass
 
 from typing import Any, ClassVar, Literal, get_origin, get_type_hints
-from nova.types import Pose, MotionState
+from nova.types import Pose, MotionState, RobotState
 from nova.actions import Action, MovementController
 import pydantic
 import anyio
@@ -317,7 +317,7 @@ class AbstractRobot(Device):
         await self.execute(joint_trajectory, tcp, actions, on_movement, movement_controller=None)
 
     @abstractmethod
-    async def get_state(self, tcp: str | None = None) -> api.models.MotionGroupStateResponse:
+    async def get_state(self, tcp: str | None = None) -> RobotState:
         """Current state (pose, joints) of the robot based on the tcp.
 
         Args:
