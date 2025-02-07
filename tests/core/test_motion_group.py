@@ -4,10 +4,10 @@ from nova import Nova
 from nova.actions import lin, ptp
 
 
-@pytest.mark.asyncio
 @pytest.mark.skip
-async def test_motion_group():
-    nova = Nova(host="172.30.1.65")
+@pytest.mark.asyncio
+async def test_motion_group(nova_api):
+    nova = Nova(host=nova_api)
     cell = nova.cell()
     controller = await cell.controller("ur")
 
@@ -24,7 +24,10 @@ async def test_motion_group():
         motion_group = controller[0]
         tcp = "Flange"
         state = await motion_group.get_state(tcp)
-        print(state)
+        assert state is not None
+
+        active_tcp_name = await motion_group.active_tcp_name()
+        assert active_tcp_name == "Flange"
 
         await motion_group.plan_and_execute(actions, tcp)
         assert True

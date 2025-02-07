@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.20.0 (2025-02-07)
+
+### Features
+
+* feat: propagate robot state in motion group (#47)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`73e87d2`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/73e87d24cc6ebede177a074cdbf5ef76a956b9dd))
+
+
+## v0.19.1 (2025-02-07)
+
+### Chores
+
+* chore: added active tcp to abstract robot (#46)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`f64cb39`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f64cb393164cb92ae8ec5173ca32ce912c390420))
+
+
+## v0.19.0 (2025-02-07)
+
+### Features
+
+* feat: get active_tcp_name & added motion_settings to var name (#44)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`352b17b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/352b17b5ee63e3e747b7ef19f85226b644db3b07))
+
+
 ## v0.18.0 (2025-02-06)
 
 ### Features

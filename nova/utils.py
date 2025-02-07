@@ -3,6 +3,7 @@ from typing import Callable, Generic, TypeVar
 
 T = TypeVar("T")
 
+
 class Callerator(Generic[T]):
     def __init__(self, callback: Callable[[T | None], None] | None):
         self._q: asyncio.Queue[T | None] = asyncio.Queue()
@@ -19,4 +20,3 @@ class Callerator(Generic[T]):
             if value is None:
                 break
             yield value
-

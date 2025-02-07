@@ -27,9 +27,9 @@ import asyncstdlib
 import pydantic
 from loguru import logger
 
+from nova import api
 from nova.actions import Action, MovementController
-from nova.api import models
-from nova.types import MotionState, Pose
+from nova.types import MotionState, Pose, RobotState
 from nova.utils import Callerator
 
 
@@ -226,7 +226,7 @@ class AbstractRobot(Device):
         return self._execution_duration
 
     @abstractmethod
-    async def _plan(self, actions: list[Action], tcp: str) -> models.JointTrajectory:
+    async def _plan(self, actions: list[Action], tcp: str) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
         Args:
@@ -238,7 +238,7 @@ class AbstractRobot(Device):
             wb.models.JointTrajectory: The planned joint trajectory
         """
 
-    async def plan(self, actions: list[Action] | Action, tcp: str) -> models.JointTrajectory:
+    async def plan(self, actions: list[Action] | Action, tcp: str) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
         Args:
@@ -260,7 +260,7 @@ class AbstractRobot(Device):
     @abstractmethod
     async def _execute(
         self,
-        joint_trajectory: models.JointTrajectory,
+        joint_trajectory: api.models.JointTrajectory,
         tcp: str,
         actions: list[Action],
         on_movement: Callable[[MotionState | None], None],
@@ -278,7 +278,7 @@ class AbstractRobot(Device):
 
     async def execute(
         self,
-        joint_trajectory: models.JointTrajectory,
+        joint_trajectory: api.models.JointTrajectory,
         tcp: str,
         actions: list[Action] | Action | None,
         on_movement: Callable[[MotionState | None], None] | None = None,
@@ -333,7 +333,7 @@ class AbstractRobot(Device):
             yield motion_state
 
     @abstractmethod
-    async def get_state(self, tcp: str | None = None) -> models.MotionGroupStateResponse:
+    async def get_state(self, tcp: str | None = None) -> RobotState:
         """Current state (pose, joints) of the robot based on the tcp.
 
         Args:
@@ -365,7 +365,7 @@ class AbstractRobot(Device):
         """
 
     @abstractmethod
-    async def tcps(self) -> list[models.RobotTcp]:
+    async def tcps(self) -> list[api.models.RobotTcp]:
         """Return all TCPs that are configured on the robot with corresponding offset from flange as pose
 
         Returns: the TCPs of the robot
@@ -377,6 +377,22 @@ class AbstractRobot(Device):
         """Return the name of all TCPs that are configured on the robot
 
         Returns: a list of all TCPs
+
+        """
+
+    @abstractmethod
+    async def active_tcp(self) -> api.models.RobotTcp:
+        """Return the active TCP of the robot
+
+        Returns: the active TCP
+
+        """
+
+    @abstractmethod
+    async def active_tcp_name(self) -> str:
+        """Return the name of the active TCP of the robot
+
+        Returns: the name of the active TCP
 
         """
 

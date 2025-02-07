@@ -8,7 +8,7 @@ from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.movement_controller import motion_group_state_to_motion_state, move_forward
 from nova.core.robot_cell import AbstractRobot
 from nova.gateway import ApiGateway
-from nova.types import InitialMovementStream, LoadPlanResponse, MotionState, Pose
+from nova.types import InitialMovementStream, LoadPlanResponse, MotionState, Pose, RobotState
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
@@ -176,19 +176,25 @@ class MotionGroup(AbstractRobot):
         except ValueError as e:
             logger.debug(f"No motion to stop for {self}: {e}")
 
-    async def get_state(self, tcp: str | None = None) -> wb.models.MotionGroupStateResponse:
+    async def get_state(self, tcp: str | None = None) -> RobotState:
         response = await self._api_gateway.motion_group_infos_api.get_current_motion_group_state(
             cell=self._cell, motion_group=self.motion_group_id, tcp=tcp
         )
-        return response
+        return RobotState(
+            pose=Pose(response.state.tcp_pose), joints=tuple(response.state.joint_position.joints)
+        )
 
     async def joints(self) -> tuple:
         state = await self.get_state()
-        return tuple(state.state.joint_position.joints)
+        if state.joints is None:
+            raise ValueError(
+                f"No joint positions available for motion group {self._motion_group_id}"
+            )
+        return state.joints
 
     async def tcp_pose(self, tcp: str | None = None) -> Pose:
         state = await self.get_state(tcp=tcp)
-        return Pose(state.state.tcp_pose)
+        return state.pose
 
     async def tcps(self) -> list[wb.models.RobotTcp]:
         """Get the available tool center points (TCPs)"""
@@ -200,3 +206,13 @@ class MotionGroup(AbstractRobot):
     async def tcp_names(self) -> list[str]:
         """Get the names of the available tool center points (TCPs)"""
         return [tcp.id for tcp in await self.tcps()]
+
+    async def active_tcp(self) -> wb.models.RobotTcp:
+        active_tcp = await self._api_gateway.motion_group_infos_api.get_active_tcp(
+            cell=self._cell, motion_group=self.motion_group_id
+        )
+        return active_tcp
+
+    async def active_tcp_name(self) -> str:
+        active_tcp = await self.active_tcp()
+        return active_tcp.id
