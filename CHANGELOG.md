@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.21.0 (2025-02-07)
+
+### Features
+
+* feat: streaming execution first draft (#43)
+
+Co-authored-by: Dirk Sonnemann <dirk.sonnemann@wandelbots.com> ([`11bb47a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/11bb47a94e4370c69291af59eb8b425e693a7c5d))
+
+
 ## v0.20.0 (2025-02-07)
 
 ### Features
