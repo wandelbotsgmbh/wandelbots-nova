@@ -6,15 +6,15 @@ from typing import Dict
 import numpy as np
 import rerun as rr
 from loguru import logger
-from nova import MotionGroup
-from nova.actions import Action, CombinedActions, WriteAction
-from nova.api import models
-from nova.core.nova import Nova
 from wandelbots_api_client.models import (
     FeedbackOutOfWorkspace,
     PlanTrajectoryFailedResponseErrorFeedback,
 )
 
+from nova import MotionGroup
+from nova.actions import Action, CombinedActions, WriteAction
+from nova.api import models
+from nova.core.nova import Nova
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.blueprint import send_blueprint
 from nova_rerun_bridge.collision_scene import log_collision_scenes
