@@ -25,13 +25,13 @@ jobs:
 
       - name: Create and populate nova_rerun_bridge_app directory
         run: |
-          DIRS_TO_COPY=("models" "nova_rerun_bridge")
+          DIRS_TO_COPY=("models" "nova_rerun_bridge" "nova")
           FILES_TO_COPY=("pyproject.toml" "poetry.lock" "README.md")
 
           for dir in "${DIRS_TO_COPY[@]}"; do
             if [ -d "$dir" ]; then
               echo "Copying $dir..."
-              cp -r "$dir" nova_rerun_bridge_app/
+              cp -r "$dir" nova_rerun_bridge/nova_rerun_bridge_app/
             else
               echo "Warning: Directory $dir not found"
             fi
@@ -40,7 +40,7 @@ jobs:
           for file in "${FILES_TO_COPY[@]}"; do
             if [ -f "$file" ]; then
               echo "Copying $file..."
-              cp "$file" nova_rerun_bridge_app/
+              cp "$file" nova_rerun_bridge/nova_rerun_bridge_app/
             else
               echo "Warning: File $file not found"
             fi
@@ -52,7 +52,7 @@ jobs:
       - name: Get version from pyproject.toml
         id: version
         run: |
-          version=$(grep '^version = ' nova_rerun_bridge_app/pyproject.toml | cut -d'"' -f2)
+          version=$(grep '^version = ' nova_rerun_bridge/nova_rerun_bridge_app/pyproject.toml | cut -d'"' -f2)
           echo "version=$version" >> $GITHUB_OUTPUT
 
       - name: Login to Azure Container Registry
@@ -67,7 +67,7 @@ jobs:
         id: docker_build
         uses: docker/build-push-action@v6
         with:
-          context: ./nova_rerun_bridge_app
+          context: ./nova_rerun_bridge/nova_rerun_bridge_app
           push: ${{ github.ref == 'refs/heads/main' }}
           load: ${{ github.ref != 'refs/heads/main' }}
           tags: |

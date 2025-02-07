@@ -2,8 +2,8 @@
 
 # Copy directories from parent folder
 PARENT_DIR=".."
-DIRS_TO_COPY=("models" "nova_rerun_bridge")
-FILES_TO_COPY=("pyproject.toml" "poetry.lock" "README.md")
+DIRS_TO_COPY=("../models" "../nova_rerun_bridge" "../nova")
+FILES_TO_COPY=("../pyproject.toml" "../poetry.lock" "../README.md")
 
 for dir in "${DIRS_TO_COPY[@]}"; do
     if [ -d "$PARENT_DIR/$dir" ]; then

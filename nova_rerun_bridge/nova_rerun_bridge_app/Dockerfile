@@ -14,7 +14,7 @@ WORKDIR /app
 COPY . .
 
 # Install dependencies including the local package
-RUN --mount=type=cache,target=$POETRY_CACHE_DIR poetry install --no-dev
+RUN --mount=type=cache,target=$POETRY_CACHE_DIR poetry install --extras "nova-rerun-bridge" --no-dev
 
 FROM python:3.11-slim AS runtime
 
@@ -31,6 +31,7 @@ COPY nginx.http.conf.template .
 COPY static static
 COPY models models
 COPY data data
+COPY nova nova
 COPY nova_rerun_bridge nova_rerun_bridge
 COPY start.sh /app/start.sh
 
