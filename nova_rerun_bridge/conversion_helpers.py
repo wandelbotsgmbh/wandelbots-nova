@@ -1,7 +1,8 @@
 from typing import Optional
 
-from nova.api import models
 from scipy.spatial.transform import Rotation as R
+
+from nova.api import models
 
 
 def normalize_pose(pose: Optional[models.Pose] = None) -> models.PlannerPose:

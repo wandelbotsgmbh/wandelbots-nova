@@ -3,7 +3,6 @@ import asyncio
 from nova import Controller, MotionSettings, Nova
 from nova.actions import jnt, ptp
 from nova.types import Pose
-
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.trajectory import TimingMode
 

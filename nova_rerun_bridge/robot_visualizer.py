@@ -4,9 +4,9 @@ from typing import List
 import numpy as np
 import rerun as rr
 import trimesh
-from nova.api import models
 from scipy.spatial.transform import Rotation
 
+from nova.api import models
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.conversion_helpers import normalize_pose
 from nova_rerun_bridge.dh_robot import DHRobot

@@ -2,9 +2,9 @@ import asyncio
 
 import rerun as rr
 from loguru import logger
-from nova import MotionGroup
 from scipy.spatial.transform import Rotation as R
 
+from nova import MotionGroup
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.dh_robot import DHRobot

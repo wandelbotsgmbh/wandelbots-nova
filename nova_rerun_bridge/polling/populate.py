@@ -4,8 +4,8 @@ import gc
 import rerun as rr
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from nova import Nova
 
+from nova import Nova
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.blueprint import get_blueprint
 from nova_rerun_bridge.consts import RECORDING_INTERVAL, SCHEDULE_INTERVAL, TIME_INTERVAL_NAME

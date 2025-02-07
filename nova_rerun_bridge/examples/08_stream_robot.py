@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 
 from nova.api import models
 from nova.core.nova import Nova
-
 from nova_rerun_bridge import NovaRerunBridge
 
 

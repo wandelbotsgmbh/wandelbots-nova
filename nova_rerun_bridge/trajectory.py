@@ -3,9 +3,9 @@ from typing import Dict, List
 
 import numpy as np
 import rerun as rr
-from nova.api import models
 from scipy.spatial.transform import Rotation
 
+from nova.api import models
 from nova_rerun_bridge.collision_scene import extract_link_chain_and_tcp
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.dh_robot import DHRobot

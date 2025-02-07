@@ -5,7 +5,6 @@ from nova import MotionGroup, Nova
 from nova.actions import ptp
 from nova.api import models
 from nova.types import Pose
-
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.trajectory import TimingMode
 

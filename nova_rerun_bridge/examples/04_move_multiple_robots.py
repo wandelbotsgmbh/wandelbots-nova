@@ -1,8 +1,5 @@
 import asyncio
 
-from nova import Controller, Nova
-from nova.actions import jnt, ptp
-from nova.api import models
 from wandelbots_api_client.models import (
     CoordinateSystem,
     RotationAngles,
@@ -10,6 +7,9 @@ from wandelbots_api_client.models import (
     Vector3d,
 )
 
+from nova import Controller, Nova
+from nova.actions import jnt, ptp
+from nova.api import models
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.trajectory import TimingMode
 

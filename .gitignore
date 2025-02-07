@@ -12,8 +12,6 @@ report/**
 reports
 .DS_Store
 **/.idea/*
-.vscode/**
-!.vscode/launch.json
 packages/wbigeometry.protobuf/wbigeometry/protobuf/pb
 
 # Byte-compiled / optimized / DLL files

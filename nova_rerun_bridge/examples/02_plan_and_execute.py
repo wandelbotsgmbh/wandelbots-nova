@@ -5,7 +5,6 @@ from nova.actions import jnt, ptp
 from nova.api import models
 from nova.core.nova import Nova
 from nova.types import Pose
-
 from nova_rerun_bridge import NovaRerunBridge
 
 

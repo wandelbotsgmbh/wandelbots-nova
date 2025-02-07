@@ -4,7 +4,6 @@ from nova import Nova
 from nova.actions import WriteAction, jnt, ptp
 from nova.api import models
 from nova.types import Pose
-
 from nova_rerun_bridge import NovaRerunBridge
 
 """
