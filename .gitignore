@@ -161,6 +161,8 @@ Chart.lock
 *PointCloud-cropped-0.ply
 nova_rerun_bridge/minimal_example/models
 
+models
+
 nova_rerun_bridge/rerun_app/models
 nova_rerun_bridge/rerun_app/nova_rerun_bridge
 nova_rerun_bridge/rerun_app/pyproject.toml

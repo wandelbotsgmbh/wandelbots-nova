@@ -1,5 +1,7 @@
 #!/bin/sh
 
+poetry run download-models
+
 # Copy directories from parent folder
 PARENT_DIR="../.."
 DIRS_TO_COPY=("nova_rerun_bridge" "nova")
