@@ -1,6 +1,9 @@
-from nova.core.io import IOAccess, IOType, IOValueType
-from nova import Nova
 import pytest
+
+from nova import Nova
+from nova.core.io import IOAccess, IOType, IOValueType
+
+NOVA_API = "http://172.30.1.41"  # config("NOVA_API")
 
 
 @pytest.mark.skip("TODO: Setup integration tests")

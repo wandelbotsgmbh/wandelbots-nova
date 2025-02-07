@@ -1,12 +1,13 @@
-from decouple import config
 import asyncio
 
+from decouple import config
+from loguru import logger
+
+from nova.api import models
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.logging_setup import configure_logging
 from nova.gateway import ApiGateway
-from nova.api import models
-from loguru import logger
 
 
 class Nova:

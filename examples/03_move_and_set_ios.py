@@ -1,10 +1,9 @@
 import asyncio
 
 from nova import Nova
-from nova.api import models
 from nova.actions import WriteAction, jnt, ptp
+from nova.api import models
 from nova.types import Pose
-
 
 """
 Example: Move the robot and set I/Os on the path.
@@ -18,9 +17,6 @@ Prerequisites:
 
 
 async def main():
-    def on_movement(motion_state):
-        print(motion_state)
-
     async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.ensure_virtual_robot_controller(
@@ -45,7 +41,8 @@ async def main():
                 jnt(home_joints),
             ]
 
-            await motion_group.plan_and_execute(actions, tcp, on_movement=on_movement)
+            async for motion_state in motion_group.plan_and_execute(actions, tcp):
+                print(motion_state)
 
             io_value = await controller.read("tool_out[0]")
             print(io_value)

@@ -1,30 +1,36 @@
-from typing import (
-    final,
-    Union,
-    Protocol,
-    runtime_checkable,
-    AsyncIterable,
-    Callable,
-    TypeVar,
-    Awaitable,
-    Generic,
-)
-from abc import ABC, abstractmethod
 import asyncio
-from contextlib import AsyncExitStack
-from loguru import logger
-import aiostream
+from abc import ABC, abstractmethod
 from collections import defaultdict
-import asyncstdlib
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
-
-from typing import Any, ClassVar, Literal, get_origin, get_type_hints
-from nova.types import Pose, MotionState, RobotState
-from nova.actions import Action, MovementController
-import pydantic
-import anyio
 from functools import reduce
+from typing import (
+    Any,
+    AsyncIterable,
+    Awaitable,
+    Callable,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    TypeVar,
+    Union,
+    final,
+    get_origin,
+    get_type_hints,
+    runtime_checkable,
+)
+
+import aiostream
+import anyio
+import asyncstdlib
+import pydantic
+from loguru import logger
+
 from nova import api
+from nova.actions import Action, MovementController
+from nova.types import MotionState, Pose, RobotState
+from nova.utils import Callerator
 
 
 class RobotCellError(Exception):
@@ -257,7 +263,7 @@ class AbstractRobot(Device):
         joint_trajectory: api.models.JointTrajectory,
         tcp: str,
         actions: list[Action],
-        on_movement: Callable[[MotionState], None],
+        on_movement: Callable[[MotionState | None], None],
         movement_controller: MovementController | None,
     ):
         """Execute a planned motion
@@ -275,7 +281,7 @@ class AbstractRobot(Device):
         joint_trajectory: api.models.JointTrajectory,
         tcp: str,
         actions: list[Action] | Action | None,
-        on_movement: Callable[[MotionState], None] | None = None,
+        on_movement: Callable[[MotionState | None], None] | None = None,
         movement_controller: MovementController | None = None,
     ):
         """Execute a planned motion
@@ -294,27 +300,37 @@ class AbstractRobot(Device):
 
         self._motion_recording.append([])
 
-        def _on_movement(motion_state_: MotionState):
-            self._motion_recording[-1].append(motion_state_)
+        def _on_movement(motion_state_: MotionState | None):
+            if motion_state_ is not None:
+                self._motion_recording[-1].append(motion_state_)
             if on_movement:
                 on_movement(motion_state_)
 
-        await self._execute(
-            joint_trajectory,
-            tcp,
-            actions,
-            movement_controller=movement_controller,
-            on_movement=_on_movement,
+        callerator = Callerator(_on_movement)
+        execution_task = asyncio.create_task(
+            self._execute(
+                joint_trajectory,
+                tcp,
+                actions,
+                movement_controller=movement_controller,
+                on_movement=callerator,
+            )
         )
+        async for motion_state in callerator.stream():
+            yield motion_state
+        await execution_task
 
     async def plan_and_execute(
         self,
         actions: list[Action] | Action,
         tcp: str,
-        on_movement: Callable[[MotionState], None] | None = None,
+        on_movement: Callable[[MotionState | None], None] | None = None,
     ):
         joint_trajectory = await self.plan(actions, tcp)
-        await self.execute(joint_trajectory, tcp, actions, on_movement, movement_controller=None)
+        async for motion_state in self.execute(
+            joint_trajectory, tcp, actions, on_movement, movement_controller=None
+        ):
+            yield motion_state
 
     @abstractmethod
     async def get_state(self, tcp: str | None = None) -> RobotState:

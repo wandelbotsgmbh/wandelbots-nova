@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from nova.api import models
+from enum import Enum
 
+from nova.api import models
 from nova.core.robot_cell import Device, ValueType
 from nova.gateway import ApiGateway
-from enum import Enum
 
 
 class IOType(Enum):

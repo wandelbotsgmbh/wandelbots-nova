@@ -1,8 +1,8 @@
 import asyncio
 
 from nova import Controller, Nova
-from nova.api import models
 from nova.actions import jnt, ptp
+from nova.api import models
 
 """
 Example: Move multiple robots simultaneously.
@@ -25,7 +25,8 @@ async def move_robot(controller: Controller):
         target_pose = current_pose @ (100, 0, 0, 0, 0, 0)
         actions = [jnt(home_joints), ptp(target_pose), jnt(home_joints)]
 
-        await motion_group.plan_and_execute(actions, tcp)
+        async for _ in motion_group.plan_and_execute(actions, tcp):
+            pass
 
 
 async def main():
