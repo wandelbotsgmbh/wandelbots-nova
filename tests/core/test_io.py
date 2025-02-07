@@ -1,15 +1,12 @@
 from nova.core.io import IOAccess, IOType, IOValueType
 from nova import Nova
 import pytest
-# from decouple import config
-
-NOVA_API = "http://172.30.1.41"  # config("NOVA_API")
 
 
 @pytest.mark.skip("TODO: Setup integration tests")
 @pytest.mark.asyncio
-async def test_get_io_descriptions():
-    nova = Nova(host=NOVA_API)
+async def test_get_io_descriptions(nova_api):
+    nova = Nova(host=nova_api)
     async with nova:
         cell = nova.cell()
         io = IOAccess(api_gateway=nova._api_client, cell=cell.cell_id, controller_id="ur")
@@ -23,8 +20,8 @@ async def test_get_io_descriptions():
 
 @pytest.mark.skip("TODO: Setup integration tests")
 @pytest.mark.asyncio
-async def test_read():
-    nova = Nova(host=NOVA_API)
+async def test_read(nova_api):
+    nova = Nova(host=nova_api)
     async with nova:
         cell = nova.cell()
         io = IOAccess(api_gateway=nova._api_client, cell=cell.cell_id, controller_id="ur")
@@ -36,8 +33,8 @@ async def test_read():
 
 @pytest.mark.skip("TODO: Setup integration tests")
 @pytest.mark.asyncio
-async def test_write():
-    nova = Nova(host=NOVA_API)
+async def test_write(nova_api):
+    nova = Nova(host=nova_api)
     async with nova:
         cell = nova.cell()
         io = IOAccess(api_gateway=nova._api_client, cell=cell.cell_id, controller_id="ur")

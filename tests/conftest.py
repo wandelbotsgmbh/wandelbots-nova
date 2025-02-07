@@ -1,8 +1,6 @@
 import pytest
 
-from nova import Nova
-
 
 @pytest.fixture()
-def nova():
-    return Nova()
+def nova_api():
+    return "http://172.30.2.93"

@@ -1,12 +1,12 @@
 import pytest
 
-from nova import api
+from nova import Nova
 
 
-@pytest.mark.asyncio
 @pytest.mark.skip
-async def test_instance(nova_api_client):
-    controller_api = api.ControllerApi(api_client=nova_api_client)
-    controllers = await controller_api.list_controllers(cell="cell")
-    print(controllers)
-    assert False
+@pytest.mark.asyncio
+async def test_instance(nova_api):
+    nova = Nova(host=nova_api)
+    cell = nova.cell()
+    controller = await cell.controller("ur")
+    assert controller is not None
