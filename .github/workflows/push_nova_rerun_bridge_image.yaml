@@ -7,9 +7,6 @@ on:
       - completed
     branches:
       - main
-  pull_request:
-    branches:
-      - main
 
 env:
   REGISTRY: wandelbots.azurecr.io
