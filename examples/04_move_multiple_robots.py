@@ -1,8 +1,8 @@
 import asyncio
 
 from nova import Controller, Nova
-from nova.api import models
 from nova.actions import jnt, ptp
+from nova.api import models
 
 """
 Example: Move multiple robots simultaneously.

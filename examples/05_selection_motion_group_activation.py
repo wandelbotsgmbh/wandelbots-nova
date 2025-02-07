@@ -1,9 +1,9 @@
 import asyncio
 from math import pi
 
-from nova.api import models
 from nova import MotionGroup, Nova
 from nova.actions import ptp
+from nova.api import models
 from nova.types import Pose
 
 """

@@ -3,6 +3,7 @@ from typing import Annotated, Any, AsyncGenerator, Callable, Literal, Union
 
 import pydantic
 import wandelbots_api_client as wb
+
 from nova.motion_settings import MotionSettings
 from nova.types.collision_scene import CollisionScene
 from nova.types.pose import Pose
@@ -510,5 +511,5 @@ MovementControllerFunction = Callable[
     [ExecuteTrajectoryResponseStream], ExecuteTrajectoryRequestStream
 ]
 MovementController = Callable[
-    [MovementControllerContext, Callable[[MotionState], None] | None], MovementControllerFunction
+    [MovementControllerContext, Callable[[MotionState | None], None]], MovementControllerFunction
 ]

@@ -1,19 +1,19 @@
-from typing import Sized, Literal
+from typing import Literal, Sized
 
 from loguru import logger
 
-from nova.core.motion_group import MotionGroup
 from nova.api import models
-from nova.gateway import ApiGateway
+from nova.core.io import IOAccess
+from nova.core.motion_group import MotionGroup
 from nova.core.robot_cell import (
     AbstractController,
+    AbstractRobot,
     ConfigurablePeriphery,
     Device,
     IODevice,
-    AbstractRobot,
     ValueType,
 )
-from nova.core.io import IOAccess
+from nova.gateway import ApiGateway
 
 
 # TODO: Device is not associated to IODevice so it is pretty confusing and we should change it

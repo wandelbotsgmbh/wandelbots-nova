@@ -1,3 +1,5 @@
+from typing import Callable
+
 import wandelbots_api_client as wb
 from loguru import logger
 
@@ -7,9 +9,8 @@ from nova.actions import (
     MovementControllerContext,
     MovementControllerFunction,
 )
-from nova.types import MotionState, Pose, RobotState
 from nova.core.exceptions import InitMovementFailed
-from typing import Callable
+from nova.types import MotionState, Pose, RobotState
 
 
 def movement_to_motion_state(movement: wb.models.Movement) -> MotionState | None:
@@ -42,7 +43,7 @@ def motion_group_state_to_motion_state(
 
 
 def move_forward(
-    context: MovementControllerContext, on_movement: Callable[[MotionState | None], None] | None
+    context: MovementControllerContext, on_movement: Callable[[MotionState | None], None]
 ) -> MovementControllerFunction:
     """
     movement_controller is an async function that yields requests to the server.
@@ -76,7 +77,7 @@ def move_forward(
             instance = execute_trajectory_response.actual_instance
 
             # Send the current location to the consumer
-            if isinstance(instance, wb.models.Movement) and instance.movement and on_movement:
+            if isinstance(instance, wb.models.Movement) and instance.movement:
                 motion_state = movement_to_motion_state(instance)
                 if motion_state:
                     on_movement(motion_state)
@@ -91,7 +92,7 @@ def move_forward(
 
 
 def speed_up(
-    context: MovementControllerContext, on_movement: Callable[[MotionState | None], None] | None
+    context: MovementControllerContext, on_movement: Callable[[MotionState | None], None]
 ) -> MovementControllerFunction:
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,
@@ -120,8 +121,8 @@ def speed_up(
         async for execute_trajectory_response in response_stream:
             counter += 1
             instance = execute_trajectory_response.actual_instance
-            # Send the current location to the consumer
-            if isinstance(instance, wb.models.Movement) and on_movement:
+            # Send the current location to the consume
+            if isinstance(instance, wb.models.Movement):
                 motion_state = movement_to_motion_state(instance)
                 if motion_state:
                     on_movement(motion_state)

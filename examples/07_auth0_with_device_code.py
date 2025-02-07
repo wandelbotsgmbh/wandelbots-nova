@@ -1,5 +1,6 @@
-from nova.auth.authorization import Auth0DeviceAuthorization
 import asyncio
+
+from nova.auth.authorization import Auth0DeviceAuthorization
 
 """
 Example: Perform device authorization with Auth0.

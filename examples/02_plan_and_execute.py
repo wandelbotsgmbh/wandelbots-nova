@@ -1,8 +1,8 @@
 import asyncio
 
-from nova.api import models
-from nova import Nova, MotionSettings
+from nova import MotionSettings, Nova
 from nova.actions import jnt, ptp
+from nova.api import models
 from nova.types import Pose
 
 """

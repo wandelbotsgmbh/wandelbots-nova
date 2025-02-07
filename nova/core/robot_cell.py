@@ -1,30 +1,36 @@
-from typing import (
-    final,
-    Union,
-    Protocol,
-    runtime_checkable,
-    AsyncIterable,
-    Callable,
-    TypeVar,
-    Awaitable,
-    Generic,
-)
-from abc import ABC, abstractmethod
 import asyncio
-from contextlib import AsyncExitStack
-from loguru import logger
-import aiostream
+from abc import ABC, abstractmethod
 from collections import defaultdict
-import asyncstdlib
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
-
-from typing import Any, ClassVar, Literal, get_origin, get_type_hints
-from nova.types import Pose, MotionState
-from nova.actions import Action, MovementController
-import pydantic
-import anyio
 from functools import reduce
+from typing import (
+    Any,
+    AsyncIterable,
+    Awaitable,
+    Callable,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    TypeVar,
+    Union,
+    final,
+    get_origin,
+    get_type_hints,
+    runtime_checkable,
+)
+
+import aiostream
+import anyio
+import asyncstdlib
+import pydantic
+from loguru import logger
+
+from nova.actions import Action, MovementController
 from nova.api import models
+from nova.types import MotionState, Pose
+from nova.utils import Callerator
 
 
 class RobotCellError(Exception):
@@ -202,24 +208,6 @@ class StateStreamingDevice(Protocol):
         """
 
 
-class Callerator():
-    def __init__(self, callback : Callable[[Any | None], None] | None):
-        self._q = asyncio.Queue()
-        self.callback = callback
-
-    def __call__(self, value):
-        if self.callback:
-            self.callback(value)
-        self._q.put_nowait(value)
-
-    async def stream(self):
-        while True:
-            value = await self._q.get()
-            if value is None:
-                break
-            yield value
-
-
 class AbstractRobot(Device):
     """An interface for real and simulated robots"""
 
@@ -312,19 +300,22 @@ class AbstractRobot(Device):
 
         self._motion_recording.append([])
 
-        def _on_movement(motion_state_: MotionState):
-            self._motion_recording[-1].append(motion_state_)
+        def _on_movement(motion_state_: MotionState | None):
+            if motion_state_ is not None:
+                self._motion_recording[-1].append(motion_state_)
             if on_movement:
                 on_movement(motion_state_)
 
         callerator = Callerator(_on_movement)
-        execution_task = asyncio.create_task(self._execute(
-            joint_trajectory,
-            tcp,
-            actions,
-            movement_controller=movement_controller,
-            on_movement=callerator,
-        ))
+        execution_task = asyncio.create_task(
+            self._execute(
+                joint_trajectory,
+                tcp,
+                actions,
+                movement_controller=movement_controller,
+                on_movement=callerator,
+            )
+        )
         async for motion_state in callerator.stream():
             yield motion_state
         await execution_task
@@ -336,7 +327,9 @@ class AbstractRobot(Device):
         on_movement: Callable[[MotionState | None], None] | None = None,
     ):
         joint_trajectory = await self.plan(actions, tcp)
-        async for motion_state in self.execute(joint_trajectory, tcp, actions, on_movement, movement_controller=None):
+        async for motion_state in self.execute(
+            joint_trajectory, tcp, actions, on_movement, movement_controller=None
+        ):
             yield motion_state
 
     @abstractmethod
