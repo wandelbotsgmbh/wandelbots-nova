@@ -28,7 +28,8 @@ async def move_robot(motion_group: MotionGroup, tcp: str):
         ptp(home_pose),
     ]
 
-    await motion_group.plan_and_execute(actions, tcp=tcp)
+    async for _ in motion_group.plan_and_execute(actions, tcp=tcp):
+        pass
 
 
 async def main():
