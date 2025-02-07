@@ -40,7 +40,7 @@ jobs:
 
       - name: Download Robot Models
         run: |
-          poetry install
+          poetry install --extras "nova-rerun-bridge"
           poetry run download-models
 
       - name: Create and populate nova_rerun_bridge_app directory
