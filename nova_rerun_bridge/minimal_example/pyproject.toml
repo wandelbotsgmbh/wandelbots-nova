@@ -12,8 +12,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 rerun-sdk = "^0.21.0"
-wandelbots-nova = ">=0.12"
-nova_rerun_bridge = "^0.22.1"
+wandelbots-nova = { version = ">=0.12", extras = ["nova-rerun-bridge"] }
 python-decouple = "^3.8"
 requests = "^2.32.3"
 APScheduler = "^3.11.0"
