@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.20.0 (2025-02-07)
+
+### Features
+
+* feat: propagate robot state in motion group (#47)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`73e87d2`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/73e87d24cc6ebede177a074cdbf5ef76a956b9dd))
+
+
 ## v0.19.1 (2025-02-07)
 
 ### Chores
