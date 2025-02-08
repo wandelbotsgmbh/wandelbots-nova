@@ -52,6 +52,41 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                 timeless=True,
             )
 
+        elif collider.shape.actual_instance.shape_type == "cylinder":
+            height = collider.shape.actual_instance.height
+            radius = collider.shape.actual_instance.radius
+
+            # Generate trimesh capsule
+            cylinder = trimesh.creation.cylinder(height=height, radius=radius)
+
+            # Extract vertices and faces for solid visualization
+            vertices = np.array(cylinder.vertices)
+
+            # Transform vertices to world position
+            transform = np.eye(4)
+            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z - height / 2]
+            rot_mat = Rotation.from_rotvec(
+                np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
+            )
+            transform[:3, :3] = rot_mat.as_matrix()
+
+            vertices = np.array([transform @ np.append(v, 1) for v in vertices])[:, :3]
+
+            polygons = HullVisualizer.compute_hull_outlines_from_points(vertices)
+
+            if polygons:
+                line_segments = [p.tolist() for p in polygons]
+                rr.log(
+                    f"{entity_path}/{collider_id}",
+                    rr.LineStrips3D(
+                        line_segments,
+                        radii=rr.Radius.ui_points(0.75),
+                        colors=[[221, 193, 193, 255]],
+                    ),
+                    static=True,
+                    timeless=True,
+                )
+
         elif collider.shape.actual_instance.shape_type == "capsule":
             height = collider.shape.actual_instance.cylinder_height
             radius = collider.shape.actual_instance.radius
