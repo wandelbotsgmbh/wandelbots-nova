@@ -13,6 +13,10 @@ from nova.core.nova import Nova
 from nova.types import Pose
 from nova_rerun_bridge import NovaRerunBridge
 
+"""
+Simple example to demonstrate how to add a welding part to the collision world and move the robot to a two seams.
+"""
+
 
 async def load_and_transform_mesh(filepath: str, pose: models.Pose2) -> trimesh.Trimesh:
     """Load mesh and transform to desired position."""
@@ -179,6 +183,8 @@ async def test():
             ),
         )
 
+        await asyncio.sleep(5)
+
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
             tcp = "torch"
@@ -200,10 +206,49 @@ async def test():
             # Use default planner to move to the right of the sphere
             home_joints = await motion_group.joints()
             home = await motion_group.tcp_pose(tcp)
-            actions = [ptp(home), ptp(target=Pose((300, -400, 200, np.pi, 0, 0)))]
 
+            # Define welding seams (45 degree angle, on the workpiece)
+            seam1_start = Pose((700, -100, -200, -np.pi / 2 - np.pi / 4, 0, 0))  # -135° around X
+            seam1_end = Pose((600, -100, -200, -np.pi / 2 - np.pi / 4, 0, 0))
+
+            seam2_start = Pose((700, -100, -200, np.pi / 2 + np.pi / 4, 0, 0))  # 135° around X
+            seam2_end = Pose((600, -100, -200, np.pi / 2 + np.pi / 4, 0, 0))
+
+            # Define approach poses relative to seam poses (100mm in local Z direction)
+            approach_offset = Pose((0, 0, -100, 0, 0, 0))  # -100mm in Z direction
+
+            # Create approach and departure poses using @ operator
+            # The @ operator will transform the approach offset into the seam's coordinate system
+            seam1_approach = seam1_start @ approach_offset
+            seam1_departure = seam1_end @ approach_offset
+
+            seam2_approach = seam2_start @ approach_offset
+            seam2_departure = seam2_end @ approach_offset
+
+            # Define motion sequence
+            actions = [
+                # Move to safe position
+                ptp(target=Pose((300, -400, 200, np.pi, 0, 0))),
+                # First seam
+                ptp(target=seam1_approach),
+                ptp(target=seam1_start),
+                ptp(target=seam1_end),
+                ptp(target=seam1_departure),
+                # Second seam
+                ptp(target=seam2_approach),
+                ptp(target=seam2_start),
+                ptp(target=seam2_end),
+                ptp(target=seam2_departure),
+                # Return to safe position
+                ptp(target=Pose((300, -400, 200, np.pi, 0, 0))),
+            ]
+
+            # Set motion settings for all actions
             for action in actions:
-                action.settings = MotionSettings(tcp_velocity_limit=200)
+                action.settings = MotionSettings(
+                    tcp_velocity_limit=200,
+                    blend_radius=10,  # Add blending for smoother motion
+                )
 
             try:
                 joint_trajectory = await motion_group.plan(actions, tcp)
