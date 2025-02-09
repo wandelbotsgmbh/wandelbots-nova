@@ -3,10 +3,16 @@ import asyncio
 import numpy as np
 import rerun as rr
 import trimesh
-from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngleTypes, Vector3d
+from wandelbots_api_client.models import (
+    PlanCollisionFreePTPRequest,
+    RobotTcp,
+    RotationAngles,
+    RotationAngleTypes,
+    Vector3d,
+)
 
 from nova import MotionSettings
-from nova.actions import Linear, ptp
+from nova.actions import Linear, jnt
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
@@ -94,7 +100,7 @@ async def build_collision_world(
     # define robot base
     base_collider = models.Collider(
         shape=models.ColliderShape(models.Cylinder2(radius=200, height=300, shape_type="cylinder")),
-        pose=models.Pose2(position=[0, 0, 0]),
+        pose=models.Pose2(position=[0, 0, -300]),
     )
     await collision_api.store_collider(cell=cell_name, collider="base", collider2=base_collider)
 
@@ -103,15 +109,16 @@ async def build_collision_world(
         shape=models.ColliderShape(
             models.Box2(size_x=2000, size_y=2000, size_z=10, shape_type="box", box_type="FULL")
         ),
-        pose=models.Pose2(position=[0, 0, -300]),
+        pose=models.Pose2(position=[0, 0, -310]),
     )
     await collision_api.store_collider(cell=cell_name, collider="floor", collider2=floor_collider)
 
     # define TCP collider geometry
     tool_collider = models.Collider(
         shape=models.ColliderShape(
-            models.Box2(size_x=5, size_y=5, size_z=200, shape_type="box", box_type="FULL")
-        )
+            models.Box2(size_x=5, size_y=5, size_z=100, shape_type="box", box_type="FULL")
+        ),
+        pose=models.Pose2(position=[0, 0, 50]),
     )
     await collision_api.store_collision_tool(
         cell=cell_name, tool="tool_box", request_body={"tool_collider": tool_collider}
@@ -174,6 +181,42 @@ async def calculate_seam_poses(mesh_pose: models.Pose2) -> tuple[Pose, Pose, Pos
     return seam1_start, seam1_end, seam2_start, seam2_end
 
 
+async def plan_collision_free_movement(
+    nova: Nova,
+    robot_setup: models.OptimizerSetup,
+    collision_scene: models.CollisionScene,
+    start_joints: list[float],
+    target_pose: Pose,
+) -> models.JointTrajectory:
+    """Plan collision-free PTP movement.
+
+    Args:
+        nova: Nova instance
+        robot_setup: Robot optimizer setup
+        collision_scene: Current collision scene
+        start_joints: Starting joint positions
+        target_pose: Target pose to reach
+
+    Returns:
+        Planned joint trajectory
+    """
+    plan_result = await nova._api_client.motion_api.plan_collision_free_ptp(
+        cell="cell",
+        plan_collision_free_ptp_request=PlanCollisionFreePTPRequest(
+            robot_setup=robot_setup,
+            start_joint_position=start_joints,
+            target=models.PlanCollisionFreePTPRequestTarget(target_pose._to_wb_pose2()),
+            static_colliders=collision_scene.colliders,
+            collision_motion_group=collision_scene.motion_groups["motion_group"],
+        ),
+    )
+
+    if isinstance(plan_result.response.actual_instance, models.PlanTrajectoryFailedResponse):
+        raise PlanTrajectoryFailed(plan_result.response.actual_instance)
+
+    return plan_result.response.actual_instance
+
+
 async def test():
     async with Nova() as nova, NovaRerunBridge(nova) as bridge:
         await bridge.setup_blueprint()
@@ -229,9 +272,12 @@ async def test():
             collision_scene_id = await build_collision_world(
                 nova, "cell", robot_setup, additional_colliders={"welding_part": mesh_collider}
             )
+            scene_api = nova._api_client.store_collision_scenes_api
+            collision_scene = await scene_api.get_stored_collision_scene(
+                cell="cell", scene=collision_scene_id
+            )
             await bridge.log_collision_scenes()
 
-            # Use default planner to move to the right of the sphere
             home = await motion_group.tcp_pose(tcp)
 
             # Calculate seam positions based on mesh pose
@@ -246,44 +292,73 @@ async def test():
             seam2_approach = seam2_start @ approach_offset
             seam2_departure = seam2_end @ approach_offset
 
-            # Define motion sequence
-            actions = [
-                # First seam
-                ptp(target=seam1_approach),
-                Linear(target=seam1_start),
-                Linear(target=seam1_end),
-                ptp(target=seam1_departure),
-                # Second seam
-                ptp(target=seam2_approach),
-                Linear(target=seam2_start),
-                Linear(target=seam2_end),
-                ptp(target=seam2_departure),
-                # Return to safe position
-                ptp(target=home),
-            ]
-
-            # Set motion settings for all actions
-            for action in actions:
-                if isinstance(action, Linear):
-                    action.settings = MotionSettings(
-                        tcp_velocity_limit=30,  # slower for welding
-                        blend_radius=10,
-                    )
-                else:  # PTP movements
-                    action.settings = MotionSettings(
-                        tcp_velocity_limit=200,  # faster for positioning
-                        blend_radius=10,
-                    )
-
             try:
-                joint_trajectory = await motion_group.plan(actions, tcp)
-                await bridge.log_actions(actions)
-                await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
+                # Move to default pose
+                default_pose_actions = [jnt(target=[0, -np.pi / 2, np.pi / 2, 0, 0, 0])]
+                default_pose_trajectory = await motion_group.plan(default_pose_actions, tcp)
+                await bridge.log_actions(default_pose_actions)
+                await bridge.log_trajectory(default_pose_trajectory, tcp, motion_group)
+                async for _ in motion_group.execute(default_pose_trajectory, tcp, actions=None):
+                    pass
+
+                # 1. Collision-free movement to first seam approach
+                trajectory1 = await plan_collision_free_movement(
+                    nova, robot_setup, collision_scene, await motion_group.joints(), seam1_approach
+                )
+                await bridge.log_trajectory(trajectory1, tcp, motion_group)
+                async for _ in motion_group.execute(trajectory1, tcp, actions=None):
+                    pass
+
+                # 2. Normal planning for first seam
+                seam1_actions = [
+                    Linear(target=seam1_approach),
+                    Linear(target=seam1_start),
+                    Linear(target=seam1_end),
+                    Linear(target=seam1_departure),
+                ]
+                for action in seam1_actions:
+                    action.settings = MotionSettings(tcp_velocity_limit=30, blend_radius=10)
+                seam1_trajectory = await motion_group.plan(seam1_actions, tcp)
+                await bridge.log_actions(seam1_actions)
+                await bridge.log_trajectory(seam1_trajectory, tcp, motion_group)
+                async for _ in motion_group.execute(seam1_trajectory, tcp, actions=None):
+                    pass
+
+                # 3. Collision-free movement to second seam approach
+                trajectory2 = await plan_collision_free_movement(
+                    nova, robot_setup, collision_scene, await motion_group.joints(), seam2_approach
+                )
+                await bridge.log_trajectory(trajectory2, tcp, motion_group)
+                async for _ in motion_group.execute(trajectory2, tcp, actions=None):
+                    pass
+
+                # 4. Normal planning for second seam
+                seam2_actions = [
+                    Linear(target=seam2_approach),
+                    Linear(target=seam2_start),
+                    Linear(target=seam2_end),
+                    Linear(target=seam2_departure),
+                ]
+                for action in seam2_actions:
+                    action.settings = MotionSettings(tcp_velocity_limit=30, blend_radius=10)
+                seam2_trajectory = await motion_group.plan(seam2_actions, tcp)
+                await bridge.log_actions(seam2_actions)
+                await bridge.log_trajectory(seam2_trajectory, tcp, motion_group)
+                async for _ in motion_group.execute(seam2_trajectory, tcp, actions=None):
+                    pass
+
+                # 5. Collision-free movement back home
+                trajectory3 = await plan_collision_free_movement(
+                    nova, robot_setup, collision_scene, await motion_group.joints(), home
+                )
+                await bridge.log_trajectory(trajectory3, tcp, motion_group)
+                async for _ in motion_group.execute(trajectory3, tcp, actions=None):
+                    pass
+
             except PlanTrajectoryFailed as e:
-                await bridge.log_actions(actions)
                 await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)
                 await bridge.log_error_feedback(e.error.error_feedback)
-
+                raise
             # await cell.delete_robot_controller(controller.controller_id)
 
 
