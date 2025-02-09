@@ -6,7 +6,7 @@ import trimesh
 from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngleTypes, Vector3d
 
 from nova import MotionSettings
-from nova.actions import ptp
+from nova.actions import Linear, ptp
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
@@ -110,7 +110,7 @@ async def build_collision_world(
     # define TCP collider geometry
     tool_collider = models.Collider(
         shape=models.ColliderShape(
-            models.Box2(size_x=10, size_y=10, size_z=200, shape_type="box", box_type="FULL")
+            models.Box2(size_x=5, size_y=5, size_z=200, shape_type="box", box_type="FULL")
         )
     )
     await collision_api.store_collision_tool(
@@ -148,12 +148,40 @@ async def build_collision_world(
     return scene_id
 
 
+async def calculate_seam_poses(mesh_pose: models.Pose2) -> tuple[Pose, Pose, Pose, Pose]:
+    """Calculate seam poses relative to the mesh pose using @ operator.
+
+    Args:
+        mesh_pose: Position and orientation of the welding piece
+    Returns:
+        tuple containing start and end poses for both seams
+    """
+    # Convert mesh_pose to Pose for @ operator usage
+    mesh_transform = Pose((*mesh_pose.position, *mesh_pose.orientation))
+
+    # Define seams in local coordinates (relative to mesh center)
+    local_seam1_start = Pose((150, -6, 3, -np.pi / 2 - np.pi / 4, 0, 0))  # -135° around X
+    local_seam1_end = Pose((30, -6, 3, -np.pi / 2 - np.pi / 4, 0, 0))
+    local_seam2_start = Pose((150, 6, 3, np.pi / 2 + np.pi / 4, 0, 0))  # 135° around X
+    local_seam2_end = Pose((30, 6, 3, np.pi / 2 + np.pi / 4, 0, 0))
+
+    # Transform to global coordinates using @ operator
+    seam1_start = mesh_transform @ local_seam1_start
+    seam1_end = mesh_transform @ local_seam1_end
+    seam2_start = mesh_transform @ local_seam2_start
+    seam2_end = mesh_transform @ local_seam2_end
+
+    return seam1_start, seam1_end, seam2_start, seam2_end
+
+
 async def test():
     async with Nova() as nova, NovaRerunBridge(nova) as bridge:
         await bridge.setup_blueprint()
 
         # Define position for the welding part
-        mesh_pose = models.Pose2(position=[500, 0, -300])  # in front of robot, on floor
+        mesh_pose = models.Pose2(
+            position=[500, 0, -300], orientation=[0, 0, 0]
+        )  # in front of robot, on floor
 
         # Load and transform mesh
         scene = await load_and_transform_mesh(
@@ -204,51 +232,48 @@ async def test():
             await bridge.log_collision_scenes()
 
             # Use default planner to move to the right of the sphere
-            home_joints = await motion_group.joints()
             home = await motion_group.tcp_pose(tcp)
 
-            # Define welding seams (45 degree angle, on the workpiece)
-            seam1_start = Pose((700, -100, -200, -np.pi / 2 - np.pi / 4, 0, 0))  # -135° around X
-            seam1_end = Pose((600, -100, -200, -np.pi / 2 - np.pi / 4, 0, 0))
+            # Calculate seam positions based on mesh pose
+            seam1_start, seam1_end, seam2_start, seam2_end = await calculate_seam_poses(mesh_pose)
 
-            seam2_start = Pose((700, -100, -200, np.pi / 2 + np.pi / 4, 0, 0))  # 135° around X
-            seam2_end = Pose((600, -100, -200, np.pi / 2 + np.pi / 4, 0, 0))
-
-            # Define approach poses relative to seam poses (100mm in local Z direction)
-            approach_offset = Pose((0, 0, -100, 0, 0, 0))  # -100mm in Z direction
+            # Define approach offset in local coordinates
+            approach_offset = Pose((0, 0, -50, 0, 0, 0))
 
             # Create approach and departure poses using @ operator
-            # The @ operator will transform the approach offset into the seam's coordinate system
             seam1_approach = seam1_start @ approach_offset
             seam1_departure = seam1_end @ approach_offset
-
             seam2_approach = seam2_start @ approach_offset
             seam2_departure = seam2_end @ approach_offset
 
             # Define motion sequence
             actions = [
-                # Move to safe position
-                ptp(target=Pose((300, -400, 200, np.pi, 0, 0))),
                 # First seam
                 ptp(target=seam1_approach),
-                ptp(target=seam1_start),
-                ptp(target=seam1_end),
+                Linear(target=seam1_start),
+                Linear(target=seam1_end),
                 ptp(target=seam1_departure),
                 # Second seam
                 ptp(target=seam2_approach),
-                ptp(target=seam2_start),
-                ptp(target=seam2_end),
+                Linear(target=seam2_start),
+                Linear(target=seam2_end),
                 ptp(target=seam2_departure),
                 # Return to safe position
-                ptp(target=Pose((300, -400, 200, np.pi, 0, 0))),
+                ptp(target=home),
             ]
 
             # Set motion settings for all actions
             for action in actions:
-                action.settings = MotionSettings(
-                    tcp_velocity_limit=200,
-                    blend_radius=10,  # Add blending for smoother motion
-                )
+                if isinstance(action, Linear):
+                    action.settings = MotionSettings(
+                        tcp_velocity_limit=30,  # slower for welding
+                        blend_radius=10,
+                    )
+                else:  # PTP movements
+                    action.settings = MotionSettings(
+                        tcp_velocity_limit=200,  # faster for positioning
+                        blend_radius=10,
+                    )
 
             try:
                 joint_trajectory = await motion_group.plan(actions, tcp)
