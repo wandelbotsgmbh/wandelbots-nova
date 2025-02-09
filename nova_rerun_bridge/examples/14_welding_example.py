@@ -97,6 +97,17 @@ async def build_collision_world(
     collision_api = nova._api_client.store_collision_components_api
     scene_api = nova._api_client.store_collision_scenes_api
 
+    # define box around welding part
+    sphere_collider = models.Collider(
+        shape=models.ColliderShape(
+            models.Box2(size_x=400, size_y=50, size_z=100, box_type="FULL", shape_type="box")
+        ),
+        pose=models.Pose2(position=[500, 0, -250]),
+    )
+    await collision_api.store_collider(
+        cell=cell_name, collider="annoying_obstacle", collider2=sphere_collider
+    )
+
     # define robot base
     base_collider = models.Collider(
         shape=models.ColliderShape(models.Cylinder2(radius=200, height=300, shape_type="cylinder")),
@@ -133,7 +144,11 @@ async def build_collision_world(
     )
 
     # Prepare colliders dictionary
-    colliders = {"base": base_collider, "floor": floor_collider}
+    colliders = {
+        "base": base_collider,
+        "floor": floor_collider,
+        "annoying_obstacle": sphere_collider,
+    }
 
     # Add additional colliders if provided
     if additional_colliders:
