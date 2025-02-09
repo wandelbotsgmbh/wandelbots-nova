@@ -78,7 +78,6 @@ async def test():
 
             await bridge.log_actions(actions)
             await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
-            await motion_group.execute(joint_trajectory, tcp, actions=actions)
 
 
 if __name__ == "__main__":
