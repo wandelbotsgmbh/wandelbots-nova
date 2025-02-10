@@ -114,7 +114,7 @@ class MotionGroup(AbstractRobot):
             # Shift times and locations to continue from last endpoint
             shifted_times = [t + current_end_time for t in trajectory.times[1:]]  # Skip first point
             shifted_locations = [
-                l + current_end_location for l in trajectory.locations[1:]
+                location + current_end_location for location in trajectory.locations[1:]
             ]  # Skip first point
 
             final_trajectory.times.extend(shifted_times)
