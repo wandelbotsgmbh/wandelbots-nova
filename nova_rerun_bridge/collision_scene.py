@@ -23,6 +23,15 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
         pose = normalize_pose(collider.pose)
 
         if collider.shape.actual_instance.shape_type == "sphere":
+            # Convert rotation vector to axis-angle format
+            rot_vec = np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
+            angle = np.linalg.norm(rot_vec)
+            if angle > 0:
+                axis = rot_vec / angle
+            else:
+                axis = np.array([0.0, 0.0, 1.0])
+                angle = 0.0
+
             rr.log(
                 f"{entity_path}/{collider_id}",
                 rr.Ellipsoids3D(
@@ -32,25 +41,139 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                         collider.shape.actual_instance.radius,
                     ],
                     centers=[[pose.position.x, pose.position.y, pose.position.z]],
+                    rotation_axis_angles=[[*axis, angle]],
                     colors=[(221, 193, 193, 255)],
                 ),
                 timeless=True,
             )
 
-        elif collider.shape.actual_instance.shape_type == "box":
+        elif collider.shape.actual_instance.shape_type == "rectangular_capsule":
+            # Get parameters from the capsule
+            radius = collider.shape.actual_instance.radius
+            size_x = collider.shape.actual_instance.sphere_center_distance_x
+            size_y = collider.shape.actual_instance.sphere_center_distance_y
+
+            # Create sphere centers at the corners
+            sphere_centers = np.array(
+                [
+                    [size_x / 2, size_y / 2, 0],  # top right
+                    [size_x / 2, -size_y / 2, 0],  # bottom right
+                    [-size_x / 2, size_y / 2, 0],  # top left
+                    [-size_x / 2, -size_y / 2, 0],  # bottom left
+                ]
+            )
+
+            # Create vertices for spheres at each corner
+            vertices = []
+            for center in sphere_centers:
+                # Create a low-poly sphere at each corner
+                sphere = trimesh.creation.icosphere(radius=radius, subdivisions=2)
+                sphere_verts = sphere.vertices + center
+                vertices.extend(sphere_verts)
+
+            # Convert to numpy array for transformation
+            vertices = np.array(vertices)
+
+            # Transform vertices to world position
+            transform = np.eye(4)
+            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z]
+            rot_mat = Rotation.from_rotvec(
+                np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
+            ).as_matrix()
+            transform[:3, :3] = rot_mat
+            vertices = np.array([transform @ np.append(v, 1) for v in vertices])[:, :3]
+
+            # Create hull visualization
+            polygons = HullVisualizer.compute_hull_outlines_from_points(vertices)
+
+            if polygons:
+                line_segments = [p.tolist() for p in polygons]
+                rr.log(
+                    f"{entity_path}/{collider_id}",
+                    rr.LineStrips3D(
+                        line_segments,
+                        radii=rr.Radius.ui_points(0.75),
+                        colors=[[221, 193, 193, 255]],
+                    ),
+                    static=True,
+                    timeless=True,
+                )
+
+        elif collider.shape.actual_instance.shape_type == "rectangle":
+            # Create vertices for a rectangle in XY plane
+            half_x = collider.shape.actual_instance.size_x / 2
+            half_y = collider.shape.actual_instance.size_y / 2
+            vertices = np.array(
+                [
+                    [-half_x, -half_y, 0],  # bottom left
+                    [half_x, -half_y, 0],  # bottom right
+                    [half_x, half_y, 0],  # top right
+                    [-half_x, half_y, 0],  # top left
+                ]
+            )
+
+            # Transform vertices
+            transform = np.eye(4)
+            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z]
+            rot_mat = Rotation.from_rotvec(
+                np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
+            ).as_matrix()
+            transform[:3, :3] = rot_mat
+            vertices = np.array([transform @ np.append(v, 1) for v in vertices])[:, :3]
+
+            # Create line segments for the rectangle outline
+            line_segments = [
+                [vertices[0].tolist(), vertices[1].tolist()],
+                [vertices[1].tolist(), vertices[2].tolist()],
+                [vertices[2].tolist(), vertices[3].tolist()],
+                [vertices[3].tolist(), vertices[0].tolist()],
+            ]
+
             rr.log(
                 f"{entity_path}/{collider_id}",
-                rr.Boxes3D(
-                    centers=[[pose.position.x, pose.position.y, pose.position.z]],
-                    half_sizes=[
-                        collider.shape.actual_instance.size_x / 2,
-                        collider.shape.actual_instance.size_y / 2,
-                        collider.shape.actual_instance.size_z / 2,
-                    ],
-                    colors=[(221, 193, 193, 255)],
+                rr.LineStrips3D(
+                    line_segments, radii=rr.Radius.ui_points(0.75), colors=[[221, 193, 193, 255]]
                 ),
+                static=True,
                 timeless=True,
             )
+
+        elif collider.shape.actual_instance.shape_type == "box":
+            # Create rotation matrix from orientation
+            rot_mat = Rotation.from_rotvec(
+                np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
+            ).as_matrix()
+
+            # Create box vertices
+            half_sizes = [
+                collider.shape.actual_instance.size_x / 2,
+                collider.shape.actual_instance.size_y / 2,
+                collider.shape.actual_instance.size_z / 2,
+            ]
+            box = trimesh.creation.box(extents=[s * 2 for s in half_sizes])
+            vertices = np.array(box.vertices)
+
+            # Transform vertices
+            transform = np.eye(4)
+            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z]
+            transform[:3, :3] = rot_mat
+            vertices = np.array([transform @ np.append(v, 1) for v in vertices])[:, :3]
+
+            # Create hull visualization
+            polygons = HullVisualizer.compute_hull_outlines_from_points(vertices)
+
+            if polygons:
+                line_segments = [p.tolist() for p in polygons]
+                rr.log(
+                    f"{entity_path}/{collider_id}",
+                    rr.LineStrips3D(
+                        line_segments,
+                        radii=rr.Radius.ui_points(0.75),
+                        colors=[[221, 193, 193, 255]],
+                    ),
+                    static=True,
+                    timeless=True,
+                )
 
         elif collider.shape.actual_instance.shape_type == "cylinder":
             height = collider.shape.actual_instance.height
@@ -99,7 +222,7 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
 
             # Transform vertices to world position
             transform = np.eye(4)
-            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z - height / 2]
+            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z]
             rot_mat = Rotation.from_rotvec(
                 np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
             )
