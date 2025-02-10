@@ -4,6 +4,7 @@ from typing import Annotated, Any, AsyncGenerator, Callable, Literal, Union
 import pydantic
 import wandelbots_api_client as wb
 
+from nova.api import models
 from nova.types.collision_scene import CollisionScene
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
@@ -66,7 +67,15 @@ class Motion(Action, ABC):
 
     """
 
-    type: Literal["linear", "ptp", "circular", "joint_ptp", "spline"]
+    type: Literal[
+        "linear",
+        "ptp",
+        "circular",
+        "joint_ptp",
+        "spline",
+        "collision_free_ptp",
+        "collision_free_joint_ptp",
+    ]
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
 
@@ -98,25 +107,24 @@ class UnresolvedMotion(Motion, ABC):
         """
 
 
-class Linear(Motion):
-    """A linear motion
+class CollisionAwareMotion(Motion):
+    """Base class for motions that can handle collision checking"""
+
+    collision_scene: models.CollisionScene | None = None
+
+
+class Linear(CollisionAwareMotion):
+    """A linear motion with optional collision checking
 
     Examples:
     >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10))
-    Linear(type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=10.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None))
-
+    Linear(type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(...))
     """
 
     type: Literal["linear"] = "linear"
     target: Pose
 
     def _to_api_model(self) -> wb.models.PathLine:
-        """Serialize the model to the API model
-
-        Examples:
-        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10))._to_api_model()
-        PathLine(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathLine')
-        """
         return wb.models.PathLine(
             target_pose=wb.models.Pose2(**self.target.model_dump()), path_definition_name="PathLine"
         )
@@ -145,24 +153,12 @@ def lin(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) 
     return Linear(target=Pose(t), settings=settings)
 
 
-class PTP(Motion):
-    """A point-to-point motion
-
-    Examples:
-    >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))
-    PTP(type='ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None))
-
-    """
+class PTP(CollisionAwareMotion):
+    """A point-to-point motion with optional collision checking"""
 
     type: Literal["ptp"] = "ptp"
 
     def _to_api_model(self) -> wb.models.PathCartesianPTP:
-        """Serialize the model to the API model
-
-        Examples:
-        >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))._to_api_model()
-        PathCartesianPTP(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCartesianPTP')
-        """
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
         return wb.models.PathCartesianPTP(
@@ -256,24 +252,13 @@ def cir(
     return Circular(target=Pose(t), intermediate=Pose(i), settings=settings)
 
 
-class JointPTP(Motion):
-    """A joint PTP motion
-
-    Examples:
-    >>> JointPTP(target=(1, 2, 3, 4, 5, 6), settings=MotionSettings(tcp_velocity_limit=30))
-    JointPTP(type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None))
-
-    """
+class JointPTP(CollisionAwareMotion):
+    """A joint PTP motion with optional collision checking"""
 
     type: Literal["joint_ptp"] = "joint_ptp"
+    target: tuple[float, ...]
 
     def _to_api_model(self) -> wb.models.PathJointPTP:
-        """Serialize the model to the API model
-
-        Examples:
-        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(tcp_velocity_limit=30))._to_api_model()
-        PathJointPTP(target_joint_position=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], path_definition_name='PathJointPTP')
-        """
         if not isinstance(self.target, tuple):
             raise ValueError("Target must be a tuple object")
         return wb.models.PathJointPTP(
@@ -300,6 +285,53 @@ def jnt(target: tuple[float, ...], settings: MotionSettings = MotionSettings()) 
 
     """
     return JointPTP(target=target, settings=settings)
+
+
+class CollisionFreePTP(CollisionAwareMotion):
+    """A collision-free point-to-point motion
+
+    Args:
+        target: The target pose
+        collision_scene: The required collision scene for collision checking
+        settings: Motion settings
+    """
+
+    type: Literal["collision_free_ptp"] = "collision_free_ptp"
+    target: Pose
+
+    def _to_api_model(self) -> wb.models.PathCartesianPTP:
+        return wb.models.PathCartesianPTP(
+            target_pose=wb.models.Pose2(**self.target.model_dump()),
+            path_definition_name="PathCartesianPTP",
+        )
+
+    @pydantic.model_serializer
+    def serialize_model(self):
+        return self._to_api_model().model_dump()
+
+
+class CollisionFreeJointPTP(CollisionAwareMotion):
+    """A collision-free point-to-point motion in joint space
+
+    Args:
+        target: The target joint configuration as tuple of floats
+        collision_scene: The collision scene for collision checking
+        settings: Motion settings to apply
+    """
+
+    type: Literal["collision_free_joint_ptp"] = "collision_free_joint_ptp"
+    target: tuple[float, ...]
+
+    def _to_api_model(self) -> wb.models.PathJointPTP:
+        if not isinstance(self.target, tuple):
+            raise ValueError("Target must be a tuple object")
+        return wb.models.PathJointPTP(
+            target_joint_position=list(self.target), path_definition_name="PathJointPTP"
+        )
+
+    @pydantic.model_serializer
+    def serialize_model(self):
+        return self._to_api_model().model_dump()
 
 
 class Spline(Motion):
