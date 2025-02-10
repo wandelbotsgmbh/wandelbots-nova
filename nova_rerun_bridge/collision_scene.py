@@ -123,9 +123,19 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                 )
 
         elif collider.shape.actual_instance.shape_type == "convex_hull":
-            polygons = HullVisualizer.compute_hull_outlines_from_points(
-                collider.shape.actual_instance.vertices
-            )
+            # Transform vertices to world position
+            vertices = np.array(collider.shape.actual_instance.vertices)
+            transform = np.eye(4)
+            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z]
+            rot_mat = Rotation.from_rotvec(
+                np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
+            ).as_matrix()
+            transform[:3, :3] = rot_mat
+
+            # Apply transformation
+            vertices = np.array([transform @ np.append(v, 1) for v in vertices])[:, :3]
+
+            polygons = HullVisualizer.compute_hull_outlines_from_points(vertices)
 
             if polygons:
                 line_segments = [p.tolist() for p in polygons]
