@@ -170,16 +170,33 @@ class MotionGroup(AbstractRobot):
         robot_setup: wb.models.OptimizerSetup,
         start_joints: list[float],
     ) -> wb.models.JointTrajectory:
-        """Plan collision-free PTP action."""
+        """Plan collision-free PTP action.
+
+        Args:
+            action: The collision-free motion action to plan
+            robot_setup: Robot optimizer configuration
+            start_joints: Starting joint positions
+
+        Returns:
+            Planned joint trajectory
+        """
         if isinstance(action, CollisionFreePTP):
-            if isinstance(action.target, Pose):
-                target_request = wb.models.PlanCollisionFreePTPRequestTarget(
-                    action.target._to_wb_pose2()
-                )
-            else:
-                target_request = wb.models.PlanCollisionFreePTPRequestTarget(action.target)
+            target_request = wb.models.PlanCollisionFreePTPRequestTarget(
+                action.target._to_wb_pose2() if isinstance(action.target, Pose) else action.target
+            )
         else:  # CollisionFreeJointPTP
             target_request = wb.models.PlanCollisionFreePTPRequestTarget(list(action.target))
+
+        # Get collision scene data safely
+        static_colliders = None
+        collision_motion_group = None
+        if action.collision_scene:
+            static_colliders = action.collision_scene.colliders
+            if (
+                action.collision_scene.motion_groups
+                and "motion_group" in action.collision_scene.motion_groups
+            ):
+                collision_motion_group = action.collision_scene.motion_groups["motion_group"]
 
         plan_result = await self._motion_api_client.plan_collision_free_ptp(
             cell=self._cell,
@@ -187,12 +204,8 @@ class MotionGroup(AbstractRobot):
                 robot_setup=robot_setup,
                 start_joint_position=start_joints,
                 target=target_request,
-                static_colliders=action.collision_scene.colliders
-                if action.collision_scene
-                else None,
-                collision_motion_group=action.collision_scene.motion_groups["motion_group"]
-                if action.collision_scene
-                else None,
+                static_colliders=static_colliders,
+                collision_motion_group=collision_motion_group,
             ),
         )
 
