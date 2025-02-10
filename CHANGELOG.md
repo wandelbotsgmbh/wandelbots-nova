@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.22.0 (2025-02-10)
+
+### Features
+
+* feat: added __eq__ to vector and pose (#48)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`8198eb0`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8198eb08edf0eda150bed202fc619ec42c7c3e99))
+
+
 ## v0.21.0 (2025-02-07)
 
 ### Features
