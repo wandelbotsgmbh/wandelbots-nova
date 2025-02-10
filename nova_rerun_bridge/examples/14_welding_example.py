@@ -273,8 +273,6 @@ async def test():
             )
             await bridge.log_collision_scenes()
 
-            home = await motion_group.tcp_pose(tcp)
-
             # Calculate seam positions based on mesh pose
             seam1_start, seam1_end, seam2_start, seam2_end = await calculate_seam_poses(mesh_pose)
 
@@ -344,7 +342,7 @@ async def test():
                     robot_setup,
                     collision_scene,
                     seam2_trajectory.joint_positions[-1].joints,
-                    home,
+                    [0, -np.pi / 2, np.pi / 2, 0, 0, 0],
                 )
                 await bridge.log_trajectory(trajectory3, tcp, motion_group)
 
