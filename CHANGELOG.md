@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.23.0 (2025-02-10)
+
+### Features
+
+* feat: enhance trajectory planning with optional starting joint position (#49) ([`2eeb747`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2eeb747bfcac6da28a1ea629396eb89c1c246cc3))
+
+
 ## v0.22.0 (2025-02-10)
 
 ### Features
