@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.25.0 (2025-02-10)
+
+### Features
+
+* feat: only plan and not execute in welding example (#57) ([`3155e6f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3155e6fb7fd3623bee7ea9848465265761780897))
+
+
 ## v0.24.1 (2025-02-10)
 
 ### Fixes
