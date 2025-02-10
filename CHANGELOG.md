@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.24.0 (2025-02-10)
+
+### Features
+
+* feat: add optional rerun bridge (#45) ([`00177e9`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/00177e95a056bca997f5e2cee6f59d6b1e0b3f00))
+
+
 ## v0.23.0 (2025-02-10)
 
 ### Features
