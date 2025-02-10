@@ -1,0 +1,14 @@
+{
+  "coordinate_system": "world",
+  "name": "mounting",
+  "reference_uid": "",
+  "position": {
+    "x": 1500,
+    "y": 0,
+    "z": -500
+  },
+  "rotation": {
+    "angles": [1.57079632679, 0, -1.57079632679, 0],
+    "type": "EULER_ANGLES_EXTRINSIC_XYZ"
+  }
+}

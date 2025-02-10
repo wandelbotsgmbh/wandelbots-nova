@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "Minimal Example Nova Rerun Bridge"
+version = "0.0.1"
+package-mode = false
+description = "Minimal example of a project using the nova_rerun_bridge"
+authors = [
+    "Wandelbots GmbH",
+    "Stefan Wagner <stefan.wagner@wandelbots.com>",
+]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+rerun-sdk = "^0.21.0"
+wandelbots-nova = { version = ">=0.12", extras = ["nova-rerun-bridge"] }
+python-decouple = "^3.8"
+requests = "^2.32.3"
+APScheduler = "^3.11.0"
+scipy = "^1.14.1"
+trimesh = "^4.5.3"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.9.2"

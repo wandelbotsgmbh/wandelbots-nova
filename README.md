@@ -1,5 +1,9 @@
 # wandelbots-nova
 
+[![PyPI version](https://badge.fury.io/py/wandelbots-nova.svg)](https://badge.fury.io/py/wandelbots-nova)
+[![License](https://img.shields.io/github/license/wandelbotsgmbh/wandelbots-nova.svg)](https://github.com/wandelbotsgmbh/wandelbots-nova/blob/main/LICENSE)
+[![Build Status](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/release.yml/badge.svg)](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/release.yml)
+
 This library provides an SDK for the Wandelbots NOVA API.
 
 The SDK will help you to build your own apps and services on top of NOVA and makes programming a robot as easy as possible.
@@ -7,7 +11,8 @@ The SDK will help you to build your own apps and services on top of NOVA and mak
 ## Requirements
 
 This library requires
-* Python >=3.10
+
+- Python >=3.10
 
 ## Installation
 
@@ -15,6 +20,27 @@ To use the library, first install it using the following command
 
 ```bash
 pip install wandelbots-nova
+```
+
+### Optional: Install with `nova-rerun-bridge`
+
+We recommend installing the library with the `nova-rerun-bridge` extra to make usage of the visualization tool [rerun](https://rerun.io/).
+See the [README.md](nova_rerun_bridge/README.md) for further details.
+
+```bash
+pip install "wandelbots-nova[nova-rerun-bridge]"
+```
+
+Or add to your pyproject.toml:
+
+```bash
+wandelbots-nova = { version = ">=0.12", extras = ["nova-rerun-bridge"] }
+```
+
+You need to download the robot models to visualize the robot models in the rerun viewer. You can download the models by running the following command:
+
+```bash
+poetry run download-models
 ```
 
 ## Usage
@@ -49,18 +75,16 @@ poetry install
 2. **Fill in the Values:** Open the `.env` file in a text editor and provide the necessary values for each variable. The table below describes each variable and its usage.
 
 | Variable            | Description                                                               | Required | Default | Example                                          |
-|---------------------|---------------------------------------------------------------------------|----------|---------|--------------------------------------------------|
-| `NOVA_API`         | The base URL or hostname of the NOVA server instance.                     | Yes      | None    | `https://nova.example.com` or `http://172.0.0.1` |
-| `NOVA_USERNAME`     | The username credential used for authentication with the NOVA service.    | Yes*     | None    | `my_username`                                    |
-| `NOVA_PASSWORD`     | The password credential used in conjunction with `NOVA_USERNAME`.         | Yes*     | None    | `my_password`                                    |
-| `NOVA_ACCESS_TOKEN` | A pre-obtained access token for NOVA if using token-based authentication. | Yes*     | None    | `eyJhbGciOi...`                                  |
+| ------------------- | ------------------------------------------------------------------------- | -------- | ------- | ------------------------------------------------ |
+| `NOVA_API`          | The base URL or hostname of the NOVA server instance.                     | Yes      | None    | `https://nova.example.com` or `http://172.0.0.1` |
+| `NOVA_USERNAME`     | The username credential used for authentication with the NOVA service.    | Yes\*    | None    | `my_username`                                    |
+| `NOVA_PASSWORD`     | The password credential used in conjunction with `NOVA_USERNAME`.         | Yes\*    | None    | `my_password`                                    |
+| `NOVA_ACCESS_TOKEN` | A pre-obtained access token for NOVA if using token-based authentication. | Yes\*    | None    | `eyJhbGciOi...`                                  |
 
 > **Note on Authentication:**
 > You can authenticate with NOVA using either **username/password** credentials or a pre-obtained **access token**, depending on your setup and security model:
+>
 > - If using **username/password**: Ensure both `NOVA_USERNAME` and `NOVA_PASSWORD` are set, and leave `NOVA_ACCESS_TOKEN` unset.
 > - If using an **access token**: Ensure `NOVA_ACCESS_TOKEN` is set, and leave `NOVA_USERNAME` and `NOVA_PASSWORD` unset.
 >
 > **Only one method should be used at a time.** If both methods are set, the token-based authentication (`NOVA_ACCESS_TOKEN`) will typically take precedence.
-
-
-
