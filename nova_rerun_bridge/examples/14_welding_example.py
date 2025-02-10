@@ -1,4 +1,5 @@
 import asyncio
+from typing import Union
 
 import numpy as np
 import rerun as rr
@@ -182,7 +183,7 @@ async def plan_collision_free_movement(
     robot_setup: models.OptimizerSetup,
     collision_scene: models.CollisionScene,
     start_joints: list[float],
-    target_pose: Pose,
+    target: Union[Pose, list[float]],
 ) -> models.JointTrajectory:
     """Plan collision-free PTP movement.
 
@@ -191,17 +192,23 @@ async def plan_collision_free_movement(
         robot_setup: Robot optimizer setup
         collision_scene: Current collision scene
         start_joints: Starting joint positions
-        target_pose: Target pose to reach
+        target: Target pose or joint positions to reach
 
     Returns:
         Planned joint trajectory
     """
+    # Create target based on input type
+    if isinstance(target, Pose):
+        target_request = models.PlanCollisionFreePTPRequestTarget(target._to_wb_pose2())
+    else:
+        target_request = models.PlanCollisionFreePTPRequestTarget(target)
+
     plan_result = await nova._api_client.motion_api.plan_collision_free_ptp(
         cell="cell",
         plan_collision_free_ptp_request=PlanCollisionFreePTPRequest(
             robot_setup=robot_setup,
             start_joint_position=start_joints,
-            target=models.PlanCollisionFreePTPRequestTarget(target_pose._to_wb_pose2()),
+            target=target_request,
             static_colliders=collision_scene.colliders,
             collision_motion_group=collision_scene.motion_groups["motion_group"],
         ),
@@ -273,8 +280,6 @@ async def test():
             )
             await bridge.log_collision_scenes()
 
-            home = await motion_group.tcp_pose(tcp)
-
             # Calculate seam positions based on mesh pose
             seam1_start, seam1_end, seam2_start, seam2_end = await calculate_seam_poses(mesh_pose)
 
@@ -344,7 +349,7 @@ async def test():
                     robot_setup,
                     collision_scene,
                     seam2_trajectory.joint_positions[-1].joints,
-                    home,
+                    [0, -np.pi / 2, np.pi / 2, 0, 0, 0],
                 )
                 await bridge.log_trajectory(trajectory3, tcp, motion_group)
 
@@ -352,7 +357,6 @@ async def test():
                 await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)
                 await bridge.log_error_feedback(e.error.error_feedback)
                 raise
-            # await cell.delete_robot_controller(controller.controller_id)
 
 
 if __name__ == "__main__":
