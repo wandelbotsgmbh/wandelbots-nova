@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Iterable, Sized
 
 import numpy as np
@@ -69,6 +70,11 @@ class Pose(pydantic.BaseModel, Sized):
     def __str__(self):
         return str(round(self).to_tuple())
 
+    def __eq__(self, other):
+        if not isinstance(other, Pose):
+            return NotImplemented
+        return self.position == other.position and self.orientation == other.orientation
+
     def __round__(self, n=None):
         if n is not None:
             raise NotImplementedError("Setting precision is not supported yet")
@@ -129,7 +135,7 @@ class Pose(pydantic.BaseModel, Sized):
         else:
             raise ValueError(f"Cannot multiply Pose with {type(other)}")
 
-    def transform(self, other) -> "Pose":
+    def transform(self, other) -> Pose:
         return self @ other
 
     def _to_wb_pose(self) -> wb.models.Pose:
@@ -173,7 +179,7 @@ class Pose(pydantic.BaseModel, Sized):
         mat[:3, 3] = [self.position.x, self.position.y, self.position.z]
         return mat
 
-    def _matrix_to_pose(self, matrix: np.ndarray) -> "Pose":
+    def _matrix_to_pose(self, matrix: np.ndarray) -> Pose:
         """Converts a homogeneous transformation matrix to a Pose."""
         rotation_matrix = matrix[:3, :3]
         position = matrix[:3, 3]
