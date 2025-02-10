@@ -64,7 +64,7 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
 
             # Transform vertices to world position
             transform = np.eye(4)
-            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z + height / 2]
+            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z]
             rot_mat = Rotation.from_rotvec(
                 np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
             )
