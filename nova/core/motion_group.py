@@ -9,8 +9,10 @@ from nova.actions import (
     CollisionFreeJointPTP,
     CollisionFreePTP,
     CombinedActions,
+    Motion,
     MovementController,
     MovementControllerContext,
+    WriteAction,
 )
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.movement_controller import motion_group_state_to_motion_state, move_forward
@@ -70,15 +72,14 @@ class MotionGroup(AbstractRobot):
         if not actions:
             raise ValueError("No actions provided")
 
-        current_joints = (
+        current_joints = list(
             start_joint_position if start_joint_position is not None else await self.joints()
         )
         robot_setup = await self._get_optimizer_setup(tcp=tcp)
-        final_trajectory = None
 
         # Separate CollisionFreePTP actions from other actions
-        current_batch = []
-        all_trajectories = []
+        current_batch: list[Action] = []
+        all_trajectories: list[wb.models.JointTrajectory] = []
 
         for action in actions:
             if isinstance(action, (CollisionFreePTP, CollisionFreeJointPTP)):
@@ -88,7 +89,7 @@ class MotionGroup(AbstractRobot):
                         current_batch, robot_setup, current_joints
                     )
                     all_trajectories.append(trajectory)
-                    current_joints = trajectory.joint_positions[-1].joints
+                    current_joints = list(trajectory.joint_positions[-1].joints)
                     current_batch = []
 
                 # Plan collision-free action
@@ -96,7 +97,7 @@ class MotionGroup(AbstractRobot):
                     action, robot_setup, current_joints
                 )
                 all_trajectories.append(trajectory)
-                current_joints = trajectory.joint_positions[-1].joints
+                current_joints = list(trajectory.joint_positions[-1].joints)
             else:
                 current_batch.append(action)
 
@@ -133,7 +134,9 @@ class MotionGroup(AbstractRobot):
         start_joints: list[float],
     ) -> wb.models.JointTrajectory:
         """Plan normal (non-CollisionFreePTP) actions."""
-        motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()
+        motion_commands = CombinedActions(
+            items=tuple([a for a in actions if isinstance(a, (Motion, WriteAction))])
+        ).to_motion_command()
 
         # Check for collision scenes in actions
         collision_scenes = [
@@ -149,9 +152,9 @@ class MotionGroup(AbstractRobot):
             motion_commands=motion_commands,
         )
 
-        if collision_scene:
+        if collision_scene and collision_scene.motion_groups:
             request.static_colliders = collision_scene.colliders
-            request.collision_motion_group = collision_scene.motion_groups["motion_group"]
+            request.collision_motion_group = collision_scene.motion_groups.get("motion_group")
 
         plan_result = await self._motion_api_client.plan_trajectory(
             cell=self._cell, plan_trajectory_request=request
