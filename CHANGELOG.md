@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.25.3 (2025-02-10)
+
+### Fixes
+
+* fix: fixed nova-rerun-bridge extras (#59)
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com> ([`287e222`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/287e222fb63ed6015a6946375edde17aa44e13a1))
+
+
 ## v0.25.2 (2025-02-10)
 
 ### Chores
