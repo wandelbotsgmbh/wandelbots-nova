@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.25.2 (2025-02-10)
+
+### Chores
+
+* chore(deps-dev): bump ruff from 0.8.6 to 0.9.6 (#56)
+
+Signed-off-by: dependabot[bot] <support@github.com>
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com> ([`a813520`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a813520bff110afa6e4c0d4c0b16b8b1f51fd0d8))
+
+
 ## v0.25.1 (2025-02-10)
 
 ### Chores
