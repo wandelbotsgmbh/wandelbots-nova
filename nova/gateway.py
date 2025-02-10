@@ -76,7 +76,7 @@ class ApiGateway:
     ):
         if host is None:
             host = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
-        
+
         if username is None:
             username = config("NOVA_USERNAME", default=None)
 
@@ -127,7 +127,7 @@ class ApiGateway:
 
     async def close(self):
         return await self._api_client.close()
-    
+
     @staticmethod
     def _host_with_prefix(host: str) -> str:
         """
@@ -140,11 +140,11 @@ class ApiGateway:
 
         if host.startswith("http") and not is_wabo_host:
             return host
-        
+
         if host.startswith("http") and is_wabo_host:
             return host.replace("http://", "https://")
-        
+
         if is_wabo_host:
             return f"https://{host}"
-        
+
         return f"http://{host}"
