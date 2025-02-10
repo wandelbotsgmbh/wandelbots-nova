@@ -38,15 +38,6 @@ requests = { version = ">=2.32.3", optional = true }
 APScheduler = { version = ">=3.11.0", optional = true }
 trimesh = { version = ">=4.5.3", optional = true }
 
-[tool.poetry.extras]
-nova-rerun-bridge = [
-    "rerun-sdk",
-    "python-decouple",
-    "requests",
-    "APScheduler",
-    "scipy",
-    "trimesh"
-]
 [tool.poetry.group.dev.dependencies]
 python-dotenv = "^1.0.1"
 ruff = ">=0.8.2,<0.10.0"
@@ -54,6 +45,14 @@ pytest = "^8.3.4"
 pytest-asyncio = "^0.24.0"
 mypy = "^1.13.0"
 pre-commit = "^4.0.1"
+
+[tool.poetry.extras]
+nova-rerun-bridge = [
+    "rerun-sdk",
+    "requests",
+    "APScheduler",
+    "trimesh"
+]
 
 [build-system]
 requires = ["poetry-core"]
