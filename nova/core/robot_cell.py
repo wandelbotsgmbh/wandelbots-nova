@@ -226,7 +226,9 @@ class AbstractRobot(Device):
         return self._execution_duration
 
     @abstractmethod
-    async def _plan(self, actions: list[Action], tcp: str, start_joint_position: tuple[float, ...] | None = None) -> api.models.JointTrajectory:
+    async def _plan(
+        self, actions: list[Action], tcp: str, start_joint_position: tuple[float, ...] | None = None
+    ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
         Args:
@@ -238,7 +240,12 @@ class AbstractRobot(Device):
             wb.models.JointTrajectory: The planned joint trajectory
         """
 
-    async def plan(self, actions: list[Action] | Action, tcp: str, start_joint_position: tuple[float, ...] | None = None) -> api.models.JointTrajectory:
+    async def plan(
+        self,
+        actions: list[Action] | Action,
+        tcp: str,
+        start_joint_position: tuple[float, ...] | None = None,
+    ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
         Args:
