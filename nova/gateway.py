@@ -92,7 +92,8 @@ class ApiGateway:
             username = None
             password = None
 
-        stripped_host = host.rstrip("/")
+        self._host = self._host_with_prefix(host=host)
+        stripped_host = self._host.rstrip("/")
         api_client_config = wb.Configuration(
             host=f"{stripped_host}/api/{version}",
             username=username,
@@ -102,7 +103,6 @@ class ApiGateway:
         api_client_config.verify_ssl = verify_ssl
 
         self._api_client = wb.ApiClient(configuration=api_client_config)
-        self._host = host
 
         # Use the intercept function to wrap each API client
         self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client))
@@ -127,3 +127,24 @@ class ApiGateway:
 
     async def close(self):
         return await self._api_client.close()
+
+    @staticmethod
+    def _host_with_prefix(host: str) -> str:
+        """
+        The protocol prefix is required for the API client to work properly.
+        This method adds the 'http://' prefix if it is missing.
+
+        For all wandelbots.io virtual instances the prefix will 'https://'.
+        """
+        is_wabo_host = "wandelbots.io" in host
+
+        if host.startswith("http") and not is_wabo_host:
+            return host
+
+        if host.startswith("http") and is_wabo_host:
+            return host.replace("http://", "https://")
+
+        if is_wabo_host:
+            return f"https://{host}"
+
+        return f"http://{host}"

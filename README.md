@@ -69,6 +69,21 @@ To install the development dependencies, run the following command
 poetry install
 ```
 
+### Using Branch Versions For Testing
+
+When having feature branches or forks, or might be helpful to test the library as dependency in other projects first.
+Poetry allows to pull the library from different sources. See the [Poetry Doc](https://python-poetry.org/docs/dependency-specification/#git-rev-project) for more information.
+
+Poetry Version < 2:
+```toml
+wandelbots-nova = { git = "https://github.com/wandelbotsgmbh/wandelbots-nova.git", branch = "fix/http-prefix" }
+```
+
+Poetry Version >=2
+```toml
+wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/http-prefix
+```
+
 ### Environment Variables for NOVA Configuration
 
 1. **Copy the Template:** Make a copy of the provided `.env.template` file and rename it to `.env` with `cp .env.template .env`.
