@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.25.1 (2025-02-10)
+
+### Chores
+
+* chore: lock ([`eb0ba0d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/eb0ba0db71ca3569d1d6834efda99886111d21a3))
+
+
 ## v0.25.0 (2025-02-10)
 
 ### Features
