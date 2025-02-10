@@ -117,8 +117,9 @@ class Linear(CollisionAwareMotion):
     """A linear motion with optional collision checking
 
     Examples:
-    >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10))
-    Linear(type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(...))
+        >>> ms = MotionSettings(tcp_velocity_limit=10)
+        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)  # doctest: +ELLIPSIS
+        Linear(type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(...), collision_scene=None)
     """
 
     type: Literal["linear"] = "linear"
