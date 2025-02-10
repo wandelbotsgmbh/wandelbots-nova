@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.26.1 (2025-02-10)
+
+### Fixes
+
+* fix: move back to home in example (#60) ([`a62def7`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a62def7e6baac37f99ed6aba460d3864e4967a43))
+
+
 ## v0.26.0 (2025-02-10)
 
 ### Features
