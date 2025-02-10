@@ -46,13 +46,22 @@ class MotionGroup(AbstractRobot):
         #    raise ValueError("No MotionId attached. There is no planned motion available.")
         return self._current_motion
 
-    async def _plan(self, actions: list[Action], tcp: str) -> wb.models.JointTrajectory:
+    async def _plan(
+        self,
+        actions: list[Action],
+        tcp: str,
+        *,
+        start_joint_position: tuple | None = None,
+    ) -> wb.models.JointTrajectory:
         motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
-        joints = await self.joints()
+
+        if start_joint_position is None:
+            start_joint_position = await self.joints()
+
         robot_setup = await self._get_optimizer_setup(tcp=tcp)
         request = wb.models.PlanTrajectoryRequest(
             robot_setup=robot_setup,
-            start_joint_position=list(joints),
+            start_joint_position=list(start_joint_position),
             motion_commands=motion_commands,
         )
 
