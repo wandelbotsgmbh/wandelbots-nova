@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.24.1 (2025-02-10)
+
+### Fixes
+
+* fix: simple check for http prefix (#42)
+
+Co-authored-by: André <andre.kuehnert@wandelbots.com> ([`cd4b478`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/cd4b478bb551f7a444ef10f696980d4a2a059067))
+
+
 ## v0.24.0 (2025-02-10)
 
 ### Features
