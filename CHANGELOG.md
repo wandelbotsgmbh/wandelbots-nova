@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.26.0 (2025-02-10)
+
+### Features
+
+* feat: add various collider types (#58) ([`9d60c66`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9d60c665c693834abc27ecf558f5fa2c8e907f9b))
+
+
 ## v0.25.3 (2025-02-10)
 
 ### Fixes
