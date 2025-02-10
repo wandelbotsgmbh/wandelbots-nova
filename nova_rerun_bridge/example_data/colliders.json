@@ -1,0 +1,368 @@
+{
+    "_box": {
+        "shape": {
+            "shape_type": "box",
+            "size_x": 100.0,
+            "size_y": 50.0,
+            "size_z": 200.0,
+            "box_type": "FULL"
+        },
+        "pose": {
+            "position": [
+                0.0,
+                400.0,
+                0.0
+            ],
+            "orientation": [
+                0.0,
+                0.0,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_sphere": {
+        "shape": {
+            "shape_type": "sphere",
+            "radius": 30.0
+        },
+        "pose": {
+            "position": [
+                0.0,
+                200.0,
+                0.0
+            ],
+            "orientation": [
+                0.0,
+                0.0,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_cylinder": {
+        "shape": {
+            "shape_type": "cylinder",
+            "radius": 30.0,
+            "height": 100.0
+        },
+        "pose": {
+            "position": [
+                0.0,
+                -600.0,
+                0.0
+            ],
+            "orientation": [
+                0.0,
+                0.0,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_capsule": {
+        "shape": {
+            "shape_type": "capsule",
+            "radius": 30.0,
+            "cylinder_height": 100.0
+        },
+        "pose": {
+            "position": [
+                0.0,
+                -400.0,
+                0.0
+            ],
+            "orientation": [
+                0.0,
+                0.0,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_rectangular_capsule": {
+        "shape": {
+            "shape_type": "rectangular_capsule",
+            "radius": 30.0,
+            "sphere_center_distance_x": 100.0,
+            "sphere_center_distance_y": 50.0
+        },
+        "pose": {
+            "position": [
+                0.0,
+                -200.0,
+                0.0
+            ],
+            "orientation": [
+                0.0,
+                0.0,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_rectangle": {
+        "shape": {
+            "shape_type": "rectangle",
+            "size_x": 30.0,
+            "size_y": 100.0
+        },
+        "pose": {
+            "position": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "orientation": [
+                0.0,
+                0.0,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_box_rot_x_45": {
+        "shape": {
+            "shape_type": "box",
+            "size_x": 100.0,
+            "size_y": 50.0,
+            "size_z": 200.0,
+            "box_type": "FULL"
+        },
+        "pose": {
+            "position": [
+                -300.0,
+                400.0,
+                0.0
+            ],
+            "orientation": [
+                0.7853981633974484,
+                0.0,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_sphere_rot_x_45": {
+        "shape": {
+            "shape_type": "sphere",
+            "radius": 30.0
+        },
+        "pose": {
+            "position": [
+                -300.0,
+                200.0,
+                0.0
+            ],
+            "orientation": [
+                0.7853981633974484,
+                0.0,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_cylinder_rot_x_45": {
+        "shape": {
+            "shape_type": "cylinder",
+            "radius": 30.0,
+            "height": 100.0
+        },
+        "pose": {
+            "position": [
+                -300.0,
+                -600.0,
+                0.0
+            ],
+            "orientation": [
+                0.7853981633974484,
+                0.0,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_capsule_rot_x_45": {
+        "shape": {
+            "shape_type": "capsule",
+            "radius": 30.0,
+            "cylinder_height": 100.0
+        },
+        "pose": {
+            "position": [
+                -300.0,
+                -400.0,
+                0.0
+            ],
+            "orientation": [
+                0.7853981633974484,
+                0.0,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_rectangular_capsule_rot_x_45": {
+        "shape": {
+            "shape_type": "rectangular_capsule",
+            "radius": 30.0,
+            "sphere_center_distance_x": 100.0,
+            "sphere_center_distance_y": 50.0
+        },
+        "pose": {
+            "position": [
+                -300.0,
+                -200.0,
+                0.0
+            ],
+            "orientation": [
+                0.7853981633974484,
+                0.0,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_rectangle_rot_x_45": {
+        "shape": {
+            "shape_type": "rectangle",
+            "size_x": 30.0,
+            "size_y": 100.0
+        },
+        "pose": {
+            "position": [
+                -300.0,
+                0.0,
+                0.0
+            ],
+            "orientation": [
+                0.7853981633974484,
+                0.0,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_box_rot_y_45": {
+        "shape": {
+            "shape_type": "box",
+            "size_x": 100.0,
+            "size_y": 50.0,
+            "size_z": 200.0,
+            "box_type": "FULL"
+        },
+        "pose": {
+            "position": [
+                300.0,
+                400.0,
+                0.0
+            ],
+            "orientation": [
+                0.0,
+                0.7853981633974484,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_sphere_rot_y_45": {
+        "shape": {
+            "shape_type": "sphere",
+            "radius": 30.0
+        },
+        "pose": {
+            "position": [
+                300.0,
+                200.0,
+                0.0
+            ],
+            "orientation": [
+                0.0,
+                0.7853981633974484,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_cylinder_rot_y_45": {
+        "shape": {
+            "shape_type": "cylinder",
+            "radius": 30.0,
+            "height": 100.0
+        },
+        "pose": {
+            "position": [
+                300.0,
+                -600.0,
+                0.0
+            ],
+            "orientation": [
+                0.0,
+                0.7853981633974484,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_capsule_rot_y_45": {
+        "shape": {
+            "shape_type": "capsule",
+            "radius": 30.0,
+            "cylinder_height": 100.0
+        },
+        "pose": {
+            "position": [
+                300.0,
+                -400.0,
+                0.0
+            ],
+            "orientation": [
+                0.0,
+                0.7853981633974484,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_rectangular_capsule_rot_y_45": {
+        "shape": {
+            "shape_type": "rectangular_capsule",
+            "radius": 30.0,
+            "sphere_center_distance_x": 100.0,
+            "sphere_center_distance_y": 50.0
+        },
+        "pose": {
+            "position": [
+                300.0,
+                -200.0,
+                0.0
+            ],
+            "orientation": [
+                0.0,
+                0.7853981633974484,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    },
+    "_rectangle_rot_y_45": {
+        "shape": {
+            "shape_type": "rectangle",
+            "size_x": 30.0,
+            "size_y": 100.0
+        },
+        "pose": {
+            "position": [
+                300.0,
+                0.0,
+                0.0
+            ],
+            "orientation": [
+                0.0,
+                0.7853981633974484,
+                0.0
+            ]
+        },
+        "margin": 0.0
+    }
+}
