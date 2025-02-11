@@ -26,7 +26,8 @@ wandelbots-nova = { version = ">=0.12", extras = ["nova-rerun-bridge"] }
 ```
 
 ```bash
-# Download required robot models
+# Download the latest robot models (depends on gltf-transform)
+npm install -g @gltf-transform/cli
 poetry run download-models
 ```
 
