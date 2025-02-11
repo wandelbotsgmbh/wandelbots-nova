@@ -85,6 +85,17 @@ class Vector3d(pydantic.BaseModel):
         """
         return self.x, self.y, self.z
 
+    def __array__(self, dtype=None):
+        """Allows numpy to automatically convert Vector3d to a numeric array.
+
+        Examples:
+        >>> v1 = Vector3d(x=1.0, y=2.0, z=3.0)
+        >>> v2 = Vector3d(x=1.001, y=2.0, z=3.0)
+        >>> np.isclose(v1, v2, atol=1e-3)
+        array([ True,  True,  True])
+        """
+        return np.array(self.to_tuple(), dtype=dtype)
+
     def to_quaternion(self):
         """Interpret the object as a rotation vector and convert it to a quaternion"""
         values = np.asarray(self)
