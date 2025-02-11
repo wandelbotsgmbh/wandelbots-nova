@@ -260,10 +260,7 @@ class NovaRerunBridge:
 
         # Collect poses from regular actions
         regular_actions = [
-            action
-            for action in actions
-            if isinstance(action, (Motion, WriteAction))
-            and not isinstance(action, CollisionFreeMotion)
+            action for action in actions if isinstance(action, (Motion, WriteAction))
         ]
         regular_poses = (
             CombinedActions(items=tuple(regular_actions)).poses() if regular_actions else []

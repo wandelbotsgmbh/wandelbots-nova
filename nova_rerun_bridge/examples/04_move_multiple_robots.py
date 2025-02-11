@@ -34,8 +34,6 @@ async def move_robot(controller: Controller, bridge: NovaRerunBridge):
         trajectory = await motion_group.plan(actions, tcp)
         await bridge.log_trajectory(trajectory, tcp, motion_group, timing_mode=TimingMode.SYNC)
 
-        await motion_group.plan_and_execute(actions, tcp)
-
 
 async def main():
     async with Nova() as nova, NovaRerunBridge(nova) as bridge:
