@@ -28,9 +28,10 @@ import pydantic
 from loguru import logger
 
 from nova import api
-from nova.actions import Action, MovementController
+from nova.actions import Action, MovementController, CollisionFreeMotion
 from nova.types import MotionState, Pose, RobotState
 from nova.utils import Callerator
+import wandelbots_api_client as wb
 
 
 class RobotCellError(Exception):
@@ -227,7 +228,11 @@ class AbstractRobot(Device):
 
     @abstractmethod
     async def _plan(
-        self, actions: list[Action], tcp: str, start_joint_position: tuple[float, ...] | None = None
+        self,
+        actions: list[Action | CollisionFreeMotion],
+        tcp: str,
+        start_joint_position: tuple[float, ...] | None = None,
+        optimizer_setup: wb.models.OptimizerSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -243,9 +248,11 @@ class AbstractRobot(Device):
 
     async def plan(
         self,
-        actions: list[Action] | Action,
+        # TODO: this signature is changing, maybe I should make CollisionFreeMotion a subclass of Action
+        actions: list[Action | CollisionFreeMotion] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
+        optimizer_setup: wb.models.OptimizerSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -265,7 +272,7 @@ class AbstractRobot(Device):
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        return await self._plan(actions, tcp, start_joint_position)
+        return await self._plan(actions, tcp, start_joint_position, optimizer_setup)
 
     @abstractmethod
     async def _execute(
