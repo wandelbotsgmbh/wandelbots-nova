@@ -235,6 +235,7 @@ class AbstractRobot(Device):
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
                 Only motion actions are considered for planning.
             tcp (str): The identifier of the tool center point (TCP)
+            start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
 
         Returns:
             wb.models.JointTrajectory: The planned joint trajectory
@@ -252,6 +253,7 @@ class AbstractRobot(Device):
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
                 Only motion actions are considered for planning.
             tcp (str): The identifier of the tool center point (TCP)
+            start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
 
         Returns:
             wb.models.JointTrajectory: The planned joint trajectory

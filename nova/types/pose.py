@@ -136,6 +136,18 @@ class Pose(pydantic.BaseModel, Sized):
         else:
             raise ValueError(f"Cannot multiply Pose with {type(other)}")
 
+    def __array__(self, dtype=None):
+        """Convert Pose to a 6-element numpy array: [pos.x, pos.y, pos.z, ori.x, ori.y, ori.z].
+
+        Examples:
+        >>> p1 = Pose((1.0, 2.0, 3.0, 4.0, 5.0, 6.0))
+        >>> p2 = Pose((1.001, 2.0, 3.0, 3.9995, 5.0, 6.0))
+        >>> np.isclose(p1, p2, atol=1e-3)
+        array([ True,  True,  True,  True,  True,  True])
+        """
+        # The `to_tuple()` method already returns (x, y, z, rx, ry, rz)
+        return np.array(self.to_tuple(), dtype=dtype)
+
     def transform(self, other) -> Pose:
         return self @ other
 
