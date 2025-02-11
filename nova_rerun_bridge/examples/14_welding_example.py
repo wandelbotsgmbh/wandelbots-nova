@@ -299,7 +299,7 @@ async def test():
                     start_joint_position=[0, -np.pi / 2, np.pi / 2, 0, 0, 0],
                 )
 
-                # await bridge.log_actions(welding_actions)
+                await bridge.log_actions(welding_actions)
                 await bridge.log_trajectory(trajectory_plan_combined, tcp, motion_group)
 
             except PlanTrajectoryFailed as e:

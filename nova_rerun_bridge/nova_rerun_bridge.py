@@ -12,9 +12,10 @@ from wandelbots_api_client.models import (
 )
 
 from nova import MotionGroup
-from nova.actions import Action, CombinedActions, WriteAction
+from nova.actions import Action, CollisionFreeMotion, CombinedActions, Motion, WriteAction
 from nova.api import models
 from nova.core.nova import Nova
+from nova.types.pose import Pose
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.blueprint import send_blueprint
 from nova_rerun_bridge.collision_scene import log_collision_scenes
@@ -245,7 +246,7 @@ class NovaRerunBridge:
         self._streaming_tasks.clear()
 
     async def log_actions(
-        self, actions: list[Action] | Action, show_connection: bool = False
+        self, actions: list[Action | CollisionFreeMotion] | Action, show_connection: bool = False
     ) -> None:
         from nova_rerun_bridge import trajectory
 
@@ -257,8 +258,26 @@ class NovaRerunBridge:
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        # TODO support actions and the CollisionFreeMotion
-        poses = CombinedActions(items=tuple(actions)).poses()
+        # Collect poses from regular actions
+        regular_actions = [
+            action
+            for action in actions
+            if isinstance(action, (Motion, WriteAction))
+            and not isinstance(action, CollisionFreeMotion)
+        ]
+        regular_poses = (
+            CombinedActions(items=tuple(regular_actions)).poses() if regular_actions else []
+        )
+
+        # Collect poses from CollisionFreeMotion targets
+        collision_free_poses = [
+            action.target
+            for action in actions
+            if isinstance(action, CollisionFreeMotion) and isinstance(action.target, Pose)
+        ]
+
+        # Combine all poses
+        all_poses = regular_poses + collision_free_poses
         positions = []
         point_colors = []
         use_red = False
@@ -267,8 +286,8 @@ class NovaRerunBridge:
         for i, action in enumerate(actions):
             if isinstance(action, WriteAction):
                 use_red = True
-            if i < len(poses):  # Only process if there's a corresponding pose
-                pose = poses[i]
+            if i < len(all_poses):  # Only process if there's a corresponding pose
+                pose = all_poses[i]
                 logger.debug(f"Pose: {pose}")
                 positions.append([pose.position.x, pose.position.y, pose.position.z])
                 point_colors.append(colors.colors[1] if use_red else colors.colors[9])
