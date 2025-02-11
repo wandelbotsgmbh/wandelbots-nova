@@ -14,23 +14,29 @@ from nova_rerun_bridge.hull_visualizer import HullVisualizer
 def log_collision_scenes(collision_scenes: Dict[str, models.CollisionScene]):
     for scene_id, scene in collision_scenes.items():
         entity_path = f"collision_scenes/{scene_id}"
-        for collider_id, collider in scene.colliders.items():
-            log_colliders_once(entity_path, {collider_id: collider})
+        if scene.colliders:
+            for collider_id, collider in scene.colliders.items():
+                log_colliders_once(entity_path, {collider_id: collider})
 
 
 def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
     for collider_id, collider in colliders.items():
         pose = normalize_pose(collider.pose)
 
-        if collider.shape.actual_instance.shape_type == "sphere":
+        if collider.shape.actual_instance is None:
+            return
+
+        if isinstance(collider.shape.actual_instance, models.Sphere2):
             # Convert rotation vector to axis-angle format
+            if pose.orientation is None:
+                continue
             rot_vec = np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
             angle = np.linalg.norm(rot_vec)
             if angle > 0:
                 axis = rot_vec / angle
             else:
                 axis = np.array([0.0, 0.0, 1.0])
-                angle = 0.0
+                angle: float = 0.0
 
             rr.log(
                 f"{entity_path}/{collider_id}",
@@ -47,7 +53,7 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                 timeless=True,
             )
 
-        elif collider.shape.actual_instance.shape_type == "rectangular_capsule":
+        elif isinstance(collider.shape.actual_instance, models.RectangularCapsule2):
             # Get parameters from the capsule
             radius = collider.shape.actual_instance.radius
             size_x = collider.shape.actual_instance.sphere_center_distance_x
@@ -99,7 +105,7 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                     timeless=True,
                 )
 
-        elif collider.shape.actual_instance.shape_type == "rectangle":
+        elif isinstance(collider.shape.actual_instance, models.Rectangle2):
             # Create vertices for a rectangle in XY plane
             half_x = collider.shape.actual_instance.size_x / 2
             half_y = collider.shape.actual_instance.size_y / 2
@@ -138,7 +144,7 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                 timeless=True,
             )
 
-        elif collider.shape.actual_instance.shape_type == "box":
+        elif isinstance(collider.shape.actual_instance, models.Box2):
             # Create rotation matrix from orientation
             rot_mat = Rotation.from_rotvec(
                 np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
@@ -175,7 +181,7 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                     timeless=True,
                 )
 
-        elif collider.shape.actual_instance.shape_type == "cylinder":
+        elif isinstance(collider.shape.actual_instance, models.Cylinder2):
             height = collider.shape.actual_instance.height
             radius = collider.shape.actual_instance.radius
 
@@ -210,7 +216,7 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                     timeless=True,
                 )
 
-        elif collider.shape.actual_instance.shape_type == "capsule":
+        elif isinstance(collider.shape.actual_instance, models.Capsule2):
             height = collider.shape.actual_instance.cylinder_height
             radius = collider.shape.actual_instance.radius
 
@@ -245,7 +251,7 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                     timeless=True,
                 )
 
-        elif collider.shape.actual_instance.shape_type == "convex_hull":
+        elif isinstance(collider.shape.actual_instance, models.ConvexHull2):
             # Transform vertices to world position
             vertices = np.array(collider.shape.actual_instance.vertices)
             transform = np.eye(4)

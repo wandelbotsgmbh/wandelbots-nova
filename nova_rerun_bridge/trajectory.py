@@ -62,15 +62,19 @@ def log_motion(
 
     # Initialize DHRobot and Visualizer
     if model_from_controller == "Yaskawa_TURN2":
-        optimizer_config.dh_parameters[0].a = 0
-        optimizer_config.dh_parameters[0].d = 360
-        optimizer_config.dh_parameters[0].alpha = np.pi / 2
-        optimizer_config.dh_parameters[0].theta = 0
+        if optimizer_config.dh_parameters is not None:
+            optimizer_config.dh_parameters[0].a = 0
+            optimizer_config.dh_parameters[0].d = 360
+            optimizer_config.dh_parameters[0].alpha = np.pi / 2
+            optimizer_config.dh_parameters[0].theta = 0
 
-        optimizer_config.dh_parameters[1].a = 0
-        optimizer_config.dh_parameters[1].d = 0
-        optimizer_config.dh_parameters[1].alpha = 0
-        optimizer_config.dh_parameters[1].theta = np.pi / 2
+            optimizer_config.dh_parameters[1].a = 0
+            optimizer_config.dh_parameters[1].d = 0
+            optimizer_config.dh_parameters[1].alpha = 0
+            optimizer_config.dh_parameters[1].theta = np.pi / 2
+
+    if optimizer_config.dh_parameters is None:
+        raise ValueError("DH parameters cannot be None")
 
     robot = DHRobot(optimizer_config.dh_parameters, optimizer_config.mounting)
 
@@ -104,6 +108,9 @@ def log_motion(
 
     # Update last times based on timing mode
     if trajectory:
+        if trajectory[-1].time is None:
+            raise ValueError("Last trajectory point has no time")
+
         if timing_mode == TimingMode.SYNC:
             _last_offset = trajectory[-1].time
         else:
@@ -127,8 +134,13 @@ def continue_after_sync():
 def log_trajectory_path(
     motion_id: str, trajectory: List[models.TrajectorySample], motion_group: str
 ):
+    if not all(p.tcp_pose is not None for p in trajectory):
+        raise ValueError("All trajectory points must have a tcp_pose")
+
     points = [
-        [p.tcp_pose.position.x, p.tcp_pose.position.y, p.tcp_pose.position.z] for p in trajectory
+        [p.tcp_pose.position.x, p.tcp_pose.position.y, p.tcp_pose.position.z]
+        for p in trajectory
+        if p.tcp_pose and p.tcp_pose.position
     ]
     rr.log(
         f"motion/{motion_group}/trajectory",
@@ -238,9 +250,12 @@ def log_joint_data(
     """
     Log joint-related data (position, velocity, acceleration, torques) from a trajectory as columns.
     """
-    # Initialize lists for each joint and each data type (assuming 6 joints)
+    # Initialize lists for each joint and each data type
+    if optimizer_config.dh_parameters is None:
+        raise ValueError("DH parameters cannot be None")
+
     num_joints = len(optimizer_config.dh_parameters)
-    joint_data = {
+    joint_data: Dict[str, List[List[float]]] = {
         "velocity": [[] for _ in range(num_joints)],
         "acceleration": [[] for _ in range(num_joints)],
         "position": [[] for _ in range(num_joints)],
@@ -307,7 +322,7 @@ def log_scalar_values(
     """
     Log scalar values such as TCP velocity, acceleration, orientation velocity/acceleration, time, and location.
     """
-    scalar_data = {
+    scalar_data: Dict[str, List[float]] = {
         "tcp_velocity": [],
         "tcp_acceleration": [],
         "tcp_orientation_velocity": [],
