@@ -151,7 +151,7 @@ async def calculate_seam_poses(mesh_pose: models.Pose2) -> tuple[Pose, Pose, Pos
         tuple containing start and end poses for both seams
     """
     # Convert mesh_pose to Pose for @ operator usage
-    mesh_transform = Pose((*mesh_pose.position, *mesh_pose.orientation))
+    mesh_transform = Pose(mesh_pose)
 
     # Define seams in local coordinates (relative to mesh center)
     local_seam1_start = Pose((150, -6, 3, -np.pi / 2 - np.pi / 4, 0, 0))  # -135° around X
