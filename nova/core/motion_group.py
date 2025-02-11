@@ -259,10 +259,6 @@ class MotionGroup(AbstractRobot):
                 all_trajectories.append(trajectory)
                 current_joints = tuple(trajectory.joint_positions[-1].joints)
 
-
-        # Separate CollisionFreePTP actions from other actions
-        all_trajectories: list[wb.models.JointTrajectory] = []
-
         # TODO: combine all trajectories into one
         # TODO: check how io on the path fits into this
 
