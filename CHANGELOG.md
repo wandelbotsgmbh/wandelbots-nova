@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.27.1 (2025-02-11)
+
+### Bug Fixes
+
+- Badge ([#63](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/63),
+  [`2781ac3`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2781ac31ce05824bec140b1d61a13f4a097346d6))
+
+Co-authored-by: André <andre.kuehnert@wandelbots.com>
+
+
 ## v0.27.0 (2025-02-11)
 
 ### Features
