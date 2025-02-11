@@ -6,12 +6,11 @@ import trimesh
 from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngleTypes, Vector3d
 
 from nova import MotionSettings
-from nova.actions import CollisionFreeMotion, Linear, ptp
+from nova.actions import PTP, CollisionFreeMotion, Linear
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
 from nova.types import Pose
-from nova.types.collision_scene import CollisionScene
 from nova_rerun_bridge import NovaRerunBridge
 
 """
@@ -134,7 +133,7 @@ async def build_collision_world(
     scene = models.CollisionScene(
         colliders=colliders,
         motion_groups={
-            "motion_group": models.CollisionMotionGroup(
+            robot_setup.motion_group_type: models.CollisionMotionGroup(
                 tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
             )
         },
@@ -249,7 +248,7 @@ async def test():
                     # First seam
                     CollisionFreeMotion(
                         target=seam1_approach,
-                        collision_scene=CollisionScene(collision_scene=collision_scene),
+                        collision_scene=collision_scene,
                         settings=MotionSettings(tcp_velocity_limit=30),
                     ),
                     Linear(
@@ -271,7 +270,7 @@ async def test():
                     # Move to second seam
                     CollisionFreeMotion(
                         target=seam2_approach,
-                        collision_scene=CollisionScene(collision_scene=collision_scene),
+                        collision_scene=collision_scene,
                         settings=MotionSettings(tcp_velocity_limit=30),
                     ),
                     # Second seam with collision checking
@@ -289,16 +288,17 @@ async def test():
                     ),
                     CollisionFreeMotion(
                         target=[0, -np.pi / 2, np.pi / 2, 0, 0, 0],
-                        collision_scene=CollisionScene(collision_scene=collision_scene),
+                        collision_scene=collision_scene,
                         settings=MotionSettings(tcp_velocity_limit=30),
                     ),
                 ]
 
                 linear_actions = [
                     # Second seam with collision checking
-                    ptp(
+                    PTP(
                         target=seam2_start,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                        collision_scene=collision_scene,
                     ),
                     Linear(
                         target=seam2_end,
@@ -317,15 +317,15 @@ async def test():
                 trajectory_plan_cf = await motion_group._plan_collision_free(
                     CollisionFreeMotion(
                         target=seam2_departure,
-                        collision_scene=CollisionScene(collision_scene=collision_scene),
+                        collision_scene=collision_scene,
                         settings=MotionSettings(tcp_velocity_limit=30),
                     ),
-                    tcp,
+                    tcp=tcp,
                     start_joint_position=[0, -np.pi / 2, np.pi / 2, 0, 0, 0],
                 )
 
                 # await bridge.log_actions(welding_actions)
-                # await bridge.log_trajectory(trajectory_plan, tcp, motion_group)
+                await bridge.log_trajectory(trajectory_plan, tcp, motion_group)
                 await bridge.log_trajectory(trajectory_plan_cf, tcp, motion_group)
 
             except PlanTrajectoryFailed:

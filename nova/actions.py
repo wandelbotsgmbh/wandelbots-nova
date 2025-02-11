@@ -4,7 +4,7 @@ from typing import Annotated, Any, AsyncGenerator, Callable, Literal, Union
 import pydantic
 import wandelbots_api_client as wb
 
-from nova.types.collision_scene import CollisionScene
+from nova.api import models
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
 from nova.types.state import MotionState
@@ -57,11 +57,15 @@ PoseOrVectorTuple = Union[
 ]
 
 
-class CollisionFreeMotion(Action, ABC):
+class CollisionFreeMotion(ABC, pydantic.BaseModel):
+    """
+    A motion that is collision free.
+    """
+
     type: Literal["collision_free_ptp"] = "collision_free_ptp"
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
-    collision_scene: CollisionScene | None = None
+    collision_scene: models.CollisionScene | None = None
 
 
 class Motion(Action, ABC):
@@ -76,7 +80,7 @@ class Motion(Action, ABC):
     type: Literal["linear", "ptp", "circular", "joint_ptp", "spline"]
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
-    collision_scene: CollisionScene | None = None
+    collision_scene: models.CollisionScene | None = pydantic.Field(default=None)
 
     @property
     def is_cartesian(self):
@@ -88,7 +92,7 @@ class UnresolvedMotion(Motion, ABC):
     async def resolve(
         self,
         initial_joints: tuple[float, ...],
-        collision_scene: CollisionScene | None,
+        collision_scene: models.CollisionScene | None,
         configuration: dict,
         moving_robot_identifier: str,
     ) -> tuple[list[Motion], tuple[float, ...]] | None:
@@ -128,6 +132,7 @@ class Linear(Motion):
         return self._to_api_model().model_dump()
 
 
+# TODO: add collision scene here
 def lin(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) -> Linear:
     """Convenience function to create a linear motion
 

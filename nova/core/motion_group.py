@@ -7,18 +7,30 @@ from nova.actions import (
     Action,
     CollisionFreeMotion,
     CombinedActions,
+    Motion,
     MovementController,
     MovementControllerContext,
 )
+from nova.api import models
 from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.movement_controller import motion_group_state_to_motion_state, move_forward
 from nova.core.robot_cell import AbstractRobot
 from nova.gateway import ApiGateway
 from nova.types import InitialMovementStream, LoadPlanResponse, MotionState, Pose, RobotState
-from nova.types.collision_scene import CollisionScene
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
+
+
+def compare_collition_scenes(scene1: wb.models.CollisionScene, scene2: wb.models.CollisionScene):
+    if scene1.colliders != scene2.colliders:
+        return False
+
+    # Compare motion groups
+    if scene1.motion_groups != scene2.motion_groups:
+        return False
+
+    return True
 
 
 class MotionGroup(AbstractRobot):
@@ -62,16 +74,25 @@ class MotionGroup(AbstractRobot):
     ) -> wb.models.JointTrajectory:
         motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
 
-        # Check for consistent collision scenes
-        collision_scenes: list[CollisionScene] = [
-            action.collision_scene
-            for action in actions
-            if isinstance(action, CollisionFreeMotion) and action.collision_scene is not None
-        ]
+        collision_scenes: list[models.CollisionScene] = []
+        motion_counter = 0
+        for action in actions:
+            if isinstance(action, Motion):
+                motion_action: Motion = action
+                motion_counter = motion_counter + 1
+                if motion_action.collision_scene is not None:
+                    collision_scenes.append(motion_action.collision_scene)
+
+        # If a collision scene is provided, the same should be provided for all the collision scene
+        # TODO: should we maybe use the first collision scene for all the motions? rather than giving error
+        if len(collision_scenes) != 0 and len(collision_scenes) != motion_counter:
+            raise InconsistentCollisionScenes("All actions must use the same collision scene")
 
         if len(collision_scenes) > 1:
             first_scene = collision_scenes[0]
-            if not all(scene.are_equal(first_scene) for scene in collision_scenes[1:]):
+            if not all(
+                compare_collition_scenes(first_scene, scene) for scene in collision_scenes[1:]
+            ):
                 raise InconsistentCollisionScenes("All actions must use the same collision scene")
 
         if start_joint_position is None:
@@ -87,16 +108,15 @@ class MotionGroup(AbstractRobot):
         )
 
         # Only add collision scene data if available
-        if collision_scenes and collision_scenes[0].collision_scene:
-            request.static_colliders = collision_scenes[0].collision_scene.colliders
+        if collision_scenes and collision_scenes[0]:
+            request.static_colliders = collision_scenes[0].colliders
 
             # Only add motion group if available
             if (
-                collision_scenes[0].collision_scene.motion_groups
-                and robot_setup.motion_group_type
-                in collision_scenes[0].collision_scene.motion_groups
+                collision_scenes[0].motion_groups
+                and robot_setup.motion_group_type in collision_scenes[0].motion_groups
             ):
-                request.collision_motion_group = collision_scenes[0].collision_scene.motion_groups[
+                request.collision_motion_group = collision_scenes[0].motion_groups[
                     robot_setup.motion_group_type
                 ]
 
@@ -142,8 +162,8 @@ class MotionGroup(AbstractRobot):
         )
 
         # Only add collision scene data if available
-        if action.collision_scene and action.collision_scene.collision_scene.colliders:
-            collision_scene = action.collision_scene.collision_scene
+        if action.collision_scene and action.collision_scene.colliders:
+            collision_scene = action.collision_scene
             request.static_colliders = collision_scene.colliders
 
             # Only add motion group if available

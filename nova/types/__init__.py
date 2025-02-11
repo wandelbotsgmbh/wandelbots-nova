@@ -3,7 +3,6 @@ from typing import AsyncGenerator, Callable
 
 import wandelbots_api_client as wb
 
-from nova.types.collision_scene import CollisionScene
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
 from nova.types.state import MotionState, RobotState

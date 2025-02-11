@@ -1,46 +1,12 @@
-import pydantic
-
-from nova.api import models
+import wandelbots_api_client as wb
 
 
-class CollisionScene(pydantic.BaseModel):
-    """A wrapper around the Wandelbots collision scene model with additional functionality"""
+def compare_collition_scenes(scene1: wb.models.CollisionScene, scene2: wb.models.CollisionScene):
+    if scene1.colliders != scene2.colliders:
+        return False
 
-    collision_scene: models.CollisionScene
+    # Compare motion groups
+    if scene1.motion_groups != scene2.motion_groups:
+        return False
 
-    def are_equal(self, other: "CollisionScene") -> bool:
-        """Compare two collision scenes for equality.
-
-        Args:
-            other: Another collision scene to compare with
-
-        Returns:
-            bool: True if scenes are equal, False otherwise
-        """
-        # Compare colliders
-        if self.collision_scene.colliders != other.collision_scene.colliders:
-            return False
-
-        # Compare motion groups
-        if self.collision_scene.motion_groups != other.collision_scene.motion_groups:
-            return False
-
-        return True
-
-    def __eq__(self, other: object) -> bool:
-        """Implement equality operator.
-
-        Args:
-            other: Object to compare with
-
-        Returns:
-            bool: True if objects are equal, False otherwise
-        """
-        if not isinstance(other, CollisionScene):
-            return NotImplemented
-        return self.are_equal(other)
-
-    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
-
-
-__all__ = ["CollisionScene"]
+    return True
