@@ -1,4 +1,4 @@
-from typing import AsyncGenerator, Callable, Generator, cast
+from typing import Callable, Generator, cast
 
 import wandelbots_api_client as wb
 from loguru import logger
