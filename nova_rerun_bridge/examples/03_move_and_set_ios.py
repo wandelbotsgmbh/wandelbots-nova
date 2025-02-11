@@ -22,7 +22,7 @@ async def main():
         await bridge.setup_blueprint()
         cell = nova.cell()
         controller = await cell.ensure_virtual_robot_controller(
-            "ur",
+            "ur10",
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )

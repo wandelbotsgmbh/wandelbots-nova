@@ -45,7 +45,7 @@ async def main():
             models.Manufacturer.UNIVERSALROBOTS,
         )
         kuka = await cell.ensure_virtual_robot_controller(
-            "kuka", models.VirtualControllerTypes.KUKA_MINUS_KR210_R3100_2, models.Manufacturer.KUKA
+            "kuka", models.VirtualControllerTypes.KUKA_MINUS_KR16_R1610_2, models.Manufacturer.KUKA
         )
 
         # NC-1047
@@ -59,7 +59,7 @@ async def main():
                 coordinate_system="world",
                 name="mounting",
                 reference_uid="",
-                position=Vector3d(x=500, y=0, z=0),
+                position=Vector3d(x=1000, y=0, z=0),
                 rotation=RotationAngles(
                     angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
                 ),

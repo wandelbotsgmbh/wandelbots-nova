@@ -80,7 +80,7 @@ class DHRobot:
         theta = dh_param.theta + joint_rotation * (-1 if dh_param.reverse_rotation_direction else 1)
         d = dh_param.d
         a = dh_param.a
-        alpha = dh_param.alpha
+        alpha = dh_param.alpha if dh_param.alpha is not None else 0.0
 
         # Create the homogeneous transformation matrix for this DH parameter
         transformation = np.array(

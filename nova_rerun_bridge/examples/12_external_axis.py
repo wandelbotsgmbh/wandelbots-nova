@@ -43,7 +43,7 @@ async def move_robot(controller: Controller, bridge: NovaRerunBridge):
 
 async def move_positioner(controller: Controller, bridge: NovaRerunBridge):
     async with controller[16] as motion_group:
-        actions = [jnt([0, 0]), jnt([pi / 4, pi / 4]), jnt([-pi / 4, -pi / 4]), jnt([0, 0])]
+        actions = [jnt((0, 0)), jnt((pi / 4, pi / 4)), jnt((-pi / 4, -pi / 4)), jnt((0, 0))]
 
         trajectory = await motion_group.plan(actions, "")
         await bridge.log_trajectory(trajectory, "", motion_group, timing_mode=TimingMode.SYNC)
