@@ -4,8 +4,7 @@ from typing import Annotated, Any, AsyncGenerator, Callable, Literal, Union
 import pydantic
 import wandelbots_api_client as wb
 
-from nova.api import models
-from nova.types.collision_scene import CollisionScene, Collider
+from nova.types.collision_scene import CollisionScene
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
 from nova.types.state import MotionState
@@ -57,8 +56,9 @@ PoseOrVectorTuple = Union[
     Pose, tuple[float, float, float, float, float, float], tuple[float, float, float]
 ]
 
+
 class CollisionFreeMotion(Action, ABC):
-    type: Literal["collision_free_ptp", "collision_free_joint_ptp"]
+    type: Literal["collision_free_ptp"] = "collision_free_ptp"
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     collision_scene: CollisionScene | None = None
@@ -73,13 +73,7 @@ class Motion(Action, ABC):
 
     """
 
-    type: Literal[
-        "linear",
-        "ptp",
-        "circular",
-        "joint_ptp",
-        "spline",
-    ]
+    type: Literal["linear", "ptp", "circular", "joint_ptp", "spline"]
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     collision_scene: CollisionScene | None = None
@@ -112,13 +106,7 @@ class UnresolvedMotion(Motion, ABC):
         """
 
 
-class CollisionAwareMotion(Motion):
-    """Base class for motions that can handle collision checking"""
-
-    collision_scene: models.CollisionScene | None = None
-
-
-class Linear(CollisionAwareMotion):
+class Linear(Motion):
     """A linear motion with optional collision checking
 
     Examples:
@@ -159,7 +147,7 @@ def lin(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) 
     return Linear(target=Pose(t), settings=settings)
 
 
-class PTP(CollisionAwareMotion):
+class PTP(Motion):
     """A point-to-point motion with optional collision checking"""
 
     type: Literal["ptp"] = "ptp"
@@ -258,7 +246,7 @@ def cir(
     return Circular(target=Pose(t), intermediate=Pose(i), settings=settings)
 
 
-class JointPTP(CollisionAwareMotion):
+class JointPTP(Motion):
     """A joint PTP motion with optional collision checking"""
 
     type: Literal["joint_ptp"] = "joint_ptp"
@@ -291,53 +279,6 @@ def jnt(target: tuple[float, ...], settings: MotionSettings = MotionSettings()) 
 
     """
     return JointPTP(target=target, settings=settings)
-
-
-class CollisionFreePTP(CollisionAwareMotion):
-    """A collision-free point-to-point motion
-
-    Args:
-        target: The target pose
-        collision_scene: The required collision scene for collision checking
-        settings: Motion settings
-    """
-
-    type: Literal["collision_free_ptp"] = "collision_free_ptp"
-    target: Pose
-
-    def _to_api_model(self) -> wb.models.PathCartesianPTP:
-        return wb.models.PathCartesianPTP(
-            target_pose=wb.models.Pose2(**self.target.model_dump()),
-            path_definition_name="PathCartesianPTP",
-        )
-
-    @pydantic.model_serializer
-    def serialize_model(self):
-        return self._to_api_model().model_dump()
-
-
-class CollisionFreeJointPTP(CollisionAwareMotion):
-    """A collision-free point-to-point motion in joint space
-
-    Args:
-        target: The target joint configuration as tuple of floats
-        collision_scene: The collision scene for collision checking
-        settings: Motion settings to apply
-    """
-
-    type: Literal["collision_free_joint_ptp"] = "collision_free_joint_ptp"
-    target: tuple[float, ...]
-
-    def _to_api_model(self) -> wb.models.PathJointPTP:
-        if not isinstance(self.target, tuple):
-            raise ValueError("Target must be a tuple object")
-        return wb.models.PathJointPTP(
-            target_joint_position=list(self.target), path_definition_name="PathJointPTP"
-        )
-
-    @pydantic.model_serializer
-    def serialize_model(self):
-        return self._to_api_model().model_dump()
 
 
 class Spline(Motion):

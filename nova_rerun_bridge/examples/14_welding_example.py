@@ -6,11 +6,12 @@ import trimesh
 from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngleTypes, Vector3d
 
 from nova import MotionSettings
-from nova.actions import CollisionFreeJointPTP, CollisionFreePTP, Linear
+from nova.actions import CollisionFreeMotion, Linear, ptp
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
 from nova.types import Pose
+from nova.types.collision_scene import CollisionScene
 from nova_rerun_bridge import NovaRerunBridge
 
 """
@@ -246,9 +247,9 @@ async def test():
             try:
                 welding_actions = [
                     # First seam
-                    CollisionFreePTP(
+                    CollisionFreeMotion(
                         target=seam1_approach,
-                        collision_scene=collision_scene,
+                        collision_scene=CollisionScene(collision_scene=collision_scene),
                         settings=MotionSettings(tcp_velocity_limit=30),
                     ),
                     Linear(
@@ -268,9 +269,9 @@ async def test():
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
                     # Move to second seam
-                    CollisionFreePTP(
+                    CollisionFreeMotion(
                         target=seam2_approach,
-                        collision_scene=collision_scene,
+                        collision_scene=CollisionScene(collision_scene=collision_scene),
                         settings=MotionSettings(tcp_velocity_limit=30),
                     ),
                     # Second seam with collision checking
@@ -286,24 +287,50 @@ async def test():
                         target=seam2_departure,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
-                    CollisionFreeJointPTP(
+                    CollisionFreeMotion(
                         target=[0, -np.pi / 2, np.pi / 2, 0, 0, 0],
-                        collision_scene=collision_scene,
+                        collision_scene=CollisionScene(collision_scene=collision_scene),
                         settings=MotionSettings(tcp_velocity_limit=30),
                     ),
                 ]
 
+                linear_actions = [
+                    # Second seam with collision checking
+                    ptp(
+                        target=seam2_start,
+                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    ),
+                    Linear(
+                        target=seam2_end,
+                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    ),
+                    Linear(
+                        target=seam2_departure,
+                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    ),
+                ]
+
                 # Plan complete trajectory
-                trajectory = await motion_group.plan(
-                    welding_actions, tcp, start_joint_position=[0, -np.pi / 2, np.pi / 2, 0, 0, 0]
+                trajectory_plan = await motion_group.plan(
+                    linear_actions, tcp, start_joint_position=[0, -np.pi / 2, np.pi / 2, 0, 0, 0]
+                )
+                trajectory_plan_cf = await motion_group._plan_collision_free(
+                    CollisionFreeMotion(
+                        target=seam2_departure,
+                        collision_scene=CollisionScene(collision_scene=collision_scene),
+                        settings=MotionSettings(tcp_velocity_limit=30),
+                    ),
+                    tcp,
+                    start_joint_position=[0, -np.pi / 2, np.pi / 2, 0, 0, 0],
                 )
 
-                await bridge.log_actions(welding_actions)
-                await bridge.log_trajectory(trajectory, tcp, motion_group)
+                # await bridge.log_actions(welding_actions)
+                # await bridge.log_trajectory(trajectory_plan, tcp, motion_group)
+                await bridge.log_trajectory(trajectory_plan_cf, tcp, motion_group)
 
-            except PlanTrajectoryFailed as e:
-                await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)
-                await bridge.log_error_feedback(e.error.error_feedback)
+            except PlanTrajectoryFailed:
+                # await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)
+                # await bridge.log_error_feedback(e.error.error_feedback)
                 raise
 
 

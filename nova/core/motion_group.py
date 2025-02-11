@@ -3,13 +3,19 @@ from typing import Callable
 import wandelbots_api_client as wb
 from loguru import logger
 
-from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext, CollisionFreePTP, \
-    CollisionFreeJointPTP
-from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
+from nova.actions import (
+    Action,
+    CollisionFreeMotion,
+    CombinedActions,
+    MovementController,
+    MovementControllerContext,
+)
+from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.movement_controller import motion_group_state_to_motion_state, move_forward
 from nova.core.robot_cell import AbstractRobot
 from nova.gateway import ApiGateway
 from nova.types import InitialMovementStream, LoadPlanResponse, MotionState, Pose, RobotState
+from nova.types.collision_scene import CollisionScene
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
@@ -52,18 +58,47 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
+        optimizer_setup: wb.models.OptimizerSetup | None = None,
     ) -> wb.models.JointTrajectory:
         motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
+
+        # Check for consistent collision scenes
+        collision_scenes: list[CollisionScene] = [
+            action.collision_scene
+            for action in actions
+            if isinstance(action, CollisionFreeMotion) and action.collision_scene is not None
+        ]
+
+        if len(collision_scenes) > 1:
+            first_scene = collision_scenes[0]
+            if not all(scene.are_equal(first_scene) for scene in collision_scenes[1:]):
+                raise InconsistentCollisionScenes("All actions must use the same collision scene")
 
         if start_joint_position is None:
             start_joint_position = await self.joints()
 
-        robot_setup = await self._get_optimizer_setup(tcp=tcp)
+        # Get optimizer setup
+        robot_setup = optimizer_setup or await self._get_optimizer_setup(tcp=tcp)
+
         request = wb.models.PlanTrajectoryRequest(
             robot_setup=robot_setup,
             start_joint_position=list(start_joint_position),
             motion_commands=motion_commands,
         )
+
+        # Only add collision scene data if available
+        if collision_scenes and collision_scenes[0].collision_scene:
+            request.static_colliders = collision_scenes[0].collision_scene.colliders
+
+            # Only add motion group if available
+            if (
+                collision_scenes[0].collision_scene.motion_groups
+                and robot_setup.motion_group_type
+                in collision_scenes[0].collision_scene.motion_groups
+            ):
+                request.collision_motion_group = collision_scenes[0].collision_scene.motion_groups[
+                    robot_setup.motion_group_type
+                ]
 
         plan_trajectory_response = await self._motion_api_client.plan_trajectory(
             cell=self._cell, plan_trajectory_request=request
@@ -76,12 +111,12 @@ class MotionGroup(AbstractRobot):
             raise PlanTrajectoryFailed(plan_trajectory_response.response.actual_instance)
         return plan_trajectory_response.response.actual_instance
 
-    async def _plan_collision_free_ptp(
+    async def _plan_collision_free(
         self,
-        action: CollisionFreePTP | CollisionFreeJointPTP,
-        # TODO: why don't we take robot setup from outside
-        robot_setup: wb.models.OptimizerSetup,
-        start_joints: list[float],
+        action: CollisionFreeMotion,
+        tcp: str,
+        start_joint_position: list[float],
+        optimizer_setup: wb.models.OptimizerSetup | None = None,
     ) -> wb.models.JointTrajectory:
         """Plan collision-free PTP action.
 
@@ -93,39 +128,40 @@ class MotionGroup(AbstractRobot):
         Returns:
             Planned joint trajectory
         """
-        if isinstance(action, CollisionFreePTP):
-            target_request = wb.models.PlanCollisionFreePTPRequestTarget(
-                action.target._to_wb_pose2() if isinstance(action.target, Pose) else action.target
-            )
-        else:  # CollisionFreeJointPTP
-            target_request = wb.models.PlanCollisionFreePTPRequestTarget(list(action.target))
+        target_request = wb.models.PlanCollisionFreePTPRequestTarget(
+            action.target._to_wb_pose2() if isinstance(action.target, Pose) else action.target
+        )
 
-        # Get collision scene data safely
-        static_colliders = None
-        collision_motion_group = None
-        if action.collision_scene:
-            static_colliders = action.collision_scene.colliders
+        # Get optimizer setup
+        robot_setup = optimizer_setup or await self._get_optimizer_setup(tcp=tcp)
+
+        request: wb.models.PlanCollisionFreePTPRequest = wb.models.PlanCollisionFreePTPRequest(
+            robot_setup=robot_setup,
+            start_joint_position=start_joint_position,
+            target=target_request,
+        )
+
+        # Only add collision scene data if available
+        if action.collision_scene and action.collision_scene.collision_scene.colliders:
+            collision_scene = action.collision_scene.collision_scene
+            request.static_colliders = collision_scene.colliders
+
+            # Only add motion group if available
             if (
-                action.collision_scene.motion_groups
-                and "motion_group" in action.collision_scene.motion_groups
+                collision_scene.motion_groups
+                and robot_setup.motion_group_type in collision_scene.motion_groups
             ):
-                collision_motion_group = action.collision_scene.motion_groups["motion_group"]
+                request.collision_motion_group = collision_scene.motion_groups[
+                    robot_setup.motion_group_type
+                ]
 
         plan_result = await self._motion_api_client.plan_collision_free_ptp(
-            cell=self._cell,
-            plan_collision_free_ptp_request=wb.models.PlanCollisionFreePTPRequest(
-                robot_setup=robot_setup,
-                start_joint_position=start_joints,
-                target=target_request,
-                static_colliders=static_colliders,
-                collision_motion_group=collision_motion_group,
-            ),
+            cell=self._cell, plan_collision_free_ptp_request=request
         )
 
         if isinstance(plan_result.response.actual_instance, wb.models.PlanTrajectoryFailedResponse):
             raise PlanTrajectoryFailed(plan_result.response.actual_instance)
         return plan_result.response.actual_instance
-
 
     async def _execute(
         self,
