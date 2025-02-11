@@ -5,7 +5,7 @@ import pydantic
 import wandelbots_api_client as wb
 
 from nova.api import models
-from nova.types.collision_scene import CollisionScene
+from nova.types.collision_scene import CollisionScene, Collider
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
 from nova.types.state import MotionState
@@ -57,6 +57,12 @@ PoseOrVectorTuple = Union[
     Pose, tuple[float, float, float, float, float, float], tuple[float, float, float]
 ]
 
+class CollisionFreeMotion(Action, ABC):
+    type: Literal["collision_free_ptp", "collision_free_joint_ptp"]
+    target: Pose | tuple[float, ...]
+    settings: MotionSettings = MotionSettings()
+    collision_scene: CollisionScene | None = None
+
 
 class Motion(Action, ABC):
     """Base model of a motion
@@ -73,11 +79,10 @@ class Motion(Action, ABC):
         "circular",
         "joint_ptp",
         "spline",
-        "collision_free_ptp",
-        "collision_free_joint_ptp",
     ]
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
+    collision_scene: CollisionScene | None = None
 
     @property
     def is_cartesian(self):

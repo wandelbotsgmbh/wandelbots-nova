@@ -252,6 +252,7 @@ class AbstractRobot(Device):
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
                 Only motion actions are considered for planning.
             tcp (str): The identifier of the tool center point (TCP)
+            start_joint_position: the initial position of the robot
 
         Returns:
             wb.models.JointTrajectory: The planned joint trajectory
