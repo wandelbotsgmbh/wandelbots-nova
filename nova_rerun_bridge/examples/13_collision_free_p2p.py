@@ -136,17 +136,17 @@ async def test():
             # Use default planner to move to the left of the sphere
             # -> this will collide
             # only plan don't move
-            actions = [ptp(home), ptp(target=Pose((-500, -400, 200, np.pi, 0, 0)))]
+            actions = [ptp(target=Pose((-500, -400, 200, np.pi, 0, 0)))]
 
             for action in actions:
                 action.settings = MotionSettings(tcp_velocity_limit=200)
 
             try:
-                joint_trajectory = await motion_group.plan(
+                joint_trajectory_with_collision = await motion_group.plan(
                     actions, tcp, start_joint_position=joint_trajectory.joint_positions[-1].joints
                 )
                 await bridge.log_actions(actions)
-                await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
+                await bridge.log_trajectory(joint_trajectory_with_collision, tcp, motion_group)
             except PlanTrajectoryFailed as e:
                 await bridge.log_actions(actions)
                 await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)
