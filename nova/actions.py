@@ -133,7 +133,11 @@ class Linear(Motion):
 
 
 # TODO: add collision scene here
-def lin(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) -> Linear:
+def lin(
+    target: PoseOrVectorTuple,
+    settings: MotionSettings = MotionSettings(),
+    collision_scene: wb.models.CollisionScene | None = None,
+) -> Linear:
     """Convenience function to create a linear motion
 
     Args:
@@ -149,7 +153,7 @@ def lin(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) 
 
     """
     t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
-    return Linear(target=Pose(t), settings=settings)
+    return Linear(target=Pose(t), settings=settings, collision_scene=collision_scene)
 
 
 class PTP(Motion):
@@ -170,7 +174,11 @@ class PTP(Motion):
         return self._to_api_model().model_dump()
 
 
-def ptp(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) -> PTP:
+def ptp(
+    target: PoseOrVectorTuple,
+    settings: MotionSettings = MotionSettings(),
+    collision_scene: models.CollisionScene | None = None,
+) -> PTP:
     """Convenience function to create a point-to-point motion
 
     Args:
@@ -189,7 +197,7 @@ def ptp(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) 
         target = target.to_tuple()
 
     t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
-    return PTP(target=Pose(t), settings=settings)
+    return PTP(target=Pose(t), settings=settings, collision_scene=collision_scene)
 
 
 class Circular(Motion):
@@ -229,6 +237,7 @@ def cir(
     target: PoseOrVectorTuple,
     intermediate: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
+    collision_scene: models.CollisionScene | None = None,
 ) -> Circular:
     """Convenience function to create a circular motion
 
@@ -248,7 +257,9 @@ def cir(
     """
     t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
     i = (*intermediate, 0.0, 0.0, 0.0) if len(intermediate) == 3 else intermediate
-    return Circular(target=Pose(t), intermediate=Pose(i), settings=settings)
+    return Circular(
+        target=Pose(t), intermediate=Pose(i), settings=settings, collision_scene=collision_scene
+    )
 
 
 class JointPTP(Motion):
@@ -269,7 +280,11 @@ class JointPTP(Motion):
         return self._to_api_model().model_dump()
 
 
-def jnt(target: tuple[float, ...], settings: MotionSettings = MotionSettings()) -> JointPTP:
+def jnt(
+    target: tuple[float, ...],
+    settings: MotionSettings = MotionSettings(),
+    collision_scene: models.CollisionScene | None = None,
+) -> JointPTP:
     """Convenience function to create a joint PTP motion
 
     Args:
@@ -313,6 +328,7 @@ class Spline(Motion):
 def spl(
     target: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
+    collision_scene: models.CollisionScene | None = None,
     path_parameter: float = 1,
     time=None,
 ) -> Spline:
@@ -333,7 +349,13 @@ def spl(
 
     """
     t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
-    return Spline(target=Pose(t), settings=settings, path_parameter=path_parameter, time=time)
+    return Spline(
+        target=Pose(t),
+        settings=settings,
+        path_parameter=path_parameter,
+        time=time,
+        collision_scene=collision_scene,
+    )
 
 
 class ActionLocation(pydantic.BaseModel):

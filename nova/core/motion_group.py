@@ -131,6 +131,7 @@ class MotionGroup(AbstractRobot):
             raise PlanTrajectoryFailed(plan_trajectory_response.response.actual_instance)
         return plan_trajectory_response.response.actual_instance
 
+    # TODO: add this to the abstract robot
     async def _plan_collision_free(
         self,
         action: CollisionFreeMotion,
@@ -182,6 +183,69 @@ class MotionGroup(AbstractRobot):
         if isinstance(plan_result.response.actual_instance, wb.models.PlanTrajectoryFailedResponse):
             raise PlanTrajectoryFailed(plan_result.response.actual_instance)
         return plan_result.response.actual_instance
+
+    async def _plan_combined(
+        self,
+        actions: list[Action | CollisionFreeMotion],
+        tcp: str,
+        start_joint_position: list[float],
+        optimizer_setup: wb.models.OptimizerSetup | None = None,
+    ) -> wb.models.JointTrajectory:
+        if not actions:
+            raise ValueError("No actions provided")
+
+        current_joints: tuple[float, ...] = tuple(
+            start_joint_position if start_joint_position is not None else await self.joints()
+        )
+        robot_setup = await self._get_optimizer_setup(tcp=tcp)
+
+        # Separate CollisionFreePTP actions from other actions
+        current_batch: list[Action] = []
+        all_trajectories: list[wb.models.JointTrajectory] = []
+
+        for action in actions:
+            if isinstance(action, CollisionFreeMotion):
+                # Plan current batch if not empty
+                if current_batch:
+                    trajectory = await self._plan(
+                        current_batch, tcp, current_joints, optimizer_setup=optimizer_setup
+                    )
+                    all_trajectories.append(trajectory)
+                    current_joints = tuple(trajectory.joint_positions[-1].joints)
+                    current_batch = []
+
+                # Plan collision-free action
+                trajectory = await self._plan_collision_free(action, tcp, list(current_joints))
+                all_trajectories.append(trajectory)
+                current_joints = tuple(trajectory.joint_positions[-1].joints)
+            else:
+                current_batch.append(action)
+
+        # Plan remaining batch if not empty
+        if current_batch:
+            trajectory = await self._plan(current_batch, tcp, current_joints, robot_setup)
+            all_trajectories.append(trajectory)
+
+        # Combine all trajectories
+        final_trajectory = all_trajectories[0]
+        current_end_time = final_trajectory.times[-1]
+        current_end_location = final_trajectory.locations[-1]
+
+        for trajectory in all_trajectories[1:]:
+            # Shift times and locations to continue from last endpoint
+            shifted_times = [t + current_end_time for t in trajectory.times[1:]]  # Skip first point
+            shifted_locations = [
+                location + current_end_location for location in trajectory.locations[1:]
+            ]  # Skip first point
+
+            final_trajectory.times.extend(shifted_times)
+            final_trajectory.joint_positions.extend(trajectory.joint_positions[1:])
+            final_trajectory.locations.extend(shifted_locations)
+
+            current_end_time = final_trajectory.times[-1]
+            current_end_location = final_trajectory.locations[-1]
+
+        return final_trajectory
 
     async def _execute(
         self,

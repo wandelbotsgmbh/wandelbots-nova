@@ -257,6 +257,7 @@ class NovaRerunBridge:
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
+        # TODO support actions and the CollisionFreeMotion
         poses = CombinedActions(items=tuple(actions)).poses()
         positions = []
         point_colors = []

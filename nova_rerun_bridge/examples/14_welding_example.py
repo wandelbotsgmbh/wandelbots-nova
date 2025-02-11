@@ -6,7 +6,7 @@ import trimesh
 from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngleTypes, Vector3d
 
 from nova import MotionSettings
-from nova.actions import PTP, CollisionFreeMotion, Linear
+from nova.actions import CollisionFreeMotion, Linear
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
@@ -293,44 +293,18 @@ async def test():
                     ),
                 ]
 
-                linear_actions = [
-                    # Second seam with collision checking
-                    PTP(
-                        target=seam2_start,
-                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                        collision_scene=collision_scene,
-                    ),
-                    Linear(
-                        target=seam2_end,
-                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                    ),
-                    Linear(
-                        target=seam2_departure,
-                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                    ),
-                ]
-
-                # Plan complete trajectory
-                trajectory_plan = await motion_group.plan(
-                    linear_actions, tcp, start_joint_position=[0, -np.pi / 2, np.pi / 2, 0, 0, 0]
-                )
-                trajectory_plan_cf = await motion_group._plan_collision_free(
-                    CollisionFreeMotion(
-                        target=seam2_departure,
-                        collision_scene=collision_scene,
-                        settings=MotionSettings(tcp_velocity_limit=30),
-                    ),
+                trajectory_plan_combined = await motion_group._plan_combined(
+                    welding_actions,
                     tcp=tcp,
                     start_joint_position=[0, -np.pi / 2, np.pi / 2, 0, 0, 0],
                 )
 
                 # await bridge.log_actions(welding_actions)
-                await bridge.log_trajectory(trajectory_plan, tcp, motion_group)
-                await bridge.log_trajectory(trajectory_plan_cf, tcp, motion_group)
+                await bridge.log_trajectory(trajectory_plan_combined, tcp, motion_group)
 
-            except PlanTrajectoryFailed:
-                # await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)
-                # await bridge.log_error_feedback(e.error.error_feedback)
+            except PlanTrajectoryFailed as e:
+                await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)
+                await bridge.log_error_feedback(e.error.error_feedback)
                 raise
 
 
