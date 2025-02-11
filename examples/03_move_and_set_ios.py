@@ -1,7 +1,7 @@
 import asyncio
 
 from nova import Nova
-from nova.actions import WriteAction, jnt, ptp
+from nova.actions import jnt, ptp, write
 from nova.api import models
 from nova.types import Pose
 
@@ -36,7 +36,7 @@ async def main():
             target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
             actions = [
                 jnt(home_joints),
-                WriteAction(key="digital_out[0]", value=False),
+                write(key="digital_out[0]", value=False),
                 ptp(target_pose),
                 jnt(home_joints),
             ]
