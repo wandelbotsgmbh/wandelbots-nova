@@ -184,11 +184,11 @@ def log_trajectory(
 
     rr.send_columns(
         f"motion/{motion_group}/dh_parameters",
-        times=[times_column],
-        components=[
-            rr.LineStrips3D.indicator(),
-            rr.components.LineStrip3DBatch(line_segments_batch),
-            rr.components.ColorBatch([0.5, 0.5, 0.5, 1.0] * len(line_segments_batch)),
+        indexes=[times_column],
+        columns=[
+            *rr.LineStrips3D.columns(
+                strips=line_segments_batch, colors=[0.5, 0.5, 0.5, 1.0] * len(line_segments_batch)
+            )
         ],
     )
 
@@ -215,29 +215,28 @@ def log_tcp_pose(trajectory: List[models.TrajectorySample], motion_group, times_
     # Collect data from the trajectory
     for point in trajectory:
         # Collect TCP position
-        tcp_positions.append(
-            [point.tcp_pose.position.x, point.tcp_pose.position.y, point.tcp_pose.position.z]
-        )
+
+        if point.tcp_pose is not None:
+            tcp_positions.append(
+                [point.tcp_pose.position.x, point.tcp_pose.position.y, point.tcp_pose.position.z]
+            )
 
         # Convert and collect TCP orientation as axis-angle
-        rotation_vector = [
-            point.tcp_pose.orientation.x,
-            point.tcp_pose.orientation.y,
-            point.tcp_pose.orientation.z,
-        ]
-        rotation = Rotation.from_rotvec(rotation_vector)
-        angle = rotation.magnitude()
-        axis_angle = rotation.as_rotvec() / angle if angle != 0 else [0, 0, 0]
-        tcp_rotations.append(rr.RotationAxisAngle(axis=axis_angle, angle=angle))
+        if point.tcp_pose is not None and point.tcp_pose.orientation is not None:
+            rotation_vector = [
+                point.tcp_pose.orientation.x,
+                point.tcp_pose.orientation.y,
+                point.tcp_pose.orientation.z,
+            ]
+            rotation = Rotation.from_rotvec(rotation_vector)
+            angle = rotation.magnitude()
+            axis_angle = rotation.as_rotvec() / angle if angle != 0 else [0, 0, 0]
+            tcp_rotations.append(rr.RotationAxisAngle(axis=axis_angle, angle=angle))
 
     rr.send_columns(
         f"motion/{motion_group}/tcp_position",
-        times=[times_column],
-        components=[
-            rr.Transform3D.indicator(),
-            rr.components.Translation3DBatch(tcp_positions),
-            rr.components.RotationAxisAngleBatch(tcp_rotations),
-        ],
+        indexes=[times_column],
+        columns=[*rr.Points3D.columns(positions=tcp_positions)],
     )
 
 
@@ -308,8 +307,8 @@ def log_joint_data(
             if data[i]:
                 rr.send_columns(
                     f"motion/{motion_group}/joint_{data_type}_{i + 1}",
-                    times=[times_column],
-                    components=[rr.components.ScalarBatch(data[i])],
+                    indexes=[times_column],
+                    columns=[*rr.Scalar.columns(scalar=data[i])],
                 )
 
 
@@ -386,8 +385,8 @@ def log_scalar_values(
         if values:
             rr.send_columns(
                 f"motion/{motion_group}/{key}",
-                times=[times_column],
-                components=[rr.components.ScalarBatch(values)],
+                indexes=[times_column],
+                columns=[*rr.Scalar.columns(scalar=values)],
             )
 
 

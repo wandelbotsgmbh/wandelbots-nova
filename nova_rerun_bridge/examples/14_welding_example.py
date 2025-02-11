@@ -44,7 +44,6 @@ async def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
             vertex_normals=vertex_normals,
             albedo_factor=vertex_colors,
         ),
-        timeless=True,
         static=True,
     )
 

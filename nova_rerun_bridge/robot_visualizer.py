@@ -264,7 +264,6 @@ class RobotVisualizer:
                     else [0, 0, 0],
                     colors=[(221, 193, 193, 255)],
                 ),
-                timeless=True,
             )
 
         elif isinstance(collider.shape.actual_instance, models.Box2):
@@ -281,7 +280,6 @@ class RobotVisualizer:
                     ],
                     colors=[(221, 193, 193, 255)],
                 ),
-                timeless=True,
             )
 
         elif isinstance(collider.shape.actual_instance, models.Capsule2):
@@ -326,7 +324,6 @@ class RobotVisualizer:
                         colors=[[221, 193, 193, 255]],
                     ),
                     static=True,
-                    timeless=True,
                 )
 
         elif isinstance(collider.shape.actual_instance, models.ConvexHull2):
@@ -342,7 +339,6 @@ class RobotVisualizer:
                         line_segments, radii=rr.Radius.ui_points(1.5), colors=[colors.colors[2]]
                     ),
                     static=True,
-                    timeless=True,
                 )
 
                 vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)
@@ -356,7 +352,6 @@ class RobotVisualizer:
                         albedo_factor=colors.colors[0],
                     ),
                     static=True,
-                    timeless=True,
                 )
 
         self.logged_meshes.add(entity_path)
@@ -411,7 +406,6 @@ class RobotVisualizer:
                     ],
                 ),
                 static=self.static_transform,
-                timeless=self.static_transform,
             )
 
         # Log robot joint geometries
@@ -606,10 +600,10 @@ class RobotVisualizer:
         for entity_path, positions in link_positions.items():
             rr.send_columns(
                 entity_path,
-                times=[times_column],
-                components=[
-                    rr.Transform3D.indicator(),
-                    rr.components.Translation3DBatch(positions),
-                    rr.components.RotationAxisAngleBatch(link_rotations[entity_path]),
+                indexes=[times_column],
+                columns=[
+                    *rr.Transform3D.columns(
+                        translation=positions, rotation_axis_angle=link_rotations[entity_path]
+                    )
                 ],
             )

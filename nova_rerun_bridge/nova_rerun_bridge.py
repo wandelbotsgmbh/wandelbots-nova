@@ -116,7 +116,6 @@ class NovaRerunBridge:
                 colors=coordinate_colors,
                 radii=rr.Radius.ui_points([5.0]),
             ),
-            timeless=True,
             static=True,
         )
 
@@ -232,7 +231,7 @@ class NovaRerunBridge:
                         colors=[(255, 0, 0, 255)],
                         labels=["Out of Workspace"],
                     ),
-                    timeless=True,
+                    static=True,
                 )
 
     async def start_streaming(self, motion_group: MotionGroup) -> None:
@@ -297,7 +296,6 @@ class NovaRerunBridge:
         rr.log(
             "motion/actions",
             rr.Points3D(positions, colors=point_colors, radii=rr.Radius.ui_points([5.0])),
-            timeless=True,
             static=True,
         )
 

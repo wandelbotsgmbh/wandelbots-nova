@@ -50,7 +50,7 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                     rotation_axis_angles=[[*axis, angle]],
                     colors=[(221, 193, 193, 255)],
                 ),
-                timeless=True,
+                static=True,
             )
 
         elif isinstance(collider.shape.actual_instance, models.RectangularCapsule2):
@@ -102,7 +102,6 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                         colors=[[221, 193, 193, 255]],
                     ),
                     static=True,
-                    timeless=True,
                 )
 
         elif isinstance(collider.shape.actual_instance, models.Rectangle2):
@@ -141,7 +140,6 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                     line_segments, radii=rr.Radius.ui_points(0.75), colors=[[221, 193, 193, 255]]
                 ),
                 static=True,
-                timeless=True,
             )
 
         elif isinstance(collider.shape.actual_instance, models.Box2):
@@ -178,7 +176,6 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                         colors=[[221, 193, 193, 255]],
                     ),
                     static=True,
-                    timeless=True,
                 )
 
         elif isinstance(collider.shape.actual_instance, models.Cylinder2):
@@ -213,7 +210,6 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                         colors=[[221, 193, 193, 255]],
                     ),
                     static=True,
-                    timeless=True,
                 )
 
         elif isinstance(collider.shape.actual_instance, models.Capsule2):
@@ -248,7 +244,6 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                         colors=[[221, 193, 193, 255]],
                     ),
                     static=True,
-                    timeless=True,
                 )
 
         elif isinstance(collider.shape.actual_instance, models.ConvexHull2):
@@ -274,7 +269,6 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                         line_segments, radii=rr.Radius.ui_points(1.5), colors=[colors.colors[2]]
                     ),
                     static=True,
-                    timeless=True,
                 )
 
                 vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)
@@ -288,7 +282,6 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
                         albedo_factor=[colors.colors[0]],
                     ),
                     static=True,
-                    timeless=True,
                 )
 
 
