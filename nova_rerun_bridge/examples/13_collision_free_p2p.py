@@ -54,7 +54,7 @@ async def build_collision_world(
     scene = models.CollisionScene(
         colliders={"annoying_obstacle": sphere_collider},
         motion_groups={
-            "motion_group": models.CollisionMotionGroup(
+            robot_setup.motion_group_type: models.CollisionMotionGroup(
                 tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
             )
         },
@@ -141,7 +141,9 @@ async def test():
                             models.Pose2(position=[-500, -400, 200], orientation=[np.pi, 0, 0])
                         ),
                         static_colliders=collision_scene.colliders,
-                        collision_motion_group=collision_scene.motion_groups["motion_group"],
+                        collision_motion_group=collision_scene.motion_groups[
+                            robot_setup.motion_group_type
+                        ],
                     ),
                 )
             )

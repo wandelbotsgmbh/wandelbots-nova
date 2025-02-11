@@ -118,7 +118,7 @@ async def build_collision_world(
     scene = models.CollisionScene(
         colliders=colliders,
         motion_groups={
-            "motion_group": models.CollisionMotionGroup(
+            robot_setup.motion_group_type: models.CollisionMotionGroup(
                 tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
             )
         },

@@ -74,7 +74,9 @@ def log_motion(
 
     robot = DHRobot(optimizer_config.dh_parameters, optimizer_config.mounting)
 
-    collision_link_chain, collision_tcp = extract_link_chain_and_tcp(collision_scenes)
+    collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
+        collision_scenes, optimizer_config.motion_group_type
+    )
 
     visualizer = RobotVisualizer(
         robot=robot,

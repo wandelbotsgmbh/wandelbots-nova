@@ -46,10 +46,8 @@ async def main():
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
-        ur5 = await cell.ensure_virtual_robot_controller(
-            "ur5",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
-            models.Manufacturer.UNIVERSALROBOTS,
+        kuka = await cell.ensure_virtual_robot_controller(
+            "kuka", models.VirtualControllerTypes.KUKA_MINUS_KR210_R3100_2, models.Manufacturer.KUKA
         )
 
         # NC-1047
@@ -57,7 +55,7 @@ async def main():
 
         await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
             cell="cell",
-            controller="ur5",
+            controller=kuka.controller_id,
             id=0,
             coordinate_system=CoordinateSystem(
                 coordinate_system="world",
@@ -74,7 +72,7 @@ async def main():
         await asyncio.sleep(5)
 
         await bridge.setup_blueprint()
-        await asyncio.gather(move_robot(ur5, bridge=bridge), move_robot(ur10, bridge=bridge))
+        await asyncio.gather(move_robot(kuka, bridge=bridge), move_robot(ur10, bridge=bridge))
 
 
 if __name__ == "__main__":
