@@ -18,7 +18,7 @@ Simple example to demonstrate how to add a welding part to the collision world a
 """
 
 
-async def load_and_transform_mesh(filepath: str, pose: models.Pose2) -> trimesh.Trimesh:
+async def load_and_transform_mesh(filepath: str, pose: models.Pose2) -> trimesh.Geometry:
     """Load mesh and transform to desired position."""
     scene = trimesh.load(filepath, file_type="stl")
 
@@ -51,7 +51,7 @@ async def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
 
 async def add_mesh_to_collision_world(
     collision_api, cell_name: str, scene: trimesh.Trimesh, collider_name: str = "welding_part"
-) -> None:
+) -> models.Collider:
     """Add mesh as convex hull to collision world."""
     # Create convex hull
     convex_hull = scene.convex_hull
@@ -71,10 +71,7 @@ async def add_mesh_to_collision_world(
 
 
 async def build_collision_world(
-    nova: Nova,
-    cell_name: str,
-    robot_setup: models.OptimizerSetup,
-    additional_colliders: dict = None,
+    nova: Nova, cell_name: str, robot_setup: models.OptimizerSetup, additional_colliders: dict = {}
 ) -> str:
     """Build collision world with robot, environment and optional additional colliders.
 
