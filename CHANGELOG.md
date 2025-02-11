@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.27.2 (2025-02-11)
+
+### Chores
+
+- Update README.md ([#65](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/65),
+  [`bb12fb1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bb12fb15db8eda56b770e07bc08cd153cb80c068))
+
+
 ## v0.27.1 (2025-02-11)
 
 ### Bug Fixes
