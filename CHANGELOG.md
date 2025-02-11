@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v0.27.1 (2025-02-11)
+
+### Bug Fixes
+
+- Badge ([#63](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/63),
+  [`2781ac3`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2781ac31ce05824bec140b1d61a13f4a097346d6))
+
+Co-authored-by: André <andre.kuehnert@wandelbots.com>
+
+
+## v0.27.0 (2025-02-11)
+
+### Features
+
+- Added np array support for vector3d and pose
+  ([#62](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/62),
+  [`5021081`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5021081fcc2df801e0c768d4e9eb3fd46e143552))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.26.2 (2025-02-10)
 
 ### Chores
