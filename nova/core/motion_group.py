@@ -114,9 +114,11 @@ class MotionGroup(AbstractRobot):
             static_colliders = collision_scenes[0].colliders
 
             motion_group_type = robot_setup.motion_group_type
-            if collision_scenes[0].motion_groups and motion_group_type in collision_scenes[0].motion_groups:
+            if (
+                collision_scenes[0].motion_groups
+                and motion_group_type in collision_scenes[0].motion_groups
+            ):
                 collision_motion_group = collision_scenes[0].motion_groups[motion_group_type]
-
 
         request = wb.models.PlanTrajectoryRequest(
             robot_setup=robot_setup,
@@ -138,7 +140,6 @@ class MotionGroup(AbstractRobot):
             raise PlanTrajectoryFailed(plan_trajectory_response.response.actual_instance)
         return plan_trajectory_response.response.actual_instance
 
-
     def _validate_collision_scenes(self, actions: list[Action]) -> list[models.CollisionScene]:
         collision_scenes: list[models.CollisionScene] = []
 
@@ -152,9 +153,10 @@ class MotionGroup(AbstractRobot):
             if action.collision_scene is not None:
                 collision_scenes.append(action.collision_scene)
 
-
         if len(collision_scenes) != 0 and len(collision_scenes) != motion_counter:
-            raise InconsistentCollisionScenes("Only some of the actions have collision scene. Either specify it for all or none.")
+            raise InconsistentCollisionScenes(
+                "Only some of the actions have collision scene. Either specify it for all or none."
+            )
 
         # If a collision scene is provided, the same should be provided for all the collision scene
         if len(collision_scenes) > 1:
@@ -162,10 +164,11 @@ class MotionGroup(AbstractRobot):
             if not all(
                 compare_collision_scenes(first_scene, scene) for scene in collision_scenes[1:]
             ):
-                raise InconsistentCollisionScenes("All actions must use the same collision scene but some are different")
+                raise InconsistentCollisionScenes(
+                    "All actions must use the same collision scene but some are different"
+                )
 
         return collision_scenes
-
 
     # TODO: we get the optimizer setup from as an input because
     #  it has a velocity setting which is used in collision free movement, I need to double check this
@@ -211,8 +214,9 @@ class MotionGroup(AbstractRobot):
                 collision_scene.motion_groups
                 and robot_setup.motion_group_type in collision_scene.motion_groups
             ):
-                collision_motion_group = collision_scene.motion_groups[robot_setup.motion_group_type]
-
+                collision_motion_group = collision_scene.motion_groups[
+                    robot_setup.motion_group_type
+                ]
 
         request: wb.models.PlanCollisionFreePTPRequest = wb.models.PlanCollisionFreePTPRequest(
             robot_setup=robot_setup,
@@ -229,7 +233,6 @@ class MotionGroup(AbstractRobot):
         if isinstance(plan_result.response.actual_instance, wb.models.PlanTrajectoryFailedResponse):
             raise PlanTrajectoryFailed(plan_result.response.actual_instance)
         return plan_result.response.actual_instance
-
 
     async def _plan(
         self,
@@ -283,11 +286,12 @@ class MotionGroup(AbstractRobot):
 
         return final_trajectory
 
-
     # TODO: refactor and simplify code, tests are already there
     # TODO: split into batches when the collision scene changes in a batch of collision free motions
     @classmethod
-    def _split_actions_into_batches(cls, actions: list[Action | CollisionFreeMotion]) -> Generator[list[Action] | CollisionFreeMotion, None, None]:
+    def _split_actions_into_batches(
+        cls, actions: list[Action | CollisionFreeMotion]
+    ) -> Generator[list[Action] | CollisionFreeMotion, None, None]:
         """
         Splits the list of actions into batches of actions and collision free motions.
         Actions are sent to plan_trajectory API and collision free motions are sent to plan_collision_free_ptp API.
@@ -319,7 +323,6 @@ class MotionGroup(AbstractRobot):
         # if there are any actions left in the batch, we need to yield them
         if len(current_batch) > 0:
             yield current_batch
-
 
     async def _execute(
         self,
