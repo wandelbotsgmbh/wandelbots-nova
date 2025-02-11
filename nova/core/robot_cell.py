@@ -25,13 +25,13 @@ import aiostream
 import anyio
 import asyncstdlib
 import pydantic
+import wandelbots_api_client as wb
 from loguru import logger
 
 from nova import api
-from nova.actions import Action, MovementController, CollisionFreeMotion
+from nova.actions import Action, CollisionFreeMotion, MovementController
 from nova.types import MotionState, Pose, RobotState
 from nova.utils import Callerator
-import wandelbots_api_client as wb
 
 
 class RobotCellError(Exception):

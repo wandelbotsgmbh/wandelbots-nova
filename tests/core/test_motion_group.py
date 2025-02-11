@@ -1,7 +1,7 @@
 import pytest
 
-from nova import Nova, MotionGroup
-from nova.actions import lin, ptp, Action, CollisionFreeMotion
+from nova import MotionGroup, Nova
+from nova.actions import Action, CollisionFreeMotion, lin, ptp
 from nova.types import Pose
 
 
