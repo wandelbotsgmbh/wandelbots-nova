@@ -1,17 +1,20 @@
-# This is the stream of requests that is send to execute trajectory websocket
 from typing import AsyncGenerator, Callable
 
-import wandelbots_api_client as wb
-
+from nova import api
 from nova.types.collision_scene import CollisionScene
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
 from nova.types.state import MotionState, RobotState
 from nova.types.vector3d import Vector3d
 
-LoadPlanResponse = wb.models.PlanSuccessfulResponse
-InitialMovementStream = AsyncGenerator[wb.models.StreamMoveResponse, None]
-InitialMovementConsumer = Callable[[wb.models.StreamMoveResponse], None]
+LoadPlanResponse = api.models.PlanSuccessfulResponse
+InitialMovementStream = AsyncGenerator[api.models.StreamMoveResponse, None]
+InitialMovementConsumer = Callable[[api.models.StreamMoveResponse], None]
+ExecuteTrajectoryRequestStream = AsyncGenerator[api.models.ExecuteTrajectoryRequest, None]
+ExecuteTrajectoryResponseStream = AsyncGenerator[api.models.ExecuteTrajectoryResponse, None]
+MovementControllerFunction = Callable[
+    [ExecuteTrajectoryResponseStream], ExecuteTrajectoryRequestStream
+]
 
 __all__ = [
     "Vector3d",
@@ -23,4 +26,7 @@ __all__ = [
     "MotionState",
     "RobotState",
     "MotionSettings",
+    "ExecuteTrajectoryRequestStream",
+    "ExecuteTrajectoryResponseStream",
+    "MovementControllerFunction",
 ]

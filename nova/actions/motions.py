@@ -1,60 +1,17 @@
 from abc import ABC, abstractmethod
-from typing import Annotated, Any, AsyncGenerator, Callable, Literal, Union
+from typing import Literal
 
 import pydantic
-import wandelbots_api_client as wb
 
+from nova import api
+from nova.actions.base import Action
 from nova.types.collision_scene import CollisionScene
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
-from nova.types.state import MotionState
 
-
-class Action(pydantic.BaseModel, ABC):
-    @abstractmethod
-    @pydantic.model_serializer
-    def serialize_model(self):
-        """Serialize the model to a dictionary"""
-
-
-class WriteAction(Action):
-    type: Literal["Write"] = "Write"
-    key: str
-    value: Any
-
-    @pydantic.model_serializer
-    def serialize_model(self):
-        return wb.models.IOValue(io=self.key, boolean_value=self.value).model_dump()
-
-
-class ReadAction(Action):
-    type: Literal["Read"] = "Read"
-    device_id: str
-    key: str
-
-
-class ReadPoseAction(Action):
-    type: Literal["ReadPose"] = "ReadPose"
-    device_id: str
-    tcp: str | None = None
-
-
-class ReadJointsAction(Action):
-    type: Literal["ReadJoints"] = "ReadJoints"
-    device_id: str
-
-
-class CallAction(Action):
-    type: Literal["Call"] = "Call"
-    device_id: str
-    key: str
-    arguments: list
-
-
-MS = MotionSettings
-PoseOrVectorTuple = Union[
-    Pose, tuple[float, float, float, float, float, float], tuple[float, float, float]
-]
+PoseOrVectorTuple = (
+    Pose | tuple[float, float, float, float, float, float] | tuple[float, float, float]
+)
 
 
 class Motion(Action, ABC):
@@ -110,15 +67,16 @@ class Linear(Motion):
     type: Literal["linear"] = "linear"
     target: Pose
 
-    def _to_api_model(self) -> wb.models.PathLine:
+    def _to_api_model(self) -> api.models.PathLine:
         """Serialize the model to the API model
 
         Examples:
         >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10))._to_api_model()
         PathLine(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathLine')
         """
-        return wb.models.PathLine(
-            target_pose=wb.models.Pose2(**self.target.model_dump()), path_definition_name="PathLine"
+        return api.models.PathLine(
+            target_pose=api.models.Pose2(**self.target.model_dump()),
+            path_definition_name="PathLine",
         )
 
     @pydantic.model_serializer
@@ -139,10 +97,14 @@ def lin(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) 
     >>> ms = MotionSettings(tcp_velocity_limit=10)
     >>> assert lin((1, 2, 3, 4, 5, 6), settings=ms) == Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
     >>> assert lin((1, 2, 3)) == lin((1, 2, 3, 0, 0, 0))
+    >>> assert lin(Pose((1, 2, 3, 4, 5, 6)), settings=ms) == lin((1, 2, 3, 4, 5, 6), settings=ms)
 
     """
-    t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
-    return Linear(target=Pose(t), settings=settings)
+    if not isinstance(target, Pose):
+        t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
+        target = Pose(t)
+
+    return Linear(target=target, settings=settings)
 
 
 class PTP(Motion):
@@ -156,7 +118,7 @@ class PTP(Motion):
 
     type: Literal["ptp"] = "ptp"
 
-    def _to_api_model(self) -> wb.models.PathCartesianPTP:
+    def _to_api_model(self) -> api.models.PathCartesianPTP:
         """Serialize the model to the API model
 
         Examples:
@@ -165,8 +127,8 @@ class PTP(Motion):
         """
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
-        return wb.models.PathCartesianPTP(
-            target_pose=wb.models.Pose2(**self.target.model_dump()),
+        return api.models.PathCartesianPTP(
+            target_pose=api.models.Pose2(**self.target.model_dump()),
             path_definition_name="PathCartesianPTP",
         )
 
@@ -188,13 +150,14 @@ def ptp(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) 
     >>> ms = MotionSettings(tcp_acceleration_limit=10)
     >>> assert ptp((1, 2, 3, 4, 5, 6), settings=ms) == PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
     >>> assert ptp((1, 2, 3)) == ptp((1, 2, 3, 0, 0, 0))
+    >>> assert ptp(Pose((1, 2, 3, 4, 5, 6)), settings=ms) == ptp((1, 2, 3, 4, 5, 6), settings=ms)
 
     """
-    if isinstance(target, Pose):
-        target = target.to_tuple()
+    if not isinstance(target, Pose):
+        t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
+        target = Pose(t)
 
-    t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
-    return PTP(target=Pose(t), settings=settings)
+    return PTP(target=target, settings=settings)
 
 
 class Circular(Motion):
@@ -208,7 +171,7 @@ class Circular(Motion):
     type: Literal["circular"] = "circular"
     intermediate: Pose
 
-    def _to_api_model(self) -> wb.models.PathCircle:
+    def _to_api_model(self) -> api.models.PathCircle:
         """Serialize the model to a dictionary
 
         Examples:
@@ -219,9 +182,9 @@ class Circular(Motion):
             raise ValueError("Target must be a Pose object")
         if not isinstance(self.intermediate, Pose):
             raise ValueError("Intermediate must be a Pose object")
-        return wb.models.PathCircle(
-            target_pose=wb.models.Pose2(**self.target.model_dump()),
-            via_pose=wb.models.Pose2(**self.intermediate.model_dump()),
+        return api.models.PathCircle(
+            target_pose=api.models.Pose2(**self.target.model_dump()),
+            via_pose=api.models.Pose2(**self.intermediate.model_dump()),
             path_definition_name="PathCircle",
         )
 
@@ -251,9 +214,15 @@ def cir(
     >>> assert cir((1, 2, 3), (4, 5, 6)) == cir((1, 2, 3, 0, 0, 0), (4, 5, 6, 0, 0, 0))
 
     """
-    t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
-    i = (*intermediate, 0.0, 0.0, 0.0) if len(intermediate) == 3 else intermediate
-    return Circular(target=Pose(t), intermediate=Pose(i), settings=settings)
+    if not isinstance(target, Pose):
+        t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
+        target = Pose(t)
+
+    if not isinstance(intermediate, Pose):
+        i = (*intermediate, 0.0, 0.0, 0.0) if len(intermediate) == 3 else intermediate
+        intermediate = Pose(i)
+
+    return Circular(target=target, intermediate=intermediate, settings=settings)
 
 
 class JointPTP(Motion):
@@ -267,7 +236,7 @@ class JointPTP(Motion):
 
     type: Literal["joint_ptp"] = "joint_ptp"
 
-    def _to_api_model(self) -> wb.models.PathJointPTP:
+    def _to_api_model(self) -> api.models.PathJointPTP:
         """Serialize the model to the API model
 
         Examples:
@@ -276,7 +245,7 @@ class JointPTP(Motion):
         """
         if not isinstance(self.target, tuple):
             raise ValueError("Target must be a tuple object")
-        return wb.models.PathJointPTP(
+        return api.models.PathJointPTP(
             target_joint_position=list(self.target), path_definition_name="PathJointPTP"
         )
 
@@ -348,168 +317,8 @@ def spl(
     >>> assert spl((1, 2, 3)) == spl((1, 2, 3, 0, 0, 0))
 
     """
-    t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
-    return Spline(target=Pose(t), settings=settings, path_parameter=path_parameter, time=time)
+    if not isinstance(target, Pose):
+        t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
+        target = Pose(t)
 
-
-class ActionLocation(pydantic.BaseModel):
-    """A container for an action at a specific path parameter"""
-
-    path_parameter: float = 1.0
-    action: WriteAction
-
-
-# TODO: all actions should be allowed (Action)
-ActionContainerItem = Motion | WriteAction
-
-
-class CombinedActions(pydantic.BaseModel):
-    """A trajectory of motions and actions"""
-
-    # See: https://docs.pydantic.dev/latest/concepts/serialization/#serialize_as_any-runtime-setting
-    items: tuple[
-        Annotated[
-            pydantic.SerializeAsAny[ActionContainerItem], pydantic.Field(discriminator="type")
-        ],
-        ...,
-    ] = ()
-
-    def __len__(self):
-        return len(self.items)
-
-    def __getitem__(self, item):
-        return self.items[item]
-
-    def __setattr__(self, key, value):
-        if key == "items":
-            raise TypeError("Cannot set items directly")
-        super().__setattr__(key, value)
-
-    def __iter__(self):
-        return iter(self.items)
-
-    def append(self, item: ActionContainerItem):
-        super().__setattr__("items", self.items + (item,))
-
-    def _generate_trajectory(self) -> tuple[list[Motion], list[ActionLocation]]:
-        """Generate two lists: one of Motion objects and another of ActionContainer objects,
-        where each ActionContainer wraps a non-Motion action with its path parameter.
-
-        The path parameter is the index of the last Motion object in the list of Motion objects.
-        S - M - M - A - A - M - M - A - M - M
-        0 - 1 - 2 - 3 - 3 - 3 - 4 - 5 - 5 - 6
-
-        Returns:
-            tuple: A tuple containing:
-                - list of Motion objects from self.items.
-                - list of ActionContainer objects with indexed path parameters.
-        """
-        motions = []
-        actions = []
-        last_motion_index = 0
-
-        for item in self.items:
-            if isinstance(item, Motion):
-                motions.append(item)
-                last_motion_index += 1  # Increment the motion index for each new Motion
-            else:
-                # Assign the current value of last_motion_index as path_parameter for actions
-                actions.append(ActionLocation(path_parameter=last_motion_index, action=item))
-
-        return motions, actions
-
-    @property
-    def motions(self) -> list[Motion]:
-        motions, _ = self._generate_trajectory()
-        return motions
-
-    @property
-    def actions(self) -> list[ActionLocation]:
-        _, actions = self._generate_trajectory()
-        return actions
-
-    @property
-    def start(self) -> ActionContainerItem | None:
-        return self.motions[0] if self.motions else None
-
-    @property
-    def end(self) -> ActionContainerItem | None:
-        return self.motions[-1] if self.motions else None
-
-    def poses(self) -> list[Pose]:
-        """Returns the positions of all motions. If a motion is not a cartesian motion, the position is ignored
-
-        Returns: the positions
-
-        """
-        motions, _ = self._generate_trajectory()
-        return [
-            Pose(position=motion.target.position, orientation=motion.target.orientation)
-            for motion in motions
-            if motion.is_cartesian and isinstance(motion.target, Pose)
-        ]
-
-    def positions(self):
-        """Returns the positions of all motions. If a motion is not a cartesian motion, the position is ignored
-
-        Returns: the positions
-
-        """
-        return [pose.position for pose in self.poses()]
-
-    def orientations(self):
-        """Returns the orientations of all motions. If a motion is not a cartesian motion, the orientation is ignored
-
-        Returns: the orientations
-
-        """
-        return [pose.orientation for pose in self.poses()]
-
-    def __add__(self, other: "CombinedActions") -> "CombinedActions":
-        return CombinedActions(items=self.items + other.items)
-
-    def to_motion_command(self) -> list[wb.models.MotionCommand]:
-        motion_commands = []
-        for motion in self.motions:
-            path = wb.models.MotionCommandPath.from_dict(motion.model_dump())
-            blending = (
-                motion.settings.as_blending_setting()
-                if motion.settings.has_blending_settings()
-                else None
-            )
-            limits_override = (
-                motion.settings.as_limits_settings()
-                if motion.settings.has_limits_override()
-                else None
-            )
-            motion_commands.append(
-                wb.models.MotionCommand(
-                    path=path, blending=blending, limits_override=limits_override
-                )
-            )
-        return motion_commands
-
-    def to_set_io(self) -> list[wb.models.SetIO]:
-        return [
-            wb.models.SetIO(
-                io=wb.models.IOValue(**action.action.model_dump(exclude_unset=True)),
-                location=action.path_parameter,
-            )
-            for action in self.actions
-        ]
-
-
-# TODO: should not be located here
-class MovementControllerContext(pydantic.BaseModel):
-    combined_actions: CombinedActions
-    motion_id: str
-
-
-ExecuteTrajectoryRequestStream = AsyncGenerator[wb.models.ExecuteTrajectoryRequest, None]
-ExecuteTrajectoryResponseStream = AsyncGenerator[wb.models.ExecuteTrajectoryResponse, None]
-MovementControllerFunction = Callable[
-    [ExecuteTrajectoryResponseStream], ExecuteTrajectoryRequestStream
-]
-MovementController = Callable[
-    [MovementControllerContext, Callable[[MotionState | None], None]], MovementControllerFunction
-]
+    return Spline(target=target, settings=settings, path_parameter=path_parameter, time=time)
