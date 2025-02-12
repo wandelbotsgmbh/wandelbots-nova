@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.29.0 (2025-02-12)
+
+### Features
+
+- Add collision-aware motion types and collision free actions
+  ([#61](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/61),
+  [`6a93ad5`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6a93ad51bec2f58a9d930c109994241713f548d7))
+
+Co-authored-by: mahsumdemir <mahsum.demir@wandelbots.com>
+
+
 ## v0.28.0 (2025-02-12)
 
 ### Features
