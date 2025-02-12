@@ -219,7 +219,7 @@ def cir(
         target = Pose(t)
 
     if not isinstance(intermediate, Pose):
-        i = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
+        i = (*intermediate, 0.0, 0.0, 0.0) if len(intermediate) == 3 else intermediate
         intermediate = Pose(i)
 
     return Circular(target=target, intermediate=intermediate, settings=settings)
