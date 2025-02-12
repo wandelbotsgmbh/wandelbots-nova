@@ -109,6 +109,10 @@ class ApiGateway:
         self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client))
         self.motion_api = intercept(wb.MotionApi(api_client=self._api_client))
         self.motion_group_infos_api = intercept(wb.MotionGroupInfosApi(api_client=self._api_client))
+        self.motion_group_kinematic_api = intercept(
+            wb.MotionGroupKinematicApi(api_client=self._api_client)
+        )
+
         self.store_collision_components_api = intercept(
             wb.StoreCollisionComponentsApi(api_client=self._api_client)
         )
