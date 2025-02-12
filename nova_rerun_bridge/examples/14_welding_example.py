@@ -13,7 +13,7 @@ from wandelbots_api_client.models import (
 )
 
 from nova import MotionSettings
-from nova.actions import Linear
+from nova.actions import lin
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
@@ -305,10 +305,10 @@ async def test():
 
                 # 2. Normal planning for first seam
                 seam1_actions = [
-                    Linear(target=seam1_approach),
-                    Linear(target=seam1_start),
-                    Linear(target=seam1_end),
-                    Linear(target=seam1_departure),
+                    lin(target=seam1_approach),
+                    lin(target=seam1_start),
+                    lin(target=seam1_end),
+                    lin(target=seam1_departure),
                 ]
                 for action in seam1_actions:
                     action.settings = MotionSettings(tcp_velocity_limit=30, blend_radius=10)
@@ -330,10 +330,10 @@ async def test():
 
                 # 4. Normal planning for second seam
                 seam2_actions = [
-                    Linear(target=seam2_approach),
-                    Linear(target=seam2_start),
-                    Linear(target=seam2_end),
-                    Linear(target=seam2_departure),
+                    lin(target=seam2_approach),
+                    lin(target=seam2_start),
+                    lin(target=seam2_end),
+                    lin(target=seam2_departure),
                 ]
                 for action in seam2_actions:
                     action.settings = MotionSettings(tcp_velocity_limit=30, blend_radius=10)

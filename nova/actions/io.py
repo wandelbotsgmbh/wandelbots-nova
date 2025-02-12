@@ -17,7 +17,7 @@ class WriteAction(Action):
         return api.models.IOValue(io=self.key, boolean_value=self.value).model_dump()
 
 
-def write(key: str, value: Any, device_id: str | None = None) -> WriteAction:
+def io_write(key: str, value: Any, device_id: str | None = None) -> WriteAction:
     """Create a WriteAction
 
     Args:
@@ -40,20 +40,6 @@ class ReadAction(Action):
     @pydantic.model_serializer
     def serialize_model(self):
         return super().model_dump()
-
-
-def read(key: str, device_id: str) -> ReadAction:
-    """Create a ReadAction
-
-    Args:
-        device_id: The device id
-        key: The key to read
-
-    Returns:
-        The ReadAction
-
-    """
-    return ReadAction(key=key, device_id=device_id)
 
 
 # TODO: Could move to WS if program representation is not in nova
