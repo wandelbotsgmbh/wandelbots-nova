@@ -29,7 +29,8 @@ import wandelbots_api_client as wb
 from loguru import logger
 
 from nova import api
-from nova.actions import Action, CollisionFreeMotion, MovementController
+from nova.actions import Action, MovementController
+from nova.actions.motions import CollisionFreeMotion
 from nova.types import MotionState, Pose, RobotState
 from nova.utils import Callerator
 
@@ -229,7 +230,7 @@ class AbstractRobot(Device):
     @abstractmethod
     async def _plan(
         self,
-        actions: list[Action | CollisionFreeMotion],
+        actions: list[Action | CollisionFreeMotion] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
         optimizer_setup: wb.models.OptimizerSetup | None = None,
@@ -343,7 +344,7 @@ class AbstractRobot(Device):
         tcp: str,
         on_movement: Callable[[MotionState | None], None] | None = None,
     ):
-        joint_trajectory = await self.plan(actions, tcp)
+        joint_trajectory = await self.plan(actions, tcp)  # type: ignore
         async for motion_state in self.execute(
             joint_trajectory, tcp, actions, on_movement, movement_controller=None
         ):

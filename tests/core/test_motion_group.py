@@ -1,7 +1,9 @@
 import pytest
 
-from nova import MotionGroup, Nova
-from nova.actions import Action, CollisionFreeMotion, lin, ptp
+from nova import Nova
+from nova.actions import Action, lin, ptp
+from nova.actions.motions import CollisionFreeMotion
+from nova.core.motion_group import split_actions_into_batches
 from nova.types import Pose
 
 
@@ -37,7 +39,7 @@ async def test_motion_group(nova_api):
 @pytest.mark.asyncio
 async def test_empty_list():
     actions: list[Action | CollisionFreeMotion] = []
-    results = [result for result in MotionGroup._split_actions_into_batches(actions)]
+    results = [result for result in split_actions_into_batches(actions)]
     assert results == []
 
 
@@ -50,7 +52,7 @@ async def test_only_actions():
     actions = [a1, a2, a3]
 
     # Expect a single batch containing all the actions.
-    results = [result for result in MotionGroup._split_actions_into_batches(actions)]
+    results = [result for result in split_actions_into_batches(actions)]
     assert results == [[a1, a2, a3]]
 
 
@@ -62,7 +64,7 @@ async def test_only_collision_free():
     actions = [cfm1, cfm2]
 
     # Each collision free motion should be yielded immediately.
-    results = [result for result in MotionGroup._split_actions_into_batches(actions)]
+    results = [result for result in split_actions_into_batches(actions)]
     assert results == [cfm1, cfm2]
 
 
@@ -75,7 +77,7 @@ async def test_collision_free_first():
     actions = [cfm1, a1, a2]
 
     # Expect: first the collision free motion, then the batch of actions.
-    results = [result for result in MotionGroup._split_actions_into_batches(actions)]
+    results = [result for result in split_actions_into_batches(actions)]
     assert results == [cfm1, [a1, a2]]
 
 
@@ -88,7 +90,7 @@ async def test_collision_free_last():
     actions = [a1, a2, cfm1]
 
     # Expect: first a batch of actions, then the collision free motion.
-    results = [result for result in MotionGroup._split_actions_into_batches(actions)]
+    results = [result for result in split_actions_into_batches(actions)]
     assert results == [[a1, a2], cfm1]
 
 
@@ -110,7 +112,7 @@ async def test_interleaved():
     # - Next action yields the deferred cfm2, then processes a3 → batch becomes [a3]
     # - End of list → yield remaining batch [a3]
     expected = [[a1], cfm1, [a2], cfm2, [a3]]
-    results = [result for result in MotionGroup._split_actions_into_batches(actions)]
+    results = [result for result in split_actions_into_batches(actions)]
     assert results == expected
 
 
@@ -131,7 +133,7 @@ async def test_multiple_collision_free_in_row():
     # - a2 → batch = [a2]
     # - End → yield remaining batch [a2]
     expected = [[a1], cfm1, cfm2, [a2]]
-    results = [result for result in MotionGroup._split_actions_into_batches(actions)]
+    results = [result for result in split_actions_into_batches(actions)]
     assert results == expected
 
 
@@ -155,5 +157,5 @@ async def test_complex_sequence():
     # - cfm3 encountered with non-empty batch → yield [a2, a3] and defer cfm3.
     # - End of list → yield deferred cfm3.
     expected = [[a1], cfm1, cfm2, [a2, a3], cfm3]
-    results = [result for result in MotionGroup._split_actions_into_batches(actions)]
+    results = [result for result in split_actions_into_batches(actions)]
     assert results == expected

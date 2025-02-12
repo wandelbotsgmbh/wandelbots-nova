@@ -27,6 +27,42 @@ def compare_collision_scenes(scene1: wb.models.CollisionScene, scene2: wb.models
     return True
 
 
+def split_actions_into_batches(
+    actions: list[Action | CollisionFreeMotion],
+) -> Generator[list[Action] | CollisionFreeMotion, None, None]:
+    """
+    Splits the list of actions into batches of actions and collision free motions.
+    Actions are sent to plan_trajectory API and collision free motions are sent to plan_collision_free_ptp API.
+    """
+    current_batch: list[Action] = []
+    collision_free_motion: CollisionFreeMotion | None = None
+    for action in actions:
+        # this happens when we switch from a action batch to a collision free motion
+        if collision_free_motion is not None:
+            yield collision_free_motion
+            collision_free_motion = None
+
+        # if we encounter a CollisionFreeMotion and there is no other non-collision free action collected yet than return this for processing
+        if isinstance(action, CollisionFreeMotion) and len(current_batch) == 0:
+            yield action
+
+        # if we encounter a CollisionFreeMotion and there are other non-collision free actions collected, this means the batch is ready for processing
+        elif isinstance(action, CollisionFreeMotion) and len(current_batch) > 0:
+            collision_free_motion = action
+            yield current_batch
+            current_batch = []
+        else:
+            current_batch.append(action)  # type: ignore
+
+    # if the last item was collision free motion, we need to yield it
+    if collision_free_motion is not None:
+        yield collision_free_motion
+
+    # if there are any actions left in the batch, we need to yield them
+    if len(current_batch) > 0:
+        yield current_batch
+
+
 class MotionGroup(AbstractRobot):
     def __init__(self, api_gateway: ApiGateway, cell: str, motion_group_id: str):
         self._api_gateway = api_gateway
@@ -230,7 +266,7 @@ class MotionGroup(AbstractRobot):
 
     async def _plan(
         self,
-        actions: list[Action | CollisionFreeMotion],
+        actions: list[Action | CollisionFreeMotion] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
         optimizer_setup: wb.models.OptimizerSetup | None = None,
@@ -238,11 +274,15 @@ class MotionGroup(AbstractRobot):
         if not actions:
             raise ValueError("No actions provided")
 
+        # TODO: refactor this part :(((((
+        if isinstance(actions, Action):
+            actions = [actions]
+
         current_joints = start_joint_position or await self.joints()
         robot_setup = optimizer_setup or await self._get_optimizer_setup(tcp=tcp)
 
         all_trajectories = []
-        for batch in self._split_actions_into_batches(actions):
+        for batch in split_actions_into_batches(actions):
             if isinstance(batch, CollisionFreeMotion):
                 trajectory = await self._plan_collision_free(
                     batch, tcp, list(current_joints), optimizer_setup=robot_setup
@@ -282,41 +322,6 @@ class MotionGroup(AbstractRobot):
 
     # TODO: refactor and simplify code, tests are already there
     # TODO: split into batches when the collision scene changes in a batch of collision free motions
-    @classmethod
-    def _split_actions_into_batches(
-        cls, actions: list[Action | CollisionFreeMotion]
-    ) -> Generator[list[Action] | CollisionFreeMotion, None, None]:
-        """
-        Splits the list of actions into batches of actions and collision free motions.
-        Actions are sent to plan_trajectory API and collision free motions are sent to plan_collision_free_ptp API.
-        """
-        current_batch: list[Action] = []
-        collision_free_motion: CollisionFreeMotion | None = None
-        for action in actions:
-            # this happens when we switch from a action batch to a collision free motion
-            if collision_free_motion is not None:
-                yield collision_free_motion
-                collision_free_motion = None
-
-            # if we encounter a CollisionFreeMotion and there is no other non-collision free action collected yet than return this for processing
-            if isinstance(action, CollisionFreeMotion) and len(current_batch) == 0:
-                yield action
-
-            # if we encounter a CollisionFreeMotion and there are other non-collision free actions collected, this means the batch is ready for processing
-            elif isinstance(action, CollisionFreeMotion) and len(current_batch) > 0:
-                collision_free_motion = action
-                yield current_batch
-                current_batch = []
-            else:
-                current_batch.append(action)
-
-        # if the last item was collision free motion, we need to yield it
-        if collision_free_motion is not None:
-            yield collision_free_motion
-
-        # if there are any actions left in the batch, we need to yield them
-        if len(current_batch) > 0:
-            yield current_batch
 
     async def _execute(
         self,
