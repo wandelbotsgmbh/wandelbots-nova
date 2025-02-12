@@ -25,10 +25,12 @@ import aiostream
 import anyio
 import asyncstdlib
 import pydantic
+import wandelbots_api_client as wb
 from loguru import logger
 
 from nova import api
 from nova.actions import Action, MovementController
+from nova.actions.motions import CollisionFreeMotion
 from nova.types import MotionState, Pose, RobotState
 from nova.utils import Callerator
 
@@ -227,7 +229,11 @@ class AbstractRobot(Device):
 
     @abstractmethod
     async def _plan(
-        self, actions: list[Action], tcp: str, start_joint_position: tuple[float, ...] | None = None
+        self,
+        actions: list[Action | CollisionFreeMotion] | Action,
+        tcp: str,
+        start_joint_position: tuple[float, ...] | None = None,
+        optimizer_setup: wb.models.OptimizerSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -243,9 +249,11 @@ class AbstractRobot(Device):
 
     async def plan(
         self,
-        actions: list[Action] | Action,
+        # TODO: this signature is changing, maybe I should make CollisionFreeMotion a subclass of Action
+        actions: list[Action | CollisionFreeMotion] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
+        optimizer_setup: wb.models.OptimizerSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -253,6 +261,7 @@ class AbstractRobot(Device):
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
                 Only motion actions are considered for planning.
             tcp (str): The identifier of the tool center point (TCP)
+            start_joint_position: the initial position of the robot
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
 
         Returns:
@@ -264,7 +273,7 @@ class AbstractRobot(Device):
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        return await self._plan(actions, tcp, start_joint_position)
+        return await self._plan(actions, tcp, start_joint_position, optimizer_setup)
 
     @abstractmethod
     async def _execute(
@@ -335,7 +344,7 @@ class AbstractRobot(Device):
         tcp: str,
         on_movement: Callable[[MotionState | None], None] | None = None,
     ):
-        joint_trajectory = await self.plan(actions, tcp)
+        joint_trajectory = await self.plan(actions, tcp)  # type: ignore
         async for motion_state in self.execute(
             joint_trajectory, tcp, actions, on_movement, movement_controller=None
         ):

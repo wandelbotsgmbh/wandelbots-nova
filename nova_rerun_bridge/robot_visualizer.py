@@ -42,9 +42,9 @@ class RobotVisualizer:
         :param glb_path: Path to the GLB file for the robot model.
         """
         self.robot = robot
-        self.link_geometries = {}
+        self.link_geometries: dict[int, List[trimesh.Trimesh]] = {}
         self.tcp_geometries = tcp_geometries
-        self.logged_meshes = set()
+        self.logged_meshes: set[str] = set()
         self.static_transform = static_transform
         self.base_entity_path = base_entity_path.rstrip("/")
         self.albedo_factor = albedo_factor
@@ -54,13 +54,13 @@ class RobotVisualizer:
 
         # This will hold the names of discovered joints (e.g. ["robot_J00", "robot_J01", ...])
         self.joint_names: List[str] = []
-        self.layer_nodes_dict = {}
-        self.parent_nodes_dict = {}
+        self.layer_nodes_dict: dict[str, list[str]] = {}
+        self.parent_nodes_dict: dict[str, str] = {}
 
         # load mesh
         try:
             glb_path = get_model_path(model_from_controller)
-            self.scene = trimesh.load(glb_path, file_type="glb")
+            self.scene = trimesh.load_scene(glb_path, file_type="glb")
             self.mesh_loaded = True
             self.edge_data = self.scene.graph.transforms.edge_data
 
@@ -68,7 +68,6 @@ class RobotVisualizer:
             self.discover_joints()
         except Exception as e:
             print(f"Failed to load mesh: {e}")
-            self.scene = None
 
         # Group geometries by link
         for gm in robot_model_geometries:
@@ -143,19 +142,7 @@ class RobotVisualizer:
         return same_layer
 
     def geometry_pose_to_matrix(self, init_pose: models.PlannerPose):
-        # Convert init_pose to PlannerPose and then to a matrix via the robot
-        p = models.PlannerPose(
-            position=models.Vector3d(
-                x=init_pose.position.x, y=init_pose.position.y, z=init_pose.position.z
-            ),
-            orientation=models.Quaternion(
-                x=init_pose.orientation.x,
-                y=init_pose.orientation.y,
-                z=init_pose.orientation.z,
-                w=init_pose.orientation.w,
-            ),
-        )
-        return self.robot.pose_to_matrix(p)
+        return self.robot.pose_to_matrix(init_pose)
 
     def compute_forward_kinematics(self, joint_values):
         """Compute link transforms using the robot's methods."""
@@ -249,7 +236,9 @@ class RobotVisualizer:
                     vertex_positions=transformed_mesh.vertices,
                     triangle_indices=transformed_mesh.faces,
                     vertex_normals=getattr(transformed_mesh, "vertex_normals", None),
-                    albedo_factor=self.gamma_lift_single_color(vertex_colors, gamma=0.5),
+                    albedo_factor=self.gamma_lift_single_color(vertex_colors, gamma=0.5)
+                    if vertex_colors is not None
+                    else None,
                 ),
             )
 
@@ -261,7 +250,7 @@ class RobotVisualizer:
         if entity_path in self.logged_meshes:
             return
 
-        if collider.shape.actual_instance.shape_type == "sphere":
+        if isinstance(collider.shape.actual_instance, models.Sphere2):
             rr.log(
                 f"{entity_path}",
                 rr.Ellipsoids3D(
@@ -270,17 +259,20 @@ class RobotVisualizer:
                         collider.shape.actual_instance.radius,
                         collider.shape.actual_instance.radius,
                     ],
-                    centers=[[pose.position.x, pose.position.y, pose.position.z]],
+                    centers=[[pose.position.x, pose.position.y, pose.position.z]]
+                    if pose.position
+                    else [0, 0, 0],
                     colors=[(221, 193, 193, 255)],
                 ),
-                timeless=True,
             )
 
-        elif collider.shape.actual_instance.shape_type == "box":
+        elif isinstance(collider.shape.actual_instance, models.Box2):
             rr.log(
                 f"{entity_path}",
                 rr.Boxes3D(
-                    centers=[[pose.position.x, pose.position.y, pose.position.z]],
+                    centers=[[pose.position.x, pose.position.y, pose.position.z]]
+                    if pose.position
+                    else [0, 0, 0],
                     sizes=[
                         collider.shape.actual_instance.size_x,
                         collider.shape.actual_instance.size_y,
@@ -288,10 +280,9 @@ class RobotVisualizer:
                     ],
                     colors=[(221, 193, 193, 255)],
                 ),
-                timeless=True,
             )
 
-        elif collider.shape.actual_instance.shape_type == "capsule":
+        elif isinstance(collider.shape.actual_instance, models.Capsule2):
             height = collider.shape.actual_instance.cylinder_height
             radius = collider.shape.actual_instance.radius
 
@@ -303,16 +294,21 @@ class RobotVisualizer:
 
             # Transform vertices to world position
             transform = np.eye(4)
-            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z - height / 2]
-            rot_mat = Rotation.from_quat(
-                [
-                    collider.pose.orientation.x,
-                    collider.pose.orientation.y,
-                    collider.pose.orientation.z,
-                    collider.pose.orientation.w,
-                ]
-            )
-            transform[:3, :3] = rot_mat.as_matrix()
+            if pose.position:
+                transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z - height / 2]
+            else:
+                transform[:3, 3] = [0, 0, -height / 2]
+
+            if collider.pose and collider.pose.orientation:
+                rot_mat = Rotation.from_quat(
+                    [
+                        collider.pose.orientation[0],
+                        collider.pose.orientation[1],
+                        collider.pose.orientation[2],
+                        collider.pose.orientation[3],
+                    ]
+                )
+                transform[:3, :3] = rot_mat.as_matrix()
 
             vertices = np.array([transform @ np.append(v, 1) for v in vertices])[:, :3]
 
@@ -328,10 +324,9 @@ class RobotVisualizer:
                         colors=[[221, 193, 193, 255]],
                     ),
                     static=True,
-                    timeless=True,
                 )
 
-        elif collider.shape.actual_instance.shape_type == "convex_hull":
+        elif isinstance(collider.shape.actual_instance, models.ConvexHull2):
             polygons = HullVisualizer.compute_hull_outlines_from_points(
                 collider.shape.actual_instance.vertices
             )
@@ -344,7 +339,6 @@ class RobotVisualizer:
                         line_segments, radii=rr.Radius.ui_points(1.5), colors=[colors.colors[2]]
                     ),
                     static=True,
-                    timeless=True,
                 )
 
                 vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)
@@ -355,10 +349,9 @@ class RobotVisualizer:
                         vertex_positions=vertices,
                         triangle_indices=triangles,
                         vertex_normals=normals,
-                        albedo_factor=[colors.colors[0]],
+                        albedo_factor=colors.colors[0],
                     ),
                     static=True,
-                    timeless=True,
                 )
 
         self.logged_meshes.add(entity_path)
@@ -413,7 +406,6 @@ class RobotVisualizer:
                     ],
                 ),
                 static=self.static_transform,
-                timeless=self.static_transform,
             )
 
         # Log robot joint geometries
@@ -608,10 +600,10 @@ class RobotVisualizer:
         for entity_path, positions in link_positions.items():
             rr.send_columns(
                 entity_path,
-                times=[times_column],
-                components=[
-                    rr.Transform3D.indicator(),
-                    rr.components.Translation3DBatch(positions),
-                    rr.components.RotationAxisAngleBatch(link_rotations[entity_path]),
+                indexes=[times_column],
+                columns=[
+                    *rr.Transform3D.columns(
+                        translation=positions, rotation_axis_angle=link_rotations[entity_path]
+                    )
                 ],
             )

@@ -19,40 +19,40 @@ def configure_joint_line_colors(motion_group: str):
         rr.log(
             f"{prefix}_velocity_lower_limit_{i}",
             rr.SeriesLine(color=[176, 49, 40], name=f"joint_velocity_lower_limit_{i}", width=4),
-            timeless=True,
+            static=True,
         )
         rr.log(
             f"{prefix}_velocity_upper_limit_{i}",
             rr.SeriesLine(color=[176, 49, 40], name=f"joint_velocity_upper_limit_{i}", width=4),
-            timeless=True,
+            static=True,
         )
 
         rr.log(
             f"{prefix}_acceleration_lower_limit_{i}",
             rr.SeriesLine(color=[176, 49, 40], name=f"joint_acceleration_lower_limit_{i}", width=4),
-            timeless=True,
+            static=True,
         )
         rr.log(
             f"{prefix}_acceleration_upper_limit_{i}",
             rr.SeriesLine(color=[176, 49, 40], name=f"joint_acceleration_upper_limit_{i}", width=4),
-            timeless=True,
+            static=True,
         )
 
         rr.log(
             f"{prefix}_position_lower_limit_{i}",
             rr.SeriesLine(color=[176, 49, 40], name=f"joint_position_lower_limit_{i}", width=4),
-            timeless=True,
+            static=True,
         )
         rr.log(
             f"{prefix}_position_upper_limit_{i}",
             rr.SeriesLine(color=[176, 49, 40], name=f"joint_position_upper_limit_{i}", width=4),
-            timeless=True,
+            static=True,
         )
 
         rr.log(
             f"{prefix}_torque_limit_{i}",
             rr.SeriesLine(color=[176, 49, 40], name=f"joint_torques_lower_limit_{i}", width=4),
-            timeless=True,
+            static=True,
         )
 
     for i in range(1, 7):
@@ -62,40 +62,40 @@ def configure_joint_line_colors(motion_group: str):
         rr.log(
             f"{prefix}_velocity_{i}",
             rr.SeriesLine(color=color, name=f"joint_velocity_{i}", width=2),
-            timeless=True,
+            static=True,
         )
         rr.log(
             f"{prefix}_velocity_{i}",
             rr.SeriesLine(color=color, name=f"joint_velocity_{i}", width=2),
-            timeless=True,
+            static=True,
         )
 
         rr.log(
             f"{prefix}_acceleration_{i}",
             rr.SeriesLine(color=color, name=f"joint_acceleration_{i}", width=2),
-            timeless=True,
+            static=True,
         )
         rr.log(
             f"{prefix}_acceleration_{i}",
             rr.SeriesLine(color=color, name=f"joint_acceleration_{i}", width=2),
-            timeless=True,
+            static=True,
         )
 
         rr.log(
             f"{prefix}_position_{i}",
             rr.SeriesLine(color=color, name=f"joint_position_{i}", width=2),
-            timeless=True,
+            static=True,
         )
         rr.log(
             f"{prefix}_position_{i}",
             rr.SeriesLine(color=color, name=f"joint_position_{i}", width=2),
-            timeless=True,
+            static=True,
         )
 
         rr.log(
             f"{prefix}_torque_{i}",
             rr.SeriesLine(color=color, name=f"joint_torques_{i}", width=2),
-            timeless=True,
+            static=True,
         )
 
 
@@ -121,7 +121,7 @@ def configure_tcp_line_colors(motion_group: str):
         rr.log(
             f"motion/{motion_group}/{name}",
             rr.SeriesLine(color=color, name=name, width=width),
-            timeless=True,
+            static=True,
         )
 
 

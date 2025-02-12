@@ -74,7 +74,11 @@ async def build_collision_world(
         rotated = models.Collider(
             shape=collider.shape,
             pose=models.Pose2(
-                position=[-300, collider.pose.position[1], collider.pose.position[2]],
+                position=[
+                    -300,
+                    collider.pose.position[1] if collider.pose and collider.pose.position else 0,
+                    collider.pose.position[2] if collider.pose and collider.pose.position else 0,
+                ],
                 orientation=[0.7853981633974484, 0, 0],  # 45 degrees in radians
             ),
         )
@@ -86,7 +90,15 @@ async def build_collision_world(
             rotated = models.Collider(
                 shape=collider.shape,
                 pose=models.Pose2(
-                    position=[300, collider.pose.position[1], collider.pose.position[2]],
+                    position=[
+                        300,
+                        collider.pose.position[1]
+                        if collider.pose and collider.pose.position
+                        else 0,
+                        collider.pose.position[2]
+                        if collider.pose and collider.pose.position
+                        else 0,
+                    ],
                     orientation=[0, 0.7853981633974484, 0],  # 45 degrees in radians
                 ),
             )
@@ -118,7 +130,7 @@ async def build_collision_world(
     scene = models.CollisionScene(
         colliders=colliders,
         motion_groups={
-            "motion_group": models.CollisionMotionGroup(
+            robot_setup.motion_group_type: models.CollisionMotionGroup(
                 tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
             )
         },

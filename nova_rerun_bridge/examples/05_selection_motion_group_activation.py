@@ -2,7 +2,7 @@ import asyncio
 from math import pi
 
 from nova import MotionGroup, Nova
-from nova.actions import ptp
+from nova.actions import Action, ptp
 from nova.api import models
 from nova.types import Pose
 from nova_rerun_bridge import NovaRerunBridge
@@ -24,7 +24,7 @@ async def move_robot(
 ):
     home_pose = Pose((200, 200, 600, 0, pi, 0))
     target_pose = home_pose @ (100, 0, 0, 0, 0, 0)
-    actions = [
+    actions: list[Action] = [
         ptp(home_pose),
         ptp(target_pose),
         ptp(target_pose @ (0, 0, 100, 0, 0, 0)),
@@ -51,6 +51,9 @@ async def main():
             models.Manufacturer.UNIVERSALROBOTS,
         )
         tcp = "Flange"
+
+        # NC-1047
+        await asyncio.sleep(5)
 
         flange_state = await ur10[0].get_state(tcp)
         print(flange_state)

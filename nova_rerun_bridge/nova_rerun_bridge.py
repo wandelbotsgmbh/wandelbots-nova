@@ -12,9 +12,12 @@ from wandelbots_api_client.models import (
 )
 
 from nova import MotionGroup
-from nova.actions import Action, CombinedActions, WriteAction
+from nova.actions import Action, CombinedActions
+from nova.actions.io import WriteAction
+from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
 from nova.core.nova import Nova
+from nova.types.pose import Pose
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.blueprint import send_blueprint
 from nova_rerun_bridge.collision_scene import log_collision_scenes
@@ -51,7 +54,7 @@ class NovaRerunBridge:
     def __init__(self, nova: Nova, spawn: bool = True, recording_id=None) -> None:
         self._ensure_models_exist()
         self.nova = nova
-        self._streaming_tasks = {}
+        self._streaming_tasks: Dict[MotionGroup, asyncio.Task] = {}
         if spawn:
             recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             rr.init(application_id="nova", recording_id=recording_id, spawn=True)
@@ -115,7 +118,6 @@ class NovaRerunBridge:
                 colors=coordinate_colors,
                 radii=rr.Radius.ui_points([5.0]),
             ),
-            timeless=True,
             static=True,
         )
 
@@ -182,6 +184,9 @@ class NovaRerunBridge:
             )
         )
 
+        if motion_motion_group is None:
+            raise ValueError(f"Motion group {motion.motion_group} not found")
+
         log_motion(
             motion_id=motion_id,
             model_from_controller=motion_motion_group.model_from_controller,
@@ -215,20 +220,21 @@ class NovaRerunBridge:
         self, error_feedback: PlanTrajectoryFailedResponseErrorFeedback
     ) -> None:
         if isinstance(error_feedback.actual_instance, FeedbackOutOfWorkspace):
-            rr.log(
-                "motion/errors/FeedbackOutOfWorkspace",
-                rr.Points3D(
-                    [
-                        error_feedback.actual_instance.invalid_tcp_pose.position[0],
-                        error_feedback.actual_instance.invalid_tcp_pose.position[1],
-                        error_feedback.actual_instance.invalid_tcp_pose.position[2],
-                    ],
-                    radii=rr.Radius.ui_points([5.0]),
-                    colors=[(255, 0, 0, 255)],
-                    labels=["Out of Workspace"],
-                ),
-                timeless=True,
-            )
+            if (
+                error_feedback.actual_instance.invalid_tcp_pose
+                and error_feedback.actual_instance.invalid_tcp_pose.position
+            ):
+                position = error_feedback.actual_instance.invalid_tcp_pose.position
+                rr.log(
+                    "motion/errors/FeedbackOutOfWorkspace",
+                    rr.Points3D(
+                        [[position[0], position[1], position[2]]],
+                        radii=rr.Radius.ui_points([5.0]),
+                        colors=[(255, 0, 0, 255)],
+                        labels=["Out of Workspace"],
+                    ),
+                    static=True,
+                )
 
     async def start_streaming(self, motion_group: MotionGroup) -> None:
         """Start streaming real-time robot state to Rerun viewer."""
@@ -245,7 +251,7 @@ class NovaRerunBridge:
         self._streaming_tasks.clear()
 
     async def log_actions(
-        self, actions: list[Action] | Action, show_connection: bool = False
+        self, actions: list[Action | CollisionFreeMotion] | Action, show_connection: bool = False
     ) -> None:
         from nova_rerun_bridge import trajectory
 
@@ -257,7 +263,23 @@ class NovaRerunBridge:
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        poses = CombinedActions(items=tuple(actions)).poses()
+        # Collect poses from regular actions
+        regular_actions = [
+            action for action in actions if isinstance(action, (Motion, WriteAction))
+        ]
+        regular_poses = (
+            CombinedActions(items=tuple(regular_actions)).poses() if regular_actions else []
+        )
+
+        # Collect poses from CollisionFreeMotion targets
+        collision_free_poses = [
+            action.target
+            for action in actions
+            if isinstance(action, CollisionFreeMotion) and isinstance(action.target, Pose)
+        ]
+
+        # Combine all poses
+        all_poses = regular_poses + collision_free_poses
         positions = []
         point_colors = []
         use_red = False
@@ -266,8 +288,8 @@ class NovaRerunBridge:
         for i, action in enumerate(actions):
             if isinstance(action, WriteAction):
                 use_red = True
-            if i < len(poses):  # Only process if there's a corresponding pose
-                pose = poses[i]
+            if i < len(all_poses):  # Only process if there's a corresponding pose
+                pose = all_poses[i]
                 logger.debug(f"Pose: {pose}")
                 positions.append([pose.position.x, pose.position.y, pose.position.z])
                 point_colors.append(colors.colors[1] if use_red else colors.colors[9])
@@ -276,7 +298,6 @@ class NovaRerunBridge:
         rr.log(
             "motion/actions",
             rr.Points3D(positions, colors=point_colors, radii=rr.Radius.ui_points([5.0])),
-            timeless=True,
             static=True,
         )
 

@@ -89,7 +89,7 @@ async def build_collision_world(
     scene = nova.models.CollisionScene(
         colliders={"workpiece": collider},
         motion_groups={
-            "motion_group": nova.models.CollisionMotionGroup(
+            robot_setup.motion_group_type: nova.models.CollisionMotionGroup(
                 tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
             )
         },
@@ -131,7 +131,7 @@ async def plan_path(
             )
         ],
         static_colliders=scene.colliders,
-        collision_motion_group=scene.motion_groups.get("motion_group"),
+        collision_motion_group=scene.motion_groups.get(robot_setup.motion_group_type),
     )
 
     plan_result = await motion_api.plan_trajectory(

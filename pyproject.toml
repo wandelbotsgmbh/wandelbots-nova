@@ -33,7 +33,7 @@ scipy = "^1.14.1"
 aiostream = "^0.6.4"
 anyio = "^4.8.0"
 asyncstdlib = "^3.13.0"
-rerun-sdk = { version = "=0.21.0", optional = true }
+rerun-sdk = { version = "=0.22.0", optional = true }
 requests = { version = ">=2.32.3", optional = true }
 APScheduler = { version = ">=3.11.0", optional = true }
 trimesh = { version = ">=4.5.3", optional = true }

@@ -1,19 +1,12 @@
 import asyncio
-from typing import Union
 
 import numpy as np
 import rerun as rr
 import trimesh
-from wandelbots_api_client.models import (
-    PlanCollisionFreePTPRequest,
-    RobotTcp,
-    RotationAngles,
-    RotationAngleTypes,
-    Vector3d,
-)
+from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngleTypes, Vector3d
 
 from nova import MotionSettings
-from nova.actions import lin
+from nova.actions import collision_free, lin
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
@@ -25,7 +18,7 @@ Simple example to demonstrate how to add a welding part to the collision world a
 """
 
 
-async def load_and_transform_mesh(filepath: str, pose: models.Pose2) -> trimesh.Trimesh:
+async def load_and_transform_mesh(filepath: str, pose: models.Pose2) -> trimesh.Geometry:
     """Load mesh and transform to desired position."""
     scene = trimesh.load(filepath, file_type="stl")
 
@@ -51,14 +44,13 @@ async def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
             vertex_normals=vertex_normals,
             albedo_factor=vertex_colors,
         ),
-        timeless=True,
         static=True,
     )
 
 
 async def add_mesh_to_collision_world(
     collision_api, cell_name: str, scene: trimesh.Trimesh, collider_name: str = "welding_part"
-) -> None:
+) -> models.Collider:
     """Add mesh as convex hull to collision world."""
     # Create convex hull
     convex_hull = scene.convex_hull
@@ -78,10 +70,7 @@ async def add_mesh_to_collision_world(
 
 
 async def build_collision_world(
-    nova: Nova,
-    cell_name: str,
-    robot_setup: models.OptimizerSetup,
-    additional_colliders: dict = None,
+    nova: Nova, cell_name: str, robot_setup: models.OptimizerSetup, additional_colliders: dict = {}
 ) -> str:
     """Build collision world with robot, environment and optional additional colliders.
 
@@ -140,7 +129,7 @@ async def build_collision_world(
     scene = models.CollisionScene(
         colliders=colliders,
         motion_groups={
-            "motion_group": models.CollisionMotionGroup(
+            robot_setup.motion_group_type: models.CollisionMotionGroup(
                 tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
             )
         },
@@ -161,7 +150,7 @@ async def calculate_seam_poses(mesh_pose: models.Pose2) -> tuple[Pose, Pose, Pos
         tuple containing start and end poses for both seams
     """
     # Convert mesh_pose to Pose for @ operator usage
-    mesh_transform = Pose((*mesh_pose.position, *mesh_pose.orientation))
+    mesh_transform = Pose(mesh_pose)
 
     # Define seams in local coordinates (relative to mesh center)
     local_seam1_start = Pose((150, -6, 3, -np.pi / 2 - np.pi / 4, 0, 0))  # -135° around X
@@ -176,48 +165,6 @@ async def calculate_seam_poses(mesh_pose: models.Pose2) -> tuple[Pose, Pose, Pos
     seam2_end = mesh_transform @ local_seam2_end
 
     return seam1_start, seam1_end, seam2_start, seam2_end
-
-
-async def plan_collision_free_movement(
-    nova: Nova,
-    robot_setup: models.OptimizerSetup,
-    collision_scene: models.CollisionScene,
-    start_joints: list[float],
-    target: Union[Pose, list[float]],
-) -> models.JointTrajectory:
-    """Plan collision-free PTP movement.
-
-    Args:
-        nova: Nova instance
-        robot_setup: Robot optimizer setup
-        collision_scene: Current collision scene
-        start_joints: Starting joint positions
-        target: Target pose or joint positions to reach
-
-    Returns:
-        Planned joint trajectory
-    """
-    # Create target based on input type
-    if isinstance(target, Pose):
-        target_request = models.PlanCollisionFreePTPRequestTarget(target._to_wb_pose2())
-    else:
-        target_request = models.PlanCollisionFreePTPRequestTarget(target)
-
-    plan_result = await nova._api_client.motion_api.plan_collision_free_ptp(
-        cell="cell",
-        plan_collision_free_ptp_request=PlanCollisionFreePTPRequest(
-            robot_setup=robot_setup,
-            start_joint_position=start_joints,
-            target=target_request,
-            static_colliders=collision_scene.colliders,
-            collision_motion_group=collision_scene.motion_groups["motion_group"],
-        ),
-    )
-
-    if isinstance(plan_result.response.actual_instance, models.PlanTrajectoryFailedResponse):
-        raise PlanTrajectoryFailed(plan_result.response.actual_instance)
-
-    return plan_result.response.actual_instance
 
 
 async def test():
@@ -293,65 +240,63 @@ async def test():
             seam2_departure = seam2_end @ approach_offset
 
             try:
-                # 1. Collision-free movement to first seam approach
-                trajectory1 = await plan_collision_free_movement(
-                    nova,
-                    robot_setup,
-                    collision_scene,
-                    [0, -np.pi / 2, np.pi / 2, 0, 0, 0],
-                    seam1_approach,
-                )
-                await bridge.log_trajectory(trajectory1, tcp, motion_group)
-
-                # 2. Normal planning for first seam
-                seam1_actions = [
-                    lin(target=seam1_approach),
-                    lin(target=seam1_start),
-                    lin(target=seam1_end),
-                    lin(target=seam1_departure),
+                welding_actions = [
+                    # First seam
+                    collision_free(
+                        target=seam1_approach,
+                        collision_scene=collision_scene,
+                        settings=MotionSettings(tcp_velocity_limit=30),
+                    ),
+                    lin(
+                        target=seam1_approach,
+                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    ),
+                    lin(
+                        target=seam1_start,
+                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    ),
+                    lin(
+                        target=seam1_end,
+                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    ),
+                    lin(
+                        target=seam1_departure,
+                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    ),
+                    # Move to second seam
+                    collision_free(
+                        target=seam2_approach,
+                        collision_scene=collision_scene,
+                        settings=MotionSettings(tcp_velocity_limit=30),
+                    ),
+                    # Second seam with collision checking
+                    lin(
+                        target=seam2_start,
+                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    ),
+                    lin(
+                        target=seam2_end,
+                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    ),
+                    lin(
+                        target=seam2_departure,
+                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    ),
+                    collision_free(
+                        target=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
+                        collision_scene=collision_scene,
+                        settings=MotionSettings(tcp_velocity_limit=30),
+                    ),
                 ]
-                for action in seam1_actions:
-                    action.settings = MotionSettings(tcp_velocity_limit=30, blend_radius=10)
-                seam1_trajectory = await motion_group.plan(
-                    seam1_actions, tcp, start_joint_position=trajectory1.joint_positions[-1].joints
-                )
-                await bridge.log_actions(seam1_actions)
-                await bridge.log_trajectory(seam1_trajectory, tcp, motion_group)
 
-                # 3. Collision-free movement to second seam approach
-                trajectory2 = await plan_collision_free_movement(
-                    nova,
-                    robot_setup,
-                    collision_scene,
-                    seam1_trajectory.joint_positions[-1].joints,
-                    seam2_approach,
+                trajectory_plan_combined = await motion_group.plan(
+                    welding_actions,
+                    tcp=tcp,
+                    start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
                 )
-                await bridge.log_trajectory(trajectory2, tcp, motion_group)
 
-                # 4. Normal planning for second seam
-                seam2_actions = [
-                    lin(target=seam2_approach),
-                    lin(target=seam2_start),
-                    lin(target=seam2_end),
-                    lin(target=seam2_departure),
-                ]
-                for action in seam2_actions:
-                    action.settings = MotionSettings(tcp_velocity_limit=30, blend_radius=10)
-                seam2_trajectory = await motion_group.plan(
-                    seam2_actions, tcp, start_joint_position=trajectory2.joint_positions[-1].joints
-                )
-                await bridge.log_actions(seam2_actions)
-                await bridge.log_trajectory(seam2_trajectory, tcp, motion_group)
-
-                # 5. Collision-free movement back home
-                trajectory3 = await plan_collision_free_movement(
-                    nova,
-                    robot_setup,
-                    collision_scene,
-                    seam2_trajectory.joint_positions[-1].joints,
-                    [0, -np.pi / 2, np.pi / 2, 0, 0, 0],
-                )
-                await bridge.log_trajectory(trajectory3, tcp, motion_group)
+                await bridge.log_actions(welding_actions)
+                await bridge.log_trajectory(trajectory_plan_combined, tcp, motion_group)
 
             except PlanTrajectoryFailed as e:
                 await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)

@@ -39,3 +39,16 @@ class LoadPlanFailed(Exception):
     def error(self) -> wb.models.PlanSuccessfulResponse:
         """Return the original PlanSuccessfulResponse object."""
         return self._error
+
+
+class InconsistentCollisionScenes(Exception):
+    """Raised when actions have different collision scenes."""
+
+    def __init__(self, message: str):
+        self._message = message
+        super().__init__(message)
+
+    @property
+    def message(self) -> str:
+        """Return the error message."""
+        return self._message

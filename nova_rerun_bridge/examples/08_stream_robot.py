@@ -29,7 +29,7 @@ async def test():
 
         cell = nova.cell()
         controller = await cell.ensure_virtual_robot_controller(
-            "ur",
+            "ur10",
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )

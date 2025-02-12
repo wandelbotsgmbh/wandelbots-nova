@@ -62,19 +62,25 @@ def log_motion(
 
     # Initialize DHRobot and Visualizer
     if model_from_controller == "Yaskawa_TURN2":
-        optimizer_config.dh_parameters[0].a = 0
-        optimizer_config.dh_parameters[0].d = 360
-        optimizer_config.dh_parameters[0].alpha = np.pi / 2
-        optimizer_config.dh_parameters[0].theta = 0
+        if optimizer_config.dh_parameters is not None:
+            optimizer_config.dh_parameters[0].a = 0
+            optimizer_config.dh_parameters[0].d = 360
+            optimizer_config.dh_parameters[0].alpha = np.pi / 2
+            optimizer_config.dh_parameters[0].theta = 0
 
-        optimizer_config.dh_parameters[1].a = 0
-        optimizer_config.dh_parameters[1].d = 0
-        optimizer_config.dh_parameters[1].alpha = 0
-        optimizer_config.dh_parameters[1].theta = np.pi / 2
+            optimizer_config.dh_parameters[1].a = 0
+            optimizer_config.dh_parameters[1].d = 0
+            optimizer_config.dh_parameters[1].alpha = 0
+            optimizer_config.dh_parameters[1].theta = np.pi / 2
+
+    if optimizer_config.dh_parameters is None:
+        raise ValueError("DH parameters cannot be None")
 
     robot = DHRobot(optimizer_config.dh_parameters, optimizer_config.mounting)
 
-    collision_link_chain, collision_tcp = extract_link_chain_and_tcp(collision_scenes)
+    collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
+        collision_scenes, optimizer_config.motion_group_type
+    )
 
     visualizer = RobotVisualizer(
         robot=robot,
@@ -102,6 +108,9 @@ def log_motion(
 
     # Update last times based on timing mode
     if trajectory:
+        if trajectory[-1].time is None:
+            raise ValueError("Last trajectory point has no time")
+
         if timing_mode == TimingMode.SYNC:
             _last_offset = trajectory[-1].time
         else:
@@ -125,8 +134,13 @@ def continue_after_sync():
 def log_trajectory_path(
     motion_id: str, trajectory: List[models.TrajectorySample], motion_group: str
 ):
+    if not all(p.tcp_pose is not None for p in trajectory):
+        raise ValueError("All trajectory points must have a tcp_pose")
+
     points = [
-        [p.tcp_pose.position.x, p.tcp_pose.position.y, p.tcp_pose.position.z] for p in trajectory
+        [p.tcp_pose.position.x, p.tcp_pose.position.y, p.tcp_pose.position.z]
+        for p in trajectory
+        if p.tcp_pose and p.tcp_pose.position
     ]
     rr.log(
         f"motion/{motion_group}/trajectory",
@@ -170,11 +184,11 @@ def log_trajectory(
 
     rr.send_columns(
         f"motion/{motion_group}/dh_parameters",
-        times=[times_column],
-        components=[
-            rr.LineStrips3D.indicator(),
-            rr.components.LineStrip3DBatch(line_segments_batch),
-            rr.components.ColorBatch([0.5, 0.5, 0.5, 1.0] * len(line_segments_batch)),
+        indexes=[times_column],
+        columns=[
+            *rr.LineStrips3D.columns(
+                strips=line_segments_batch, colors=[0.5, 0.5, 0.5, 1.0] * len(line_segments_batch)
+            )
         ],
     )
 
@@ -201,29 +215,28 @@ def log_tcp_pose(trajectory: List[models.TrajectorySample], motion_group, times_
     # Collect data from the trajectory
     for point in trajectory:
         # Collect TCP position
-        tcp_positions.append(
-            [point.tcp_pose.position.x, point.tcp_pose.position.y, point.tcp_pose.position.z]
-        )
+
+        if point.tcp_pose is not None:
+            tcp_positions.append(
+                [point.tcp_pose.position.x, point.tcp_pose.position.y, point.tcp_pose.position.z]
+            )
 
         # Convert and collect TCP orientation as axis-angle
-        rotation_vector = [
-            point.tcp_pose.orientation.x,
-            point.tcp_pose.orientation.y,
-            point.tcp_pose.orientation.z,
-        ]
-        rotation = Rotation.from_rotvec(rotation_vector)
-        angle = rotation.magnitude()
-        axis_angle = rotation.as_rotvec() / angle if angle != 0 else [0, 0, 0]
-        tcp_rotations.append(rr.RotationAxisAngle(axis=axis_angle, angle=angle))
+        if point.tcp_pose is not None and point.tcp_pose.orientation is not None:
+            rotation_vector = [
+                point.tcp_pose.orientation.x,
+                point.tcp_pose.orientation.y,
+                point.tcp_pose.orientation.z,
+            ]
+            rotation = Rotation.from_rotvec(rotation_vector)
+            angle = rotation.magnitude()
+            axis_angle = rotation.as_rotvec() / angle if angle != 0 else [0, 0, 0]
+            tcp_rotations.append(rr.RotationAxisAngle(axis=axis_angle, angle=angle))
 
     rr.send_columns(
         f"motion/{motion_group}/tcp_position",
-        times=[times_column],
-        components=[
-            rr.Transform3D.indicator(),
-            rr.components.Translation3DBatch(tcp_positions),
-            rr.components.RotationAxisAngleBatch(tcp_rotations),
-        ],
+        indexes=[times_column],
+        columns=[*rr.Points3D.columns(positions=tcp_positions)],
     )
 
 
@@ -236,9 +249,12 @@ def log_joint_data(
     """
     Log joint-related data (position, velocity, acceleration, torques) from a trajectory as columns.
     """
-    # Initialize lists for each joint and each data type (assuming 6 joints)
+    # Initialize lists for each joint and each data type
+    if optimizer_config.dh_parameters is None:
+        raise ValueError("DH parameters cannot be None")
+
     num_joints = len(optimizer_config.dh_parameters)
-    joint_data = {
+    joint_data: Dict[str, List[List[float]]] = {
         "velocity": [[] for _ in range(num_joints)],
         "acceleration": [[] for _ in range(num_joints)],
         "position": [[] for _ in range(num_joints)],
@@ -291,8 +307,8 @@ def log_joint_data(
             if data[i]:
                 rr.send_columns(
                     f"motion/{motion_group}/joint_{data_type}_{i + 1}",
-                    times=[times_column],
-                    components=[rr.components.ScalarBatch(data[i])],
+                    indexes=[times_column],
+                    columns=[*rr.Scalar.columns(scalar=data[i])],
                 )
 
 
@@ -305,7 +321,7 @@ def log_scalar_values(
     """
     Log scalar values such as TCP velocity, acceleration, orientation velocity/acceleration, time, and location.
     """
-    scalar_data = {
+    scalar_data: Dict[str, List[float]] = {
         "tcp_velocity": [],
         "tcp_acceleration": [],
         "tcp_orientation_velocity": [],
@@ -369,8 +385,8 @@ def log_scalar_values(
         if values:
             rr.send_columns(
                 f"motion/{motion_group}/{key}",
-                times=[times_column],
-                components=[rr.components.ScalarBatch(values)],
+                indexes=[times_column],
+                columns=[*rr.Scalar.columns(scalar=values)],
             )
 
 

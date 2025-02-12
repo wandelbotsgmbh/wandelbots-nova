@@ -34,8 +34,6 @@ async def move_robot(controller: Controller, bridge: NovaRerunBridge):
         trajectory = await motion_group.plan(actions, tcp)
         await bridge.log_trajectory(trajectory, tcp, motion_group, timing_mode=TimingMode.SYNC)
 
-        await motion_group.plan_and_execute(actions, tcp)
-
 
 async def main():
     async with Nova() as nova, NovaRerunBridge(nova) as bridge:
@@ -46,10 +44,8 @@ async def main():
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
-        ur5 = await cell.ensure_virtual_robot_controller(
-            "ur5",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
-            models.Manufacturer.UNIVERSALROBOTS,
+        kuka = await cell.ensure_virtual_robot_controller(
+            "kuka", models.VirtualControllerTypes.KUKA_MINUS_KR16_R1610_2, models.Manufacturer.KUKA
         )
 
         # NC-1047
@@ -57,13 +53,13 @@ async def main():
 
         await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
             cell="cell",
-            controller="ur5",
+            controller=kuka.controller_id,
             id=0,
             coordinate_system=CoordinateSystem(
                 coordinate_system="world",
                 name="mounting",
                 reference_uid="",
-                position=Vector3d(x=500, y=0, z=0),
+                position=Vector3d(x=1000, y=0, z=0),
                 rotation=RotationAngles(
                     angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
                 ),
@@ -74,7 +70,7 @@ async def main():
         await asyncio.sleep(5)
 
         await bridge.setup_blueprint()
-        await asyncio.gather(move_robot(ur5, bridge=bridge), move_robot(ur10, bridge=bridge))
+        await asyncio.gather(move_robot(kuka, bridge=bridge), move_robot(ur10, bridge=bridge))
 
 
 if __name__ == "__main__":

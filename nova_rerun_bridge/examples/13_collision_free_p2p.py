@@ -2,10 +2,15 @@ import asyncio
 
 import numpy as np
 import rerun as rr
-from wandelbots_api_client.models import PlanCollisionFreePTPRequest
+from wandelbots_api_client.models import (
+    CoordinateSystem,
+    RotationAngles,
+    RotationAngleTypes,
+    Vector3d,
+)
 
 from nova import MotionSettings
-from nova.actions import ptp
+from nova.actions import CollisionFreeMotion, ptp
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
@@ -54,7 +59,7 @@ async def build_collision_world(
     scene = models.CollisionScene(
         colliders={"annoying_obstacle": sphere_collider},
         motion_groups={
-            "motion_group": models.CollisionMotionGroup(
+            robot_setup.motion_group_type: models.CollisionMotionGroup(
                 tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
             )
         },
@@ -76,6 +81,25 @@ async def test():
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
+
+        await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
+            cell="cell",
+            controller=controller.controller_id,
+            id=0,
+            coordinate_system=CoordinateSystem(
+                coordinate_system="world",
+                name="mounting",
+                reference_uid="",
+                position=Vector3d(x=0, y=0, z=0),
+                rotation=RotationAngles(
+                    angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
+                ),
+            ),
+        )
+
+        # NC-1047
+        await asyncio.sleep(5)
+
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
             tcp = "Flange"
@@ -88,7 +112,6 @@ async def test():
             await bridge.log_collision_scenes()
 
             # Use default planner to move to the right of the sphere
-            home_joints = await motion_group.joints()
             home = await motion_group.tcp_pose(tcp)
             actions = [ptp(home), ptp(target=Pose((300, -400, 200, np.pi, 0, 0)))]
 
@@ -96,7 +119,9 @@ async def test():
                 action.settings = MotionSettings(tcp_velocity_limit=200)
 
             try:
-                joint_trajectory = await motion_group.plan(actions, tcp)
+                joint_trajectory = await motion_group.plan(
+                    actions, tcp, start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0)
+                )
                 await bridge.log_actions(actions)
                 await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
             except PlanTrajectoryFailed as e:
@@ -111,15 +136,17 @@ async def test():
             # Use default planner to move to the left of the sphere
             # -> this will collide
             # only plan don't move
-            actions = [ptp(home), ptp(target=Pose((-500, -400, 200, np.pi, 0, 0)))]
+            actions = [ptp(target=Pose((-500, -400, 200, np.pi, 0, 0)))]
 
             for action in actions:
                 action.settings = MotionSettings(tcp_velocity_limit=200)
 
             try:
-                joint_trajectory = await motion_group.plan(actions, tcp)
+                joint_trajectory_with_collision = await motion_group.plan(
+                    actions, tcp, start_joint_position=joint_trajectory.joint_positions[-1].joints
+                )
                 await bridge.log_actions(actions)
-                await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
+                await bridge.log_trajectory(joint_trajectory_with_collision, tcp, motion_group)
             except PlanTrajectoryFailed as e:
                 await bridge.log_actions(actions)
                 await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)
@@ -131,30 +158,21 @@ async def test():
                 cell="cell", scene=collision_scene_id
             )
 
-            planTrajectory: models.PlanTrajectoryResponse = (
-                await nova._api_client.motion_api.plan_collision_free_ptp(
-                    cell="cell",
-                    plan_collision_free_ptp_request=PlanCollisionFreePTPRequest(
-                        robot_setup=robot_setup,
-                        start_joint_position=home_joints,
-                        target=models.PlanCollisionFreePTPRequestTarget(
-                            models.Pose2(position=[-500, -400, 200], orientation=[np.pi, 0, 0])
-                        ),
-                        static_colliders=collision_scene.colliders,
-                        collision_motion_group=collision_scene.motion_groups["motion_group"],
-                    ),
+            welding_actions = [
+                CollisionFreeMotion(
+                    target=Pose((-500, -400, 200, np.pi, 0, 0)),
+                    collision_scene=collision_scene,
+                    settings=MotionSettings(tcp_velocity_limit=30),
                 )
+            ]
+
+            trajectory_plan_combined = await motion_group._plan_combined(
+                welding_actions,
+                tcp=tcp,
+                start_joint_position=joint_trajectory.joint_positions[-1].joints,
             )
-
-            if isinstance(
-                planTrajectory.response.actual_instance, models.PlanTrajectoryFailedResponse
-            ):
-                joint_trajectory = planTrajectory.response.actual_instance.joint_trajectory
-                await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
-                raise PlanTrajectoryFailed(planTrajectory.response.actual_instance)
-
-            joint_trajectory = planTrajectory.response.actual_instance
-            await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
+            await bridge.log_actions(welding_actions)
+            await bridge.log_trajectory(trajectory_plan_combined, tcp, motion_group)
 
 
 if __name__ == "__main__":
