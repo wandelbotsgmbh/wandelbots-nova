@@ -3,12 +3,7 @@ from typing import Callable, Generator, cast
 import wandelbots_api_client as wb
 from loguru import logger
 
-from nova.actions import (
-    Action,
-    CombinedActions,
-    MovementController,
-    MovementControllerContext,
-)
+from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.motions import Motion, CollisionFreeMotion
 from nova.api import models
 from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, PlanTrajectoryFailed

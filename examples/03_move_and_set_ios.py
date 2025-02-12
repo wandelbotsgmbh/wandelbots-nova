@@ -15,6 +15,7 @@ Prerequisites:
     - NOVA_ACCESS_TOKEN=<token>
 """
 
+
 async def main():
     async with Nova() as nova:
         cell = nova.cell()

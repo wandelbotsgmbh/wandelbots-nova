@@ -13,6 +13,7 @@ PoseOrVectorTuple = (
     Pose | tuple[float, float, float, float, float, float] | tuple[float, float, float]
 )
 
+
 # TODO: HIGH PRIORITY FIX -> we need to inherit from Action
 class CollisionFreeMotion(ABC, pydantic.BaseModel):
     """
@@ -24,13 +25,13 @@ class CollisionFreeMotion(ABC, pydantic.BaseModel):
     settings: MotionSettings = MotionSettings()
     collision_scene: wb.models.CollisionScene | None = None
 
+
 def collision_free(
     target: Pose | tuple[float, ...],
     settings: MotionSettings = MotionSettings(),
     collision_scene: wb.models.CollisionScene | None = None,
 ) -> CollisionFreeMotion:
     return CollisionFreeMotion(target=target, settings=settings, collision_scene=collision_scene)
-
 
 
 class Motion(Action, ABC):
@@ -251,7 +252,9 @@ def cir(
         i = (*intermediate, 0.0, 0.0, 0.0) if len(intermediate) == 3 else intermediate
         intermediate = Pose(i)
 
-    return Circular(target=target, intermediate=intermediate, settings=settings, collision_scene=collision_scene)
+    return Circular(
+        target=target, intermediate=intermediate, settings=settings, collision_scene=collision_scene
+    )
 
 
 class JointPTP(Motion):
@@ -355,4 +358,10 @@ def spl(
         t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
         target = Pose(t)
 
-    return Spline(target=target, settings=settings, path_parameter=path_parameter, time=time, collision_scene=collision_scene)
+    return Spline(
+        target=target,
+        settings=settings,
+        path_parameter=path_parameter,
+        time=time,
+        collision_scene=collision_scene,
+    )
