@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.30.0 (2025-02-12)
+
+### Features
+
+- Add motion group kinematic API and example for reachability check
+  ([#67](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/67),
+  [`1651d7d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1651d7da70857b4f9d2535472d75544c247303bf))
+
+
 ## v0.29.0 (2025-02-12)
 
 ### Features
