@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.28.0 (2025-02-12)
+
+### Features
+
+- **RPS-1221**: Refine nova actions interface
+  ([#64](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/64),
+  [`c6d112d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c6d112d2854657398d4c82fae9681a98a7d7ffe0))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
+## v0.27.2 (2025-02-11)
+
+### Chores
+
+- Update README.md ([#65](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/65),
+  [`bb12fb1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bb12fb15db8eda56b770e07bc08cd153cb80c068))
+
+
 ## v0.27.1 (2025-02-11)
 
 ### Bug Fixes
