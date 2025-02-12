@@ -5,12 +5,11 @@ from loguru import logger
 
 from nova.actions import (
     Action,
-    CollisionFreeMotion,
     CombinedActions,
-    Motion,
     MovementController,
     MovementControllerContext,
 )
+from nova.actions.motions import Motion, CollisionFreeMotion
 from nova.api import models
 from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.movement_controller import motion_group_state_to_motion_state, move_forward

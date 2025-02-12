@@ -5,13 +5,32 @@ import pydantic
 
 from nova import api
 from nova.actions.base import Action
-from nova.types.collision_scene import CollisionScene
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
+import wandelbots_api_client as wb
 
 PoseOrVectorTuple = (
     Pose | tuple[float, float, float, float, float, float] | tuple[float, float, float]
 )
+
+# TODO: HIGH PRIORITY FIX -> we need to inherit from Action
+class CollisionFreeMotion(ABC, pydantic.BaseModel):
+    """
+    A motion that is collision free.
+    """
+
+    type: Literal["collision_free_ptp"] = "collision_free_ptp"
+    target: Pose | tuple[float, ...]
+    settings: MotionSettings = MotionSettings()
+    collision_scene: wb.models.CollisionScene | None = None
+
+def collision_free(
+    target: Pose | tuple[float, ...],
+    settings: MotionSettings = MotionSettings(),
+    collision_scene: wb.models.CollisionScene | None = None,
+) -> CollisionFreeMotion:
+    return CollisionFreeMotion(target=target, settings=settings, collision_scene=collision_scene)
+
 
 
 class Motion(Action, ABC):
@@ -26,6 +45,7 @@ class Motion(Action, ABC):
     type: Literal["linear", "ptp", "circular", "joint_ptp", "spline"]
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
+    collision_scene: wb.models.CollisionScene | None = None
 
     @property
     def is_cartesian(self):
@@ -37,7 +57,7 @@ class UnresolvedMotion(Motion, ABC):
     async def resolve(
         self,
         initial_joints: tuple[float, ...],
-        collision_scene: CollisionScene | None,
+        collision_scene: wb.models.CollisionScene | None,
         configuration: dict,
         moving_robot_identifier: str,
     ) -> tuple[list[Motion], tuple[float, ...]] | None:
@@ -84,7 +104,11 @@ class Linear(Motion):
         return self._to_api_model().model_dump()
 
 
-def lin(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) -> Linear:
+def lin(
+    target: PoseOrVectorTuple,
+    settings: MotionSettings = MotionSettings(),
+    collision_scene: wb.models.CollisionScene | None = None,
+) -> Linear:
     """Convenience function to create a linear motion
 
     Args:
@@ -104,7 +128,7 @@ def lin(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) 
         t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
         target = Pose(t)
 
-    return Linear(target=target, settings=settings)
+    return Linear(target=target, settings=settings, collision_scene=collision_scene)
 
 
 class PTP(Motion):
@@ -137,7 +161,11 @@ class PTP(Motion):
         return self._to_api_model().model_dump()
 
 
-def ptp(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) -> PTP:
+def ptp(
+    target: PoseOrVectorTuple,
+    settings: MotionSettings = MotionSettings(),
+    collision_scene: wb.models.CollisionScene | None = None,
+) -> PTP:
     """Convenience function to create a point-to-point motion
 
     Args:
@@ -157,7 +185,7 @@ def ptp(target: PoseOrVectorTuple, settings: MotionSettings = MotionSettings()) 
         t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
         target = Pose(t)
 
-    return PTP(target=target, settings=settings)
+    return PTP(target=target, settings=settings, collision_scene=collision_scene)
 
 
 class Circular(Motion):
@@ -197,6 +225,7 @@ def cir(
     target: PoseOrVectorTuple,
     intermediate: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
+    collision_scene: wb.models.CollisionScene | None = None,
 ) -> Circular:
     """Convenience function to create a circular motion
 
@@ -222,7 +251,7 @@ def cir(
         i = (*intermediate, 0.0, 0.0, 0.0) if len(intermediate) == 3 else intermediate
         intermediate = Pose(i)
 
-    return Circular(target=target, intermediate=intermediate, settings=settings)
+    return Circular(target=target, intermediate=intermediate, settings=settings, collision_scene=collision_scene)
 
 
 class JointPTP(Motion):
@@ -254,7 +283,11 @@ class JointPTP(Motion):
         return self._to_api_model().model_dump()
 
 
-def jnt(target: tuple[float, ...], settings: MotionSettings = MotionSettings()) -> JointPTP:
+def jnt(
+    target: tuple[float, ...],
+    settings: MotionSettings = MotionSettings(),
+    collision_scene: wb.models.CollisionScene | None = None,
+) -> JointPTP:
     """Convenience function to create a joint PTP motion
 
     Args:
@@ -268,7 +301,7 @@ def jnt(target: tuple[float, ...], settings: MotionSettings = MotionSettings()) 
     >>> assert jnt((1, 2, 3, 4, 5, 6), settings=ms) == JointPTP(target=(1, 2, 3, 4, 5, 6), settings=ms)
 
     """
-    return JointPTP(target=target, settings=settings)
+    return JointPTP(target=target, settings=settings, collision_scene=collision_scene)
 
 
 class Spline(Motion):
@@ -300,6 +333,7 @@ def spl(
     settings: MotionSettings = MotionSettings(),
     path_parameter: float = 1,
     time=None,
+    collision_scene: wb.models.CollisionScene | None = None,
 ) -> Spline:
     """Convenience function to create a spline motion
 
@@ -321,4 +355,4 @@ def spl(
         t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
         target = Pose(t)
 
-    return Spline(target=target, settings=settings, path_parameter=path_parameter, time=time)
+    return Spline(target=target, settings=settings, path_parameter=path_parameter, time=time, collision_scene=collision_scene)

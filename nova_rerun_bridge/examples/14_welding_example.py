@@ -6,7 +6,7 @@ import trimesh
 from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngleTypes, Vector3d
 
 from nova import MotionSettings
-from nova.actions import CollisionFreeMotion, Linear
+from nova.actions import lin, collision_free
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
@@ -242,48 +242,48 @@ async def test():
             try:
                 welding_actions = [
                     # First seam
-                    CollisionFreeMotion(
+                    collision_free(
                         target=seam1_approach,
                         collision_scene=collision_scene,
                         settings=MotionSettings(tcp_velocity_limit=30),
                     ),
-                    Linear(
+                    lin(
                         target=seam1_approach,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
-                    Linear(
+                    lin(
                         target=seam1_start,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
-                    Linear(
+                    lin(
                         target=seam1_end,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
-                    Linear(
+                    lin(
                         target=seam1_departure,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
                     # Move to second seam
-                    CollisionFreeMotion(
+                    collision_free(
                         target=seam2_approach,
                         collision_scene=collision_scene,
                         settings=MotionSettings(tcp_velocity_limit=30),
                     ),
                     # Second seam with collision checking
-                    Linear(
+                    lin(
                         target=seam2_start,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
-                    Linear(
+                    lin(
                         target=seam2_end,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
-                    Linear(
+                    lin(
                         target=seam2_departure,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
-                    CollisionFreeMotion(
-                        target=[0, -np.pi / 2, np.pi / 2, 0, 0, 0],
+                    collision_free(
+                        target=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
                         collision_scene=collision_scene,
                         settings=MotionSettings(tcp_velocity_limit=30),
                     ),
