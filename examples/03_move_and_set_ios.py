@@ -16,6 +16,7 @@ Prerequisites:
 """
 
 
+# TODO: test that set io on the path still works
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
