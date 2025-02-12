@@ -86,6 +86,7 @@ class NovaRerunBridge:
 
         send_blueprint(motion_groups)
         self.log_coordinate_system()
+        rr.set_time_seconds(TIME_INTERVAL_NAME, 0)
 
     def log_coordinate_system(self) -> None:
         """Log the coordinate system of the cell."""
