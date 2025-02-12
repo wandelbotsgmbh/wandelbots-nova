@@ -292,7 +292,7 @@ async def test():
                 trajectory_plan_combined = await motion_group.plan(
                     welding_actions,
                     tcp=tcp,
-                    start_joint_position=[0, -np.pi / 2, np.pi / 2, 0, 0, 0],
+                    start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
                 )
 
                 await bridge.log_actions(welding_actions)

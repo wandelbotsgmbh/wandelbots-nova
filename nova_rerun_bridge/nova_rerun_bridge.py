@@ -12,7 +12,9 @@ from wandelbots_api_client.models import (
 )
 
 from nova import MotionGroup
-from nova.actions import Action, CollisionFreeMotion, CombinedActions, Motion, WriteAction
+from nova.actions import Action, CombinedActions
+from nova.actions.io import WriteAction
+from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
 from nova.core.nova import Nova
 from nova.types.pose import Pose

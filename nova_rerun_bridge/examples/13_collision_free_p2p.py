@@ -120,7 +120,7 @@ async def test():
 
             try:
                 joint_trajectory = await motion_group.plan(
-                    actions, tcp, start_joint_position=[0, -np.pi / 2, np.pi / 2, 0, 0, 0]
+                    actions, tcp, start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0)
                 )
                 await bridge.log_actions(actions)
                 await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
