@@ -1,7 +1,7 @@
 import asyncio
 
 from nova import Nova
-from nova.actions import jnt, ptp, io_write
+from nova.actions import io_write, jnt, ptp
 from nova.api import models
 from nova.types import Pose
 from nova_rerun_bridge import NovaRerunBridge

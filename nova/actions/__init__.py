@@ -1,7 +1,7 @@
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions, MovementController, MovementControllerContext
 from nova.actions.io import io_write
-from nova.actions.motions import cir, jnt, lin, ptp, collision_free
+from nova.actions.motions import cir, collision_free, jnt, lin, ptp
 
 __all__ = [
     "Action",

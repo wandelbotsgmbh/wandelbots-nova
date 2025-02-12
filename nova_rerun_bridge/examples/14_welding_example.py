@@ -6,7 +6,7 @@ import trimesh
 from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngleTypes, Vector3d
 
 from nova import MotionSettings
-from nova.actions import lin, collision_free
+from nova.actions import collision_free, lin
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova

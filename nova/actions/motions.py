@@ -2,12 +2,12 @@ from abc import ABC, abstractmethod
 from typing import Literal
 
 import pydantic
+import wandelbots_api_client as wb
 
 from nova import api
 from nova.actions.base import Action
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
-import wandelbots_api_client as wb
 
 PoseOrVectorTuple = (
     Pose | tuple[float, float, float, float, float, float] | tuple[float, float, float]
