@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import time
+from importlib import metadata
 from typing import TypeVar
 
 import wandelbots_api_client as wb
@@ -103,6 +104,8 @@ class ApiGateway:
         api_client_config.verify_ssl = verify_ssl
 
         self._api_client = wb.ApiClient(configuration=api_client_config)
+        version = metadata.version("wandelbots-nova")
+        self._api_client.user_agent = f"wandelbots_nova_python_sdk/{version}"
 
         # Use the intercept function to wrap each API client
         self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client))
