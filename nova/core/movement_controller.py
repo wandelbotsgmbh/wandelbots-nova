@@ -13,14 +13,18 @@ from nova.core.exceptions import InitMovementFailed
 from nova.types import MotionState, Pose, RobotState
 
 
+
 def movement_to_motion_state(movement: wb.models.Movement) -> MotionState | None:
     """Convert a wb.models.Movement to a MotionState."""
+    from icecream import ic
+    ic(movement)
     if (
         movement.movement.state is None
         or movement.movement.state.motion_groups is None
         or len(movement.movement.state.motion_groups) == 0
         or movement.movement.current_location is None
     ):
+        ic()
         return None
 
     # TODO: in which cases do we have more than one motion group here?
@@ -43,7 +47,7 @@ def motion_group_state_to_motion_state(
 
 
 def move_forward(
-    context: MovementControllerContext, on_movement: Callable[[MotionState | None], None]
+    context: MovementControllerContext
 ) -> MovementControllerFunction:
     """
     movement_controller is an async function that yields requests to the server.
@@ -75,17 +79,9 @@ def move_forward(
         # then we wait until the movement is finished
         async for execute_trajectory_response in response_stream:
             instance = execute_trajectory_response.actual_instance
-
-            # Send the current location to the consumer
-            if isinstance(instance, wb.models.Movement) and instance.movement:
-                motion_state = movement_to_motion_state(instance)
-                if motion_state:
-                    on_movement(motion_state)
-
             # Stop when standstill indicates motion ended
             if isinstance(instance, wb.models.Standstill):
                 if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
-                    on_movement(None)
                     return
 
     return movement_controller

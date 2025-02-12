@@ -1,3 +1,4 @@
+import asyncio
 from typing import Callable
 
 import wandelbots_api_client as wb
@@ -9,6 +10,7 @@ from nova.core.movement_controller import motion_group_state_to_motion_state, mo
 from nova.core.robot_cell import AbstractRobot
 from nova.gateway import ApiGateway
 from nova.types import InitialMovementStream, LoadPlanResponse, MotionState, Pose, RobotState
+from nova.utils import StreamExtractor
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
@@ -72,7 +74,6 @@ class MotionGroup(AbstractRobot):
         joint_trajectory: wb.models.JointTrajectory,
         tcp: str,
         actions: list[Action],
-        on_movement: Callable[[MotionState | None], None],
         movement_controller: MovementController | None,
     ):
         if movement_controller is None:
@@ -103,17 +104,27 @@ class MotionGroup(AbstractRobot):
                 move_to_response.state.motion_groups[0],
                 float(move_to_response.move_response.current_location_on_trajectory),
             )
-            on_movement(motion_state)
+            yield motion_state
 
         controller = movement_controller(
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
                 motion_id=load_plan_response.motion,
-            ),
-            on_movement=on_movement,
+            )
         )
-
-        await self._api_gateway.motion_api.execute_trajectory(self._cell, controller)
+        def stop_condition(response: wb.models.ExecuteTrajectoryResponse) -> bool:
+            instance = response.actual_instance
+            # Stop when standstill indicates motion ended
+            return (
+                isinstance(instance, wb.models.Standstill)
+                and instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED
+            )
+        
+        execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
+        execution_task = asyncio.create_task(self._api_gateway.motion_api.execute_trajectory(self._cell, execute_response_streaming_controller))
+        async for execute_resposne in execute_response_streaming_controller:
+            yield execute_resposne
+        await execution_task
 
     async def _get_number_of_joints(self) -> int:
         spec = await self._api_gateway.motion_group_infos_api.get_motion_group_specification(
