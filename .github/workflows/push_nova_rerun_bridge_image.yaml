@@ -115,6 +115,7 @@ jobs:
           GH_TOKEN: ${{ secrets.CATALOG_TOKEN }}
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
           VERSION: "${{ steps.version.outputs.version }}"
+          CATALOG_ENTRY_NAME: "nova_rerun_bridge"
         run: |
           curl -L \
             -X POST \
