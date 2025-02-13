@@ -25,7 +25,6 @@ import aiostream
 import anyio
 import asyncstdlib
 import pydantic
-import wandelbots_api_client as wb
 from loguru import logger
 
 from nova import api
@@ -233,7 +232,7 @@ class AbstractRobot(Device):
         actions: list[Action | CollisionFreeMotion] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        optimizer_setup: wb.models.OptimizerSetup | None = None,
+        optimizer_setup: api.models.OptimizerSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -244,7 +243,7 @@ class AbstractRobot(Device):
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
 
         Returns:
-            wb.models.JointTrajectory: The planned joint trajectory
+            api.models.JointTrajectory: The planned joint trajectory
         """
 
     async def plan(
@@ -253,7 +252,7 @@ class AbstractRobot(Device):
         actions: list[Action | CollisionFreeMotion] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        optimizer_setup: wb.models.OptimizerSetup | None = None,
+        optimizer_setup: api.models.OptimizerSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -263,9 +262,10 @@ class AbstractRobot(Device):
             tcp (str): The identifier of the tool center point (TCP)
             start_joint_position: the initial position of the robot
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
+            optimizer_setup (api.models.OptimizerSetup | None): The optimizer setup to be used for planning
 
         Returns:
-            wb.models.JointTrajectory: The planned joint trajectory
+            api.models.JointTrajectory: The planned joint trajectory
         """
         if not isinstance(actions, list):
             actions = [actions]
@@ -273,7 +273,12 @@ class AbstractRobot(Device):
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        return await self._plan(actions, tcp, start_joint_position, optimizer_setup)
+        return await self._plan(
+            actions=actions,
+            tcp=tcp,
+            start_joint_position=start_joint_position,
+            optimizer_setup=optimizer_setup,
+        )
 
     @abstractmethod
     async def _execute(
@@ -287,7 +292,7 @@ class AbstractRobot(Device):
         """Execute a planned motion
 
         Args:
-            joint_trajectory (wb.models.JointTrajectory): The planned joint trajectory
+            joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
             tcp (str): The identifier of the tool center point (TCP)
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
@@ -305,7 +310,7 @@ class AbstractRobot(Device):
         """Execute a planned motion
 
         Args:
-            joint_trajectory (wb.models.JointTrajectory): The planned joint trajectory
+            joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
             tcp (str): The identifier of the tool center point (TCP)
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
@@ -327,9 +332,9 @@ class AbstractRobot(Device):
         callerator = Callerator(_on_movement)
         execution_task = asyncio.create_task(
             self._execute(
-                joint_trajectory,
-                tcp,
-                actions,
+                joint_trajectory=joint_trajectory,
+                tcp=tcp,
+                actions=actions,
                 movement_controller=movement_controller,
                 on_movement=callerator,
             )
