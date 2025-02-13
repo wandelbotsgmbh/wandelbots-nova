@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.30.1 (2025-02-13)
+
+### Bug Fixes
+
+- Collision free p2p example
+  ([`78db5c9`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/78db5c9b964e07c0c8bf673cb2874f8d0618cf80))
+
+
 ## v0.30.0 (2025-02-12)
 
 ### Features
