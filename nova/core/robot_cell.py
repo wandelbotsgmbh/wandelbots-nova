@@ -28,11 +28,11 @@ from aiostream import pipe, stream
 from loguru import logger
 
 from nova import api
-from nova.api import models as nova_models
-from nova.actions import Action, MovementResponse, MovementController
+from nova.actions import Action, MovementController
 from nova.actions.motions import CollisionFreeMotion
+from nova.api import models as nova_models
 from nova.core.movement_controller import movement_to_motion_state
-from nova.types import MotionState, Pose, RobotState
+from nova.types import MotionState, MovementResponse, Pose, RobotState
 
 
 class RobotCellError(Exception):
@@ -322,13 +322,17 @@ class AbstractRobot(Device):
 
         self._motion_recording.append([])
 
-        def unpack_movement_response(movement_response: MovementResponse) -> Any:  # TODO: can we use a more specific type here?
+        def unpack_movement_response(
+            movement_response: MovementResponse,
+        ) -> Any:  # TODO: can we use a more specific type here?
             if isinstance(movement_response, nova_models.ExecuteTrajectoryResponse):
                 return movement_response.actual_instance
             # TODO: handle the StreamMoveResponse case or make sure it doesn't happen
             assert False, f"Unexpected movement response: {movement_response}"
 
-        def is_movement(instance: Any) -> bool:  # TODO: can we use a more specific type here? (see above)
+        def is_movement(
+            instance: Any,
+        ) -> bool:  # TODO: can we use a more specific type here? (see above)
             return isinstance(instance, wb.models.Movement)
 
         def update_motion_recording(motion_state: MotionState):
@@ -365,23 +369,19 @@ class AbstractRobot(Device):
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             on_movement (Callable[[MotionState], None]): A callback which is triggered for every movement
         """
-        async for _ in self.stream_execute(joint_trajectory, tcp, actions, movement_controller=movement_controller):
+        async for _ in self.stream_execute(
+            joint_trajectory, tcp, actions, movement_controller=movement_controller
+        ):
             pass
 
     async def stream_plan_and_execute(
-        self,
-        actions: list[Action] | Action,
-        tcp: str,
+        self, actions: list[Action] | Action, tcp: str
     ) -> AsyncIterable[MotionState]:
         joint_trajectory = await self.plan(actions, tcp)
         async for motion_state in self.stream_execute(joint_trajectory, tcp, actions):
             yield motion_state
 
-    async def plan_and_execute(
-        self,
-        actions: list[Action] | Action,
-        tcp: str,
-    ) -> None:
+    async def plan_and_execute(self, actions: list[Action] | Action, tcp: str) -> None:
         joint_trajectory = await self.plan(actions, tcp)
         await self.execute(joint_trajectory, tcp, actions, movement_controller=None)
 

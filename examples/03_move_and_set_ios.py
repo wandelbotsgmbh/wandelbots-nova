@@ -5,7 +5,6 @@ from nova.actions import io_write, jnt, ptp
 from nova.api import models
 from nova.types import Pose
 
-
 """
 Example: Move the robot and set I/Os on the path.
 

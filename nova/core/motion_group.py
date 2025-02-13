@@ -1,16 +1,17 @@
-from typing import AsyncIterable,Callable, Generator, cast
+import asyncio
+from typing import AsyncIterable, Callable, Generator, cast
 
 import wandelbots_api_client as wb
 from loguru import logger
 
-from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext, MovementResponse
+from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
 from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, PlanTrajectoryFailed
-from nova.core.movement_controller import motion_group_state_to_motion_state, move_forward
+from nova.core.movement_controller import move_forward
 from nova.core.robot_cell import AbstractRobot
 from nova.gateway import ApiGateway
-from nova.types import InitialMovementStream, LoadPlanResponse, MotionState, Pose, RobotState
+from nova.types import InitialMovementStream, LoadPlanResponse, MovementResponse, Pose, RobotState
 from nova.utils import StreamExtractor
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
@@ -362,6 +363,7 @@ class MotionGroup(AbstractRobot):
                 motion_id=load_plan_response.motion,
             )
         )
+
         def stop_condition(response: wb.models.ExecuteTrajectoryResponse) -> bool:
             instance = response.actual_instance
             # Stop when standstill indicates motion ended
@@ -369,9 +371,13 @@ class MotionGroup(AbstractRobot):
                 isinstance(instance, wb.models.Standstill)
                 and instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED
             )
-        
+
         execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
-        execution_task = asyncio.create_task(self._api_gateway.motion_api.execute_trajectory(self._cell, execute_response_streaming_controller))
+        execution_task = asyncio.create_task(
+            self._api_gateway.motion_api.execute_trajectory(
+                self._cell, execute_response_streaming_controller
+            )
+        )
         async for execute_resposne in execute_response_streaming_controller:
             yield execute_resposne
         await execution_task

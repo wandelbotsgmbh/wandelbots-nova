@@ -23,7 +23,7 @@ class StreamExtractor(Generic[T]):
 
     def __aiter__(self) -> AsyncIterator[T]:
         return self
-    
+
     async def __anext__(self) -> T:
         value = await self._queue.get()
         if value is None:

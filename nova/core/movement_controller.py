@@ -15,7 +15,6 @@ from nova.types import (
 )
 
 
-
 def movement_to_motion_state(movement: wb.models.Movement) -> MotionState | None:
     """Convert a wb.models.Movement to a MotionState."""
     if (
@@ -45,9 +44,7 @@ def motion_group_state_to_motion_state(
     )
 
 
-def move_forward(
-    context: MovementControllerContext
-) -> MovementControllerFunction:
+def move_forward(context: MovementControllerContext) -> MovementControllerFunction:
     """
     movement_controller is an async function that yields requests to the server.
     If a movement_consumer is provided, we'll asend() each wb.models.MovementMovement to it,

@@ -9,6 +9,7 @@ from nova.types.vector3d import Vector3d
 LoadPlanResponse = api.models.PlanSuccessfulResponse
 InitialMovementStream = AsyncGenerator[api.models.StreamMoveResponse, None]
 InitialMovementConsumer = Callable[[api.models.StreamMoveResponse], None]
+MovementResponse = api.models.ExecuteTrajectoryResponse | api.models.StreamMoveResponse
 ExecuteTrajectoryRequestStream = AsyncGenerator[api.models.ExecuteTrajectoryRequest, None]
 ExecuteTrajectoryResponseStream = AsyncGenerator[api.models.ExecuteTrajectoryResponse, None]
 MovementControllerFunction = Callable[
@@ -22,6 +23,7 @@ __all__ = [
     "LoadPlanResponse",
     "InitialMovementStream",
     "InitialMovementConsumer",
+    "MovementResponse",
     "MotionState",
     "RobotState",
     "MotionSettings",
