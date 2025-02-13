@@ -91,12 +91,12 @@ jobs:
           echo "Checking built image..."
           echo "Version: ${{ steps.version.outputs.version }}"
           docker images | grep ${{ env.IMAGE_NAME }}
-      
+
       - name: Update Catalog Entry
         if: steps.version.outputs.version != ''
         env:
           GH_TOKEN: ${{ secrets.CATALOG_TOKEN }}
-          IMAGE:  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
           VERSION: "${{ steps.version.outputs.version }}"
         run: |
           curl -L \

@@ -108,7 +108,7 @@ jobs:
           echo "Checking built image..."
           echo "Version: ${{ steps.version.outputs.version }}"
           docker images | grep ${{ env.IMAGE_NAME }}
-      
+
       - name: Update Catalog Entry
         if: steps.version.outputs.version != ''
         env:
