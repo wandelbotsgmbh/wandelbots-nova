@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.31.0 (2025-02-13)
+
+### Features
+
+- Invert pose ([#70](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/70),
+  [`84be73c`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/84be73c0793be62568b25e4f2b900e0bfefb348e))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.30.1 (2025-02-13)
 
 ### Bug Fixes
