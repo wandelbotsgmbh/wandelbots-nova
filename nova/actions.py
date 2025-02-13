@@ -505,6 +505,7 @@ class MovementControllerContext(pydantic.BaseModel):
     motion_id: str
 
 
+MovementResponse = wb.models.ExecuteTrajectoryResponse | wb.models.StreamMoveResponse
 ExecuteTrajectoryRequestStream = AsyncGenerator[wb.models.ExecuteTrajectoryRequest, None]
 ExecuteTrajectoryResponseStream = AsyncGenerator[wb.models.ExecuteTrajectoryResponse, None]
 MovementControllerFunction = Callable[

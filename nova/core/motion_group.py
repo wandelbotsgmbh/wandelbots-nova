@@ -1,10 +1,10 @@
 import asyncio
-from typing import AsyncGenerator, Callable
+from typing import AsyncIterable
 
 import wandelbots_api_client as wb
 from loguru import logger
 
-from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
+from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext, MovementResponse
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.movement_controller import motion_group_state_to_motion_state, move_forward
 from nova.core.robot_cell import AbstractRobot
@@ -75,7 +75,7 @@ class MotionGroup(AbstractRobot):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
-    ) -> AsyncGenerator[MotionState, None]:
+    ) -> AsyncIterable[MovementResponse]:
         if movement_controller is None:
             movement_controller = move_forward
 
@@ -99,12 +99,7 @@ class MotionGroup(AbstractRobot):
             ):
                 continue
 
-            # TODO: maybe 1-...
-            motion_state = motion_group_state_to_motion_state(
-                move_to_response.state.motion_groups[0],
-                float(move_to_response.move_response.current_location_on_trajectory),
-            )
-            yield motion_state
+            yield move_to_response
 
         controller = movement_controller(
             MovementControllerContext(

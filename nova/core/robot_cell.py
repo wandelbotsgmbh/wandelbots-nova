@@ -8,9 +8,7 @@ from typing import (
     Any,
     AsyncIterable,
     Awaitable,
-    Callable,
     ClassVar,
-    Coroutine,
     Generic,
     Literal,
     Protocol,
@@ -30,7 +28,8 @@ from aiostream import pipe, stream
 from loguru import logger
 
 from nova import api
-from nova.actions import Action, ExecuteTrajectoryResponseStream, MovementController
+from nova.api import models as nova_models
+from nova.actions import Action, MovementResponse, MovementController
 from nova.core.movement_controller import movement_to_motion_state
 from nova.types import MotionState, Pose, RobotState
 
@@ -266,7 +265,7 @@ class AbstractRobot(Device):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
-    ) -> ExecuteTrajectoryResponseStream:
+    ) -> AsyncIterable[MovementResponse]:
         """Execute a planned motion
 
         Args:
@@ -300,8 +299,11 @@ class AbstractRobot(Device):
 
         self._motion_recording.append([])
 
-        def unpack_execute_response(execute_response: wb.models.ExecuteTrajectoryResponse) -> Any:  # TODO: can we use a more specific type here?
-            return execute_response.actual_instance
+        def unpack_movement_response(movement_response: MovementResponse) -> Any:  # TODO: can we use a more specific type here?
+            if isinstance(movement_response, nova_models.ExecuteTrajectoryResponse):
+                return movement_response.actual_instance
+            # TODO: handle the StreamMoveResponse case or make sure it doesn't happen
+            assert False, f"Unexpected movement response: {movement_response}"
 
         def is_movement(instance: Any) -> bool:  # TODO: can we use a more specific type here? (see above)
             return isinstance(instance, wb.models.Movement)
@@ -315,7 +317,7 @@ class AbstractRobot(Device):
         )
         motion_states = (
             stream.iterate(execute_response_stream)
-            | pipe.map(unpack_execute_response)
+            | pipe.map(unpack_movement_response)
             | pipe.filter(is_movement)
             | pipe.map(movement_to_motion_state)
             | pipe.action(update_motion_recording)
