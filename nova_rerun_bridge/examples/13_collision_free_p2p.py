@@ -10,7 +10,7 @@ from wandelbots_api_client.models import (
 )
 
 from nova import MotionSettings
-from nova.actions import CollisionFreeMotion, ptp
+from nova.actions.motions import collision_free, ptp
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
@@ -159,14 +159,14 @@ async def test():
             )
 
             welding_actions = [
-                CollisionFreeMotion(
+                collision_free(
                     target=Pose((-500, -400, 200, np.pi, 0, 0)),
                     collision_scene=collision_scene,
                     settings=MotionSettings(tcp_velocity_limit=30),
                 )
             ]
 
-            trajectory_plan_combined = await motion_group._plan_combined(
+            trajectory_plan_combined = await motion_group.plan(
                 welding_actions,
                 tcp=tcp,
                 start_joint_position=joint_trajectory.joint_positions[-1].joints,
