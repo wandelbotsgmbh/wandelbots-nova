@@ -90,6 +90,29 @@ class Pose(pydantic.BaseModel, Sized):
     def __len__(self):
         return 6
 
+    def __invert__(self) -> Pose:
+        """
+        Return the inverse of this pose.
+        In terms of 4x4 homogeneous matrices, this is T^-1 where T = R|p
+                                                                     0|1
+        i.e. T^-1 = R^T | -R^T p
+                     0  |   1
+
+        Returns:
+            Pose: the inverse of the current pose
+
+        Examples:
+        >>> p = Pose((1, 2, 3, 0, 0, np.pi/2))  # rotate 90° about Z
+        >>> inv_p = ~p
+        >>> identity_approx = p @ inv_p
+        >>> np.allclose(identity_approx.position.to_tuple(), (0, 0, 0), atol=1e-7)
+        True
+        """
+        # Invert the homogeneous transformation matrix
+        inv_matrix = np.linalg.inv(self.matrix)
+        # Convert back to a Pose
+        return self._matrix_to_pose(inv_matrix)
+
     def to_tuple(self) -> tuple[float, float, float, float, float, float]:
         """Return the pose as a tuple
 
