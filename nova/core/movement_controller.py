@@ -16,15 +16,12 @@ from nova.types import MotionState, Pose, RobotState
 
 def movement_to_motion_state(movement: wb.models.Movement) -> MotionState | None:
     """Convert a wb.models.Movement to a MotionState."""
-    from icecream import ic
-    ic(movement)
     if (
         movement.movement.state is None
         or movement.movement.state.motion_groups is None
         or len(movement.movement.state.motion_groups) == 0
         or movement.movement.current_location is None
     ):
-        ic()
         return None
 
     # TODO: in which cases do we have more than one motion group here?

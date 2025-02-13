@@ -15,12 +15,9 @@ Prerequisites:
     - NOVA_ACCESS_TOKEN=<token>
 """
 
-from icecream import ic
 
 async def main():
-    ic("bar")
     async with Nova() as nova:
-        ic("baz")
         cell = nova.cell()
         controller = await cell.ensure_virtual_robot_controller(
             "ur",
@@ -55,12 +52,10 @@ async def main():
             action.settings = MotionSettings(tcp_velocity_limit=300)
 
         joint_trajectory = await motion_group.plan(actions, tcp)
-        async for motion_state in motion_group.stream_execute(joint_trajectory, tcp, actions=actions):
-            ic(motion_state)
+        await motion_group.execute(joint_trajectory, tcp, actions=actions)
 
-        #await cell.delete_robot_controller(controller.controller_id)
+        await cell.delete_robot_controller(controller.controller_id)
 
 
 if __name__ == "__main__":
-    ic("foo")
     asyncio.run(main())

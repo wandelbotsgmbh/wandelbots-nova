@@ -1,5 +1,5 @@
 import asyncio
-from typing import Callable
+from typing import AsyncGenerator, Callable
 
 import wandelbots_api_client as wb
 from loguru import logger
@@ -75,7 +75,7 @@ class MotionGroup(AbstractRobot):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
-    ):
+    ) -> AsyncGenerator[MotionState, None]:
         if movement_controller is None:
             movement_controller = move_forward
 

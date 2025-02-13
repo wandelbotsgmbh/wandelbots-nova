@@ -33,7 +33,6 @@ from nova import api
 from nova.actions import Action, ExecuteTrajectoryResponseStream, MovementController
 from nova.core.movement_controller import movement_to_motion_state
 from nova.types import MotionState, Pose, RobotState
-from nova.utils import Callerator
 
 
 class RobotCellError(Exception):
@@ -331,7 +330,7 @@ class AbstractRobot(Device):
         tcp: str,
         actions: list[Action] | Action | None,
         movement_controller: MovementController | None = None,
-    ) -> Coroutine[None, None, None]:
+    ) -> None:
         """Execute a planned motion
 
         Args:
@@ -341,13 +340,23 @@ class AbstractRobot(Device):
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             on_movement (Callable[[MotionState], None]): A callback which is triggered for every movement
         """
-        self.stream_execute(joint_trajectory, tcp, actions, movement_controller=movement_controller)
+        async for _ in self.stream_execute(joint_trajectory, tcp, actions, movement_controller=movement_controller):
+            pass
+
+    async def stream_plan_and_execute(
+        self,
+        actions: list[Action] | Action,
+        tcp: str,
+    ) -> AsyncIterable[MotionState]:
+        joint_trajectory = await self.plan(actions, tcp)
+        async for motion_state in self.stream_execute(joint_trajectory, tcp, actions):
+            yield motion_state
 
     async def plan_and_execute(
         self,
         actions: list[Action] | Action,
         tcp: str,
-    ):
+    ) -> None:
         joint_trajectory = await self.plan(actions, tcp)
         await self.execute(joint_trajectory, tcp, actions, movement_controller=None)
 
@@ -619,7 +628,7 @@ class RobotCell:
             return
 
         state_streams = [device.state_stream(rate) for device in state_streaming_devices]
-        async with aiostream.stream.merge(*state_streams).stream() as devices_state_stream:
+        async with stream.merge(*state_streams).stream() as devices_state_stream:
             async for state in devices_state_stream:
                 yield state
 
