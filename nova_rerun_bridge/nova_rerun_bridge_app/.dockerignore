@@ -1,0 +1,37 @@
+# Environment files
+.env
+.env.*
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.python-version
+
+# Development
+.git/
+.gitignore
+.pytest_cache/
+tests/
+*.log
+*.tmp
+
+# Poetry
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+Dockerfile
+.dockerignore

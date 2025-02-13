@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np
@@ -16,38 +18,43 @@ class Vector3d(pydantic.BaseModel):
     y: float | int
     z: float | int
 
-    def __neg__(self) -> "Vector3d":
+    def __eq__(self, other):
+        if not isinstance(other, Vector3d):
+            return NotImplemented
+        return self.x == other.x and self.y == other.y and self.z == other.z
+
+    def __neg__(self) -> Vector3d:
         return type(self)(x=-self.x, y=-self.y, z=-self.z)
 
-    def __add__(self, other: Any) -> "Vector3d":
+    def __add__(self, other: Any) -> Vector3d:
         if isinstance(other, (float, int)):
             return type(self)(x=self.x + other, y=self.y + other, z=self.z + other)
         if isinstance(other, Vector3d):
             return type(self)(x=self.x + other.x, y=self.y + other.y, z=self.z + other.z)
         return NotImplemented
 
-    def __radd__(self, other: Any) -> "Vector3d":
+    def __radd__(self, other: Any) -> Vector3d:
         return self.__add__(other)
 
-    def __sub__(self, other: Any) -> "Vector3d":
+    def __sub__(self, other: Any) -> Vector3d:
         return self.__add__(-other)
 
-    def __rsub__(self, other: Any) -> "Vector3d":
+    def __rsub__(self, other: Any) -> Vector3d:
         if isinstance(other, (float, int)):
             return type(self)(x=other - self.x, y=other - self.y, z=other - self.z)
         if isinstance(other, Vector3d):
             return type(self)(x=other.x - self.x, y=other.y - self.y, z=other.z - self.z)
         return NotImplemented
 
-    def __mul__(self, other: Any) -> "Vector3d":
+    def __mul__(self, other: Any) -> Vector3d:
         if isinstance(other, (float, int)):
             return type(self)(x=other * self.x, y=other * self.y, z=other * self.z)
         return NotImplemented
 
-    def __rmul__(self, other: Any) -> "Vector3d":
+    def __rmul__(self, other: Any) -> Vector3d:
         return self * other
 
-    def __truediv__(self, other: Any) -> "Vector3d":
+    def __truediv__(self, other: Any) -> Vector3d:
         if not isinstance(other, (float, int)):
             return NotImplemented
         return (1 / other) * self
@@ -56,7 +63,7 @@ class Vector3d(pydantic.BaseModel):
         return 3
 
     @classmethod
-    def from_tuple(cls, value: tuple[float, float, float]) -> "Vector3d":
+    def from_tuple(cls, value: tuple[float, float, float]) -> Vector3d:
         """Create a new Vector3d from tuple
 
         Examples:
@@ -77,6 +84,17 @@ class Vector3d(pydantic.BaseModel):
         (10.0, 20.5, 30.2)
         """
         return self.x, self.y, self.z
+
+    def __array__(self, dtype=None):
+        """Allows numpy to automatically convert Vector3d to a numeric array.
+
+        Examples:
+        >>> v1 = Vector3d(x=1.0, y=2.0, z=3.0)
+        >>> v2 = Vector3d(x=1.001, y=2.0, z=3.0)
+        >>> np.isclose(v1, v2, atol=1e-3)
+        array([ True,  True,  True])
+        """
+        return np.array(self.to_tuple(), dtype=dtype)
 
     def to_quaternion(self):
         """Interpret the object as a rotation vector and convert it to a quaternion"""

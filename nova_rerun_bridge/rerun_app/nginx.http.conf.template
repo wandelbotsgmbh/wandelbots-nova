@@ -1,0 +1,56 @@
+server {
+    listen 3001;
+
+    location = $BASE_PATH/app_icon.png {
+        root /app/static;
+        try_files /app_icon.png =404;
+    }
+
+    location = $BASE_PATH {
+        if ($http_x_forwarded_scheme = "https") {
+            return 301 $scheme://$http_host$BASE_PATH/?url=https://$http_host$BASE_PATH/../nova-rerun-bridge;
+        }
+        return 301 $scheme://$http_host$BASE_PATH/?url=http://$http_host$BASE_PATH/../nova-rerun-bridge;
+    }
+
+    location = $BASE_PATH/ws {
+        return 301 $scheme://$http_host$BASE_PATH/ws/;
+    }
+
+    location $BASE_PATH/ws/ {
+        proxy_pass http://localhost:9877/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = $BASE_PATH/sdk/ {
+        proxy_pass http://localhost:9000/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Handle WebSocket timeouts
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+
+    location $BASE_PATH/ {
+        proxy_pass http://localhost:3000/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

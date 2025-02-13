@@ -1,0 +1,14 @@
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: rerun-route
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: PathPrefix(`/some/nova-rerun-bridge`)
+      services:
+        - kind: Service
+          name: nova-rerun-bridge
+          port: nginx

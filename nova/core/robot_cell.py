@@ -30,6 +30,7 @@ from loguru import logger
 from nova import api
 from nova.api import models as nova_models
 from nova.actions import Action, MovementResponse, MovementController
+from nova.actions.motions import CollisionFreeMotion
 from nova.core.movement_controller import movement_to_motion_state
 from nova.types import MotionState, Pose, RobotState
 
@@ -227,28 +228,45 @@ class AbstractRobot(Device):
         return self._execution_duration
 
     @abstractmethod
-    async def _plan(self, actions: list[Action], tcp: str) -> api.models.JointTrajectory:
+    async def _plan(
+        self,
+        actions: list[Action | CollisionFreeMotion] | Action,
+        tcp: str,
+        start_joint_position: tuple[float, ...] | None = None,
+        optimizer_setup: api.models.OptimizerSetup | None = None,
+    ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
         Args:
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
                 Only motion actions are considered for planning.
             tcp (str): The identifier of the tool center point (TCP)
+            start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
 
         Returns:
-            wb.models.JointTrajectory: The planned joint trajectory
+            api.models.JointTrajectory: The planned joint trajectory
         """
 
-    async def plan(self, actions: list[Action] | Action, tcp: str) -> api.models.JointTrajectory:
+    async def plan(
+        self,
+        # TODO: this signature is changing, maybe I should make CollisionFreeMotion a subclass of Action
+        actions: list[Action | CollisionFreeMotion] | Action,
+        tcp: str,
+        start_joint_position: tuple[float, ...] | None = None,
+        optimizer_setup: api.models.OptimizerSetup | None = None,
+    ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
         Args:
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
                 Only motion actions are considered for planning.
             tcp (str): The identifier of the tool center point (TCP)
+            start_joint_position: the initial position of the robot
+            start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
+            optimizer_setup (api.models.OptimizerSetup | None): The optimizer setup to be used for planning
 
         Returns:
-            wb.models.JointTrajectory: The planned joint trajectory
+            api.models.JointTrajectory: The planned joint trajectory
         """
         if not isinstance(actions, list):
             actions = [actions]
@@ -256,7 +274,12 @@ class AbstractRobot(Device):
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        return await self._plan(actions, tcp)
+        return await self._plan(
+            actions=actions,
+            tcp=tcp,
+            start_joint_position=start_joint_position,
+            optimizer_setup=optimizer_setup,
+        )
 
     @abstractmethod
     async def _execute(
@@ -269,7 +292,7 @@ class AbstractRobot(Device):
         """Execute a planned motion
 
         Args:
-            joint_trajectory (wb.models.JointTrajectory): The planned joint trajectory
+            joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
             tcp (str): The identifier of the tool center point (TCP)
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
@@ -286,7 +309,7 @@ class AbstractRobot(Device):
         """Execute a planned motion
 
         Args:
-            joint_trajectory (wb.models.JointTrajectory): The planned joint trajectory
+            joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
             tcp (str): The identifier of the tool center point (TCP)
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward

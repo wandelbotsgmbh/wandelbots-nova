@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Iterable, Sized
 
 import numpy as np
@@ -69,6 +71,11 @@ class Pose(pydantic.BaseModel, Sized):
     def __str__(self):
         return str(round(self).to_tuple())
 
+    def __eq__(self, other):
+        if not isinstance(other, Pose):
+            return NotImplemented
+        return self.position == other.position and self.orientation == other.orientation
+
     def __round__(self, n=None):
         if n is not None:
             raise NotImplementedError("Setting precision is not supported yet")
@@ -82,6 +89,29 @@ class Pose(pydantic.BaseModel, Sized):
 
     def __len__(self):
         return 6
+
+    def __invert__(self) -> Pose:
+        """
+        Return the inverse of this pose.
+        In terms of 4x4 homogeneous matrices, this is T^-1 where T = R|p
+                                                                     0|1
+        i.e. T^-1 = R^T | -R^T p
+                     0  |   1
+
+        Returns:
+            Pose: the inverse of the current pose
+
+        Examples:
+        >>> p = Pose((1, 2, 3, 0, 0, np.pi/2))  # rotate 90° about Z
+        >>> inv_p = ~p
+        >>> identity_approx = p @ inv_p
+        >>> np.allclose(identity_approx.position.to_tuple(), (0, 0, 0), atol=1e-7)
+        True
+        """
+        # Invert the homogeneous transformation matrix
+        inv_matrix = np.linalg.inv(self.matrix)
+        # Convert back to a Pose
+        return self._matrix_to_pose(inv_matrix)
 
     def to_tuple(self) -> tuple[float, float, float, float, float, float]:
         """Return the pose as a tuple
@@ -129,7 +159,19 @@ class Pose(pydantic.BaseModel, Sized):
         else:
             raise ValueError(f"Cannot multiply Pose with {type(other)}")
 
-    def transform(self, other) -> "Pose":
+    def __array__(self, dtype=None):
+        """Convert Pose to a 6-element numpy array: [pos.x, pos.y, pos.z, ori.x, ori.y, ori.z].
+
+        Examples:
+        >>> p1 = Pose((1.0, 2.0, 3.0, 4.0, 5.0, 6.0))
+        >>> p2 = Pose((1.001, 2.0, 3.0, 3.9995, 5.0, 6.0))
+        >>> np.isclose(p1, p2, atol=1e-3)
+        array([ True,  True,  True,  True,  True,  True])
+        """
+        # The `to_tuple()` method already returns (x, y, z, rx, ry, rz)
+        return np.array(self.to_tuple(), dtype=dtype)
+
+    def transform(self, other) -> Pose:
         return self @ other
 
     def _to_wb_pose(self) -> wb.models.Pose:
@@ -173,7 +215,7 @@ class Pose(pydantic.BaseModel, Sized):
         mat[:3, 3] = [self.position.x, self.position.y, self.position.z]
         return mat
 
-    def _matrix_to_pose(self, matrix: np.ndarray) -> "Pose":
+    def _matrix_to_pose(self, matrix: np.ndarray) -> Pose:
         """Converts a homogeneous transformation matrix to a Pose."""
         rotation_matrix = matrix[:3, :3]
         position = matrix[:3, 3]

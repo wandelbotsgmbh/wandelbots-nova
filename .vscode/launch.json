@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Debug Tests",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/.venv/bin/pytest",
+      "args": ["tests", "--maxfail=1", "--disable-warnings"],
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    }
+  ]
+}
