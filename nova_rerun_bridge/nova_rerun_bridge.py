@@ -165,6 +165,11 @@ class NovaRerunBridge:
             motion_group.motion_group_id, await motion_group._get_optimizer_setup(tcp=tcp)
         )
 
+    def log_saftey_zones_(
+        self, motion_group_id: str, optimizer_setup: models.OptimizerSetup
+    ) -> None:
+        log_safety_zones(motion_group_id, optimizer_setup)
+
     async def log_motion(
         self, motion_id: str, timing_mode=TimingMode.CONTINUE, time_offset: float = 0
     ) -> None:
@@ -196,8 +201,6 @@ class NovaRerunBridge:
 
         if motion_motion_group is None:
             raise ValueError(f"Motion group {motion.motion_group} not found")
-
-        log_safety_zones(motion_motion_group.motion_group, optimizer_config)
 
         log_motion(
             motion_id=motion_id,

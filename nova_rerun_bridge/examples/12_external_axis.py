@@ -21,6 +21,8 @@ Prerequisites:
 
 async def move_robot(controller: Controller, bridge: NovaRerunBridge):
     async with controller[0] as motion_group:
+        await bridge.log_saftey_zones(motion_group)
+
         tcp_names = await motion_group.tcp_names()
         tcp = tcp_names[0]
         home_joints = await motion_group.joints()
