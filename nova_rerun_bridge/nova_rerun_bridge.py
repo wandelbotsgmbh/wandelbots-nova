@@ -23,6 +23,7 @@ from nova_rerun_bridge.blueprint import send_blueprint
 from nova_rerun_bridge.collision_scene import log_collision_scenes
 from nova_rerun_bridge.consts import RECORDING_INTERVAL, TIME_INTERVAL_NAME
 from nova_rerun_bridge.helper_scripts.download_models import get_project_root
+from nova_rerun_bridge.safety_zones import log_safety_zones
 from nova_rerun_bridge.stream_state import stream_motion_group
 from nova_rerun_bridge.trajectory import TimingMode, continue_after_sync, log_motion
 
@@ -155,6 +156,19 @@ class NovaRerunBridge:
 
     def _log_collision_scene(self, collision_scenes: Dict[str, models.CollisionScene]) -> None:
         log_collision_scenes(collision_scenes=collision_scenes)
+
+    async def log_saftey_zones(self, motion_group: MotionGroup) -> None:
+        tcp_names = await motion_group.tcp_names()
+        tcp = tcp_names[0]
+
+        log_safety_zones(
+            motion_group.motion_group_id, await motion_group._get_optimizer_setup(tcp=tcp)
+        )
+
+    def log_saftey_zones_(
+        self, motion_group_id: str, optimizer_setup: models.OptimizerSetup
+    ) -> None:
+        log_safety_zones(motion_group_id, optimizer_setup)
 
     async def log_motion(
         self, motion_id: str, timing_mode=TimingMode.CONTINUE, time_offset: float = 0

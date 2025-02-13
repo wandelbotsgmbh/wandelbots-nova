@@ -102,6 +102,8 @@ async def test():
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
+            await bridge.log_saftey_zones(motion_group)
+
             tcp = "Flange"
 
             robot_setup: models.OptimizerSetup = await motion_group._get_optimizer_setup(tcp=tcp)

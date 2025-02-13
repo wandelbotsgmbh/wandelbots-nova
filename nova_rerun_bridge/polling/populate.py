@@ -75,6 +75,30 @@ async def process_motions():
                         trajectory_time = trajectory.trajectory[-1].time
                         print(f"Time offset: {time_offset}", flush=True)
 
+                        motion = await nova._api_client.motion_api.get_planned_motion(
+                            nova.cell()._cell_id, motion_id
+                        )
+                        optimizer_config = await nova._api_client.motion_group_infos_api.get_optimizer_configuration(
+                            nova.cell()._cell_id, motion.motion_group
+                        )
+                        motion_groups = await nova._api_client.motion_group_api.list_motion_groups(
+                            nova.cell()._cell_id
+                        )
+                        motion_motion_group = next(
+                            (
+                                mg
+                                for mg in motion_groups.instances
+                                if mg.motion_group == motion.motion_group
+                            ),
+                            None,
+                        )
+
+                        if motion_motion_group is None:
+                            raise ValueError(f"Motion group {motion.motion_group} not found")
+
+                        nova_bridge.log_saftey_zones_(
+                            motion_group_id=motion.motion_group, optimizer_setup=optimizer_config
+                        )
                         await nova_bridge.log_motion(motion_id=motion_id, time_offset=time_offset)
 
                         # Save the processed motion ID and trajectory time
