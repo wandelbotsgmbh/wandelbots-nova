@@ -94,9 +94,9 @@ class Pose(pydantic.BaseModel, Sized):
         """
         Return the inverse of this pose.
         In terms of 4x4 homogeneous matrices, this is T^-1 where T = R|p
-                                                                  0|1
+                                                                     0|1
         i.e. T^-1 = R^T | -R^T p
-                        0  |   1
+                     0  |   1
 
         Returns:
             Pose: the inverse of the current pose
