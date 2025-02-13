@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.32.1 (2025-02-13)
+
+### Bug Fixes
+
+- Install extension in rerun app
+  ([`6ba0f4d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6ba0f4d10a362be85c8ba5e45cf2151f5d04eeba))
+
+
 ## v0.32.0 (2025-02-13)
 
 ### Features
