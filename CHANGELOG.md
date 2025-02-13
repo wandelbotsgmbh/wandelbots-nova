@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.32.0 (2025-02-13)
+
+### Features
+
+- Add safety zone logging functionality
+  ([#71](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/71),
+  [`a41103d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a41103d0241555effbe087d88cd067ad4eb119da))
+
+
 ## v0.31.0 (2025-02-13)
 
 ### Features
