@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.35.0 (2025-02-14)
+
+### Features
+
+- Added __getitem__ in vector3d ([#77](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/77),
+  [`4612008`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/46120080a07da5b32c5f72374c854d3275941e55))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.34.0 (2025-02-14)
 
 ### Features
