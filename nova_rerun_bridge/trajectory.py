@@ -212,53 +212,24 @@ def log_tcp_pose(trajectory: List[models.TrajectorySample], motion_group, times_
     """
     Log TCP pose (position + orientation) data.
     """
-    tcp_positions = []
-    tcp_rotations = []
 
-    # Collect data from the trajectory
-    for point in trajectory:
-        # Collect TCP position
+    # Extract positions and orientations from the trajectory
+    poses = [t.tcp_pose for t in trajectory]
+    positions = [[p.position.x, p.position.y, p.position.z] for p in poses]
+    orientations = Rotation.from_rotvec(
+        [[p.orientation.x, p.orientation.y, p.orientation.z] for p in poses]
+    ).as_quat()
 
-        if point.tcp_pose is not None:
-            tcp_positions.append(
-                [point.tcp_pose.position.x, point.tcp_pose.position.y, point.tcp_pose.position.z]
-            )
-
-        # Convert and collect TCP orientation as axis-angle
-        if point.tcp_pose is not None and point.tcp_pose.orientation is not None:
-            rotation_vector = [
-                point.tcp_pose.orientation.x,
-                point.tcp_pose.orientation.y,
-                point.tcp_pose.orientation.z,
-            ]
-            rotation = Rotation.from_rotvec(rotation_vector)
-            angle = rotation.magnitude()
-            axis_angle = rotation.as_rotvec() / angle if angle != 0 else [0, 0, 0]
-            tcp_rotations.append(rr.RotationAxisAngle(axis=axis_angle, angle=angle))
-
-    # Log TCP position as Point
+    # Log TCP and tool asset
+    tcp_entity_path = f"/motion/{motion_group}/tcp_position"
+    rr.log(tcp_entity_path, rr.Transform3D(clear=False, axis_length=100))
+    if tool_asset:
+        rr.log(tcp_entity_path, rr.Asset3D(path=tool_asset), static=True)
     rr.send_columns(
-        f"motion/{motion_group}/tcp_position",
+        tcp_entity_path,
         indexes=[times_column],
-        columns=[*rr.Points3D.columns(positions=tcp_positions)],
+        columns=rr.Transform3D.columns(translation=positions, quaternion=orientations),
     )
-
-    # Log Tool as Mesh
-    if tool_asset is not None:
-        tool_entity_path = f"/motion/{motion_group}/tool"
-        rr.log(
-            tool_entity_path,
-            rr.Asset3D(path=tool_asset),
-            rr.Transform3D(clear=False, axis_length=100),
-            static=True,
-        )
-        rr.send_columns(
-            tool_entity_path,
-            indexes=[times_column],
-            columns=rr.Transform3D.columns(
-                translation=tcp_positions, rotation_axis_angle=tcp_rotations
-            ),
-        )
 
 
 def log_joint_data(

@@ -43,8 +43,12 @@ async def test():
             )
 
             # Wait for tcp configuration to be applied
-            while tcp_id not in (await motion_group.tcp_names()):
-                await asyncio.sleep(0.5)
+            while True:
+                try:
+                    await motion_group.tcp_pose(tcp_id)
+                    break
+                except:
+                    await asyncio.sleep(0.5)
 
             # Get current TCP pose and offset it slightly along the x-axis
             current_pose = await motion_group.tcp_pose(tcp_id)
