@@ -5,9 +5,14 @@ from loguru import logger
 
 from nova.actions import MovementControllerContext
 from nova.core.exceptions import InitMovementFailed
-from nova.types import (ExecuteTrajectoryRequestStream,
-                        ExecuteTrajectoryResponseStream, MotionState,
-                        MovementControllerFunction, Pose, RobotState)
+from nova.types import (
+    ExecuteTrajectoryRequestStream,
+    ExecuteTrajectoryResponseStream,
+    MotionState,
+    MovementControllerFunction,
+    Pose,
+    RobotState,
+)
 
 
 def movement_to_motion_state(movement: wb.models.Movement) -> MotionState:

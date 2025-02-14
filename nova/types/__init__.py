@@ -1,4 +1,4 @@
-from typing import AsyncGenerator, Callable
+from typing import AsyncIterator, Callable
 
 from nova import api
 from nova.types.motion_settings import MotionSettings
@@ -7,11 +7,11 @@ from nova.types.state import MotionState, RobotState
 from nova.types.vector3d import Vector3d
 
 LoadPlanResponse = api.models.PlanSuccessfulResponse
-InitialMovementStream = AsyncGenerator[api.models.StreamMoveResponse, None]
+InitialMovementStream = AsyncIterator[api.models.StreamMoveResponse]
 InitialMovementConsumer = Callable[[api.models.StreamMoveResponse], None]
 MovementResponse = api.models.ExecuteTrajectoryResponse | api.models.StreamMoveResponse
-ExecuteTrajectoryRequestStream = AsyncGenerator[api.models.ExecuteTrajectoryRequest, None]
-ExecuteTrajectoryResponseStream = AsyncGenerator[api.models.ExecuteTrajectoryResponse, None]
+ExecuteTrajectoryRequestStream = AsyncIterator[api.models.ExecuteTrajectoryRequest]
+ExecuteTrajectoryResponseStream = AsyncIterator[api.models.ExecuteTrajectoryResponse]
 MovementControllerFunction = Callable[
     [ExecuteTrajectoryResponseStream], ExecuteTrajectoryRequestStream
 ]

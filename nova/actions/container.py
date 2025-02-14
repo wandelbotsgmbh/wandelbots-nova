@@ -163,6 +163,4 @@ class MovementControllerContext(pydantic.BaseModel):
     motion_id: str
 
 
-MovementController = Callable[
-    [MovementControllerContext, Callable[[MotionState | None], None]], MovementControllerFunction
-]
+MovementController = Callable[[MovementControllerContext], MovementControllerFunction]

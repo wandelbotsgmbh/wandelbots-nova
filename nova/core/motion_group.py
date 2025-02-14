@@ -1,17 +1,20 @@
 import asyncio
-from typing import AsyncIterable, Callable, Generator, cast
+from typing import AsyncIterable, Generator, cast
 
 import wandelbots_api_client as wb
 from loguru import logger
 
-from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
+from nova.actions import (Action, CombinedActions, MovementController,
+                          MovementControllerContext)
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
-from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, PlanTrajectoryFailed
+from nova.core.exceptions import (InconsistentCollisionScenes, LoadPlanFailed,
+                                  PlanTrajectoryFailed)
 from nova.core.movement_controller import move_forward
 from nova.core.robot_cell import AbstractRobot
 from nova.gateway import ApiGateway
-from nova.types import InitialMovementStream, LoadPlanResponse, MovementResponse, Pose, RobotState
+from nova.types import (InitialMovementStream, LoadPlanResponse,
+                        MovementResponse, Pose, RobotState)
 from nova.utils import StreamExtractor
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
