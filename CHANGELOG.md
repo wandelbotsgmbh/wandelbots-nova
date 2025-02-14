@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.33.1 (2025-02-14)
+
+### Bug Fixes
+
+- Update catalog entry name format in image push workflow
+  ([#72](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/72),
+  [`f4c512b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f4c512bfc2e0622792b032a4578a5d6aa0e1619c))
+
+Co-authored-by: André <andre.kuehnert@wandelbots.com>
+
+
 ## v0.33.0 (2025-02-14)
 
 ### Features
