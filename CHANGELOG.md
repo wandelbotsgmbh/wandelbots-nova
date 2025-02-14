@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.33.0 (2025-02-14)
+
+### Features
+
+- Add catalog entry update step to image push workflows
+  ([#69](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/69),
+  [`790e68d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/790e68d0fed8bbf1074ae1dae9dd294d9c8b03d8))
+
+Co-authored-by: André <andre.kuehnert@wandelbots.com>
+
+
 ## v0.32.1 (2025-02-13)
 
 ### Bug Fixes
