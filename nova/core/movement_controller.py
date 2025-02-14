@@ -5,25 +5,19 @@ from loguru import logger
 
 from nova.actions import MovementControllerContext
 from nova.core.exceptions import InitMovementFailed
-from nova.types import (
-    ExecuteTrajectoryRequestStream,
-    ExecuteTrajectoryResponseStream,
-    MotionState,
-    MovementControllerFunction,
-    Pose,
-    RobotState,
-)
+from nova.types import (ExecuteTrajectoryRequestStream,
+                        ExecuteTrajectoryResponseStream, MotionState,
+                        MovementControllerFunction, Pose, RobotState)
 
 
-def movement_to_motion_state(movement: wb.models.Movement) -> MotionState | None:
+def movement_to_motion_state(movement: wb.models.Movement) -> MotionState:
     """Convert a wb.models.Movement to a MotionState."""
     if (
         movement.movement.state is None
-        or movement.movement.state.motion_groups is None
-        or len(movement.movement.state.motion_groups) == 0
         or movement.movement.current_location is None
+        or len(movement.movement.state.motion_groups) == 0
     ):
-        return None
+        assert False, "This should not happen"  # depending on NC-1105
 
     # TODO: in which cases do we have more than one motion group here?
     motion_group = movement.movement.state.motion_groups[0]

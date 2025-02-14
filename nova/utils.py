@@ -1,17 +1,17 @@
 import asyncio
-from typing import AsyncIterator, Callable, Generic, TypeVar
+from typing import AsyncIterable, AsyncIterator, Callable, Generic, TypeVar
 
 T = TypeVar("T")
 
 
 class StreamExtractor(Generic[T]):
-    def __init__(self, wrapped: AsyncIterator[T], stop_selector: Callable[[T], bool] = None):
+    def __init__(self, wrapped: Callable[[AsyncIterable[T]], AsyncIterable[T]], stop_selector: Callable[[T], bool] | None = None):
         self._queue: asyncio.Queue[T | None] = asyncio.Queue()
         self._wrapped = wrapped
         self._stop_selector = stop_selector or (lambda x: x is None)
 
-    def __call__(self, in_stream: AsyncIterator[T]) -> AsyncIterator[T]:
-        async def in_wrapper(in_stream_) -> AsyncIterator[T]:
+    def __call__(self, in_stream: AsyncIterable[T]) -> AsyncIterable[T]:
+        async def in_wrapper(in_stream_) -> AsyncIterable[T]:
             async for in_value in in_stream_:
                 if self._stop_selector(in_value):
                     self._queue.put_nowait(None)

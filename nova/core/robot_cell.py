@@ -4,21 +4,9 @@ from collections import defaultdict
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from functools import reduce
-from typing import (
-    Any,
-    AsyncIterable,
-    Awaitable,
-    ClassVar,
-    Generic,
-    Literal,
-    Protocol,
-    TypeVar,
-    Union,
-    final,
-    get_origin,
-    get_type_hints,
-    runtime_checkable,
-)
+from typing import (Any, AsyncIterable, Awaitable, ClassVar, Generic, Literal,
+                    Protocol, TypeVar, Union, final, get_origin,
+                    get_type_hints, runtime_checkable)
 
 import anyio
 import asyncstdlib
@@ -282,7 +270,7 @@ class AbstractRobot(Device):
         )
 
     @abstractmethod
-    async def _execute(
+    def _execute(
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str,
@@ -324,6 +312,7 @@ class AbstractRobot(Device):
 
         def unpack_movement_response(
             movement_response: MovementResponse,
+            *_
         ) -> Any:  # TODO: can we use a more specific type here?
             if isinstance(movement_response, nova_models.ExecuteTrajectoryResponse):
                 return movement_response.actual_instance
@@ -333,11 +322,13 @@ class AbstractRobot(Device):
         def is_movement(
             instance: Any,
         ) -> bool:  # TODO: can we use a more specific type here? (see above)
-            return isinstance(instance, wb.models.Movement)
+            return isinstance(instance, wb.models.Movement)  # TODO: will proboly not work with StreamMoveResponse
 
-        def update_motion_recording(motion_state: MotionState):
+        def movement_to_motion_state_(movement: wb.models.Movement, *_) -> MotionState:
+            return movement_to_motion_state(movement)
+
+        async def update_motion_recording(motion_state: MotionState) -> None:
             self._motion_recording[-1].append(motion_state)
-            return motion_state
 
         execute_response_stream = self._execute(
             joint_trajectory, tcp, actions, movement_controller=movement_controller
@@ -346,7 +337,7 @@ class AbstractRobot(Device):
             stream.iterate(execute_response_stream)
             | pipe.map(unpack_movement_response)
             | pipe.filter(is_movement)
-            | pipe.map(movement_to_motion_state)
+            | pipe.map(movement_to_motion_state_)
             | pipe.action(update_motion_recording)
         )
         async with motion_states.stream() as motion_states_stream:
