@@ -244,20 +244,21 @@ def log_tcp_pose(trajectory: List[models.TrajectorySample], motion_group, times_
     )
 
     # Log Tool as Mesh
-    tool_entity_path = f"/motion/{motion_group}/tool"
-    rr.log(
-        tool_entity_path,
-        rr.Asset3D(path=tool_asset),
-        rr.Transform3D(clear=False, axis_length=100),
-        static=True,
-    )
-    rr.send_columns(
-        tool_entity_path,
-        indexes=[times_column],
-        columns=rr.Transform3D.columns(
-            translation=tcp_positions, rotation_axis_angle=tcp_rotations
-        ),
-    )
+    if tool_asset is not None:
+        tool_entity_path = f"/motion/{motion_group}/tool"
+        rr.log(
+            tool_entity_path,
+            rr.Asset3D(path=tool_asset),
+            rr.Transform3D(clear=False, axis_length=100),
+            static=True,
+        )
+        rr.send_columns(
+            tool_entity_path,
+            indexes=[times_column],
+            columns=rr.Transform3D.columns(
+                translation=tcp_positions, rotation_axis_angle=tcp_rotations
+            ),
+        )
 
 
 def log_joint_data(
