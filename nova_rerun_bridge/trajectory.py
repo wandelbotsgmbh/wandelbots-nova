@@ -35,6 +35,7 @@ def log_motion(
     collision_scenes: Dict[str, models.CollisionScene],
     time_offset: float = 0,
     timing_mode: TimingMode = TimingMode.CONTINUE,
+    tool_asset: str = None,
 ):
     """
     Fetch and process a single motion with timing control.
@@ -104,6 +105,7 @@ def log_motion(
         trajectory=trajectory,
         optimizer_config=optimizer_config,
         timer_offset=effective_offset,
+        tool_asset=tool_asset,
     )
 
     # Update last times based on timing mode
@@ -166,6 +168,7 @@ def log_trajectory(
     trajectory: List[models.TrajectorySample],
     optimizer_config: models.OptimizerSetup,
     timer_offset: float,
+    tool_asset: str,
 ):
     """
     Process a single trajectory point and log relevant data.
@@ -196,7 +199,7 @@ def log_trajectory(
     visualizer.log_robot_geometries(trajectory, times_column)
 
     # Log TCP pose/orientation
-    log_tcp_pose(trajectory, motion_group, times_column)
+    log_tcp_pose(trajectory, motion_group, times_column, tool_asset)
 
     # Log joint data
     log_joint_data(trajectory, motion_group, times_column, optimizer_config)
@@ -205,7 +208,7 @@ def log_trajectory(
     log_scalar_values(trajectory, motion_group, times_column, optimizer_config)
 
 
-def log_tcp_pose(trajectory: List[models.TrajectorySample], motion_group, times_column):
+def log_tcp_pose(trajectory: List[models.TrajectorySample], motion_group, times_column, tool_asset):
     """
     Log TCP pose (position + orientation) data.
     """
@@ -233,10 +236,27 @@ def log_tcp_pose(trajectory: List[models.TrajectorySample], motion_group, times_
             axis_angle = rotation.as_rotvec() / angle if angle != 0 else [0, 0, 0]
             tcp_rotations.append(rr.RotationAxisAngle(axis=axis_angle, angle=angle))
 
+    # Log TCP position as Point
     rr.send_columns(
         f"motion/{motion_group}/tcp_position",
         indexes=[times_column],
         columns=[*rr.Points3D.columns(positions=tcp_positions)],
+    )
+
+    # Log Tool as Mesh
+    tool_entity_path = f"/motion/{motion_group}/tool"
+    rr.log(
+        tool_entity_path,
+        rr.Asset3D(path=tool_asset),
+        rr.Transform3D(clear=False, axis_length=100),
+        static=True,
+    )
+    rr.send_columns(
+        tool_entity_path,
+        indexes=[times_column],
+        columns=rr.Transform3D.columns(
+            translation=tcp_positions, rotation_axis_angle=tcp_rotations
+        ),
     )
 
 
