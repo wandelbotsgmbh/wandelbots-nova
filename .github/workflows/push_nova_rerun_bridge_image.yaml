@@ -108,3 +108,24 @@ jobs:
           echo "Checking built image..."
           echo "Version: ${{ steps.version.outputs.version }}"
           docker images | grep ${{ env.IMAGE_NAME }}
+
+      - name: Update Catalog Entry
+        if: steps.version.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ secrets.CATALOG_TOKEN }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+          VERSION: "${{ steps.version.outputs.version }}"
+          CATALOG_ENTRY_NAME: "nova_rerun_bridge"
+        run: |
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            https://api.github.com/repos/wandelbotsgmbh/catalog/dispatches \
+            -d "{\"event_type\": \"update-entry\",
+                 \"client_payload\": {
+                   \"image\":\"${IMAGE}\",
+                   \"version\":\"${VERSION}\",
+                   \"entry\":\"${CATALOG_ENTRY_NAME}\"
+                }
+              }"

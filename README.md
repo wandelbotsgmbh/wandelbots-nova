@@ -140,6 +140,19 @@ To install the development dependencies, run the following command
 poetry install
 ```
 
+### Formatting
+
+```bash
+poetry run ruff format
+poetry run ruff check --select I --fix
+```
+
+### Yaml Linting
+
+```bash
+docker run --rm -it -v $(pwd):/data cytopia/yamllint -d .yamllint .
+```
+
 ### Using Branch Versions For Testing
 
 When having feature branches or forks, or might be helpful to test the library as dependency in other projects first.
