@@ -56,7 +56,7 @@ async def main():
         async for _ in motion_group.execute(joint_trajectory, tcp, actions=actions):
             pass
 
-        # await cell.delete_robot_controller(controller.controller_id)
+        await cell.delete_robot_controller(controller.controller_id)
 
 
 if __name__ == "__main__":
