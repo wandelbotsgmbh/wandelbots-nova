@@ -69,10 +69,8 @@ def move_forward(
                 raise InitMovementFailed(r1.init_response)
 
         # The second request is to start the movement
-        set_io_list = context.combined_actions.to_set_io()
-        yield wb.models.StartMovementRequest(
-            set_ios=set_io_list, start_on_io=None, pause_on_io=None
-        )  # type: ignore
+        # set_io_list = context.combined_actions.to_set_io()
+        yield wb.models.StartMovementRequest(start_on_io=None, pause_on_io=None)  # type: ignore
 
         # then we wait until the movement is finished
         async for execute_trajectory_response in response_stream:
@@ -112,10 +110,8 @@ def speed_up(
                 raise InitMovementFailed(r1.init_response)
 
         # The second request is to start the movement
-        set_io_list = context.combined_actions.to_set_io()
-        yield wb.models.StartMovementRequest(
-            set_ios=set_io_list, start_on_io=None, pause_on_io=None
-        )  # type: ignore
+        # set_io_list = context.combined_actions.to_set_io()
+        yield wb.models.StartMovementRequest(start_on_io=None, pause_on_io=None)  # type: ignore
 
         counter = 0
         latest_speed = 10
