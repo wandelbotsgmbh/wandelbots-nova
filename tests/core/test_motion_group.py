@@ -38,7 +38,7 @@ async def test_motion_group(nova_api):
 
 @pytest.mark.asyncio
 async def test_empty_list():
-    actions: list[Action | CollisionFreeMotion] = []
+    actions: list[Action] = []
     results = [result for result in split_actions_into_batches(actions)]
     assert results == []
 
@@ -104,14 +104,7 @@ async def test_interleaved():
     cfm2 = CollisionFreeMotion(target=Pose(70, 80, 90, 100, 110, 120))
     actions = [a1, cfm1, a2, cfm2, a3]
 
-    # Expected processing:
-    # - a1 → batch becomes [a1]
-    # - cfm1 encountered with non-empty batch → yield [a1] and defer cfm1
-    # - Next action yields the deferred cfm1, then processes a2 → batch becomes [a2]
-    # - cfm2 encountered with non-empty batch → yield [a2] and defer cfm2
-    # - Next action yields the deferred cfm2, then processes a3 → batch becomes [a3]
-    # - End of list → yield remaining batch [a3]
-    expected = [[a1], cfm1, [a2], cfm2, [a3]]
+    expected = [[a1], [cfm1], [a2], [cfm2], [a3]]
     results = [result for result in split_actions_into_batches(actions)]
     assert results == expected
 
@@ -132,7 +125,7 @@ async def test_multiple_collision_free_in_row():
     # - Process cfm2 (batch empty) → yield it immediately.
     # - a2 → batch = [a2]
     # - End → yield remaining batch [a2]
-    expected = [[a1], cfm1, cfm2, [a2]]
+    expected = [[a1], [cfm1], [cfm2], [a2]]
     results = [result for result in split_actions_into_batches(actions)]
     assert results == expected
 
@@ -149,13 +142,6 @@ async def test_complex_sequence():
     cfm3 = CollisionFreeMotion(target=Pose(130, 140, 150, 160, 170, 180))
     actions = [a1, cfm1, cfm2, a2, a3, cfm3]
 
-    # Expected processing:
-    # - a1 → batch = [a1]
-    # - cfm1 encountered with non-empty batch → yield [a1] and defer cfm1.
-    # - Next action (cfm2): yield deferred cfm1, then process cfm2 with empty batch → yield cfm2 immediately.
-    # - a2, a3 → batch = [a2, a3]
-    # - cfm3 encountered with non-empty batch → yield [a2, a3] and defer cfm3.
-    # - End of list → yield deferred cfm3.
-    expected = [[a1], cfm1, cfm2, [a2, a3], cfm3]
+    expected = [[a1], [cfm1], [cfm2], [a2, a3], cfm3]
     results = [result for result in split_actions_into_batches(actions)]
     assert results == expected

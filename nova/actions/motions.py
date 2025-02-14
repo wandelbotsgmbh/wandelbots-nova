@@ -14,8 +14,7 @@ PoseOrVectorTuple = (
 )
 
 
-# TODO: HIGH PRIORITY FIX -> we need to inherit from Action
-class CollisionFreeMotion(ABC, pydantic.BaseModel):
+class CollisionFreeMotion(Action, ABC):
     """
     A motion that is collision free.
     """

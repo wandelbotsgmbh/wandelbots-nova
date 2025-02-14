@@ -29,7 +29,6 @@ from loguru import logger
 
 from nova import api
 from nova.actions import Action, MovementController
-from nova.actions.motions import CollisionFreeMotion
 from nova.types import MotionState, Pose, RobotState
 from nova.utils import Callerator
 
@@ -229,7 +228,7 @@ class AbstractRobot(Device):
     @abstractmethod
     async def _plan(
         self,
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
         optimizer_setup: api.models.OptimizerSetup | None = None,
@@ -248,8 +247,7 @@ class AbstractRobot(Device):
 
     async def plan(
         self,
-        # TODO: this signature is changing, maybe I should make CollisionFreeMotion a subclass of Action
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
         optimizer_setup: api.models.OptimizerSetup | None = None,
