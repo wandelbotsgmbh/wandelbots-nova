@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.34.0 (2025-02-14)
+
+### Features
+
+- Added __iter__ to vector & pose ([#75](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/75),
+  [`0d48799`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0d487996e3b9b89c78c31e91225d763166817815))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.33.1 (2025-02-14)
 
 ### Bug Fixes
