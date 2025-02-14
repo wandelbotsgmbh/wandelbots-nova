@@ -74,6 +74,9 @@ class Vector3d(pydantic.BaseModel):
         """
         return iter(self.to_tuple())
 
+    def __getitem__(self, item):
+        return self.to_tuple()[item]
+
     @classmethod
     def from_tuple(cls, value: tuple[float, float, float]) -> Vector3d:
         """Create a new Vector3d from tuple
