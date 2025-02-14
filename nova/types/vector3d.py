@@ -62,6 +62,18 @@ class Vector3d(pydantic.BaseModel):
     def __len__(self):
         return 3
 
+    def __iter__(self):
+        """Iterate over the vector
+
+        Examples:
+        >>> v = Vector3d(x=1, y=2, z=3)
+        >>> list(v)
+        [1, 2, 3]
+        >>> tuple(v)
+        (1, 2, 3)
+        """
+        return iter(self.to_tuple())
+
     @classmethod
     def from_tuple(cls, value: tuple[float, float, float]) -> Vector3d:
         """Create a new Vector3d from tuple
