@@ -301,6 +301,7 @@ class AbstractRobot(Device):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str,
+        # TODO: if possible remove None
         actions: list[Action] | Action | None,
         on_movement: Callable[[MotionState | None], None] | None = None,
         movement_controller: MovementController | None = None,
