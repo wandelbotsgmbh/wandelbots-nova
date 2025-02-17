@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 import numpy as np
 import rerun as rr
-from robometrics.datasets import demo_raw
+from robometrics.datasets import motion_benchmaker_raw
 from scipy.spatial.transform import Rotation
 from wandelbots_api_client import models
 from wandelbots_api_client.models import (
@@ -237,7 +237,7 @@ async def run_benchmark():
         await asyncio.sleep(3)
 
         # Load benchmark datasets
-        problems = demo_raw()
+        problems = motion_benchmaker_raw()
 
         results = []
         for key, scene_problems in problems.items():
@@ -354,12 +354,12 @@ async def run_benchmark():
                             time=end_time - start_time,
                             position_error=0,
                             orientation_error=0,
-                            motion_time=trajectory.duration if trajectory else 0.0,
+                            motion_time=trajectory.times[-1] if trajectory else 0.0,
                         )
                         results.append(metrics)
 
-                except Exception as e:
-                    print(f"\nFailed planning: {e}")
+                except Exception:
+                    print(f"\nFailed planning: {key} - {i}")
                     results.append(NovaMetrics())
 
         # Calculate overall statistics
