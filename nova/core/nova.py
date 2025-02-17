@@ -9,6 +9,8 @@ from nova.core.exceptions import ControllerNotFound
 from nova.core.logging_setup import configure_logging
 from nova.gateway import ApiGateway
 
+LOG_LEVEL = config("LOG_LEVEL", default="INFO")
+
 
 class Nova:
     def __init__(
@@ -20,7 +22,7 @@ class Nova:
         access_token: str | None = None,
         version: str = "v1",
         verify_ssl: bool = True,
-        log_level: str = "INFO",
+        log_level: str = LOG_LEVEL,
     ):
         configure_logging(log_level)
         self._api_client = ApiGateway(
