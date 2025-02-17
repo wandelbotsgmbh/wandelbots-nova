@@ -30,7 +30,7 @@ jobs:
 
       - name: Action | Semantic Version Release
         id: release
-        uses: python-semantic-release/python-semantic-release@v9.19.0
+        uses: python-semantic-release/python-semantic-release@v9.20.0
         with:
           build: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
