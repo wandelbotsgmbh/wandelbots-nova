@@ -222,8 +222,6 @@ class MotionGroup(AbstractRobot):
 
         return collision_scenes
 
-    # TODO: we get the optimizer setup as an input because
-    #  it has a velocity setting which is used in collision free movement, I need to double check this
     async def _plan_collision_free(
         self,
         action: CollisionFreeMotion,
