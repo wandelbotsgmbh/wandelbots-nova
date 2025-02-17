@@ -324,9 +324,6 @@ class MotionGroup(AbstractRobot):
                 # the last joint position of this trajectory is the starting point for the next one
                 current_joints = tuple(trajectory.joint_positions[-1].joints)
 
-        # TODO: combine all trajectories into one
-        # TODO: check how io on the path fits into this
-
         return combine_trajectories(all_trajectories)
 
     async def _execute(
