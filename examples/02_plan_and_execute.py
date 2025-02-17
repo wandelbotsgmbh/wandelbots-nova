@@ -49,7 +49,7 @@ async def main():
 
         # you can update the settings of the action
         for action in actions:
-            action.settings = MotionSettings(tcp_velocity_limit=300)
+            action.settings = MotionSettings(tcp_velocity_limit=200)
 
         joint_trajectory = await motion_group.plan(actions, tcp)
         await motion_group.execute(joint_trajectory, tcp, actions=actions)
