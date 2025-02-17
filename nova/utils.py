@@ -1,8 +1,8 @@
 import asyncio
 from typing import AsyncIterable, AsyncIterator, Callable, Generic, TypeVar
 
-In = TypeVar("I")
-Out = TypeVar("O")
+In = TypeVar("In")
+Out = TypeVar("Out")
 
 
 class StreamExtractor(Generic[In, Out]):
