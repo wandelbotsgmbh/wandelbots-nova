@@ -378,8 +378,8 @@ class MotionGroup(AbstractRobot):
                 self._cell, execute_response_streaming_controller
             )
         )
-        async for execute_resposne in execute_response_streaming_controller:
-            yield execute_resposne
+        async for execute_response in execute_response_streaming_controller:
+            yield execute_response
         await execution_task
 
     async def _get_number_of_joints(self) -> int:
