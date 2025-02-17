@@ -369,7 +369,7 @@ class AbstractRobot(Device):
         tcp: str
     ) -> AsyncIterable[MotionState]:
         joint_trajectory = await self.plan(actions, tcp)
-        async for motion_state in self.stream_execute(joint_trajectory, tcp, actions):
+        async for motion_state in self.stream_execute(joint_trajectory, tcp, actions): # type: ignore
             yield motion_state
 
     async def plan_and_execute(
@@ -378,7 +378,7 @@ class AbstractRobot(Device):
             tcp: str
     ) -> None:
         joint_trajectory = await self.plan(actions, tcp)
-        await self.execute(joint_trajectory, tcp, actions, movement_controller=None)
+        await self.execute(joint_trajectory, tcp, actions, movement_controller=None) # type: ignore
 
     @abstractmethod
     async def get_state(self, tcp: str | None = None) -> RobotState:
