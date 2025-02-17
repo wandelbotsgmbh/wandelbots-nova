@@ -176,3 +176,5 @@ nova_rerun_bridge/nova_rerun_bridge_app/poetry.lock
 nova_rerun_bridge/nova_rerun_bridge_app/README.md
 nova_rerun_bridge/nova_rerun_bridge_app/kubeconfig
 nova_rerun_bridge/nova_rerun_bridge_app/nova
+
+kubeconfig
