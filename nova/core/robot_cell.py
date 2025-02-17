@@ -4,9 +4,21 @@ from collections import defaultdict
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from functools import reduce
-from typing import (Any, AsyncIterable, Awaitable, ClassVar, Generic, Literal,
-                    Protocol, TypeVar, Union, final, get_origin,
-                    get_type_hints, runtime_checkable)
+from typing import (
+    Any,
+    AsyncIterable,
+    Awaitable,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    TypeVar,
+    Union,
+    final,
+    get_origin,
+    get_type_hints,
+    runtime_checkable,
+)
 
 import anyio
 import asyncstdlib
@@ -364,21 +376,17 @@ class AbstractRobot(Device):
             pass
 
     async def stream_plan_and_execute(
-        self,
-        actions: list[Action | CollisionFreeMotion] | Action,
-        tcp: str
+        self, actions: list[Action | CollisionFreeMotion] | Action, tcp: str
     ) -> AsyncIterable[MotionState]:
         joint_trajectory = await self.plan(actions, tcp)
-        async for motion_state in self.stream_execute(joint_trajectory, tcp, actions): # type: ignore
+        async for motion_state in self.stream_execute(joint_trajectory, tcp, actions):  # type: ignore
             yield motion_state
 
     async def plan_and_execute(
-            self,
-            actions: list[Action | CollisionFreeMotion] | Action,
-            tcp: str
+        self, actions: list[Action | CollisionFreeMotion] | Action, tcp: str
     ) -> None:
         joint_trajectory = await self.plan(actions, tcp)
-        await self.execute(joint_trajectory, tcp, actions, movement_controller=None) # type: ignore
+        await self.execute(joint_trajectory, tcp, actions, movement_controller=None)  # type: ignore
 
     @abstractmethod
     async def get_state(self, tcp: str | None = None) -> RobotState:
