@@ -52,18 +52,17 @@ def split_actions_into_batches(actions: list[Action]) -> Generator[list[Action],
             yield current_batch
             current_batch = []
         else:
-            current_batch.append(action)  # type: ignore
+            current_batch.append(action)
 
     # if the last item was collision free motion, we need to yield it
     if collision_free_motion is not None:
-        yield collision_free_motion
+        yield [collision_free_motion]
 
     # if there are any actions left in the batch, we need to yield them
     if len(current_batch) > 0:
         yield current_batch
 
 
-# TODO now that this logic is isolated, we can test it extensively with unit tests
 def combine_trajectories(
     trajectories: list[wb.models.JointTrajectory],
 ) -> wb.models.JointTrajectory:
@@ -251,9 +250,9 @@ class MotionGroup(AbstractRobot):
 
 
         """
-        # TODO: dont access the internal mapper directly
+
         target = wb.models.PlanCollisionFreePTPRequestTarget(
-            action.target._to_wb_pose2() if isinstance(action.target, Pose) else list(action.target)
+            **action.model_dump(exclude_unset=True)
         )
         robot_setup = optimizer_setup or await self._get_optimizer_setup(tcp=tcp)
 

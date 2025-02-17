@@ -6,7 +6,7 @@ from nova.api import models
 from nova.types import Pose
 
 """
-Example: Perform relative movements with a robot.
+Example: Perform a multi-step trajectory with collision avoidance.
 
 Prerequisites:
 - Create an NOVA instance
@@ -41,7 +41,7 @@ async def main():
                 ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
                 jnt(home_joints),
                 ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
-                jnt(home_joints),
+                collision_free(home_joints),
                 ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
                 jnt(home_joints),
             ]

@@ -49,7 +49,7 @@ class CombinedActions(pydantic.BaseModel):
     def append(self, item: ActionContainerItem):
         super().__setattr__("items", self.items + (item,))
 
-    def _generate_trajectory(self) -> tuple[list[Motion], list[ActionLocation]]:
+    def _generate_trajectory(self) -> tuple[list[Motion | CollisionFreeMotion], list[ActionLocation]]:
         """Generate two lists: one of Motion objects and another of ActionContainer objects,
         where each ActionContainer wraps a non-Motion action with its path parameter.
 
@@ -67,7 +67,7 @@ class CombinedActions(pydantic.BaseModel):
         last_motion_index = 0
 
         for item in self.items:
-            if isinstance(item, Motion):
+            if isinstance(item, Motion) or isinstance(item, CollisionFreeMotion):
                 motions.append(item)
                 last_motion_index += 1  # Increment the motion index for each new Motion
             else:
@@ -77,7 +77,7 @@ class CombinedActions(pydantic.BaseModel):
         return motions, actions
 
     @property
-    def motions(self) -> list[Motion]:
+    def motions(self) -> list[Motion | CollisionFreeMotion]:
         motions, _ = self._generate_trajectory()
         return motions
 
@@ -104,7 +104,7 @@ class CombinedActions(pydantic.BaseModel):
         return [
             Pose(position=motion.target.position, orientation=motion.target.orientation)
             for motion in motions
-            if motion.is_cartesian and isinstance(motion.target, Pose)
+            if isinstance(motion.target, Pose)
         ]
 
     def positions(self):

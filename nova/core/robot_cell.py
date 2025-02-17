@@ -348,7 +348,7 @@ class AbstractRobot(Device):
         tcp: str,
         on_movement: Callable[[MotionState | None], None] | None = None,
     ):
-        joint_trajectory = await self.plan(actions, tcp)  # type: ignore
+        joint_trajectory = await self.plan(actions, tcp)
         async for motion_state in self.execute(
             joint_trajectory, tcp, actions, on_movement, movement_controller=None
         ):

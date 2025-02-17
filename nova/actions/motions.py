@@ -14,7 +14,7 @@ PoseOrVectorTuple = (
 )
 
 
-class CollisionFreeMotion(Action, ABC):
+class CollisionFreeMotion(Action):
     """
     A motion that is collision free.
     """
@@ -23,6 +23,17 @@ class CollisionFreeMotion(Action, ABC):
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     collision_scene: wb.models.CollisionScene | None = None
+
+    def _to_api_model(self) -> api.models.PlanCollisionFreePTPRequestTarget:
+        return wb.models.PlanCollisionFreePTPRequestTarget(
+            self.target._to_wb_pose2()
+            if isinstance(self.target, Pose) else list(self.target)
+        )
+
+    @pydantic.model_serializer
+    def serialize_model(self):
+        return self._to_api_model().model_dump()
+
 
 
 def collision_free(
