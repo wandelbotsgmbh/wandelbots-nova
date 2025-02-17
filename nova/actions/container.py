@@ -49,7 +49,9 @@ class CombinedActions(pydantic.BaseModel):
     def append(self, item: ActionContainerItem):
         super().__setattr__("items", self.items + (item,))
 
-    def _generate_trajectory(self) -> tuple[list[Motion | CollisionFreeMotion], list[ActionLocation]]:
+    def _generate_trajectory(
+        self,
+    ) -> tuple[list[Motion | CollisionFreeMotion], list[ActionLocation]]:
         """Generate two lists: one of Motion objects and another of ActionContainer objects,
         where each ActionContainer wraps a non-Motion action with its path parameter.
 

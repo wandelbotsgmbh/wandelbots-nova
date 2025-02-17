@@ -26,14 +26,12 @@ class CollisionFreeMotion(Action):
 
     def _to_api_model(self) -> api.models.PlanCollisionFreePTPRequestTarget:
         return wb.models.PlanCollisionFreePTPRequestTarget(
-            self.target._to_wb_pose2()
-            if isinstance(self.target, Pose) else list(self.target)
+            self.target._to_wb_pose2() if isinstance(self.target, Pose) else list(self.target)
         )
 
     @pydantic.model_serializer
     def serialize_model(self):
         return self._to_api_model().model_dump()
-
 
 
 def collision_free(
