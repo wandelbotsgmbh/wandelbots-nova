@@ -4,33 +4,19 @@ from collections import defaultdict
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from functools import reduce
-from typing import (
-    Any,
-    AsyncIterable,
-    Awaitable,
-    ClassVar,
-    Generic,
-    Literal,
-    Protocol,
-    TypeVar,
-    Union,
-    final,
-    get_origin,
-    get_type_hints,
-    runtime_checkable,
-)
+from typing import (Any, AsyncIterable, Awaitable, ClassVar, Generic, Literal,
+                    Protocol, TypeVar, Union, final, get_origin,
+                    get_type_hints, runtime_checkable)
 
 import anyio
 import asyncstdlib
 import pydantic
-import wandelbots_api_client as wb
 from aiostream import pipe, stream
 from loguru import logger
 
 from nova import api
 from nova.actions import Action, MovementController
 from nova.actions.motions import CollisionFreeMotion
-from nova.api import models as nova_models
 from nova.core.movement_controller import movement_to_motion_state
 from nova.types import MotionState, MovementResponse, Pose, RobotState
 
@@ -324,7 +310,7 @@ class AbstractRobot(Device):
 
         # TODO: can we use a more specific type here?
         def unpack_movement_response(movement_response: MovementResponse, *_) -> Any:
-            if isinstance(movement_response, nova_models.ExecuteTrajectoryResponse):
+            if isinstance(movement_response, api.models.ExecuteTrajectoryResponse):
                 return movement_response.actual_instance
             # TODO: handle the StreamMoveResponse case or make sure it doesn't happen
             assert False, f"Unexpected movement response: {movement_response}"
@@ -332,9 +318,9 @@ class AbstractRobot(Device):
         # TODO: can we use a more specific type here? (see above)
         def is_movement(instance: Any) -> bool:
             # TODO: will proboly not work with StreamMoveResponse
-            return isinstance(instance, wb.models.Movement)
+            return isinstance(instance, api.models.Movement)
 
-        def movement_to_motion_state_(movement: wb.models.Movement, *_) -> MotionState:
+        def movement_to_motion_state_(movement: api.models.Movement, *_) -> MotionState:
             return movement_to_motion_state(movement)
 
         async def update_motion_recording(motion_state: MotionState) -> None:
@@ -364,7 +350,7 @@ class AbstractRobot(Device):
         """Execute a planned motion
 
         Args:
-            joint_trajectory (wb.models.JointTrajectory): The planned joint trajectory
+            joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
             tcp (str): The identifier of the tool center point (TCP)
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
