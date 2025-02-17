@@ -65,7 +65,7 @@ async def test_only_collision_free():
 
     # Each collision free motion should be yielded immediately.
     results = [result for result in split_actions_into_batches(actions)]
-    assert results == [cfm1, cfm2]
+    assert results == [[cfm1], [cfm2]]
 
 
 @pytest.mark.asyncio
@@ -78,7 +78,7 @@ async def test_collision_free_first():
 
     # Expect: first the collision free motion, then the batch of actions.
     results = [result for result in split_actions_into_batches(actions)]
-    assert results == [cfm1, [a1, a2]]
+    assert results == [[cfm1], [a1, a2]]
 
 
 @pytest.mark.asyncio
@@ -91,7 +91,7 @@ async def test_collision_free_last():
 
     # Expect: first a batch of actions, then the collision free motion.
     results = [result for result in split_actions_into_batches(actions)]
-    assert results == [[a1, a2], cfm1]
+    assert results == [[a1, a2], [cfm1]]
 
 
 @pytest.mark.asyncio
@@ -142,6 +142,6 @@ async def test_complex_sequence():
     cfm3 = CollisionFreeMotion(target=Pose(130, 140, 150, 160, 170, 180))
     actions = [a1, cfm1, cfm2, a2, a3, cfm3]
 
-    expected = [[a1], [cfm1], [cfm2], [a2, a3], cfm3]
+    expected = [[a1], [cfm1], [cfm2], [a2, a3], [cfm3]]
     results = [result for result in split_actions_into_batches(actions)]
     assert results == expected
