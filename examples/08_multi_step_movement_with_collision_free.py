@@ -28,6 +28,8 @@ async def main():
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
             home_joints = await motion_group.joints()
+            home_pose = await motion_group.tcp_pose()
+
             tcp_names = await motion_group.tcp_names()
             tcp = tcp_names[0]
 
@@ -41,7 +43,7 @@ async def main():
                 ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
                 jnt(home_joints),
                 ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
-                collision_free(home_joints),
+                collision_free(home_pose),
                 ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
                 jnt(home_joints),
             ]
