@@ -6,10 +6,7 @@ from loguru import logger
 from nova.api import models
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
-from nova.core.logging_setup import configure_logging
 from nova.gateway import ApiGateway
-
-LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 
 
 class Nova:
@@ -22,9 +19,9 @@ class Nova:
         access_token: str | None = None,
         version: str = "v1",
         verify_ssl: bool = True,
-        log_level: str = LOG_LEVEL,
+        # this is not used but if we remove it will create backwards compatibility issues
+        log_level: str = "INFO",
     ):
-        configure_logging(log_level)
         self._api_client = ApiGateway(
             host=host,
             username=username,
