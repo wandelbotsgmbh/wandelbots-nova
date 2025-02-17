@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.36.0 (2025-02-17)
+
+### Features
+
+- **RPS-1224**: Added user-agent to api client
+  ([#66](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/66),
+  [`13696aa`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/13696aae25680022cc4cf7a21f0d4205682fde55))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.35.0 (2025-02-14)
 
 ### Features
