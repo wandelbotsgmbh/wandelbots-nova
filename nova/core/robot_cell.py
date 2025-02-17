@@ -4,9 +4,21 @@ from collections import defaultdict
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from functools import reduce
-from typing import (Any, AsyncIterable, Awaitable, ClassVar, Generic, Literal,
-                    Protocol, TypeVar, Union, final, get_origin,
-                    get_type_hints, runtime_checkable)
+from typing import (
+    Any,
+    AsyncIterable,
+    Awaitable,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    TypeVar,
+    Union,
+    final,
+    get_origin,
+    get_type_hints,
+    runtime_checkable,
+)
 
 import anyio
 import asyncstdlib
