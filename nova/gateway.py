@@ -1,12 +1,13 @@
 import asyncio
 import functools
 import time
-from importlib import metadata
 from typing import TypeVar
 
 import wandelbots_api_client as wb
 from decouple import config
 from loguru import logger
+
+from nova.version import version as pkg_version
 
 T = TypeVar("T")
 
@@ -104,8 +105,7 @@ class ApiGateway:
         api_client_config.verify_ssl = verify_ssl
 
         self._api_client = wb.ApiClient(configuration=api_client_config)
-        version = metadata.version("wandelbots-nova")
-        self._api_client.user_agent = f"wandelbots_nova_python_sdk/{version}"
+        self._api_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
 
         # Use the intercept function to wrap each API client
         self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client))
@@ -131,6 +131,7 @@ class ApiGateway:
             wb.VirtualRobotSetupApi(api_client=self._api_client)
         )
         self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client))
+        logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
     async def close(self):
         return await self._api_client.close()

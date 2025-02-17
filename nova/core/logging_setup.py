@@ -10,5 +10,4 @@ def configure_logging(log_level: str = "INFO"):
         level=log_level,
         format="<green>{time}</green> | <level>{level}</level> | <level>{message}</level>",
     )
-
     return logger
