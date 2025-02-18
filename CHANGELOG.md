@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.37.0 (2025-02-18)
+
+### Features
+
+- **RPS-1265**: Download and attach diagnose package on CI fail
+  ([#85](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/85),
+  [`30b3638`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/30b363860b7b6d16246f2bc886f776b42a8c3b37))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.36.2 (2025-02-18)
 
 ### Chores
