@@ -95,7 +95,7 @@ jobs:
 
       - name: Upload diagnose artifact
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: diagnose-package
           path: diagnose-${{ github.run_id }}.zip
