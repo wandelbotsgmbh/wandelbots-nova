@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Protocol
 
 import numpy as np
 import rerun as rr
@@ -14,7 +14,7 @@ from wandelbots_api_client.models import (
     Vector3d,
 )
 
-from nova.actions.motions import collision_free
+from nova.core.motion_group import MotionGroup
 from nova.core.nova import Nova
 from nova.types import Pose
 from nova.types.vector3d import Vector3d as Vector3d_nova
@@ -223,7 +223,21 @@ def print_progressive_statistics(
     print_separator()
 
 
-async def run_benchmark():
+class BenchmarkStrategy(Protocol):
+    """Protocol for benchmark strategies."""
+
+    name: str
+
+    async def plan(
+        self,
+        motion_group: MotionGroup,
+        target: Pose,
+        collision_scene: models.CollisionScene,
+        tcp: str,
+    ) -> Any: ...
+
+
+async def run_single_benchmark(strategy: BenchmarkStrategy):
     async with Nova() as nova, NovaRerunBridge(nova, spawn=False) as bridge:
         cell = nova.cell()
 
@@ -308,9 +322,11 @@ async def run_benchmark():
 
                         start_time = time.time()
 
-                        # Set start configuration using the converted pose
-                        trajectory = await motion_group.plan(
-                            [collision_free(target=start_pose, collision_scene=collision_scene)],
+                        # Use the provided strategy
+                        trajectory = await strategy.plan(
+                            motion_group=motion_group,
+                            target=start_pose,
+                            collision_scene=collision_scene,
                             tcp=tcp,
                         )
 
@@ -351,20 +367,24 @@ async def run_benchmark():
                         results, problem_results, key, total_problems, current_problem
                     )
 
-        # Print final statistics
-        print("\033[2J\033[H")  # Clear screen
-        print_separator("=")
-        print("🎯 Final Benchmark Results")
-        print_separator("=")
-
-        for key, prob_results in problem_results.items():
-            print_statistics(prob_results, f"Scene: {key}")
-
-        print_separator("=")
-        print("📈 Overall Results")
-        print_separator("=")
-        print_statistics(results, "Complete Benchmark")
+        return problem_results, results
 
 
-if __name__ == "__main__":
-    asyncio.run(run_benchmark())
+async def run_benchmark(strategy: BenchmarkStrategy):
+    """Run benchmark for a specific strategy."""
+    print(f"\n🚀 Running benchmark for {strategy.name}")
+    print_separator("=")
+
+    problem_results, results = await run_single_benchmark(strategy)
+
+    # Print results for this strategy
+    print(f"\n📊 Results for {strategy.name}")
+    print_separator("=")
+
+    for key, prob_results in problem_results.items():
+        print_statistics(prob_results, f"Scene: {key}")
+
+    print_separator("=")
+    print(f"📈 Overall Results for {strategy.name}")
+    print_separator("=")
+    print_statistics(results, f"Complete Benchmark - {strategy.name}")
