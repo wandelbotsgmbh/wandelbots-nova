@@ -1,7 +1,7 @@
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Protocol, Tuple
+from typing import Any, Dict, List, Protocol, Tuple
 
 import numpy as np
 from robometrics.datasets import motion_benchmaker_raw
@@ -216,7 +216,7 @@ async def run_single_benchmark(strategy: BenchmarkStrategy):
         problems = motion_benchmaker_raw()
 
         # Store results per problem
-        problem_results = {}
+        problem_results: Dict[str, List[NovaMetrics]] = {}
         results = []
 
         total_problems = sum(len(probs) for probs in problems.values())
