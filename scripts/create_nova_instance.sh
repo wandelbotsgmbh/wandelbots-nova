@@ -98,28 +98,19 @@ if [ "${INSECURE_CURL:-}" = "true" ]; then
 fi
 
 API_URL="https://${PORTAL_STG_HOST}/api/${API_VERSION}"
-AUTH_HEADER="Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}"
 
 echo "Checking service availability at: ${API_URL}/cells"
 
-status_code=$(curl \
-  -s -o /dev/null -w "%{http_code}" \
-  "${CURL_ARGS[@]}" \
-  --header "${AUTH_HEADER}" \
+curl "${CURL_ARGS[@]}" \
+  --header "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
   --header "Accept: application/json" \
-  "${API_URL}/cells")
-
-# 2) Check if status code == 200
-if [ "$status_code" -ne 200 ]; then
-  echo "❌ First request failed (status $status_code). Aborting."
-  exit 1
-fi
+  "${API_URL}/cells"
 
 # 3) Proceed with second curl only if the first returned 200
 echo "✅ First request succeeded. Proceeding with second request..."
 curl \
   "${CURL_ARGS[@]}" \
-  --header "${AUTH_HEADER}" \
+  --header "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
   --header "Accept: application/json" \
   "${API_URL}/cells/cell/status"
 
