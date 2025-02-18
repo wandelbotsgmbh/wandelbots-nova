@@ -92,7 +92,7 @@ echo "Instance ID: ${PORTAL_STG_INSTANCE_ID}"
 # --- 4) CHECK SERVICE AVAILABILITY ---
 # By default, use secure curl. If you have a self-signed certificate and want to skip verification,
 # set INSECURE_CURL="true".
-CURL_ARGS=("--fail" "--location" "--retry-all-errors" "--retry" "7" "--retry-max-time" "200")
+CURL_ARGS=("--fail" "--location" "--retry-all-errors" "--retry" "30" "--retry-max-time" "200")
 if [ "${INSECURE_CURL:-}" = "true" ]; then
   CURL_ARGS+=("--insecure")
 fi
@@ -101,17 +101,47 @@ API_URL="https://${PORTAL_STG_HOST}/api/${API_VERSION}"
 
 echo "Checking service availability at: ${API_URL}/cells"
 
-curl -v "${CURL_ARGS[@]}" \
-  --header "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
-  --header "Accept: application/json" \
-  "${API_URL}/cells"
+MAX_JSON_RETRIES=5
+RETRY_DELAY=5
+ATTEMPT=1
 
-# 3) Proceed with second curl only if the first returned 200
-echo "✅ First request succeeded. Proceeding with second request..."
-curl -v "${CURL_ARGS[@]}" \
-  --header "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
-  --header "Accept: application/json" \
-  "${API_URL}/cells/cell/status"
+while [ $ATTEMPT -le $MAX_JSON_RETRIES ]; do
+  echo "Checking service availability at: ${API_URL}/cells (attempt: $ATTEMPT)"
+
+  # Capture the response in a variable
+  #  -sS: silent mode but show errors
+  #  - For extra safety, we add `|| true` after curl so we can handle any error codes ourselves.
+  RESPONSE=$(curl -sS "${CURL_ARGS[@]}" \
+    --header "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
+    --header "Accept: application/json" \
+    "${API_URL}/cells" || true)
+
+  # If empty or if curl completely failed (e.g., no data), retry
+  if [ -z "$RESPONSE" ]; then
+    echo "No response or empty response received. Retrying in ${RETRY_DELAY}s..."
+    sleep "$RETRY_DELAY"
+    ((ATTEMPT++))
+    continue
+  fi
+
+  # Validate the response is valid JSON.
+  # `jq empty` will exit with non-zero if not valid JSON.
+  if echo "$RESPONSE" | jq empty > /dev/null 2>&1; then
+    echo "✅ Received valid JSON."
+    # Break out of the loop if everything looks good
+    break
+  else
+    echo "❌ Response was not valid JSON. Retrying in ${RETRY_DELAY}s..."
+    sleep "$RETRY_DELAY"
+    ((ATTEMPT++))
+  fi
+done
+
+# If we exceeded our max attempts, then exit
+if [ $ATTEMPT -gt $MAX_JSON_RETRIES ]; then
+  echo "❌ Unable to receive valid JSON from ${API_URL}/cells after $MAX_JSON_RETRIES attempts."
+  exit 1
+fi
 
 # If we reach here, the service is accessible.
 echo "Service is up and reachable."
