@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "wandelbots-nova"
-version = "0.36.0"
+version = "0.37.0"
 description = "Official Python SDK for the Wandelbots"
 authors = [
     "Wandelbots GmbH",
@@ -42,7 +42,7 @@ robometrics = { git = "https://github.com/fishbotics/robometrics.git", extras = 
 python-dotenv = "^1.0.1"
 ruff = ">=0.8.2,<0.10.0"
 pytest = "^8.3.4"
-pytest-asyncio = "^0.24.0"
+pytest-asyncio = ">=0.24,<0.26"
 mypy = "^1.13.0"
 pre-commit = "^4.0.1"
 

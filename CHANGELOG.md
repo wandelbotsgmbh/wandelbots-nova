@@ -1,6 +1,75 @@
 # CHANGELOG
 
 
+## v0.37.0 (2025-02-18)
+
+### Features
+
+- **RPS-1265**: Download and attach diagnose package on CI fail
+  ([#85](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/85),
+  [`30b3638`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/30b363860b7b6d16246f2bc886f776b42a8c3b37))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
+## v0.36.2 (2025-02-18)
+
+### Chores
+
+- **deps**: Bump python-semantic-release/publish-action from 9.19.0 to 9.20.0
+  ([#80](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/80),
+  [`3fef1d8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3fef1d89a5956fe4c732e892a1693135c77098a0))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump python-semantic-release/python-semantic-release from 9.19.0 to 9.20.0
+  ([#79](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/79),
+  [`91180a7`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/91180a753b165f68e06f186f363ccba96db24f75))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump trimesh from 4.6.1 to 4.6.2
+  ([#84](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/84),
+  [`6980d79`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6980d79b3a0f745dafef6544e19070dbe168e2f4))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps-dev**: Bump pytest-asyncio from 0.24.0 to 0.25.3
+  ([#54](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/54),
+  [`34538f5`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/34538f5c19fd6a823fae06cade06cd5811595f6d))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+
+## v0.36.1 (2025-02-18)
+
+### Chores
+
+- **deps**: Bump numpy from 2.2.2 to 2.2.3
+  ([#83](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/83),
+  [`4e7a435`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4e7a4355caacbbded3d46499b23748a7e3105204))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump scipy from 1.15.1 to 1.15.2
+  ([#82](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/82),
+  [`7fdf855`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7fdf855eac6d01ec2e38178c497ef1ec498a2e9f))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+
 ## v0.36.0 (2025-02-17)
 
 ### Features
