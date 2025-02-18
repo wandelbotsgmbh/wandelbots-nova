@@ -1,6 +1,43 @@
 # CHANGELOG
 
 
+## v0.36.2 (2025-02-18)
+
+### Chores
+
+- **deps**: Bump python-semantic-release/publish-action from 9.19.0 to 9.20.0
+  ([#80](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/80),
+  [`3fef1d8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3fef1d89a5956fe4c732e892a1693135c77098a0))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump python-semantic-release/python-semantic-release from 9.19.0 to 9.20.0
+  ([#79](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/79),
+  [`91180a7`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/91180a753b165f68e06f186f363ccba96db24f75))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump trimesh from 4.6.1 to 4.6.2
+  ([#84](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/84),
+  [`6980d79`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6980d79b3a0f745dafef6544e19070dbe168e2f4))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps-dev**: Bump pytest-asyncio from 0.24.0 to 0.25.3
+  ([#54](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/54),
+  [`34538f5`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/34538f5c19fd6a823fae06cade06cd5811595f6d))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+
 ## v0.36.1 (2025-02-18)
 
 ### Chores
