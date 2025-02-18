@@ -1,11 +1,10 @@
 import asyncio
 import time
-from typing import Any, Dict, Protocol
+from dataclasses import dataclass
+from typing import Any, Dict, Protocol, Tuple
 
 import numpy as np
-import rerun as rr
 from robometrics.datasets import motion_benchmaker_raw
-from scipy.spatial.transform import Rotation
 from wandelbots_api_client import models
 from wandelbots_api_client.models import (
     CoordinateSystem,
@@ -19,6 +18,7 @@ from nova.core.nova import Nova
 from nova.types import Pose
 from nova.types.vector3d import Vector3d as Vector3d_nova
 from nova_rerun_bridge import NovaRerunBridge
+from nova_rerun_bridge.benchmark.log_successful_planning import log_successful_planning
 from nova_rerun_bridge.benchmark.robometrics_helper import (
     convert_position,
     create_box_collider,
@@ -27,15 +27,32 @@ from nova_rerun_bridge.benchmark.robometrics_helper import (
 )
 
 
+@dataclass
 class NovaMetrics:
-    def __init__(
-        self, success=False, time=0.0, position_error=0.0, orientation_error=0.0, motion_time=0.0
-    ):
-        self.success = success
-        self.time = time
-        self.position_error = position_error
-        self.orientation_error = orientation_error
-        self.motion_time = motion_time
+    """Metrics for benchmark results."""
+
+    success: bool = False
+    time: float = 0.0
+    position_error: float = 0.0
+    orientation_error: float = 0.0
+    motion_time: float = 0.0
+
+
+class BenchmarkStrategy(Protocol):
+    """Protocol for benchmark strategies."""
+
+    name: str
+
+    async def plan(
+        self,
+        motion_group: MotionGroup,
+        target: Pose,
+        collision_scene: models.CollisionScene,
+        tcp: str,
+        optimizer_setup: models.OptimizerSetup,
+        nova: Nova,
+        start_joint_position: Tuple[float, ...],
+    ) -> Any: ...
 
 
 async def setup_collision_scene(
@@ -105,63 +122,6 @@ async def setup_collision_scene(
     return scene_id
 
 
-async def log_successful_planning(
-    bridge, collision_scene_id, problem, key, i, trajectory, tcp, motion_group
-):
-    # Log successful planning
-    rr.init(application_id="nova", recording_id=f"nova_{key}_{i}", spawn=True)
-    await bridge.setup_blueprint()
-    await bridge.log_collision_scene(collision_scene_id)
-
-    # Log goal pose position (convert from m to mm)
-    goal_position_mm = convert_position(problem["goal_pose"]["position_xyz"])
-    rr.log(
-        "motion/target_orientation",
-        rr.Points3D(
-            positions=[goal_position_mm],
-            radii=[5],
-            colors=[(0, 255, 0, 255)],  # Green with full opacity
-        ),
-    )
-
-    goal_position = convert_position(problem["goal_pose"]["position_xyz"])
-    goal_quat = problem["goal_pose"]["quaternion_wxyz"]
-
-    # Create arrow to show goal pose
-    # Convert quaternion to rotation matrix
-    w, x, y, z = goal_quat
-    rot = Rotation.from_quat([x, y, z, w])  # [x,y,z,w] format for scipy
-
-    # Create arrow pointing in x direction (length 100mm)
-    arrow_length = 50.0  # mm
-    arrow_vectors = [
-        rot.apply([arrow_length, 0, 0]),  # X axis - Red
-        rot.apply([0, arrow_length, 0]),  # Y axis - Green
-        rot.apply([0, 0, arrow_length]),  # Z axis - Blue
-    ]
-
-    coordinate_colors = np.array(
-        [
-            [1.0, 0.125, 0.376, 1.0],  # #ff2060 - Red/Pink for X
-            [0.125, 0.875, 0.502, 1.0],  # #20df80 - Green for Y
-            [0.125, 0.502, 1.0, 1.0],  # #2080ff - Blue for Z
-        ]
-    )
-
-    rr.log(
-        "motion/target_orientation",
-        rr.Arrows3D(
-            origins=[goal_position] * 3,  # Same origin for all arrows
-            vectors=arrow_vectors,
-            colors=coordinate_colors,
-            radii=[2.5] * 3,
-        ),
-        static=True,
-    )
-
-    await bridge.log_trajectory(trajectory, tcp, motion_group)
-
-
 def print_separator(char="=", width=80):
     """Print a separator line."""
     print(char * width)
@@ -221,20 +181,6 @@ def print_progressive_statistics(
     # Print overall progress
     print_statistics(results, "Overall Progress", show_separator=False)
     print_separator()
-
-
-class BenchmarkStrategy(Protocol):
-    """Protocol for benchmark strategies."""
-
-    name: str
-
-    async def plan(
-        self,
-        motion_group: MotionGroup,
-        target: Pose,
-        collision_scene: models.CollisionScene,
-        tcp: str,
-    ) -> Any: ...
 
 
 async def run_single_benchmark(strategy: BenchmarkStrategy):
@@ -328,6 +274,9 @@ async def run_single_benchmark(strategy: BenchmarkStrategy):
                             target=start_pose,
                             collision_scene=collision_scene,
                             tcp=tcp,
+                            optimizer_setup=robot_setup,
+                            nova=nova,
+                            start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
                         )
 
                         # Calculate metrics

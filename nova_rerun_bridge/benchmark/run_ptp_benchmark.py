@@ -5,7 +5,16 @@ from nova_rerun_bridge.benchmark.benchmark_base import BenchmarkStrategy, run_be
 class PtpStrategy(BenchmarkStrategy):
     name = "ptp"
 
-    async def plan(self, motion_group, target, collision_scene, tcp):
+    async def plan(
+        self,
+        motion_group,
+        target,
+        collision_scene,
+        tcp,
+        optimizer_setup,
+        nova,
+        start_joint_position,
+    ):
         return await motion_group.plan(
             [ptp(target=target, collision_scene=collision_scene)], tcp=tcp
         )
