@@ -241,11 +241,12 @@ async def run_benchmark():
 
         results = []
         for key, scene_problems in problems.items():
+            # max_problem_count = 11
             print(f"\nProcessing scene: {key}")
             for i, problem in enumerate(scene_problems):
-                rr.init(application_id="nova", recording_id=f"nova_{key}_{i}", spawn=True)
-                await bridge.setup_blueprint()
-
+                # max_problem_count = max_problem_count - 1
+                # if max_problem_count == 0:
+                #    break
                 print(f"Problem {i + 1}/{len(scene_problems)}", end="\r")
                 start_time = time.time()
 
@@ -253,52 +254,6 @@ async def run_benchmark():
                 q_start = problem["start"]
                 goal_pose = (
                     problem["goal_pose"]["position_xyz"] + problem["goal_pose"]["quaternion_wxyz"]
-                )
-
-                goal_position = convert_position(problem["goal_pose"]["position_xyz"])
-                goal_quat = problem["goal_pose"]["quaternion_wxyz"]
-
-                # Create arrow to show goal pose
-                # Convert quaternion to rotation matrix
-                w, x, y, z = goal_quat
-                rot = Rotation.from_quat([x, y, z, w])  # [x,y,z,w] format for scipy
-
-                # Create arrow pointing in x direction (length 100mm)
-                arrow_length = 50.0  # mm
-                arrow_vectors = [
-                    rot.apply([arrow_length, 0, 0]),  # X axis - Red
-                    rot.apply([0, arrow_length, 0]),  # Y axis - Green
-                    rot.apply([0, 0, arrow_length]),  # Z axis - Blue
-                ]
-
-                coordinate_colors = np.array(
-                    [
-                        [1.0, 0.125, 0.376, 1.0],  # #ff2060 - Red/Pink for X
-                        [0.125, 0.875, 0.502, 1.0],  # #20df80 - Green for Y
-                        [0.125, 0.502, 1.0, 1.0],  # #2080ff - Blue for Z
-                    ]
-                )
-
-                rr.log(
-                    "motion/target_orientation",
-                    rr.Arrows3D(
-                        origins=[goal_position] * 3,  # Same origin for all arrows
-                        vectors=arrow_vectors,
-                        colors=coordinate_colors,
-                        radii=[2.5] * 3,
-                    ),
-                    static=True,
-                )
-
-                # Log goal pose position (convert from m to mm)
-                goal_position_mm = convert_position(problem["goal_pose"]["position_xyz"])
-                rr.log(
-                    "motion/target_orientation",
-                    rr.Points3D(
-                        positions=[goal_position_mm],
-                        radii=[5],
-                        colors=[(0, 255, 0, 255)],  # Green with full opacity
-                    ),
                 )
 
                 try:
@@ -319,7 +274,6 @@ async def run_benchmark():
                             robot_setup,
                             key,
                         )
-                        await bridge.log_collision_scene(collision_scene_id)
 
                         scene_api = nova._api_client.store_collision_scenes_api
                         collision_scene = await scene_api.get_stored_collision_scene(
@@ -345,8 +299,6 @@ async def run_benchmark():
                             tcp=tcp,
                         )
 
-                        await bridge.log_trajectory(trajectory, tcp, motion_group)
-
                         # Calculate metrics
                         end_time = time.time()
                         metrics = NovaMetrics(
@@ -357,6 +309,60 @@ async def run_benchmark():
                             motion_time=trajectory.times[-1] if trajectory else 0.0,
                         )
                         results.append(metrics)
+
+                        rr.init(application_id="nova", recording_id=f"nova_{key}_{i}", spawn=True)
+                        await bridge.setup_blueprint()
+                        await bridge.log_collision_scene(collision_scene_id)
+
+                        # Log goal pose position (convert from m to mm)
+                        goal_position_mm = convert_position(problem["goal_pose"]["position_xyz"])
+                        rr.log(
+                            "motion/target_orientation",
+                            rr.Points3D(
+                                positions=[goal_position_mm],
+                                radii=[5],
+                                colors=[(0, 255, 0, 255)],  # Green with full opacity
+                            ),
+                        )
+
+                        goal_position = convert_position(problem["goal_pose"]["position_xyz"])
+                        goal_quat = problem["goal_pose"]["quaternion_wxyz"]
+
+                        # Create arrow to show goal pose
+                        # Convert quaternion to rotation matrix
+                        w, x, y, z = goal_quat
+                        rot = Rotation.from_quat([x, y, z, w])  # [x,y,z,w] format for scipy
+
+                        # Create arrow pointing in x direction (length 100mm)
+                        arrow_length = 50.0  # mm
+                        arrow_vectors = [
+                            rot.apply([arrow_length, 0, 0]),  # X axis - Red
+                            rot.apply([0, arrow_length, 0]),  # Y axis - Green
+                            rot.apply([0, 0, arrow_length]),  # Z axis - Blue
+                        ]
+
+                        coordinate_colors = np.array(
+                            [
+                                [1.0, 0.125, 0.376, 1.0],  # #ff2060 - Red/Pink for X
+                                [0.125, 0.875, 0.502, 1.0],  # #20df80 - Green for Y
+                                [0.125, 0.502, 1.0, 1.0],  # #2080ff - Blue for Z
+                            ]
+                        )
+
+                        rr.log(
+                            "motion/target_orientation",
+                            rr.Arrows3D(
+                                origins=[goal_position] * 3,  # Same origin for all arrows
+                                vectors=arrow_vectors,
+                                colors=coordinate_colors,
+                                radii=[2.5] * 3,
+                            ),
+                            static=True,
+                        )
+
+                        await bridge.log_trajectory(trajectory, tcp, motion_group)
+
+                        break
 
                 except Exception:
                     print(f"\nFailed planning: {key} - {i}")
