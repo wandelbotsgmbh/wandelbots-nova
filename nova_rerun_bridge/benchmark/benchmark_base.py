@@ -297,6 +297,7 @@ async def run_single_benchmark(strategy: BenchmarkStrategy):
 
                         await log_successful_planning(
                             bridge,
+                            strategy.name,
                             collision_scene_id,
                             problem,
                             key,

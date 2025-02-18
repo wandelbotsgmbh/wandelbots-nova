@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
@@ -32,6 +33,7 @@ class VisualizationConfig:
 
 async def log_successful_planning(
     bridge: NovaRerunBridge,
+    strategy: str,
     collision_scene_id: str,
     problem: Dict[str, Any],
     key: str,
@@ -54,8 +56,14 @@ async def log_successful_planning(
         motion_group: Motion group instance
         vis_config: Visualization configuration
     """
+    result_dir = Path("benchmark_results") / strategy / key
+    result_dir.mkdir(parents=True, exist_ok=True)
+
     # Initialize rerun visualization
-    rr.init(application_id="nova", recording_id=f"nova_{key}_{iteration}", spawn=True)
+    recording_id = f"{strategy}_{key}_{iteration}"
+
+    rr.init(application_id="nova", recording_id=recording_id, spawn=False)
+    rr.save(str(result_dir / f"{recording_id}.rrd"))
 
     await bridge.setup_blueprint()
     await bridge.log_collision_scene(collision_scene_id)

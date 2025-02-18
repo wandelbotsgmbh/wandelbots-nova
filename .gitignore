@@ -178,3 +178,5 @@ nova_rerun_bridge/nova_rerun_bridge_app/kubeconfig
 nova_rerun_bridge/nova_rerun_bridge_app/nova
 
 kubeconfig
+
+benchmark_results
