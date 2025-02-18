@@ -101,15 +101,14 @@ API_URL="https://${PORTAL_STG_HOST}/api/${API_VERSION}"
 
 echo "Checking service availability at: ${API_URL}/cells"
 
-curl "${CURL_ARGS[@]}" \
+curl -v "${CURL_ARGS[@]}" \
   --header "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
   --header "Accept: application/json" \
   "${API_URL}/cells"
 
 # 3) Proceed with second curl only if the first returned 200
 echo "✅ First request succeeded. Proceeding with second request..."
-curl \
-  "${CURL_ARGS[@]}" \
+curl -v "${CURL_ARGS[@]}" \
   --header "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
   --header "Accept: application/json" \
   "${API_URL}/cells/cell/status"
