@@ -106,6 +106,7 @@ status_code=$(curl \
   -s -o /dev/null -w "%{http_code}" \
   "${CURL_ARGS[@]}" \
   --header "${AUTH_HEADER}" \
+  --header "Accept: application/json" \
   "${API_URL}/cells")
 
 # 2) Check if status code == 200
@@ -119,6 +120,7 @@ echo "✅ First request succeeded. Proceeding with second request..."
 curl \
   "${CURL_ARGS[@]}" \
   --header "${AUTH_HEADER}" \
+  --header "Accept: application/json" \
   "${API_URL}/cells/cell/status"
 
 # If we reach here, the service is accessible.
