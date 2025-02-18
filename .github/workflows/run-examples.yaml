@@ -87,10 +87,10 @@ jobs:
         if: failure()
         run: |
           echo "Attempting to fetch the diagnosis package..."
-          # Replace URL and arguments with whatever you use to fetch the diagnosis package
           curl --fail -s -X GET \
             "https://${{ env.PORTAL_STG_HOST }}/api/v1/internal/system/diagnosis-package/zip" \
             -H 'Accept: application/zip' \
+            -H "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}" \
             -o "diagnose-${{ github.run_id }}.zip"
 
       - name: Upload diagnose artifact
