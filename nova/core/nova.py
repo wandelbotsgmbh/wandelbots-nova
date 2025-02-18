@@ -1,11 +1,11 @@
 import asyncio
 
 from decouple import config
-from loguru import logger
 
 from nova.api import models
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
+from nova.core import logger
 from nova.gateway import ApiGateway
 
 
@@ -19,7 +19,7 @@ class Nova:
         access_token: str | None = None,
         version: str = "v1",
         verify_ssl: bool = True,
-        # this is not used but if we remove it will create backwards compatibility issues
+        # TODO: deprecated,
         log_level: str = "INFO",
     ):
         self._api_client = ApiGateway(

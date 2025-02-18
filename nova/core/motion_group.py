@@ -1,7 +1,6 @@
 from typing import Callable, Generator, cast
 
 import wandelbots_api_client as wb
-from loguru import logger
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.motions import CollisionFreeMotion, Motion
@@ -9,6 +8,7 @@ from nova.api import models
 from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.movement_controller import motion_group_state_to_motion_state, move_forward
 from nova.core.robot_cell import AbstractRobot
+from nova.core import logger
 from nova.gateway import ApiGateway
 from nova.types import InitialMovementStream, LoadPlanResponse, MotionState, Pose, RobotState
 
@@ -37,7 +37,7 @@ def split_actions_into_batches(
     current_batch: list[Action] = []
     collision_free_motion: CollisionFreeMotion | None = None
     for action in actions:
-        # this happens when we switch from a action batch to a collision free motion
+        # this happens when we switch from an action batch to a collision free motion
         if collision_free_motion is not None:
             yield collision_free_motion
             collision_free_motion = None

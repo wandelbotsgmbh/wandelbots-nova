@@ -1,7 +1,7 @@
 from typing import Callable
 
 import wandelbots_api_client as wb
-from loguru import logger
+from nova.core import logger
 
 from nova.actions import MovementControllerContext
 from nova.core.exceptions import InitMovementFailed

@@ -5,6 +5,7 @@ from nova.core.movement_controller import speed_up as speed_up_movement_controll
 from nova.core.nova import Cell, Nova
 from nova.types import MotionSettings
 from nova.version import version
+from nova.core.logging import logger
 
 __version__ = version
 
@@ -18,5 +19,6 @@ __all__ = [
     "types",
     "actions",
     "MotionSettings",
+    "logger",
     "__version__",
 ]
