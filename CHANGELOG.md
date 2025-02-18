@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v0.36.1 (2025-02-18)
+
+### Chores
+
+- **deps**: Bump numpy from 2.2.2 to 2.2.3
+  ([#83](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/83),
+  [`4e7a435`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4e7a4355caacbbded3d46499b23748a7e3105204))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump scipy from 1.15.1 to 1.15.2
+  ([#82](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/82),
+  [`7fdf855`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7fdf855eac6d01ec2e38178c497ef1ec498a2e9f))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+
 ## v0.36.0 (2025-02-17)
 
 ### Features
