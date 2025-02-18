@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import numpy as np
 import rerun as rr
@@ -19,115 +19,12 @@ from nova.core.nova import Nova
 from nova.types import Pose
 from nova.types.vector3d import Vector3d as Vector3d_nova
 from nova_rerun_bridge import NovaRerunBridge
-
-
-def m_to_mm(value: float) -> float:
-    """Convert centimeters to millimeters."""
-    return value * 1000.0
-
-
-def convert_position(position: List[float]) -> List[float]:
-    """Convert position coordinates from m to mm."""
-    return [m_to_mm(p) for p in position]
-
-
-def quaternion_to_angle_axis(quaternion: List[float]) -> List[float]:
-    """Convert quaternion [w, x, y, z] to angle-axis [rx, ry, rz].
-
-    Args:
-        quaternion: Quaternion in [w, x, y, z] format as used by robometrics
-    Returns:
-        Angle-axis representation [rx, ry, rz] in radians
-    """
-    # Convert [w,x,y,z] to [x,y,z,w] for scipy
-    w, x, y, z = quaternion
-    rot = Rotation.from_quat([x, y, z, w])
-    return rot.as_rotvec()
-
-
-def convert_pose_quaternion(pose: List[float]) -> tuple[List[float], List[float]]:
-    """Convert pose from robometrics format to Nova format.
-
-    The pose transformation order is:
-    1. Convert position to mm
-    2. Calculate orientation (quaternion to angle-axis)
-
-    Args:
-        pose: [x, y, z, w, x, y, z] list containing position in meters
-             and quaternion in [w,x,y,z] format
-    Returns:
-        tuple of (position_mm, orientation_rad)
-    """
-    # First convert position from meters to mm
-    position = convert_position(pose[:3])
-
-    # Then handle orientation - quaternion already in [w,x,y,z] format
-    angles = quaternion_to_angle_axis(pose[3:])
-
-    return position, angles
-
-
-def create_box_collider(name: str, cube: Dict[str, Any]) -> tuple[str, models.Collider]:
-    """Create a box collider with mm dimensions using ConvexHull2."""
-    position, orientation = convert_pose_quaternion(cube["pose"])
-    dims = convert_position(cube["dims"])
-
-    # Create box vertices (8 corners)
-    half_x, half_y, half_z = [d / 2 for d in dims]
-    vertices = [
-        [-half_x, -half_y, -half_z],
-        [-half_x, -half_y, half_z],
-        [-half_x, half_y, -half_z],
-        [-half_x, half_y, half_z],
-        [half_x, -half_y, -half_z],
-        [half_x, -half_y, half_z],
-        [half_x, half_y, -half_z],
-        [half_x, half_y, half_z],
-    ]
-
-    # Apply rotation to vertices first
-    rot = Rotation.from_rotvec(np.array(orientation))
-    rotated_vertices = [rot.apply(v) for v in vertices]
-
-    return name, models.Collider(
-        shape=models.ColliderShape(
-            models.ConvexHull2(vertices=rotated_vertices, shape_type="convex_hull")
-        ),
-        pose=models.Pose2(
-            position=position,
-            orientation=[0, 0, 0],  # Orientation already applied to vertices
-        ),
-    )
-
-
-def create_cylinder_collider(name: str, cylinder: Dict[str, Any]) -> tuple[str, models.Collider]:
-    """Create a cylinder collider with mm dimensions using ConvexHull2."""
-    position, orientation = convert_pose_quaternion(cylinder["pose"])
-    radius = m_to_mm(cylinder["radius"])
-    height = m_to_mm(cylinder["height"])
-
-    # Create cylinder vertices (discretized circle at top and bottom)
-    num_points = 16  # Number of points to approximate the circular cross-section
-    angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
-
-    # Create points for top and bottom circles
-    top_points = [[radius * np.cos(a), radius * np.sin(a), height / 2] for a in angles]
-    bottom_points = [[radius * np.cos(a), radius * np.sin(a), -height / 2] for a in angles]
-    vertices = top_points + bottom_points
-
-    # Apply rotation to vertices first
-    rot = Rotation.from_rotvec(np.array(orientation))
-    rotated_vertices = [rot.apply(v) for v in vertices]
-
-    return name, models.Collider(
-        shape=models.ColliderShape(
-            models.ConvexHull2(vertices=rotated_vertices, shape_type="convex_hull")
-        ),
-        pose=models.Pose2(
-            position=position,
-            orientation=[0, 0, 0],  # Orientation already applied to vertices
-        ),
-    )
+from nova_rerun_bridge.benchmark.robometrics_helper import (
+    convert_position,
+    create_box_collider,
+    create_cylinder_collider,
+    quaternion_to_angle_axis,
+)
 
 
 class NovaMetrics:
@@ -208,6 +105,124 @@ async def setup_collision_scene(
     return scene_id
 
 
+async def log_successful_planning(
+    bridge, collision_scene_id, problem, key, i, trajectory, tcp, motion_group
+):
+    # Log successful planning
+    rr.init(application_id="nova", recording_id=f"nova_{key}_{i}", spawn=True)
+    await bridge.setup_blueprint()
+    await bridge.log_collision_scene(collision_scene_id)
+
+    # Log goal pose position (convert from m to mm)
+    goal_position_mm = convert_position(problem["goal_pose"]["position_xyz"])
+    rr.log(
+        "motion/target_orientation",
+        rr.Points3D(
+            positions=[goal_position_mm],
+            radii=[5],
+            colors=[(0, 255, 0, 255)],  # Green with full opacity
+        ),
+    )
+
+    goal_position = convert_position(problem["goal_pose"]["position_xyz"])
+    goal_quat = problem["goal_pose"]["quaternion_wxyz"]
+
+    # Create arrow to show goal pose
+    # Convert quaternion to rotation matrix
+    w, x, y, z = goal_quat
+    rot = Rotation.from_quat([x, y, z, w])  # [x,y,z,w] format for scipy
+
+    # Create arrow pointing in x direction (length 100mm)
+    arrow_length = 50.0  # mm
+    arrow_vectors = [
+        rot.apply([arrow_length, 0, 0]),  # X axis - Red
+        rot.apply([0, arrow_length, 0]),  # Y axis - Green
+        rot.apply([0, 0, arrow_length]),  # Z axis - Blue
+    ]
+
+    coordinate_colors = np.array(
+        [
+            [1.0, 0.125, 0.376, 1.0],  # #ff2060 - Red/Pink for X
+            [0.125, 0.875, 0.502, 1.0],  # #20df80 - Green for Y
+            [0.125, 0.502, 1.0, 1.0],  # #2080ff - Blue for Z
+        ]
+    )
+
+    rr.log(
+        "motion/target_orientation",
+        rr.Arrows3D(
+            origins=[goal_position] * 3,  # Same origin for all arrows
+            vectors=arrow_vectors,
+            colors=coordinate_colors,
+            radii=[2.5] * 3,
+        ),
+        static=True,
+    )
+
+    await bridge.log_trajectory(trajectory, tcp, motion_group)
+
+
+def print_separator(char="=", width=80):
+    """Print a separator line."""
+    print(char * width)
+
+
+def print_statistics(results, name="Overall", show_separator=True):
+    """Print statistics for a group of results with improved formatting."""
+    if show_separator:
+        print_separator("-")
+
+    if not results:
+        print(f"\n📊 {name} Statistics: No results collected")
+        return
+
+    success_rate = sum(r.success for r in results) / len(results)
+    successful_results = [r for r in results if r.success]
+
+    print(f"\n📊 {name} Statistics:")
+    print(f"├── Total attempts: {len(results)}")
+    print(
+        f"├── Success rate:  {'🟢' if success_rate > 0.8 else '🟡' if success_rate > 0.5 else '🔴'} {success_rate:.2%}"
+    )
+
+    if successful_results:
+        avg_time = sum(r.time for r in successful_results) / len(successful_results)
+        avg_pos_error = sum(r.position_error for r in successful_results) / len(successful_results)
+        avg_orient_error = sum(r.orientation_error for r in successful_results) / len(
+            successful_results
+        )
+        avg_motion_time = sum(r.motion_time for r in successful_results) / len(successful_results)
+
+        print("├── Averages for successful attempts:")
+        print(f"│   ├── Planning time:     {avg_time:.3f}s")
+        print(f"│   ├── Motion time:       {avg_motion_time:.3f}s")
+        print(f"│   ├── Position error:    {avg_pos_error:.3f}m")
+        print(f"│   └── Orientation error: {avg_orient_error:.3f}rad")
+
+    if show_separator:
+        print_separator("-")
+
+
+def print_progressive_statistics(
+    results, problem_results, current_key=None, total_problems=0, current_problem=0
+):
+    """Print both current problem and overall statistics with progress indicator."""
+    print("\033[2J\033[H")  # Clear screen and move cursor to top
+    print_separator()
+    print(f"🤖 Benchmark Progress: {current_problem}/{total_problems} problems")
+    print_separator()
+
+    # Print current problem statistics if available
+    if current_key and current_key in problem_results:
+        print_statistics(
+            problem_results[current_key], f"Current Scene ({current_key})", show_separator=False
+        )
+
+    # Print overall progress
+    print_statistics(results, "Overall Progress", show_separator=False)
+    print_separator()
+
+
 async def run_benchmark():
     async with Nova() as nova, NovaRerunBridge(nova, spawn=False) as bridge:
         cell = nova.cell()
@@ -218,6 +233,7 @@ async def run_benchmark():
             models.Manufacturer.UNIVERSALROBOTS,
         )
 
+        # move the robot up to avoid collision with the floor
         await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
             cell="cell",
             controller=controller.controller_id,
@@ -239,22 +255,19 @@ async def run_benchmark():
         # Load benchmark datasets
         problems = motion_benchmaker_raw()
 
+        # Store results per problem
+        problem_results = {}
         results = []
-        for key, scene_problems in problems.items():
-            # max_problem_count = 11
-            print(f"\nProcessing scene: {key}")
-            for i, problem in enumerate(scene_problems):
-                # max_problem_count = max_problem_count - 1
-                # if max_problem_count == 0:
-                #    break
-                print(f"Problem {i + 1}/{len(scene_problems)}", end="\r")
-                start_time = time.time()
 
-                # Get start and goal configurations
-                q_start = problem["start"]
-                goal_pose = (
-                    problem["goal_pose"]["position_xyz"] + problem["goal_pose"]["quaternion_wxyz"]
-                )
+        total_problems = sum(len(probs) for probs in problems.values())
+        current_problem = 0
+
+        for key, scene_problems in problems.items():
+            print(f"\nProcessing scene: {key}")
+            problem_results[key] = []
+
+            for i, problem in enumerate(scene_problems):
+                current_problem += 1
 
                 try:
                     async with controller[0] as motion_group:
@@ -293,6 +306,8 @@ async def run_benchmark():
                             ),
                         )  # Combine position and orientation
 
+                        start_time = time.time()
+
                         # Set start configuration using the converted pose
                         trajectory = await motion_group.plan(
                             [collision_free(target=start_pose, collision_scene=collision_scene)],
@@ -304,97 +319,51 @@ async def run_benchmark():
                         metrics = NovaMetrics(
                             success=True,
                             time=end_time - start_time,
-                            position_error=0,
-                            orientation_error=0,
+                            position_error=0,  # not supported
+                            orientation_error=0,  # not supported
                             motion_time=trajectory.times[-1] if trajectory else 0.0,
                         )
                         results.append(metrics)
+                        problem_results[key].append(metrics)
 
-                        rr.init(application_id="nova", recording_id=f"nova_{key}_{i}", spawn=True)
-                        await bridge.setup_blueprint()
-                        await bridge.log_collision_scene(collision_scene_id)
-
-                        # Log goal pose position (convert from m to mm)
-                        goal_position_mm = convert_position(problem["goal_pose"]["position_xyz"])
-                        rr.log(
-                            "motion/target_orientation",
-                            rr.Points3D(
-                                positions=[goal_position_mm],
-                                radii=[5],
-                                colors=[(0, 255, 0, 255)],  # Green with full opacity
-                            ),
+                        print_progressive_statistics(
+                            results, problem_results, key, total_problems, current_problem
                         )
 
-                        goal_position = convert_position(problem["goal_pose"]["position_xyz"])
-                        goal_quat = problem["goal_pose"]["quaternion_wxyz"]
-
-                        # Create arrow to show goal pose
-                        # Convert quaternion to rotation matrix
-                        w, x, y, z = goal_quat
-                        rot = Rotation.from_quat([x, y, z, w])  # [x,y,z,w] format for scipy
-
-                        # Create arrow pointing in x direction (length 100mm)
-                        arrow_length = 50.0  # mm
-                        arrow_vectors = [
-                            rot.apply([arrow_length, 0, 0]),  # X axis - Red
-                            rot.apply([0, arrow_length, 0]),  # Y axis - Green
-                            rot.apply([0, 0, arrow_length]),  # Z axis - Blue
-                        ]
-
-                        coordinate_colors = np.array(
-                            [
-                                [1.0, 0.125, 0.376, 1.0],  # #ff2060 - Red/Pink for X
-                                [0.125, 0.875, 0.502, 1.0],  # #20df80 - Green for Y
-                                [0.125, 0.502, 1.0, 1.0],  # #2080ff - Blue for Z
-                            ]
+                        await log_successful_planning(
+                            bridge,
+                            collision_scene_id,
+                            problem,
+                            key,
+                            i,
+                            trajectory,
+                            tcp,
+                            motion_group,
                         )
-
-                        rr.log(
-                            "motion/target_orientation",
-                            rr.Arrows3D(
-                                origins=[goal_position] * 3,  # Same origin for all arrows
-                                vectors=arrow_vectors,
-                                colors=coordinate_colors,
-                                radii=[2.5] * 3,
-                            ),
-                            static=True,
-                        )
-
-                        await bridge.log_trajectory(trajectory, tcp, motion_group)
-
-                        break
 
                 except Exception:
                     print(f"\nFailed planning: {key} - {i}")
-                    results.append(NovaMetrics())
+                    failed_metrics = NovaMetrics()
+                    results.append(failed_metrics)
+                    problem_results[key].append(failed_metrics)
 
-        # Calculate overall statistics
-        if results:
-            success_rate = sum(r.success for r in results) / len(results)
-            successful_results = [r for r in results if r.success]
+                    print_progressive_statistics(
+                        results, problem_results, key, total_problems, current_problem
+                    )
 
-            if successful_results:
-                avg_time = sum(r.time for r in successful_results) / len(successful_results)
-                avg_pos_error = sum(r.position_error for r in successful_results) / len(
-                    successful_results
-                )
-                avg_orient_error = sum(r.orientation_error for r in successful_results) / len(
-                    successful_results
-                )
-                avg_motion_time = sum(r.motion_time for r in successful_results) / len(
-                    successful_results
-                )
+        # Print final statistics
+        print("\033[2J\033[H")  # Clear screen
+        print_separator("=")
+        print("🎯 Final Benchmark Results")
+        print_separator("=")
 
-                print("\nBenchmark Results:")
-                print(f"Success rate: {success_rate:.2%}")
-                print(f"Average planning time: {avg_time:.3f}s")
-                print(f"Average motion time: {avg_motion_time:.3f}s")
-                print(f"Average position error: {avg_pos_error:.3f}m")
-                print(f"Average orientation error: {avg_orient_error:.3f}rad")
-            else:
-                print("\nNo successful results")
-        else:
-            print("\nNo results collected")
+        for key, prob_results in problem_results.items():
+            print_statistics(prob_results, f"Scene: {key}")
+
+        print_separator("=")
+        print("📈 Overall Results")
+        print_separator("=")
+        print_statistics(results, "Complete Benchmark")
 
 
 if __name__ == "__main__":
