@@ -29,9 +29,9 @@ import pydantic
 from nova import api
 from nova.actions import Action, MovementController
 from nova.actions.motions import CollisionFreeMotion
+from nova.core import logger
 from nova.types import MotionState, Pose, RobotState
 from nova.utils import Callerator
-from nova.core import logger
 
 
 class RobotCellError(Exception):

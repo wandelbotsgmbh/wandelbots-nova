@@ -1,10 +1,6 @@
 import asyncio
 from math import pi
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from nova import MotionGroup, Nova
 from nova.actions import ptp
 from nova.api import models

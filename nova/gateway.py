@@ -6,8 +6,8 @@ from typing import TypeVar
 import wandelbots_api_client as wb
 from decouple import config
 
-from nova.version import version as pkg_version
 from nova.core import logger
+from nova.version import version as pkg_version
 
 T = TypeVar("T")
 

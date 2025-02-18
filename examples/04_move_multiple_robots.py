@@ -1,9 +1,5 @@
 import asyncio
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from nova import Controller, Nova
 from nova.actions import jnt, ptp
 from nova.api import models

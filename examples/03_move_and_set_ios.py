@@ -1,9 +1,5 @@
 import asyncio
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from nova import Nova
 from nova.actions import io_write, jnt, ptp
 from nova.api import models

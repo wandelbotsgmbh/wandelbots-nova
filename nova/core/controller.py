@@ -1,6 +1,7 @@
 from typing import Literal, Sized
 
 from nova.api import models
+from nova.core import logger
 from nova.core.io import IOAccess
 from nova.core.motion_group import MotionGroup
 from nova.core.robot_cell import (
@@ -11,7 +12,6 @@ from nova.core.robot_cell import (
     IODevice,
     ValueType,
 )
-from nova.core import logger
 from nova.gateway import ApiGateway
 
 

@@ -1,9 +1,5 @@
 import asyncio
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from nova.auth.authorization import Auth0DeviceAuthorization
 
 """

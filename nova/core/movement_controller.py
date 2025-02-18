@@ -1,9 +1,9 @@
 from typing import Callable
 
 import wandelbots_api_client as wb
-from nova.core import logger
 
 from nova.actions import MovementControllerContext
+from nova.core import logger
 from nova.core.exceptions import InitMovementFailed
 from nova.types import (
     ExecuteTrajectoryRequestStream,

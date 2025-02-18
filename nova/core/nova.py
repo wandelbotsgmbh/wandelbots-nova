@@ -3,9 +3,9 @@ import asyncio
 from decouple import config
 
 from nova.api import models
+from nova.core import logger
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
-from nova.core import logger
 from nova.gateway import ApiGateway
 
 
