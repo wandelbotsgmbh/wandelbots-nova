@@ -90,6 +90,18 @@ class Pose(pydantic.BaseModel, Sized):
     def __len__(self):
         return 6
 
+    def __iter__(self):
+        """Iterate over the pose
+
+        Examples:
+        >>> p = Pose((1, 2, 3, 0, 0, 0))
+        >>> list(p)
+        [1, 2, 3, 0, 0, 0]
+        >>> tuple(p)
+        (1, 2, 3, 0, 0, 0)
+        """
+        return iter(self.to_tuple())
+
     def __invert__(self) -> Pose:
         """
         Return the inverse of this pose.
@@ -147,6 +159,8 @@ class Pose(pydantic.BaseModel, Sized):
         ...     for d in data:
         ...         yield d
         >>> Pose((1, 2, 3, 0, 0, 0)) @ as_iterator([1, 2, 3, 0, 0, 0])
+        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        >>> Pose((1, 2, 3, 0, 0, 0)) @ Vector3d.from_tuple((1, 2, 3))
         Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
         """
         if isinstance(other, Pose):

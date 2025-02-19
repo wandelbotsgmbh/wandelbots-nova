@@ -1,6 +1,146 @@
 # CHANGELOG
 
 
+## v0.37.1 (2025-02-19)
+
+### Chores
+
+- Added CODEOWNERS file ([#88](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/88),
+  [`59043a4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/59043a4ca86de7959344cf267e1e4ad72c77ebcd))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
+## v0.37.0 (2025-02-18)
+
+### Features
+
+- **RPS-1265**: Download and attach diagnose package on CI fail
+  ([#85](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/85),
+  [`30b3638`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/30b363860b7b6d16246f2bc886f776b42a8c3b37))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
+## v0.36.2 (2025-02-18)
+
+### Chores
+
+- **deps**: Bump python-semantic-release/publish-action from 9.19.0 to 9.20.0
+  ([#80](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/80),
+  [`3fef1d8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3fef1d89a5956fe4c732e892a1693135c77098a0))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump python-semantic-release/python-semantic-release from 9.19.0 to 9.20.0
+  ([#79](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/79),
+  [`91180a7`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/91180a753b165f68e06f186f363ccba96db24f75))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump trimesh from 4.6.1 to 4.6.2
+  ([#84](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/84),
+  [`6980d79`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6980d79b3a0f745dafef6544e19070dbe168e2f4))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps-dev**: Bump pytest-asyncio from 0.24.0 to 0.25.3
+  ([#54](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/54),
+  [`34538f5`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/34538f5c19fd6a823fae06cade06cd5811595f6d))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+
+## v0.36.1 (2025-02-18)
+
+### Chores
+
+- **deps**: Bump numpy from 2.2.2 to 2.2.3
+  ([#83](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/83),
+  [`4e7a435`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4e7a4355caacbbded3d46499b23748a7e3105204))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump scipy from 1.15.1 to 1.15.2
+  ([#82](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/82),
+  [`7fdf855`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7fdf855eac6d01ec2e38178c497ef1ec498a2e9f))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+
+## v0.36.0 (2025-02-17)
+
+### Features
+
+- **RPS-1224**: Added user-agent to api client
+  ([#66](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/66),
+  [`13696aa`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/13696aae25680022cc4cf7a21f0d4205682fde55))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
+## v0.35.0 (2025-02-14)
+
+### Features
+
+- Added __getitem__ in vector3d ([#77](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/77),
+  [`4612008`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/46120080a07da5b32c5f72374c854d3275941e55))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
+## v0.34.0 (2025-02-14)
+
+### Features
+
+- Added __iter__ to vector & pose ([#75](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/75),
+  [`0d48799`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0d487996e3b9b89c78c31e91225d763166817815))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
+## v0.33.1 (2025-02-14)
+
+### Bug Fixes
+
+- Update catalog entry name format in image push workflow
+  ([#72](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/72),
+  [`f4c512b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f4c512bfc2e0622792b032a4578a5d6aa0e1619c))
+
+Co-authored-by: André <andre.kuehnert@wandelbots.com>
+
+
+## v0.33.0 (2025-02-14)
+
+### Features
+
+- Add catalog entry update step to image push workflows
+  ([#69](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/69),
+  [`790e68d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/790e68d0fed8bbf1074ae1dae9dd294d9c8b03d8))
+
+Co-authored-by: André <andre.kuehnert@wandelbots.com>
+
+
+## v0.32.1 (2025-02-13)
+
+### Bug Fixes
+
+- Install extension in rerun app
+  ([`6ba0f4d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6ba0f4d10a362be85c8ba5e45cf2151f5d04eeba))
+
+
 ## v0.32.0 (2025-02-13)
 
 ### Features

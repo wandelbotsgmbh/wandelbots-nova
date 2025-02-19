@@ -43,7 +43,7 @@ jobs:
           # Optional
           PROJECT_VERSION: "1.0.0"
           GITHUB_RUN_ID: ${{ github.run_id }}
-          INSECURE_CURL: "true" # If you need to skip SSL verification
+          INSECURE_CURL: "true"
         run: |
           if ! source ./scripts/create_nova_instance.sh; then
             echo "Failed to create NOVA instance."
@@ -83,6 +83,23 @@ jobs:
             echo "Failed after $max_retries attempts."
             exit 1
           fi
+
+      - name: Download diagnose package
+        if: failure()
+        run: |
+          echo "Attempting to fetch the diagnosis package..."
+          curl --fail -s -X GET \
+            "https://${{ env.PORTAL_STG_HOST }}/api/v1/internal/system/diagnosis-package/zip" \
+            -H 'Accept: application/zip' \
+            -H "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}" \
+            -o "diagnose-${{ github.run_id }}.zip"
+
+      - name: Upload diagnose artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnose-package
+          path: diagnose-${{ github.run_id }}.zip
 
       # Always run cleanup, whether success or failure
       - name: Cleanup - Delete instance

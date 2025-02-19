@@ -14,7 +14,7 @@ WORKDIR /app
 COPY . .
 
 # Install dependencies including the local package
-RUN --mount=type=cache,target=$POETRY_CACHE_DIR poetry install --no-dev
+RUN --mount=type=cache,target=$POETRY_CACHE_DIR poetry install --extras "nova-rerun-bridge" --no-dev
 
 FROM python:3.11-slim AS runtime
 
