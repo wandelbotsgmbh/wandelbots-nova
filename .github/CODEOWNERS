@@ -1,0 +1,6 @@
+# 1) Default ownership
+* @biering @mahsumdemirwb @functionistic @langenhagen
+
+# 2) Override ownership for /nova_rerun_bridge
+# so that someone else is the owner (or a team).
+/nova_rerun_bridge/* @stefanwagnerdev @andiikaa
