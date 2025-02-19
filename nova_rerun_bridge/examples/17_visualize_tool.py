@@ -47,7 +47,7 @@ async def test():
                 try:
                     await motion_group.tcp_pose(tcp_id)
                     break
-                except:
+                except api.exceptions.NotFoundException:
                     await asyncio.sleep(0.5)
 
             # Get current TCP pose and offset it slightly along the x-axis
