@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.37.1 (2025-02-19)
+
+### Chores
+
+- Added CODEOWNERS file ([#88](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/88),
+  [`59043a4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/59043a4ca86de7959344cf267e1e4ad72c77ebcd))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.37.0 (2025-02-18)
 
 ### Features
