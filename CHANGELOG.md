@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.38.0 (2025-02-19)
+
+### Features
+
+- **RPS-1214**: Streaming execution
+  ([#68](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/68),
+  [`c80fa66`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c80fa66a5dd6215852845d17a3ba88193d41f409))
+
+Co-authored-by: Dirk Sonnemann <dirk.sonnemann@wandelbots.com>
+
+Co-authored-by: Christoph Biering <1353438+biering@users.noreply.github.com>
+
+
 ## v0.37.1 (2025-02-19)
 
 ### Chores
