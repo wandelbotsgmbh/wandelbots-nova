@@ -45,6 +45,7 @@ pytest = "^8.3.4"
 pytest-asyncio = ">=0.24,<0.26"
 mypy = "^1.13.0"
 pre-commit = "^4.0.1"
+icecream = "^2.1.4"
 
 [tool.poetry.extras]
 nova-rerun-bridge = [

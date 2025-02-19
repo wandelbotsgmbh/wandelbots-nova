@@ -41,7 +41,7 @@ async def main():
                 jnt(home_joints),
             ]
 
-            async for motion_state in motion_group.plan_and_execute(actions, tcp):
+            async for motion_state in motion_group.stream_plan_and_execute(actions, tcp):
                 print(motion_state)
 
             io_value = await controller.read("tool_out[0]")

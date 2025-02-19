@@ -8,7 +8,6 @@ from typing import (
     Any,
     AsyncIterable,
     Awaitable,
-    Callable,
     ClassVar,
     Generic,
     Literal,
@@ -21,17 +20,17 @@ from typing import (
     runtime_checkable,
 )
 
-import aiostream
 import anyio
 import asyncstdlib
 import pydantic
+from aiostream import pipe, stream
 from loguru import logger
 
 from nova import api
 from nova.actions import Action, MovementController
 from nova.actions.motions import CollisionFreeMotion
-from nova.types import MotionState, Pose, RobotState
-from nova.utils import Callerator
+from nova.core.movement_controller import movement_to_motion_state
+from nova.types import MotionState, MovementResponse, Pose, RobotState
 
 
 class RobotCellError(Exception):
@@ -281,14 +280,13 @@ class AbstractRobot(Device):
         )
 
     @abstractmethod
-    async def _execute(
+    def _execute(
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str,
         actions: list[Action],
-        on_movement: Callable[[MotionState | None], None],
         movement_controller: MovementController | None,
-    ):
+    ) -> AsyncIterable[MovementResponse]:
         """Execute a planned motion
 
         Args:
@@ -299,14 +297,13 @@ class AbstractRobot(Device):
             on_movement (Callable[[MotionState], None]): A callback which is triggered for every movement
         """
 
-    async def execute(
+    async def stream_execute(
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str,
         actions: list[Action] | Action | None,
-        on_movement: Callable[[MotionState | None], None] | None = None,
         movement_controller: MovementController | None = None,
-    ):
+    ) -> AsyncIterable[MotionState]:
         """Execute a planned motion
 
         Args:
@@ -323,37 +320,79 @@ class AbstractRobot(Device):
 
         self._motion_recording.append([])
 
-        def _on_movement(motion_state_: MotionState | None):
-            if motion_state_ is not None:
-                self._motion_recording[-1].append(motion_state_)
-            if on_movement:
-                on_movement(motion_state_)
-
-        callerator = Callerator(_on_movement)
-        execution_task = asyncio.create_task(
-            self._execute(
-                joint_trajectory=joint_trajectory,
-                tcp=tcp,
-                actions=actions,
-                movement_controller=movement_controller,
-                on_movement=callerator,
+        def is_movement(movement_response: MovementResponse) -> bool:
+            return any(
+                (
+                    isinstance(movement_response, api.models.ExecuteTrajectoryResponse)
+                    and isinstance(movement_response.actual_instance, api.models.Movement),
+                    isinstance(movement_response, api.models.StreamMoveResponse),
+                )
             )
+
+        def movement_response_to_motion_state(
+            movement_response: MovementResponse, *_
+        ) -> MotionState:
+            if isinstance(movement_response, api.models.ExecuteTrajectoryResponse):
+                return movement_to_motion_state(movement_response.actual_instance)
+            elif isinstance(movement_response, api.models.StreamMoveResponse):
+                return movement_to_motion_state(movement_response)
+            assert False, f"Unexpected movement response: {movement_response}"
+
+        async def update_motion_recording(motion_state: MotionState) -> None:
+            self._motion_recording[-1].append(motion_state)
+
+        execute_response_stream = self._execute(
+            joint_trajectory, tcp, actions, movement_controller=movement_controller
         )
-        async for motion_state in callerator.stream():
+        motion_states = (
+            stream.iterate(execute_response_stream)
+            | pipe.filter(is_movement)
+            | pipe.map(movement_response_to_motion_state)
+            | pipe.action(update_motion_recording)
+        )
+        async with motion_states.stream() as motion_states_stream:
+            async for motion_state in motion_states_stream:
+                yield motion_state
+
+    async def execute(
+        self,
+        joint_trajectory: api.models.JointTrajectory,
+        tcp: str,
+        actions: list[Action] | Action | None,
+        movement_controller: MovementController | None = None,
+    ) -> None:
+        """Execute a planned motion
+
+        Args:
+            joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
+            tcp (str): The identifier of the tool center point (TCP)
+            actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
+            movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
+            on_movement (Callable[[MotionState], None]): A callback which is triggered for every movement
+        """
+        async for _ in self.stream_execute(
+            joint_trajectory, tcp, actions, movement_controller=movement_controller
+        ):
+            pass
+
+    async def stream_plan_and_execute(
+        self,
+        actions: list[Action | CollisionFreeMotion] | Action,
+        tcp: str,
+        start_joint_position: tuple[float, ...] | None = None,
+    ) -> AsyncIterable[MotionState]:
+        joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
+        async for motion_state in self.stream_execute(joint_trajectory, tcp, actions):  # type: ignore
             yield motion_state
-        await execution_task
 
     async def plan_and_execute(
         self,
-        actions: list[Action] | Action,
+        actions: list[Action | CollisionFreeMotion] | Action,
         tcp: str,
-        on_movement: Callable[[MotionState | None], None] | None = None,
-    ):
-        joint_trajectory = await self.plan(actions, tcp)  # type: ignore
-        async for motion_state in self.execute(
-            joint_trajectory, tcp, actions, on_movement, movement_controller=None
-        ):
-            yield motion_state
+        start_joint_position: tuple[float, ...] | None = None,
+    ) -> None:
+        joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
+        await self.execute(joint_trajectory, tcp, actions, movement_controller=None)  # type: ignore
 
     @abstractmethod
     async def get_state(self, tcp: str | None = None) -> RobotState:
@@ -623,7 +662,7 @@ class RobotCell:
             return
 
         state_streams = [device.state_stream(rate) for device in state_streaming_devices]
-        async with aiostream.stream.merge(*state_streams).stream() as devices_state_stream:
+        async with stream.merge(*state_streams).stream() as devices_state_stream:
             async for state in devices_state_stream:
                 yield state
 

@@ -109,7 +109,7 @@ Or add to your pyproject.toml:
 wandelbots-nova = { version = ">=0.12", extras = ["nova-rerun-bridge"] }
 ```
 
-You need to download the robot models to visualize the robot models in the rerun viewer. This needs the NPM package ltf-transform installed on your machine. 
+You need to download the robot models to visualize the robot models in the rerun viewer. This needs the NPM package ltf-transform installed on your machine.
 You can download the models by running the following command:
 
 ```bash
