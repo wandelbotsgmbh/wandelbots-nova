@@ -4,21 +4,9 @@ from collections import defaultdict
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from functools import reduce
-from typing import (
-    Any,
-    AsyncIterable,
-    Awaitable,
-    ClassVar,
-    Generic,
-    Literal,
-    Protocol,
-    TypeVar,
-    Union,
-    final,
-    get_origin,
-    get_type_hints,
-    runtime_checkable,
-)
+from typing import (Any, AsyncIterable, Awaitable, ClassVar, Generic, Literal,
+                    Protocol, TypeVar, Union, final, get_origin,
+                    get_type_hints, runtime_checkable)
 
 import anyio
 import asyncstdlib
@@ -320,19 +308,31 @@ class AbstractRobot(Device):
 
         self._motion_recording.append([])
 
-        # TODO: can we use a more specific type here?
-        def unpack_movement_response(movement_response: MovementResponse, *_) -> Any:
+        def is_movement(
+            movement_response: api.models.ExecuteTrajectoryResponse | api.models.StreamMoveResponse,
+        ) -> bool:
+            return any(
+                (
+                    isinstance(movement_response, api.models.ExecuteTrajectoryResponse)
+                    and isinstance(movement_response.actual_instance, api.models.Movement),
+                    isinstance(movement_response, api.models.StreamMoveResponse),
+                )
+            )
+
+        def unpack_movement_response(
+            movement_response: MovementResponse, *_
+        ) -> api.models.Movement | api.models.StreamMoveResponse:
             if isinstance(movement_response, api.models.ExecuteTrajectoryResponse):
-                return movement_response.actual_instance
-            # TODO: handle the StreamMoveResponse case or make sure it doesn't happen
+                instance = movement_response.actual_instance
+                assert isinstance(instance, api.models.Movement)
+                return instance
+            if isinstance(movement_response, api.models.StreamMoveResponse):
+                return movement_response
             assert False, f"Unexpected movement response: {movement_response}"
 
-        # TODO: can we use a more specific type here? (see above)
-        def is_movement(instance: Any) -> bool:
-            # TODO: will proboly not work with StreamMoveResponse
-            return isinstance(instance, api.models.Movement)
-
-        def movement_to_motion_state_(movement: api.models.Movement, *_) -> MotionState:
+        def movement_to_motion_state_(
+            movement: api.models.Movement | api.models.StreamMoveResponse, *_
+        ) -> MotionState:
             return movement_to_motion_state(movement)
 
         async def update_motion_recording(motion_state: MotionState) -> None:
@@ -343,8 +343,8 @@ class AbstractRobot(Device):
         )
         motion_states = (
             stream.iterate(execute_response_stream)
-            | pipe.map(unpack_movement_response)
             | pipe.filter(is_movement)
+            | pipe.map(unpack_movement_response)
             | pipe.map(movement_to_motion_state_)
             | pipe.action(update_motion_recording)
         )
@@ -374,16 +374,22 @@ class AbstractRobot(Device):
             pass
 
     async def stream_plan_and_execute(
-        self, actions: list[Action | CollisionFreeMotion] | Action, tcp: str
+        self,
+        actions: list[Action | CollisionFreeMotion] | Action,
+        tcp: str,
+        start_joint_position: tuple[float, ...] | None = None,
     ) -> AsyncIterable[MotionState]:
-        joint_trajectory = await self.plan(actions, tcp)
+        joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
         async for motion_state in self.stream_execute(joint_trajectory, tcp, actions):  # type: ignore
             yield motion_state
 
     async def plan_and_execute(
-        self, actions: list[Action | CollisionFreeMotion] | Action, tcp: str
+        self,
+        actions: list[Action | CollisionFreeMotion] | Action,
+        tcp: str,
+        start_joint_position: tuple[float, ...] | None = None,
     ) -> None:
-        joint_trajectory = await self.plan(actions, tcp)
+        joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
         await self.execute(joint_trajectory, tcp, actions, movement_controller=None)  # type: ignore
 
     @abstractmethod

@@ -1,21 +1,23 @@
-from typing import Callable
+from functools import singledispatch
+from typing import Any, Callable
 
 import wandelbots_api_client as wb
 from loguru import logger
 
 from nova.actions import MovementControllerContext
 from nova.core.exceptions import InitMovementFailed
-from nova.types import (
-    ExecuteTrajectoryRequestStream,
-    ExecuteTrajectoryResponseStream,
-    MotionState,
-    MovementControllerFunction,
-    Pose,
-    RobotState,
-)
+from nova.types import (ExecuteTrajectoryRequestStream,
+                        ExecuteTrajectoryResponseStream, MotionState,
+                        MovementControllerFunction, Pose, RobotState)
 
 
-def movement_to_motion_state(movement: wb.models.Movement) -> MotionState:
+@singledispatch
+def movement_to_motion_state(movement: Any) -> MotionState:
+    raise NotImplementedError(f"Unsupported movement type: {type(movement)}")
+
+
+@movement_to_motion_state.register
+def _movement_to_motion_state(movement: wb.models.Movement) -> MotionState:
     """Convert a wb.models.Movement to a MotionState."""
     if (
         movement.movement.state is None
@@ -30,6 +32,22 @@ def movement_to_motion_state(movement: wb.models.Movement) -> MotionState:
         motion_group, float(movement.movement.current_location)
     )
 
+
+@movement_to_motion_state.register
+def _movement_to_motion_state(movement: wb.models.StreamMoveResponse) -> MotionState:
+    """Convert a wb.models.Movement to a MotionState."""
+    if (
+        movement.move_response is None
+        or movement.move_response.current_location_on_trajectory is None
+        or len(movement.state.motion_groups) == 0
+    ):
+        assert False, "This should not happen"  # depending on NC-1105
+
+    # TODO: in which cases do we have more than one motion group here?
+    motion_group = movement.state.motion_groups[0]
+    return motion_group_state_to_motion_state(
+        motion_group, float(movement.move_response.current_location_on_trajectory)
+    )
 
 def motion_group_state_to_motion_state(
     motion_group_state: wb.models.MotionGroupState, path_parameter: float
