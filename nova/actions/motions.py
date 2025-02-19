@@ -33,6 +33,9 @@ class CollisionFreeMotion(Action):
     def serialize_model(self):
         return self._to_api_model().model_dump()
 
+    def is_motion(self) -> bool:
+        return True
+
 
 def collision_free(
     target: Pose | tuple[float, ...],
@@ -59,6 +62,10 @@ class Motion(Action, ABC):
     @property
     def is_cartesian(self):
         return isinstance(self.target, Pose)
+
+    @abstractmethod
+    def is_motion(self) -> bool:
+        return True
 
 
 class UnresolvedMotion(Motion, ABC):

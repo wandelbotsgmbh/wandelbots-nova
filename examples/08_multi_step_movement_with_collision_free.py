@@ -1,7 +1,7 @@
 import asyncio
 
 from nova import MotionSettings, Nova
-from nova.actions import collision_free, jnt, ptp
+from nova.actions import collision_free, jnt, ptp, io_write
 from nova.api import models
 from nova.types import Pose
 
@@ -41,6 +41,7 @@ async def main():
                 ptp(target_pose),
                 collision_free(home_joints),
                 ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
+                io_write(key="digital_out[0]", value=False),
                 jnt(home_joints),
                 ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
                 collision_free(home_pose),
@@ -50,13 +51,17 @@ async def main():
 
         # you can update the settings of the action
         for action in actions:
-            action.settings = MotionSettings(tcp_velocity_limit=200)
+            if action.is_motion():
+                action.settings = MotionSettings(tcp_velocity_limit=200)
 
         joint_trajectory = await motion_group.plan(
             actions, tcp, start_joint_position=(-0.0429, -1.8781, 1.8464, -2.1366, -1.4861, 1.0996)
         )
         async for _ in motion_group.execute(joint_trajectory, tcp, actions=actions):
             pass
+
+        value = await controller.read("digital_out[0]")
+        print(f"digital out: {value}")
 
         await cell.delete_robot_controller(controller.controller_id)
 
