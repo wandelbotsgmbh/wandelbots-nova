@@ -193,9 +193,9 @@ class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
 
     def __init__(self, configuration: Configuration, **kwargs):
         self._nova_api = ApiGateway(
-            host=self.configuration.nova_api,
-            access_token=self.configuration.nova_access_token,
-            username=self.configuration.nova_username,
-            password=self.configuration.nova_password,
+            host=configuration.nova_api,
+            access_token=configuration.nova_access_token,
+            username=configuration.nova_username,
+            password=configuration.nova_password,
         )
         super().__init__(configuration, **kwargs)
