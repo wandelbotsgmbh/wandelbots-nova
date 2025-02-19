@@ -4,9 +4,21 @@ from collections import defaultdict
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from functools import reduce
-from typing import (Any, AsyncIterable, Awaitable, ClassVar, Generic, Literal,
-                    Protocol, TypeVar, Union, final, get_origin,
-                    get_type_hints, runtime_checkable)
+from typing import (
+    Any,
+    AsyncIterable,
+    Awaitable,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    TypeVar,
+    Union,
+    final,
+    get_origin,
+    get_type_hints,
+    runtime_checkable,
+)
 
 import anyio
 import asyncstdlib
@@ -308,9 +320,7 @@ class AbstractRobot(Device):
 
         self._motion_recording.append([])
 
-        def is_movement(
-            movement_response: api.models.ExecuteTrajectoryResponse | api.models.StreamMoveResponse,
-        ) -> bool:
+        def is_movement(movement_response: MovementResponse) -> bool:
             return any(
                 (
                     isinstance(movement_response, api.models.ExecuteTrajectoryResponse)
@@ -319,21 +329,14 @@ class AbstractRobot(Device):
                 )
             )
 
-        def unpack_movement_response(
+        def movement_response_to_motion_state(
             movement_response: MovementResponse, *_
-        ) -> api.models.Movement | api.models.StreamMoveResponse:
-            if isinstance(movement_response, api.models.ExecuteTrajectoryResponse):
-                instance = movement_response.actual_instance
-                assert isinstance(instance, api.models.Movement)
-                return instance
-            if isinstance(movement_response, api.models.StreamMoveResponse):
-                return movement_response
-            assert False, f"Unexpected movement response: {movement_response}"
-
-        def movement_to_motion_state_(
-            movement: api.models.Movement | api.models.StreamMoveResponse, *_
         ) -> MotionState:
-            return movement_to_motion_state(movement)
+            if isinstance(movement_response, api.models.ExecuteTrajectoryResponse):
+                return movement_to_motion_state(movement_response.actual_instance)
+            elif isinstance(movement_response, api.models.StreamMoveResponse):
+                return movement_to_motion_state(movement_response)
+            assert False, f"Unexpected movement response: {movement_response}"
 
         async def update_motion_recording(motion_state: MotionState) -> None:
             self._motion_recording[-1].append(motion_state)
@@ -344,8 +347,7 @@ class AbstractRobot(Device):
         motion_states = (
             stream.iterate(execute_response_stream)
             | pipe.filter(is_movement)
-            | pipe.map(unpack_movement_response)
-            | pipe.map(movement_to_motion_state_)
+            | pipe.map(movement_response_to_motion_state)
             | pipe.action(update_motion_recording)
         )
         async with motion_states.stream() as motion_states_stream:

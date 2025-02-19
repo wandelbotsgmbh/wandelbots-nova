@@ -6,9 +6,14 @@ from loguru import logger
 
 from nova.actions import MovementControllerContext
 from nova.core.exceptions import InitMovementFailed
-from nova.types import (ExecuteTrajectoryRequestStream,
-                        ExecuteTrajectoryResponseStream, MotionState,
-                        MovementControllerFunction, Pose, RobotState)
+from nova.types import (
+    ExecuteTrajectoryRequestStream,
+    ExecuteTrajectoryResponseStream,
+    MotionState,
+    MovementControllerFunction,
+    Pose,
+    RobotState,
+)
 
 
 @singledispatch
@@ -17,7 +22,7 @@ def movement_to_motion_state(movement: Any) -> MotionState:
 
 
 @movement_to_motion_state.register
-def _movement_to_motion_state(movement: wb.models.Movement) -> MotionState:
+def _(movement: wb.models.Movement) -> MotionState:
     """Convert a wb.models.Movement to a MotionState."""
     if (
         movement.movement.state is None
@@ -34,10 +39,11 @@ def _movement_to_motion_state(movement: wb.models.Movement) -> MotionState:
 
 
 @movement_to_motion_state.register
-def _movement_to_motion_state(movement: wb.models.StreamMoveResponse) -> MotionState:
+def _(movement: wb.models.StreamMoveResponse) -> MotionState:
     """Convert a wb.models.Movement to a MotionState."""
     if (
         movement.move_response is None
+        or movement.state is None
         or movement.move_response.current_location_on_trajectory is None
         or len(movement.state.motion_groups) == 0
     ):
@@ -48,6 +54,7 @@ def _movement_to_motion_state(movement: wb.models.StreamMoveResponse) -> MotionS
     return motion_group_state_to_motion_state(
         motion_group, float(movement.move_response.current_location_on_trajectory)
     )
+
 
 def motion_group_state_to_motion_state(
     motion_group_state: wb.models.MotionGroupState, path_parameter: float
