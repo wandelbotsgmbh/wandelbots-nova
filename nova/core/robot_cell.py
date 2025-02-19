@@ -31,9 +31,6 @@ from nova.actions import Action, MovementController
 from nova.actions.motions import CollisionFreeMotion
 from nova.core.movement_controller import movement_to_motion_state
 from nova.types import MotionState, MovementResponse, Pose, RobotState
-from nova.types import MotionState, Pose, RobotState
-from nova.utils import Callerator
-from nova.gateway import ApiGateway
 
 
 class RobotCellError(Exception):
