@@ -24,6 +24,7 @@ jobs:
           - "04_move_multiple_robots.py"
           - "05_selection_motion_group_activation.py"
           - "06_api_usage.py"
+          - "08_multi_step_movement_with_collision_free.py"
 
     steps:
       - name: Check out repository

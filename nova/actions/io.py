@@ -16,6 +16,9 @@ class WriteAction(Action):
     def serialize_model(self):
         return api.models.IOValue(io=self.key, boolean_value=self.value).model_dump()
 
+    def is_motion(self) -> bool:
+        return False
+
 
 def io_write(key: str, value: Any, device_id: str | None = None) -> WriteAction:
     """Create a WriteAction
@@ -41,6 +44,9 @@ class ReadAction(Action):
     def serialize_model(self):
         return super().model_dump()
 
+    def is_motion(self) -> bool:
+        return False
+
 
 # TODO: Could move to WS if program representation is not in nova
 class CallAction(Action):
@@ -53,6 +59,9 @@ class CallAction(Action):
     def serialize_model(self):
         return super().model_dump()
 
+    def is_motion(self) -> bool:
+        return False
+
 
 # TODO: Could move to WS if program representation is not in nova
 class ReadPoseAction(Action):
@@ -64,6 +73,9 @@ class ReadPoseAction(Action):
     def serialize_model(self):
         return super().model_dump()
 
+    def is_motion(self) -> bool:
+        return False
+
 
 # TODO: Could move to WS if program representation is not in nova
 class ReadJointsAction(Action):
@@ -73,3 +85,6 @@ class ReadJointsAction(Action):
     @pydantic.model_serializer
     def serialize_model(self):
         return super().model_dump()
+
+    def is_motion(self) -> bool:
+        return False

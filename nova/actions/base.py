@@ -8,3 +8,7 @@ class Action(pydantic.BaseModel, ABC):
     @pydantic.model_serializer
     def serialize_model(self):
         """Serialize the model to a dictionary"""
+
+    @abstractmethod
+    def is_motion(self) -> bool:
+        """Return whether the action is a motion"""

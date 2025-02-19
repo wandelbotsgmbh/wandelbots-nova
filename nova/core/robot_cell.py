@@ -29,7 +29,6 @@ from loguru import logger
 
 from nova import api
 from nova.actions import Action, MovementController
-from nova.actions.motions import CollisionFreeMotion
 from nova.types import MotionState, Pose, RobotState
 from nova.utils import Callerator
 
@@ -229,7 +228,7 @@ class AbstractRobot(Device):
     @abstractmethod
     async def _plan(
         self,
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
         optimizer_setup: api.models.OptimizerSetup | None = None,
@@ -248,8 +247,7 @@ class AbstractRobot(Device):
 
     async def plan(
         self,
-        # TODO: this signature is changing, maybe I should make CollisionFreeMotion a subclass of Action
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
         optimizer_setup: api.models.OptimizerSetup | None = None,
@@ -303,7 +301,7 @@ class AbstractRobot(Device):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str,
-        actions: list[Action] | Action | None,
+        actions: list[Action] | Action,
         on_movement: Callable[[MotionState | None], None] | None = None,
         movement_controller: MovementController | None = None,
     ):
@@ -312,13 +310,11 @@ class AbstractRobot(Device):
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
             tcp (str): The identifier of the tool center point (TCP)
-            actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
+            actions (list[Action] | Action | None): The actions which are planned to create the trajectories
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             on_movement (Callable[[MotionState], None]): A callback which is triggered for every movement
         """
-        if actions is None:
-            actions = []
-        elif not isinstance(actions, list):
+        if not isinstance(actions, list):
             actions = [actions]
 
         self._motion_recording.append([])
@@ -349,7 +345,7 @@ class AbstractRobot(Device):
         tcp: str,
         on_movement: Callable[[MotionState | None], None] | None = None,
     ):
-        joint_trajectory = await self.plan(actions, tcp)  # type: ignore
+        joint_trajectory = await self.plan(actions, tcp)
         async for motion_state in self.execute(
             joint_trajectory, tcp, actions, on_movement, movement_controller=None
         ):
