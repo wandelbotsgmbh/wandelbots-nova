@@ -182,7 +182,7 @@ class ApiGateway:
         return self._password
 
 
-class NovaDevice(ConfigurablePeriphery, Device, ABC):
+class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
     class Configuration(ConfigurablePeriphery.Configuration):
         nova_api: str
         nova_access_token: str | None = None
