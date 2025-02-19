@@ -1,7 +1,7 @@
 import asyncio
 
 from nova import MotionSettings, Nova
-from nova.actions import collision_free, jnt, ptp, io_write
+from nova.actions import collision_free, io_write, jnt, ptp
 from nova.api import models
 from nova.types import Pose
 

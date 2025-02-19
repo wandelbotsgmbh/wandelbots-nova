@@ -19,6 +19,7 @@ class WriteAction(Action):
     def is_motion(self) -> bool:
         return False
 
+
 def io_write(key: str, value: Any, device_id: str | None = None) -> WriteAction:
     """Create a WriteAction
 
@@ -46,6 +47,7 @@ class ReadAction(Action):
     def is_motion(self) -> bool:
         return False
 
+
 # TODO: Could move to WS if program representation is not in nova
 class CallAction(Action):
     type: Literal["Call"] = "Call"
@@ -60,6 +62,7 @@ class CallAction(Action):
     def is_motion(self) -> bool:
         return False
 
+
 # TODO: Could move to WS if program representation is not in nova
 class ReadPoseAction(Action):
     type: Literal["ReadPose"] = "ReadPose"
@@ -72,6 +75,7 @@ class ReadPoseAction(Action):
 
     def is_motion(self) -> bool:
         return False
+
 
 # TODO: Could move to WS if program representation is not in nova
 class ReadJointsAction(Action):

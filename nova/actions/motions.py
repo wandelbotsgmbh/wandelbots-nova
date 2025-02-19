@@ -63,7 +63,6 @@ class Motion(Action, ABC):
     def is_cartesian(self):
         return isinstance(self.target, Pose)
 
-    @abstractmethod
     def is_motion(self) -> bool:
         return True
 
