@@ -8,8 +8,8 @@ from typing import TypeVar
 
 import wandelbots_api_client as wb
 from decouple import config
-from loguru import logger
 
+from nova.core import logger
 from nova.core.robot_cell import ConfigurablePeriphery, Device
 from nova.version import version as pkg_version
 

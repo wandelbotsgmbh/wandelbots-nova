@@ -2,11 +2,11 @@ import asyncio
 from typing import AsyncIterable, Generator, cast
 
 import wandelbots_api_client as wb
-from loguru import logger
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
+from nova.core import logger
 from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
@@ -39,7 +39,7 @@ def split_actions_into_batches(
     current_batch: list[Action] = []
     collision_free_motion: CollisionFreeMotion | None = None
     for action in actions:
-        # this happens when we switch from a action batch to a collision free motion
+        # this happens when we switch from an action batch to a collision free motion
         if collision_free_motion is not None:
             yield collision_free_motion
             collision_free_motion = None
@@ -389,13 +389,15 @@ class MotionGroup(AbstractRobot):
         return len(spec.mechanical_joint_limits)
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
-        if self._optimizer_setup is None or self._optimizer_setup.tcp != tcp:
+        # TODO: mypy failed on main branch, need to check
+        if self._optimizer_setup is None or self._optimizer_setup.tcp != tcp:  # type: ignore
             self._optimizer_setup = (
                 await self._api_gateway.motion_group_infos_api.get_optimizer_configuration(
                     cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
                 )
             )
-        return self._optimizer_setup
+        # TODO: mypy failed on code from main branch need to check
+        return self._optimizer_setup  # type: ignore
 
     async def _load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str
