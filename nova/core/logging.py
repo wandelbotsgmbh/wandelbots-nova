@@ -1,6 +1,5 @@
 import logging
 import sys
-from typing import Any
 
 from decouple import config
 
@@ -10,42 +9,11 @@ LOG_DATETIME_FORMAT: str = config("LOG_DATETIME_FORMAT", default="%Y-%m-%d %H:%M
 LOGGER_NAME: str = config("LOGGER_NAME", default="wandelbots-nova")
 
 # Setting up the underlying logger
-_formatter: logging.Formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT)
-_handler: logging.StreamHandler = logging.StreamHandler(sys.stderr)
-_handler.setLevel(LOG_LEVEL)
-_handler.setFormatter(_formatter)
+formatter: logging.Formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT)
+handler: logging.StreamHandler = logging.StreamHandler(sys.stderr)
+handler.setLevel(LOG_LEVEL)
+handler.setFormatter(formatter)
 
-_logger: logging.Logger = logging.getLogger(LOGGER_NAME)
-_logger.setLevel(LOG_LEVEL)
-_logger.addHandler(_handler)
-
-
-class LoggerWrapper:
-    """
-    A simple logger wrapper to restrict functionality.
-    This will give us more control when we need to change something.
-    """
-
-    def __init__(self, logger: logging.Logger) -> None:
-        self._logger: logging.Logger = logger
-
-    def debug(self, msg: str | None, *args: Any, **kwargs: Any) -> None:
-        self._logger.debug(msg, *args, **kwargs)
-
-    def info(self, msg: str | None, *args: Any, **kwargs: Any) -> None:
-        self._logger.info(msg, *args, **kwargs)
-
-    def warning(self, msg: str | None, *args: Any, **kwargs: Any) -> None:
-        self._logger.warning(msg, *args, **kwargs)
-
-    def error(self, msg: str | None, *args: Any, **kwargs: Any) -> None:
-        self._logger.error(msg, *args, **kwargs)
-
-    def critical(self, msg: str | None, *args: Any, **kwargs: Any) -> None:
-        self._logger.critical(msg, *args, **kwargs)
-
-    def set_level(self, level: int) -> None:
-        self._logger.setLevel(level)
-
-
-logger: LoggerWrapper = LoggerWrapper(_logger)
+logger: logging.Logger = logging.getLogger(LOGGER_NAME)
+logger.setLevel(LOG_LEVEL)
+logger.addHandler(handler)

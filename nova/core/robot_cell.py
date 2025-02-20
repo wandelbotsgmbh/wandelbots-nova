@@ -23,7 +23,7 @@ import anyio
 import asyncstdlib
 import pydantic
 from aiostream import pipe, stream
-from loguru import logger
+from nova.core import logger
 
 from nova import api
 from nova.actions import Action, MovementController

@@ -1,6 +1,6 @@
 from typing import Literal, Sized
 
-from loguru import logger
+from nova.core import logger
 
 from nova.core.gateway import NovaDevice
 from nova.core.io import IOAccess

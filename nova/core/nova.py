@@ -3,13 +3,12 @@ from __future__ import annotations
 import asyncio
 
 from decouple import config
-from loguru import logger
+from nova.core import logger
 
 from nova import api
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
-from nova.core.logging_setup import configure_logging
 from nova.core.robot_cell import RobotCell
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
@@ -29,9 +28,9 @@ class Nova:
         password: str | None = None,
         version: str = "v1",
         verify_ssl: bool = True,
+        # TODO: deprecated
         log_level: str = LOG_LEVEL,
     ):
-        configure_logging(log_level)
         self._api_client = ApiGateway(
             host=host,
             access_token=access_token,
