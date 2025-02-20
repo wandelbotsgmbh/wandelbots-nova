@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.39.0 (2025-02-20)
+
+### Features
+
+- Set virtual robot mounting setup
+  ([`be0d882`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/be0d8825308fdac8e4e113ec72246572eb0516e6))
+
+
 ## v0.38.3 (2025-02-20)
 
 ### Bug Fixes
