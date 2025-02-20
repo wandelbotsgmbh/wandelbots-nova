@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.40.0 (2025-02-20)
+
+### Features
+
+- **RPS-1253**: Use default loguru sink
+  ([#78](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/78),
+  [`c523ba7`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c523ba765ed5f7ea956c0cd3b95c4bef3a0e7261))
+
+
 ## v0.39.1 (2025-02-20)
 
 ### Bug Fixes
