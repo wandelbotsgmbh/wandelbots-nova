@@ -6,8 +6,8 @@ import pydantic
 
 from nova import api
 from nova.actions.io import WriteAction
-from nova.actions.motions import CollisionFreeMotion, Motion
-from nova.types import MotionState, MovementControllerFunction, Pose
+from nova.actions.motions import Motion, CollisionFreeMotion
+from nova.types import MovementControllerFunction, Pose, MotionState
 
 
 class ActionLocation(pydantic.BaseModel):
@@ -165,6 +165,4 @@ class MovementControllerContext(pydantic.BaseModel):
     motion_id: str
 
 
-MovementController = Callable[
-    [MovementControllerContext, Callable[[MotionState | None], None]], MovementControllerFunction
-]
+MovementController = Callable[[MovementControllerContext], MovementControllerFunction]

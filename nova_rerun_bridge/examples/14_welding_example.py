@@ -3,7 +3,13 @@ import asyncio
 import numpy as np
 import rerun as rr
 import trimesh
-from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngleTypes, Vector3d
+from wandelbots_api_client.models import (
+    CoordinateSystem,
+    RobotTcp,
+    RotationAngles,
+    RotationAngleTypes,
+    Vector3d,
+)
 
 from nova import MotionSettings
 from nova.actions import collision_free, lin
@@ -191,6 +197,21 @@ async def test():
             models.Manufacturer.UNIVERSALROBOTS,
         )
 
+        await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
+            cell="cell",
+            controller=controller.controller_id,
+            id=0,
+            coordinate_system=CoordinateSystem(
+                coordinate_system="world",
+                name="mounting",
+                reference_uid="",
+                position=Vector3d(x=0, y=0, z=0),
+                rotation=RotationAngles(
+                    angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
+                ),
+            ),
+        )
+
         await nova._api_client.virtual_robot_setup_api.add_virtual_robot_tcp(
             cell="cell",
             controller="ur10",
@@ -227,7 +248,7 @@ async def test():
             collision_scene = await scene_api.get_stored_collision_scene(
                 cell="cell", scene=collision_scene_id
             )
-            await bridge.log_collision_scenes()
+            await bridge.log_collision_scene(collision_scene_id)
 
             # Calculate seam positions based on mesh pose
             seam1_start, seam1_end, seam2_start, seam2_end = await calculate_seam_poses(mesh_pose)
@@ -248,10 +269,6 @@ async def test():
                         target=seam1_approach,
                         collision_scene=collision_scene,
                         settings=MotionSettings(tcp_velocity_limit=30),
-                    ),
-                    lin(
-                        target=seam1_approach,
-                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
                     lin(
                         target=seam1_start,

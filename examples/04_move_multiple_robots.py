@@ -25,8 +25,7 @@ async def move_robot(controller: Controller):
         target_pose = current_pose @ (100, 0, 0, 0, 0, 0)
         actions = [jnt(home_joints), ptp(target_pose), jnt(home_joints)]
 
-        async for _ in motion_group.plan_and_execute(actions, tcp):
-            pass
+        await motion_group.plan_and_execute(actions, tcp)
 
 
 async def main():
