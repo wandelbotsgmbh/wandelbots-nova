@@ -11,7 +11,7 @@ from nova.core.robot_cell import AbstractController, AbstractRobot, IODevice, Va
 class Controller(Sized, AbstractController, NovaDevice, IODevice):
     class Configuration(NovaDevice.Configuration):
         type: Literal["controller"] = "controller"
-        identifier: str = "controller"
+        id: str = "controller"
         cell_id: str
         controller_id: str
 
