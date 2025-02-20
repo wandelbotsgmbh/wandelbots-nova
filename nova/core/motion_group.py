@@ -390,14 +390,14 @@ class MotionGroup(AbstractRobot):
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
         # TODO: mypy failed on main branch, need to check
-        if self._optimizer_setup is None or self._optimizer_setup.tcp != tcp: # type: ignore
+        if self._optimizer_setup is None or self._optimizer_setup.tcp != tcp:  # type: ignore
             self._optimizer_setup = (
                 await self._api_gateway.motion_group_infos_api.get_optimizer_configuration(
                     cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
                 )
             )
         # TODO: mypy failed on code from main branch need to check
-        return self._optimizer_setup # type: ignore
+        return self._optimizer_setup  # type: ignore
 
     async def _load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str
