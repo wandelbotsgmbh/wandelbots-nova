@@ -69,8 +69,8 @@ class CollisionFreeMagmaStrategy(BenchmarkStrategy):
                 )
             )
             return response.joint_positions
-        except Exception as e:
-            logger.error(f"Failed to calculate inverse kinematics: {str(e)}")
+        except (wb.ApiException, requests.RequestException, ValueError, Exception) as e:
+            logger.exception("Failed to calculate inverse kinematics: %s", e)
             return None
 
     async def plan(
@@ -112,12 +112,12 @@ class CollisionFreeMagmaStrategy(BenchmarkStrategy):
 
                 request = CollisionFreeP2PRequest(
                     plan=plan_request,
-                    robot_spere_radius=20,
-                    n_control_points=200,
-                    n_eval_points=1000,
+                    robot_spere_radius=10,
+                    n_control_points=50,
+                    n_eval_points=166,
                     n_iterations=10_000,
                     n_logging_interval=250,
-                    collision_margin=10,
+                    collision_margin=3,
                 )
 
                 response = requests.post(
@@ -132,8 +132,8 @@ class CollisionFreeMagmaStrategy(BenchmarkStrategy):
                     ).response.actual_instance
 
                 logger.error(f"Planning failed with status {response.status_code}: {response.text}")
-            except Exception as e:
-                logger.error(f"Error during planning: {str(e)}")
+            except (wb.ApiException, requests.RequestException, ValueError, Exception) as e:
+                logger.exception("Error during planning: %s", e)
                 continue
 
         raise RuntimeError("Failed to plan trajectory for all configurations")

@@ -1,7 +1,7 @@
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Protocol, Tuple
+from typing import Any, Protocol
 
 import numpy as np
 from robometrics.datasets import motion_benchmaker_raw
@@ -51,13 +51,13 @@ class BenchmarkStrategy(Protocol):
         tcp: str,
         optimizer_setup: models.OptimizerSetup,
         nova: Nova,
-        start_joint_position: Tuple[float, ...],
+        start_joint_position: tuple[float, ...],
     ) -> Any: ...
 
 
 async def setup_collision_scene(
     nova: Nova,
-    obstacles: Dict[str, Any],
+    obstacles: dict[str, Any],
     cell_name: str,
     motion_group_type: str,
     robot_setup: models.OptimizerSetup,
@@ -216,7 +216,7 @@ async def run_single_benchmark(strategy: BenchmarkStrategy):
         problems = motion_benchmaker_raw()
 
         # Store results per problem
-        problem_results: Dict[str, List[NovaMetrics]] = {}
+        problem_results: dict[str, list[NovaMetrics]] = {}
         results = []
 
         total_problems = sum(len(probs) for probs in problems.values())

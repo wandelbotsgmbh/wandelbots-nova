@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -10,12 +10,12 @@ def m_to_mm(value: float) -> float:
     return value * 1000.0
 
 
-def convert_position(position: List[float]) -> List[float]:
+def convert_position(position: list[float]) -> list[float]:
     """Convert position coordinates from m to mm."""
     return [m_to_mm(p) for p in position]
 
 
-def quaternion_to_angle_axis(quaternion: List[float]) -> List[float]:
+def quaternion_to_angle_axis(quaternion: list[float]) -> list[float]:
     """Convert quaternion [w, x, y, z] to angle-axis [rx, ry, rz].
 
     Args:
@@ -29,7 +29,7 @@ def quaternion_to_angle_axis(quaternion: List[float]) -> List[float]:
     return rot.as_rotvec()
 
 
-def convert_pose_quaternion(pose: List[float]) -> tuple[List[float], List[float]]:
+def convert_pose_quaternion(pose: list[float]) -> tuple[list[float], list[float]]:
     """Convert pose from robometrics format to Nova format.
 
     The pose transformation order is:
@@ -51,7 +51,7 @@ def convert_pose_quaternion(pose: List[float]) -> tuple[List[float], List[float]
     return position, angles
 
 
-def create_box_collider(name: str, cube: Dict[str, Any]) -> tuple[str, models.Collider]:
+def create_box_collider(name: str, cube: dict[str, Any]) -> tuple[str, models.Collider]:
     """Create a box collider with mm dimensions using ConvexHull2."""
     position, orientation = convert_pose_quaternion(cube["pose"])
     dims = convert_position(cube["dims"])
@@ -84,7 +84,7 @@ def create_box_collider(name: str, cube: Dict[str, Any]) -> tuple[str, models.Co
     )
 
 
-def create_cylinder_collider(name: str, cylinder: Dict[str, Any]) -> tuple[str, models.Collider]:
+def create_cylinder_collider(name: str, cylinder: dict[str, Any]) -> tuple[str, models.Collider]:
     """Create a cylinder collider with mm dimensions using ConvexHull2."""
     position, orientation = convert_pose_quaternion(cylinder["pose"])
     radius = m_to_mm(cylinder["radius"])

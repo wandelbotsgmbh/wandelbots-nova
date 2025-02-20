@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import numpy as np
 import rerun as rr
@@ -11,7 +11,7 @@ from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.benchmark.robometrics_helper import convert_position
 
 
-def _default_colors() -> Dict[str, Tuple[float, float, float, float]]:
+def _default_colors() -> dict[str, tuple[float, float, float, float]]:
     """Default color configuration for visualization."""
     return {
         "x_axis": (1.0, 0.125, 0.376, 1.0),  # #ff2060 - Red/Pink
@@ -28,14 +28,14 @@ class VisualizationConfig:
     arrow_length: float = 50.0  # mm
     point_radius: float = 5.0
     arrow_radius: float = 2.5
-    colors: Dict[str, Tuple[float, float, float, float]] = field(default_factory=_default_colors)
+    colors: dict[str, tuple[float, float, float, float]] = field(default_factory=_default_colors)
 
 
 async def log_successful_planning(
     bridge: NovaRerunBridge,
     strategy: str,
     collision_scene_id: str,
-    problem: Dict[str, Any],
+    problem: dict[str, Any],
     key: str,
     iteration: int,
     trajectory: Any,
@@ -82,7 +82,7 @@ async def log_successful_planning(
     await bridge.log_trajectory(trajectory, tcp, motion_group)
 
 
-def _log_target_position(position: List[float], config: VisualizationConfig) -> None:
+def _log_target_position(position: list[float], config: VisualizationConfig) -> None:
     """Log target position as a 3D point."""
     rr.log(
         "motion/target_orientation",
@@ -93,7 +93,7 @@ def _log_target_position(position: List[float], config: VisualizationConfig) -> 
 
 
 def _log_orientation_arrows(
-    position: List[float], quaternion: List[float], config: VisualizationConfig
+    position: list[float], quaternion: list[float], config: VisualizationConfig
 ) -> None:
     """Log orientation as colored coordinate arrows."""
     w, x, y, z = quaternion
