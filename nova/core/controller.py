@@ -1,7 +1,6 @@
 from typing import Literal, Sized
 
 from nova.core import logger
-
 from nova.core.gateway import NovaDevice
 from nova.core.io import IOAccess
 from nova.core.motion_group import MotionGroup
