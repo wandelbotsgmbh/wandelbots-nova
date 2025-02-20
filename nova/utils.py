@@ -1,22 +1,36 @@
 import asyncio
-from typing import Callable, Generic, TypeVar
+from typing import AsyncIterable, AsyncIterator, Callable, Generic, TypeVar
 
-T = TypeVar("T")
+In = TypeVar("In")
+Out = TypeVar("Out")
 
 
-class Callerator(Generic[T]):
-    def __init__(self, callback: Callable[[T | None], None] | None):
-        self._q: asyncio.Queue[T | None] = asyncio.Queue()
-        self.callback = callback
+class StreamExtractor(Generic[In, Out]):
+    def __init__(
+        self,
+        wrapped: Callable[[AsyncIterator[In]], AsyncIterable[Out]],
+        stop_selector: Callable[[In], bool] | None = None,
+    ):
+        self._in_queue: asyncio.Queue[In | None] = asyncio.Queue()
+        self._wrapped = wrapped
+        self._stop_selector = stop_selector or (lambda x: x is None)
 
-    def __call__(self, value: T | None):
-        if self.callback:
-            self.callback(value)
-        self._q.put_nowait(value)
+    def __call__(self, in_stream: AsyncIterable[In]) -> AsyncIterable[Out]:
+        async def in_wrapper(in_stream_) -> AsyncIterator[In]:
+            async for in_value in in_stream_:
+                if self._stop_selector(in_value):
+                    self._in_queue.put_nowait(None)
+                else:
+                    self._in_queue.put_nowait(in_value)
+                yield in_value
 
-    async def stream(self):
-        while True:
-            value = await self._q.get()
-            if value is None:
-                break
-            yield value
+        return self._wrapped(in_wrapper(in_stream))
+
+    def __aiter__(self) -> AsyncIterator[In]:
+        return self
+
+    async def __anext__(self) -> In:
+        value = await self._in_queue.get()
+        if value is None:
+            raise StopAsyncIteration
+        return value
