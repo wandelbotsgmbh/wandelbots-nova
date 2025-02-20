@@ -14,8 +14,7 @@ PoseOrVectorTuple = (
 )
 
 
-# TODO: HIGH PRIORITY FIX -> we need to inherit from Action
-class CollisionFreeMotion(ABC, pydantic.BaseModel):
+class CollisionFreeMotion(Action):
     """
     A motion that is collision free.
     """
@@ -24,6 +23,18 @@ class CollisionFreeMotion(ABC, pydantic.BaseModel):
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     collision_scene: wb.models.CollisionScene | None = None
+
+    def _to_api_model(self) -> api.models.PlanCollisionFreePTPRequestTarget:
+        return wb.models.PlanCollisionFreePTPRequestTarget(
+            self.target._to_wb_pose2() if isinstance(self.target, Pose) else list(self.target)
+        )
+
+    @pydantic.model_serializer
+    def serialize_model(self):
+        return self._to_api_model().model_dump()
+
+    def is_motion(self) -> bool:
+        return True
 
 
 def collision_free(
@@ -51,6 +62,9 @@ class Motion(Action, ABC):
     @property
     def is_cartesian(self):
         return isinstance(self.target, Pose)
+
+    def is_motion(self) -> bool:
+        return True
 
 
 class UnresolvedMotion(Motion, ABC):
