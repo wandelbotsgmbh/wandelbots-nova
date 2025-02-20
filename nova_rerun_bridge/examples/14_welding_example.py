@@ -227,7 +227,7 @@ async def test():
             collision_scene = await scene_api.get_stored_collision_scene(
                 cell="cell", scene=collision_scene_id
             )
-            await bridge.log_collision_scenes()
+            await bridge.log_collision_scene(collision_scene_id)
 
             # Calculate seam positions based on mesh pose
             seam1_start, seam1_end, seam2_start, seam2_end = await calculate_seam_poses(mesh_pose)
@@ -248,10 +248,6 @@ async def test():
                         target=seam1_approach,
                         collision_scene=collision_scene,
                         settings=MotionSettings(tcp_velocity_limit=30),
-                    ),
-                    lin(
-                        target=seam1_approach,
-                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
                     lin(
                         target=seam1_start,

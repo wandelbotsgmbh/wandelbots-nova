@@ -389,7 +389,7 @@ class MotionGroup(AbstractRobot):
         return len(spec.mechanical_joint_limits)
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
-        if self._optimizer_setup is None:
+        if self._optimizer_setup is None or self._optimizer_setup.tcp != tcp:
             self._optimizer_setup = (
                 await self._api_gateway.motion_group_infos_api.get_optimizer_configuration(
                     cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
