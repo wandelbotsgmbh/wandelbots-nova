@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.40.1 (2025-02-20)
+
+### Bug Fixes
+
+- Collision-free-movement-type ([#76](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/76),
+  [`f861ff8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f861ff80b0b7b87bacff963563915ccdec131671))
+
+
 ## v0.40.0 (2025-02-20)
 
 ### Features
