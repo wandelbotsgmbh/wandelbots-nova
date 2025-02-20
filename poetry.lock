@@ -206,7 +206,7 @@ description = "In-process task scheduler with Cron-like capabilities"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"nova-rerun-bridge\""
+markers = "extra == \"nova-rerun-bridge\" or extra == \"benchmark\""
 files = [
     {file = "APScheduler-3.11.0-py3-none-any.whl", hash = "sha256:fc134ca32e50f5eadcc4938e3a4545ab19131435e851abb40b34d63d5141c6da"},
     {file = "apscheduler-3.11.0.tar.gz", hash = "sha256:4c622d250b0955a65d5d0eb91c33e6d43fd879834bf541e0a18661ae60460133"},
@@ -325,7 +325,7 @@ description = "The Real First Universal Charset Detector. Open, modern and activ
 optional = true
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"nova-rerun-bridge\""
+markers = "extra == \"nova-rerun-bridge\" or extra == \"benchmark\""
 files = [
     {file = "charset_normalizer-3.4.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:91b36a978b5ae0ee86c394f5a54d6ef44db1de0815eb43de826d41d21e4af3de"},
     {file = "charset_normalizer-3.4.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7461baadb4dc00fd9e0acbe254e3d7d2112e7f92ced2adc96e54ef6501c5f176"},
@@ -500,6 +500,8 @@ version = "2.5.1"
 description = "Freetype python bindings"
 optional = true
 python-versions = ">=3.7"
+groups = ["main"]
+markers = "extra == \"benchmark\""
 files = [
     {file = "freetype-py-2.5.1.zip", hash = "sha256:cfe2686a174d0dd3d71a9d8ee9bf6a2c23f5872385cf8ce9f24af83d076e2fbd"},
     {file = "freetype_py-2.5.1-py3-none-macosx_10_9_universal2.whl", hash = "sha256:d01ded2557694f06aa0413f3400c0c0b2b5ebcaabeef7aaf3d756be44f51e90b"},
@@ -634,6 +636,8 @@ version = "0.1.3"
 description = "A collection of geometric methods and concepts tailored to machine learning for robotics"
 optional = true
 python-versions = ">=3.7"
+groups = ["main"]
+markers = "extra == \"benchmark\""
 files = [
     {file = "geometrout-0.1.3-py3-none-any.whl", hash = "sha256:39c14b2506f463450a2828cd7de75d2df707e8cc75c484570eb060d7623e236d"},
     {file = "geometrout-0.1.3.tar.gz", hash = "sha256:193f0ca3b2bbe8792ed5936f6a66f52f033f2f754d0ec1832d2e7e1608fd581c"},
@@ -756,6 +760,8 @@ version = "2.37.0"
 description = "Library for reading and writing a wide range of image, video, scientific, and volumetric data formats."
 optional = true
 python-versions = ">=3.9"
+groups = ["main"]
+markers = "extra == \"benchmark\""
 files = [
     {file = "imageio-2.37.0-py3-none-any.whl", hash = "sha256:11efa15b87bc7871b61590326b2d635439acc321cf7f8ce996f812543ce10eed"},
     {file = "imageio-2.37.0.tar.gz", hash = "sha256:71b57b3669666272c818497aebba2b4c5f20d5b37c81720e5e1a56d59c492996"},
@@ -801,6 +807,8 @@ version = "0.44.0"
 description = "lightweight wrapper around basic LLVM functionality"
 optional = true
 python-versions = ">=3.10"
+groups = ["main"]
+markers = "extra == \"benchmark\""
 files = [
     {file = "llvmlite-0.44.0-cp310-cp310-macosx_10_14_x86_64.whl", hash = "sha256:9fbadbfba8422123bab5535b293da1cf72f9f478a65645ecd73e781f962ca614"},
     {file = "llvmlite-0.44.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:cccf8eb28f24840f2689fb1a45f9c0f7e582dd24e088dcf96e424834af11f791"},
@@ -850,6 +858,8 @@ version = "5.3.1"
 description = "Powerful and Pythonic XML processing library combining libxml2/libxslt with the ElementTree API."
 optional = true
 python-versions = ">=3.6"
+groups = ["main"]
+markers = "extra == \"benchmark\""
 files = [
     {file = "lxml-5.3.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:a4058f16cee694577f7e4dd410263cd0ef75644b43802a689c2b3c2a7e69453b"},
     {file = "lxml-5.3.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:364de8f57d6eda0c16dcfb999af902da31396949efa0e583e12675d09709881b"},
@@ -1175,6 +1185,8 @@ version = "3.4.2"
 description = "Python package for creating and manipulating graphs and networks"
 optional = true
 python-versions = ">=3.10"
+groups = ["main"]
+markers = "extra == \"benchmark\""
 files = [
     {file = "networkx-3.4.2-py3-none-any.whl", hash = "sha256:df5d4365b724cf81b8c6a7312509d0c22386097011ad1abe274afd5e9d3bbc5f"},
     {file = "networkx-3.4.2.tar.gz", hash = "sha256:307c3669428c5362aab27c8a1260aa8f47c4e91d3891f48be0141738d8d053e1"},
@@ -1206,6 +1218,8 @@ version = "0.61.0"
 description = "compiling Python code using LLVM"
 optional = true
 python-versions = ">=3.10"
+groups = ["main"]
+markers = "extra == \"benchmark\""
 files = [
     {file = "numba-0.61.0-cp310-cp310-macosx_10_14_x86_64.whl", hash = "sha256:9cab9783a700fa428b1a54d65295122bc03b3de1d01fb819a6b9dbbddfdb8c43"},
     {file = "numba-0.61.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:46c5ae094fb3706f5adf9021bfb7fc11e44818d61afee695cdee4eadfed45e98"},
@@ -1239,7 +1253,7 @@ name = "numpy"
 version = "1.26.4"
 description = "Fundamental package for array computing in Python"
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.9"
 groups = ["main"]
 files = [
     {file = "numpy-1.26.4-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:9ff0f4f29c51e2803569d7a51c2304de5554655a60c5d776e35b4a41413830d0"},
@@ -1314,7 +1328,7 @@ description = "Python Imaging Library (Fork)"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"nova-rerun-bridge\""
+markers = "extra == \"nova-rerun-bridge\" or extra == \"benchmark\""
 files = [
     {file = "pillow-11.1.0-cp310-cp310-macosx_10_10_x86_64.whl", hash = "sha256:e1abe69aca89514737465752b4bcaf8016de61b3be1397a8fc260ba33321b3a8"},
     {file = "pillow-11.1.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:c640e5a06869c75994624551f45e5506e4256562ead981cce820d5ab39ae2192"},
@@ -1548,7 +1562,7 @@ description = "Python library for Apache Arrow"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"nova-rerun-bridge\""
+markers = "extra == \"nova-rerun-bridge\" or extra == \"benchmark\""
 files = [
     {file = "pyarrow-19.0.1-cp310-cp310-macosx_12_0_arm64.whl", hash = "sha256:fc28912a2dc924dddc2087679cc8b7263accc71b9ff025a1362b004711661a69"},
     {file = "pyarrow-19.0.1-cp310-cp310-macosx_12_0_x86_64.whl", hash = "sha256:fca15aabbe9b8355800d923cc2e82c8ef514af321e18b437c3d782aa884eaeec"},
@@ -1603,6 +1617,8 @@ version = "0.6"
 description = "python library for reading and writing collada documents"
 optional = true
 python-versions = "*"
+groups = ["main"]
+markers = "extra == \"benchmark\""
 files = [
     {file = "pycollada-0.6.tar.gz", hash = "sha256:fcd6f38fd981e350f9ec754d9671834017accd600e967d6d299a6cfdae5ba4f4"},
 ]
@@ -1739,6 +1755,19 @@ files = [
 typing-extensions = ">=4.6.0,<4.7.0 || >4.7.0"
 
 [[package]]
+name = "pyglet"
+version = "2.1.2"
+description = "pyglet is a cross-platform games and multimedia package."
+optional = true
+python-versions = ">=3.8"
+groups = ["main"]
+markers = "extra == \"benchmark\""
+files = [
+    {file = "pyglet-2.1.2-py3-none-any.whl", hash = "sha256:2819fa9d66ead4b1682d1b7fa7170692d46277e1a6661b329bdba3e65288c036"},
+    {file = "pyglet-2.1.2.tar.gz", hash = "sha256:6fc1fed55eb6dc80c87a7a45ac62c2a61be08cd31114b27abef8619959be7845"},
+]
+
+[[package]]
 name = "pygments"
 version = "2.19.1"
 description = "Pygments is a syntax highlighting package written in Python."
@@ -1771,6 +1800,8 @@ version = "3.1.9"
 description = "Standard OpenGL bindings for Python"
 optional = true
 python-versions = "*"
+groups = ["main"]
+markers = "extra == \"benchmark\""
 files = [
     {file = "PyOpenGL-3.1.9-py3-none-any.whl", hash = "sha256:15995fd3b0deb991376805da36137a4ae5aba6ddbb5e29ac1f35462d130a3f77"},
     {file = "pyopengl-3.1.9.tar.gz", hash = "sha256:28ebd82c5f4491a418aeca9672dffb3adbe7d33b39eada4548a5b4e8c03f60c8"},
@@ -1782,6 +1813,8 @@ version = "0.1.46"
 description = "Easy-to-use Python renderer for 3D visualization"
 optional = true
 python-versions = "*"
+groups = ["main"]
+markers = "extra == \"benchmark\""
 files = [
     {file = "pyribbit-0.1.46-py3-none-any.whl", hash = "sha256:0d4943f7cc6903f20ef42787e9357d7bb25c95f2c04da9dfa1a8021bdf9e0ab6"},
     {file = "pyribbit-0.1.46.tar.gz", hash = "sha256:3bb7a31841549ed74c50e31415738d2494b720df825cf387501f17102299940b"},
@@ -1893,7 +1926,7 @@ version = "6.0.2"
 description = "YAML parser and emitter for Python"
 optional = false
 python-versions = ">=3.8"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "PyYAML-6.0.2-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:0a9a2848a5b7feac301353437eb7d5957887edbf81d56e903999a75a3d743086"},
     {file = "PyYAML-6.0.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:29717114e51c84ddfba879543fb232a6ed60086602313ca38cce623c1d62cfbf"},
@@ -1949,6 +1982,7 @@ files = [
     {file = "PyYAML-6.0.2-cp39-cp39-win_amd64.whl", hash = "sha256:39693e1f8320ae4f43943590b49779ffb98acb81f788220ea932a6b6c51004d8"},
     {file = "pyyaml-6.0.2.tar.gz", hash = "sha256:d584d9ec91ad65861cc08d42e834324ef890a082e591037abe114850ff7bbc3e"},
 ]
+markers = {main = "extra == \"benchmark\""}
 
 [[package]]
 name = "requests"
@@ -1957,7 +1991,7 @@ description = "Python HTTP for Humans."
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"nova-rerun-bridge\""
+markers = "extra == \"nova-rerun-bridge\" or extra == \"benchmark\""
 files = [
     {file = "requests-2.32.3-py3-none-any.whl", hash = "sha256:70761cfe03c773ceb22aa2f671b4757976145175cdfca038c02654d061d6dcc6"},
     {file = "requests-2.32.3.tar.gz", hash = "sha256:55365417734eb18255590a9ff9eb97e9e1da868d4ccd6402399eaf68af20a760"},
@@ -1980,7 +2014,7 @@ description = "The Rerun Logging SDK"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"nova-rerun-bridge\""
+markers = "extra == \"nova-rerun-bridge\" or extra == \"benchmark\""
 files = [
     {file = "rerun_sdk-0.22.0-cp38-abi3-macosx_10_12_x86_64.whl", hash = "sha256:2ccdeb7beb236d7a4214b742bc308c291eca9488bcaa11d59cd3ddebab578fbf"},
     {file = "rerun_sdk-0.22.0-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:50224ae88db978aae4583f238e4a438d7a06c7e6e4d42b28d5af378cf377b290"},
@@ -2006,6 +2040,8 @@ version = "0.1.0"
 description = "A unified framework for metrics evaluation for robotic manipulation"
 optional = true
 python-versions = "^3.7"
+groups = ["main"]
+markers = "extra == \"benchmark\""
 files = []
 develop = false
 
@@ -2190,7 +2226,7 @@ description = "Import, export, process, analyze and view triangular meshes."
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"nova-rerun-bridge\""
+markers = "extra == \"nova-rerun-bridge\" or extra == \"benchmark\""
 files = [
     {file = "trimesh-4.6.2-py3-none-any.whl", hash = "sha256:8c4f517caf386652bee584cd38c6e4dc4ea4185c819882b52c8c77345e607121"},
     {file = "trimesh-4.6.2.tar.gz", hash = "sha256:cfb9968b59626c26612ea5cadac055d97d119247f460d75b33f4f781177855d6"},
@@ -2226,7 +2262,7 @@ description = "Provider of IANA time zone data"
 optional = true
 python-versions = ">=2"
 groups = ["main"]
-markers = "extra == \"nova-rerun-bridge\" and platform_system == \"Windows\""
+markers = "extra == \"nova-rerun-bridge\" and platform_system == \"Windows\" or extra == \"benchmark\" and platform_system == \"Windows\""
 files = [
     {file = "tzdata-2025.1-py2.py3-none-any.whl", hash = "sha256:7e127113816800496f027041c570f50bcd464a020098a3b6b199517772303639"},
     {file = "tzdata-2025.1.tar.gz", hash = "sha256:24894909e88cdb28bd1636c6887801df64cb485bd593f2fd83ef29075a81d694"},
@@ -2238,9 +2274,8 @@ version = "5.3"
 description = "tzinfo object for the local timezone"
 optional = true
 python-versions = ">=3.9"
-
 groups = ["main"]
-markers = "extra == \"nova-rerun-bridge\""
+markers = "extra == \"nova-rerun-bridge\" or extra == \"benchmark\""
 files = [
     {file = "tzlocal-5.3-py3-none-any.whl", hash = "sha256:3814135a1bb29763c6e4f08fd6e41dbb435c7a60bfbb03270211bcc537187d8c"},
     {file = "tzlocal-5.3.tar.gz", hash = "sha256:2fafbfc07e9d8b49ade18f898d6bcd37ae88ce3ad6486842a2e4f03af68323d2"},
@@ -2258,6 +2293,8 @@ version = "0.0.26"
 description = "URDF parser and manipulator for Python"
 optional = true
 python-versions = "*"
+groups = ["main"]
+markers = "extra == \"benchmark\""
 files = [
     {file = "urchin-0.0.26-py3-none-any.whl", hash = "sha256:981152dd751095d8587643cad5de6b4c344ef290169d48f1444cb22536422152"},
     {file = "urchin-0.0.26.tar.gz", hash = "sha256:926525d34866f58d13109ee57df90842c03c15e7403b7b1bdb0febcf841219fc"},
@@ -2541,4 +2578,4 @@ nova-rerun-bridge = ["APScheduler", "requests", "rerun-sdk", "trimesh"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "9f3be57e84c0f40494d62a4df47f8465d61b57676cae17e840a4f5985dd859f5"
+content-hash = "7fc8adffed7a5f4b1b9fc3fe16f03317bc2954397c2847e91dd11cdb381d70af"
