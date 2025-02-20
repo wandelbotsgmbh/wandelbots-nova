@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.38.2 (2025-02-20)
+
+### Chores
+
+- Return robot cell from cell class * cleanup
+  ([#90](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/90),
+  [`ec840be`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ec840be673453442ffe6d7542809e0bfba1cf051))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.38.1 (2025-02-20)
 
 ### Chores
