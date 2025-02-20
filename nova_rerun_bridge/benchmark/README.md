@@ -13,3 +13,11 @@ The benchmark suite evaluates different motion planning strategies against a sta
 
 - `collision_free_magma`: Collision-free point-to-point motion planning using Magma
 - `collision_free`: Collision-free point-to-point motion planning using MidpointInsertion
+
+### MagmaP2P Prerequisites
+
+To run the benchmark suite, you need to have the following installed:
+
+```bash
+nova catalog install magma-p2p
+```
