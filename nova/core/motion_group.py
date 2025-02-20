@@ -39,12 +39,16 @@ def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
     Splits the list of actions into batches of actions and collision free motions.
     Actions are sent to plan_trajectory API and collision free motions are sent to plan_collision_free_ptp API.
     """
-    batches = []
+    batches: list[list[Action]] = []
     for action in actions:
         # If no batches exist, or the current action is a CollisionFreeMotion,
         # or the last action in the last batch was a CollisionFreeMotion,
         # start a new batch.
-        if not batches or isinstance(action, CollisionFreeMotion) or isinstance(batches[-1][-1], CollisionFreeMotion):
+        if (
+            not batches
+            or isinstance(action, CollisionFreeMotion)
+            or isinstance(batches[-1][-1], CollisionFreeMotion)
+        ):
             batches.append([action])
         else:
             batches[-1].append(action)

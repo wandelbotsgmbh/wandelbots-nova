@@ -88,7 +88,7 @@ async def test_interleaved():
     a3 = lin((2, 2, 2, 2, 2, 2))
     cfm1 = CollisionFreeMotion(target=Pose(10, 20, 30, 40, 50, 60))
     cfm2 = CollisionFreeMotion(target=Pose(70, 80, 90, 100, 110, 120))
-    
+
     actions = [a1, cfm1, a2, cfm2, a3]
     expected = [[a1], [cfm1], [a2], [cfm2], [a3]]
     assert split_actions_into_batches(actions) == expected
