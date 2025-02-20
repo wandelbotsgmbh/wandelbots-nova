@@ -10,6 +10,7 @@ from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
 from nova.core.logging_setup import configure_logging
+from nova.core.robot_cell import RobotCell
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 CELL_NAME = config("CELL_NAME", default="cell")
@@ -75,7 +76,7 @@ class Cell:
                 nova_password=self._api_gateway.password,
                 cell_id=self._cell_id,
                 controller_id=controller_id,
-                identifier=controller_id,
+                id=controller_id,
             )
         )
 
@@ -199,3 +200,8 @@ class Cell:
         await self._api_gateway.controller_api.delete_robot_controller(
             cell=self._cell_id, controller=name, completion_timeout=timeout
         )
+
+    async def get_robot_cell(self) -> RobotCell:
+        """Return the configured robot cell"""
+        controllers = await self.controllers()
+        return RobotCell(timer=None, **dict(controller.id for controller in controllers))

@@ -73,7 +73,7 @@ class MotionGroup(AbstractRobot):
         self._motion_group_id = motion_group_id
         self._current_motion: str | None = None
         self._optimizer_setup: wb.models.OptimizerSetup | None = None
-        super().__init__()
+        super().__init__(id=motion_group_id)
 
     async def open(self):
         await self._api_gateway.motion_group_api.activate_motion_group(

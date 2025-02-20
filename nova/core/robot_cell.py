@@ -5,7 +5,6 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from functools import reduce
 from typing import (
-    Any,
     AsyncIterable,
     Awaitable,
     ClassVar,
@@ -64,13 +63,13 @@ class ConfigurablePeriphery:
         """Minimum configuration of a configurable periphery
 
         Args:
-            identifier: A unique identifier to reference the periphery
+            id: A unique id to reference the periphery
         """
 
         model_config = pydantic.ConfigDict(frozen=True)
 
         type: str
-        identifier: str
+        id: str
 
     _configuration: Configuration
 
@@ -83,26 +82,8 @@ class ConfigurablePeriphery:
         return self._configuration
 
     @property
-    def identifier(self):
-        return self.configuration.identifier
-
-    @classmethod
-    def from_dict(cls, data):
-        """Constructs a new configurable periphery from a dict
-
-        Returns:
-            cls: the newly created ConfigurablePeriphery object
-
-        """
-        return cls(cls.Configuration(**data))
-
-    def to_dict(self) -> dict[str, Any]:
-        """Creates a json dict from the configurable periphery parameters which can be transformed to a json string
-
-        Returns:
-            Dict[str, Any]: a json string
-        """
-        return self._configuration.model_dump()
+    def id(self):
+        return self.configuration.id
 
 
 class Device(ABC):
@@ -151,7 +132,7 @@ class AsyncCallableDevice(Generic[T], Device):
         """The implementation of the call method. AbstractAwaitable guarantees that the device is activated.
 
         Args:
-            key: A key that represents the identifier of the external function or service that is called
+            key: A key that represents the id of the external function or service that is called
             *args: Parameters of the external callable
 
         Returns: the returned values of the external called function or service
@@ -211,11 +192,18 @@ class StateStreamingDevice(Protocol):
 class AbstractRobot(Device):
     """An interface for real and simulated robots"""
 
-    def __init__(self, **kwargs):
+    _id: str
+
+    def __init__(self, id: str, **kwargs):
         super().__init__(**kwargs)
+        self._id = id
         self._motion_recording: list[list[MotionState]] = []
         self._execution_duration = 0.0
         self._counter = 0
+
+    @property
+    def id(self):
+        return self._id
 
     def recorded_trajectories(self) -> list[list[MotionState]]:
         """Return the recorded motions of a robot. Each list is collected from sync to sync."""
@@ -238,7 +226,7 @@ class AbstractRobot(Device):
         Args:
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
                 Only motion actions are considered for planning.
-            tcp (str): The identifier of the tool center point (TCP)
+            tcp (str): The id of the tool center point (TCP)
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
 
         Returns:
@@ -258,7 +246,7 @@ class AbstractRobot(Device):
         Args:
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
                 Only motion actions are considered for planning.
-            tcp (str): The identifier of the tool center point (TCP)
+            tcp (str): The id of the tool center point (TCP)
             start_joint_position: the initial position of the robot
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
             optimizer_setup (api.models.OptimizerSetup | None): The optimizer setup to be used for planning
@@ -291,10 +279,9 @@ class AbstractRobot(Device):
 
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
-            tcp (str): The identifier of the tool center point (TCP)
+            tcp (str): The id of the tool center point (TCP)
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
-            on_movement (Callable[[MotionState], None]): A callback which is triggered for every movement
         """
 
     async def stream_execute(
@@ -308,10 +295,9 @@ class AbstractRobot(Device):
 
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
-            tcp (str): The identifier of the tool center point (TCP)
+            tcp (str): The id of the tool center point (TCP)
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
-            on_movement (Callable[[MotionState], None]): A callback which is triggered for every movement
         """
         if actions is None:
             actions = []
@@ -365,10 +351,9 @@ class AbstractRobot(Device):
 
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
-            tcp (str): The identifier of the tool center point (TCP)
+            tcp (str): The id of the tool center point (TCP)
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
-            on_movement (Callable[[MotionState], None]): A callback which is triggered for every movement
         """
         async for _ in self.stream_execute(
             joint_trajectory, tcp, actions, movement_controller=movement_controller
@@ -399,7 +384,7 @@ class AbstractRobot(Device):
         """Current state (pose, joints) of the robot based on the tcp.
 
         Args:
-            tcp (str): The identifier of the tool center point (TCP) to be used for tcp_pose in response. If not set,
+            tcp (str): The id of the tool center point (TCP) to be used for tcp_pose in response. If not set,
                 the flange pose is returned as tcp_pose.
 
         Returns: the current state of the robot
@@ -419,7 +404,7 @@ class AbstractRobot(Device):
         """Return the current pose of the robot based on the tcp
 
         Args:
-            tcp (str): The identifier of the tool center point (TCP) to be used for tcp_pose in response. If not set,
+            tcp (str): The id of the tool center point (TCP) to be used for tcp_pose in response. If not set,
                 the flange pose is returned as tcp_pose.
 
         Returns: the current pose of the robot
@@ -485,7 +470,7 @@ class Timer(ConfigurablePeriphery, AbstractTimer):
 
     class Configuration(ConfigurablePeriphery.Configuration):
         type: Literal["timer", "simulated_timer"] = "timer"
-        identifier: str = "timer"
+        id: str = "timer"
 
     def __init__(self, configuration: Configuration = Configuration()):
         super().__init__(configuration)
@@ -510,11 +495,11 @@ class RobotCell:
         if timer is None:
             timer = Timer()
         devices = {"timer": timer, **kwargs}
-        # TODO: if "timer" has not the same identifier it cannot correctly be serialized/deserialized currently
+        # TODO: if "timer" has not the same id it cannot correctly be serialized/deserialized currently
         for device_name, device in devices.items():
-            if device and device_name != device.identifier:
+            if device and device_name != device.id:
                 raise ValueError(
-                    f"The device name should match its name in the robotcell but are '{device_name}' and '{device.identifier}'"
+                    f"The device name should match its name in the robotcell but are '{device_name}' and '{device.id}'"
                 )
         self._devices = devices
         self._device_exit_stack = AsyncExitStack()
@@ -534,7 +519,7 @@ class RobotCell:
         self.apply_configurations(configurations)
 
     def apply_configurations(self, configurations: list[ConfigurablePeriphery.Configuration]):
-        """Applies all given device configurations to the robot cell. If the identifier is already in the
+        """Applies all given device configurations to the robot cell. If the id is already in the
         robot cell the device gets overriden.
 
         Args:
@@ -543,11 +528,11 @@ class RobotCell:
         """
         for configuration in configurations:
             logger.info(f"Setup device with configuration: {configuration}...")
-            identifier = configuration.identifier
+            device_id = configuration.id
             result = ConfigurablePeriphery.all_classes[type(configuration)](
                 configuration=configuration
             )
-            self._devices[identifier] = result
+            self._devices[device_id] = result
 
     def to_configurations(self) -> list[ConfigurablePeriphery.Configuration]:
         """Return the configurations of all devices that are attached to the robot cell
@@ -574,17 +559,6 @@ class RobotCell:
         robot_cell = cls()
         robot_cell.apply_configurations(configurations)
         return robot_cell
-
-    @classmethod
-    def from_dict(cls, data):
-        AnyConfiguration = Union.__getitem__(tuple(ConfigurablePeriphery.all_classes))
-
-        class RobotCellConfiguration(pydantic.BaseModel):
-            devices: list[AnyConfiguration]  # type: ignore
-
-        config = RobotCellConfiguration(devices=data)
-
-        return cls.from_configurations(config.devices)
 
     def get_controllers(self) -> list[AbstractController]:
         return list(
