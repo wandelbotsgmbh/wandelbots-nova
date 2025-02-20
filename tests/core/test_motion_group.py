@@ -1,7 +1,7 @@
 import pytest
 
 from nova import Nova
-from nova.actions import Action, lin, ptp
+from nova.actions import lin, ptp
 from nova.actions.motions import CollisionFreeMotion
 from nova.core.motion_group import split_actions_into_batches
 from nova.types import Pose
