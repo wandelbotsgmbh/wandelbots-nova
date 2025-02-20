@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.39.1 (2025-02-20)
+
+### Bug Fixes
+
+- Fixed robotcell creation
+  ([`7f7e182`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7f7e1825bb3e9b4a074d80052b9d26a8489c25fe))
+
+
 ## v0.39.0 (2025-02-20)
 
 ### Features
