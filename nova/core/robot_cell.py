@@ -216,7 +216,7 @@ class AbstractRobot(Device):
     @abstractmethod
     async def _plan(
         self,
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
         optimizer_setup: api.models.OptimizerSetup | None = None,
@@ -235,8 +235,7 @@ class AbstractRobot(Device):
 
     async def plan(
         self,
-        # TODO: this signature is changing, maybe I should make CollisionFreeMotion a subclass of Action
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
         optimizer_setup: api.models.OptimizerSetup | None = None,
@@ -288,7 +287,7 @@ class AbstractRobot(Device):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str,
-        actions: list[Action] | Action | None,
+        actions: list[Action] | Action,
         movement_controller: MovementController | None = None,
     ) -> AsyncIterable[MotionState]:
         """Execute a planned motion
@@ -299,9 +298,7 @@ class AbstractRobot(Device):
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
         """
-        if actions is None:
-            actions = []
-        elif not isinstance(actions, list):
+        if not isinstance(actions, list):
             actions = [actions]
 
         self._motion_recording.append([])
@@ -344,7 +341,7 @@ class AbstractRobot(Device):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str,
-        actions: list[Action] | Action | None,
+        actions: list[Action] | Action,
         movement_controller: MovementController | None = None,
     ) -> None:
         """Execute a planned motion
@@ -352,7 +349,7 @@ class AbstractRobot(Device):
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
             tcp (str): The id of the tool center point (TCP)
-            actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
+            actions (list[Action] | Action): The actions to be executed.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
         """
         async for _ in self.stream_execute(
@@ -367,7 +364,7 @@ class AbstractRobot(Device):
         start_joint_position: tuple[float, ...] | None = None,
     ) -> AsyncIterable[MotionState]:
         joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
-        async for motion_state in self.stream_execute(joint_trajectory, tcp, actions):  # type: ignore
+        async for motion_state in self.stream_execute(joint_trajectory, tcp, actions):
             yield motion_state
 
     async def plan_and_execute(
@@ -377,7 +374,7 @@ class AbstractRobot(Device):
         start_joint_position: tuple[float, ...] | None = None,
     ) -> None:
         joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
-        await self.execute(joint_trajectory, tcp, actions, movement_controller=None)  # type: ignore
+        await self.execute(joint_trajectory, tcp, actions, movement_controller=None)
 
     @abstractmethod
     async def get_state(self, tcp: str | None = None) -> RobotState:

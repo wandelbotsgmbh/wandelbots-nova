@@ -41,7 +41,7 @@ async def main():
                 ptp(target_pose),
                 collision_free(home_joints),
                 ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
-                io_write(key="digital_out[0]", value=False),
+                io_write(key="digital_out[0]", value=True),
                 jnt(home_joints),
                 ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
                 collision_free(home_pose),
@@ -57,8 +57,7 @@ async def main():
         joint_trajectory = await motion_group.plan(
             actions, tcp, start_joint_position=(-0.0429, -1.8781, 1.8464, -2.1366, -1.4861, 1.0996)
         )
-        async for _ in motion_group.execute(joint_trajectory, tcp, actions=actions):
-            pass
+        await motion_group.execute(joint_trajectory, tcp, actions=actions)
 
         value = await controller.read("digital_out[0]")
         print(f"digital out: {value}")
