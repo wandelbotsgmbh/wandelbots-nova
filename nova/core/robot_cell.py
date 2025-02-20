@@ -5,7 +5,6 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from functools import reduce
 from typing import (
-    Any,
     AsyncIterable,
     Awaitable,
     ClassVar,
