@@ -1,6 +1,91 @@
 # CHANGELOG
 
 
+## v0.40.1 (2025-02-20)
+
+### Bug Fixes
+
+- Collision-free-movement-type ([#76](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/76),
+  [`f861ff8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f861ff80b0b7b87bacff963563915ccdec131671))
+
+
+## v0.40.0 (2025-02-20)
+
+### Features
+
+- **RPS-1253**: Use default loguru sink
+  ([#78](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/78),
+  [`c523ba7`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c523ba765ed5f7ea956c0cd3b95c4bef3a0e7261))
+
+
+## v0.39.1 (2025-02-20)
+
+### Bug Fixes
+
+- Fixed robotcell creation
+  ([`7f7e182`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7f7e1825bb3e9b4a074d80052b9d26a8489c25fe))
+
+
+## v0.39.0 (2025-02-20)
+
+### Features
+
+- Set virtual robot mounting setup
+  ([`be0d882`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/be0d8825308fdac8e4e113ec72246572eb0516e6))
+
+
+## v0.38.3 (2025-02-20)
+
+### Bug Fixes
+
+- Ensure optimizer setup is updated with new TCP value
+  ([`2e2c36f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2e2c36f4e53a992b6a553dfa4a87dce4a9e717b2))
+
+
+## v0.38.2 (2025-02-20)
+
+### Chores
+
+- Return robot cell from cell class * cleanup
+  ([#90](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/90),
+  [`ec840be`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ec840be673453442ffe6d7542809e0bfba1cf051))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
+## v0.38.1 (2025-02-20)
+
+### Chores
+
+- Streamlined controller init ([#89](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/89),
+  [`bff2e7d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bff2e7d95bb0f99e5c612df4c5464e81fcd4afa1))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
+## v0.38.0 (2025-02-19)
+
+### Features
+
+- **RPS-1214**: Streaming execution
+  ([#68](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/68),
+  [`c80fa66`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c80fa66a5dd6215852845d17a3ba88193d41f409))
+
+Co-authored-by: Dirk Sonnemann <dirk.sonnemann@wandelbots.com>
+
+Co-authored-by: Christoph Biering <1353438+biering@users.noreply.github.com>
+
+
+## v0.37.1 (2025-02-19)
+
+### Chores
+
+- Added CODEOWNERS file ([#88](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/88),
+  [`59043a4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/59043a4ca86de7959344cf267e1e4ad72c77ebcd))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.37.0 (2025-02-18)
 
 ### Features

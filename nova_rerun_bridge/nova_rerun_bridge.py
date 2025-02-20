@@ -172,7 +172,11 @@ class NovaRerunBridge:
         log_safety_zones(motion_group_id, optimizer_setup)
 
     async def log_motion(
-        self, motion_id: str, timing_mode=TimingMode.CONTINUE, time_offset: float = 0
+        self,
+        motion_id: str,
+        timing_mode=TimingMode.CONTINUE,
+        time_offset: float = 0,
+        tool_asset: str = None,
     ) -> None:
         # Fetch motion details from api
         motion = await self.nova._api_client.motion_api.get_planned_motion(
@@ -212,6 +216,7 @@ class NovaRerunBridge:
             collision_scenes=collision_scenes,
             time_offset=time_offset,
             timing_mode=timing_mode,
+            tool_asset=tool_asset,
         )
 
     async def log_trajectory(
@@ -221,12 +226,16 @@ class NovaRerunBridge:
         motion_group: MotionGroup,
         timing_mode=TimingMode.CONTINUE,
         time_offset: float = 0,
+        tool_asset: str = None,
     ) -> None:
         if len(joint_trajectory.joint_positions) == 0:
             raise ValueError("No joint trajectory provided")
-        load_plan_response = await motion_group._load_planned_motion(joint_trajectory, tcp)
+        load_plan_response = await motion_group._load_trajectory(joint_trajectory, tcp)
         await self.log_motion(
-            load_plan_response.motion, timing_mode=timing_mode, time_offset=time_offset
+            load_plan_response.motion,
+            timing_mode=timing_mode,
+            time_offset=time_offset,
+            tool_asset=tool_asset,
         )
 
     def continue_after_sync(self) -> None:

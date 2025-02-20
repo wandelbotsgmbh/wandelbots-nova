@@ -36,12 +36,12 @@ async def main():
             target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
             actions = [
                 jnt(home_joints),
-                io_write(key="digital_out[0]", value=False),
+                io_write(key="tool_out[0]", value=False),
                 ptp(target_pose),
                 jnt(home_joints),
             ]
 
-            async for motion_state in motion_group.plan_and_execute(actions, tcp):
+            async for motion_state in motion_group.stream_plan_and_execute(actions, tcp):
                 print(motion_state)
 
             io_value = await controller.read("tool_out[0]")

@@ -1,16 +1,18 @@
-from typing import Callable, Generator, cast
+import asyncio
+from typing import AsyncIterable, Generator, cast
 
 import wandelbots_api_client as wb
-from loguru import logger
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
+from nova.core import logger
 from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, PlanTrajectoryFailed
-from nova.core.movement_controller import motion_group_state_to_motion_state, move_forward
+from nova.core.gateway import ApiGateway
+from nova.core.movement_controller import move_forward
 from nova.core.robot_cell import AbstractRobot
-from nova.gateway import ApiGateway
-from nova.types import InitialMovementStream, LoadPlanResponse, MotionState, Pose, RobotState
+from nova.types import InitialMovementStream, LoadPlanResponse, MovementResponse, Pose, RobotState
+from nova.utils import StreamExtractor
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
@@ -27,9 +29,9 @@ def compare_collision_scenes(scene1: wb.models.CollisionScene, scene2: wb.models
     return True
 
 
-def split_actions_into_batches(
-    actions: list[Action | CollisionFreeMotion],
-) -> Generator[list[Action] | CollisionFreeMotion, None, None]:
+# TODO: when collision scene is different in different motions
+#  , we should plan them separately
+def split_actions_into_batches(actions: list[Action]) -> Generator[list[Action], None, None]:
     """
     Splits the list of actions into batches of actions and collision free motions.
     Actions are sent to plan_trajectory API and collision free motions are sent to plan_collision_free_ptp API.
@@ -37,14 +39,14 @@ def split_actions_into_batches(
     current_batch: list[Action] = []
     collision_free_motion: CollisionFreeMotion | None = None
     for action in actions:
-        # this happens when we switch from a action batch to a collision free motion
+        # this happens when we switch from an action batch to a collision free motion
         if collision_free_motion is not None:
-            yield collision_free_motion
+            yield [collision_free_motion]
             collision_free_motion = None
 
         # if we encounter a CollisionFreeMotion and there is no other non-collision free action collected yet than return this for processing
         if isinstance(action, CollisionFreeMotion) and len(current_batch) == 0:
-            yield action
+            yield [action]
 
         # if we encounter a CollisionFreeMotion and there are other non-collision free actions collected, this means the batch is ready for processing
         elif isinstance(action, CollisionFreeMotion) and len(current_batch) > 0:
@@ -52,15 +54,42 @@ def split_actions_into_batches(
             yield current_batch
             current_batch = []
         else:
-            current_batch.append(action)  # type: ignore
+            current_batch.append(action)
 
     # if the last item was collision free motion, we need to yield it
     if collision_free_motion is not None:
-        yield collision_free_motion
+        yield [collision_free_motion]
 
     # if there are any actions left in the batch, we need to yield them
     if len(current_batch) > 0:
         yield current_batch
+
+
+def combine_trajectories(
+    trajectories: list[wb.models.JointTrajectory],
+) -> wb.models.JointTrajectory:
+    """
+    Combines multiple trajectories into one trajectory.
+    """
+    final_trajectory = trajectories[0]
+    current_end_time = final_trajectory.times[-1]
+    current_end_location = final_trajectory.locations[-1]
+
+    for trajectory in trajectories[1:]:
+        # Shift times and locations to continue from last endpoint
+        shifted_times = [t + current_end_time for t in trajectory.times[1:]]  # Skip first point
+        shifted_locations = [
+            location + current_end_location for location in trajectory.locations[1:]
+        ]  # Skip first point
+
+        final_trajectory.times.extend(shifted_times)
+        final_trajectory.joint_positions.extend(trajectory.joint_positions[1:])
+        final_trajectory.locations.extend(shifted_locations)
+
+        current_end_time = final_trajectory.times[-1]
+        current_end_location = final_trajectory.locations[-1]
+
+    return final_trajectory
 
 
 class MotionGroup(AbstractRobot):
@@ -71,7 +100,7 @@ class MotionGroup(AbstractRobot):
         self._motion_group_id = motion_group_id
         self._current_motion: str | None = None
         self._optimizer_setup: wb.models.OptimizerSetup | None = None
-        super().__init__()
+        super().__init__(id=motion_group_id)
 
     async def open(self):
         await self._api_gateway.motion_group_api.activate_motion_group(
@@ -171,19 +200,14 @@ class MotionGroup(AbstractRobot):
         return plan_trajectory_response.response.actual_instance
 
     def _validate_collision_scenes(self, actions: list[Action]) -> list[models.CollisionScene]:
-        collision_scenes: list[models.CollisionScene] = []
+        motion_count = len([action for action in actions if isinstance(action, Motion)])
+        collision_scenes = [
+            action.collision_scene
+            for action in actions
+            if isinstance(action, CollisionFreeMotion) and action.collision_scene is not None
+        ]
 
-        motion_counter = 0
-        for action in actions:
-            if not isinstance(action, Motion):
-                continue
-
-            action = cast(Motion, action)
-            motion_counter = motion_counter + 1
-            if action.collision_scene is not None:
-                collision_scenes.append(action.collision_scene)
-
-        if len(collision_scenes) != 0 and len(collision_scenes) != motion_counter:
+        if len(collision_scenes) != 0 and len(collision_scenes) != motion_count:
             raise InconsistentCollisionScenes(
                 "Only some of the actions have collision scene. Either specify it for all or none."
             )
@@ -228,9 +252,8 @@ class MotionGroup(AbstractRobot):
 
 
         """
-        # TODO: dont access the internal mapper directly
         target = wb.models.PlanCollisionFreePTPRequestTarget(
-            action.target._to_wb_pose2() if isinstance(action.target, Pose) else list(action.target)
+            **action.model_dump(exclude_unset=True)
         )
         robot_setup = optimizer_setup or await self._get_optimizer_setup(tcp=tcp)
 
@@ -266,7 +289,7 @@ class MotionGroup(AbstractRobot):
 
     async def _plan(
         self,
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
         optimizer_setup: wb.models.OptimizerSetup | None = None,
@@ -274,51 +297,37 @@ class MotionGroup(AbstractRobot):
         if not actions:
             raise ValueError("No actions provided")
 
-        # TODO: refactor this part :(((((
-        if isinstance(actions, Action):
-            actions = [actions]
-
         current_joints = start_joint_position or await self.joints()
         robot_setup = optimizer_setup or await self._get_optimizer_setup(tcp=tcp)
 
         all_trajectories = []
         for batch in split_actions_into_batches(actions):
-            if isinstance(batch, CollisionFreeMotion):
+            if len(batch) == 0:
+                raise ValueError("Empty batch of actions")
+
+            if isinstance(batch[0], CollisionFreeMotion):
+                motion: CollisionFreeMotion = cast(CollisionFreeMotion, batch[0])
                 trajectory = await self._plan_collision_free(
-                    batch, tcp, list(current_joints), optimizer_setup=robot_setup
+                    action=motion,
+                    tcp=tcp,
+                    start_joint_position=list(current_joints),
+                    optimizer_setup=robot_setup,
                 )
                 all_trajectories.append(trajectory)
+                # the last joint position of this trajectory is the starting point for the next one
                 current_joints = tuple(trajectory.joint_positions[-1].joints)
             else:
                 trajectory = await self._plan_with_collision_check(
-                    batch, tcp, current_joints, optimizer_setup=robot_setup
+                    actions=batch,
+                    tcp=tcp,
+                    start_joint_position=current_joints,
+                    optimizer_setup=robot_setup,
                 )
                 all_trajectories.append(trajectory)
+                # the last joint position of this trajectory is the starting point for the next one
                 current_joints = tuple(trajectory.joint_positions[-1].joints)
 
-        # TODO: combine all trajectories into one
-        # TODO: check how io on the path fits into this
-
-        # Combine all trajectories
-        final_trajectory = all_trajectories[0]
-        current_end_time = final_trajectory.times[-1]
-        current_end_location = final_trajectory.locations[-1]
-
-        for trajectory in all_trajectories[1:]:
-            # Shift times and locations to continue from last endpoint
-            shifted_times = [t + current_end_time for t in trajectory.times[1:]]  # Skip first point
-            shifted_locations = [
-                location + current_end_location for location in trajectory.locations[1:]
-            ]  # Skip first point
-
-            final_trajectory.times.extend(shifted_times)
-            final_trajectory.joint_positions.extend(trajectory.joint_positions[1:])
-            final_trajectory.locations.extend(shifted_locations)
-
-            current_end_time = final_trajectory.times[-1]
-            current_end_location = final_trajectory.locations[-1]
-
-        return final_trajectory
+        return combine_trajectories(all_trajectories)
 
     # TODO: refactor and simplify code, tests are already there
     # TODO: split into batches when the collision scene changes in a batch of collision free motions
@@ -328,9 +337,8 @@ class MotionGroup(AbstractRobot):
         joint_trajectory: wb.models.JointTrajectory,
         tcp: str,
         actions: list[Action],
-        on_movement: Callable[[MotionState | None], None],
         movement_controller: MovementController | None,
-    ):
+    ) -> AsyncIterable[MovementResponse]:
         if movement_controller is None:
             movement_controller = move_forward
 
@@ -354,22 +362,32 @@ class MotionGroup(AbstractRobot):
             ):
                 continue
 
-            # TODO: maybe 1-...
-            motion_state = motion_group_state_to_motion_state(
-                move_to_response.state.motion_groups[0],
-                float(move_to_response.move_response.current_location_on_trajectory),
-            )
-            on_movement(motion_state)
+            yield move_to_response
 
         controller = movement_controller(
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
                 motion_id=load_plan_response.motion,
-            ),
-            on_movement=on_movement,
+            )
         )
 
-        await self._api_gateway.motion_api.execute_trajectory(self._cell, controller)
+        def stop_condition(response: wb.models.ExecuteTrajectoryResponse) -> bool:
+            instance = response.actual_instance
+            # Stop when standstill indicates motion ended
+            return (
+                isinstance(instance, wb.models.Standstill)
+                and instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED
+            )
+
+        execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
+        execution_task = asyncio.create_task(
+            self._api_gateway.motion_api.execute_trajectory(
+                self._cell, execute_response_streaming_controller
+            )
+        )
+        async for execute_response in execute_response_streaming_controller:
+            yield execute_response
+        await execution_task
 
     async def _get_number_of_joints(self) -> int:
         spec = await self._api_gateway.motion_group_infos_api.get_motion_group_specification(
@@ -378,13 +396,15 @@ class MotionGroup(AbstractRobot):
         return len(spec.mechanical_joint_limits)
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
-        if self._optimizer_setup is None:
+        # TODO: mypy failed on main branch, need to check
+        if self._optimizer_setup is None or self._optimizer_setup.tcp != tcp:  # type: ignore
             self._optimizer_setup = (
                 await self._api_gateway.motion_group_infos_api.get_optimizer_configuration(
                     cell=self._cell, motion_group=self._motion_group_id, tcp=tcp
                 )
             )
-        return self._optimizer_setup
+        # TODO: mypy failed on code from main branch need to check
+        return self._optimizer_setup  # type: ignore
 
     async def _load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str

@@ -1,12 +1,16 @@
+from __future__ import annotations
+
 import asyncio
 import functools
 import time
+from abc import ABC
 from typing import TypeVar
 
 import wandelbots_api_client as wb
 from decouple import config
-from loguru import logger
 
+from nova.core import logger
+from nova.core.robot_cell import ConfigurablePeriphery, Device
 from nova.version import version as pkg_version
 
 T = TypeVar("T")
@@ -104,6 +108,10 @@ class ApiGateway:
         )
         api_client_config.verify_ssl = verify_ssl
 
+        self._access_token = access_token
+        self._username = username
+        self._password = password
+
         self._api_client = wb.ApiClient(configuration=api_client_config)
         self._api_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
 
@@ -156,3 +164,38 @@ class ApiGateway:
             return f"https://{host}"
 
         return f"http://{host}"
+
+    @property
+    def host(self) -> str:
+        return self._host
+
+    @property
+    def access_token(self) -> str | None:
+        return self._access_token
+
+    @property
+    def username(self) -> str | None:
+        return self._username
+
+    @property
+    def password(self) -> str | None:
+        return self._password
+
+
+class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
+    class Configuration(ConfigurablePeriphery.Configuration):
+        nova_api: str
+        nova_access_token: str | None = None
+        nova_username: str | None = None
+        nova_password: str | None = None
+
+    _nova_api: ApiGateway
+
+    def __init__(self, configuration: Configuration, **kwargs):
+        self._nova_api = ApiGateway(
+            host=configuration.nova_api,
+            access_token=configuration.nova_access_token,
+            username=configuration.nova_username,
+            password=configuration.nova_password,
+        )
+        super().__init__(configuration, **kwargs)

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "wandelbots-nova"
-version = "0.37.0"
+version = "0.40.1"
 description = "Official Python SDK for the Wandelbots"
 authors = [
     "Wandelbots GmbH",
@@ -45,6 +45,7 @@ pytest = "^8.3.4"
 pytest-asyncio = ">=0.24,<0.26"
 mypy = "^1.13.0"
 pre-commit = "^4.0.1"
+icecream = "^2.1.4"
 
 [tool.poetry.extras]
 nova-rerun-bridge = [
