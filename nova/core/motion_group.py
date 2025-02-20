@@ -1,5 +1,5 @@
 import asyncio
-from typing import AsyncIterable, Generator, cast
+from typing import AsyncIterable, cast
 
 import wandelbots_api_client as wb
 
