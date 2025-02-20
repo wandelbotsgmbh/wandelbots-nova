@@ -86,24 +86,6 @@ class ConfigurablePeriphery:
     def id(self):
         return self.configuration.id
 
-    @classmethod
-    def from_dict(cls, data):
-        """Constructs a new configurable periphery from a dict
-
-        Returns:
-            cls: the newly created ConfigurablePeriphery object
-
-        """
-        return cls(cls.Configuration(**data))
-
-    def to_dict(self) -> dict[str, Any]:
-        """Creates a json dict from the configurable periphery parameters which can be transformed to a json string
-
-        Returns:
-            Dict[str, Any]: a json string
-        """
-        return self._configuration.model_dump()
-
 
 class Device(ABC):
     """A device that takes care of lifetime management"""
@@ -578,17 +560,6 @@ class RobotCell:
         robot_cell = cls()
         robot_cell.apply_configurations(configurations)
         return robot_cell
-
-    @classmethod
-    def from_dict(cls, data):
-        AnyConfiguration = Union.__getitem__(tuple(ConfigurablePeriphery.all_classes))
-
-        class RobotCellConfiguration(pydantic.BaseModel):
-            devices: list[AnyConfiguration]  # type: ignore
-
-        config = RobotCellConfiguration(devices=data)
-
-        return cls.from_configurations(config.devices)
 
     def get_controllers(self) -> list[AbstractController]:
         return list(
