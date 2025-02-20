@@ -204,4 +204,4 @@ class Cell:
     async def get_robot_cell(self) -> RobotCell:
         """Return the configured robot cell"""
         controllers = await self.controllers()
-        return RobotCell(timer=None, **dict(controller.id for controller in controllers))
+        return RobotCell(timer=None, **{controller.id: controller for controller in controllers})
