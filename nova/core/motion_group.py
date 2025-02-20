@@ -8,9 +8,9 @@ from nova.actions import Action, CombinedActions, MovementController, MovementCo
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
 from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, PlanTrajectoryFailed
+from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
 from nova.core.robot_cell import AbstractRobot
-from nova.gateway import ApiGateway
 from nova.types import InitialMovementStream, LoadPlanResponse, MovementResponse, Pose, RobotState
 from nova.utils import StreamExtractor
 

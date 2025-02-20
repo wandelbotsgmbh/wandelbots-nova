@@ -44,46 +44,55 @@ NOVA_ACCESS_TOKEN="your-access-token"
 ```python
 from nova_rerun_bridge import NovaRerunBridge
 from nova import Nova
+from nova import api
+from nova.actions import jnt, ptp
+from nova.types import Pose
+import asyncio
 
-# Connect to your Nova instance (or use .env file)
-nova = Nova(
-    host="https://your-instance.wandelbots.io",
-    access_token="your-access-token"
-)
-bridge = NovaRerunBridge(nova)
+async def main():
+  # Connect to your Nova instance (or use .env file)
+  nova = Nova(
+      host="https://your-instance.wandelbots.io",
+      access_token="your-access-token"
+  )
+  bridge = NovaRerunBridge(nova)
+  
+  # Setup visualization
+  await bridge.setup_blueprint()
+  
+  # Setup robot
+  cell = nova.cell()
+  controller = await cell.ensure_virtual_robot_controller(
+      "ur",
+      api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+      api.models.Manufacturer.UNIVERSALROBOTS,
+  )
+  
+  # Connect to the controller and activate motion groups
+  async with controller[0] as motion_group:
+      home_joints = await motion_group.joints()
+      tcp_names = await motion_group.tcp_names()
+      tcp = tcp_names[0]
+  
+      # Get current TCP pose and offset it slightly along the x-axis
+      current_pose = await motion_group.tcp_pose(tcp)
+      target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
+  
+      actions = [
+          jnt(home_joints),
+          ptp(target_pose),
+          jnt(home_joints),
+      ]
+  
+      # Plan trajectory
+      joint_trajectory = await motion_group.plan(actions, tcp)
+  
+      # Log a trajectory
+      await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
 
-# Setup visualization
-await bridge.setup_blueprint()
 
-# Setup robot
-cell = nova.cell()
-controller = await cell.ensure_virtual_robot_controller(
-    "ur",
-    models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-    models.Manufacturer.UNIVERSALROBOTS,
-)
-
-# Connect to the controller and activate motion groups
-async with controller[0] as motion_group:
-    home_joints = await motion_group.joints()
-    tcp_names = await motion_group.tcp_names()
-    tcp = tcp_names[0]
-
-    # Get current TCP pose and offset it slightly along the x-axis
-    current_pose = await motion_group.tcp_pose(tcp)
-    target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
-
-    actions = [
-        jnt(home_joints),
-        ptp(target_pose),
-        jnt(home_joints),
-    ]
-
-    # Plan trajectory
-    joint_trajectory = await motion_group.plan(actions, tcp)
-
-    # Log a trajectory
-    await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ## Installation
