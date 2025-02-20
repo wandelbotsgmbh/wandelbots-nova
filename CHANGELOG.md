@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.38.3 (2025-02-20)
+
+### Bug Fixes
+
+- Ensure optimizer setup is updated with new TCP value
+  ([`2e2c36f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2e2c36f4e53a992b6a553dfa4a87dce4a9e717b2))
+
+
 ## v0.38.2 (2025-02-20)
 
 ### Chores
