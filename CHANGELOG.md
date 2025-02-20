@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.38.1 (2025-02-20)
+
+### Chores
+
+- Streamlined controller init ([#89](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/89),
+  [`bff2e7d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bff2e7d95bb0f99e5c612df4c5464e81fcd4afa1))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.38.0 (2025-02-19)
 
 ### Features
