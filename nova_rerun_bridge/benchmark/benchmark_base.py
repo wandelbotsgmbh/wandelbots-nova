@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import numpy as np
-from robometrics.datasets import motion_benchmaker_raw
 from wandelbots_api_client import models
 from wandelbots_api_client.models import (
     CoordinateSystem,
@@ -18,6 +17,7 @@ from nova.core.nova import Nova
 from nova.types import Pose
 from nova.types.vector3d import Vector3d as Vector3d_nova
 from nova_rerun_bridge import NovaRerunBridge
+from nova_rerun_bridge.benchmark.datasets import motion_benchmaker_raw
 from nova_rerun_bridge.benchmark.log_successful_planning import log_successful_planning
 from nova_rerun_bridge.benchmark.robometrics_helper import (
     convert_position,
