@@ -1,18 +1,14 @@
 name: Run examples
-
 on:
   pull_request:
     branches:
       - main
-
 concurrency:
   group: run-examples-workflow
   cancel-in-progress: false
-
 jobs:
   run-examples:
     runs-on: ubuntu-latest
-
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -25,16 +21,13 @@ jobs:
           - "05_selection_motion_group_activation.py"
           - "06_api_usage.py"
           - "08_multi_step_movement_with_collision_free.py"
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-
       - name: Create NOVA instance and check connection
         env:
           PORTAL_STG_REFRESH_URL: ${{ secrets.PORTAL_STG_REFRESH_URL }}
@@ -55,12 +48,10 @@ jobs:
           echo "PORTAL_STG_HOST=$PORTAL_STG_HOST" >> $GITHUB_ENV
           echo "PORTAL_STG_INSTANCE_ID=$PORTAL_STG_INSTANCE_ID" >> $GITHUB_ENV
           echo "PORTAL_STG_ACCESS_TOKEN=$PORTAL_STG_ACCESS_TOKEN" >> $GITHUB_ENV
-
       - name: Set up Python environment
         run: |
           pip install poetry
           poetry install
-
       - name: "Run example: examples/${{ matrix.example_file }}"
         run: |
           touch ./.env
@@ -84,7 +75,6 @@ jobs:
             echo "Failed after $max_retries attempts."
             exit 1
           fi
-
       - name: Download diagnose package
         if: failure()
         run: |
@@ -94,14 +84,12 @@ jobs:
             -H 'Accept: application/zip' \
             -H "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}" \
             -o "diagnose-${{ github.run_id }}.zip"
-
       - name: Upload diagnose artifact
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: diagnose-package
           path: diagnose-${{ github.run_id }}.zip
-
       # Always run cleanup, whether success or failure
       - name: Cleanup - Delete instance
         if: always()
