@@ -9,6 +9,12 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    versioning-strategy: auto
+    allow:
+      - dependency-type: "production"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
