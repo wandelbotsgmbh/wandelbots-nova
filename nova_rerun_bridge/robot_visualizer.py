@@ -1,5 +1,4 @@
 import re
-from typing import List
 
 import numpy as np
 import rerun as rr
@@ -42,7 +41,7 @@ class RobotVisualizer:
         :param glb_path: Path to the GLB file for the robot model.
         """
         self.robot = robot
-        self.link_geometries: dict[int, List[trimesh.Trimesh]] = {}
+        self.link_geometries: dict[int, list[trimesh.Trimesh]] = {}
         self.tcp_geometries = tcp_geometries
         self.logged_meshes: set[str] = set()
         self.static_transform = static_transform
@@ -53,7 +52,7 @@ class RobotVisualizer:
         self.collision_tcp_geometries = collision_tcp
 
         # This will hold the names of discovered joints (e.g. ["robot_J00", "robot_J01", ...])
-        self.joint_names: List[str] = []
+        self.joint_names: list[str] = []
         self.layer_nodes_dict: dict[str, list[str]] = {}
         self.parent_nodes_dict: dict[str, str] = {}
 
@@ -148,7 +147,7 @@ class RobotVisualizer:
         """Compute link transforms using the robot's methods."""
         accumulated = self.robot.pose_to_matrix(self.robot.mounting)
         transforms = [accumulated.copy()]
-        for dh_param, joint_rot in zip(self.robot.dh_parameters, joint_values.joints):
+        for dh_param, joint_rot in zip(self.robot.dh_parameters, joint_values.joints, strict=False):
             transform = self.robot.dh_transform(dh_param, joint_rot)
             accumulated = accumulated @ transform
             transforms.append(accumulated.copy())
@@ -474,7 +473,7 @@ class RobotVisualizer:
                 self.init_geometry(entity_path, geom.capsule)
                 log_geometry(entity_path, final_transform)
 
-    def log_robot_geometries(self, trajectory: List[models.TrajectorySample], times_column):
+    def log_robot_geometries(self, trajectory: list[models.TrajectorySample], times_column):
         """
         Log the robot geometries for each link and TCP as separate entities.
 

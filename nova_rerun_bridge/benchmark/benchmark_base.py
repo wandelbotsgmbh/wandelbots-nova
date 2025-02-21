@@ -122,7 +122,7 @@ async def setup_collision_scene(
     return scene_id
 
 
-def print_separator(char="=", width=80):
+def print_separator(char="=", width=40):
     """Print a separator line."""
     print(char * width)
 
@@ -164,7 +164,12 @@ def print_statistics(results, name="Overall", show_separator=True):
 
 
 def print_progressive_statistics(
-    results, problem_results, current_key=None, total_problems=0, current_problem=0
+    results,
+    problem_results,
+    current_key=None,
+    total_problems=0,
+    current_problem=0,
+    path_to_rrd=None,
 ):
     """Print both current problem and overall statistics with progress indicator."""
     print("\033[2J\033[H")  # Clear screen and move cursor to top
@@ -181,6 +186,9 @@ def print_progressive_statistics(
     # Print overall progress
     print_statistics(results, "Overall Progress", show_separator=False)
     print_separator()
+    if path_to_rrd:
+        print(f"💾 Logged rerun scene: {path_to_rrd}")
+        print_separator()
 
 
 async def run_single_benchmark(strategy: BenchmarkStrategy):
@@ -291,11 +299,7 @@ async def run_single_benchmark(strategy: BenchmarkStrategy):
                         results.append(metrics)
                         problem_results[key].append(metrics)
 
-                        print_progressive_statistics(
-                            results, problem_results, key, total_problems, current_problem
-                        )
-
-                        await log_successful_planning(
+                        path_to_rrd = await log_successful_planning(
                             bridge,
                             strategy.name,
                             collision_scene_id,
@@ -305,6 +309,15 @@ async def run_single_benchmark(strategy: BenchmarkStrategy):
                             trajectory,
                             tcp,
                             motion_group,
+                        )
+
+                        print_progressive_statistics(
+                            results,
+                            problem_results,
+                            key,
+                            total_problems,
+                            current_problem,
+                            path_to_rrd,
                         )
 
                 except Exception:

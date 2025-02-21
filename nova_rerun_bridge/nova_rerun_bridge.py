@@ -1,7 +1,6 @@
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
 
 import numpy as np
 import rerun as rr
@@ -55,7 +54,7 @@ class NovaRerunBridge:
     def __init__(self, nova: Nova, spawn: bool = True, recording_id=None) -> None:
         self._ensure_models_exist()
         self.nova = nova
-        self._streaming_tasks: Dict[MotionGroup, asyncio.Task] = {}
+        self._streaming_tasks: dict[MotionGroup, asyncio.Task] = {}
         if spawn:
             recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             rr.init(application_id="nova", recording_id=recording_id, spawn=True)
@@ -124,7 +123,7 @@ class NovaRerunBridge:
             static=True,
         )
 
-    async def log_collision_scenes(self) -> Dict[str, models.CollisionScene]:
+    async def log_collision_scenes(self) -> dict[str, models.CollisionScene]:
         """Fetch and log all collision scenes from Nova to Rerun."""
         collision_scenes = (
             await self.nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
@@ -134,7 +133,7 @@ class NovaRerunBridge:
         log_collision_scenes(collision_scenes)
         return collision_scenes
 
-    async def log_collision_scene(self, scene_id: str) -> Dict[str, models.CollisionScene]:
+    async def log_collision_scene(self, scene_id: str) -> dict[str, models.CollisionScene]:
         """Log a specific collision scene by its ID.
 
         Args:
@@ -155,7 +154,7 @@ class NovaRerunBridge:
         log_collision_scenes({scene_id: collision_scenes[scene_id]})
         return {scene_id: collision_scenes[scene_id]}
 
-    def _log_collision_scene(self, collision_scenes: Dict[str, models.CollisionScene]) -> None:
+    def _log_collision_scene(self, collision_scenes: dict[str, models.CollisionScene]) -> None:
         log_collision_scenes(collision_scenes=collision_scenes)
 
     async def log_saftey_zones(self, motion_group: MotionGroup) -> None:

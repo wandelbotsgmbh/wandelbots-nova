@@ -42,7 +42,7 @@ async def log_successful_planning(
     tcp: str,
     motion_group: MotionGroup,
     vis_config: VisualizationConfig = VisualizationConfig(),
-) -> None:
+) -> str:
     """Log successful planning attempt with visualizations.
 
     Args:
@@ -80,6 +80,8 @@ async def log_successful_planning(
 
     # Log trajectory
     await bridge.log_trajectory(trajectory, tcp, motion_group)
+
+    return f"{result_dir / f'{recording_id}.rrd'}"
 
 
 def _log_target_position(position: list[float], config: VisualizationConfig) -> None:

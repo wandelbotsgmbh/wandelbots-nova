@@ -1,5 +1,4 @@
 from enum import Enum, auto
-from typing import Dict, List
 
 import numpy as np
 import rerun as rr
@@ -31,8 +30,8 @@ def log_motion(
     model_from_controller: str,
     motion_group: str,
     optimizer_config: models.OptimizerSetup,
-    trajectory: List[models.TrajectorySample],
-    collision_scenes: Dict[str, models.CollisionScene],
+    trajectory: list[models.TrajectorySample],
+    collision_scenes: dict[str, models.CollisionScene],
     time_offset: float = 0,
     timing_mode: TimingMode = TimingMode.CONTINUE,
     tool_asset: str = None,
@@ -134,7 +133,7 @@ def continue_after_sync():
 
 
 def log_trajectory_path(
-    motion_id: str, trajectory: List[models.TrajectorySample], motion_group: str
+    motion_id: str, trajectory: list[models.TrajectorySample], motion_group: str
 ):
     if not all(p.tcp_pose is not None for p in trajectory):
         raise ValueError("All trajectory points must have a tcp_pose")
@@ -153,7 +152,7 @@ def log_trajectory_path(
 
 
 def get_times_column(
-    trajectory: List[models.TrajectorySample], timer_offset: float = 0
+    trajectory: list[models.TrajectorySample], timer_offset: float = 0
 ) -> rr.TimeSecondsColumn:
     times = np.array([timer_offset + point.time for point in trajectory])
     times_column = rr.TimeSecondsColumn(TIME_INTERVAL_NAME, times)
@@ -165,7 +164,7 @@ def log_trajectory(
     motion_group: str,
     robot: DHRobot,
     visualizer: RobotVisualizer,
-    trajectory: List[models.TrajectorySample],
+    trajectory: list[models.TrajectorySample],
     optimizer_config: models.OptimizerSetup,
     timer_offset: float,
     tool_asset: str,
@@ -208,7 +207,7 @@ def log_trajectory(
     log_scalar_values(trajectory, motion_group, times_column, optimizer_config)
 
 
-def log_tcp_pose(trajectory: List[models.TrajectorySample], motion_group, times_column, tool_asset):
+def log_tcp_pose(trajectory: list[models.TrajectorySample], motion_group, times_column, tool_asset):
     """
     Log TCP pose (position + orientation) data.
     """
@@ -233,7 +232,7 @@ def log_tcp_pose(trajectory: List[models.TrajectorySample], motion_group, times_
 
 
 def log_joint_data(
-    trajectory: List[models.TrajectorySample],
+    trajectory: list[models.TrajectorySample],
     motion_group,
     times_column,
     optimizer_config: models.OptimizerSetup,
@@ -246,7 +245,7 @@ def log_joint_data(
         raise ValueError("DH parameters cannot be None")
 
     num_joints = len(optimizer_config.dh_parameters)
-    joint_data: Dict[str, List[List[float]]] = {
+    joint_data: dict[str, list[list[float]]] = {
         "velocity": [[] for _ in range(num_joints)],
         "acceleration": [[] for _ in range(num_joints)],
         "position": [[] for _ in range(num_joints)],
@@ -305,7 +304,7 @@ def log_joint_data(
 
 
 def log_scalar_values(
-    trajectory: List[models.TrajectorySample],
+    trajectory: list[models.TrajectorySample],
     motion_group,
     times_column,
     optimizer_config: models.OptimizerSetup,
@@ -313,7 +312,7 @@ def log_scalar_values(
     """
     Log scalar values such as TCP velocity, acceleration, orientation velocity/acceleration, time, and location.
     """
-    scalar_data: Dict[str, List[float]] = {
+    scalar_data: dict[str, list[float]] = {
         "tcp_velocity": [],
         "tcp_acceleration": [],
         "tcp_orientation_velocity": [],
@@ -382,7 +381,7 @@ def log_scalar_values(
             )
 
 
-def to_trajectory_samples(self) -> List[models.TrajectorySample]:
+def to_trajectory_samples(self) -> list[models.TrajectorySample]:
     """Convert JointTrajectory to list of TrajectorySample objects."""
     samples = []
     for joint_pos, time, location in zip(self.joint_positions, self.times, self.locations):

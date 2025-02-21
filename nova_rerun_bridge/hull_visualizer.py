@@ -1,4 +1,4 @@
-from typing import Any, List, Tuple
+from typing import Any
 
 import numpy as np
 import trimesh
@@ -8,8 +8,8 @@ from scipy.spatial import ConvexHull
 class HullVisualizer:
     @staticmethod
     def compute_hull_mesh(
-        polygons: List[np.ndarray],
-    ) -> Tuple[List[List[float]], List[List[int]], List[List[float]]]:
+        polygons: list[np.ndarray],
+    ) -> tuple[list[list[float]], list[list[int]], list[list[float]]]:
         """Convert polygons to mesh with optimized hull generation."""
         vertices = np.vstack(polygons)
 
@@ -115,7 +115,7 @@ class HullVisualizer:
         return polygon_points
 
     @staticmethod
-    def compute_hull_outlines_from_geometries(child_geometries: List[Any]) -> List[np.ndarray]:
+    def compute_hull_outlines_from_geometries(child_geometries: list[Any]) -> list[np.ndarray]:
         """Compute polygon outlines from geometry child objects.
 
         Args:
@@ -136,7 +136,7 @@ class HullVisualizer:
         return HullVisualizer._compute_hull_from_points(np.array(all_points))
 
     @staticmethod
-    def compute_hull_outlines_from_points(points: List[List[float]]) -> List[np.ndarray]:
+    def compute_hull_outlines_from_points(points: list[list[float]]) -> list[np.ndarray]:
         """Compute polygon outlines directly from point coordinates.
 
         Args:
@@ -151,7 +151,7 @@ class HullVisualizer:
         return HullVisualizer._compute_hull_from_points(np.array(points))
 
     @staticmethod
-    def _compute_hull_from_points(points: np.ndarray) -> List[np.ndarray]:
+    def _compute_hull_from_points(points: np.ndarray) -> list[np.ndarray]:
         """Internal helper to compute hull from numpy points array."""
         try:
             hull = ConvexHull(points)

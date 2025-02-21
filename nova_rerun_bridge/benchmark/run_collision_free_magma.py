@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from typing import List, Optional
 
 import requests
 import wandelbots_api_client as wb
@@ -42,7 +41,7 @@ class CollisionFreeMagmaStrategy(BenchmarkStrategy):
 
     async def _get_valid_configurations(
         self, nova, motion_group, target, tcp
-    ) -> Optional[List[AllJointPositionsResponse]]:
+    ) -> list[AllJointPositionsResponse] | None:
         """Calculate valid inverse kinematic configurations."""
         try:
             response = (

@@ -1,4 +1,3 @@
-from typing import List
 
 import rerun as rr
 import rerun.blueprint as rrb
@@ -263,7 +262,7 @@ def create_motion_group_tabs(
     )
 
 
-def get_blueprint(motion_group_list: List[str]) -> rrb.Blueprint:
+def get_blueprint(motion_group_list: list[str]) -> rrb.Blueprint:
     """Send blueprint with nested tab structure."""
     for motion_group in motion_group_list:
         configure_tcp_line_colors(motion_group)
@@ -308,6 +307,6 @@ def get_blueprint(motion_group_list: List[str]) -> rrb.Blueprint:
     )
 
 
-def send_blueprint(motion_group_list: List[str]) -> None:
+def send_blueprint(motion_group_list: list[str]) -> None:
     """Send blueprint with nested tab structure."""
     rr.send_blueprint(get_blueprint(motion_group_list))
