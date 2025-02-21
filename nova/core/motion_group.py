@@ -3,15 +3,18 @@ from typing import AsyncIterable, cast
 
 import wandelbots_api_client as wb
 
-from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
+from nova.actions import (Action, CombinedActions, MovementController,
+                          MovementControllerContext)
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
 from nova.core import logger
-from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, PlanTrajectoryFailed
+from nova.core.exceptions import (InconsistentCollisionScenes, LoadPlanFailed,
+                                  PlanTrajectoryFailed)
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
 from nova.core.robot_cell import AbstractRobot
-from nova.types import InitialMovementStream, LoadPlanResponse, MovementResponse, Pose, RobotState
+from nova.types import (InitialMovementStream, LoadPlanResponse,
+                        MovementResponse, Pose, RobotState)
 from nova.utils import StreamExtractor
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
@@ -38,11 +41,9 @@ def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
     """
     batches: list[list[Action]] = []
     for action in actions:
-        # If no batches exist, or the current action is a CollisionFreeMotion,
-        # or the last action in the last batch was a CollisionFreeMotion,
-        # start a new batch.
         if (
-            not batches
+            # Start a new batch if:
+            not batches  # first action no batches yet
             or isinstance(action, CollisionFreeMotion)
             or isinstance(batches[-1][-1], CollisionFreeMotion)
         ):
