@@ -1639,18 +1639,18 @@ use-chardet-on-py3 = ["chardet (>=3.0.2,<6)"]
 
 [[package]]
 name = "rerun-sdk"
-version = "0.22.0"
+version = "0.22.1"
 description = "The Rerun Logging SDK"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
 markers = "extra == \"nova-rerun-bridge\" or extra == \"benchmark\""
 files = [
-    {file = "rerun_sdk-0.22.0-cp38-abi3-macosx_10_12_x86_64.whl", hash = "sha256:2ccdeb7beb236d7a4214b742bc308c291eca9488bcaa11d59cd3ddebab578fbf"},
-    {file = "rerun_sdk-0.22.0-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:50224ae88db978aae4583f238e4a438d7a06c7e6e4d42b28d5af378cf377b290"},
-    {file = "rerun_sdk-0.22.0-cp38-abi3-manylinux_2_31_aarch64.whl", hash = "sha256:2c8f8cc2178ba77eafa6a66ccea2b732f555f210d0cfba3be21194fd6af474a7"},
-    {file = "rerun_sdk-0.22.0-cp38-abi3-manylinux_2_31_x86_64.whl", hash = "sha256:e954fc1ade1ff74670904bb72c5d974983efb213943c7cb8fbb530fea8fa8080"},
-    {file = "rerun_sdk-0.22.0-cp38-abi3-win_amd64.whl", hash = "sha256:5b904b561c8e061af15dd46be7e9ba7d29edaa207c9e54e3af0688b047bdb311"},
+    {file = "rerun_sdk-0.22.1-cp38-abi3-macosx_10_12_x86_64.whl", hash = "sha256:176853d14bcac0b3cab8b240fe6760e32a577b1edd9ecb2fd0656e83f046a2c4"},
+    {file = "rerun_sdk-0.22.1-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:dea4a50c916bc82bd97a8f9dc44c71f9a9fccec7e73f37edfaa0de800caf5dce"},
+    {file = "rerun_sdk-0.22.1-cp38-abi3-manylinux_2_31_aarch64.whl", hash = "sha256:29d807909f5e484aa6427d9fb25706d0a154de392a4ca47eb303fbd135c0e382"},
+    {file = "rerun_sdk-0.22.1-cp38-abi3-manylinux_2_31_x86_64.whl", hash = "sha256:b9672412d0cdf57c79c10ca683e59716399da3358df78b985b25093d022ebbaf"},
+    {file = "rerun_sdk-0.22.1-cp38-abi3-win_amd64.whl", hash = "sha256:d3d0afe1b8e749a1088a0bb75f372ad7fe70eb3728bd32e07bf78300436a053d"},
 ]
 
 [package.dependencies]
@@ -1661,7 +1661,7 @@ pyarrow = ">=14.0.2"
 typing-extensions = ">=4.5"
 
 [package.extras]
-notebook = ["rerun-notebook (==0.22.0)"]
+notebook = ["rerun-notebook (==0.22.1)"]
 tests = ["pytest (==7.1.2)"]
 
 [[package]]
@@ -2154,4 +2154,4 @@ nova-rerun-bridge = ["APScheduler", "requests", "rerun-sdk", "trimesh"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "4c192dadebbbe1c231842c9aaf1fa0e19cdaf4b79b62dda442a122e28d02fd3c"
+content-hash = "d13e078a8174bd96ce69912c23d72cd807f371ac4b9bedec28dc46a892784000"
