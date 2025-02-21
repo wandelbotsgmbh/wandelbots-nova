@@ -3,7 +3,7 @@ name: Deploy Docs to GitHub Pages
 on:
   push:
     branches:
-      - feature/add-autodoc-generation-to-pipeline
+      - main
 
 permissions:
   contents: read
