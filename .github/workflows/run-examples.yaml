@@ -14,13 +14,13 @@ jobs:
       max-parallel: 1
       matrix:
         example_file:
-          - "01_basic.py"
-          - "02_plan_and_execute.py"
-          - "03_move_and_set_ios.py"
-          - "04_move_multiple_robots.py"
-          - "05_selection_motion_group_activation.py"
-          - "06_api_usage.py"
-          - "08_multi_step_movement_with_collision_free.py"
+          - "examples/01_basic.py"
+          - "examples/02_plan_and_execute.py"
+          - "examples/03_move_and_set_ios.py"
+          - "examples/04_move_multiple_robots.py"
+          - "examples/05_selection_motion_group_activation.py"
+          - "examples/06_api_usage.py"
+          - "examples/08_multi_step_movement_with_collision_free.py"
           - "nova_rerun_bridge/examples/14_welding_example.py"
     steps:
       - name: Check out repository
@@ -65,7 +65,7 @@ jobs:
           until [ $n -ge $max_retries ]
           do
             echo "Attempt $((n+1)) to run ${{ matrix.example_file }}..."
-            PYTHONPATH=. poetry run python examples/${{ matrix.example_file }} && break
+            PYTHONPATH=. poetry run python ${{ matrix.example_file }} && break
 
             n=$((n+1))
             echo "Failed attempt $n. Retrying in 5s..."
