@@ -20,9 +20,6 @@ class CollisionFreeP2PRequest(BaseModel):
     plan: wb.models.PlanCollisionFreePTPRequest = Field(
         ..., description="NOVA plan request for collision-free p2p movement"
     )
-    robot_spere_radius: int = Field(
-        default=10, description="Radius of robot collision spheres in mm"
-    )
     n_control_points: int = Field(
         default=200, description="Number of control points for the trajectory"
     )
@@ -112,12 +109,11 @@ class CollisionFreeMagmaStrategy(BenchmarkStrategy):
 
                 request = CollisionFreeP2PRequest(
                     plan=plan_request,
-                    robot_spere_radius=10,
                     n_control_points=50,
-                    n_eval_points=166,
-                    n_iterations=10_000,
-                    n_logging_interval=250,
-                    collision_margin=3,
+                    n_eval_points=200,
+                    n_iterations=2000,
+                    n_logging_interval=25,
+                    collision_margin=5,
                 )
 
                 response = requests.post(
