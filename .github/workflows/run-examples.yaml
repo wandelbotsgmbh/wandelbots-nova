@@ -21,6 +21,7 @@ jobs:
           - "05_selection_motion_group_activation.py"
           - "06_api_usage.py"
           - "08_multi_step_movement_with_collision_free.py"
+          - "nova_rerun_bridge/examples/14_welding_example.py"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -51,7 +52,7 @@ jobs:
       - name: Set up Python environment
         run: |
           pip install poetry
-          poetry install
+          poetry install --extras "nova-rerun-bridge"
       - name: "Run example: examples/${{ matrix.example_file }}"
         run: |
           touch ./.env
