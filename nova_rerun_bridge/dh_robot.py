@@ -1,4 +1,3 @@
-
 import numpy as np
 
 from nova.api import models

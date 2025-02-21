@@ -1,4 +1,3 @@
-
 from scipy.spatial.transform import Rotation as R
 
 from nova.api import models
