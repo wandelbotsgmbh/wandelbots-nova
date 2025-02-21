@@ -1,5 +1,3 @@
-from typing import List
-
 import numpy as np
 
 from nova.api import models
@@ -8,7 +6,7 @@ from nova.api import models
 class DHRobot:
     """A class for handling DH parameters and computing joint positions."""
 
-    def __init__(self, dh_parameters: List[models.DHParameter], mounting: models.PlannerPose):
+    def __init__(self, dh_parameters: list[models.DHParameter], mounting: models.PlannerPose):
         """
         Initialize the DHRobot with DH parameters and a mounting pose.
         :param dh_parameters: List of DHParameter objects containing all joint configurations.
@@ -116,7 +114,7 @@ class DHRobot:
             accumulated_matrix[:3, 3].tolist()
         ]  # Base position after mounting is applied
 
-        for dh_param, joint_rotation in zip(self.dh_parameters, joint_values.joints):
+        for dh_param, joint_rotation in zip(self.dh_parameters, joint_values.joints, strict=False):
             transform = self.dh_transform(dh_param, joint_rotation)
             accumulated_matrix = accumulated_matrix @ transform
             position = accumulated_matrix[:3, 3]  # Extract translation (x, y, z)

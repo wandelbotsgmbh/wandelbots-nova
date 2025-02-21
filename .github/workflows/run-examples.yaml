@@ -1,40 +1,34 @@
 name: Run examples
-
 on:
   pull_request:
     branches:
       - main
-
 concurrency:
   group: run-examples-workflow
   cancel-in-progress: false
-
 jobs:
   run-examples:
     runs-on: ubuntu-latest
-
     strategy:
       fail-fast: false
       max-parallel: 1
       matrix:
         example_file:
-          - "01_basic.py"
-          - "02_plan_and_execute.py"
-          - "03_move_and_set_ios.py"
-          - "04_move_multiple_robots.py"
-          - "05_selection_motion_group_activation.py"
-          - "06_api_usage.py"
-          - "08_multi_step_movement_with_collision_free.py"
-
+          - "examples/01_basic.py"
+          - "examples/02_plan_and_execute.py"
+          - "examples/03_move_and_set_ios.py"
+          - "examples/04_move_multiple_robots.py"
+          - "examples/05_selection_motion_group_activation.py"
+          - "examples/06_api_usage.py"
+          - "examples/08_multi_step_movement_with_collision_free.py"
+          - "nova_rerun_bridge/examples/14_welding_example.py"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-
       - name: Create NOVA instance and check connection
         env:
           PORTAL_STG_REFRESH_URL: ${{ secrets.PORTAL_STG_REFRESH_URL }}
@@ -55,12 +49,10 @@ jobs:
           echo "PORTAL_STG_HOST=$PORTAL_STG_HOST" >> $GITHUB_ENV
           echo "PORTAL_STG_INSTANCE_ID=$PORTAL_STG_INSTANCE_ID" >> $GITHUB_ENV
           echo "PORTAL_STG_ACCESS_TOKEN=$PORTAL_STG_ACCESS_TOKEN" >> $GITHUB_ENV
-
       - name: Set up Python environment
         run: |
           pip install poetry
-          poetry install
-
+          poetry install --extras "nova-rerun-bridge"
       - name: "Run example: examples/${{ matrix.example_file }}"
         run: |
           touch ./.env
@@ -73,7 +65,7 @@ jobs:
           until [ $n -ge $max_retries ]
           do
             echo "Attempt $((n+1)) to run ${{ matrix.example_file }}..."
-            PYTHONPATH=. poetry run python examples/${{ matrix.example_file }} && break
+            PYTHONPATH=. poetry run python ${{ matrix.example_file }} && break
 
             n=$((n+1))
             echo "Failed attempt $n. Retrying in 5s..."
@@ -84,7 +76,6 @@ jobs:
             echo "Failed after $max_retries attempts."
             exit 1
           fi
-
       - name: Download diagnose package
         if: failure()
         run: |
@@ -94,14 +85,12 @@ jobs:
             -H 'Accept: application/zip' \
             -H "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}" \
             -o "diagnose-${{ github.run_id }}.zip"
-
       - name: Upload diagnose artifact
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: diagnose-package
           path: diagnose-${{ github.run_id }}.zip
-
       # Always run cleanup, whether success or failure
       - name: Cleanup - Delete instance
         if: always()

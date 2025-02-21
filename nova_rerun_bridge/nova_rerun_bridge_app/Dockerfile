@@ -1,7 +1,7 @@
 FROM python:3.11-slim AS builder
 
 RUN pip install --upgrade pip \
-    && pip install poetry==1.8.3
+    && pip install poetry==2.0.1
 
 ENV POETRY_NO_INTERACTION=1 \
     POETRY_VIRTUALENVS_IN_PROJECT=1 \

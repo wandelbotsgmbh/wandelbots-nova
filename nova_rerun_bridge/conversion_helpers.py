@@ -1,11 +1,9 @@
-from typing import Optional
-
 from scipy.spatial.transform import Rotation as R
 
 from nova.api import models
 
 
-def normalize_pose(pose: Optional[models.Pose2] = None) -> models.PlannerPose:
+def normalize_pose(pose: models.Pose2 | None = None) -> models.PlannerPose:
     """Convert pose to normalized format with Vector3d components."""
     # Default components
     default_position = models.Vector3d(x=0.0, y=0.0, z=0.0)
@@ -44,11 +42,10 @@ def normalize_pose(pose: Optional[models.Pose2] = None) -> models.PlannerPose:
                 x=float(quat[0]), y=float(quat[1]), z=float(quat[2]), w=float(quat[3])
             ),
         )
-    else:
-        orientation = (
-            pose.orientation
-            if hasattr(pose, "orientation") and pose.orientation is not None
-            else default_orientation
-        )
+    orientation = (
+        pose.orientation
+        if hasattr(pose, "orientation") and pose.orientation is not None
+        else default_orientation
+    )
 
-        return models.PlannerPose(position=position, orientation=orientation)
+    return models.PlannerPose(position=position, orientation=orientation)

@@ -6,7 +6,7 @@ PROCESSED_MOTIONS_FILE = "processed_motions.json"
 
 def load_processed_motions():
     if os.path.exists(PROCESSED_MOTIONS_FILE):
-        with open(PROCESSED_MOTIONS_FILE, "r") as file:
+        with open(PROCESSED_MOTIONS_FILE) as file:
             return set(tuple(item) for item in json.load(file))
     return set()
 

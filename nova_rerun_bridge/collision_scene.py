@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import numpy as np
 import rerun as rr
@@ -11,7 +11,7 @@ from nova_rerun_bridge.conversion_helpers import normalize_pose
 from nova_rerun_bridge.hull_visualizer import HullVisualizer
 
 
-def log_collision_scenes(collision_scenes: Dict[str, models.CollisionScene]):
+def log_collision_scenes(collision_scenes: dict[str, models.CollisionScene]):
     for scene_id, scene in collision_scenes.items():
         entity_path = f"collision_scenes/{scene_id}"
         if scene.colliders:
@@ -19,7 +19,7 @@ def log_collision_scenes(collision_scenes: Dict[str, models.CollisionScene]):
                 log_colliders_once(entity_path, {collider_id: collider})
 
 
-def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
+def log_colliders_once(entity_path: str, colliders: dict[str, models.Collider]):
     for collider_id, collider in colliders.items():
         pose = normalize_pose(collider.pose)
 
@@ -287,7 +287,7 @@ def log_colliders_once(entity_path: str, colliders: Dict[str, models.Collider]):
 
 def extract_link_chain_and_tcp(
     collision_scenes: dict, motion_group_type: str
-) -> Tuple[List[Any], List[Any]]:
+) -> tuple[list[Any], list[Any]]:
     """Extract link chain and TCP from collision scenes."""
     # Get first scene (name can vary)
     scene = next(iter(collision_scenes.values()), None)

@@ -60,7 +60,7 @@ async def main():
         json_path = os.path.join(
             os.path.dirname(__file__), "yaskawa-ar1440-with-external-axis.json"
         )
-        with open(json_path, "r") as f:
+        with open(json_path) as f:
             var_json = json.load(f)
 
         controller = await cell._get_controller_instance("yaskawa")

@@ -71,7 +71,7 @@ async def test():
             tested_points = []
             colors = []
 
-            for point, normal in zip(points, normals):
+            for point, normal in zip(points, normals, strict=False):
                 # Convert normal to rotation vector
                 rotation = np.cross([0, 0, 1], normal)  # cross product with Z axis
                 if np.any(rotation):  # if not parallel to Z
