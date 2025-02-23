@@ -84,6 +84,7 @@ class NovaRerunBridge:
             for motion_group in await controller.activated_motion_groups():
                 motion_groups.append(motion_group.motion_group_id)
 
+        rr.reset_time()
         rr.set_time_seconds(TIME_INTERVAL_NAME, 0)
 
         send_blueprint(motion_groups)
@@ -160,6 +161,8 @@ class NovaRerunBridge:
     async def log_saftey_zones(self, motion_group: MotionGroup) -> None:
         tcp_names = await motion_group.tcp_names()
         tcp = tcp_names[0]
+
+        rr.reset_time()
         rr.set_time_seconds(TIME_INTERVAL_NAME, 0)
 
         log_safety_zones(
@@ -280,6 +283,7 @@ class NovaRerunBridge:
     ) -> None:
         from nova_rerun_bridge import trajectory
 
+        rr.reset_time()
         rr.set_time_seconds(TIME_INTERVAL_NAME, trajectory._last_end_time)
 
         if not isinstance(actions, list):

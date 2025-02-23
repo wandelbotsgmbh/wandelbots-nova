@@ -7,6 +7,7 @@ from scipy.spatial.transform import Rotation as R
 
 from nova import MotionGroup
 from nova_rerun_bridge import colors
+from nova_rerun_bridge.consts import TIME_REALTIME_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
 from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 
@@ -86,8 +87,8 @@ async def stream_motion_group(self, motion_group: MotionGroup) -> None:
         )
 
         robot = DHRobot(optimizer_config.dh_parameters, optimizer_config.mounting)
-
-        rr.set_time_seconds("log_time", time.time())
+        rr.reset_time()
+        rr.set_time_seconds(TIME_REALTIME_NAME, time.time())
         visualizer = RobotVisualizer(
             robot=robot,
             robot_model_geometries=optimizer_config.safety_setup.robot_model_geometries,
@@ -103,7 +104,8 @@ async def stream_motion_group(self, motion_group: MotionGroup) -> None:
             self.nova.cell()._cell_id, motion_group.motion_group_id
         ):
             if processor.tcp_pose_changed(motion_group.motion_group_id, state.state.tcp_pose):
-                rr.set_time_seconds("log_time", time.time())
+                rr.reset_time()
+                rr.set_time_seconds(TIME_REALTIME_NAME, time.time())
 
                 # Log joint positions
                 log_joint_positions_once(
