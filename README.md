@@ -8,11 +8,7 @@ This library provides an SDK for the Wandelbots NOVA API.
 
 The SDK will help you to build your own apps and services on top of NOVA and makes programming a robot as easy as possible.
 
-
-
 https://github.com/user-attachments/assets/0416151f-1304-46e2-a4ab-485fcda766fc
-
-
 
 ## Prerequisites
 
@@ -30,8 +26,7 @@ wandelbots-nova = { version = ">=0.12", extras = ["nova-rerun-bridge"] }
 ```
 
 ```bash
-# Download the latest robot models (depends on gltf-transform)
-npm install -g @gltf-transform/cli
+# Download the latest robot models
 poetry run download-models
 ```
 
@@ -122,7 +117,6 @@ You need to download the robot models to visualize the robot models in the rerun
 You can download the models by running the following command:
 
 ```bash
-npm install -g @gltf-transform/cli
 poetry run download-models
 ```
 
@@ -172,11 +166,13 @@ When having feature branches or forks, or might be helpful to test the library a
 Poetry allows to pull the library from different sources. See the [Poetry Doc](https://python-poetry.org/docs/dependency-specification/#git-rev-project) for more information.
 
 Poetry Version < 2:
+
 ```toml
 wandelbots-nova = { git = "https://github.com/wandelbotsgmbh/wandelbots-nova.git", branch = "fix/http-prefix" }
 ```
 
 Poetry Version >=2
+
 ```toml
 wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/http-prefix
 ```
