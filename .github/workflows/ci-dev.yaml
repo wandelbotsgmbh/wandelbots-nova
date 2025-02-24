@@ -14,11 +14,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
       - name: Set up Python environment
         run: |
           pip install poetry
-          poetry install
+          poetry install --extras "nova-rerun-bridge"
       - name: Check formatting with ruff
         run: poetry run ruff format --check .
       - name: Check import order
