@@ -3,9 +3,6 @@
 After installing the library, you need to download the robot models:
 
 ```bash
-# Install the gltf-transform-cli, needed to unpack the models
-npm install -g @gltf-transform/cli
-
 # If installed via poetry
 poetry run download-models
 
