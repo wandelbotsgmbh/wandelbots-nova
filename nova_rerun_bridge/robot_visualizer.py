@@ -22,14 +22,15 @@ class RobotVisualizer:
     def __init__(
         self,
         robot: DHRobot,
-        robot_model_geometries,
-        tcp_geometries,
+        robot_model_geometries=None,
+        tcp_geometries=None,
         static_transform: bool = True,
         base_entity_path: str = "robot",
         albedo_factor: list = [255, 255, 255],
         collision_link_chain=None,
         collision_tcp=None,
         model_from_controller="",
+        model_from_file="",
     ):
         """
         :param robot: DHRobot instance
@@ -37,8 +38,11 @@ class RobotVisualizer:
         :param tcp_geometries: TCP geometries (similar structure to link geometries)
         :param static_transform: If True, transforms are logged as static, else temporal.
         :param base_entity_path: A base path prefix for logging the entities (e.g. motion group name)
-        :param albedo_factor: A list representing the RGB values [R, G, B] to apply as the albedo factor.
-        :param glb_path: Path to the GLB file for the robot model.
+        :param albedo_factor: A list representing the RGBA values [R, G, B, A] to apply as the albedo factor.
+        :param collision_link_chain: Collision geometries for each link in the robot's kinematic chain.
+        :param collision_tcp: Collision geometries for the robot's TCP (Tool Center Point).
+        :param model_from_controller: The name of the model file to load from the controller.
+        :param model_from_file: The name of the model file to load from the file system.
         """
         self.robot = robot
         self.link_geometries: dict[int, list[trimesh.Trimesh]] = {}
@@ -48,7 +52,7 @@ class RobotVisualizer:
         self.base_entity_path = base_entity_path.rstrip("/")
         self.albedo_factor = albedo_factor
         self.mesh_loaded = False
-        self.collision_link_geometries = {}
+        self.collision_link_geometries = collision_link_chain
         self.collision_tcp_geometries = collision_tcp
 
         # This will hold the names of discovered joints (e.g. ["robot_J00", "robot_J01", ...])
@@ -58,7 +62,12 @@ class RobotVisualizer:
 
         # load mesh
         try:
-            glb_path = get_model_path(model_from_controller)
+            if model_from_controller:
+                glb_path = get_model_path(model_from_controller)
+            elif model_from_file:
+                glb_path = model_from_file
+            else:
+                raise ValueError("No model file provided.")
             self.scene = trimesh.load_scene(glb_path, file_type="glb")
             self.mesh_loaded = True
             self.edge_data = self.scene.graph.transforms.edge_data
@@ -69,11 +78,9 @@ class RobotVisualizer:
             print(f"Failed to load mesh: {e}")
 
         # Group geometries by link
-        for gm in robot_model_geometries:
-            self.link_geometries.setdefault(gm.link_index, []).append(gm.geometry)
-
-        # Group geometries by link
-        self.collision_link_geometries = collision_link_chain
+        if robot_model_geometries:
+            for gm in robot_model_geometries:
+                self.link_geometries.setdefault(gm.link_index, []).append(gm.geometry)
 
     def discover_joints(self):
         """
@@ -565,16 +572,17 @@ class RobotVisualizer:
                     collect_geometry_data(entity_path, final_transform)
 
             # Collect data for collision link geometries
-            for link_index, geometries in enumerate(self.collision_link_geometries):
-                link_transform = transforms[link_index]
-                for i, geom_id in enumerate(geometries):
-                    entity_path = f"{self.base_entity_path}/collision/links/link_{link_index}/geometry_{geom_id}"
+            if self.collision_link_geometries:
+                for link_index, geometries in enumerate(self.collision_link_geometries):
+                    link_transform = transforms[link_index]
+                    for i, geom_id in enumerate(geometries):
+                        entity_path = f"{self.base_entity_path}/collision/links/link_{link_index}/geometry_{geom_id}"
 
-                    pose = normalize_pose(geometries[geom_id].pose)
+                        pose = normalize_pose(geometries[geom_id].pose)
 
-                    final_transform = link_transform @ self.geometry_pose_to_matrix(pose)
-                    self.init_collision_geometry(entity_path, geometries[geom_id], pose)
-                    collect_geometry_data(entity_path, final_transform)
+                        final_transform = link_transform @ self.geometry_pose_to_matrix(pose)
+                        self.init_collision_geometry(entity_path, geometries[geom_id], pose)
+                        collect_geometry_data(entity_path, final_transform)
 
             # Collect data for collision TCP geometries
             if self.collision_tcp_geometries:
