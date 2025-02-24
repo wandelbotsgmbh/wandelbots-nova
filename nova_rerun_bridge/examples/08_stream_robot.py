@@ -9,6 +9,11 @@ from nova.core.nova import Nova
 from nova.types import Pose
 from nova_rerun_bridge import NovaRerunBridge
 
+"""
+This example demonstrates how to stream the robot state into the timeline "time".
+This can be used to record the actual motions of the robot.
+"""
+
 
 @asynccontextmanager
 async def handle_shutdown():
@@ -39,8 +44,12 @@ async def test():
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
+            # this streams the current robot state into the timeline "time"
+            # use this to record actual motions of the robot
             await bridge.start_streaming(motion_group)
 
+            # In addition to log the robot state you can still log other data
+            # like trajectories into the "time_interval_0.016" timeline
             await bridge.log_saftey_zones(motion_group)
 
             home_joints = await motion_group.joints()
