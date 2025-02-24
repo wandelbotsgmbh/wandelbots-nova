@@ -33,6 +33,9 @@ jobs:
       - name: Add pdoc to dependencies
         run: poetry add --dev pdoc
 
+      - name: Add rerun to dependencies
+        run: poetry run pip install "wandelbots-nova[nova-rerun-bridge]"
+
       - name: Install dependencies
         run: poetry install
 
