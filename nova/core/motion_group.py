@@ -1,5 +1,5 @@
 import asyncio
-from typing import AsyncIterable, Generator, cast
+from typing import AsyncIterable, cast
 
 import wandelbots_api_client as wb
 
@@ -31,38 +31,23 @@ def compare_collision_scenes(scene1: wb.models.CollisionScene, scene2: wb.models
 
 # TODO: when collision scene is different in different motions
 #  , we should plan them separately
-def split_actions_into_batches(actions: list[Action]) -> Generator[list[Action], None, None]:
+def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
     """
     Splits the list of actions into batches of actions and collision free motions.
     Actions are sent to plan_trajectory API and collision free motions are sent to plan_collision_free_ptp API.
     """
-    current_batch: list[Action] = []
-    collision_free_motion: CollisionFreeMotion | None = None
+    batches: list[list[Action]] = []
     for action in actions:
-        # this happens when we switch from an action batch to a collision free motion
-        if collision_free_motion is not None:
-            yield [collision_free_motion]
-            collision_free_motion = None
-
-        # if we encounter a CollisionFreeMotion and there is no other non-collision free action collected yet than return this for processing
-        if isinstance(action, CollisionFreeMotion) and len(current_batch) == 0:
-            yield [action]
-
-        # if we encounter a CollisionFreeMotion and there are other non-collision free actions collected, this means the batch is ready for processing
-        elif isinstance(action, CollisionFreeMotion) and len(current_batch) > 0:
-            collision_free_motion = action
-            yield current_batch
-            current_batch = []
+        if (
+            # Start a new batch if:
+            not batches  # first action no batches yet
+            or isinstance(action, CollisionFreeMotion)
+            or isinstance(batches[-1][-1], CollisionFreeMotion)
+        ):
+            batches.append([action])
         else:
-            current_batch.append(action)
-
-    # if the last item was collision free motion, we need to yield it
-    if collision_free_motion is not None:
-        yield [collision_free_motion]
-
-    # if there are any actions left in the batch, we need to yield them
-    if len(current_batch) > 0:
-        yield current_batch
+            batches[-1].append(action)
+    return batches
 
 
 def combine_trajectories(

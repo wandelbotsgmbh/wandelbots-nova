@@ -1,7 +1,7 @@
 import pytest
 
 from nova import Nova
-from nova.actions import Action, lin, ptp
+from nova.actions import lin, ptp
 from nova.actions.motions import CollisionFreeMotion
 from nova.core.motion_group import split_actions_into_batches
 from nova.types import Pose
@@ -38,9 +38,7 @@ async def test_motion_group(nova_api):
 
 @pytest.mark.asyncio
 async def test_empty_list():
-    actions: list[Action] = []
-    results = [result for result in split_actions_into_batches(actions)]
-    assert results == []
+    assert split_actions_into_batches([]) == []
 
 
 @pytest.mark.asyncio
@@ -49,11 +47,8 @@ async def test_only_actions():
     a1 = lin((-60.4, -652.0, 851.3, 2.14, 2.14, -0.357))
     a2 = ptp((-91.4, -462.0, 851.3, 2.14, 2.14, -0.357))
     a3 = lin((10, 20, 30, 1, 2, 3))
-    actions = [a1, a2, a3]
-
     # Expect a single batch containing all the actions.
-    results = [result for result in split_actions_into_batches(actions)]
-    assert results == [[a1, a2, a3]]
+    assert split_actions_into_batches([a1, a2, a3]) == [[a1, a2, a3]]
 
 
 @pytest.mark.asyncio
@@ -61,11 +56,8 @@ async def test_only_collision_free():
     # Create only collision free motions.
     cfm1 = CollisionFreeMotion(target=Pose(1, 2, 3, 4, 5, 6))
     cfm2 = CollisionFreeMotion(target=Pose(7, 8, 9, 10, 11, 12))
-    actions = [cfm1, cfm2]
-
     # Each collision free motion should be yielded immediately.
-    results = [result for result in split_actions_into_batches(actions)]
-    assert results == [[cfm1], [cfm2]]
+    assert split_actions_into_batches([cfm1, cfm2]) == [[cfm1], [cfm2]]
 
 
 @pytest.mark.asyncio
@@ -74,11 +66,8 @@ async def test_collision_free_first():
     cfm1 = CollisionFreeMotion(target=Pose(1, 2, 3, 4, 5, 6))
     a1 = lin((0, 0, 0, 0, 0, 0))
     a2 = ptp((1, 1, 1, 1, 1, 1))
-    actions = [cfm1, a1, a2]
-
     # Expect: first the collision free motion, then the batch of actions.
-    results = [result for result in split_actions_into_batches(actions)]
-    assert results == [[cfm1], [a1, a2]]
+    assert split_actions_into_batches([cfm1, a1, a2]) == [[cfm1], [a1, a2]]
 
 
 @pytest.mark.asyncio
@@ -87,11 +76,8 @@ async def test_collision_free_last():
     a1 = lin((0, 0, 0, 0, 0, 0))
     a2 = ptp((1, 1, 1, 1, 1, 1))
     cfm1 = CollisionFreeMotion(target=Pose(1, 2, 3, 4, 5, 6))
-    actions = [a1, a2, cfm1]
-
     # Expect: first a batch of actions, then the collision free motion.
-    results = [result for result in split_actions_into_batches(actions)]
-    assert results == [[a1, a2], [cfm1]]
+    assert split_actions_into_batches([a1, a2, cfm1]) == [[a1, a2], [cfm1]]
 
 
 @pytest.mark.asyncio
@@ -102,11 +88,10 @@ async def test_interleaved():
     a3 = lin((2, 2, 2, 2, 2, 2))
     cfm1 = CollisionFreeMotion(target=Pose(10, 20, 30, 40, 50, 60))
     cfm2 = CollisionFreeMotion(target=Pose(70, 80, 90, 100, 110, 120))
-    actions = [a1, cfm1, a2, cfm2, a3]
 
+    actions = [a1, cfm1, a2, cfm2, a3]
     expected = [[a1], [cfm1], [a2], [cfm2], [a3]]
-    results = [result for result in split_actions_into_batches(actions)]
-    assert results == expected
+    assert split_actions_into_batches(actions) == expected
 
 
 @pytest.mark.asyncio
@@ -116,8 +101,6 @@ async def test_multiple_collision_free_in_row():
     a2 = ptp((1, 1, 1, 1, 1, 1))
     cfm1 = CollisionFreeMotion(target=Pose(10, 20, 30, 40, 50, 60))
     cfm2 = CollisionFreeMotion(target=Pose(70, 80, 90, 100, 110, 120))
-    actions = [a1, cfm1, cfm2, a2]
-
     # Simulation:
     # - a1 → batch = [a1]
     # - cfm1 with non-empty batch → yield [a1], defer cfm1.
@@ -125,9 +108,9 @@ async def test_multiple_collision_free_in_row():
     # - Process cfm2 (batch empty) → yield it immediately.
     # - a2 → batch = [a2]
     # - End → yield remaining batch [a2]
+    actions = [a1, cfm1, cfm2, a2]
     expected = [[a1], [cfm1], [cfm2], [a2]]
-    results = [result for result in split_actions_into_batches(actions)]
-    assert results == expected
+    assert split_actions_into_batches(actions) == expected
 
 
 @pytest.mark.asyncio
@@ -140,8 +123,7 @@ async def test_complex_sequence():
     cfm1 = CollisionFreeMotion(target=Pose(10, 20, 30, 40, 50, 60))
     cfm2 = CollisionFreeMotion(target=Pose(70, 80, 90, 100, 110, 120))
     cfm3 = CollisionFreeMotion(target=Pose(130, 140, 150, 160, 170, 180))
-    actions = [a1, cfm1, cfm2, a2, a3, cfm3]
 
+    actions = [a1, cfm1, cfm2, a2, a3, cfm3]
     expected = [[a1], [cfm1], [cfm2], [a2, a3], [cfm3]]
-    results = [result for result in split_actions_into_batches(actions)]
-    assert results == expected
+    assert split_actions_into_batches(actions) == expected
