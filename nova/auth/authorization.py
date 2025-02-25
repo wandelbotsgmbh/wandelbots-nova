@@ -131,7 +131,7 @@ class Auth0DeviceAuthorization:
         """
         return self.device_code_info
 
-    def display_user_instructions(self, direct_link=False) -> None:
+    def display_user_instructions(self) -> None:
         """
         Displays instructions for the user to authenticate.
 
@@ -139,13 +139,10 @@ class Auth0DeviceAuthorization:
             Exception: If device code information is not available.
         """
         if self.device_code_info:
-            if direct_link:
-                verification_uri = f"{self.device_code_info.verification_uri}?user_code={self.device_code_info.user_code}"
-            else:
-                verification_uri = self.device_code_info.verification_uri
+            verification_uri = f"{self.device_code_info.verification_uri}?user_code={self.device_code_info.user_code}"
             user_code = self.device_code_info.user_code
             print(
-                f"Please visit {verification_uri} and enter the code {user_code} to authenticate."
+                f"Please visit {verification_uri} and validate the code {user_code} to authenticate."
             )
         else:
             raise Exception("Device code information is not available.")
