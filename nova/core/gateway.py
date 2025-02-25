@@ -4,6 +4,7 @@ import asyncio
 import functools
 import time
 from abc import ABC
+from dataclasses import dataclass
 from typing import TypeVar
 
 import wandelbots_api_client as wb
@@ -18,6 +19,34 @@ from nova.version import version as pkg_version
 T = TypeVar("T")
 
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
+
+
+@dataclass
+class Auth0Config:
+    """Configuration for Auth0 authentication"""
+
+    domain: str | None = None
+    client_id: str | None = None
+    audience: str | None = None
+
+    @classmethod
+    def from_env(cls) -> Auth0Config:
+        """Create Auth0Config from environment variables"""
+        return cls(
+            domain=config("NOVA_AUTH0_DOMAIN", default=None),
+            client_id=config("NOVA_AUTH0_CLIENT_ID", default=None),
+            audience=config("NOVA_AUTH0_AUDIENCE", default=None),
+        )
+
+    def is_complete(self) -> bool:
+        """Check if all required fields are set and not None"""
+        return bool(self.domain and self.client_id and self.audience)
+
+    def get_validated_config(self) -> tuple[str, str, str]:
+        """Get validated config values, ensuring they are not None"""
+        if not self.is_complete():
+            raise ValueError("Auth0 configuration is incomplete")
+        return self.domain, self.client_id, self.audience  # type: ignore
 
 
 def intercept(api_instance: T, gateway: "ApiGateway"):
@@ -82,9 +111,7 @@ class ApiGateway:
         access_token: str | None = None,
         version: str = "v1",
         verify_ssl: bool = True,
-        auth0_domain: str | None = None,
-        auth0_client_id: str | None = None,
-        auth0_audience: str | None = None,
+        auth0_config: Auth0Config | None = None,
     ):
         if host is None:
             host = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
@@ -109,20 +136,12 @@ class ApiGateway:
             username = None
             password = None
 
-        if auth0_domain is None:
-            auth0_domain = config("NOVA_AUTH0_DOMAIN", default=None)
-        if auth0_client_id is None:
-            auth0_client_id = config("NOVA_AUTH0_CLIENT_ID", default=None)
-        if auth0_audience is None:
-            auth0_audience = config("NOVA_AUTH0_AUDIENCE", default=None)
-
-        # Initialize Auth0 if credentials are provided
         self._auth0 = None
-        if all([auth0_domain, auth0_client_id, auth0_audience]):
+        auth0_config = auth0_config or Auth0Config.from_env()
+        if auth0_config.is_complete():
+            domain, client_id, audience = auth0_config.get_validated_config()
             self._auth0 = Auth0DeviceAuthorization(
-                auth0_domain=auth0_domain,
-                auth0_client_id=auth0_client_id,
-                auth0_audience=auth0_audience,
+                auth0_domain=domain, auth0_client_id=client_id, auth0_audience=audience
             )
 
         self._host = self._host_with_prefix(host=host)
