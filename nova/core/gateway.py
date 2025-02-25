@@ -208,11 +208,7 @@ class ApiGateway:
         except Exception as e:
             if "401" in str(e) or "403" in str(e):
                 logger.info("Access token expired, starting device authorization flow")
-                device_code_info = self._auth0.request_device_code()
-
-                logger.info("Please authenticate using the following information:")
-                logger.info(f"User Code: {device_code_info.user_code}")
-                logger.info(f"Verification URI: {device_code_info.verification_uri}")
+                self._auth0.request_device_code()
 
                 self._auth0.display_user_instructions()
 

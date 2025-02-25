@@ -139,10 +139,10 @@ class Auth0DeviceAuthorization:
             Exception: If device code information is not available.
         """
         if self.device_code_info:
-            verification_uri = self.device_code_info.verification_uri
+            verification_uri = f"{self.device_code_info.verification_uri}?user_code={self.device_code_info.user_code}"
             user_code = self.device_code_info.user_code
             print(
-                f"Please visit {verification_uri} and enter the code {user_code} to authenticate."
+                f"Please visit {verification_uri} and validate the code {user_code} to authenticate."
             )
         else:
             raise Exception("Device code information is not available.")
