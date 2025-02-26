@@ -155,7 +155,7 @@ class Cell:
         home_position = (
             position
             if position is not None
-            else str(MANUFACTURER_HOME_POSITIONS.get(controller_manufacturer, [0.0] * 6))
+            else str(MANUFACTURER_HOME_POSITIONS.get(controller_manufacturer, [0.0] * 7))
         )
 
         await self._api_gateway.controller_api.add_robot_controller(
