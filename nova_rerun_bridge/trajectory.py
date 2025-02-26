@@ -24,6 +24,8 @@ class TimingMode(Enum):
 _last_end_time = 0.0
 _last_offset = 0.0
 
+_visualizer_cache: dict[str, RobotVisualizer] = {}
+
 
 def log_motion(
     motion_id: str,
@@ -46,7 +48,7 @@ def log_motion(
             CONTINUE: Start after last trajectory
             SYNC: Use exact time_offset provided
     """
-    global _last_end_time, _last_offset
+    global _visualizer_cache, _last_end_time, _last_offset
 
     # Calculate start time based on timing mode
     if timing_mode == TimingMode.CONTINUE:
@@ -82,16 +84,24 @@ def log_motion(
         collision_scenes, optimizer_config.motion_group_type
     )
 
-    visualizer = RobotVisualizer(
-        robot=robot,
-        robot_model_geometries=optimizer_config.safety_setup.robot_model_geometries,
-        tcp_geometries=optimizer_config.safety_setup.tcp_geometries,
-        static_transform=False,
-        base_entity_path=f"motion/{motion_group}",
-        model_from_controller=model_from_controller,
-        collision_link_chain=collision_link_chain,
-        collision_tcp=collision_tcp,
-    )
+    # Get or create visualizer from cache
+    if motion_group not in _visualizer_cache:
+        collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
+            collision_scenes, optimizer_config.motion_group_type
+        )
+
+        _visualizer_cache[motion_group] = RobotVisualizer(
+            robot=robot,
+            robot_model_geometries=optimizer_config.safety_setup.robot_model_geometries,
+            tcp_geometries=optimizer_config.safety_setup.tcp_geometries,
+            static_transform=False,
+            base_entity_path=f"motion/{motion_group}",
+            model_from_controller=model_from_controller,
+            collision_link_chain=collision_link_chain,
+            collision_tcp=collision_tcp,
+        )
+
+    visualizer = _visualizer_cache[motion_group]
 
     rr.set_time_seconds(TIME_INTERVAL_NAME, effective_offset)
 
