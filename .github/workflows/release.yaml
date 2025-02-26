@@ -25,6 +25,10 @@ jobs:
       - name: Action | Semantic Version Release
         id: release
         uses: python-semantic-release/python-semantic-release@v9.20.0
+        env:
+          NOVA_AUTH0_DOMAIN: ${{ secrets.NOVA_AUTH0_DOMAIN }}
+          NOVA_AUTH0_CLIENT_ID: ${{ secrets.NOVA_AUTH0_CLIENT_ID }}
+          NOVA_AUTH0_AUDIENCE: ${{ secrets.NOVA_AUTH0_AUDIENCE }}
         with:
           build: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
