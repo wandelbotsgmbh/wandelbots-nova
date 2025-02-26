@@ -83,7 +83,7 @@ def log_motion(
     collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
         collision_scenes, optimizer_config.motion_group_type
     )
-    
+
     rr.reset_time()
     rr.set_time_seconds(TIME_INTERVAL_NAME, effective_offset)
 
