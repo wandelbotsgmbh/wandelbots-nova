@@ -81,7 +81,8 @@ def log_motion(
     collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
         collision_scenes, optimizer_config.motion_group_type
     )
-
+    rr.reset_time()
+    rr.set_time_seconds(TIME_INTERVAL_NAME, effective_offset)
     visualizer = RobotVisualizer(
         robot=robot,
         robot_model_geometries=optimizer_config.safety_setup.robot_model_geometries,
@@ -92,8 +93,6 @@ def log_motion(
         collision_link_chain=collision_link_chain,
         collision_tcp=collision_tcp,
     )
-
-    rr.set_time_seconds(TIME_INTERVAL_NAME, effective_offset)
 
     # Process trajectory points
     log_trajectory(
@@ -172,6 +171,7 @@ def log_trajectory(
     """
     Process a single trajectory point and log relevant data.
     """
+    rr.reset_time()
     rr.set_time_seconds(TIME_INTERVAL_NAME, timer_offset)
 
     times_column = get_times_column(trajectory, timer_offset)
