@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from math import pi
 
 from decouple import config
 
@@ -13,6 +14,14 @@ from nova.core.robot_cell import RobotCell
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 CELL_NAME = config("CELL_NAME", default="cell")
+
+MANUFACTURER_HOME_POSITIONS = {
+    api.models.Manufacturer.ABB: [0.0, 0.0, 0.0, 0.0, pi / 2, 0.0, 0.0],
+    api.models.Manufacturer.FANUC: [0.0, 0.0, 0.0, 0.0, -pi / 2, 0.0, 0.0],
+    api.models.Manufacturer.YASKAWA: [0.0, 0.0, 0.0, 0.0, -pi / 2, 0.0, 0.0],
+    api.models.Manufacturer.KUKA: [0.0, -pi / 2, pi / 2, 0.0, pi / 2, 0.0, 0.0],
+    api.models.Manufacturer.UNIVERSALROBOTS: [0.0, -pi / 2, -pi / 2, -pi / 2, pi / 2, -pi / 2, 0.0],
+}
 
 
 # TODO: could also extend NovaDevice
@@ -130,10 +139,7 @@ class Cell:
         controller_type: api.models.VirtualControllerTypes,
         controller_manufacturer: api.models.Manufacturer,
         timeout: int = 25,
-        # TODO: This is not optimal yet and will be automatically resolved in the new v2 API. The default configuration
-        #   is only valid for UR.
-        #   See: https://code.wabo.run/robotics/wbr/-/blob/develop/wbr/src/service/internal/config/HomeJoints.h
-        position: str = "[1.170,-1.6585,1.4051,-1.5707,-1.5709,1.170,0]",
+        position: str | None = None,
     ) -> Controller:
         """Add a virtual robot controller to the cell
 
@@ -145,6 +151,13 @@ class Cell:
             position (str): The initial position of the robot
 
         """
+
+        home_position = (
+            position
+            if position is not None
+            else str(MANUFACTURER_HOME_POSITIONS.get(controller_manufacturer, [0.0] * 7))
+        )
+
         await self._api_gateway.controller_api.add_robot_controller(
             cell=self._cell_id,
             robot_controller=api.models.RobotController(
@@ -153,7 +166,7 @@ class Cell:
                     api.models.VirtualController(
                         type=controller_type,
                         manufacturer=controller_manufacturer,
-                        position=position,
+                        position=home_position,
                     )
                 ),
             ),
