@@ -1,3 +1,10 @@
+"""
+This example demonstrates a handover between four different robots brands.
+Each robot picks up a cube and passes it to the next robot in the sequence.
+
+All robots are operating in the world coordinate system.
+"""
+
 import asyncio
 from dataclasses import dataclass
 from math import pi
