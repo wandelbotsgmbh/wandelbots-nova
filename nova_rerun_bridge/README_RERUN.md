@@ -7,6 +7,12 @@ thumbnail_dimensions = [480, 480]
 
 [Wandelbots Nova](https://www.wandelbots.com/) is a robot-agnostic operating system that enables programming and controlling various industrial robots through a unified interface. This example demonstrates how to use Nova and Rerun to visualize robot trajectories and real-time states for any supported industrial robot.
 
+
+
+https://github.com/user-attachments/assets/4b18a6b6-b946-45af-9ade-614ca9d321a6
+
+
+
 ## Used Rerun types
 
 [`Transform3D`](https://www.rerun.io/docs/reference/types/archetypes/transform3d), [`Mesh3D`](https://www.rerun.io/docs/reference/types/archetypes/mesh3d), [`Boxes3D`](https://www.rerun.io/docs/reference/types/archetypes/boxes3d), [`Points3D`](https://www.rerun.io/docs/reference/types/archetypes/points3d)
@@ -51,6 +57,31 @@ bridge = NovaRerunBridge(nova)
 await bridge.setup_blueprint()
 ```
 
+### Collision free movements
+
+Apart from the usual movement commands like `point to point`, `joint point to point`, `linear` and `circular` the plattform also supports collision free movements. You need to setup a collision scene beforehand and pass it to the action.
+
+```python
+actions = [
+    collision_free(
+        target=Pose((-500, -400, 200, np.pi, 0, 0)),
+        collision_scene=collision_scene,
+        settings=MotionSettings(tcp_velocity_limit=30),
+    )
+]
+
+trajectory_plan_combined = await motion_group.plan(
+    actions,
+    tcp=tcp,
+    start_joint_position=joint_trajectory.joint_positions[-1].joints,
+)
+await bridge.log_actions(welding_actions)
+await bridge.log_trajectory(trajectory_plan_combined, tcp, motion_group)
+```
+
+https://github.com/user-attachments/assets/6372e614-80c1-4804-bac7-b9b8b29da533
+
+
 ### Logging robot trajectories
 
 Once configured, you can easily log planned trajectories:
@@ -71,26 +102,4 @@ await bridge.start_streaming(motion_group)
 
 # Stop streaming all robot states
 await bridge.stop_streaming()
-```
-
-### Collision free movements
-
-Apart from the usual movement commands like `point to point`, `joint point to point`, `linear` and `circular` the plattform also supports collision free movements. You need to setup a collision scene beforehand and pass it to the action.
-
-```python
-welding_actions = [
-    collision_free(
-        target=Pose((-500, -400, 200, np.pi, 0, 0)),
-        collision_scene=collision_scene,
-        settings=MotionSettings(tcp_velocity_limit=30),
-    )
-]
-
-trajectory_plan_combined = await motion_group.plan(
-    welding_actions,
-    tcp=tcp,
-    start_joint_position=joint_trajectory.joint_positions[-1].joints,
-)
-await bridge.log_actions(welding_actions)
-await bridge.log_trajectory(trajectory_plan_combined, tcp, motion_group)
 ```
