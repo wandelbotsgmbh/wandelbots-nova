@@ -2,11 +2,13 @@ import asyncio
 import json
 import os
 
-from numpy import pi
+from numpy import pi, ptp
 
 from nova import Controller, Nova
-from nova.actions import MotionSettings, Pose, jnt, ptp
+from nova.actions.motions import jnt
 from nova.api import models
+from nova.types.motion_settings import MotionSettings
+from nova.types.pose import Pose
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.trajectory import TimingMode
 
