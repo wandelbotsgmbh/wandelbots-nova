@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import rerun as rr
 from loguru import logger
@@ -6,7 +7,7 @@ from scipy.spatial.transform import Rotation as R
 
 from nova import MotionGroup
 from nova_rerun_bridge import colors
-from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
+from nova_rerun_bridge.consts import TIME_REALTIME_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
 from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 
@@ -19,11 +20,7 @@ def log_joint_positions_once(motion_group: str, robot: DHRobot, joint_position):
     ]
     segment_colors = [colors.colors[i % len(colors.colors)] for i in range(len(line_segments))]
 
-    rr.log(
-        f"{motion_group}/dh_parameters",
-        rr.LineStrips3D(line_segments, colors=segment_colors),
-        static=True,
-    )
+    rr.log(f"{motion_group}/dh_parameters", rr.LineStrips3D(line_segments, colors=segment_colors))
 
 
 class MotionGroupProcessor:
@@ -68,9 +65,6 @@ class MotionGroupProcessor:
 
 async def stream_motion_group(self, motion_group: MotionGroup) -> None:
     """Stream individual motion group state to Rerun."""
-
-    rr.set_time_seconds(TIME_INTERVAL_NAME, 0)
-
     processor = MotionGroupProcessor()
 
     motion_groups = await self.nova._api_client.motion_group_api.list_motion_groups(
@@ -81,6 +75,10 @@ async def stream_motion_group(self, motion_group: MotionGroup) -> None:
         None,
     )
 
+    if motion_motion_group is None:
+        logger.error(f"Motion group {motion_group} not found")
+        return
+
     try:
         optimizer_config = (
             await self.nova._api_client.motion_group_infos_api.get_optimizer_configuration(
@@ -89,11 +87,13 @@ async def stream_motion_group(self, motion_group: MotionGroup) -> None:
         )
 
         robot = DHRobot(optimizer_config.dh_parameters, optimizer_config.mounting)
+        rr.reset_time()
+        rr.set_time_seconds(TIME_REALTIME_NAME, time.time())
         visualizer = RobotVisualizer(
             robot=robot,
             robot_model_geometries=optimizer_config.safety_setup.robot_model_geometries,
             tcp_geometries=optimizer_config.safety_setup.tcp_geometries,
-            static_transform=True,
+            static_transform=False,
             base_entity_path=motion_group.motion_group_id,
             albedo_factor=[0, 255, 100],
             model_from_controller=motion_motion_group.model_from_controller,
@@ -103,7 +103,10 @@ async def stream_motion_group(self, motion_group: MotionGroup) -> None:
         async for state in self.nova._api_client.motion_group_infos_api.stream_motion_group_state(
             self.nova.cell()._cell_id, motion_group.motion_group_id
         ):
-            if processor.tcp_pose_changed(motion_group, state.state.tcp_pose):
+            if processor.tcp_pose_changed(motion_group.motion_group_id, state.state.tcp_pose):
+                rr.reset_time()
+                rr.set_time_seconds(TIME_REALTIME_NAME, time.time())
+
                 # Log joint positions
                 log_joint_positions_once(
                     motion_group.motion_group_id, robot, state.state.joint_position

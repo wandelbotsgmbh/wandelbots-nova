@@ -4,11 +4,14 @@ import asyncio
 import functools
 import time
 from abc import ABC
+from dataclasses import dataclass
 from typing import TypeVar
 
 import wandelbots_api_client as wb
 from decouple import config
+from dotenv import find_dotenv, set_key
 
+from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.core import logger
 from nova.core.robot_cell import ConfigurablePeriphery, Device
 from nova.version import version as pkg_version
@@ -18,7 +21,35 @@ T = TypeVar("T")
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 
 
-def intercept(api_instance: T):
+@dataclass
+class Auth0Config:
+    """Configuration for Auth0 authentication"""
+
+    domain: str | None = None
+    client_id: str | None = None
+    audience: str | None = None
+
+    @classmethod
+    def from_env(cls) -> Auth0Config:
+        """Create Auth0Config from environment variables"""
+        return cls(
+            domain=config("NOVA_AUTH0_DOMAIN", default=None),
+            client_id=config("NOVA_AUTH0_CLIENT_ID", default=None),
+            audience=config("NOVA_AUTH0_AUDIENCE", default=None),
+        )
+
+    def is_complete(self) -> bool:
+        """Check if all required fields are set and not None"""
+        return bool(self.domain and self.client_id and self.audience)
+
+    def get_validated_config(self) -> tuple[str, str, str]:
+        """Get validated config values, ensuring they are not None"""
+        if not self.is_complete():
+            raise ValueError("Auth0 configuration is incomplete")
+        return self.domain, self.client_id, self.audience  # type: ignore
+
+
+def intercept(api_instance: T, gateway: "ApiGateway"):
     class Interceptor:
         def __init__(self, instance: T):
             self._instance = instance
@@ -36,6 +67,7 @@ def intercept(api_instance: T):
 
                 @functools.wraps(original_attr)
                 async def async_wrapper(*args, **kwargs):
+                    await gateway._ensure_valid_token()
                     start = time.time()
                     try:
                         return await original_attr(*args, **kwargs)
@@ -79,6 +111,7 @@ class ApiGateway:
         access_token: str | None = None,
         version: str = "v1",
         verify_ssl: bool = True,
+        auth0_config: Auth0Config | None = None,
     ):
         if host is None:
             host = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
@@ -92,11 +125,24 @@ class ApiGateway:
         if access_token is None:
             access_token = config("NOVA_ACCESS_TOKEN", default=None)
 
+        self._version = version
+        self._verify_ssl = verify_ssl
+        self._validating_token = False
+        self._has_valid_token = False
+
         # Access token has more prio than username and password if both are provided at the same time, set username and
         # password to None
         if access_token is not None:
             username = None
             password = None
+
+        self._auth0 = None
+        auth0_config = auth0_config or Auth0Config.from_env()
+        if auth0_config.is_complete():
+            domain, client_id, audience = auth0_config.get_validated_config()
+            self._auth0 = Auth0DeviceAuthorization(
+                auth0_domain=domain, auth0_client_id=client_id, auth0_audience=audience
+            )
 
         self._host = self._host_with_prefix(host=host)
         stripped_host = self._host.rstrip("/")
@@ -112,37 +158,99 @@ class ApiGateway:
         self._username = username
         self._password = password
 
+        self._init_api_client()
+
+    def _init_api_client(self):
+        """Initialize or reinitialize the API client with current credentials"""
+        stripped_host = self._host.rstrip("/")
+        api_client_config = wb.Configuration(
+            host=f"{stripped_host}/api/{self._version}",
+            username=self._username,
+            password=self._password,
+            access_token=self._access_token,
+        )
+        api_client_config.verify_ssl = self._verify_ssl
+
         self._api_client = wb.ApiClient(configuration=api_client_config)
         self._api_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
 
         # Use the intercept function to wrap each API client
-        self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client))
-        self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client))
-        self.motion_api = intercept(wb.MotionApi(api_client=self._api_client))
-        self.motion_group_infos_api = intercept(wb.MotionGroupInfosApi(api_client=self._api_client))
+        self.system_api = intercept(wb.SystemApi(api_client=self._api_client), self)
+        self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client), self)
+        self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client), self)
+        self.motion_api = intercept(wb.MotionApi(api_client=self._api_client), self)
+        self.motion_group_infos_api = intercept(
+            wb.MotionGroupInfosApi(api_client=self._api_client), self
+        )
         self.motion_group_kinematic_api = intercept(
-            wb.MotionGroupKinematicApi(api_client=self._api_client)
+            wb.MotionGroupKinematicApi(api_client=self._api_client), self
         )
 
         self.store_collision_components_api = intercept(
-            wb.StoreCollisionComponentsApi(api_client=self._api_client)
+            wb.StoreCollisionComponentsApi(api_client=self._api_client), self
         )
+
         self.store_collision_scenes_api = intercept(
-            wb.StoreCollisionScenesApi(api_client=self._api_client)
+            wb.StoreCollisionScenesApi(api_client=self._api_client), self
         )
-        self.virtual_robot_api = intercept(wb.VirtualRobotApi(api_client=self._api_client))
+
+        self.virtual_robot_api = intercept(wb.VirtualRobotApi(api_client=self._api_client), self)
         self.virtual_robot_behavior_api = intercept(
-            wb.VirtualRobotBehaviorApi(api_client=self._api_client)
+            wb.VirtualRobotBehaviorApi(api_client=self._api_client), self
         )
-        self.virtual_robot_mode_api = intercept(wb.VirtualRobotModeApi(api_client=self._api_client))
+
+        self.virtual_robot_mode_api = intercept(
+            wb.VirtualRobotModeApi(api_client=self._api_client), self
+        )
         self.virtual_robot_setup_api = intercept(
-            wb.VirtualRobotSetupApi(api_client=self._api_client)
+            wb.VirtualRobotSetupApi(api_client=self._api_client), self
         )
-        self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client))
+
+        self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client), self)
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
     async def close(self):
         return await self._api_client.close()
+
+    async def _ensure_valid_token(self):
+        """Ensure we have a valid access token, requesting a new one if needed"""
+        if not self._auth0 or self._validating_token or self._has_valid_token:
+            return
+
+        try:
+            self._validating_token = True
+            # Test token with a direct API call without interception
+            async with wb.ApiClient(self._api_client.configuration) as client:
+                api = wb.SystemApi(client)
+                await api.get_system_version()
+                self._has_valid_token = True
+        except Exception as e:
+            if "401" in str(e) or "403" in str(e):
+                logger.info("Access token expired, starting device authorization flow")
+                self._auth0.request_device_code()
+
+                self._auth0.display_user_instructions()
+
+                new_token = await self._auth0.poll_token_endpoint()
+                self._access_token = new_token
+                self._username = None
+                self._password = None
+
+                # Store the new token in .env file
+                env_file = find_dotenv()
+                set_key(env_file, "NOVA_ACCESS_TOKEN", new_token)
+
+                # Update the existing API client configuration with the new token
+                self._api_client.configuration.access_token = new_token
+                self._api_client.configuration.username = None
+                self._api_client.configuration.password = None
+
+                # Reinitialize all API clients with the new configuration
+                self._init_api_client()
+
+                logger.info("Successfully updated access token and reinitialized API clients")
+        finally:
+            self._validating_token = False
 
     @staticmethod
     def _host_with_prefix(host: str) -> str:
