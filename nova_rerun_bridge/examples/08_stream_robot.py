@@ -1,3 +1,8 @@
+"""
+This example demonstrates how to stream the robot state into the timeline "time".
+This can be used to record the actual motions of the robot.
+"""
+
 import asyncio
 import signal
 from contextlib import asynccontextmanager
@@ -8,11 +13,6 @@ from nova.api import models
 from nova.core.nova import Nova
 from nova.types import Pose
 from nova_rerun_bridge import NovaRerunBridge
-
-"""
-This example demonstrates how to stream the robot state into the timeline "time".
-This can be used to record the actual motions of the robot.
-"""
 
 
 @asynccontextmanager
