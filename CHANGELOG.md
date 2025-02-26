@@ -1,6 +1,64 @@
 # CHANGELOG
 
 
+## v0.41.0 (2025-02-26)
+
+### Bug Fixes
+
+- Add manufacturer-specific home positions for virtual robot contr…
+  ([#105](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/105),
+  [`56d1cf2`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/56d1cf2d4588e19233b3d440c8a4b0e678298f2b))
+
+- Remove gltf-transform dependency and update model download
+  ([#100](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/100),
+  [`f1a2bda`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f1a2bda017ea97b3696cdccef537c1f278d7e1c3))
+
+- Update docker builds to poetry 2
+  ([#96](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/96),
+  [`5e6f8cd`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5e6f8cdcb6a9c8c4f2e815f67eb6e9b904f4406a))
+
+### Chores
+
+- Relax numpy dependency to allow >1.1.19
+  ([`3593327`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3593327f78c982f705a621d567d6c0afaca8c4a2))
+
+Upon customer request who wants to use numpy to 1.1.19.
+
+1.1.19 just incidentally, because our dependency geometricalgebra uses 1.1.19.
+
+Upon developer request who wants to have support for numpy 2.
+
+Effecitvely leaves us with only the intersection of numpy 1 and 2 to play around, everything that is
+  not supported in either is gonna break in the other. Lucky us is that if we stick to the
+  non-deprecated functions, which we seem to do, from eyeballing at least, this is not an issue with
+  numpy specifically, apart from some potential float64 / float32 datatype bollocks. Numpy is
+  largely benign in this regard.
+
+- Simplified splitting ([#91](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/91),
+  [`133e50f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/133e50f58f9eec64976ba30e07e8814750cf6875))
+
+Co-authored-by: Dirk Sonnemann <dirk.sonnemann@wandelbots.com>
+
+### Features
+
+- Collision free benchmark ([#86](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/86),
+  [`896d208`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/896d208b22abfb3beb7cb60ccb627fcd0d5c8cb7))
+
+Co-authored-by: Patrick Schmager <patrick.schmager@wandelbots.com>
+
+- Implement auto refresh of access token
+  ([#104](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/104),
+  [`6a50ef7`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6a50ef7dac20f94ce5bc90f1a4c3f0fa638493a8))
+
+- Stream robot state to rerun on standard timeline
+  ([#97](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/97),
+  [`6ff7625`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6ff7625fe3d3eedcb871abac5ee5cec4b0d41acb))
+
+- **docs**: Add autodocs to pipeline
+  ([#92](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/92),
+  [`9a7f6ee`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9a7f6ee4985e0cb0cfc845c399acaf20b49191d0))
+
+
 ## v0.40.1 (2025-02-20)
 
 ### Bug Fixes
