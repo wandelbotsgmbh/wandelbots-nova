@@ -8,7 +8,7 @@ This library provides an SDK for the Wandelbots NOVA API.
 
 The SDK will help you to build your own apps and services using Python on top of NOVA and makes programming a robot as easy as possible.
 
-https://github.com/user-attachments/assets/0416151f-1304-46e2-a4ab-485fcda766fc
+https://github.com/user-attachments/assets/f6157e4b-eea8-4b96-b302-1f3864ae44a9
 
 ## Background
 
@@ -196,6 +196,8 @@ actions = [
 ]
 ```
 
+https://github.com/user-attachments/assets/0416151f-1304-46e2-a4ab-485fcda766fc
+
 3. **Multiple Robot Coordination**
 
 ```python
@@ -226,13 +228,20 @@ actions = [
 
 ```python
 from nova_rerun_bridge import NovaRerunBridge
+import rerun as rr
 
 async with Nova() as nova, NovaRerunBridge(nova) as bridge:
     await bridge.setup_blueprint()
     # ... robot setup ...
     await bridge.log_actions(actions)
     await bridge.log_trajectory(trajectory, tcp, motion_group)
+
+    # use any rerun functions to e.g. show pointclouds and more
+    # rr.log
 ```
+
+<img width="1242" alt="pointcloud" src="https://github.com/user-attachments/assets/8e981f09-81ae-4e71-9851-42611f6b1843" />
+
 
 3. **Adding and Using Custom TCP (Tool Center Point)**
 
@@ -272,6 +281,7 @@ async def setup_tcp():
             actions = [ptp(current_pose @ Pose((100, 0, 0, 0, 0, 0)))]
             trajectory = await motion_group.plan(actions, "vacuum_gripper")
 ```
+<img width="100%" alt="trajectory" src="https://github.com/user-attachments/assets/649de0b7-d90a-4095-ad51-d38d3ac2e716" />
 
 4. **Using Common Coordinate Systems for Multiple Robots**
 
@@ -339,6 +349,7 @@ async def setup_coordinated_robots():
                 mg2.plan([ptp(Pose((0, -100, 0, 0, 0, 0)))], "tcp2")
             )
 ```
+<img width="100%" alt="thumbnail" src="https://github.com/user-attachments/assets/6f0c441e-b133-4a3a-bf0e-0e947d3efad4" />
 
 ## Development
 
