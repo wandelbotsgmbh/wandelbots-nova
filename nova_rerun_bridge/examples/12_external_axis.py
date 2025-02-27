@@ -5,8 +5,9 @@ import os
 from numpy import pi
 
 from nova import Controller, Nova
-from nova.actions import MotionSettings, Pose, jnt, ptp
+from nova.actions import jnt, ptp
 from nova.api import models
+from nova.types import MotionSettings, Pose
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.trajectory import TimingMode
 
