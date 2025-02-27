@@ -40,7 +40,6 @@ trimesh = { version = ">=4.5.3", optional = true }
 pyyaml = { version = ">5.3", optional = true }
 
 [tool.poetry.group.dev.dependencies]
-python-dotenv = "^1.0.1"
 ruff = ">=0.8.2,<0.10.0"
 pytest = "^8.3.4"
 pytest-asyncio = ">=0.24,<0.26"

@@ -3,6 +3,8 @@ import asyncio
 import httpx
 import pydantic
 
+from nova.auth.auth_config import Auth0Config
+
 
 class Auth0DeviceCodeInfo(pydantic.BaseModel):
     """
@@ -68,30 +70,27 @@ class Auth0DeviceAuthorization:
             Refreshes the access token using the refresh token.
     """
 
-    def __init__(self, auth0_domain: str, auth0_client_id: str, auth0_audience: str):
+    def __init__(self, auth0_config: Auth0Config | None = None):
         """
-        Initializes the Auth0DeviceAuthorization instance with the given parameters.
+        Initialize with Auth0Config from env vars or passed config.
 
         Args:
-            auth0_domain (str): The Auth0 domain.
-            auth0_client_id (str): The Auth0 client ID.
-            auth0_audience (str): The Auth0 audience.
-
-        Raises:
-            ValueError: If the parameters are not set correctly.
+            auth0_config: Optional Auth0Config object. If not provided,
+                         will be created from environment variables.
         """
         try:
-            self.params = Auth0Parameters(
-                auth0_domain=auth0_domain,
-                auth0_client_id=auth0_client_id,
-                auth0_audience=auth0_audience,
-            )
-        except pydantic.ValidationError as e:
-            raise ValueError(f"Error: The following parameters are not set correctly: {e}")
+            self.params = auth0_config or Auth0Config.from_env()
+            if not self.params.is_complete():
+                raise ValueError("Auth0 configuration is incomplete")
 
-        self.auth0_domain = auth0_domain
-        self.auth0_client_id = auth0_client_id
-        self.auth0_audience = auth0_audience
+            domain, client_id, audience = self.params.get_validated_config()
+            self.auth0_domain = domain
+            self.auth0_client_id = client_id
+            self.auth0_audience = audience
+
+        except ValueError as e:
+            raise ValueError(f"Error: Auth0 configuration is invalid: {e}")
+
         self.headers = {"content-type": "application/x-www-form-urlencoded"}
         self.device_code_info: Auth0DeviceCodeInfo | None = None
         self.interval = 5

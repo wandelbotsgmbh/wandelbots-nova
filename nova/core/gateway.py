@@ -4,49 +4,21 @@ import asyncio
 import functools
 import time
 from abc import ABC
-from dataclasses import dataclass
 from typing import TypeVar
 
 import wandelbots_api_client as wb
 from decouple import config
-from dotenv import find_dotenv, set_key
 
+from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.core import logger
+from nova.core.env_handler import set_key
 from nova.core.robot_cell import ConfigurablePeriphery, Device
 from nova.version import version as pkg_version
 
 T = TypeVar("T")
 
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
-
-
-@dataclass
-class Auth0Config:
-    """Configuration for Auth0 authentication"""
-
-    domain: str | None = None
-    client_id: str | None = None
-    audience: str | None = None
-
-    @classmethod
-    def from_env(cls) -> Auth0Config:
-        """Create Auth0Config from environment variables"""
-        return cls(
-            domain=config("NOVA_AUTH0_DOMAIN", default=None),
-            client_id=config("NOVA_AUTH0_CLIENT_ID", default=None),
-            audience=config("NOVA_AUTH0_AUDIENCE", default=None),
-        )
-
-    def is_complete(self) -> bool:
-        """Check if all required fields are set and not None"""
-        return bool(self.domain and self.client_id and self.audience)
-
-    def get_validated_config(self) -> tuple[str, str, str]:
-        """Get validated config values, ensuring they are not None"""
-        if not self.is_complete():
-            raise ValueError("Auth0 configuration is incomplete")
-        return self.domain, self.client_id, self.audience  # type: ignore
 
 
 def intercept(api_instance: T, gateway: "ApiGateway"):
@@ -139,10 +111,7 @@ class ApiGateway:
         self._auth0 = None
         auth0_config = auth0_config or Auth0Config.from_env()
         if auth0_config.is_complete():
-            domain, client_id, audience = auth0_config.get_validated_config()
-            self._auth0 = Auth0DeviceAuthorization(
-                auth0_domain=domain, auth0_client_id=client_id, auth0_audience=audience
-            )
+            self._auth0 = Auth0DeviceAuthorization(auth0_config=auth0_config)
 
         self._host = self._host_with_prefix(host=host)
         stripped_host = self._host.rstrip("/")
@@ -237,8 +206,7 @@ class ApiGateway:
                 self._password = None
 
                 # Store the new token in .env file
-                env_file = find_dotenv()
-                set_key(env_file, "NOVA_ACCESS_TOKEN", new_token)
+                set_key("NOVA_ACCESS_TOKEN", new_token)
 
                 # Update the existing API client configuration with the new token
                 self._api_client.configuration.access_token = new_token
