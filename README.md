@@ -6,23 +6,29 @@
 
 This library provides an SDK for the Wandelbots NOVA API.
 
-The SDK will help you to build your own apps and services on top of NOVA and makes programming a robot as easy as possible.
+The SDK will help you to build your own apps and services using Python on top of NOVA and makes programming a robot as easy as possible.
 
 https://github.com/user-attachments/assets/0416151f-1304-46e2-a4ab-485fcda766fc
 
+## Background
+
+[Wandelbots NOVA](https://www.wandelbots.com/) is an agnostic robot operating system that enables developers to virtually plan their industrial six-axis robot fleet, as well as to program, control and operate your robots on the shopfloor - all independent on the robot brand and through a unified API. It combines modern development tools (Python, JavaScript APIs) with an AI-driven approach to robot control and motion planning, enabling developers to build applications like gluing, grinding, welding, and palletizing without worrying about underlying hardware differences. The holistic software offers a variety of tools to create unique automation solutions along the whole automation process.
+
 ## Prerequisites
 
-- A running Nova instance (get access at [wandelbots.com](https://www.wandelbots.com/))
+- A running Nova instance (apply for access at [wandelbots.com](https://www.wandelbots.com/))
 - Valid Nova API credentials
 - Python >=3.10
 
 ## 🚀 Quick Start
 
-See the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) for usage of this library and further [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples): utilizing rerun as a visualizer
+See the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) for usage of this library and further [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples) utilizing rerun as a visualizer
 
 ```bash
 # Add the package to your pyproject.toml
-wandelbots-nova = { version = ">=0.12", extras = ["nova-rerun-bridge"] }
+dependencies = [
+    "wandelbots-nova[nova-rerun-bridge]>=0.12",
+]
 ```
 
 ```bash
@@ -92,29 +98,24 @@ if __name__ == "__main__":
 
 ## Installation
 
-To use the library, first install it using the following command
+We recommend installing the library with the `nova-rerun-bridge` extra to make usage of the visualization tool [rerun](https://rerun.io/).
+See the [extension README.md](nova_rerun_bridge/README.md) for further details.
 
 ```bash
 pip install wandelbots-nova
-```
-
-### Optional: Install with `nova-rerun-bridge`
-
-We recommend installing the library with the `nova-rerun-bridge` extra to make usage of the visualization tool [rerun](https://rerun.io/).
-See the [README.md](nova_rerun_bridge/README.md) for further details.
-
-```bash
+# or
 pip install "wandelbots-nova[nova-rerun-bridge]"
 ```
 
 Or add to your pyproject.toml:
 
 ```bash
-wandelbots-nova = { version = ">=0.12", extras = ["nova-rerun-bridge"] }
+dependencies = [
+    "wandelbots-nova[nova-rerun-bridge]>=0.12",
+]
 ```
 
-You need to download the robot models to visualize the robot models in the rerun viewer. This needs the NPM package ltf-transform installed on your machine.
-You can download the models by running the following command:
+You need to download the robot models to visualize the robot models in the rerun viewer.
 
 ```bash
 poetry run download-models
@@ -136,15 +137,215 @@ from nova import api
 
 Checkout the [01_basic](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/01_basic.py) and [02_plan_and_execute](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/02_plan_and_execute.py) examples to learn how to use the library.
 
-In the [this](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) directory are more examples to explain the advanced usage of the SDK.
+In [this](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) directory are more examples to explain the advanced usage of the SDK.
 If you want to utilize rerun as a visualizer you can find examples in the [nova_rerun_bride examples folder](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples).
+
+## Examples
+
+### Basic Usage
+
+```python
+from nova import Nova
+
+async def main():
+    async with Nova() as nova:
+        cell = nova.cell()
+        controller = await cell.ensure_virtual_robot_controller(
+            "ur10",
+            "universalrobots-ur10e",
+            "universalrobots"
+        )
+
+        async with controller[0] as motion_group:
+            tcp = "Flange"
+            home_joints = await motion_group.joints()
+            current_pose = await motion_group.tcp_pose(tcp)
+```
+
+### Robot Motion Examples
+
+1. **Simple Point-to-Point Movement**
+
+```python
+from nova import Nova
+from nova.actions import ptp, jnt
+from nova.types import Pose
+
+async def main():
+    async with Nova() as nova:
+        # ... setup code ...
+        actions = [
+            jnt(home_joints),
+            ptp(current_pose @ Pose((100, 0, 0, 0, 0, 0))),  # Move 100mm in X
+            jnt(home_joints)
+        ]
+        trajectory = await motion_group.plan(actions, tcp)
+```
+
+2. **Collision-Free Movement**
+
+```python
+from nova.actions import collision_free
+
+actions = [
+    collision_free(
+        target=Pose((-500, -400, 200, pi, 0, 0)),
+        collision_scene=collision_scene,
+        settings=MotionSettings(tcp_velocity_limit=30)
+    )
+]
+```
+
+3. **Multiple Robot Coordination**
+
+```python
+async def move_robots():
+    async with ur10[0] as ur_mg, kuka[0] as kuka_mg:
+        await asyncio.gather(
+            move_robot(ur_mg, "Flange"),
+            move_robot(kuka_mg, "Flange")
+        )
+```
+
+### Advanced Features
+
+1. **I/O Control**
+
+```python
+from nova.actions import io_write
+
+actions = [
+    jnt(home_joints),
+    io_write(key="digital_out[0]", value=False),  # Set digital output
+    ptp(target_pose),
+    jnt(home_joints)
+]
+```
+
+2. **Visualization with Rerun**
+
+```python
+from nova_rerun_bridge import NovaRerunBridge
+
+async with Nova() as nova, NovaRerunBridge(nova) as bridge:
+    await bridge.setup_blueprint()
+    # ... robot setup ...
+    await bridge.log_actions(actions)
+    await bridge.log_trajectory(trajectory, tcp, motion_group)
+```
+
+3. **Adding and Using Custom TCP (Tool Center Point)**
+
+```python
+from nova.api import models
+import json
+
+# Define TCP configuration
+tcp_config = {
+    "id": "vacuum_gripper",
+    "readable_name": "Vacuum Gripper",
+    "position": {"x": 0, "y": 0, "z": 100},  # 100mm in Z direction
+    "rotation": {"angles": [0, 0, 0], "type": "EULER_ANGLES_EXTRINSIC_XYZ"}
+}
+
+async def setup_tcp():
+    async with Nova() as nova:
+        cell = nova.cell()
+        controller = await cell.ensure_virtual_robot_controller(
+            "robot1", models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            models.Manufacturer.UNIVERSALROBOTS
+        )
+
+        # Add TCP to virtual robot
+        tcp_config_obj = models.RobotTcp.from_json(json.dumps(tcp_config))
+        await nova._api_client.virtual_robot_setup_api.add_virtual_robot_tcp(
+            cell.cell_id,
+            controller.controller_id,
+            motion_group_idx=0,
+            tcp_config_obj
+        )
+
+        # Use the new TCP
+        async with controller[0] as motion_group:
+            current_pose = await motion_group.tcp_pose("vacuum_gripper")
+            # Plan motions using the new TCP
+            actions = [ptp(current_pose @ Pose((100, 0, 0, 0, 0, 0)))]
+            trajectory = await motion_group.plan(actions, "vacuum_gripper")
+```
+
+4. **Using Common Coordinate Systems for Multiple Robots**
+
+```python
+from wandelbots_api_client.models import CoordinateSystem, Vector3d, RotationAngles, RotationAngleTypes
+
+async def setup_coordinated_robots():
+    async with Nova() as nova:
+        cell = nova.cell()
+
+        # Setup robots
+        robot1 = await cell.ensure_virtual_robot_controller("robot1", ...)
+        robot2 = await cell.ensure_virtual_robot_controller("robot2", ...)
+
+        # Define common world coordinate system
+        world_mounting = CoordinateSystem(
+            coordinate_system="world",
+            name="mounting",
+            reference_uid="",
+            position=Vector3d(x=0, y=0, z=0),
+            rotation=RotationAngles(
+                angles=[0, 0, 0],
+                type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
+            )
+        )
+
+        # Position robots relative to world coordinates
+        await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
+            cell="cell",
+            controller=robot1.controller_id,
+            id=0,  # motion_group_id
+            coordinate_system=CoordinateSystem(
+                coordinate_system="world",
+                name="robot1_mount",
+                reference_uid="",
+                position=Vector3d(x=500, y=0, z=0),  # Robot 1 at x=500mm
+                rotation=RotationAngles(
+                    angles=[0, 0, 0],
+                    type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
+                )
+            )
+        )
+
+        await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
+            cell="cell",
+            controller=robot2.controller_id,
+            id=0,  # motion_group_id
+            coordinate_system=CoordinateSystem(
+                coordinate_system="world",
+                name="robot2_mount",
+                reference_uid="",
+                position=Vector3d(x=-500, y=0, z=0),  # Robot 2 at x=-500mm
+                rotation=RotationAngles(
+                    angles=[0, 0, pi],  # Rotated 180° around Z
+                    type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
+                )
+            )
+        )
+
+        # Now both robots can work in the same coordinate system
+        async with robot1[0] as mg1, robot2[0] as mg2:
+            # Movements will be relative to world coordinates
+            await asyncio.gather(
+                mg1.plan([ptp(Pose((0, 100, 0, 0, 0, 0)))], "tcp1"),
+                mg2.plan([ptp(Pose((0, -100, 0, 0, 0, 0)))], "tcp2")
+            )
+```
 
 ## Development
 
 To install the development dependencies, run the following command
 
 ```bash
-poetry install
+poetry install --extras "nova-rerun-bridge"
 ```
 
 ### Formatting
