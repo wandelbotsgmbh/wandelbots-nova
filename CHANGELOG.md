@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.42.0 (2025-02-27)
+
+### Features
+
+- Add simplified robocore example
+  ([#106](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/106),
+  [`8fef8bb`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8fef8bbffe6187d42393634580ddbc4dbb56e65a))
+
+
 ## v0.41.0 (2025-02-26)
 
 ### Bug Fixes
