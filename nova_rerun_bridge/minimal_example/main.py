@@ -7,7 +7,7 @@ import asyncio
 import numpy as np
 import rerun as rr
 from nova import MotionSettings
-from nova.actions.motions import collision_free, ptp
+from nova.actions import collision_free, ptp
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
