@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.42.1 (2025-02-28)
+
+### Chores
+
+- Improve readme ([#109](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/109),
+  [`fbea4f1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fbea4f1760c48d87de92428242b12ef00dd798cd))
+
+
 ## v0.42.0 (2025-02-27)
 
 ### Features
