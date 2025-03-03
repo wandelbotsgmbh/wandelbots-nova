@@ -1,5 +1,6 @@
 import asyncio
 
+from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 
 """
@@ -12,12 +13,13 @@ Prerequisites:
 
 async def main():
     # Replace these values with your Auth0 domain, client ID, and audience
-    AUTH0_DOMAIN = "YOUR-AUTH0-DOMAIN"
-    AUTH0_CLIENT_ID = "YOUR-AUTH0-CLIENT-ID"
-    AUTH0_AUDIENCE = "YOUR-AUTH0-AUDIENCE"
+    config = Auth0Config(
+        domain="YOUR-AUTH0-DOMAIN", client_id="YOUR-AUTH0-CLIENT-ID", audience="YOUR-AUTH0-AUDIENCE"
+    )
+    auth0_device_auth = Auth0DeviceAuthorization(auth0_config=config)
 
-    # Initialize the Auth0DeviceAuthorization instance
-    auth0_device_auth = Auth0DeviceAuthorization(AUTH0_DOMAIN, AUTH0_CLIENT_ID, AUTH0_AUDIENCE)
+    # or login using the NOVA default client_id, domain and audience
+    # auth0_device_auth = Auth0DeviceAuthorization()
 
     try:
         # Request a device code
