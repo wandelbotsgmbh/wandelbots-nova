@@ -2,7 +2,6 @@ import asyncio
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import AsyncExitStack
-from dataclasses import dataclass
 from functools import reduce
 from typing import (
     AsyncIterable,
