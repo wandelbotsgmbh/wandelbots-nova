@@ -2,7 +2,6 @@ import asyncio
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import AsyncExitStack
-from dataclasses import dataclass
 from functools import reduce
 from typing import (
     AsyncIterable,
@@ -197,21 +196,10 @@ class AbstractRobot(Device):
     def __init__(self, id: str, **kwargs):
         super().__init__(**kwargs)
         self._id = id
-        self._motion_recording: list[list[MotionState]] = []
-        self._execution_duration = 0.0
-        self._counter = 0
 
     @property
     def id(self):
         return self._id
-
-    def recorded_trajectories(self) -> list[list[MotionState]]:
-        """Return the recorded motions of a robot. Each list is collected from sync to sync."""
-        return self._motion_recording
-
-    def execution_duration(self) -> float:
-        """Return the time to execute the movement"""
-        return self._execution_duration
 
     @abstractmethod
     async def _plan(
@@ -301,8 +289,6 @@ class AbstractRobot(Device):
         if not isinstance(actions, list):
             actions = [actions]
 
-        self._motion_recording.append([])
-
         def is_movement(movement_response: MovementResponse) -> bool:
             return any(
                 (
@@ -321,9 +307,6 @@ class AbstractRobot(Device):
                 return movement_to_motion_state(movement_response)
             assert False, f"Unexpected movement response: {movement_response}"
 
-        async def update_motion_recording(motion_state: MotionState) -> None:
-            self._motion_recording[-1].append(motion_state)
-
         execute_response_stream = self._execute(
             joint_trajectory, tcp, actions, movement_controller=movement_controller
         )
@@ -331,8 +314,8 @@ class AbstractRobot(Device):
             stream.iterate(execute_response_stream)
             | pipe.filter(is_movement)
             | pipe.map(movement_response_to_motion_state)
-            | pipe.action(update_motion_recording)
         )
+
         async with motion_states.stream() as motion_states_stream:
             async for motion_state in motion_states_stream:
                 yield motion_state
@@ -476,13 +459,6 @@ class Timer(ConfigurablePeriphery, AbstractTimer):
         await asyncio.sleep(duration / 1000)
 
 
-@dataclass
-class ExecutionResult:
-    motion_group_id: str
-    motion_duration: float
-    recorded_trajectories: list[list[MotionState]]
-
-
 class RobotCell:
     """Access a simulated or real robot"""
 
@@ -585,18 +561,6 @@ class RobotCell:
 
     def get_robot(self, robot_id: str) -> AbstractRobot:
         return self.get_robots()[robot_id]
-
-    def get_execution_results(self) -> list[ExecutionResult]:
-        return [
-            ExecutionResult(
-                motion_group_id=robot_id,
-                # TODO this is only the duration of the robot movement within a single sync
-                # TODO also this raises if there is no robot configured even for robotless skills
-                motion_duration=robot.execution_duration(),
-                recorded_trajectories=robot.recorded_trajectories(),
-            )
-            for robot_id, robot in self.get_robots().items()
-        ]
 
     @asyncstdlib.cached_property
     async def tcps(self) -> dict[str, set[str]]:
