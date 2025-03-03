@@ -64,7 +64,9 @@ def motion_group_state_to_motion_state(
         tuple(motion_group_state.joint_current.joints) if motion_group_state.joint_current else None
     )
     return MotionState(
-        path_parameter=path_parameter, state=RobotState(pose=tcp_pose, joints=joints)
+        motion_group_id=motion_group_state.motion_group,
+        path_parameter=path_parameter,
+        state=RobotState(pose=tcp_pose, joints=joints),
     )
 
 

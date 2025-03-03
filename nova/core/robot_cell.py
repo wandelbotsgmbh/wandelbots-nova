@@ -197,21 +197,10 @@ class AbstractRobot(Device):
     def __init__(self, id: str, **kwargs):
         super().__init__(**kwargs)
         self._id = id
-        self._motion_recording: list[list[MotionState]] = []
-        self._execution_duration = 0.0
-        self._counter = 0
 
     @property
     def id(self):
         return self._id
-
-    def recorded_trajectories(self) -> list[list[MotionState]]:
-        """Return the recorded motions of a robot. Each list is collected from sync to sync."""
-        return self._motion_recording
-
-    def execution_duration(self) -> float:
-        """Return the time to execute the movement"""
-        return self._execution_duration
 
     @abstractmethod
     async def _plan(
@@ -476,13 +465,6 @@ class Timer(ConfigurablePeriphery, AbstractTimer):
         await asyncio.sleep(duration / 1000)
 
 
-@dataclass
-class ExecutionResult:
-    motion_group_id: str
-    motion_duration: float
-    recorded_trajectories: list[list[MotionState]]
-
-
 class RobotCell:
     """Access a simulated or real robot"""
 
@@ -585,18 +567,6 @@ class RobotCell:
 
     def get_robot(self, robot_id: str) -> AbstractRobot:
         return self.get_robots()[robot_id]
-
-    def get_execution_results(self) -> list[ExecutionResult]:
-        return [
-            ExecutionResult(
-                motion_group_id=robot_id,
-                # TODO this is only the duration of the robot movement within a single sync
-                # TODO also this raises if there is no robot configured even for robotless skills
-                motion_duration=robot.execution_duration(),
-                recorded_trajectories=robot.recorded_trajectories(),
-            )
-            for robot_id, robot in self.get_robots().items()
-        ]
 
     @asyncstdlib.cached_property
     async def tcps(self) -> dict[str, set[str]]:

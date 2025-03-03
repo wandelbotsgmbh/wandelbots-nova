@@ -52,7 +52,9 @@ async def main():
             action.settings = MotionSettings(tcp_velocity_limit=200)
 
         joint_trajectory = await motion_group.plan(actions, tcp)
-        await motion_group.execute(joint_trajectory, tcp, actions=actions)
+        motion_iter = motion_group.stream_execute(joint_trajectory, tcp, actions=actions)
+        async for motion_state in motion_iter:
+            print(motion_state)
 
         await cell.delete_robot_controller(controller.controller_id)
 
