@@ -6,14 +6,14 @@ jobs:
   validate-title:
     runs-on: ubuntu-latest
     steps:
-      - name: "Validate PR Title\"
+      - name: 'Validate PR Title'
         shell: bash
         run: |
-          PR_TITLE=\"${{ github.event.pull_request.title }}\"
-          echo \"PR Title: $PR_TITLE\"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          echo "PR Title: $PR_TITLE"
 
           # Define the allowed pattern
-          PATTERN="^(chore|feat|fix)(!?)((\([A-Za-z0-9-]+\)))?: .+'
+          PATTERN='^(chore|feat|fix)(!?)((\([A-Za-z0-9-]+\)))?: .+'
 
           if [[ "$PR_TITLE" =~ $PATTERN ]]; then
             echo "✅ PR title is valid."
