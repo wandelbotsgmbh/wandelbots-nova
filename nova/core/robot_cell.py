@@ -289,8 +289,6 @@ class AbstractRobot(Device):
         if not isinstance(actions, list):
             actions = [actions]
 
-        self._motion_recording.append([])
-
         def is_movement(movement_response: MovementResponse) -> bool:
             return any(
                 (
@@ -309,9 +307,6 @@ class AbstractRobot(Device):
                 return movement_to_motion_state(movement_response)
             assert False, f"Unexpected movement response: {movement_response}"
 
-        async def update_motion_recording(motion_state: MotionState) -> None:
-            self._motion_recording[-1].append(motion_state)
-
         execute_response_stream = self._execute(
             joint_trajectory, tcp, actions, movement_controller=movement_controller
         )
@@ -319,8 +314,8 @@ class AbstractRobot(Device):
             stream.iterate(execute_response_stream)
             | pipe.filter(is_movement)
             | pipe.map(movement_response_to_motion_state)
-            | pipe.action(update_motion_recording)
         )
+
         async with motion_states.stream() as motion_states_stream:
             async for motion_state in motion_states_stream:
                 yield motion_state
