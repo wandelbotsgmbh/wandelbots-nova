@@ -42,6 +42,9 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         return self
 
     async def close(self):
+        # RPS-1174: when a motion group is deactivated, RAE closes all open connections
+        #           this behaviour is not desired in some cases,
+        #           so for now we will not deactivate for the user
         pass
 
     def __len__(self) -> int:
