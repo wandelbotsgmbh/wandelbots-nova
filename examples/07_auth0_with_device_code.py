@@ -6,17 +6,11 @@ from nova.auth.authorization import Auth0DeviceAuthorization
 """
 Example: Perform device authorization with Auth0.
 
-Prerequisites:
-- Replace 'YOUR-AUTH0-DOMAIN', 'YOUR-AUTH0-CLIENT-ID', and 'YOUR-AUTH0-AUDIENCE' with actual values.
 """
 
 
 async def main():
-    # Replace these values with your Auth0 domain, client ID, and audience
-    config = Auth0Config(
-        domain="YOUR-AUTH0-DOMAIN", client_id="YOUR-AUTH0-CLIENT-ID", audience="YOUR-AUTH0-AUDIENCE"
-    )
-    auth0_device_auth = Auth0DeviceAuthorization(auth0_config=config)
+    auth0_device_auth = Auth0DeviceAuthorization()
 
     # or login using the NOVA default client_id, domain and audience
     # auth0_device_auth = Auth0DeviceAuthorization()
