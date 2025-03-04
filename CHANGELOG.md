@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.44.0 (2025-03-04)
+
+### Features
+
+- **rps-1164**: Add documentation to public functions
+  ([#111](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/111),
+  [`f610a5f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f610a5f0097099c9163e8662a9d11bdb33f46789))
+
+
 ## v0.43.1 (2025-03-04)
 
 ### Chores
