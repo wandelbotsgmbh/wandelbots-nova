@@ -78,7 +78,17 @@ def combine_trajectories(
 
 
 class MotionGroup(AbstractRobot):
+    """Manages motion planning and execution within a specified motion group."""
+
     def __init__(self, api_gateway: ApiGateway, cell: str, motion_group_id: str):
+        """
+        Initializes a new MotionGroup instance.
+
+        Args:
+            api_gateway (ApiGateway): The API gateway through which motion commands are sent.
+            cell (str): The name or identifier of the robotic cell.
+            motion_group_id (str): The identifier of the motion group.
+        """
         self._api_gateway = api_gateway
         self._motion_api_client = api_gateway.motion_api
         self._cell = cell
@@ -101,6 +111,10 @@ class MotionGroup(AbstractRobot):
 
     @property
     def motion_group_id(self) -> str:
+        """
+        Returns:
+            str: The unique identifier for this motion group.
+        """
         return self._motion_group_id
 
     @property
@@ -458,14 +472,12 @@ class MotionGroup(AbstractRobot):
         return state.pose
 
     async def tcps(self) -> list[wb.models.RobotTcp]:
-        """Get the available tool center points (TCPs)"""
         response = await self._api_gateway.motion_group_infos_api.list_tcps(
             cell=self._cell, motion_group=self.motion_group_id
         )
         return response.tcps
 
     async def tcp_names(self) -> list[str]:
-        """Get the names of the available tool center points (TCPs)"""
         return [tcp.id for tcp in await self.tcps()]
 
     async def active_tcp(self) -> wb.models.RobotTcp:
