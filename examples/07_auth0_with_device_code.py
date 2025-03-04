@@ -1,23 +1,14 @@
+"""
+Example: Perform device authorization with Auth0.
+"""
+
 import asyncio
 
 from nova.auth.authorization import Auth0DeviceAuthorization
 
-"""
-Example: Perform device authorization with Auth0.
-
-Prerequisites:
-- Replace 'YOUR-AUTH0-DOMAIN', 'YOUR-AUTH0-CLIENT-ID', and 'YOUR-AUTH0-AUDIENCE' with actual values.
-"""
-
 
 async def main():
-    # Replace these values with your Auth0 domain, client ID, and audience
-    AUTH0_DOMAIN = "YOUR-AUTH0-DOMAIN"
-    AUTH0_CLIENT_ID = "YOUR-AUTH0-CLIENT-ID"
-    AUTH0_AUDIENCE = "YOUR-AUTH0-AUDIENCE"
-
-    # Initialize the Auth0DeviceAuthorization instance
-    auth0_device_auth = Auth0DeviceAuthorization(AUTH0_DOMAIN, AUTH0_CLIENT_ID, AUTH0_AUDIENCE)
+    auth0_device_auth = Auth0DeviceAuthorization()
 
     try:
         # Request a device code
