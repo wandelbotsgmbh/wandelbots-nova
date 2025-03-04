@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.43.0 (2025-03-04)
+
+### Features
+
+- Implement Auth0 default configuration and removed dotenv
+  ([#108](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/108),
+  [`5f0a9cc`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5f0a9cc06e8c9faf8eab93da1abf9858121c5b06))
+
+Co-authored-by: Lars Beier <lars.beier@wandelbots.com>
+
+
 ## v0.42.2 (2025-03-03)
 
 ### Chores
