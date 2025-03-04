@@ -98,9 +98,6 @@ class MotionGroup(AbstractRobot):
         super().__init__(id=motion_group_id)
 
     async def open(self):
-        """
-        Activates the motion group.
-        """
         await self._api_gateway.motion_group_api.activate_motion_group(
             cell=self._cell, motion_group=self._motion_group_id
         )
@@ -445,12 +442,6 @@ class MotionGroup(AbstractRobot):
         return move_to_trajectory_stream
 
     async def stop(self):
-        """
-        Stops the current motion execution for this motion group.
-
-        Attempts to halt any ongoing trajectory execution. If there is no motion
-        currently being executed, this method does nothing.
-        """
         logger.debug(f"Stopping motion of {self}...")
         try:
             await self._motion_api_client.stop_execution(
@@ -461,15 +452,6 @@ class MotionGroup(AbstractRobot):
             logger.debug(f"No motion to stop for {self}: {e}")
 
     async def get_state(self, tcp: str | None = None) -> RobotState:
-        """
-        Retrieves the current state (pose and joint positions) of the robot.
-
-        Args:
-            tcp (str | None): Name of the tool center point (TCP) to get the pose for
-
-        Returns:
-            RobotState: The robot’s current pose and joint positions.
-        """
         response = await self._api_gateway.motion_group_infos_api.get_current_motion_group_state(
             cell=self._cell, motion_group=self.motion_group_id, tcp=tcp
         )
@@ -478,15 +460,6 @@ class MotionGroup(AbstractRobot):
         )
 
     async def joints(self) -> tuple:
-        """
-        Retrieves the current joint positions of the robot.
-
-        Returns:
-            tuple: A tuple of the current joint positions.
-
-        Raises:
-            ValueError: If no joint positions are available from the motion group state.
-        """
         state = await self.get_state()
         if state.joints is None:
             raise ValueError(
@@ -495,58 +468,24 @@ class MotionGroup(AbstractRobot):
         return state.joints
 
     async def tcp_pose(self, tcp: str | None = None) -> Pose:
-        """
-        Retrieves the pose of the specified tool center point (TCP).
-
-        Args:
-            tcp (str | None): The name of the TCP for which to get the pose.
-                If `None`, the default TCP is used.
-
-        Returns:
-            Pose: The current pose of the specified TCP.
-        """
         state = await self.get_state(tcp=tcp)
         return state.pose
 
     async def tcps(self) -> list[wb.models.RobotTcp]:
-        """
-        Lists all TCPs available for this motion group.
-
-        Returns:
-            list[wb.models.RobotTcp]: A list of TCP objects registered for this motion group.
-        """
         response = await self._api_gateway.motion_group_infos_api.list_tcps(
             cell=self._cell, motion_group=self.motion_group_id
         )
         return response.tcps
 
     async def tcp_names(self) -> list[str]:
-        """
-        Retrieves the names of all available TCPs.
-
-        Returns:
-            list[str]: A list containing the names of all available TCPs.
-        """
         return [tcp.id for tcp in await self.tcps()]
 
     async def active_tcp(self) -> wb.models.RobotTcp:
-        """
-        Retrieves the currently active TCP.
-
-        Returns:
-            wb.models.RobotTcp: The active TCP.
-        """
         active_tcp = await self._api_gateway.motion_group_infos_api.get_active_tcp(
             cell=self._cell, motion_group=self.motion_group_id
         )
         return active_tcp
 
     async def active_tcp_name(self) -> str:
-        """
-        Retrieves the name of the currently active TCP.
-
-        Returns:
-            str: The identifier (name) of the active TCP.
-        """
         active_tcp = await self.active_tcp()
         return active_tcp.id
