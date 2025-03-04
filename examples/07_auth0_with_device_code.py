@@ -1,6 +1,5 @@
 import asyncio
 
-from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 
 """
