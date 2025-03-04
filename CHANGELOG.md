@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.43.1 (2025-03-04)
+
+### Chores
+
+- **deps**: Bump python-semantic-release/publish-action from 9.20.0 to 9.21.0
+  ([#103](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/103),
+  [`5e9ee78`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5e9ee78af6bee4b3d237c454723bbb9713018aac))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+
 ## v0.43.0 (2025-03-04)
 
 ### Features

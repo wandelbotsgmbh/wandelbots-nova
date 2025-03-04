@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "wandelbots-nova"
-version = "0.43.0"
+version = "0.43.1"
 description = "Official Python SDK for the Wandelbots"
 authors = [
     "Wandelbots GmbH",
