@@ -19,11 +19,6 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         controller_id: str
 
     def __init__(self, configuration: Configuration):
-        """Initializes the `Controller` instance.
-
-        Args:
-            configuration (Configuration): The configuration object
-        """
         super().__init__(configuration)
         self._controller_api = self._nova_api.controller_api
         self._motion_group_api = self._nova_api.motion_group_api
