@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.45.0 (2025-03-04)
+
+### Features
+
+- Embed defaults for auth ([#112](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/112),
+  [`a79a436`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a79a43677acdba26572ec76fe7e2c63f81810ec2))
+
+Co-authored-by: Stefan Wagner <stefan.wagner@wandelbots.com>
+
+
 ## v0.44.0 (2025-03-04)
 
 ### Features
