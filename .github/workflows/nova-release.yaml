@@ -1,4 +1,4 @@
-name: Release
+name: "[nova] Release"
 on:
   push:
     branches:

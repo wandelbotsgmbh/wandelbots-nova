@@ -13,5 +13,6 @@ class RobotState(pydantic.BaseModel):
 class MotionState(pydantic.BaseModel):
     """Collection of information on the current state of the robot"""
 
+    motion_group_id: str
     path_parameter: float
     state: RobotState

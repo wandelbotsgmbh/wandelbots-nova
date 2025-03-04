@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.42.2 (2025-03-03)
+
+### Chores
+
+- **cleanup**: Removed unused motion recording & mg_id to motion state
+  ([#110](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/110),
+  [`7c7b066`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7c7b0666b7fd4bda2c4abc69c0253dfba3e71f1a))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
+## v0.42.1 (2025-02-28)
+
+### Chores
+
+- Improve readme ([#109](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/109),
+  [`fbea4f1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fbea4f1760c48d87de92428242b12ef00dd798cd))
+
+
 ## v0.42.0 (2025-02-27)
 
 ### Features
