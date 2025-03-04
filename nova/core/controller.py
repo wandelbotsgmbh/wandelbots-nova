@@ -51,7 +51,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         return len(self._activated_motion_group_ids)
 
     def motion_group(self, motion_group_id: int = 0) -> MotionGroup:
-        """Get motion group with specific id.
+        """Returns motion group with specific id.
 
         Args:
             motion_group_id (int): The numerical ID of the motion group.

@@ -64,13 +64,13 @@ class Nova:
 
     def cell(self, cell_id: str = CELL_NAME) -> Cell:
         """
-        Return the cell object with the given ID.
+        Returns the cell object with the given ID.
         """
         return Cell(self._api_client, cell_id)
 
     async def close(self):
         """
-        Close the underlying API client session.
+        Closes the underlying API client session.
         """
         return await self._api_client.close()
 
@@ -86,7 +86,7 @@ class Cell:
 
     def __init__(self, api_gateway: ApiGateway, cell_id: str):
         """
-        Initialize a Cell instance.
+        Initializes a Cell instance.
 
         Args:
             api_gateway (ApiGateway): The underlying gateway for making API calls.
@@ -98,7 +98,7 @@ class Cell:
     @property
     def cell_id(self) -> str:
         """
-        Get the unique identifier for this cell.
+        Returns unique identifier for this cell.
 
         Returns:
             str: The cell ID.
