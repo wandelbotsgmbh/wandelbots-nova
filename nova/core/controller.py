@@ -81,8 +81,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         """
         activate_all_motion_groups_response = (
             await self._motion_group_api.activate_all_motion_groups(
-                cell=self.configuration.cell_id,
-                controller=self.configuration.controller_id
+                cell=self.configuration.cell_id, controller=self.configuration.controller_id
             )
         )
         motion_groups = activate_all_motion_groups_response.instances
