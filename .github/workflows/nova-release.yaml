@@ -22,18 +22,16 @@ jobs:
       - name: Setup | Force correct release branch on workflow sha
         run: |
           git checkout -B ${{ github.ref_name }} ${{ github.sha }}
-      - name: Setup | Embed default values
-        run: |
-          sed -i 's/config("NOVA_AUTH0_DOMAIN", default=None)/config("NOVA_AUTH0_DOMAIN", default="${{ secrets.NOVA_AUTH0_DOMAIN }}")/' nova/auth/auth_config.py
-          sed -i 's/config("NOVA_AUTH0_CLIENT_ID", default=None)/config("NOVA_AUTH0_CLIENT_ID", default="${{ secrets.NOVA_AUTH0_CLIENT_ID }}")/' nova/auth/auth_config.py
-          sed -i 's/config("NOVA_AUTH0_AUDIENCE", default=None)/config("NOVA_AUTH0_AUDIENCE", default="${{ secrets.NOVA_AUTH0_AUDIENCE }}")/' nova/auth/auth_config.py
-      - name: Action | Semantic Version Release
-        id: release
-        uses: python-semantic-release/python-semantic-release@v9.20.0
+      - uses: cschleiden/replace-tokens@v1
         env:
           NOVA_AUTH0_DOMAIN: ${{ secrets.NOVA_AUTH0_DOMAIN }}
           NOVA_AUTH0_CLIENT_ID: ${{ secrets.NOVA_AUTH0_CLIENT_ID }}
           NOVA_AUTH0_AUDIENCE: ${{ secrets.NOVA_AUTH0_AUDIENCE }}
+        with:
+          files: '["nova/auth/auth_config.py"]'
+      - name: Action | Semantic Version Release
+        id: release
+        uses: python-semantic-release/python-semantic-release@v9.20.0
         with:
           build: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
