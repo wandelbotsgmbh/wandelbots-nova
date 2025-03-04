@@ -10,9 +10,6 @@ from nova.auth.authorization import Auth0DeviceAuthorization
 async def main():
     auth0_device_auth = Auth0DeviceAuthorization()
 
-    # or login using the NOVA default client_id, domain and audience
-    # auth0_device_auth = Auth0DeviceAuthorization()
-
     try:
         # Request a device code
         device_code_info = auth0_device_auth.request_device_code()
