@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.46.0 (2025-03-06)
+
+### Features
+
+- **RPS-1094**: Add opc ua functions
+  ([#113](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/113),
+  [`26b83de`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/26b83de06c1dad248baff3cbf57e4d820e26869b))
+
+
 ## v0.45.0 (2025-03-04)
 
 ### Features
