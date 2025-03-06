@@ -35,9 +35,9 @@ async def opcua_write(url: str, node_id: str, value: Any, options: dict | None =
             }
     """
     options = options or {}
-    options = ClientConfig(**options)
+    client_config = ClientConfig(**options)
 
-    async with OPCUAClient(url, options) as opc:
+    async with OPCUAClient(url, client_config) as opc:
         await opc.write_node(node_id, value)
 
 
@@ -76,9 +76,9 @@ async def opcua_read(url: str, node_id: str, options: dict | None = None) -> Any
 
     """
     options = options or {}
-    options = ClientConfig(**options)
+    client_config = ClientConfig(**options)
 
-    async with OPCUAClient(url, options) as opc:
+    async with OPCUAClient(url, client_config) as opc:
         return await opc.read_node(node_id)
 
 
@@ -128,8 +128,8 @@ async def opcua_call(url: str, object_id: str, function_id: str, *args) -> Any:
     else:
         opcua_function_args, options = args, {}
 
-    options = ClientConfig(**options.to_dict())
-    async with OPCUAClient(url, options) as opc:
+    client_config = ClientConfig(**options)
+    async with OPCUAClient(url, client_config) as opc:
         return await opc.call_node(object_id, function_id, *opcua_function_args)
 
 
@@ -149,7 +149,7 @@ async def wait_for_opcua_value(url: str, node_id: str, value: Any, config: dict 
     config = config or {}
     subscription_config = SubscriptionConfig(**config)
     options = ClientConfig(
-        request_timeout=subscription_config.request_timeout_seconds,
+        request_timeout_seconds=subscription_config.request_timeout_seconds,
         security_config=subscription_config.security_config,
     )
 
