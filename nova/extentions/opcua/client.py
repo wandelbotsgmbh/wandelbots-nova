@@ -47,7 +47,7 @@ class SecurityConfig(pydantic.BaseModel):
     client_private_key_path: str
 
 
-class OPCUAClientConfig(pydantic.BaseModel):
+class ClientConfig(pydantic.BaseModel):
     # this is the default value of the underlying library
     request_timeout_seconds: int = 4
     security_config: SecurityConfig | None = None
@@ -102,10 +102,10 @@ async def certificate_files(cert_path: str, private_key_path: str) -> tuple[str,
     return private_key_path, cert_path
 
 
-class OPCUA:
+class OPCUAClient:
     """A wrapper around asyncua client"""
 
-    def __init__(self, url: str, options: OPCUAClientConfig = OPCUAClientConfig()):
+    def __init__(self, url: str, options: ClientConfig = ClientConfig()):
         self._options = options
         self._client = asyncua.Client(url=url, timeout=options.request_timeout_seconds)
 

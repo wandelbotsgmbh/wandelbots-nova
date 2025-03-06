@@ -1,5 +1,5 @@
 from typing import Any
-from .client import OPCUA, OPCUAClientConfig, SubscriptionConfig
+from .client import OPCUAClient, ClientConfig, SubscriptionConfig
 
 async def opcua_write(url: str, node_id: str, value: Any, options: dict | None = None):
     """Write a value to the opcua node
@@ -33,9 +33,9 @@ async def opcua_write(url: str, node_id: str, value: Any, options: dict | None =
             }
     """
     options = options or {}
-    options = OPCUAClientConfig(**options)
+    options = ClientConfig(**options)
 
-    async with OPCUA(url, options) as opc:
+    async with OPCUAClient(url, options) as opc:
         await opc.write_node(node_id, value)
 
 
@@ -74,9 +74,9 @@ async def opcua_read(url: str, node_id: str, options: dict | None = None) -> Any
 
     """
     options = options or {}
-    options = OPCUAClientConfig(**options)
+    options = ClientConfig(**options)
 
-    async with OPCUA(url, options) as opc:
+    async with OPCUAClient(url, options) as opc:
         return await opc.read_node(node_id)
 
 
@@ -126,8 +126,8 @@ async def opcua_call(url: str, object_id: str, function_id: str, *args) -> Any:
     else:
         opcua_function_args, options = args, {}
 
-    options = OPCUAClientConfig(**options.to_dict())
-    async with OPCUA(url, options) as opc:
+    options = ClientConfig(**options.to_dict())
+    async with OPCUAClient(url, options) as opc:
         return await opc.call_node(object_id, function_id, *opcua_function_args)
 
 
@@ -146,11 +146,11 @@ async def wait_for_opcua_value(url: str, node_id: str, value: Any, config: dict 
     """
     config = config or {}
     subscription_config = SubscriptionConfig(**config)
-    options = OPCUAClientConfig(
+    options = ClientConfig(
         request_timeout=subscription_config.request_timeout_seconds, security_config=subscription_config.security_config
     )
 
-    async with OPCUA(url, options) as opc:
+    async with OPCUAClient(url, options) as opc:
 
         def condition(node_value: Any):
             return node_value == value
