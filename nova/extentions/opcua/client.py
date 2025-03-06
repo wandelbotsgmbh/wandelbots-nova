@@ -9,7 +9,8 @@ import asyncua
 import httpx
 import pydantic
 from asyncua import ua
-from asyncua.common.subscription import DataChangeNotificationHandlerAsync
+from asyncua.common import Node
+from asyncua.common.subscription import DataChangeNotificationHandlerAsync, DataChangeNotif
 from asyncua.crypto import security_policies
 from asyncua.ua import CreateSubscriptionParameters, DataValue, Variant, VariantType
 from decouple import config
@@ -30,7 +31,7 @@ class DataChangeSubscription(DataChangeNotificationHandlerAsync):
         self._condition = condition
         self._print_received_messages = print_received_messages
 
-    async def datachange_notification(self, node, val, data) -> None:
+    async def datachange_notification(self, node: Node, val, data: DataChangeNotif) -> None:
         if self._print_received_messages:
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
             print(f"{current_time}: Received data change notification for node {node}, {val}")
