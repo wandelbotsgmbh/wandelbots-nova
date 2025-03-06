@@ -1,5 +1,6 @@
 from typing import Any
-from .client import OPCUAClient, ClientConfig, SubscriptionConfig
+
+from .client import ClientConfig, OPCUAClient, SubscriptionConfig
 
 
 async def opcua_write(url: str, node_id: str, value: Any, options: dict | None = None):
