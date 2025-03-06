@@ -22,6 +22,7 @@ class DataChangeSubscription(DataChangeNotificationHandlerAsync):
     It is used to create a subscription that listens for data change notifications on a node.
     It supports a condition function that is used to determine when the subscription should be completed.
     """
+
     def __init__(self, condition: Callable[[Any], bool], print_received_messages=False):
         super().__init__()
         self._flag = asyncio.Event()
@@ -73,7 +74,9 @@ async def fetch_certificate(certificate_path: str, private_key_path: str) -> tup
     cell = config("K8S_NAMESPACE", default="cell")
 
     cert_url = f"http://api-gateway:8080/api/v1/cells/{cell}/store/objects/{certificate_path}"
-    private_key_url = f"http://api-gateway:8080/api/v1/cells/{cell}/store/objects/{private_key_path}"
+    private_key_url = (
+        f"http://api-gateway:8080/api/v1/cells/{cell}/store/objects/{private_key_path}"
+    )
 
     async with httpx.AsyncClient() as client:
         response = await client.get(cert_url)
@@ -95,7 +98,9 @@ async def certificate_files(cert_path: str, private_key_path: str) -> tuple[str,
     with tempfile.NamedTemporaryFile(delete=False, mode="wb", suffix=cert_suffix) as temp_file:
         temp_file.write(cert)
         cert_path = temp_file.name
-    with tempfile.NamedTemporaryFile(delete=False, mode="wb", suffix=private_key_suffix) as temp_file:
+    with tempfile.NamedTemporaryFile(
+        delete=False, mode="wb", suffix=private_key_suffix
+    ) as temp_file:
         temp_file.write(private_key)
         private_key_path = temp_file.name
 
@@ -114,11 +119,14 @@ class OPCUAClient:
             raise Exception("Security configuration is missing")
 
         # Taken from self._client.set_security_string
-        policy_class = getattr(security_policies, f"SecurityPolicy{self._options.security_config.security_policy}")
+        policy_class = getattr(
+            security_policies, f"SecurityPolicy{self._options.security_config.security_policy}"
+        )
         mode = getattr(ua.MessageSecurityMode, self._options.security_config.message_security_mode)
 
         self._temp_private_key_file, self._temp_cert_file = await certificate_files(
-            self._options.security_config.client_certificate_path, self._options.security_config.client_private_key_path
+            self._options.security_config.client_certificate_path,
+            self._options.security_config.client_private_key_path,
         )
         await self._client.set_security(
             policy_class, self._temp_cert_file, self._temp_private_key_file, None, None, mode
@@ -196,7 +204,9 @@ class OPCUAClient:
         result = await node.call_method(method_node.nodeid, *mapped_args)
         return result
 
-    async def watch_node_until_condition(self, key: str, condition: Callable[[Any], bool], config: SubscriptionConfig):
+    async def watch_node_until_condition(
+        self, key: str, condition: Callable[[Any], bool], config: SubscriptionConfig
+    ):
         """
         Creates a subscription that listens for data change notifications on a node until a condition is met
         Args:
@@ -207,12 +217,16 @@ class OPCUAClient:
             config: configuration parameters for the subscription.
                     https://reference.opcfoundation.org/Core/Part4/v104/docs/5.13.1
         """
-        data_change_sub = DataChangeSubscription(condition, print_received_messages=config.print_received_messages)
+        data_change_sub = DataChangeSubscription(
+            condition, print_received_messages=config.print_received_messages
+        )
 
         create_sub_params = CreateSubscriptionParameters(
             RequestedPublishingInterval=config.requested_publishing_interval,
             RequestedLifetimeCount=config.requested_lifetime_count,
-            RequestedMaxKeepAliveCount=self._client.get_keepalive_count(config.requested_publishing_interval),
+            RequestedMaxKeepAliveCount=self._client.get_keepalive_count(
+                config.requested_publishing_interval
+            ),
             MaxNotificationsPerPublish=config.max_notifications_per_publish,
             PublishingEnabled=True,
             Priority=config.priority,
@@ -247,12 +261,17 @@ class OPCUAClient:
 
     def _compare_subscription_parameters(self, create_sub_params, revised_sub_params):
         if (
-            create_sub_params.RequestedPublishingInterval == revised_sub_params.RequestedPublishingInterval
-            and create_sub_params.RequestedLifetimeCount == revised_sub_params.RequestedLifetimeCount
-            and create_sub_params.RequestedMaxKeepAliveCount == revised_sub_params.RequestedMaxKeepAliveCount
+            create_sub_params.RequestedPublishingInterval
+            == revised_sub_params.RequestedPublishingInterval
+            and create_sub_params.RequestedLifetimeCount
+            == revised_sub_params.RequestedLifetimeCount
+            and create_sub_params.RequestedMaxKeepAliveCount
+            == revised_sub_params.RequestedMaxKeepAliveCount
         ):
             return
 
         # this print statement is here to inform Wandelscript user about the differences between the subscription parameters
-        logger.warning(f"Revised values returned differ from subscription values: {revised_sub_params}")
+        logger.warning(
+            f"Revised values returned differ from subscription values: {revised_sub_params}"
+        )
         print(f"Revised values returned differ from subscription values: {revised_sub_params}")

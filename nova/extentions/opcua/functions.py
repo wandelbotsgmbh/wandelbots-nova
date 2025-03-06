@@ -1,6 +1,7 @@
 from typing import Any
 from .client import OPCUAClient, ClientConfig, SubscriptionConfig
 
+
 async def opcua_write(url: str, node_id: str, value: Any, options: dict | None = None):
     """Write a value to the opcua node
 
@@ -147,7 +148,8 @@ async def wait_for_opcua_value(url: str, node_id: str, value: Any, config: dict 
     config = config or {}
     subscription_config = SubscriptionConfig(**config)
     options = ClientConfig(
-        request_timeout=subscription_config.request_timeout_seconds, security_config=subscription_config.security_config
+        request_timeout=subscription_config.request_timeout_seconds,
+        security_config=subscription_config.security_config,
     )
 
     async with OPCUAClient(url, options) as opc:
