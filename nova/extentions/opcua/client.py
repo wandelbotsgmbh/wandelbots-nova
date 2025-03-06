@@ -10,7 +10,7 @@ import httpx
 import pydantic
 from asyncua import ua
 from asyncua.common import Node
-from asyncua.common.subscription import DataChangeNotificationHandlerAsync, DataChangeNotif
+from asyncua.common.subscription import DataChangeNotif, DataChangeNotificationHandlerAsync
 from asyncua.crypto import security_policies
 from asyncua.ua import CreateSubscriptionParameters, DataValue, Variant, VariantType
 from decouple import config
