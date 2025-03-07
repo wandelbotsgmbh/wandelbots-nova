@@ -12,7 +12,10 @@ class URDFExporter:
     URDF exporter that converts DH parameters to URDF using the standard DH representation
     with separate active and passive joints to properly represent the DH transformations.
 
-    Implementation matches the JS implementation with the precise DH parameter handling.
+    Test output at http://urdf.robotsfan.com/
+
+    Implementation matches the JS implementation from:
+    https://github.com/AdoHaha/DH2URDF
     """
 
     def __init__(
