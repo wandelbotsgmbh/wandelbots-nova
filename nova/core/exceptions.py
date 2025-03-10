@@ -13,6 +13,12 @@ class PlanTrajectoryFailed(Exception):
         self._error = error
         super().__init__(f"Plan trajectory failed: {json.dumps(error.to_dict(), indent=2)}")
 
+    def to_pretty_string(self) -> str:
+        """Give a more lightweight representation of the error, omitting some gritty details."""
+        error_dict = self._error.to_dict()
+        del error_dict["joint_trajectory"]
+        return f"Plan trajectory failed: {json.dumps(error_dict, indent=2)}"
+
     @property
     def error(self) -> wb.models.PlanTrajectoryFailedResponse:
         """Return the original PlanTrajectoryFailedResponse object."""
