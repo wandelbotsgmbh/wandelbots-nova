@@ -9,7 +9,7 @@ jobs:
       - name: 'Validate PR Title'
         shell: bash
         run: |
-          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_TITLE='${{ github.event.pull_request.title }}'
           echo "PR Title: $PR_TITLE"
 
           # Define the allowed pattern
