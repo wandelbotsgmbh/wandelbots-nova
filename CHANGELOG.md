@@ -1,6 +1,30 @@
 # CHANGELOG
 
 
+## v0.47.0 (2025-03-12)
+
+### Bug Fixes
+
+- Allow for special characters in PR titles
+  ([`aa4cbf8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/aa4cbf85d49f5cccdcc088bd4a30f967a3032c2b))
+
+The prior way made backticks evaluate as bash or sh subshells commands.
+
+E.g., I got following error:
+
+Run PR_TITLE="feat(RPS-1311): Add pretty string repr for `PlanTrajectoryFailed` errors"
+  /home/runner/work/_temp/7006b9fd-09b9-48b8-b2de-64f7a17ea6e7.sh: line 1: PlanTrajectoryFailed:
+  command not found Error: Process completed with exit code 127.
+
+Hereby forbid arbitrary code execution via PR Titles, as funny as that may be, and allow special
+  characters such as backticks.
+
+### Features
+
+- **RPS-1311**: Add pretty string repr for `PlanTrajectoryFailed` errors
+  ([`7758378`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/77583788800b3f0cc672d3a95f4dab6e42ce594b))
+
+
 ## v0.46.0 (2025-03-06)
 
 ### Features
