@@ -17,5 +17,11 @@
     "notebook.source.fixAll": "explicit"
   },
   "notebook.formatOnSave.enabled": true,
-  "ruff.importStrategy": "fromEnvironment"
+  "ruff.importStrategy": "fromEnvironment",
+  "workbench.colorCustomizations": {
+    "statusBar.background": "#7C21D7",
+    "statusBar.debuggingBackground": "#7C21D7",
+    "statusBar.noFolderBackground": "#7C21D7",
+    "statussBar.prominentBackground": "#7C21D7"
+  }
 }
