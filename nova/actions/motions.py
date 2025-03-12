@@ -15,9 +15,7 @@ PoseOrVectorTuple = (
 
 
 class CollisionFreeMotion(Action):
-    """
-    A motion that is collision free.
-    """
+    """A motion that is collision free"""
 
     type: Literal["collision_free_ptp"] = "collision_free_ptp"
     target: Pose | tuple[float, ...]
