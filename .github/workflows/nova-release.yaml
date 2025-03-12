@@ -31,7 +31,7 @@ jobs:
           files: '["nova/auth/auth_config.py"]'
       - name: Action | Semantic Version Release
         id: release
-        uses: python-semantic-release/python-semantic-release@v9.20.0
+        uses: python-semantic-release/python-semantic-release@v9.21.0
         with:
           build: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
