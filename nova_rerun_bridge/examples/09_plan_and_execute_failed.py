@@ -1,7 +1,7 @@
 import asyncio
 
 from nova import MotionSettings
-from nova.actions import jnt, ptp
+from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
@@ -33,12 +33,12 @@ async def test():
             target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
 
             actions = [
-                jnt(home_joints),
-                ptp(target_pose @ [-100, 0, 0, 0, 0, 0]),
-                ptp(target_pose @ [-200, 0, 0, 0, 0, 0]),
-                ptp(target_pose @ [-500, 0, 0, 0, 0, 0]),
-                ptp(target_pose @ [-2000, 0, 0, 0, 0, 0]),
-                jnt(home_joints),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ [-100, 0, 0, 0, 0, 0]),
+                cartesian_ptp(target_pose @ [-200, 0, 0, 0, 0, 0]),
+                cartesian_ptp(target_pose @ [-500, 0, 0, 0, 0, 0]),
+                cartesian_ptp(target_pose @ [-2000, 0, 0, 0, 0, 0]),
+                joint_ptp(home_joints),
             ]
 
             # you can update the settings of the action

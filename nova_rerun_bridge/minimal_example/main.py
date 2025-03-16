@@ -6,19 +6,20 @@ import asyncio
 
 import numpy as np
 import rerun as rr
-from nova import MotionSettings
-from nova.actions import collision_free, ptp
-from nova.api import models
-from nova.core.exceptions import PlanTrajectoryFailed
-from nova.core.nova import Nova
-from nova.types import Pose
-from nova_rerun_bridge import NovaRerunBridge
 from wandelbots_api_client.models import (
     CoordinateSystem,
     RotationAngles,
     RotationAngleTypes,
     Vector3d,
 )
+
+from nova import MotionSettings
+from nova.actions import cartesian_ptp, collision_free
+from nova.api import models
+from nova.core.exceptions import PlanTrajectoryFailed
+from nova.core.nova import Nova
+from nova.types import Pose
+from nova_rerun_bridge import NovaRerunBridge
 
 
 async def build_collision_world(
@@ -114,7 +115,10 @@ async def test():
 
             # Use default planner to move to the right of the sphere
             home = await motion_group.tcp_pose(tcp)
-            actions = [ptp(home), ptp(target=Pose((300, -400, 200, np.pi, 0, 0)))]
+            actions = [
+                cartesian_ptp(home),
+                cartesian_ptp(target=Pose((300, -400, 200, np.pi, 0, 0))),
+            ]
 
             for action in actions:
                 action.settings = MotionSettings(tcp_velocity_limit=200)
@@ -137,7 +141,7 @@ async def test():
             # Use default planner to move to the left of the sphere
             # -> this will collide
             # only plan don't move
-            actions = [ptp(target=Pose((-500, -400, 200, np.pi, 0, 0)))]
+            actions = [cartesian_ptp(target=Pose((-500, -400, 200, np.pi, 0, 0)))]
 
             for action in actions:
                 action.settings = MotionSettings(tcp_velocity_limit=200)

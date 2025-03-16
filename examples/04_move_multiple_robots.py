@@ -1,7 +1,7 @@
 import asyncio
 
 from nova import Controller, Nova
-from nova.actions import jnt, ptp
+from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
 
 """
@@ -23,7 +23,7 @@ async def move_robot(controller: Controller):
 
         current_pose = await motion_group.tcp_pose(tcp)
         target_pose = current_pose @ (100, 0, 0, 0, 0, 0)
-        actions = [jnt(home_joints), ptp(target_pose), jnt(home_joints)]
+        actions = [joint_ptp(home_joints), cartesian_ptp(target_pose), joint_ptp(home_joints)]
 
         await motion_group.plan_and_execute(actions, tcp)
 

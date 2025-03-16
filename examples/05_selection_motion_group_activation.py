@@ -2,7 +2,7 @@ import asyncio
 from math import pi
 
 from nova import MotionGroup, Nova
-from nova.actions import ptp
+from nova.actions import cartesian_ptp
 from nova.api import models
 from nova.types import Pose
 
@@ -21,11 +21,11 @@ async def move_robot(motion_group: MotionGroup, tcp: str):
     home_pose = Pose((200, 200, 600, 0, pi, 0))
     target_pose = home_pose @ (100, 0, 0, 0, 0, 0)
     actions = [
-        ptp(home_pose),
-        ptp(target_pose),
-        ptp(target_pose @ (0, 0, 100, 0, 0, 0)),
-        ptp(target_pose @ (0, 100, 0, 0, 0, 0)),
-        ptp(home_pose),
+        cartesian_ptp(home_pose),
+        cartesian_ptp(target_pose),
+        cartesian_ptp(target_pose @ (0, 0, 100, 0, 0, 0)),
+        cartesian_ptp(target_pose @ (0, 100, 0, 0, 0, 0)),
+        cartesian_ptp(home_pose),
     ]
 
     await motion_group.plan_and_execute(actions, tcp=tcp)  # type: ignore

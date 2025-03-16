@@ -18,8 +18,7 @@ from wandelbots_api_client.models import (
 )
 
 from nova import Controller, Nova
-from nova.actions import Action, jnt
-from nova.actions.motions import ptp
+from nova.actions import Action, cartesian_ptp, joint_ptp
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova_rerun_bridge import NovaRerunBridge
@@ -120,10 +119,16 @@ async def pick_and_pass_cube(
 
         # Define actions based on robot state
         actions_map: dict[str, list[Action]] = {
-            "pickup_and_handover": [ptp(pos_config.cube_position), ptp(handover_target)],
-            "go_to_handover": [ptp(handover_target)],
-            "go_home_with_cube": [jnt(pos_config.home_position)],
-            "place_cube": [ptp(pos_config.cube_position), jnt(pos_config.home_position)],
+            "pickup_and_handover": [
+                cartesian_ptp(pos_config.cube_position),
+                cartesian_ptp(handover_target),
+            ],
+            "go_to_handover": [cartesian_ptp(handover_target)],
+            "go_home_with_cube": [joint_ptp(pos_config.home_position)],
+            "place_cube": [
+                cartesian_ptp(pos_config.cube_position),
+                joint_ptp(pos_config.home_position),
+            ],
         }
 
         try:
@@ -156,7 +161,7 @@ async def move_to_initial_positions(
                 tcp = tcp_names[0]
 
                 # Move to home, then to cube position
-                actions: list[Action] = [jnt(pos_config.home_position)]
+                actions: list[Action] = [joint_ptp(pos_config.home_position)]
 
                 try:
                     joint_trajectory = await motion_group.plan(actions, tcp)

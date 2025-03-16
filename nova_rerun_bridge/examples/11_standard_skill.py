@@ -1,7 +1,7 @@
 import asyncio
 
 from nova import MotionSettings
-from nova.actions import lin, ptp
+from nova.actions import cartesian_ptp, linear
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
@@ -32,11 +32,11 @@ async def test():
                 action
                 for _ in range(3)
                 for action in [
-                    ptp(home),
-                    lin(target=Pose((50, 20, 30, 0, 0, 0)) @ home),
-                    lin(target=Pose((100, 20, 30, 0, 0, 0)) @ home),
-                    lin(target=Pose((50, 20, 30, 0, 0, 0)) @ home),
-                    ptp(home),
+                    cartesian_ptp(home),
+                    linear(target=Pose((50, 20, 30, 0, 0, 0)) @ home),
+                    linear(target=Pose((100, 20, 30, 0, 0, 0)) @ home),
+                    linear(target=Pose((50, 20, 30, 0, 0, 0)) @ home),
+                    cartesian_ptp(home),
                 ]
             ]
 
