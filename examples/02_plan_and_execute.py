@@ -1,7 +1,7 @@
 import asyncio
 
 from nova import MotionSettings, Nova
-from nova.actions import jnt, ptp
+from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
 from nova.types import Pose
 
@@ -36,15 +36,15 @@ async def main():
             target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
 
             actions = [
-                jnt(home_joints),
-                ptp(target_pose),
-                jnt(home_joints),
-                ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
-                jnt(home_joints),
-                ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
-                jnt(home_joints),
-                ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
-                jnt(home_joints),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
+                joint_ptp(home_joints),
             ]
 
         # you can update the settings of the action

@@ -46,7 +46,7 @@ NOVA_ACCESS_TOKEN="your-access-token"
 from nova_rerun_bridge import NovaRerunBridge
 from nova import Nova
 from nova import api
-from nova.actions import jnt, ptp
+from nova.actions import joint_ptp, cartesian_ptp
 from nova.types import Pose
 import asyncio
 
@@ -80,9 +80,9 @@ async def main():
       target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
 
       actions = [
-          jnt(home_joints),
-          ptp(target_pose),
-          jnt(home_joints),
+          joint_ptp(home_joints),
+          cartesian_ptp(target_pose),
+          joint_ptp(home_joints),
       ]
 
       # Plan trajectory
@@ -168,16 +168,16 @@ async def main():
 
 ```python
 from nova import Nova
-from nova.actions import ptp, jnt
+from nova.actions import cartesian_ptp, joint_ptp
 from nova.types import Pose
 
 async def main():
     async with Nova() as nova:
         # ... setup code ...
         actions = [
-            jnt(home_joints),
-            ptp(current_pose @ Pose((100, 0, 0, 0, 0, 0))),  # Move 100mm in X
-            jnt(home_joints)
+            joint_ptp(home_joints),
+            cartesian_ptp(current_pose @ Pose((100, 0, 0, 0, 0, 0))),  # Move 100mm in X
+            joint_ptp(home_joints)
         ]
         trajectory = await motion_group.plan(actions, tcp)
 ```
@@ -217,10 +217,10 @@ async def move_robots():
 from nova.actions import io_write
 
 actions = [
-    jnt(home_joints),
+    joint_ptp(home_joints),
     io_write(key="digital_out[0]", value=False),  # Set digital output
-    ptp(target_pose),
-    jnt(home_joints)
+    cartesian_ptp(target_pose),
+    joint_ptp(home_joints)
 ]
 ```
 
@@ -278,7 +278,7 @@ async def setup_tcp():
         async with controller[0] as motion_group:
             current_pose = await motion_group.tcp_pose("vacuum_gripper")
             # Plan motions using the new TCP
-            actions = [ptp(current_pose @ Pose((100, 0, 0, 0, 0, 0)))]
+            actions = [cartesian_ptp(current_pose @ Pose((100, 0, 0, 0, 0, 0)))]
             trajectory = await motion_group.plan(actions, "vacuum_gripper")
 ```
 <img width="100%" alt="trajectory" src="https://github.com/user-attachments/assets/649de0b7-d90a-4095-ad51-d38d3ac2e716" />
@@ -345,8 +345,8 @@ async def setup_coordinated_robots():
         async with robot1[0] as mg1, robot2[0] as mg2:
             # Movements will be relative to world coordinates
             await asyncio.gather(
-                mg1.plan([ptp(Pose((0, 100, 0, 0, 0, 0)))], "tcp1"),
-                mg2.plan([ptp(Pose((0, -100, 0, 0, 0, 0)))], "tcp2")
+                mg1.plan([cartesian_ptp(Pose((0, 100, 0, 0, 0, 0)))], "tcp1"),
+                mg2.plan([cartesian_ptp(Pose((0, -100, 0, 0, 0, 0)))], "tcp2")
             )
 ```
 <img width="100%" alt="thumbnail" src="https://github.com/user-attachments/assets/6f0c441e-b133-4a3a-bf0e-0e947d3efad4" />

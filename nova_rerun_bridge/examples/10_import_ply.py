@@ -5,7 +5,7 @@ import rerun as rr
 import trimesh
 
 from nova import MotionSettings
-from nova.actions import jnt, ptp
+from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
 from nova.core.nova import Nova
 from nova.types import Pose
@@ -70,7 +70,11 @@ async def test():
             greenTargetPose = Pose(
                 (green_target_point[0], green_target_point[1], green_target_point[2], np.pi, 0, 0)
             )
-            actions = [jnt(home_joints), ptp(greenTargetPose), jnt(home_joints)]
+            actions = [
+                joint_ptp(home_joints),
+                cartesian_ptp(greenTargetPose),
+                joint_ptp(home_joints),
+            ]
 
             # you can update the settings of the action
             for action in actions:

@@ -1,7 +1,7 @@
 import asyncio
 
 from nova import Nova
-from nova.actions import io_write, jnt, ptp
+from nova.actions import cartesian_ptp, io_write, joint_ptp
 from nova.api import models
 from nova.types import Pose
 
@@ -35,10 +35,10 @@ async def main():
             current_pose = await motion_group.tcp_pose(tcp)
             target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
             actions = [
-                jnt(home_joints),
+                joint_ptp(home_joints),
                 io_write(key="tool_out[0]", value=False),
-                ptp(target_pose),
-                jnt(home_joints),
+                cartesian_ptp(target_pose),
+                joint_ptp(home_joints),
             ]
 
             async for motion_state in motion_group.stream_plan_and_execute(actions, tcp):

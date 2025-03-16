@@ -52,7 +52,7 @@ class Motion(Action, ABC):
 
     """
 
-    type: Literal["linear", "ptp", "circular", "joint_ptp", "spline"]
+    type: Literal["linear", "cartesian_ptp", "circular", "joint_ptp", "spline"]
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     collision_scene: wb.models.CollisionScene | None = None
@@ -117,7 +117,7 @@ class Linear(Motion):
         return self._to_api_model().model_dump()
 
 
-def lin(
+def linear(
     target: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
     collision_scene: wb.models.CollisionScene | None = None,
@@ -132,9 +132,9 @@ def lin(
 
     Examples:
     >>> ms = MotionSettings(tcp_velocity_limit=10)
-    >>> assert lin((1, 2, 3, 4, 5, 6), settings=ms) == Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
-    >>> assert lin((1, 2, 3)) == lin((1, 2, 3, 0, 0, 0))
-    >>> assert lin(Pose((1, 2, 3, 4, 5, 6)), settings=ms) == lin((1, 2, 3, 4, 5, 6), settings=ms)
+    >>> assert linear((1, 2, 3, 4, 5, 6), settings=ms) == Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
+    >>> assert linear((1, 2, 3)) == linear((1, 2, 3, 0, 0, 0))
+    >>> assert linear(Pose((1, 2, 3, 4, 5, 6)), settings=ms) == linear((1, 2, 3, 4, 5, 6), settings=ms)
 
     """
     if not isinstance(target, Pose):
@@ -144,22 +144,25 @@ def lin(
     return Linear(target=target, settings=settings, collision_scene=collision_scene)
 
 
-class PTP(Motion):
+lin = linear
+
+
+class CartesianPTP(Motion):
     """A point-to-point motion
 
     Examples:
-    >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))
-    PTP(type='ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
+    >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))
+    CartesianPTP(type='cartesian_ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
 
     """
 
-    type: Literal["ptp"] = "ptp"
+    type: Literal["cartesian_ptp"] = "cartesian_ptp"
 
     def _to_api_model(self) -> api.models.PathCartesianPTP:
         """Serialize the model to the API model
 
         Examples:
-        >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))._to_api_model()
+        >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))._to_api_model()
         PathCartesianPTP(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCartesianPTP')
         """
         if not isinstance(self.target, Pose):
@@ -174,11 +177,11 @@ class PTP(Motion):
         return self._to_api_model().model_dump()
 
 
-def ptp(
+def cartesian_ptp(
     target: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
     collision_scene: wb.models.CollisionScene | None = None,
-) -> PTP:
+) -> CartesianPTP:
     """Convenience function to create a point-to-point motion
 
     Args:
@@ -189,16 +192,19 @@ def ptp(
 
     Examples:
     >>> ms = MotionSettings(tcp_acceleration_limit=10)
-    >>> assert ptp((1, 2, 3, 4, 5, 6), settings=ms) == PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
-    >>> assert ptp((1, 2, 3)) == ptp((1, 2, 3, 0, 0, 0))
-    >>> assert ptp(Pose((1, 2, 3, 4, 5, 6)), settings=ms) == ptp((1, 2, 3, 4, 5, 6), settings=ms)
+    >>> assert cartesian_ptp((1, 2, 3, 4, 5, 6), settings=ms) == CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
+    >>> assert cartesian_ptp((1, 2, 3)) == cartesian_ptp((1, 2, 3, 0, 0, 0))
+    >>> assert cartesian_ptp(Pose((1, 2, 3, 4, 5, 6)), settings=ms) == cartesian_ptp((1, 2, 3, 4, 5, 6), settings=ms)
 
     """
     if not isinstance(target, Pose):
         t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
         target = Pose(t)
 
-    return PTP(target=target, settings=settings, collision_scene=collision_scene)
+    return CartesianPTP(target=target, settings=settings, collision_scene=collision_scene)
+
+
+ptp = cartesian_ptp
 
 
 class Circular(Motion):
@@ -234,7 +240,7 @@ class Circular(Motion):
         return self._to_api_model().model_dump()
 
 
-def cir(
+def circular(
     target: PoseOrVectorTuple,
     intermediate: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
@@ -252,8 +258,8 @@ def cir(
 
     Examples:
     >>> ms = MotionSettings(tcp_acceleration_limit=10)
-    >>> assert cir((1, 2, 3, 4, 5, 6), (7, 8, 9, 10, 11, 12), settings=ms) == Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((7, 8, 9, 10, 11, 12)), settings=ms)
-    >>> assert cir((1, 2, 3), (4, 5, 6)) == cir((1, 2, 3, 0, 0, 0), (4, 5, 6, 0, 0, 0))
+    >>> assert circular((1, 2, 3, 4, 5, 6), (7, 8, 9, 10, 11, 12), settings=ms) == Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((7, 8, 9, 10, 11, 12)), settings=ms)
+    >>> assert circular((1, 2, 3), (4, 5, 6)) == circular((1, 2, 3, 0, 0, 0), (4, 5, 6, 0, 0, 0))
 
     """
     if not isinstance(target, Pose):
@@ -267,6 +273,9 @@ def cir(
     return Circular(
         target=target, intermediate=intermediate, settings=settings, collision_scene=collision_scene
     )
+
+
+cir = circular
 
 
 class JointPTP(Motion):
@@ -298,7 +307,7 @@ class JointPTP(Motion):
         return self._to_api_model().model_dump()
 
 
-def jnt(
+def joint_ptp(
     target: tuple[float, ...],
     settings: MotionSettings = MotionSettings(),
     collision_scene: wb.models.CollisionScene | None = None,
@@ -313,10 +322,13 @@ def jnt(
 
     Examples:
     >>> ms = MotionSettings(tcp_acceleration_limit=10)
-    >>> assert jnt((1, 2, 3, 4, 5, 6), settings=ms) == JointPTP(target=(1, 2, 3, 4, 5, 6), settings=ms)
+    >>> assert joint_ptp((1, 2, 3, 4, 5, 6), settings=ms) == JointPTP(target=(1, 2, 3, 4, 5, 6), settings=ms)
 
     """
     return JointPTP(target=target, settings=settings, collision_scene=collision_scene)
+
+
+jnt = joint_ptp
 
 
 class Spline(Motion):
@@ -343,7 +355,7 @@ class Spline(Motion):
         raise NotImplementedError("Spline motion is not yet implemented")
 
 
-def spl(
+def spline(
     target: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
     path_parameter: float = 1,
@@ -377,3 +389,6 @@ def spl(
         time=time,
         collision_scene=collision_scene,
     )
+
+
+spl = spline

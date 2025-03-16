@@ -2,7 +2,7 @@ import asyncio
 import json
 
 from nova import MotionSettings, api
-from nova.actions import jnt, ptp
+from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
 from nova.core.nova import Nova
 from nova.types import Pose
@@ -54,7 +54,7 @@ async def test():
             current_pose = await motion_group.tcp_pose(tcp_id)
             target_pose = current_pose @ Pose((0, 0, 500, 0, -1.75, 0))
 
-            actions = [jnt(home_joints), ptp(target_pose), jnt(home_joints)]
+            actions = [joint_ptp(home_joints), cartesian_ptp(target_pose), joint_ptp(home_joints)]
 
             # you can update the settings of the action
             for action in actions:

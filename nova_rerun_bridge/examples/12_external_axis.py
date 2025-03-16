@@ -5,7 +5,7 @@ import os
 from numpy import pi
 
 from nova import Controller, Nova
-from nova.actions import jnt, ptp
+from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
 from nova.types import MotionSettings, Pose
 from nova_rerun_bridge import NovaRerunBridge
@@ -31,10 +31,10 @@ async def move_robot(controller: Controller, bridge: NovaRerunBridge):
         current_pose = await motion_group.tcp_pose(tcp)
 
         actions = [
-            jnt(home_joints),
-            ptp(current_pose @ Pose((0, 0, -100, 0, -pi / 2, 0))),
-            ptp(current_pose @ Pose((-500, 0, 0, 0, -pi / 2, 0))),
-            jnt(home_joints),
+            joint_ptp(home_joints),
+            cartesian_ptp(current_pose @ Pose((0, 0, -100, 0, -pi / 2, 0))),
+            cartesian_ptp(current_pose @ Pose((-500, 0, 0, 0, -pi / 2, 0))),
+            joint_ptp(home_joints),
         ]
 
         for action in actions:
@@ -46,7 +46,12 @@ async def move_robot(controller: Controller, bridge: NovaRerunBridge):
 
 async def move_positioner(controller: Controller, bridge: NovaRerunBridge):
     async with controller[16] as motion_group:
-        actions = [jnt((0, 0)), jnt((pi / 4, pi / 4)), jnt((-pi / 4, -pi / 4)), jnt((0, 0))]
+        actions = [
+            joint_ptp((0, 0)),
+            joint_ptp((pi / 4, pi / 4)),
+            joint_ptp((-pi / 4, -pi / 4)),
+            joint_ptp((0, 0)),
+        ]
 
         trajectory = await motion_group.plan(actions, "")
         await bridge.log_trajectory(trajectory, "", motion_group, timing_mode=TimingMode.SYNC)

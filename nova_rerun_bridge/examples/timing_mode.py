@@ -1,7 +1,7 @@
 import asyncio
 
 from nova import Controller, MotionSettings, Nova
-from nova.actions import jnt, ptp
+from nova.actions import cartesian_ptp, joint_ptp
 from nova.types import Pose
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.trajectory import TimingMode
@@ -22,7 +22,7 @@ async def move_robot(controller: Controller, bridge: NovaRerunBridge):
 
         current_pose = await motion_group.tcp_pose(tcp)
         target_pose = current_pose @ (100, 0, 0, 0, 0, 0)
-        actions = [jnt(home_joints), ptp(target_pose), jnt(home_joints)]
+        actions = [joint_ptp(home_joints), cartesian_ptp(target_pose), joint_ptp(home_joints)]
 
         trajectory = await motion_group.plan(actions, tcp)
         await bridge.log_trajectory(trajectory, tcp, motion_group, timing_mode=TimingMode.SYNC)
@@ -50,15 +50,15 @@ async def main():
         target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
 
         actions = [
-            jnt(home_joints),
-            ptp(target_pose),
-            jnt(home_joints),
-            ptp(target_pose @ [100, 0, 0, 0, 0, 0]),
-            jnt(home_joints),
-            ptp(target_pose @ (100, 100, 0, 0, 0, 0)),
-            jnt(home_joints),
-            ptp(target_pose @ Pose((0, 100, 0, 0, 0, 0))),
-            jnt(home_joints),
+            joint_ptp(home_joints),
+            cartesian_ptp(target_pose),
+            joint_ptp(home_joints),
+            cartesian_ptp(target_pose @ [100, 0, 0, 0, 0, 0]),
+            joint_ptp(home_joints),
+            cartesian_ptp(target_pose @ (100, 100, 0, 0, 0, 0)),
+            joint_ptp(home_joints),
+            cartesian_ptp(target_pose @ Pose((0, 100, 0, 0, 0, 0))),
+            joint_ptp(home_joints),
         ]
 
         # you can update the settings of the action
@@ -88,15 +88,15 @@ async def main():
         target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
 
         actions = [
-            jnt(home_joints),
-            ptp(target_pose),
-            jnt(home_joints),
-            ptp(target_pose @ [100, 0, 0, 0, 0, 0]),
-            jnt(home_joints),
-            ptp(target_pose @ (100, 100, 0, 0, 0, 0)),
-            jnt(home_joints),
-            ptp(target_pose @ Pose((0, 100, 0, 0, 0, 0))),
-            jnt(home_joints),
+            joint_ptp(home_joints),
+            cartesian_ptp(target_pose),
+            joint_ptp(home_joints),
+            cartesian_ptp(target_pose @ [100, 0, 0, 0, 0, 0]),
+            joint_ptp(home_joints),
+            cartesian_ptp(target_pose @ (100, 100, 0, 0, 0, 0)),
+            joint_ptp(home_joints),
+            cartesian_ptp(target_pose @ Pose((0, 100, 0, 0, 0, 0))),
+            joint_ptp(home_joints),
         ]
 
         # you can update the settings of the action
