@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.47.1 (2025-03-17)
+
+### Chores
+
+- **RPS-1129**: Motion group should accessible via id str
+  ([#118](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/118),
+  [`6f1f8d4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6f1f8d4abbf180f677ec687b4873248ae298c5eb))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.47.0 (2025-03-12)
 
 ### Bug Fixes
