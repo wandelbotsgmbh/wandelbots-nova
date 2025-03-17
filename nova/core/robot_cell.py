@@ -342,7 +342,7 @@ class AbstractRobot(Device):
 
     async def stream_plan_and_execute(
         self,
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
     ) -> AsyncIterable[MotionState]:
@@ -352,7 +352,7 @@ class AbstractRobot(Device):
 
     async def plan_and_execute(
         self,
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
     ) -> None:
