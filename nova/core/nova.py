@@ -39,7 +39,6 @@ class Nova:
         password: str | None = None,
         version: str = "v1",
         verify_ssl: bool = True,
-        log_level: str = LOG_LEVEL,
     ):
         """
         Initialize the Nova client.
@@ -167,6 +166,7 @@ class Cell:
 
         raise TimeoutError(f"Timeout waiting for {self._cell_id}/{name} controller availability")
 
+    # TODO: change so that also physical controllers can be added
     async def add_virtual_robot_controller(
         self,
         name: str,

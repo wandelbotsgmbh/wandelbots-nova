@@ -93,7 +93,7 @@ show_error_context = true
 warn_unused_ignores = true
 strict_equality = true
 mypy_path = ".mypy_stubs"
-files = "nova, tests"
+files = "nova, examples, tests"
 namespace_packages = true
 explicit_package_bases = true
 
