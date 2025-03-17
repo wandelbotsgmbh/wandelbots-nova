@@ -54,8 +54,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         """Returns motion group with specific id.
 
         Args:
-            motion_group_id (int): The numerical ID of the motion group.
-                Defaults to 0.
+            motion_group_id (str): The ID of the motion group.
 
         Returns:
             MotionGroup: A MotionGroup instance corresponding to the given ID.
