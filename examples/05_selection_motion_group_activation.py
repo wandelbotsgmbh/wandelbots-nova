@@ -28,7 +28,7 @@ async def move_robot(motion_group: MotionGroup, tcp: str):
         ptp(home_pose),
     ]
 
-    await motion_group.plan_and_execute(actions, tcp=tcp)
+    await motion_group.plan_and_execute(actions, tcp=tcp)  # type: ignore
 
 
 async def main():
@@ -51,10 +51,10 @@ async def main():
 
         # activate all motion groups
         async with ur10:
-            await move_robot(ur10.motion_group(0), tcp)
+            await move_robot(ur10.motion_group("0@ur10"), tcp)
 
         # activate motion group 0
-        async with ur10.motion_group(0) as mg_0:
+        async with ur10.motion_group("0@ur10") as mg_0:
             await move_robot(mg_0, tcp)
 
         # activate motion group 0
@@ -66,8 +66,8 @@ async def main():
             await asyncio.gather(move_robot(ur_0_mg, tcp), move_robot(kuka_0_mg, tcp))
 
         # activate motion group 0 from two different controllers
-        mg_0 = ur10.motion_group(0)
-        mg_1 = ur5.motion_group(0)
+        mg_0 = ur10.motion_group("0@ur10")
+        mg_1 = ur5.motion_group("0@ur5")
         async with mg_0, mg_1:
             await asyncio.gather(move_robot(mg_0, tcp), move_robot(mg_1, tcp))
 

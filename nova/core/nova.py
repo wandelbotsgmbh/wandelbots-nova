@@ -39,7 +39,6 @@ class Nova:
         password: str | None = None,
         version: str = "v1",
         verify_ssl: bool = True,
-        log_level: str = LOG_LEVEL,
     ):
         """
         Initialize the Nova client.
@@ -51,7 +50,6 @@ class Nova:
             password (str | None): Password to authenticate with the Nova API.
             version (str): The API version to use (default: "v1").
             verify_ssl (bool): Whether or not to verify SSL certificates (default: True).
-            log_level (str): Deprecated, use .env file to set the log level.
         """
         self._api_client = ApiGateway(
             host=host,
@@ -167,6 +165,7 @@ class Cell:
 
         raise TimeoutError(f"Timeout waiting for {self._cell_id}/{name} controller availability")
 
+    # TODO: change so that also physical controllers can be added
     async def add_virtual_robot_controller(
         self,
         name: str,

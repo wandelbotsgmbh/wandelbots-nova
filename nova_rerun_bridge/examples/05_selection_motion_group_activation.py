@@ -62,10 +62,10 @@ async def main():
 
         # activate all motion groups
         async with ur10:
-            await move_robot(ur10.motion_group(0), tcp, bridge, TimingMode.CONTINUE)
+            await move_robot(ur10.motion_group("0@ur10"), tcp, bridge, TimingMode.CONTINUE)
 
         # activate motion group 0
-        async with ur10.motion_group(0) as mg_0:
+        async with ur10.motion_group("0@ur10") as mg_0:
             await move_robot(mg_0, tcp, bridge, TimingMode.CONTINUE)
 
         # activate motion group 0
@@ -82,8 +82,8 @@ async def main():
         bridge.continue_after_sync()
 
         # activate motion group 0 from two different controllers
-        mg_0 = ur10.motion_group(0)
-        mg_1 = ur5.motion_group(0)
+        mg_0 = ur10.motion_group("0@ur10")
+        mg_1 = ur5.motion_group("0@ur5")
         async with mg_0, mg_1:
             await asyncio.gather(
                 move_robot(mg_0, tcp, bridge, TimingMode.SYNC),

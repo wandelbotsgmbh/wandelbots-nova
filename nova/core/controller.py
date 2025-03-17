@@ -50,12 +50,11 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
     def __len__(self) -> int:
         return len(self._activated_motion_group_ids)
 
-    def motion_group(self, motion_group_id: int = 0) -> MotionGroup:
+    def motion_group(self, motion_group_id: str) -> MotionGroup:
         """Returns motion group with specific id.
 
         Args:
-            motion_group_id (int): The numerical ID of the motion group.
-                Defaults to 0.
+            motion_group_id (str): The ID of the motion group.
 
         Returns:
             MotionGroup: A MotionGroup instance corresponding to the given ID.
@@ -63,11 +62,11 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         return MotionGroup(
             api_gateway=self._nova_api,
             cell=self.configuration.cell_id,
-            motion_group_id=f"{motion_group_id}@{self.configuration.controller_id}",
+            motion_group_id=motion_group_id,
         )
 
     def __getitem__(self, motion_group_id: int) -> MotionGroup:
-        return self.motion_group(motion_group_id)
+        return self.motion_group(f"{motion_group_id}@{self.configuration.controller_id}")
 
     async def activated_motion_group_ids(self) -> list[str]:
         """Activates and retrieves the list of motion group IDs available on this controller.
@@ -92,7 +91,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             list[MotionGroup]: All activated motion groups as `MotionGroup` objects.
         """
         motion_group_ids = await self.activated_motion_group_ids()
-        return [self.motion_group(int(mg.split("@")[0])) for mg in motion_group_ids]
+        return [self.motion_group(motion_group_id) for motion_group_id in motion_group_ids]
 
     def get_robots(self) -> dict[str, AbstractRobot]:
         """Retrieves a dictionary of motion group IDs to their corresponding robots.
@@ -105,7 +104,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             dict[str, AbstractRobot]: A mapping of motion group ID to `MotionGroup` instance.
         """
         return {
-            motion_group_id: self.motion_group(int(motion_group_id.split("@")[0]))
+            motion_group_id: self.motion_group(motion_group_id)
             for motion_group_id in self._activated_motion_group_ids
         }
 
