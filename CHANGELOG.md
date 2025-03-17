@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.47.2 (2025-03-17)
+
+### Bug Fixes
+
+- Update function signature and dont expose CollisionFree
+  ([#119](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/119),
+  [`2fbc81f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2fbc81f337a0dd16d8604090d4dc1c9bcd4c55ad))
+
+
 ## v0.47.1 (2025-03-17)
 
 ### Chores
