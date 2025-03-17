@@ -56,7 +56,7 @@ async def main():
         async for motion_state in motion_iter:
             print(motion_state)
 
-        # await cell.delete_robot_controller(controller.controller_id)
+        await cell.delete_robot_controller(controller.controller_id)
 
 
 if __name__ == "__main__":
