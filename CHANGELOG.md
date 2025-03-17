@@ -1,6 +1,30 @@
 # CHANGELOG
 
 
+## v0.47.3 (2025-03-17)
+
+### Chores
+
+- Add VSCode colors for the Nova project
+  ([`f5627c7`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f5627c78310a1c14ff6134d3972b1d90461b57cb))
+
+When opening the project in VSCode, the colors of the status bar will be purple as opposed to the
+  standard VSCode colors.
+
+- Simplify a docstring in `motions.py`
+  ([`b1299fa`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b1299faa5e43951180da31ddaf2383e4a38241e9))
+
+Remove some full stops in some docstrings, same style as the other docstrings in the file.
+
+- **RPS-1310**: Use verbose names for actions
+  ([`2897f2e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2897f2e9c7bba71366fbda817ce0d3f4997fe77f))
+
+Still have aliases to their short counterparts.
+
+Also rename string literals that are not directly tied to logic to remain unambiguous, e.g. in
+  `run_ptp_benchmark.py`.
+
+
 ## v0.47.2 (2025-03-17)
 
 ### Bug Fixes
