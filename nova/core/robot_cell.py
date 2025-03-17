@@ -25,7 +25,6 @@ from aiostream import pipe, stream
 
 from nova import api
 from nova.actions import Action, MovementController
-from nova.actions.motions import CollisionFreeMotion
 from nova.core import logger
 from nova.core.movement_controller import movement_to_motion_state
 from nova.types import MotionState, MovementResponse, Pose, RobotState
