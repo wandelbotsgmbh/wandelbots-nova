@@ -25,7 +25,6 @@ from aiostream import pipe, stream
 
 from nova import api
 from nova.actions import Action, MovementController
-from nova.actions.motions import CollisionFreeMotion
 from nova.core import logger
 from nova.core.movement_controller import movement_to_motion_state
 from nova.types import MotionState, MovementResponse, Pose, RobotState
@@ -342,7 +341,7 @@ class AbstractRobot(Device):
 
     async def stream_plan_and_execute(
         self,
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
     ) -> AsyncIterable[MotionState]:
@@ -352,7 +351,7 @@ class AbstractRobot(Device):
 
     async def plan_and_execute(
         self,
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
     ) -> None:
