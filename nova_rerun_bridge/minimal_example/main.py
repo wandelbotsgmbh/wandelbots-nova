@@ -6,13 +6,6 @@ import asyncio
 
 import numpy as np
 import rerun as rr
-from wandelbots_api_client.models import (
-    CoordinateSystem,
-    RotationAngles,
-    RotationAngleTypes,
-    Vector3d,
-)
-
 from nova import MotionSettings
 from nova.actions import cartesian_ptp, collision_free
 from nova.api import models
@@ -20,6 +13,12 @@ from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
 from nova.types import Pose
 from nova_rerun_bridge import NovaRerunBridge
+from wandelbots_api_client.models import (
+    CoordinateSystem,
+    RotationAngles,
+    RotationAngleTypes,
+    Vector3d,
+)
 
 
 async def build_collision_world(
