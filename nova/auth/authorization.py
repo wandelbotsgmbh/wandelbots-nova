@@ -118,8 +118,7 @@ class Auth0DeviceAuthorization:
             self.device_code_info = Auth0DeviceCodeInfo(**response.json())
             self.interval = self.device_code_info.interval
             return self.device_code_info
-        else:
-            raise Exception("Error requesting device code:", response.json())
+        raise Exception("Error requesting device code:", response.json())
 
     def get_device_code_info(self) -> Auth0DeviceCodeInfo | None:
         """
@@ -175,7 +174,7 @@ class Auth0DeviceAuthorization:
                     token_info = Auth0TokenInfo(**token_response.json())
                     self.refresh_token = token_info.refresh_token
                     return token_info.access_token
-                elif token_response.status_code == 400:
+                if token_response.status_code == 400:
                     # If the response status is 400, check the error type.
                     error = token_response.json().get("error")
                     if error == "authorization_pending":
@@ -221,5 +220,4 @@ class Auth0DeviceAuthorization:
         if response.status_code == 200:
             token_info = Auth0TokenInfo(**response.json())
             return token_info.access_token
-        else:
-            raise Exception("Error refreshing access token:", response.json())
+        raise Exception("Error refreshing access token:", response.json())

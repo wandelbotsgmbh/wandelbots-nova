@@ -29,11 +29,10 @@ def _parse_args(*args):
     if len(args) == 6:
         x1, y1, z1, x2, y2, z2 = args
         return {"position": Vector3d(x=x1, y=y1, z=z1), "orientation": Vector3d(x=x2, y=y2, z=z2)}
-    elif len(args) == 3:
+    if len(args) == 3:
         x1, y1, z1 = args
         return {"position": Vector3d(x=x1, y=y1, z=z1), "orientation": Vector3d(x=0, y=0, z=0)}
-    else:
-        raise ValueError("Invalid number of arguments for Pose")
+    raise ValueError("Invalid number of arguments for Pose")
 
 
 class Pose(pydantic.BaseModel, Sized):
@@ -166,12 +165,11 @@ class Pose(pydantic.BaseModel, Sized):
         if isinstance(other, Pose):
             transformed_matrix = np.dot(self.matrix, other.matrix)
             return self._matrix_to_pose(transformed_matrix)
-        elif isinstance(other, Iterable):
+        if isinstance(other, Iterable):
             seq = tuple(other)
             return self.__matmul__(Pose(seq))
 
-        else:
-            raise ValueError(f"Cannot multiply Pose with {type(other)}")
+        raise ValueError(f"Cannot multiply Pose with {type(other)}")
 
     def __array__(self, dtype=None):
         """Convert Pose to a 6-element numpy array: [pos.x, pos.y, pos.z, ori.x, ori.y, ori.z].
