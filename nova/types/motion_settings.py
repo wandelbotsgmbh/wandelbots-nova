@@ -39,7 +39,7 @@ class MotionSettings(pydantic.BaseModel):
     position_zone_radius: float | None = pydantic.Field(default=None)
     joint_velocity_limits: tuple[float, ...] | None = pydantic.Field(default=None)
     joint_acceleration_limits: tuple[float, ...] | None = pydantic.Field(default=None)
-    tcp_velocity_limit: float | None = pydantic.Field(default=None)
+    tcp_velocity_limit: float | None = pydantic.Field(default=50)
     tcp_acceleration_limit: float | None = pydantic.Field(default=None)
     tcp_orientation_velocity_limit: float | None = pydantic.Field(default=None)
     tcp_orientation_acceleration_limit: float | None = pydantic.Field(default=None)
