@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.47.4 (2025-03-18)
+
+### Chores
+
+- Remove some superluous else/elif statements
+  ([`89a18ab`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/89a18ab5e3b1331e8acb6a5c1b9fd2dd49cbe108))
+
+ruff autofix applied
+
+I find it visually more appealing.
+
+
 ## v0.47.3 (2025-03-17)
 
 ### Chores
