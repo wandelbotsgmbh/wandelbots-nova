@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v0.47.5 (2025-03-19)
+
+### Bug Fixes
+
+- **RPS-1312**: Limit TPC default velocity to 50mm/s
+  ([`099a923`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/099a923d2343b399b12823957f7b31375f65ef60))
+
+Tested via wandelscript's CLI tool `ws` and a modified default script; Kicks in when `velocity()` is
+  not specified in the Wandelscript program. When `velocity()` is set inside the program, the
+  setting picks up accordingly.
+
+### Chores
+
+- Sort imports
+  ([`22b7132`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/22b7132d656e10b516c4726cab6210c7046b07f7))
+
+ruff check --select I --fix
+
+for the win.
+
+
 ## v0.47.4 (2025-03-18)
 
 ### Chores
