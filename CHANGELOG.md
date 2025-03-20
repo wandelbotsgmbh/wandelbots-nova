@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.47.7 (2025-03-20)
+
+### Chores
+
+- **deps**: Bump actions/setup-python from 4 to 5
+  ([#101](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/101),
+  [`7a96381`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7a96381d3097297ba3c0bf5d780a92c86756b657))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+
 ## v0.47.6 (2025-03-20)
 
 ### Chores
