@@ -195,7 +195,9 @@ class MotionGroup(AbstractRobot):
             wb.models.PlanTrajectoryFailedResponse,
         ):
             # TODO: handle partially executable path
-            raise PlanTrajectoryFailed(plan_trajectory_response.response.actual_instance)
+            raise PlanTrajectoryFailed(
+                plan_trajectory_response.response.actual_instance, self.motion_group_id
+            )
         return plan_trajectory_response.response.actual_instance
 
     def _validate_collision_scenes(self, actions: list[Action]) -> list[models.CollisionScene]:
@@ -283,7 +285,7 @@ class MotionGroup(AbstractRobot):
         )
 
         if isinstance(plan_result.response.actual_instance, wb.models.PlanTrajectoryFailedResponse):
-            raise PlanTrajectoryFailed(plan_result.response.actual_instance)
+            raise PlanTrajectoryFailed(plan_result.response.actual_instance, self.motion_group_id)
         return plan_result.response.actual_instance
 
     async def _plan(
