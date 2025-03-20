@@ -20,21 +20,32 @@ https://github.com/user-attachments/assets/f6157e4b-eea8-4b96-b302-1f3864ae44a9
 - Valid Nova API credentials
 - Python >=3.10
 
+## Installation
+
+Install the library using pip:
+
+```bash
+pip install wandelbots-nova
+```
+
+### Recommended: Rerun Visualization
+
+We recommend installing the library with the `nova-rerun-bridge` extra to make usage of the visualization tool [rerun](https://rerun.io/).
+See the [extension README.md](nova_rerun_bridge/README.md) for further details.
+
+```bash
+pip install "wandelbots-nova[nova-rerun-bridge]"
+```
+
+You need to download the robot models to visualize the robot models in the rerun viewer.
+
+```bash
+poetry run download-models
+```
+
 ## 🚀 Quick Start
 
 See the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) for usage of this library and further [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples) utilizing rerun as a visualizer
-
-```bash
-# Add the package to your pyproject.toml
-dependencies = [
-    "wandelbots-nova[nova-rerun-bridge]>=0.12",
-]
-```
-
-```bash
-# Download the latest robot models
-poetry run download-models
-```
 
 ```python
 # Add credentials and instance to .env file
@@ -96,30 +107,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Installation
-
-We recommend installing the library with the `nova-rerun-bridge` extra to make usage of the visualization tool [rerun](https://rerun.io/).
-See the [extension README.md](nova_rerun_bridge/README.md) for further details.
-
-```bash
-pip install wandelbots-nova
-# or
-pip install "wandelbots-nova[nova-rerun-bridge]"
-```
-
-Or add to your pyproject.toml:
-
-```bash
-dependencies = [
-    "wandelbots-nova[nova-rerun-bridge]>=0.12",
-]
-```
-
-You need to download the robot models to visualize the robot models in the rerun viewer.
-
-```bash
-poetry run download-models
-```
+You'll find a complete code documentation [here](https://wandelbotsgmbh.github.io/wandelbots-nova/).
 
 ## Usage
 
@@ -186,6 +174,8 @@ async def main():
 
 ```python
 from nova.actions import collision_free
+from nova.types import Pose, MotionSettings
+from math import pi
 
 actions = [
     collision_free(
@@ -201,6 +191,8 @@ https://github.com/user-attachments/assets/0416151f-1304-46e2-a4ab-485fcda766fc
 3. **Multiple Robot Coordination**
 
 ```python
+import asyncio
+
 async def move_robots():
     async with ur10[0] as ur_mg, kuka[0] as kuka_mg:
         await asyncio.gather(
@@ -214,7 +206,7 @@ async def move_robots():
 1. **I/O Control**
 
 ```python
-from nova.actions import io_write
+from nova.actions import io_write, joint_ptp, cartesian_ptp
 
 actions = [
     joint_ptp(home_joints),
@@ -246,7 +238,10 @@ async with Nova() as nova, NovaRerunBridge(nova) as bridge:
 3. **Adding and Using Custom TCP (Tool Center Point)**
 
 ```python
+from nova import Nova
 from nova.api import models
+from nova.actions import cartesian_ptp
+from nova.types import Pose
 import json
 
 # Define TCP configuration
@@ -287,6 +282,12 @@ async def setup_tcp():
 
 ```python
 from wandelbots_api_client.models import CoordinateSystem, Vector3d, RotationAngles, RotationAngleTypes
+from math import pi
+from nova import Nova
+from nova.types import Pose
+from nova.actions import cartesian_ptp
+import asyncio
+
 
 async def setup_coordinated_robots():
     async with Nova() as nova:
