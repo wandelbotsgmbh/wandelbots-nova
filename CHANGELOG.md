@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.47.9 (2025-03-20)
+
+### Bug Fixes
+
+- **pdoc**: Added google style to pdoc generation
+  ([#126](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/126),
+  [`780e615`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/780e615952f2ca1d9262c40d39abbfede2e64d5d))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.47.8 (2025-03-20)
 
 ### Bug Fixes
