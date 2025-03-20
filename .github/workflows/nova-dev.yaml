@@ -1,3 +1,4 @@
+---
 name: "[nova] Typecheck, Lint and Format"
 on:
   pull_request:
