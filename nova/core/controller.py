@@ -1,5 +1,6 @@
-from typing import Literal, Sized
+from typing import AsyncGenerator, Literal, Sized
 
+from nova.api import models
 from nova.core import logger
 from nova.core.gateway import NovaDevice
 from nova.core.io import IOAccess
@@ -127,3 +128,11 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             value (ValueType): The value to write to the specified IO key.
         """
         return await self._io_access.write(key, value)
+
+    async def stream_state(self, rate_msecs) -> AsyncGenerator[models.RobotControllerState, None]:
+        async for state in self._controller_api.stream_robot_controller_state(
+            cell=self.configuration.cell_id,
+            controller=self.configuration.controller_id,
+            response_rate=rate_msecs,
+        ):
+            yield state
