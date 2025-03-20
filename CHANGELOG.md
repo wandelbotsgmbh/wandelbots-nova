@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.47.8 (2025-03-20)
+
+### Bug Fixes
+
+- **RPS-155**: Provide motion group / robot ID on `PlanTrajectoryFailed` exceptions
+  ([`e767c9c`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e767c9c3f6765a076f026ebf706d8dac75312f5c))
+
+Also add tthis in the error message and pretty string function. This way, downstream clients may
+  display the motion group ID in order to denote the robot that caused the exception.
+
+
 ## v0.47.7 (2025-03-20)
 
 ### Chores
