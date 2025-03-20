@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.47.6 (2025-03-20)
+
+### Chores
+
+- **RPS-1042**: Updated README ([#124](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/124),
+  [`dfd41da`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/dfd41da641731211be2a2d9d93f7b3baa9422830))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.47.5 (2025-03-19)
 
 ### Bug Fixes
