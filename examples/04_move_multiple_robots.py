@@ -1,9 +1,3 @@
-import asyncio
-
-from nova import Controller, Nova
-from nova.actions import cartesian_ptp, joint_ptp
-from nova.api import models
-
 """
 Example: Move multiple robots simultaneously.
 
@@ -13,6 +7,12 @@ Prerequisites:
     - NOVA_API=<api>
     - NOVA_ACCESS_TOKEN=<token>
 """
+
+import asyncio
+
+from nova import Controller, Nova
+from nova.actions import cartesian_ptp, joint_ptp
+from nova.api import models
 
 
 async def move_robot(controller: Controller):

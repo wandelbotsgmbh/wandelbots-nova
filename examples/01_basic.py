@@ -1,8 +1,3 @@
-import asyncio
-
-from nova import Nova
-from nova.api import models
-
 """
 Example: Getting the current state of a robot.
 
@@ -12,6 +7,11 @@ Prerequisites:
     - NOVA_API=<api>
     - NOVA_ACCESS_TOKEN=<token>
 """
+
+import asyncio
+
+from nova import Nova
+from nova.api import models
 
 
 async def main():

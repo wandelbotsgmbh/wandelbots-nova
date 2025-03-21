@@ -1,0 +1,39 @@
+"""
+Example: Obtain and print a state stream info from a robot cell.
+"""
+
+import asyncio
+from argparse import ArgumentParser
+from contextlib import suppress
+from pprint import pformat
+
+from decouple import config
+from icecream import ic
+
+from nova import Nova
+from nova.core.robot_cell import RobotCell
+
+NOVA_API = config("NOVA_API")
+
+
+async def main(controller_name: str = "controller") -> None:
+    async with Nova(host=NOVA_API) as nova:
+        cell = nova.cell()
+        controller = await cell.controller(controller_name)
+        ic(controller)
+
+        rc = RobotCell(**{controller_name: controller})
+        async for device_state in rc.stream_state(rate_msecs=500):
+            state = pformat(device_state)
+            ic(state)
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser()
+    parser.add_argument(
+        "--controller", type=str, default="controller", help="Name of the controller"
+    )
+    args = parser.parse_args()
+
+    with suppress(KeyboardInterrupt):
+        asyncio.run(main(controller_name=args.controller))

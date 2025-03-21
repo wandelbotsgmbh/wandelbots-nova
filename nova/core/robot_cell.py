@@ -180,7 +180,7 @@ class StoppableDevice(Protocol):
 class StateStreamingDevice(Protocol):
     """A device which supports streaming its state"""
 
-    def state_stream(self, rate: int) -> AsyncIterable[AbstractDeviceState]:
+    def stream_state(self, rate: int) -> AsyncIterable[AbstractDeviceState]:
         """Read a value given its key
         Args:
             rate: The rate at which the state should be streamed
@@ -587,7 +587,7 @@ class RobotCell:
             for device in stoppable_devices:
                 task_group.start_soon(device.stop)
 
-    async def state_stream(self, rate: int):
+    async def stream_state(self, rate_msecs: int):
         """Stream the state of the robot cell"""
         state_streaming_devices = [
             device for device in self._devices.values() if isinstance(device, StateStreamingDevice)
@@ -595,7 +595,7 @@ class RobotCell:
         if not state_streaming_devices:
             return
 
-        state_streams = [device.state_stream(rate) for device in state_streaming_devices]
+        state_streams = [device.stream_state(rate_msecs) for device in state_streaming_devices]
         async with stream.merge(*state_streams).stream() as devices_state_stream:
             async for state in devices_state_stream:
                 yield state

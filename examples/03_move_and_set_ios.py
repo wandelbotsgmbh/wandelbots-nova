@@ -1,10 +1,3 @@
-import asyncio
-
-from nova import Nova
-from nova.actions import cartesian_ptp, io_write, joint_ptp
-from nova.api import models
-from nova.types import Pose
-
 """
 Example: Move the robot and set I/Os on the path.
 
@@ -14,6 +7,13 @@ Prerequisites:
     - NOVA_API=<api>
     - NOVA_ACCESS_TOKEN=<token>
 """
+
+import asyncio
+
+from nova import Nova
+from nova.actions import cartesian_ptp, io_write, joint_ptp
+from nova.api import models
+from nova.types import Pose
 
 
 async def main():
