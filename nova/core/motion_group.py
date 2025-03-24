@@ -342,7 +342,7 @@ class MotionGroup(AbstractRobot):
             movement_controller = move_forward
 
         # Load planned trajectory
-        load_plan_response = await self._load_planned_motion(joint_trajectory, tcp)
+        load_plan_response = await self.load_planned_motion(joint_trajectory, tcp)
 
         # Move to start position
         number_of_joints = await self._get_number_of_joints()
@@ -405,7 +405,7 @@ class MotionGroup(AbstractRobot):
         # TODO: mypy failed on code from main branch need to check
         return self._optimizer_setup  # type: ignore
 
-    async def _load_planned_motion(
+    async def load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str
     ) -> wb.models.PlanSuccessfulResponse:
         load_plan_response = await self._api_gateway.motion_api.load_planned_motion(

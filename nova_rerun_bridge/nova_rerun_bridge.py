@@ -233,7 +233,7 @@ class NovaRerunBridge:
     ) -> None:
         if len(joint_trajectory.joint_positions) == 0:
             raise ValueError("No joint trajectory provided")
-        load_plan_response = await motion_group._load_planned_motion(joint_trajectory, tcp)
+        load_plan_response = await motion_group.load_planned_motion(joint_trajectory, tcp)
         await self.log_motion(
             load_plan_response.motion,
             timing_mode=timing_mode,

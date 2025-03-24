@@ -4,6 +4,12 @@ from typing import AsyncIterable, AsyncIterator, Callable, Generic, TypeVar
 In = TypeVar("In")
 Out = TypeVar("Out")
 
+from datetime import datetime
+
+from icecream import ic
+
+ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
+
 
 class StreamExtractor(Generic[In, Out]):
     def __init__(
