@@ -37,7 +37,7 @@ class Nova:
         access_token: str | None = None,
         username: str | None = None,
         password: str | None = None,
-        version: str = "v1",
+        version: str = "v2",
         verify_ssl: bool = True,
     ):
         """
@@ -105,7 +105,7 @@ class Cell:
 
     async def _get_controller_instances(self) -> list[api.models.ControllerInstance]:
         response = await self._api_gateway.controller_api.list_controllers(cell=self._cell_id)
-        return response.instances
+        return response.controllers
 
     def _create_controller(self, controller_id: str) -> Controller:
         return Controller(

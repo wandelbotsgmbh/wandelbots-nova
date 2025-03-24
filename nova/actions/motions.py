@@ -22,7 +22,8 @@ class CollisionFreeMotion(Action):
     settings: MotionSettings = MotionSettings()
     collision_scene: wb.models.CollisionScene | None = None
 
-    def _to_api_model(self) -> api.models.PlanCollisionFreePTPRequestTarget:
+    # TODO: couldn't find plan collision free ptp in the v2 api
+    def _to_api_model(self) -> wb.models.PlanCollisionFreePTPRequestTarget:
         return wb.models.PlanCollisionFreePTPRequestTarget(
             self.target._to_wb_pose2() if isinstance(self.target, Pose) else list(self.target)
         )

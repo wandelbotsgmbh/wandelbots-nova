@@ -6,7 +6,7 @@ import time
 from abc import ABC
 from typing import TypeVar
 
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 from decouple import config
 
 from nova.auth.auth_config import Auth0Config
@@ -81,7 +81,7 @@ class ApiGateway:
         username: str | None = None,
         password: str | None = None,
         access_token: str | None = None,
-        version: str = "v1",
+        version: str = "v2",
         verify_ssl: bool = True,
         auth0_config: Auth0Config | None = None,
     ):
@@ -147,13 +147,15 @@ class ApiGateway:
         self.system_api = intercept(wb.SystemApi(api_client=self._api_client), self)
         self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client), self)
         self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client), self)
-        self.motion_api = intercept(wb.MotionApi(api_client=self._api_client), self)
+        #self.motion_api = intercept(wb.MotionApi(api_client=self._api_client), self)
+        self.trajectory_planning_api = intercept(wb.TrajectoryPlanningApi(api_client=self._api_client), self)
+        self.trajectory_execution_api = intercept(wb.TrajectoryExecutionApi(api_client=self._api_client), self)
         self.motion_group_infos_api = intercept(
-            wb.MotionGroupInfosApi(api_client=self._api_client), self
+            wb.MotionGroupInfoApi(api_client=self._api_client), self
         )
-        self.motion_group_kinematic_api = intercept(
-            wb.MotionGroupKinematicApi(api_client=self._api_client), self
-        )
+        #self.motion_group_kinematic_api = intercept(
+        #    wb.MotionGroupKinematicApi(api_client=self._api_client), self
+        #)
 
         self.store_collision_components_api = intercept(
             wb.StoreCollisionComponentsApi(api_client=self._api_client), self
@@ -175,7 +177,7 @@ class ApiGateway:
             wb.VirtualRobotSetupApi(api_client=self._api_client), self
         )
 
-        self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client), self)
+        self.controller_ios_api = intercept(wb.ControllerInputsOutputsApi(api_client=self._api_client), self)
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
     async def close(self):

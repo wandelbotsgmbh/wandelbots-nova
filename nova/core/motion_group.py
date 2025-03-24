@@ -2,6 +2,7 @@ import asyncio
 from typing import AsyncIterable, cast
 
 import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb_v2
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.motions import CollisionFreeMotion, Motion
@@ -90,7 +91,6 @@ class MotionGroup(AbstractRobot):
             motion_group_id (str): The identifier of the motion group.
         """
         self._api_gateway = api_gateway
-        self._motion_api_client = api_gateway.motion_api
         self._cell = cell
         self._motion_group_id = motion_group_id
         self._current_motion: str | None = None
@@ -454,11 +454,12 @@ class MotionGroup(AbstractRobot):
             logger.debug(f"No motion to stop for {self}: {e}")
 
     async def get_state(self, tcp: str | None = None) -> RobotState:
-        response = await self._api_gateway.motion_group_infos_api.get_current_motion_group_state(
-            cell=self._cell, motion_group=self.motion_group_id, tcp=tcp
+        response: wb_v2.models.MotionGroupState = await self._api_gateway.motion_group_infos_api.get_current_motion_group_state(
+            cell=self._cell, motion_group=self.motion_group_id
         )
         return RobotState(
-            pose=Pose(response.state.tcp_pose), joints=tuple(response.state.joint_position.joints)
+            pose=Pose(tuple(response.tcp_pose.position + response.tcp_pose.orientation)),
+            joints=tuple(response.joint_position.joints)
         )
 
     async def joints(self) -> tuple:
