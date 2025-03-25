@@ -1,10 +1,3 @@
-import asyncio
-
-from nova import MotionSettings, Nova
-from nova.actions import cartesian_ptp, collision_free, io_write, joint_ptp
-from nova.api import models
-from nova.types import Pose
-
 """
 Example: Perform a multi-step trajectory with collision avoidance.
 
@@ -14,6 +7,13 @@ Prerequisites:
     - NOVA_API=<api>
     - NOVA_ACCESS_TOKEN=<token>
 """
+
+import asyncio
+
+from nova import MotionSettings, Nova
+from nova.actions import cartesian_ptp, collision_free, io_write, joint_ptp
+from nova.api import models
+from nova.types import Pose
 
 
 async def main():
