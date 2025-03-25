@@ -293,7 +293,7 @@ class AbstractRobot(Device):
                 (
                     isinstance(movement_response, api.models.ExecuteTrajectoryResponse)
                     and isinstance(movement_response.actual_instance, api.models.Movement),
-                    isinstance(movement_response, api.models.StreamMoveResponse),
+                    isinstance(movement_response, api.models.MoveToTrajectoryViaJointPTPResponse),
                 )
             )
 

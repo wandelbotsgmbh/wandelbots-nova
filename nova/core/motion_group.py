@@ -1,7 +1,7 @@
 import asyncio
 from typing import AsyncIterable, cast
 
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 import wandelbots_api_client.v2 as wb_v2
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
@@ -91,6 +91,7 @@ class MotionGroup(AbstractRobot):
             motion_group_id (str): The identifier of the motion group.
         """
         self._api_gateway = api_gateway
+        self._trajectory_planning_api = api_gateway.trajectory_planning_api
         self._cell = cell
         self._motion_group_id = motion_group_id
         self._current_motion: str | None = None
@@ -187,7 +188,7 @@ class MotionGroup(AbstractRobot):
         )
 
         # EXECUTE THE API CALL
-        plan_trajectory_response = await self._motion_api_client.plan_trajectory(
+        plan_trajectory_response = await self._trajectory_planning_api.plan_trajectory(
             cell=self._cell, plan_trajectory_request=request
         )
         if isinstance(
@@ -225,68 +226,6 @@ class MotionGroup(AbstractRobot):
 
         return collision_scenes
 
-    # TODO: we get the optimizer setup from as an input because
-    #  it has a velocity setting which is used in collision free movement, I need to double check this
-    async def _plan_collision_free(
-        self,
-        action: CollisionFreeMotion,
-        tcp: str,
-        start_joint_position: list[float],
-        optimizer_setup: wb.models.OptimizerSetup | None = None,
-    ) -> wb.models.JointTrajectory:
-        """
-        This method plans a trajectory and avoids collisions.
-        This means if there is a collision along the way to the target pose or joint positions,
-        It will adjust the trajectory to avoid the collision.
-
-        The collision check only happens if the action have collision scene data.
-
-        For more information about this API, please refer to the plan_collision_free_ptp in the API documentation.
-
-        Args:
-            action: The target pose or joint positions to reach
-            tcp:     The tool to use
-            start_joint_position: The starting joint position, if none provided, current position of the robot is used
-            optimizer_setup: The optimizer setup
-
-        Returns: planned joint trajectory
-
-
-        """
-        target = wb.models.PlanCollisionFreePTPRequestTarget(
-            **action.model_dump(exclude_unset=True)
-        )
-        robot_setup = optimizer_setup or await self._get_optimizer_setup(tcp=tcp)
-
-        static_colliders = None
-        collision_motion_group = None
-        collision_scene = action.collision_scene
-        if collision_scene and collision_scene.colliders:
-            static_colliders = collision_scene.colliders
-
-            if (
-                collision_scene.motion_groups
-                and robot_setup.motion_group_type in collision_scene.motion_groups
-            ):
-                collision_motion_group = collision_scene.motion_groups[
-                    robot_setup.motion_group_type
-                ]
-
-        request: wb.models.PlanCollisionFreePTPRequest = wb.models.PlanCollisionFreePTPRequest(
-            robot_setup=robot_setup,
-            start_joint_position=start_joint_position,
-            target=target,
-            static_colliders=static_colliders,
-            collision_motion_group=collision_motion_group,
-        )
-
-        plan_result = await self._motion_api_client.plan_collision_free_ptp(
-            cell=self._cell, plan_collision_free_ptp_request=request
-        )
-
-        if isinstance(plan_result.response.actual_instance, wb.models.PlanTrajectoryFailedResponse):
-            raise PlanTrajectoryFailed(plan_result.response.actual_instance, self.motion_group_id)
-        return plan_result.response.actual_instance
 
     async def _plan(
         self,
@@ -307,16 +246,7 @@ class MotionGroup(AbstractRobot):
                 raise ValueError("Empty batch of actions")
 
             if isinstance(batch[0], CollisionFreeMotion):
-                motion: CollisionFreeMotion = cast(CollisionFreeMotion, batch[0])
-                trajectory = await self._plan_collision_free(
-                    action=motion,
-                    tcp=tcp,
-                    start_joint_position=list(current_joints),
-                    optimizer_setup=robot_setup,
-                )
-                all_trajectories.append(trajectory)
-                # the last joint position of this trajectory is the starting point for the next one
-                current_joints = tuple(trajectory.joint_positions[-1].joints)
+                raise ValueError("No need to have collision free p2p anymore")
             else:
                 trajectory = await self._plan_with_collision_check(
                     actions=batch,
@@ -344,22 +274,23 @@ class MotionGroup(AbstractRobot):
             movement_controller = move_forward
 
         # Load planned trajectory
-        load_plan_response = await self._load_planned_motion(joint_trajectory, tcp)
+        trajectory_id = await self._load_planned_motion(joint_trajectory, tcp)
 
         # Move to start position
         number_of_joints = await self._get_number_of_joints()
         joints_velocities = [MAX_JOINT_VELOCITY_PREPARE_MOVE] * number_of_joints
-        movement_stream = await self.move_to_start_position(joints_velocities, load_plan_response)
+        movement_stream: InitialMovementStream = await self.move_to_start_position(joints_velocities, trajectory_id)
 
         # If there's an initial consumer, feed it the data
         async for move_to_response in movement_stream:
             # TODO: refactor
             if (
-                move_to_response.state is None
-                or move_to_response.state.motion_groups is None
-                or len(move_to_response.state.motion_groups) == 0
-                or move_to_response.move_response is None
-                or move_to_response.move_response.current_location_on_trajectory is None
+                move_to_response.actual_instance is None
+                or isinstance(move_to_response.actual_instance, wb.models.Standstill)
+                or move_to_response.actual_instance.movement.state.active_motion_groups is None
+                or len(move_to_response.actual_instance.movement.state.active_motion_groups) == 0
+                or move_to_response.actual_instance.movement is None
+                or move_to_response.actual_instance.movement.current_location is None
             ):
                 continue
 
@@ -368,7 +299,7 @@ class MotionGroup(AbstractRobot):
         controller = movement_controller(
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
-                motion_id=load_plan_response.motion,
+                motion_id=trajectory_id,
             )
         )
 
@@ -382,7 +313,7 @@ class MotionGroup(AbstractRobot):
 
         execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
         execution_task = asyncio.create_task(
-            self._api_gateway.motion_api.execute_trajectory(
+            self._api_gateway.trajectory_execution_api.execute_trajectory(
                 self._cell, execute_response_streaming_controller
             )
         )
@@ -409,36 +340,34 @@ class MotionGroup(AbstractRobot):
 
     async def _load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str
-    ) -> wb.models.PlanSuccessfulResponse:
-        load_plan_response = await self._api_gateway.motion_api.load_planned_motion(
+    ) -> wb.models.AddTrajectoryResponse:
+        load_plan_response: wb.models.AddTrajectoryResponse = await self._api_gateway.trajectory_execution_api.add_trajectory(
             cell=self._cell,
-            planned_motion=wb.models.PlannedMotion(
+            add_trajectory_request=wb.models.AddTrajectoryRequest(
                 motion_group=self.motion_group_id,
-                times=joint_trajectory.times,
-                joint_positions=joint_trajectory.joint_positions,
-                locations=joint_trajectory.locations,
+                trajectory= joint_trajectory,
                 tcp=tcp,
             ),
         )
 
         if (
-            load_plan_response.plan_failed_on_trajectory_response is not None
-            or load_plan_response.plan_failed_on_trajectory_response is not None
+            load_plan_response.trajectory is None
+            or load_plan_response.error is not None
         ):
-            raise LoadPlanFailed(load_plan_response)
+            raise LoadPlanFailed(load_plan_response.error)
 
-        return load_plan_response.plan_successful_response
+        return load_plan_response.trajectory
 
     async def move_to_start_position(
-        self, joint_velocities, load_plan_response: LoadPlanResponse
+        self, joint_velocities, trajectory_id: str
     ) -> InitialMovementStream:
         limit_override = wb.models.LimitsOverride()
         if joint_velocities is not None:
             limit_override.joint_velocity_limits = wb.models.Joints(joints=joint_velocities)
 
         move_to_trajectory_stream = (
-            self._api_gateway.motion_api.stream_move_to_trajectory_via_joint_ptp(
-                cell=self._cell, motion=load_plan_response.motion, location_on_trajectory=0
+            self._api_gateway.trajectory_execution_api.execute_to_trajectory(
+                cell=self._cell, trajectory=trajectory_id, location_on_trajectory=0
             )
         )
         return move_to_trajectory_stream
@@ -446,6 +375,7 @@ class MotionGroup(AbstractRobot):
     async def stop(self):
         logger.debug(f"Stopping motion of {self}...")
         try:
+            # We need to stop this within the web socket now, PauseMovementRequest
             await self._motion_api_client.stop_execution(
                 cell=self._cell, motion=self.current_motion
             )

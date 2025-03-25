@@ -1,6 +1,7 @@
 import json
 
 import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb_v2
 
 
 class ControllerNotFound(Exception):
@@ -49,12 +50,12 @@ class InitMovementFailed(Exception):
 
 
 class LoadPlanFailed(Exception):
-    def __init__(self, error: wb.models.PlanSuccessfulResponse):
-        self._error = error
+    def __init__(self, error: wb_v2.models.AddTrajectoryError):
+        self._error = error.data
         super().__init__(f"Load plan failed: {json.dumps(error.to_dict(), indent=2)}")
 
     @property
-    def error(self) -> wb.models.PlanSuccessfulResponse:
+    def error(self) -> wb_v2.models.AddTrajectoryError:
         """Return the original PlanSuccessfulResponse object."""
         return self._error
 

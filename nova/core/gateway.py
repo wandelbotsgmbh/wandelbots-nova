@@ -148,8 +148,8 @@ class ApiGateway:
         self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client), self)
         self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client), self)
         #self.motion_api = intercept(wb.MotionApi(api_client=self._api_client), self)
-        self.trajectory_planning_api = intercept(wb.TrajectoryPlanningApi(api_client=self._api_client), self)
-        self.trajectory_execution_api = intercept(wb.TrajectoryExecutionApi(api_client=self._api_client), self)
+        self.trajectory_planning_api: wb.TrajectoryPlanningApi = intercept(wb.TrajectoryPlanningApi(api_client=self._api_client), self)
+        self.trajectory_execution_api: wb.TrajectoryExecutionApi = intercept(wb.TrajectoryExecutionApi(api_client=self._api_client), self)
         self.motion_group_infos_api = intercept(
             wb.MotionGroupInfoApi(api_client=self._api_client), self
         )

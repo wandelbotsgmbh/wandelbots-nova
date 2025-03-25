@@ -1,7 +1,7 @@
 from functools import singledispatch
 from typing import Any, Callable
 
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 
 from nova.actions import MovementControllerContext
 from nova.core import logger
@@ -27,39 +27,40 @@ def _(movement: wb.models.Movement) -> MotionState:
     if (
         movement.movement.state is None
         or movement.movement.current_location is None
-        or len(movement.movement.state.motion_groups) == 0
+        or len(movement.movement.state.active_motion_groups) == 0
     ):
         assert False, "This should not happen"  # depending on NC-1105
 
     # TODO: in which cases do we have more than one motion group here?
-    motion_group = movement.movement.state.motion_groups[0]
+    motion_group = movement.movement.state.active_motion_groups[0]
     return motion_group_state_to_motion_state(
         motion_group, float(movement.movement.current_location)
     )
 
 
 @movement_to_motion_state.register
-def _(movement: wb.models.StreamMoveResponse) -> MotionState:
+def _(movement: wb.models.MoveToTrajectoryViaJointPTPResponse) -> MotionState:
     """Convert a wb.models.Movement to a MotionState."""
     if (
-        movement.move_response is None
-        or movement.state is None
-        or movement.move_response.current_location_on_trajectory is None
-        or len(movement.state.motion_groups) == 0
+        movement.actual_instance is None
+        or isinstance(movement.actual_instance, wb.models.Standstill)
+        or movement.actual_instance.movement.state is None
+        or movement.actual_instance.movement.current_location is None
+        or len(movement.actual_instance.movement.state.active_motion_groups) == 0
     ):
         assert False, "This should not happen"  # depending on NC-1105
 
     # TODO: in which cases do we have more than one motion group here?
-    motion_group = movement.state.motion_groups[0]
+    motion_group = movement.actual_instance.movement.state.active_motion_groups[0]
     return motion_group_state_to_motion_state(
-        motion_group, float(movement.move_response.current_location_on_trajectory)
+        motion_group, float(movement.actual_instance.movement.current_location)
     )
 
 
 def motion_group_state_to_motion_state(
     motion_group_state: wb.models.MotionGroupState, path_parameter: float
 ) -> MotionState:
-    tcp_pose = Pose(motion_group_state.tcp_pose)
+    tcp_pose = Pose(tuple(motion_group_state.tcp_pose.position + motion_group_state.tcp_pose.orientation))
     joints = (
         tuple(motion_group_state.joint_current.joints) if motion_group_state.joint_current else None
     )
@@ -70,6 +71,7 @@ def motion_group_state_to_motion_state(
     )
 
 
+# TODO: when the message exchange is not working as expected we should gracefully close
 def move_forward(context: MovementControllerContext) -> MovementControllerFunction:
     """
     movement_controller is an async function that yields requests to the server.
@@ -80,8 +82,18 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
+        print("init movement")
         # The first request is to initialize the movement
-        yield wb.models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)  # type: ignore
+        yield wb.models.InitializeMovementRequest(
+            message_type="InitializeMovementRequest",
+            trajectory=wb.models.InitializeMovementRequestTrajectory(
+                wb.models.TrajectoryId(
+                    message_type="TrajectoryId",
+                    id=context.motion_id,
+                )
+            ),
+            initial_location=0
+        )  # type: ignore
 
         # then we get the response
         initialize_movement_response = await anext(response_stream)
@@ -90,16 +102,21 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         ):
             r1 = initialize_movement_response.actual_instance
             if not r1.init_response.succeeded:
+                print("init movement failed")
                 raise InitMovementFailed(r1.init_response)
 
         # The second request is to start the movement
+        print("start movement")
         set_io_list = context.combined_actions.to_set_io()
         yield wb.models.StartMovementRequest(
+            message_type="StartMovementRequest",
+            direction=wb.models.Direction.DIRECTION_FORWARD,
             set_ios=set_io_list, start_on_io=None, pause_on_io=None
         )  # type: ignore
 
         # then we wait until the movement is finished
         async for execute_trajectory_response in response_stream:
+            print("response streams")
             instance = execute_trajectory_response.actual_instance
             # Stop when standstill indicates motion ended
             if isinstance(instance, wb.models.Standstill):
