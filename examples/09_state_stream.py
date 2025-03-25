@@ -5,7 +5,6 @@ Example: Obtain and print a state stream info from a robot cell.
 import asyncio
 from argparse import ArgumentParser
 from contextlib import suppress
-from pprint import pformat
 
 from decouple import config
 from icecream import ic
@@ -23,9 +22,8 @@ async def main(controller_name: str = "controller") -> None:
         ic(controller)
 
         rc = RobotCell(**{controller_name: controller})
-        async for device_state in rc.stream_state(rate_msecs=500):
-            state = pformat(device_state)
-            ic(state)
+        async for controller_state in rc.stream_state(rate_msecs=500):
+            ic(controller_state)
 
 
 if __name__ == "__main__":
