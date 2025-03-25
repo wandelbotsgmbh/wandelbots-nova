@@ -1,11 +1,3 @@
-import asyncio
-from math import pi
-
-from nova import MotionGroup, Nova
-from nova.actions import cartesian_ptp
-from nova.api import models
-from nova.types import Pose
-
 """
 Example: Move multiple robots to perform coordinated movements.
 
@@ -15,6 +7,14 @@ Prerequisites:
     - NOVA_API=<api>
     - NOVA_ACCESS_TOKEN=<token>
 """
+
+import asyncio
+from math import pi
+
+from nova import MotionGroup, Nova
+from nova.actions import cartesian_ptp
+from nova.api import models
+from nova.types import Pose
 
 
 async def move_robot(motion_group: MotionGroup, tcp: str):

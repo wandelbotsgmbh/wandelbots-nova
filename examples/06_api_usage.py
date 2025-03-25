@@ -1,8 +1,8 @@
-from nova.api import models
-
 """
 Example: Demonstrates how to use and access API models in the Wandelbots NOVA SDK.
 """
+
+from nova.api import models
 
 
 def main():
