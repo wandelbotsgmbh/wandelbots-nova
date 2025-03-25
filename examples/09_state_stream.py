@@ -6,24 +6,18 @@ import asyncio
 from argparse import ArgumentParser
 from contextlib import suppress
 
-from decouple import config
-from icecream import ic
-
 from nova import Nova
 from nova.core.robot_cell import RobotCell
 
-NOVA_API = config("NOVA_API")
-
 
 async def main(controller_name: str = "controller") -> None:
-    async with Nova(host=NOVA_API) as nova:
+    async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.controller(controller_name)
-        ic(controller)
 
         rc = RobotCell(**{controller_name: controller})
         async for controller_state in rc.stream_state(rate_msecs=500):
-            ic(controller_state)
+            print(controller_state)
 
 
 if __name__ == "__main__":
