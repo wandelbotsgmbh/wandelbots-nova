@@ -180,7 +180,7 @@ class StoppableDevice(Protocol):
 class StateStreamingDevice(Protocol):
     """A device which supports streaming its state"""
 
-    def stream_state(self, rate: int) -> AsyncIterable[AbstractDeviceState]:
+    def stream_state(self, rate_msecs: int) -> AsyncIterable[AbstractDeviceState]:
         """Read a value given its key
         Args:
             rate: The rate at which the state should be streamed
