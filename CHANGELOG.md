@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.47.10 (2025-03-25)
+
+### Bug Fixes
+
+- **RPS-1217**: State streaming ([#128](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/128),
+  [`81ee4e0`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/81ee4e02674f2827bbfd5a98a516c2fcac162f6c))
+
+Co-authored-by: Andreas Langenhagen <andreas.langenhagen@wandelbots.com>
+
+Co-authored-by: Dirk Sonnemann <dirk.sonnemann@gmail.com>
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.47.9 (2025-03-20)
 
 ### Bug Fixes
