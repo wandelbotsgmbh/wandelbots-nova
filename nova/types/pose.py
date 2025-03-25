@@ -4,7 +4,7 @@ from typing import Iterable, Sized
 
 import numpy as np
 import pydantic
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 from scipy.spatial.transform import Rotation
 
 from nova.types.vector3d import Vector3d
@@ -54,10 +54,6 @@ class Pose(pydantic.BaseModel, Sized):
         Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
         >>> Pose((1, 2, 3))
         Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=0, y=0, z=0))
-        >>> Pose(wb.models.Pose(position=wb.models.Vector3d(x=1, y=2, z=3), orientation=wb.models.Vector3d(x=4, y=5, z=6)))
-        Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
-        >>> Pose(wb.models.TcpPose(position=wb.models.Vector3d(x=1, y=2, z=3), orientation=wb.models.Vector3d(x=4, y=5, z=6), coordinate_system=None, tcp='Flange'))
-        Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
         >>> Pose(wb.models.Pose2(position=[1, 2, 3], orientation=[4, 5, 6]))
         Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
         """
@@ -194,8 +190,8 @@ class Pose(pydantic.BaseModel, Sized):
         Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3), coordinate_system=None)
         """
         return wb.models.Pose(
-            position=wb.models.Vector3d(**self.position.model_dump()),
-            orientation=wb.models.Vector3d(**self.orientation.model_dump()),
+            position=[self.position.x, self.position.y, self.position.z],
+            orientation=[self.orientation.x, self.orientation.y, self.orientation.z],
         )
 
     def _to_wb_pose2(self) -> wb.models.Pose2:

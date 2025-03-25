@@ -2,10 +2,9 @@ import asyncio
 from typing import AsyncIterable, cast
 
 import wandelbots_api_client.v2 as wb
-import wandelbots_api_client.v2 as wb_v2
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
-from nova.actions.motions import CollisionFreeMotion, Motion
+from nova.actions.motions import Motion
 from nova.api import models
 from nova.core import logger
 from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, PlanTrajectoryFailed
@@ -42,8 +41,6 @@ def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
         if (
             # Start a new batch if:
             not batches  # first action no batches yet
-            or isinstance(action, CollisionFreeMotion)
-            or isinstance(batches[-1][-1], CollisionFreeMotion)
         ):
             batches.append([action])
         else:
@@ -124,6 +121,8 @@ class MotionGroup(AbstractRobot):
         #    raise ValueError("No MotionId attached. There is no planned motion available.")
         return self._current_motion
 
+    # TODO: This method is no longer collision check, it generates a trajectory which avoids collisons
+    #       need to double check
     async def _plan_with_collision_check(
         self,
         actions: list[Action],
@@ -189,6 +188,7 @@ class MotionGroup(AbstractRobot):
 
         # EXECUTE THE API CALL
         plan_trajectory_response = await self._trajectory_planning_api.plan_trajectory(
+            # TODO: how to get rid of this type error?
             cell=self._cell, plan_trajectory_request=request
         )
         if isinstance(
@@ -206,7 +206,7 @@ class MotionGroup(AbstractRobot):
         collision_scenes = [
             action.collision_scene
             for action in actions
-            if isinstance(action, CollisionFreeMotion) and action.collision_scene is not None
+            if isinstance(action, Motion) and action.collision_scene is not None
         ]
 
         if len(collision_scenes) != 0 and len(collision_scenes) != motion_count:
@@ -245,18 +245,15 @@ class MotionGroup(AbstractRobot):
             if len(batch) == 0:
                 raise ValueError("Empty batch of actions")
 
-            if isinstance(batch[0], CollisionFreeMotion):
-                raise ValueError("No need to have collision free p2p anymore")
-            else:
-                trajectory = await self._plan_with_collision_check(
-                    actions=batch,
-                    tcp=tcp,
-                    start_joint_position=current_joints,
-                    optimizer_setup=robot_setup,
-                )
-                all_trajectories.append(trajectory)
-                # the last joint position of this trajectory is the starting point for the next one
-                current_joints = tuple(trajectory.joint_positions[-1].joints)
+            trajectory = await self._plan_with_collision_check(
+                actions=batch,
+                tcp=tcp,
+                start_joint_position=current_joints,
+                optimizer_setup=robot_setup,
+            )
+            all_trajectories.append(trajectory)
+            # the last joint position of this trajectory is the starting point for the next one
+            current_joints = tuple(trajectory.joint_positions[-1].joints)
 
         return combine_trajectories(all_trajectories)
 
@@ -375,7 +372,7 @@ class MotionGroup(AbstractRobot):
     async def stop(self):
         logger.debug(f"Stopping motion of {self}...")
         try:
-            # We need to stop this within the web socket now, PauseMovementRequest
+            # TODO: We need to stop this within the web socket now, PauseMovementRequest
             await self._motion_api_client.stop_execution(
                 cell=self._cell, motion=self.current_motion
             )
@@ -384,7 +381,7 @@ class MotionGroup(AbstractRobot):
             logger.debug(f"No motion to stop for {self}: {e}")
 
     async def get_state(self, tcp: str | None = None) -> RobotState:
-        response: wb_v2.models.MotionGroupState = await self._api_gateway.motion_group_infos_api.get_current_motion_group_state(
+        response: wb.models.MotionGroupState = await self._api_gateway.motion_group_infos_api.get_current_motion_group_state(
             cell=self._cell, motion_group=self.motion_group_id
         )
         return RobotState(

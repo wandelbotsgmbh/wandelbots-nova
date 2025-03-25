@@ -21,7 +21,7 @@ T = TypeVar("T")
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 
 
-def intercept(api_instance: T, gateway: "ApiGateway"):
+def intercept(api_instance: T, gateway: "ApiGateway") -> T:
     class Interceptor:
         def __init__(self, instance: T):
             self._instance = instance
@@ -147,15 +147,16 @@ class ApiGateway:
         self.system_api = intercept(wb.SystemApi(api_client=self._api_client), self)
         self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client), self)
         self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client), self)
-        #self.motion_api = intercept(wb.MotionApi(api_client=self._api_client), self)
+        # TODO: auto type inference seems to be not fully working
         self.trajectory_planning_api: wb.TrajectoryPlanningApi = intercept(wb.TrajectoryPlanningApi(api_client=self._api_client), self)
         self.trajectory_execution_api: wb.TrajectoryExecutionApi = intercept(wb.TrajectoryExecutionApi(api_client=self._api_client), self)
         self.motion_group_infos_api = intercept(
             wb.MotionGroupInfoApi(api_client=self._api_client), self
         )
-        #self.motion_group_kinematic_api = intercept(
-        #    wb.MotionGroupKinematicApi(api_client=self._api_client), self
-        #)
+
+        self.motion_group_kinematic_api = intercept(
+            wb.MotionGroupKinematicsApi(api_client=self._api_client), self
+        )
 
         self.store_collision_components_api = intercept(
             wb.StoreCollisionComponentsApi(api_client=self._api_client), self

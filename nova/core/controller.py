@@ -81,7 +81,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
                 cell=self.configuration.cell_id, controller=self.configuration.controller_id
             )
         )
-        motion_groups = activate_all_motion_groups_response.instances
+        motion_groups = activate_all_motion_groups_response.motion_groups
         return [mg.motion_group for mg in motion_groups]
 
     async def activated_motion_groups(self) -> list[MotionGroup]:

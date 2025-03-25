@@ -302,7 +302,7 @@ class AbstractRobot(Device):
         ) -> MotionState:
             if isinstance(movement_response, api.models.ExecuteTrajectoryResponse):
                 return movement_to_motion_state(movement_response.actual_instance)
-            if isinstance(movement_response, api.models.StreamMoveResponse):
+            if isinstance(movement_response, api.models.MoveToTrajectoryViaJointPTPResponse):
                 return movement_to_motion_state(movement_response)
             assert False, f"Unexpected movement response: {movement_response}"
 

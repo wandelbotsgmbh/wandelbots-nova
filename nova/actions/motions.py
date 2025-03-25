@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Literal
 
 import pydantic
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 
 from nova import api
 from nova.actions.base import Action
@@ -12,36 +12,6 @@ from nova.types.pose import Pose
 PoseOrVectorTuple = (
     Pose | tuple[float, float, float, float, float, float] | tuple[float, float, float]
 )
-
-
-class CollisionFreeMotion(Action):
-    """A motion that is collision free"""
-
-    type: Literal["collision_free_ptp"] = "collision_free_ptp"
-    target: Pose | tuple[float, ...]
-    settings: MotionSettings = MotionSettings()
-    collision_scene: wb.models.CollisionScene | None = None
-
-    # TODO: couldn't find plan collision free ptp in the v2 api
-    def _to_api_model(self) -> wb.models.PlanCollisionFreePTPRequestTarget:
-        return wb.models.PlanCollisionFreePTPRequestTarget(
-            self.target._to_wb_pose2() if isinstance(self.target, Pose) else list(self.target)
-        )
-
-    @pydantic.model_serializer
-    def serialize_model(self):
-        return self._to_api_model().model_dump()
-
-    def is_motion(self) -> bool:
-        return True
-
-
-def collision_free(
-    target: Pose | tuple[float, ...],
-    settings: MotionSettings = MotionSettings(),
-    collision_scene: wb.models.CollisionScene | None = None,
-) -> CollisionFreeMotion:
-    return CollisionFreeMotion(target=target, settings=settings, collision_scene=collision_scene)
 
 
 class Motion(Action, ABC):

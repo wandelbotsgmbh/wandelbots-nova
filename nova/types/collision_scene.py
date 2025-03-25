@@ -1,4 +1,4 @@
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 
 
 def compare_collition_scenes(scene1: wb.models.CollisionScene, scene2: wb.models.CollisionScene):

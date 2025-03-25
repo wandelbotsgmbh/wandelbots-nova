@@ -4,9 +4,10 @@ from typing import Any
 
 import numpy as np
 import pydantic
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 
 
+# TODO: vector 3d is removed from the API client, do we want to keep this?
 class Vector3d(pydantic.BaseModel):
     """A vector 3d class
     Examples:
@@ -117,11 +118,12 @@ class Vector3d(pydantic.BaseModel):
         half_angle = np.linalg.norm(values) / 2
         return np.concatenate([np.cos(half_angle)[None], values * np.sinc(half_angle / np.pi) / 2])
 
+    # TODO: Do we need this function anymore?
     @pydantic.model_serializer
-    def serialize_model(self) -> wb.models.Vector3d:
+    def serialize_model(self) -> dict:
         """
         Examples:
         >>> Vector3d.from_tuple((1, 2, 3)).model_dump()
         {'x': 1, 'y': 2, 'z': 3}
         """
-        return wb.models.Vector3d(x=self.x, y=self.y, z=self.z)
+        return {"x": self.x, "y": self.y, "z": self.z}

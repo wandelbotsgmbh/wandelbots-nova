@@ -6,7 +6,8 @@ import asyncio
 
 from nova.auth.authorization import Auth0DeviceAuthorization
 
-
+# TODO: not tested with v2 apis, needs some config params which I don't have at the moment
+# NOVA_AUTH0_DOMAIN, NOVA_AUTH0_CLIENT_ID, NOVA_AUTH0_AUDIENCE
 async def main():
     auth0_device_auth = Auth0DeviceAuthorization()
 

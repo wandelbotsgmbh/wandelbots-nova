@@ -15,14 +15,14 @@ class IOType(Enum):
 
 class IOValueType(Enum):
     IO_VALUE_ANALOG_INTEGER = "IO_VALUE_ANALOG_INTEGER"
-    IO_VALUE_ANALOG_FLOATING = "IO_VALUE_ANALOG_FLOATING"
-    IO_VALUE_DIGITAL = "IO_VALUE_DIGITAL"
+    IO_VALUE_ANALOG_FLOATING = "IO_VALUE_ANALOG_FLOAT"
+    IO_VALUE_DIGITAL = "IO_VALUE_BOOLEAN"
 
 
 class ComparisonType(Enum):
-    COMPARISON_TYPE_EQUAL = "COMPARISON_TYPE_EQUAL"
-    COMPARISON_TYPE_GREATER = "COMPARISON_TYPE_GREATER"
-    COMPARISON_TYPE_LESS = "COMPARISON_TYPE_LESS"
+    COMPARISON_TYPE_EQUAL = "COMPARATOR_EQUALS"
+    COMPARISON_TYPE_GREATER = "COMPARATOR_GREATER"
+    COMPARISON_TYPE_LESS = "COMPARATOR_LESS"
 
 
 class IOAccess(Device):
@@ -72,18 +72,20 @@ class IOAccess(Device):
     async def read(self, key: str) -> bool | int | float:
         """Reads a value from a given IO"""
         async with self._io_operation_in_progress:
-            values = await self._controller_ios_api.list_io_values(
+            values: models.ListIOValuesResponse = await self._controller_ios_api.list_io_values(
                 cell=self._cell, controller=self._controller_id, ios=[key]
             )
-            io_value: models.IOValue = values.io_values[0]
+            io_value: models.SetOutputValuesRequestInner = values.io_values[0]
 
-        if io_value.boolean_value is not None:
-            return io_value.boolean_value
-        if io_value.integer_value is not None:
-            return int(io_value.integer_value)
-        if io_value.floating_value is not None:
-            return float(io_value.floating_value)
-        raise ValueError(f"IO value for {key} is of an unexpected type.")
+        if io_value.actual_instance is None:
+            raise ValueError(f"Error while reading the IO value")
+
+        if isinstance(io_value.actual_instance, models.IOBooleanValue):
+            return io_value.actual_instance.boolean_value
+        if isinstance(io_value.actual_instance, models.IOFloatValue):
+            return io_value.actual_instance.floating_value
+        if isinstance(io_value.actual_instance, models.IOIntegerValue):
+            return io_value.actual_instance.integer_value
 
     async def write(self, key: str, value: ValueType):
         """Set a value asynchronously (So a direct read after setting might return still the old value)"""
@@ -95,25 +97,27 @@ class IOAccess(Device):
                 raise ValueError(
                     f"Boolean value can only be set at an IO_VALUE_DIGITAL IO and not to {io_value_type}"
                 )
-            io_value = models.IOValue(io=key, boolean_value=value)
+            io_value = models.IOBooleanValue(io=key, boolean_value=value)
         elif isinstance(value, int):
             if io_value_type is not IOValueType.IO_VALUE_ANALOG_INTEGER:
                 raise ValueError(
                     f"Integer value can only be set at an IO_VALUE_ANALOG_INTEGER IO and not to {io_value_type}"
                 )
-            io_value = models.IOValue(io=key, integer_value=str(value))  # TODO: handle mask
+            io_value = models.IOIntegerValue(io=key, integer_value=str(value))  # TODO: handle mask
         elif isinstance(value, float):
             if io_value_type is not IOValueType.IO_VALUE_ANALOG_FLOATING:
                 raise ValueError(
                     f"Float value can only be set at an IO_VALUE_ANALOG_FLOATING IO and not to {io_value_type}"
                 )
-            io_value = models.IOValue(io=key, floating_value=value)
+            io_value = models.IOFloatValue(io=key, floating_value=value)
         else:
             raise ValueError(f"Unexpected type {type(value)}")
 
         async with self._io_operation_in_progress:
             await self._controller_ios_api.set_output_values(
-                cell=self._cell, controller=self._controller_id, io_value=[io_value]
+                cell=self._cell,
+                controller=self._controller_id,
+                set_output_values_request_inner=[models.SetOutputValuesRequestInner(io_value)],
             )
 
     async def wait_for_bool_io(self, io_id: str, value: bool):

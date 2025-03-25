@@ -82,7 +82,6 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
-        print("init movement")
         # The first request is to initialize the movement
         yield wb.models.InitializeMovementRequest(
             message_type="InitializeMovementRequest",
@@ -102,11 +101,9 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         ):
             r1 = initialize_movement_response.actual_instance
             if not r1.init_response.succeeded:
-                print("init movement failed")
                 raise InitMovementFailed(r1.init_response)
 
         # The second request is to start the movement
-        print("start movement")
         set_io_list = context.combined_actions.to_set_io()
         yield wb.models.StartMovementRequest(
             message_type="StartMovementRequest",
@@ -116,7 +113,6 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
         # then we wait until the movement is finished
         async for execute_trajectory_response in response_stream:
-            print("response streams")
             instance = execute_trajectory_response.actual_instance
             # Stop when standstill indicates motion ended
             if isinstance(instance, wb.models.Standstill):
