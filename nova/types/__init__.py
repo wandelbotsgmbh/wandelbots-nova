@@ -19,7 +19,6 @@ MovementControllerFunction = Callable[
 __all__ = [
     "Vector3d",
     "Pose",
-    "CollisionScene",
     "LoadPlanResponse",
     "InitialMovementStream",
     "InitialMovementConsumer",

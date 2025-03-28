@@ -2,7 +2,12 @@
 from wandelbots_api_client import *  # noqa
 from wandelbots_api_client import api, api_client, configuration, exceptions, models
 
+# Export the new structured API components
+from nova.api.factory import ApiFactory
+from nova.api.types import ApiInterface, ControllerIO
+
 __all__ = [
+    # Original exports
     "models",
     "api",
     "api_client",
@@ -17,4 +22,8 @@ __all__ = [
     "ApiKeyError",  # noqa: F405
     "ApiAttributeError",  # noqa: F405
     "ApiException",  # noqa: F405
+    # New structured API exports
+    "ApiFactory",
+    "ApiInterface",
+    "ControllerIO",
 ]
