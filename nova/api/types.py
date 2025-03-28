@@ -1,6 +1,6 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 
 @dataclass
@@ -11,7 +11,7 @@ class ControllerIO:
     value: bool | int | float
 
 
-class ApiInterface(ABC):
+class ApiInterface(Protocol):
     """Base interface for API clients regardless of version"""
 
     @abstractmethod
