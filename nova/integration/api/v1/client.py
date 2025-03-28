@@ -2,7 +2,7 @@ from typing import Any
 
 import wandelbots_api_client as wb
 
-from nova.api.types import ApiInterface, ControllerIO, SystemInfo, SystemVersion
+from nova.integration.api.types import ApiInterface, ControllerIO, SystemInfo, SystemVersion
 from nova.version import version as pkg_version
 
 
