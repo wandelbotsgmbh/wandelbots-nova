@@ -5,7 +5,7 @@ from typing import Any
 import wandelbots_api_client as wb_v1
 import wandelbots_api_client.v2 as wb_v2
 
-from nova.api.types import ApiInterface, ControllerIO
+from nova.integration.api.types import ApiInterface, ControllerIO
 from nova.version import version as pkg_version
 
 from .operation_registry import OPERATIONS
