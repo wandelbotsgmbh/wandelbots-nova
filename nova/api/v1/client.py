@@ -2,7 +2,7 @@ from typing import Any
 
 import wandelbots_api_client as wb
 
-from nova.api.types import ApiInterface, ControllerIO
+from nova.api.types import ApiInterface, ControllerIO, SystemInfo, SystemVersion
 from nova.version import version as pkg_version
 
 
@@ -23,6 +23,7 @@ class ApiClient(ApiInterface):
 
         self._init_v1_client()
         self.controller_io = wb.ControllerIOsApi(api_client=self._api_client)
+        self.system_api = wb.SystemApi(api_client=self._api_client)
 
     def _init_v1_client(self):
         api_client_config = wb.Configuration(
@@ -53,6 +54,33 @@ class ApiClient(ApiInterface):
         """Set the value of a specific IO"""
         io_value = wb.models.IOValue(name=io_name, value=value)
         await self.controller_io.set(cell=cell, controller=controller, io_value=io_value)
+
+    async def get_system_info(self) -> SystemInfo:
+        """Get system information"""
+        response = await self.system_api.info()
+
+        # Convert the response to our SystemInfo type
+        version = SystemVersion(
+            major=response.version.major_version,
+            minor=response.version.minor_version,
+            patch=response.version.patch_version,
+            build=response.version.build_version,
+            version_string=response.version.version_string,
+        )
+
+        return SystemInfo(name=response.name, description=response.description, version=version)
+
+    async def get_system_version(self) -> SystemVersion:
+        """Get system version information"""
+        response = await self.system_api.version()
+
+        return SystemVersion(
+            major=response.major_version,
+            minor=response.minor_version,
+            patch=response.patch_version,
+            build=response.build_version,
+            version_string=response.version_string,
+        )
 
     async def close(self) -> None:
         """Close the API client session"""
