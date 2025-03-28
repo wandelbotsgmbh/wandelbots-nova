@@ -9,12 +9,12 @@ from typing import TypeVar
 import wandelbots_api_client as wb
 from decouple import config
 
-from nova.api.client import ApiClient, ApiInterface
 from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.core import logger
 from nova.core.env_handler import set_key
 from nova.core.robot_cell import ConfigurablePeriphery, Device
+from nova.integration.api.client import ApiClient, ApiInterface
 from nova.version import version as pkg_version
 
 T = TypeVar("T")
