@@ -9,6 +9,7 @@ from typing import TypeVar
 import wandelbots_api_client as wb
 from decouple import config
 
+from nova.api.client import ApiClient, ApiInterface
 from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.core import logger
@@ -129,6 +130,15 @@ class ApiGateway:
 
         self._init_api_client()
 
+        self._new_api_interface: ApiInterface = ApiClient(
+            host=self._host,
+            username=username,
+            password=password,
+            access_token=access_token,
+            verify_ssl=verify_ssl,
+            version=version,
+        )
+
     def _init_api_client(self):
         """Initialize or reinitialize the API client with current credentials"""
         stripped_host = self._host.rstrip("/")
@@ -179,7 +189,8 @@ class ApiGateway:
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
     async def close(self):
-        return await self._api_client.close()
+        await self._api_client.close()
+        await self._new_api_interface.close()
 
     async def _ensure_valid_token(self):
         """Ensure we have a valid access token, requesting a new one if needed"""

@@ -31,3 +31,6 @@ class ApiClient(ApiInterface):
 
     async def set_io_value(self, cell: str, controller: str, io_name: str, value: Any) -> None:
         return await self.client.set_io_value(cell, controller, io_name, value)
+
+    async def close(self) -> None:
+        return await self.client.close()
