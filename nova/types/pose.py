@@ -11,7 +11,7 @@ from nova.types.vector3d import Vector3d
 
 
 def _parse_args(*args):
-    """Parse the arguments and return a dictionary that is pydanctic can validate"""
+    """Parse the arguments and return a dictionary that pydanctic can validate"""
     if len(args) == 1 and (
         isinstance(args[0], wb.models.Pose) or isinstance(args[0], wb.models.TcpPose)
     ):
