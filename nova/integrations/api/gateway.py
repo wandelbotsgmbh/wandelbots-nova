@@ -4,6 +4,7 @@ import asyncio
 import functools
 import time
 from abc import ABC
+from enum import Enum
 from typing import AsyncGenerator, TypeVar
 
 import wandelbots_api_client as wb
@@ -19,6 +20,12 @@ from nova.version import version as pkg_version
 T = TypeVar("T")
 
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
+
+
+class ComparisonType(Enum):
+    COMPARISON_TYPE_EQUAL = "COMPARISON_TYPE_EQUAL"
+    COMPARISON_TYPE_GREATER = "COMPARISON_TYPE_GREATER"
+    COMPARISON_TYPE_LESS = "COMPARISON_TYPE_LESS"
 
 
 def intercept(api_instance: T, gateway: "ApiGateway") -> T:
@@ -259,6 +266,8 @@ class ApiGateway:
     def password(self) -> str | None:
         return self._password
 
+    # TODO: update function signatures and make sure you don't just use the default values
+    #       how to handle default but required values?
     async def stream_robot_controller_state(
         self, *, cell: str = None, controller_id: str = None, response_rate: int = 200
     ) -> AsyncGenerator[wb.models.RobotControllerState, None]:
@@ -326,6 +335,15 @@ class ApiGateway:
 
         await self.controller_ios_api.set_output_values(
             cell=cell, controller=controller, io_value=[io_value]
+        )
+
+    async def wait_for_bool_io(self, io: str, value: bool):
+        await self.controller_ios_api.wait_for_io_event(
+            cell=self._cell,
+            controller=self._controller_id,
+            io=io,
+            comparison_type=ComparisonType.COMPARISON_TYPE_EQUAL,
+            boolean_value=value,
         )
 
 

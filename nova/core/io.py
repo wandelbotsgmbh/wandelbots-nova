@@ -19,12 +19,6 @@ class IOValueType(Enum):
     IO_VALUE_DIGITAL = "IO_VALUE_DIGITAL"
 
 
-class ComparisonType(Enum):
-    COMPARISON_TYPE_EQUAL = "COMPARISON_TYPE_EQUAL"
-    COMPARISON_TYPE_GREATER = "COMPARISON_TYPE_GREATER"
-    COMPARISON_TYPE_LESS = "COMPARISON_TYPE_LESS"
-
-
 class IOAccess(Device):
     """Provides access to input and outputs via a dictionary-like style
 
@@ -39,7 +33,6 @@ class IOAccess(Device):
     def __init__(self, api_gateway: ApiGateway, cell: str, controller_id: str):
         super().__init__()
         self._api_gateway = api_gateway
-        self._controller_ios_api = api_gateway.controller_ios_api
         self._cell = cell
         self._controller_id = controller_id
         self._io_operation_in_progress = asyncio.Lock()
@@ -56,6 +49,9 @@ class IOAccess(Device):
             }
         return cache[self._controller_id]
 
+    # TODO: IOType and IOValueType are referencing what is in the API, but not the actual type,
+    #       this is problamatic because when we move to API V2 these valuese will have to change or map
+    #       need to find a better solution here
     @staticmethod
     def filter_io_descriptions(
         io_descriptions: dict[str, models.IODescription],
@@ -107,13 +103,8 @@ class IOAccess(Device):
         else:
             raise ValueError(f"Unexpected type {type(value)}")
 
-    async def wait_for_bool_io(self, io_id: str, value: bool):
+    async def wait_for_bool_io(self, io: str, value: bool):
         """Blocks until the requested IO equals the provided value."""
-        # TODO proper implementation utilising also the comparison operators
-        await self._controller_ios_api.wait_for_io_event(
-            cell=self._cell,
-            controller=self._controller_id,
-            io=io_id,
-            comparison_type=ComparisonType.COMPARISON_TYPE_EQUAL,
-            boolean_value=value,
+        await self._api_gateway.wait_for_bool_io(
+            cell=self._cell, controller=self._controller_id, io=io, value=value
         )
