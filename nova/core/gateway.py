@@ -21,7 +21,7 @@ T = TypeVar("T")
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 
 
-def intercept(api_instance: T, gateway: "ApiGateway"):
+def intercept(api_instance: T, gateway: "ApiGateway") -> T:
     class Interceptor:
         def __init__(self, instance: T):
             self._instance = instance
@@ -126,8 +126,6 @@ class ApiGateway:
         self._access_token = access_token
         self._username = username
         self._password = password
-
-        self._init_api_client()
 
     def _init_api_client(self):
         """Initialize or reinitialize the API client with current credentials"""

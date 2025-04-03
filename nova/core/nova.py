@@ -73,6 +73,7 @@ class Nova:
         return await self._api_client.close()
 
     async def __aenter__(self):
+        self._api_client._init_api_client()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
