@@ -2,10 +2,10 @@ from typing import AsyncGenerator, Literal, Sized
 
 from nova.api import models
 from nova.core import logger
-from nova.core.gateway import NovaDevice
 from nova.core.io import IOAccess
 from nova.core.motion_group import MotionGroup
 from nova.core.robot_cell import AbstractController, AbstractRobot, IODevice, ValueType
+from nova.integrations.api.gateway import NovaDevice
 
 
 class Controller(Sized, AbstractController, NovaDevice, IODevice):
@@ -21,8 +21,6 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
 
     def __init__(self, configuration: Configuration):
         super().__init__(configuration)
-        self._controller_api = self._nova_api.controller_api
-        self._motion_group_api = self._nova_api.motion_group_api
         self._activated_motion_group_ids: list[str] = []
         self._io_access = IOAccess(
             api_gateway=self._nova_api,
@@ -77,13 +75,9 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         Returns:
             list[str]: A list of activated motion group IDs (e.g., ["0@controller_id"]).
         """
-        activate_all_motion_groups_response = (
-            await self._motion_group_api.activate_all_motion_groups(
-                cell=self.configuration.cell_id, controller=self.configuration.controller_id
-            )
+        return self._nova_api.activate_all_motion_groups(
+            cell=self.configuration.cell_id, controller=self.configuration.controller_id
         )
-        motion_groups = activate_all_motion_groups_response.instances
-        return [mg.motion_group for mg in motion_groups]
 
     async def activated_motion_groups(self) -> list[MotionGroup]:
         """Retrieves a list of `MotionGroup` instances for all activated motion groups.
@@ -130,7 +124,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         return await self._io_access.write(key, value)
 
     async def stream_state(self, rate_msecs) -> AsyncGenerator[models.RobotControllerState, None]:
-        async for state in self._controller_api.stream_robot_controller_state(
+        async for state in self._nova_api.stream_robot_controller_state(
             cell=self.configuration.cell_id,
             controller=self.configuration.controller_id,
             response_rate=rate_msecs,

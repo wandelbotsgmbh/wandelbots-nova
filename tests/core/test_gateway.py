@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from nova.core.gateway import ApiGateway
+from nova.integrations.api.gateway import ApiGateway
 
 
 @pytest.fixture

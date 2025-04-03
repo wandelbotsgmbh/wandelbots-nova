@@ -4,8 +4,8 @@ import asyncio
 from enum import Enum
 
 from nova.api import models
-from nova.core.gateway import ApiGateway
 from nova.core.robot_cell import Device, ValueType
+from nova.integrations.api.gateway import ApiGateway
 
 
 class IOType(Enum):
@@ -48,8 +48,8 @@ class IOAccess(Device):
         cache = self.__class__.io_descriptions_cache
         if self._controller_id not in cache:
             # empty list fetches all
-            response = await self._controller_ios_api.list_io_descriptions(
-                cell=self._cell, controller=self._controller_id, ios=None
+            response = await self._api_gateway.list_controller_io_descriptions(
+                cell=self._cell, controller=self._controller_id
             )
             cache[self._controller_id] = {
                 description.id: description for description in response.io_descriptions
@@ -72,7 +72,7 @@ class IOAccess(Device):
     async def read(self, key: str) -> bool | int | float:
         """Reads a value from a given IO"""
         async with self._io_operation_in_progress:
-            values = await self._controller_ios_api.list_io_values(
+            values = await self._api_gateway.list_controller_io_descriptions(
                 cell=self._cell, controller=self._controller_id, ios=[key]
             )
             io_value: models.IOValue = values.io_values[0]

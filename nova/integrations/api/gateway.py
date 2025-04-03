@@ -4,7 +4,7 @@ import asyncio
 import functools
 import time
 from abc import ABC
-from typing import TypeVar
+from typing import AsyncGenerator, TypeVar
 
 import wandelbots_api_client as wb
 from decouple import config
@@ -21,7 +21,9 @@ T = TypeVar("T")
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 
 
-def intercept(api_instance: T, gateway: "ApiGateway"):
+def intercept(api_instance: T, gateway: "ApiGateway") -> T:
+    """Extend api interface classes to add logging and token validation"""
+
     class Interceptor:
         def __init__(self, instance: T):
             self._instance = instance
@@ -256,6 +258,37 @@ class ApiGateway:
     @property
     def password(self) -> str | None:
         return self._password
+
+    async def stream_robot_controller_state(
+        self, *, cell: str = None, controller_id: str = None, response_rate: int = 200
+    ) -> AsyncGenerator[wb.models.RobotControllerState, None]:
+        """
+        Stream the robot controller state.
+        """
+        async for state in self.controller_api.stream_robot_controller_state(
+            cell=cell, controller=controller_id, response_rate=response_rate
+        ):
+            yield state
+
+    async def activate_all_motion_groups(
+        self, *, cell: str = None, controller: str = None
+    ) -> list[str]:
+        """
+        Activate all motion groups for the given cell and controller.
+        Returns the id of the activated motion groups.
+        """
+        activate_all_motion_groups_response = (
+            await self.motion_group_api.activate_all_motion_groups(cell=cell, controller=controller)
+        )
+        motion_groups = activate_all_motion_groups_response.instances
+        return [mg.motion_group for mg in motion_groups]
+
+    async def list_controller_io_descriptions(
+        self, *, cell: str = None, controller: str = None, ios: list[str] = []
+    ) -> list[wb.models.ControllerIODescription]:
+        await self.controller_ios_api.list_io_descriptions(
+            cell=cell, controller=controller, ios=ios
+        )
 
 
 class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
