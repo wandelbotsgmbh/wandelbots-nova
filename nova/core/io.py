@@ -71,22 +71,21 @@ class IOAccess(Device):
 
     async def read(self, key: str) -> bool | int | float:
         """Reads a value from a given IO"""
-        async with self._io_operation_in_progress:
-            values = await self._api_gateway.list_controller_io_descriptions(
-                cell=self._cell, controller=self._controller_id, ios=[key]
-            )
-            io_value: models.IOValue = values.io_values[0]
-
-        if io_value.boolean_value is not None:
-            return io_value.boolean_value
-        if io_value.integer_value is not None:
-            return int(io_value.integer_value)
-        if io_value.floating_value is not None:
-            return float(io_value.floating_value)
-        raise ValueError(f"IO value for {key} is of an unexpected type.")
+        return self._api_gateway.get_controller_io(
+            cell=self._cell, controller=self._controller_id, io=key
+        )
 
     async def write(self, key: str, value: ValueType):
         """Set a value asynchronously (So a direct read after setting might return still the old value)"""
+        await self._ensure_value_type(key, value)
+
+        async with self._io_operation_in_progress:
+            await self._api_gateway.write_controller_io(
+                cell=self._cell, controller=self._controller_id, io=key, value=value
+            )
+
+    async def _ensure_value_type(self, key: str, value: ValueType):
+        """Checks if the provided value matches the expected type of the IO"""
         io_descriptions = await self.get_io_descriptions()
         io_description = io_descriptions[key]
         io_value_type = IOValueType(io_description.value_type)
@@ -95,26 +94,18 @@ class IOAccess(Device):
                 raise ValueError(
                     f"Boolean value can only be set at an IO_VALUE_DIGITAL IO and not to {io_value_type}"
                 )
-            io_value = models.IOValue(io=key, boolean_value=value)
         elif isinstance(value, int):
             if io_value_type is not IOValueType.IO_VALUE_ANALOG_INTEGER:
                 raise ValueError(
                     f"Integer value can only be set at an IO_VALUE_ANALOG_INTEGER IO and not to {io_value_type}"
                 )
-            io_value = models.IOValue(io=key, integer_value=str(value))  # TODO: handle mask
         elif isinstance(value, float):
             if io_value_type is not IOValueType.IO_VALUE_ANALOG_FLOATING:
                 raise ValueError(
                     f"Float value can only be set at an IO_VALUE_ANALOG_FLOATING IO and not to {io_value_type}"
                 )
-            io_value = models.IOValue(io=key, floating_value=value)
         else:
             raise ValueError(f"Unexpected type {type(value)}")
-
-        async with self._io_operation_in_progress:
-            await self._controller_ios_api.set_output_values(
-                cell=self._cell, controller=self._controller_id, io_value=[io_value]
-            )
 
     async def wait_for_bool_io(self, io_id: str, value: bool):
         """Blocks until the requested IO equals the provided value."""

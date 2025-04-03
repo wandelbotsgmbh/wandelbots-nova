@@ -290,6 +290,44 @@ class ApiGateway:
             cell=cell, controller=controller, ios=ios
         )
 
+    async def get_controller_io(
+        self, *, cell: str = None, controller: str = None, io: str = None
+    ) -> float | bool | int:
+        io_descriptions = await self.list_controller_io_descriptions(
+            cell=cell, controller=controller, ios=[io]
+        )
+
+        if not io_descriptions or len(io_descriptions) == 0:
+            raise ValueError(f"IO {io} not found on controller {controller} in cell {cell}")
+        if len(io_descriptions) > 1:
+            raise ValueError(
+                f"Multiple IO descriptions found for {io} on controller {controller} in cell {cell}"
+            )
+        io = io_descriptions[0]
+        if io.boolean_value is not None:
+            return io.boolean_value
+        if io.integer_value is not None:
+            return int(io.integer_value)
+        if io.floating_value is not None:
+            return float(io.floating_value)
+        raise ValueError(
+            f"IO value for {io} is of an unexpected type. Expected bool, int or float."
+        )
+
+    async def write_controller_io(
+        self, *, cell: str, controller: str, io: str, value: bool | int | float
+    ):
+        if isinstance(value, bool):
+            io_value = wb.models.IOValue(io=io, boolean_value=value)
+        elif isinstance(value, int):
+            io_value = wb.models.IOValue(io=io, integer_value=value)
+        elif isinstance(value, float):
+            io_value = wb.models.IOValue(io=io, floating_value=value)
+
+        await self.controller_ios_api.set_output_values(
+            cell=cell, controller=controller, io_value=[io_value]
+        )
+
 
 class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
     class Configuration(ConfigurablePeriphery.Configuration):
