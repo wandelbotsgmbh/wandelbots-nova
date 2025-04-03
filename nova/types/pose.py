@@ -229,7 +229,7 @@ class Pose(pydantic.BaseModel, Sized):
     def model_validator(cls, data):
         """Transform the data that is passed into model validator to match what we return in the model_dump"""
         if not isinstance(data, dict):
-            raise ValueError("model_validater only accepts dicts")
+            raise ValueError("model_validator only accepts dicts")
         pos = data["position"]
         ori = data["orientation"]
         return {
