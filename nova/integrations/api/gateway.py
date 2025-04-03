@@ -346,6 +346,58 @@ class ApiGateway:
             boolean_value=value,
         )
 
+    async def list_controllers(self, *, cell: str) -> list[wb.models.ControllerInstance]:
+        response = await self.controller_api.list_controllers(cell=cell)
+        return response.instances
+
+    async def get_controller_instance(
+        self, *, cell: str, name: str
+    ) -> wb.models.ControllerInstance | None:
+        controllers = await self.list_controllers(cell=cell)
+        return next((c for c in controllers if c.controller == name), None)
+
+    async def get_current_robot_controller_state(
+        self, *, cell: str, controller_id: str
+    ) -> wb.models.RobotControllerState:
+        return await self.controller_api.get_current_robot_controller_state(
+            cell=cell, controller=controller_id
+        )
+
+    async def add_robot_controller(
+        self,
+        *,
+        cell: str,
+        name: str,
+        controller_type: wb.models.VirtualControllerTypes,
+        controller_manufacturer: wb.models.Manufacturer,
+        position: str,
+        completion_timeout: int = 25,
+    ) -> None:
+        """
+        Add a virtual robot controller to the specified cell.
+        """
+        robot_controller = wb.models.RobotController(
+            name=name,
+            configuration=wb.models.RobotControllerConfiguration(
+                wb.models.VirtualController(
+                    type=controller_type, manufacturer=controller_manufacturer, position=position
+                )
+            ),
+        )
+        await self.controller_api.add_robot_controller(
+            cell=cell, robot_controller=robot_controller, completion_timeout=completion_timeout
+        )
+
+    async def delete_robot_controller(
+        self, *, cell: str, controller: str, completion_timeout: int = 25
+    ) -> None:
+        """
+        Delete a robot controller from the specified cell.
+        """
+        await self.controller_api.delete_robot_controller(
+            cell=cell, controller=controller, completion_timeout=completion_timeout
+        )
+
 
 class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
     class Configuration(ConfigurablePeriphery.Configuration):
