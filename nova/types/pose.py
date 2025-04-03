@@ -61,6 +61,11 @@ class Pose(pydantic.BaseModel, Sized):
         Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
         >>> Pose(wb.models.Pose2(position=[1, 2, 3], orientation=[4, 5, 6]))
         Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
+        >>> pose = Pose((1, 2, 3, 4, 5, 6))
+        >>> validated_pose = Pose.model_validate(pose.model_dump())
+        >>> pose == validated_pose
+        True
+
         """
         if args:
             values = _parse_args(*args)
