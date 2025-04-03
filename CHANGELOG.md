@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.47.11 (2025-04-03)
+
+### Bug Fixes
+
+- **pose**: Pose supports model_validate
+  ([#133](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/133),
+  [`7db0314`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7db0314b501b0800195551c252976edb6c862a2d))
+
+
 ## v0.47.10 (2025-03-25)
 
 ### Bug Fixes
