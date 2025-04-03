@@ -11,6 +11,7 @@ from nova.types.vector3d import Vector3d
 
 
 def _parse_args(*args):
+    """Parse the arguments and return a dictionary that pydanctic can validate"""
     if len(args) == 1 and (
         isinstance(args[0], wb.models.Pose) or isinstance(args[0], wb.models.TcpPose)
     ):
@@ -60,6 +61,11 @@ class Pose(pydantic.BaseModel, Sized):
         Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
         >>> Pose(wb.models.Pose2(position=[1, 2, 3], orientation=[4, 5, 6]))
         Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
+        >>> pose = Pose((1, 2, 3, 4, 5, 6))
+        >>> validated_pose = Pose.model_validate(pose.model_dump())
+        >>> pose == validated_pose
+        True
+
         """
         if args:
             values = _parse_args(*args)
@@ -217,6 +223,19 @@ class Pose(pydantic.BaseModel, Sized):
         {'position': [10, 20, 30], 'orientation': [1, 2, 3]}
         """
         return self._to_wb_pose2().model_dump()
+
+    @pydantic.model_validator(mode="before")
+    @classmethod
+    def model_validator(cls, data):
+        """Transform the data that is passed into model validator to match what we return in the model_dump"""
+        if not isinstance(data, dict):
+            raise ValueError("model_validator only accepts dicts")
+        pos = data["position"]
+        ori = data["orientation"]
+        return {
+            "position": Vector3d(x=pos[0], y=pos[1], z=pos[2]),
+            "orientation": Vector3d(x=ori[0], y=ori[1], z=ori[2]),
+        }
 
     def _to_homogenous_transformation_matrix(self):
         """Converts the pose (position and rotation vector) to a 4x4 homogeneous transformation matrix."""
