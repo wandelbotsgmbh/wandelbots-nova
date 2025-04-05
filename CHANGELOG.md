@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.47.12 (2025-04-05)
+
+### Chores
+
+- Upgrade major version to 1.x.x
+  ([#134](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/134),
+  [`ac4ef09`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ac4ef09a0cb16fadb4339c4e17d3973df6bf914d))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.47.11 (2025-04-03)
 
 ### Bug Fixes
