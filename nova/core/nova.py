@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 from math import pi
 
 from decouple import config
 
 from nova import api
-from nova.core import logger
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.robot_cell import RobotCell
@@ -24,7 +22,6 @@ MANUFACTURER_HOME_POSITIONS = {
 }
 
 
-# TODO: could also extend NovaDevice
 class Nova:
     """A high-level Nova client for interacting with robot cells and controllers."""
 
@@ -51,6 +48,7 @@ class Nova:
             version (str): The API version to use (default: "v1").
             verify_ssl (bool): Whether or not to verify SSL certificates (default: True).
         """
+
         self._api_client = ApiGateway(
             host=host,
             access_token=access_token,
@@ -61,15 +59,11 @@ class Nova:
         )
 
     def cell(self, cell_id: str = CELL_NAME) -> Cell:
-        """
-        Returns the cell object with the given ID.
-        """
+        """Returns the cell object with the given ID."""
         return Cell(self._api_client, cell_id)
 
     async def close(self):
-        """
-        Closes the underlying API client session.
-        """
+        """Closes the underlying API client session."""
         return await self._api_client.close()
 
     async def __aenter__(self):
@@ -83,37 +77,13 @@ class Cell:
     """A representation of a robot cell, providing high-level operations on controllers."""
 
     def __init__(self, api_gateway: ApiGateway, cell_id: str):
-        """
-        Initializes a Cell instance.
-
-        Args:
-            api_gateway (ApiGateway): The underlying gateway for making API calls.
-            cell_id (str): The unique identifier for the cell.
-        """
         self._api_gateway = api_gateway
         self._cell_id = cell_id
 
     @property
     def cell_id(self) -> str:
-        """
-        Returns unique identifier for this cell.
-
-        Returns:
-            str: The cell ID.
-        """
         return self._cell_id
 
-    async def _get_controller_instances(self) -> list[api.models.ControllerInstance]:
-        """
-        Return all controller instances associated with this cell.
-        """
-        return await self._api_gateway.list_controllers(cell=self._cell_id)
-
-    async def _get_controller_instance(self, name: str) -> api.models.ControllerInstance | None:
-        """
-        Get the controller instance by name, or None if not found.
-        """
-        return await self._api_gateway.get_controller_instance(cell=self._cell_id, name=name)
 
     def _create_controller(self, controller_id: str) -> Controller:
         return Controller(
@@ -128,37 +98,6 @@ class Cell:
             )
         )
 
-    async def _wait_for_controller_ready(self, name: str, timeout: int):
-        """
-        Wait until the given controller has finished initializing or until timeout.
-        """
-        iteration = 0
-        controller = await self._get_controller_instance(name)
-
-        while iteration < timeout:
-            if controller is not None:
-                # Check whether it's still initializing
-                if controller.error_details in [
-                    "Controller not initialized or disposed",
-                    "Initializing controller connection.",
-                ]:
-                    await self._api_gateway.get_current_robot_controller_state(
-                        cell=self._cell_id, controller_id=controller.host
-                    )
-                elif controller.has_error:
-                    # As long has an error its being initialized
-                    logger.error(controller.error_details)
-                else:
-                    # Controller is good to go
-                    return
-
-            logger.info(f"Waiting for {self._cell_id}/{name} controller availability")
-            await asyncio.sleep(1)
-            controller = await self._get_controller_instance(name)
-            iteration += 1
-
-        raise TimeoutError(f"Timeout waiting for {self._cell_id}/{name} controller availability")
-
     async def add_virtual_robot_controller(
         self,
         name: str,
@@ -167,30 +106,18 @@ class Cell:
         timeout: int = 25,
         position: str | None = None,
     ) -> Controller:
-        """
-        Add a virtual robot controller to the cell.
-        """
+        """Add a virtual robot controller to the cell."""
+        if position is None:
+            position = str(MANUFACTURER_HOME_POSITIONS.get(controller_manufacturer, [0.0] * 7))
 
-        home_position = (
-            position
-            if position is not None
-            else str(MANUFACTURER_HOME_POSITIONS.get(controller_manufacturer, [0.0] * 7))
-        )
-
-        await self._api_gateway.add_robot_controller(
+        controller_instance = await self._api_gateway.add_virtual_robot_controller(
             cell=self._cell_id,
             name=name,
             controller_type=controller_type,
             controller_manufacturer=controller_manufacturer,
-            position=home_position,
-            completion_timeout=timeout,
+            timeout=timeout,
+            position=position,
         )
-        await self._wait_for_controller_ready(name, timeout)
-
-        controller_instance = await self._get_controller_instance(name)
-        if controller_instance is None:
-            raise ControllerNotFound(controller=name)
-
         return self._create_controller(controller_instance.controller)
 
     async def ensure_virtual_robot_controller(
@@ -198,50 +125,34 @@ class Cell:
         name: str,
         controller_type: api.models.VirtualControllerTypes,
         controller_manufacturer: api.models.Manufacturer,
+        timeout: int = 25,
     ) -> Controller:
         """
-        Ensure a virtual robot controller with the given name exists.
-        If it does not exist, create it.
+        Ensure a virtual robot controller with the given name exists by delegating
+        to the gateway's ensure_virtual_robot_controller method.
         """
-        controller_instance = await self._get_controller_instance(name)
+        controller_instance = await self._api_gateway.get_controller_instance(cell=self.cell_id, name=name)
         if controller_instance:
             return self._create_controller(controller_instance.controller)
-
         return await self.add_virtual_robot_controller(
-            name, controller_type, controller_manufacturer
+            name, controller_type, controller_manufacturer, timeout=timeout
         )
 
     async def controllers(self) -> list[Controller]:
-        """
-        List all controllers associated with this cell.
-        """
-        instances = await self._get_controller_instances()
+        instances = await self._api_gateway.list_controllers(cell=self._cell_id)
         return [self._create_controller(ci.controller) for ci in instances]
 
     async def controller(self, name: str) -> Controller:
-        """
-        Retrieve a specific controller by name.
-
-        Raises:
-            ControllerNotFound: If no controller with the specified name exists.
-        """
-        controller_instance = await self._get_controller_instance(name)
+        controller_instance = await self._api_gateway.get_controller_instance(cell=self._cell_id, name=name)
         if not controller_instance:
             raise ControllerNotFound(controller=name)
-
         return self._create_controller(controller_instance.controller)
 
     async def delete_robot_controller(self, name: str, timeout: int = 25):
-        """
-        Delete a robot controller from the cell.
-        """
         await self._api_gateway.delete_robot_controller(
             cell=self._cell_id, controller=name, completion_timeout=timeout
         )
 
     async def get_robot_cell(self) -> RobotCell:
-        """
-        Return a RobotCell object containing all known controllers.
-        """
         controllers = await self.controllers()
         return RobotCell(timer=None, **{controller.id: controller for controller in controllers})

@@ -1,3 +1,5 @@
+# gateway.py
+
 from __future__ import annotations
 
 import asyncio
@@ -5,7 +7,7 @@ import functools
 import time
 from abc import ABC
 from enum import Enum
-from typing import AsyncGenerator, TypeVar
+from typing import TypeVar
 
 import wandelbots_api_client as wb
 from decouple import config
@@ -111,8 +113,7 @@ class ApiGateway:
         self._validating_token = False
         self._has_valid_token = False
 
-        # Access token has more prio than username and password if both are provided at the same time, set username and
-        # password to None
+        # Access token has priority over username/password
         if access_token is not None:
             username = None
             password = None
@@ -139,7 +140,6 @@ class ApiGateway:
         self._init_api_client()
 
     def _init_api_client(self):
-        """Initialize or reinitialize the API client with current credentials"""
         stripped_host = self._host.rstrip("/")
         api_client_config = wb.Configuration(
             host=f"{stripped_host}/api/{self._version}",
@@ -152,7 +152,6 @@ class ApiGateway:
         self._api_client = wb.ApiClient(configuration=api_client_config)
         self._api_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
 
-        # Use the intercept function to wrap each API client
         self.system_api = intercept(wb.SystemApi(api_client=self._api_client), self)
         self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client), self)
         self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client), self)
@@ -163,41 +162,34 @@ class ApiGateway:
         self.motion_group_kinematic_api = intercept(
             wb.MotionGroupKinematicApi(api_client=self._api_client), self
         )
-
         self.store_collision_components_api = intercept(
             wb.StoreCollisionComponentsApi(api_client=self._api_client), self
         )
-
         self.store_collision_scenes_api = intercept(
             wb.StoreCollisionScenesApi(api_client=self._api_client), self
         )
-
         self.virtual_robot_api = intercept(wb.VirtualRobotApi(api_client=self._api_client), self)
         self.virtual_robot_behavior_api = intercept(
             wb.VirtualRobotBehaviorApi(api_client=self._api_client), self
         )
-
         self.virtual_robot_mode_api = intercept(
             wb.VirtualRobotModeApi(api_client=self._api_client), self
         )
         self.virtual_robot_setup_api = intercept(
             wb.VirtualRobotSetupApi(api_client=self._api_client), self
         )
-
         self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client), self)
+
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
     async def close(self):
         return await self._api_client.close()
 
     async def _ensure_valid_token(self):
-        """Ensure we have a valid access token, requesting a new one if needed"""
         if not self._auth0 or self._validating_token or self._has_valid_token:
             return
-
         try:
             self._validating_token = True
-            # Test token with a direct API call without interception
             async with wb.ApiClient(self._api_client.configuration) as client:
                 api = wb.SystemApi(client)
                 await api.get_system_version()
@@ -206,7 +198,6 @@ class ApiGateway:
             if "401" in str(e) or "403" in str(e):
                 logger.info("Access token expired, starting device authorization flow")
                 self._auth0.request_device_code()
-
                 self._auth0.display_user_instructions()
 
                 new_token = await self._auth0.poll_token_endpoint()
@@ -214,15 +205,10 @@ class ApiGateway:
                 self._username = None
                 self._password = None
 
-                # Store the new token in .env file
                 set_key("NOVA_ACCESS_TOKEN", new_token)
-
-                # Update the existing API client configuration with the new token
                 self._api_client.configuration.access_token = new_token
                 self._api_client.configuration.username = None
                 self._api_client.configuration.password = None
-
-                # Reinitialize all API clients with the new configuration
                 self._init_api_client()
 
                 logger.info("Successfully updated access token and reinitialized API clients")
@@ -231,23 +217,13 @@ class ApiGateway:
 
     @staticmethod
     def _host_with_prefix(host: str) -> str:
-        """
-        The protocol prefix is required for the API client to work properly.
-        This method adds the 'http://' prefix if it is missing.
-
-        For all wandelbots.io virtual instances the prefix will 'https://'.
-        """
         is_wabo_host = "wandelbots.io" in host
-
         if host.startswith("http") and not is_wabo_host:
             return host
-
         if host.startswith("http") and is_wabo_host:
             return host.replace("http://", "https://")
-
         if is_wabo_host:
             return f"https://{host}"
-
         return f"http://{host}"
 
     @property
@@ -265,86 +241,6 @@ class ApiGateway:
     @property
     def password(self) -> str | None:
         return self._password
-
-    # TODO: update function signatures and make sure you don't just use the default values
-    #       how to handle default but required values?
-    async def stream_robot_controller_state(
-        self, *, cell: str = None, controller_id: str = None, response_rate: int = 200
-    ) -> AsyncGenerator[wb.models.RobotControllerState, None]:
-        """
-        Stream the robot controller state.
-        """
-        async for state in self.controller_api.stream_robot_controller_state(
-            cell=cell, controller=controller_id, response_rate=response_rate
-        ):
-            yield state
-
-    async def activate_all_motion_groups(
-        self, *, cell: str = None, controller: str = None
-    ) -> list[str]:
-        """
-        Activate all motion groups for the given cell and controller.
-        Returns the id of the activated motion groups.
-        """
-        activate_all_motion_groups_response = (
-            await self.motion_group_api.activate_all_motion_groups(cell=cell, controller=controller)
-        )
-        motion_groups = activate_all_motion_groups_response.instances
-        return [mg.motion_group for mg in motion_groups]
-
-    async def list_controller_io_descriptions(
-        self, *, cell: str = None, controller: str = None, ios: list[str] = []
-    ) -> list[wb.models.ControllerIODescription]:
-        await self.controller_ios_api.list_io_descriptions(
-            cell=cell, controller=controller, ios=ios
-        )
-
-    async def get_controller_io(
-        self, *, cell: str = None, controller: str = None, io: str = None
-    ) -> float | bool | int:
-        io_descriptions = await self.list_controller_io_descriptions(
-            cell=cell, controller=controller, ios=[io]
-        )
-
-        if not io_descriptions or len(io_descriptions) == 0:
-            raise ValueError(f"IO {io} not found on controller {controller} in cell {cell}")
-        if len(io_descriptions) > 1:
-            raise ValueError(
-                f"Multiple IO descriptions found for {io} on controller {controller} in cell {cell}"
-            )
-        io = io_descriptions[0]
-        if io.boolean_value is not None:
-            return io.boolean_value
-        if io.integer_value is not None:
-            return int(io.integer_value)
-        if io.floating_value is not None:
-            return float(io.floating_value)
-        raise ValueError(
-            f"IO value for {io} is of an unexpected type. Expected bool, int or float."
-        )
-
-    async def write_controller_io(
-        self, *, cell: str, controller: str, io: str, value: bool | int | float
-    ):
-        if isinstance(value, bool):
-            io_value = wb.models.IOValue(io=io, boolean_value=value)
-        elif isinstance(value, int):
-            io_value = wb.models.IOValue(io=io, integer_value=value)
-        elif isinstance(value, float):
-            io_value = wb.models.IOValue(io=io, floating_value=value)
-
-        await self.controller_ios_api.set_output_values(
-            cell=cell, controller=controller, io_value=[io_value]
-        )
-
-    async def wait_for_bool_io(self, io: str, value: bool):
-        await self.controller_ios_api.wait_for_io_event(
-            cell=self._cell,
-            controller=self._controller_id,
-            io=io,
-            comparison_type=ComparisonType.COMPARISON_TYPE_EQUAL,
-            boolean_value=value,
-        )
 
     async def list_controllers(self, *, cell: str) -> list[wb.models.ControllerInstance]:
         response = await self.controller_api.list_controllers(cell=cell)
@@ -391,12 +287,76 @@ class ApiGateway:
     async def delete_robot_controller(
         self, *, cell: str, controller: str, completion_timeout: int = 25
     ) -> None:
-        """
-        Delete a robot controller from the specified cell.
-        """
         await self.controller_api.delete_robot_controller(
             cell=cell, controller=controller, completion_timeout=completion_timeout
         )
+
+    async def wait_for_controller_ready(self, cell: str, name: str, timeout: int = 25) -> None:
+        """
+        Wait until the given controller has finished initializing or until timeout.
+        """
+        iteration = 0
+        controller = await self.get_controller_instance(cell=cell, name=name)
+
+        while iteration < timeout:
+            if controller is not None:
+                # Check if it's still initializing
+                if controller.error_details in [
+                    "Controller not initialized or disposed",
+                    "Initializing controller connection.",
+                ]:
+                    # Force an update by calling get_current_robot_controller_state
+                    await self.get_current_robot_controller_state(
+                        cell=cell, controller_id=controller.host
+                    )
+                elif controller.has_error:
+                    # As long as it has an error, it's still not ready
+                    logger.error(controller.error_details)
+                else:
+                    # Controller is good to go
+                    return
+
+            logger.info(f"Waiting for {cell}/{name} controller availability")
+            await asyncio.sleep(1)
+            controller = await self.get_controller_instance(cell=cell, name=name)
+            iteration += 1
+
+        raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")
+
+    async def add_virtual_robot_controller(
+        self,
+        cell: str,
+        name: str,
+        controller_type: wb.models.VirtualControllerTypes,
+        controller_manufacturer: wb.models.Manufacturer,
+        timeout: int = 25,
+        position: str | None = None,
+    ) -> wb.models.ControllerInstance:
+        """
+        Add a virtual robot controller to the cell and wait until it's ready.
+        Returns the resulting ControllerInstance.
+        """
+        if position is None:
+            position = "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]"  # fallback
+
+        # Step 1: Add the controller
+        await self.add_robot_controller(
+            cell=cell,
+            name=name,
+            controller_type=controller_type,
+            controller_manufacturer=controller_manufacturer,
+            position=position,
+            completion_timeout=timeout,
+        )
+        # Step 2: Wait for it to become ready
+        await self.wait_for_controller_ready(cell=cell, name=name, timeout=timeout)
+
+        # Step 3: Retrieve the instance
+        controller_instance = await self.get_controller_instance(cell=cell, name=name)
+        if controller_instance is None:
+            raise ValueError(f"Controller not found after creation: {name}")
+
+        return controller_instance
 
 
 class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
