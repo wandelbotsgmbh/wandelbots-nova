@@ -41,16 +41,16 @@ class IOAccess(Device):
         cache = self.__class__.io_descriptions_cache
         if self._controller_id not in cache:
             # empty list fetches all
-            response = await self._api_gateway.list_controller_io_descriptions(
+            io_descriptions = await self._api_gateway.list_controller_io_descriptions(
                 cell=self._cell, controller=self._controller_id
             )
             cache[self._controller_id] = {
-                description.id: description for description in response.io_descriptions
+                description.id: description for description in io_descriptions
             }
         return cache[self._controller_id]
 
     # TODO: IOType and IOValueType are referencing what is in the API, but not the actual type,
-    #       this is problamatic because when we move to API V2 these valuese will have to change or map
+    #       this is problematic because when we move to API V2 these values will have to change or map
     #       need to find a better solution here
     @staticmethod
     def filter_io_descriptions(
@@ -67,7 +67,7 @@ class IOAccess(Device):
 
     async def read(self, key: str) -> bool | int | float:
         """Reads a value from a given IO"""
-        return self._api_gateway.get_controller_io(
+        return await self._api_gateway.get_controller_io(
             cell=self._cell, controller=self._controller_id, io=key
         )
 

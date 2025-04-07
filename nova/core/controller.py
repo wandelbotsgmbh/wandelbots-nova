@@ -75,7 +75,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         Returns:
             list[str]: A list of activated motion group IDs (e.g., ["0@controller_id"]).
         """
-        return self._nova_api.activate_all_motion_groups(
+        return await self._nova_api.activate_all_motion_groups(
             cell=self.configuration.cell_id, controller=self.configuration.controller_id
         )
 
@@ -126,7 +126,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
     async def stream_state(self, rate_msecs) -> AsyncGenerator[models.RobotControllerState, None]:
         async for state in self._nova_api.stream_robot_controller_state(
             cell=self.configuration.cell_id,
-            controller=self.configuration.controller_id,
+            controller_id=self.configuration.controller_id,
             response_rate=rate_msecs,
         ):
             yield state

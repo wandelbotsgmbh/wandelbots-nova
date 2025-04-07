@@ -7,7 +7,7 @@ import functools
 import time
 from abc import ABC
 from enum import Enum
-from typing import TypeVar
+from typing import TypeVar, AsyncGenerator
 
 import wandelbots_api_client as wb
 from decouple import config
@@ -241,6 +241,89 @@ class ApiGateway:
     @property
     def password(self) -> str | None:
         return self._password
+
+
+
+    # TODO: update function signatures and make sure you don't just use the default values
+    #       how to handle default but required values?
+    async def stream_robot_controller_state(
+        self, *, cell: str = None, controller_id: str = None, response_rate: int = 200
+    ) -> AsyncGenerator[wb.models.RobotControllerState, None]:
+        """
+        Stream the robot controller state.
+        """
+        async for state in self.controller_api.stream_robot_controller_state(
+            cell=cell, controller=controller_id, response_rate=response_rate
+        ):
+            yield state
+
+    async def activate_all_motion_groups(
+        self, *, cell: str = None, controller: str = None
+    ) -> list[str]:
+        """
+        Activate all motion groups for the given cell and controller.
+        Returns the id of the activated motion groups.
+        """
+        activate_all_motion_groups_response = (
+            await self.motion_group_api.activate_all_motion_groups(cell=cell, controller=controller)
+        )
+        motion_groups = activate_all_motion_groups_response.instances
+        return [mg.motion_group for mg in motion_groups]
+
+    async def list_controller_io_descriptions(
+        self, *, cell: str = None, controller: str = None, ios: list[str] = []
+    ) -> list[wb.models.IODescription]:
+        response = await self.controller_ios_api.list_io_descriptions(
+            cell=cell, controller=controller, ios=ios
+        )
+        return response.io_descriptions
+
+    async def get_controller_io(
+        self, *, cell: str = None, controller: str = None, io: str = None
+    ) -> float | bool | int:
+        io_descriptions = await self.list_controller_io_descriptions(
+            cell=cell, controller=controller, ios=[io]
+        )
+
+        if not io_descriptions or len(io_descriptions) == 0:
+            raise ValueError(f"IO {io} not found on controller {controller} in cell {cell}")
+        if len(io_descriptions) > 1:
+            raise ValueError(
+                f"Multiple IO descriptions found for {io} on controller {controller} in cell {cell}"
+            )
+        io = io_descriptions[0]
+        if io.boolean_value is not None:
+            return io.boolean_value
+        if io.integer_value is not None:
+            return int(io.integer_value)
+        if io.floating_value is not None:
+            return float(io.floating_value)
+        raise ValueError(
+            f"IO value for {io} is of an unexpected type. Expected bool, int or float."
+        )
+
+    async def write_controller_io(
+        self, *, cell: str, controller: str, io: str, value: bool | int | float
+    ):
+        if isinstance(value, bool):
+            io_value = wb.models.IOValue(io=io, boolean_value=value)
+        elif isinstance(value, int):
+            io_value = wb.models.IOValue(io=io, integer_value=value)
+        elif isinstance(value, float):
+            io_value = wb.models.IOValue(io=io, floating_value=value)
+
+        await self.controller_ios_api.set_output_values(
+            cell=cell, controller=controller, io_value=[io_value]
+        )
+
+    async def wait_for_bool_io(self, cell: str, controller: str, io: str, value: bool):
+        await self.controller_ios_api.wait_for_io_event(
+            cell=cell,
+            controller=controller,
+            io=io,
+            comparison_type=ComparisonType.COMPARISON_TYPE_EQUAL,
+            boolean_value=value,
+        )
 
     async def list_controllers(self, *, cell: str) -> list[wb.models.ControllerInstance]:
         response = await self.controller_api.list_controllers(cell=cell)
