@@ -7,7 +7,7 @@ import functools
 import time
 from abc import ABC
 from enum import Enum
-from typing import TypeVar, AsyncGenerator
+from typing import AsyncGenerator, TypeVar
 
 import wandelbots_api_client as wb
 from decouple import config
@@ -16,7 +16,7 @@ from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.core import logger
 from nova.core.env_handler import set_key
-from nova.core.exceptions import PlanTrajectoryFailed, LoadPlanFailed
+from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.robot_cell import ConfigurablePeriphery, Device
 from nova.version import version as pkg_version
 
