@@ -243,8 +243,6 @@ class ApiGateway:
     def password(self) -> str | None:
         return self._password
 
-
-
     # TODO: update function signatures and make sure you don't just use the default values
     #       how to handle default but required values?
     async def stream_robot_controller_state(
@@ -259,9 +257,7 @@ class ApiGateway:
             yield state
 
     async def activate_motion_group(self, cell: str, motion_group_id: str):
-        await self.motion_group_api.activate_motion_group(
-            cell=cell, motion_group=motion_group_id
-        )
+        await self.motion_group_api.activate_motion_group(cell=cell, motion_group=motion_group_id)
 
     async def activate_all_motion_groups(
         self, *, cell: str = None, controller: str = None
@@ -312,9 +308,7 @@ class ApiGateway:
         elif isinstance(value, float):
             io_value = wb.models.IOValue(io=io, floating_value=value)
         else:
-            raise ValueError(
-                f"Invalid value type {type(value)}. Expected bool, int or float."
-            )
+            raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
 
         await self.controller_ios_api.set_output_values(
             cell=cell, controller=controller, io_value=[io_value]
@@ -445,12 +439,16 @@ class ApiGateway:
 
         return controller_instance
 
-    async def plan_trajectory(self, cell: str, motion_group_id: str, request: wb.models.PlanTrajectoryRequest) -> wb.models.JointTrajectory:
+    async def plan_trajectory(
+        self, cell: str, motion_group_id: str, request: wb.models.PlanTrajectoryRequest
+    ) -> wb.models.JointTrajectory:
         """
         Plan a trajectory for the given motion group.
         """
 
-        plan_trajectory_response = await self.motion_api.plan_trajectory(cell=cell, plan_trajectory_request=request)
+        plan_trajectory_response = await self.motion_api.plan_trajectory(
+            cell=cell, plan_trajectory_request=request
+        )
         if isinstance(
             plan_trajectory_response.response.actual_instance,
             wb.models.PlanTrajectoryFailedResponse,
@@ -462,12 +460,8 @@ class ApiGateway:
         return plan_trajectory_response.response.actual_instance
 
     async def load_planned_motion(
-        self,
-        cell: str,
-        motion_group_id: str,
-        joint_trajectory: wb.models.JointTrajectory,
-        tcp: str
-    ) ->  wb.models.PlanSuccessfulResponse:
+        self, cell: str, motion_group_id: str, joint_trajectory: wb.models.JointTrajectory, tcp: str
+    ) -> wb.models.PlanSuccessfulResponse:
         load_plan_response = await self.motion_api.load_planned_motion(
             cell=cell,
             planned_motion=wb.models.PlannedMotion(
@@ -500,33 +494,32 @@ class ApiGateway:
             cell=cell,
             motion=motion_id,
             location_on_trajectory=location_on_trajectory,
-            #limit_override_joint_velocity_limits_joints=joint_velocity_limits,
+            # limit_override_joint_velocity_limits_joints=joint_velocity_limits,
         )
 
     # This doesn't exists in V2, afaik
     async def stop_motion(self, cell: str, motion_id: str):
-        await self.motion_api.stop_execution(
-            cell=cell,
-            motion=motion_id,
-        )
+        await self.motion_api.stop_execution(cell=cell, motion=motion_id)
 
     # TODO: should we rather return RobotState? motion group code would be cleaner
-    async def get_motion_group_state(self, cell: str, motion_group_id: str, tcp: str) -> wb.models.MotionGroupStateResponse:
+    async def get_motion_group_state(
+        self, cell: str, motion_group_id: str, tcp: str
+    ) -> wb.models.MotionGroupStateResponse:
         return await self.motion_group_infos_api.get_current_motion_group_state(
             cell=cell, motion_group=motion_group_id, tcp=tcp
         )
 
     async def list_tcps(self, cell: str, motion_group_id: str) -> wb.models.ListTcpsResponse:
-        return await self.motion_group_infos_api.list_tcps(
-            cell=cell, motion_group=motion_group_id
-        )
+        return await self.motion_group_infos_api.list_tcps(cell=cell, motion_group=motion_group_id)
 
     async def get_active_tcp(self, cell: str, motion_group_id: str) -> wb.models.RobotTcp:
         return await self.motion_group_infos_api.get_active_tcp(
             cell=cell, motion_group=motion_group_id
         )
 
-    async def get_optimizer_config(self, cell: str, motion_group_id: str, tcp: str) -> wb.models.OptimizerSetup:
+    async def get_optimizer_config(
+        self, cell: str, motion_group_id: str, tcp: str
+    ) -> wb.models.OptimizerSetup:
         return await self.motion_group_infos_api.get_optimizer_configuration(
             cell=cell, motion_group=motion_group_id, tcp=tcp
         )
@@ -538,7 +531,9 @@ class ApiGateway:
         return len(spec.mechanical_joint_limits)
 
     # this API is gone in the V2 but we could still have the some functionality with other APIs
-    async def plan_collision_free_ptp(self, cell: str, motion_group_id: str, request: wb.models.PlanCollisionFreePTPRequest):
+    async def plan_collision_free_ptp(
+        self, cell: str, motion_group_id: str, request: wb.models.PlanCollisionFreePTPRequest
+    ):
         plan_result = await self.motion_api.plan_collision_free_ptp(
             cell=cell, plan_collision_free_ptp_request=request
         )
@@ -553,8 +548,7 @@ class ApiGateway:
     # discuss with team
     async def execute_trajectory(self, cell: str, request_response_generator: any):
         await self.motion_api.execute_trajectory(
-            cell=cell,
-            client_request_generator=request_response_generator,
+            cell=cell, client_request_generator=request_response_generator
         )
 
 

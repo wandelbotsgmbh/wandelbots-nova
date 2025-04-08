@@ -186,9 +186,7 @@ class MotionGroup(AbstractRobot):
         )
 
         return await self._api_gateway.plan_trajectory(
-            cell=self._cell,
-            motion_group_id=self.motion_group_id,
-            request=request,
+            cell=self._cell, motion_group_id=self.motion_group_id, request=request
         )
 
     def _validate_collision_scenes(self, actions: list[Action]) -> list[models.CollisionScene]:
@@ -272,9 +270,7 @@ class MotionGroup(AbstractRobot):
         )
 
         return await self._api_gateway.plan_collision_free_ptp(
-            cell=self._cell,
-            motion_group_id=self.motion_group_id,
-            request=request,
+            cell=self._cell, motion_group_id=self.motion_group_id, request=request
         )
 
     async def _plan(
@@ -337,8 +333,7 @@ class MotionGroup(AbstractRobot):
 
         # Move to start position
         number_of_joints = await self._api_gateway.get_joint_number(
-            cell=self._cell,
-            motion_group_id=self.motion_group_id
+            cell=self._cell, motion_group_id=self.motion_group_id
         )
         joints_velocities = [MAX_JOINT_VELOCITY_PREPARE_MOVE] * number_of_joints
         movement_stream = await self.move_to_start_position(joints_velocities, load_plan_response)
@@ -374,14 +369,11 @@ class MotionGroup(AbstractRobot):
 
         execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
         execution_task = asyncio.create_task(
-            self._api_gateway.execute_trajectory(
-                self._cell, execute_response_streaming_controller
-            )
+            self._api_gateway.execute_trajectory(self._cell, execute_response_streaming_controller)
         )
         async for execute_response in execute_response_streaming_controller:
             yield execute_response
         await execution_task
-
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
         # TODO: mypy failed on main branch, need to check
@@ -415,7 +407,6 @@ class MotionGroup(AbstractRobot):
             location_on_trajectory=0,
             joint_velocity_limits=limit_override.joint_velocity_limits,
         )
-
 
     async def stop(self):
         logger.debug(f"Stopping motion of {self}...")

@@ -84,7 +84,6 @@ class Cell:
     def cell_id(self) -> str:
         return self._cell_id
 
-
     def _create_controller(self, controller_id: str) -> Controller:
         return Controller(
             configuration=Controller.Configuration(
@@ -131,7 +130,9 @@ class Cell:
         Ensure a virtual robot controller with the given name exists by delegating
         to the gateway's ensure_virtual_robot_controller method.
         """
-        controller_instance = await self._api_gateway.get_controller_instance(cell=self.cell_id, name=name)
+        controller_instance = await self._api_gateway.get_controller_instance(
+            cell=self.cell_id, name=name
+        )
         if controller_instance:
             return self._create_controller(controller_instance.controller)
         return await self.add_virtual_robot_controller(
@@ -143,7 +144,9 @@ class Cell:
         return [self._create_controller(ci.controller) for ci in instances]
 
     async def controller(self, name: str) -> Controller:
-        controller_instance = await self._api_gateway.get_controller_instance(cell=self._cell_id, name=name)
+        controller_instance = await self._api_gateway.get_controller_instance(
+            cell=self._cell_id, name=name
+        )
         if not controller_instance:
             raise ControllerNotFound(controller=name)
         return self._create_controller(controller_instance.controller)
