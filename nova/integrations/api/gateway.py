@@ -503,6 +503,7 @@ class ApiGateway:
             limit_override_joint_velocity_limits_joints=joint_velocity_limits,
         )
 
+    # This doesn't exists in V2, afaik
     async def stop_motion(self, cell: str, motion_id: str):
         await self.motion_api.stop_execution(
             cell=cell,
@@ -535,6 +536,25 @@ class ApiGateway:
             cell=cell, motion_group=motion_group_id
         )
         return len(spec.mechanical_joint_limits)
+
+    # this API is gone in the V2 but we could still have the some functionality with other APIs
+    async def plan_collision_free_ptp(self, cell: str, motion_group_id: str, request: wb.models.PlanCollisionFreePTPRequest):
+        plan_result = await self.motion_api.plan_collision_free_ptp(
+            cell=cell, plan_collision_free_ptp_request=request
+        )
+
+        if isinstance(plan_result.response.actual_instance, wb.models.PlanTrajectoryFailedResponse):
+            raise PlanTrajectoryFailed(plan_result.response.actual_instance, motion_group_id)
+        return plan_result.response.actual_instance
+
+    # TODO: refactor types into
+    # This function doesn't look good, it requests a little more thinking
+    async def execute_trajectory(self, cell: str, request_stream: any) -> any:
+        return await self.motion_api.execute_trajectory(
+            cell=cell,
+            request_stream=request_stream,
+        )
+
 
 class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
     class Configuration(ConfigurablePeriphery.Configuration):
