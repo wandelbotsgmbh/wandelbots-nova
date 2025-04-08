@@ -260,7 +260,7 @@ class ApiGateway:
 
     async def activate_motion_group(self, cell: str, motion_group_id: str):
         await self.motion_group_api.activate_motion_group(
-            cell=cell, motion_group_id=motion_group_id
+            cell=cell, motion_group=motion_group_id
         )
 
     async def activate_all_motion_groups(
@@ -287,17 +287,11 @@ class ApiGateway:
     async def get_controller_io(
         self, *, cell: str = None, controller: str = None, io: str = None
     ) -> float | bool | int:
-        io_descriptions = await self.list_controller_io_descriptions(
+        response = await self.controller_ios_api.list_io_values(
             cell=cell, controller=controller, ios=[io]
         )
 
-        if not io_descriptions or len(io_descriptions) == 0:
-            raise ValueError(f"IO {io} not found on controller {controller} in cell {cell}")
-        if len(io_descriptions) > 1:
-            raise ValueError(
-                f"Multiple IO descriptions found for {io} on controller {controller} in cell {cell}"
-            )
-        io = io_descriptions[0]
+        io = response.io_values[0]
         if io.boolean_value is not None:
             return io.boolean_value
         if io.integer_value is not None:
@@ -317,6 +311,10 @@ class ApiGateway:
             io_value = wb.models.IOValue(io=io, integer_value=value)
         elif isinstance(value, float):
             io_value = wb.models.IOValue(io=io, floating_value=value)
+        else:
+            raise ValueError(
+                f"Invalid value type {type(value)}. Expected bool, int or float."
+            )
 
         await self.controller_ios_api.set_output_values(
             cell=cell, controller=controller, io_value=[io_value]
@@ -452,7 +450,7 @@ class ApiGateway:
         Plan a trajectory for the given motion group.
         """
 
-        plan_trajectory_response = await self.motion_api.plan_trajectory(cell=cell, request=request)
+        plan_trajectory_response = await self.motion_api.plan_trajectory(cell=cell, plan_trajectory_request=request)
         if isinstance(
             plan_trajectory_response.response.actual_instance,
             wb.models.PlanTrajectoryFailedResponse,
@@ -502,7 +500,7 @@ class ApiGateway:
             cell=cell,
             motion=motion_id,
             location_on_trajectory=location_on_trajectory,
-            limit_override_joint_velocity_limits_joints=joint_velocity_limits,
+            #limit_override_joint_velocity_limits_joints=joint_velocity_limits,
         )
 
     # This doesn't exists in V2, afaik
@@ -515,17 +513,17 @@ class ApiGateway:
     # TODO: should we rather return RobotState? motion group code would be cleaner
     async def get_motion_group_state(self, cell: str, motion_group_id: str, tcp: str) -> wb.models.MotionGroupStateResponse:
         return await self.motion_group_infos_api.get_current_motion_group_state(
-            cell=cell, motion_group_id=motion_group_id, tcp=tcp
+            cell=cell, motion_group=motion_group_id, tcp=tcp
         )
 
     async def list_tcps(self, cell: str, motion_group_id: str) -> wb.models.ListTcpsResponse:
         return await self.motion_group_infos_api.list_tcps(
-            cell=cell, motion_group_id=motion_group_id
+            cell=cell, motion_group=motion_group_id
         )
 
     async def get_active_tcp(self, cell: str, motion_group_id: str) -> wb.models.RobotTcp:
         return await self.motion_group_infos_api.get_active_tcp(
-            cell=cell, motion_group_id=motion_group_id
+            cell=cell, motion_group=motion_group_id
         )
 
     async def get_optimizer_config(self, cell: str, motion_group_id: str, tcp: str) -> wb.models.OptimizerSetup:
@@ -553,10 +551,10 @@ class ApiGateway:
     # This function doesn't look good, it requests a little more thinking
     # being able to used mapped types would be good
     # discuss with team
-    async def execute_trajectory(self, cell: str, request_stream: any) -> any:
-        return await self.motion_api.execute_trajectory(
+    async def execute_trajectory(self, cell: str, request_response_generator: any):
+        await self.motion_api.execute_trajectory(
             cell=cell,
-            request_stream=request_stream,
+            client_request_generator=request_response_generator,
         )
 
 
