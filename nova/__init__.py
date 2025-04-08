@@ -6,8 +6,29 @@ from nova.core.movement_controller import speed_up as speed_up_movement_controll
 from nova.core.nova import Cell, Nova
 from nova.types import MotionSettings
 from nova.version import version
+from functools import wraps
+import pydantic
+import abc
 
 __version__ = version
+
+
+class ProgramParameter(pydantic.BaseModel, abc.ABC):
+    pass
+
+
+def program(parameter=ProgramParameter, name: str | None = None):
+    @wraps
+    async def wrapped_function(func):
+        if not callable(func):
+            raise TypeError("The function must be callable.")
+
+        async with Nova() as nova:
+            # TODO: should we pass nova completely
+            # TODO: run function in Nova runtime
+            await func(nova_context=nova, arguments=parameter)
+    return wrapped_function
+
 
 __all__ = [
     "Nova",
