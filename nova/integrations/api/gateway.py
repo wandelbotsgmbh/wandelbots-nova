@@ -489,6 +489,8 @@ class ApiGateway:
 
         return load_plan_response.plan_successful_response
 
+    # This API is gone with v2, SDK uses this to move to the start position of the trajectory
+    # maybe we should give a better function like jog_in_trajectory? to move anywhere in the trajectory
     def stream_move_to_trajectory_via_join_ptp(
         self,
         cell: str,
@@ -549,6 +551,8 @@ class ApiGateway:
 
     # TODO: refactor types into
     # This function doesn't look good, it requests a little more thinking
+    # being able to used mapped types would be good
+    # discuss with team
     async def execute_trajectory(self, cell: str, request_stream: any) -> any:
         return await self.motion_api.execute_trajectory(
             cell=cell,
