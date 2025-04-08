@@ -16,6 +16,7 @@ from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.core import logger
 from nova.core.env_handler import set_key
+from nova.core.exceptions import PlanTrajectoryFailed, LoadPlanFailed
 from nova.core.robot_cell import ConfigurablePeriphery, Device
 from nova.version import version as pkg_version
 
@@ -257,6 +258,11 @@ class ApiGateway:
         ):
             yield state
 
+    async def activate_motion_group(self, cell: str, motion_group_id: str):
+        await self.motion_group_api.activate_motion_group(
+            cell=cell, motion_group_id=motion_group_id
+        )
+
     async def activate_all_motion_groups(
         self, *, cell: str = None, controller: str = None
     ) -> list[str]:
@@ -441,6 +447,94 @@ class ApiGateway:
 
         return controller_instance
 
+    async def plan_trajectory(self, cell: str, motion_group_id: str, request: wb.models.PlanTrajectoryRequest) -> wb.models.JointTrajectory:
+        """
+        Plan a trajectory for the given motion group.
+        """
+
+        plan_trajectory_response = await self.motion_api.plan_trajectory(cell=cell, request=request)
+        if isinstance(
+            plan_trajectory_response.response.actual_instance,
+            wb.models.PlanTrajectoryFailedResponse,
+        ):
+            # TODO: handle partially executable path
+            raise PlanTrajectoryFailed(
+                plan_trajectory_response.response.actual_instance, motion_group_id
+            )
+        return plan_trajectory_response.response.actual_instance
+
+    async def load_planned_motion(
+        self,
+        cell: str,
+        motion_group_id: str,
+        joint_trajectory: wb.models.JointTrajectory,
+        tcp: str
+    ) ->  wb.models.PlanSuccessfulResponse:
+        load_plan_response = await self.motion_api.load_planned_motion(
+            cell=cell,
+            planned_motion=wb.models.PlannedMotion(
+                motion_group=motion_group_id,
+                times=joint_trajectory.times,
+                joint_positions=joint_trajectory.joint_positions,
+                locations=joint_trajectory.locations,
+                tcp=tcp,
+            ),
+        )
+
+        if (
+            load_plan_response.plan_failed_on_trajectory_response is not None
+            or load_plan_response.plan_failed_on_trajectory_response is not None
+        ):
+            raise LoadPlanFailed(load_plan_response)
+
+        return load_plan_response.plan_successful_response
+
+    def stream_move_to_trajectory_via_join_ptp(
+        self,
+        cell: str,
+        motion_id: str,
+        location_on_trajectory: int,
+        joint_velocity_limits: wb.models.Joints | None = None,
+    ) -> AsyncGenerator[wb.models.StreamMoveResponse, None]:
+        return self.motion_api.stream_move_to_trajectory_via_joint_ptp(
+            cell=cell,
+            motion=motion_id,
+            location_on_trajectory=location_on_trajectory,
+            limit_override_joint_velocity_limits_joints=joint_velocity_limits,
+        )
+
+    async def stop_motion(self, cell: str, motion_id: str):
+        await self.motion_api.stop_execution(
+            cell=cell,
+            motion=motion_id,
+        )
+
+    # TODO: should we rather return RobotState? motion group code would be cleaner
+    async def get_motion_group_state(self, cell: str, motion_group_id: str, tcp: str) -> wb.models.MotionGroupStateResponse:
+        return await self.motion_group_infos_api.get_current_motion_group_state(
+            cell=cell, motion_group_id=motion_group_id, tcp=tcp
+        )
+
+    async def list_tcps(self, cell: str, motion_group_id: str) -> wb.models.ListTcpsResponse:
+        return await self.motion_group_infos_api.list_tcps(
+            cell=cell, motion_group_id=motion_group_id
+        )
+
+    async def get_active_tcp(self, cell: str, motion_group_id: str) -> wb.models.RobotTcp:
+        return await self.motion_group_infos_api.get_active_tcp(
+            cell=cell, motion_group_id=motion_group_id
+        )
+
+    async def get_optimizer_config(self, cell: str, motion_group_id: str, tcp: str) -> wb.models.OptimizerSetup:
+        return await self.motion_group_infos_api.get_optimizer_configuration(
+            cell=cell, motion_group=motion_group_id, tcp=tcp
+        )
+
+    async def get_joint_number(self, cell: str, motion_group_id: str) -> int:
+        spec = await self.motion_group_infos_api.get_motion_group_specification(
+            cell=cell, motion_group=motion_group_id
+        )
+        return len(spec.mechanical_joint_limits)
 
 class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
     class Configuration(ConfigurablePeriphery.Configuration):
