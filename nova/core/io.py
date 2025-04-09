@@ -67,7 +67,7 @@ class IOAccess(Device):
 
     async def read(self, key: str) -> bool | int | float:
         """Reads a value from a given IO"""
-        return await self._api_gateway.get_controller_io(
+        return await self._api_gateway.read_controller_io(
             cell=self._cell, controller=self._controller_id, io=key
         )
 

@@ -293,7 +293,7 @@ class ApiGateway:
         )
         return response.io_descriptions
 
-    async def get_controller_io(self, cell: str, controller: str, io: str) -> float | bool | int:
+    async def read_controller_io(self, cell: str, controller: str, io: str) -> float | bool | int:
         response = await self.controller_ios_api.list_io_values(
             cell=cell, controller=controller, ios=[io]
         )
