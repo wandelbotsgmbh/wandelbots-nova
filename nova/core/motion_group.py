@@ -2,7 +2,6 @@ import asyncio
 from typing import AsyncIterable, cast
 
 import wandelbots_api_client as wb
-from IPython.core.magic import cell_magic
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.motions import CollisionFreeMotion, Motion
