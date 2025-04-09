@@ -42,7 +42,7 @@ class IOAccess(Device):
         if self._controller_id not in cache:
             # empty list fetches all
             io_descriptions = await self._api_gateway.list_controller_io_descriptions(
-                cell=self._cell, controller=self._controller_id
+                cell=self._cell, controller=self._controller_id, ios=[]
             )
             cache[self._controller_id] = {
                 description.id: description for description in io_descriptions
@@ -77,7 +77,7 @@ class IOAccess(Device):
 
         async with self._io_operation_in_progress:
             await self._api_gateway.write_controller_io(
-                cell=self._cell, controller=self._controller_id, io=key, value=value
+                cell=self._cell, controller=self._controller_id, io=key, value=value # type: ignore
             )
 
     async def _ensure_value_type(self, key: str, value: ValueType):

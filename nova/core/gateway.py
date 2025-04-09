@@ -1,5 +1,3 @@
-# gateway.py
-
 from __future__ import annotations
 
 import asyncio
@@ -116,7 +114,8 @@ class ApiGateway:
         self._validating_token = False
         self._has_valid_token = False
 
-        # Access token has priority over username/password
+        # Access token has more prio than username and password if both are provided at the same time, set username and
+        # password to None
         if access_token is not None:
             username = None
             password = None
@@ -143,6 +142,7 @@ class ApiGateway:
         self._init_api_client()
 
     def _init_api_client(self):
+        """Initialize or reinitialize the API client with current credentials"""
         stripped_host = self._host.rstrip("/")
         api_client_config = wb.Configuration(
             host=f"{stripped_host}/api/{self._version}",
@@ -155,6 +155,7 @@ class ApiGateway:
         self._api_client = wb.ApiClient(configuration=api_client_config)
         self._api_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
 
+        # Use the intercept function to wrap each API client
         self.system_api = intercept(wb.SystemApi(api_client=self._api_client), self)
         self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client), self)
         self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client), self)
@@ -192,6 +193,7 @@ class ApiGateway:
         if not self._auth0 or self._validating_token or self._has_valid_token:
             return
         try:
+            # Test token with a direct API call without interception
             self._validating_token = True
             async with wb.ApiClient(self._api_client.configuration) as client:
                 api = wb.SystemApi(client)
@@ -208,10 +210,15 @@ class ApiGateway:
                 self._username = None
                 self._password = None
 
+                # Store the new token in .env file
                 set_key("NOVA_ACCESS_TOKEN", new_token)
+
+                # Update the existing API client configuration with the new token
                 self._api_client.configuration.access_token = new_token
                 self._api_client.configuration.username = None
                 self._api_client.configuration.password = None
+
+                # Reinitialize all API clients with the new configuration
                 self._init_api_client()
 
                 logger.info("Successfully updated access token and reinitialized API clients")
@@ -220,6 +227,11 @@ class ApiGateway:
 
     @staticmethod
     def _host_with_prefix(host: str) -> str:
+        """
+        The protocol prefix is required for the API client to work properly.
+        This method adds the 'http://' prefix if it is missing.
+        For all wandelbots.io virtual instances the prefix will 'https://'.
+        """
         is_wabo_host = "wandelbots.io" in host
         if host.startswith("http") and not is_wabo_host:
             return host
@@ -245,10 +257,8 @@ class ApiGateway:
     def password(self) -> str | None:
         return self._password
 
-    # TODO: update function signatures and make sure you don't just use the default values
-    #       how to handle default but required values?
     async def stream_robot_controller_state(
-        self, *, cell: str, controller_id: str, response_rate: int = 200
+        self, cell: str, controller_id: str, response_rate: int = 200
     ) -> AsyncGenerator[wb.models.RobotControllerState, None]:
         """
         Stream the robot controller state.
@@ -482,8 +492,6 @@ class ApiGateway:
 
         return load_plan_response.plan_successful_response
 
-    # This API is gone with v2, SDK uses this to move to the start position of the trajectory
-    # maybe we should give a better function like jog_in_trajectory? to move anywhere in the trajectory
     def stream_move_to_trajectory_via_join_ptp(
         self,
         cell: str,
@@ -498,11 +506,9 @@ class ApiGateway:
             # limit_override_joint_velocity_limits_joints=joint_velocity_limits,
         )
 
-    # This doesn't exists in V2, afaik
     async def stop_motion(self, cell: str, motion_id: str):
         await self.motion_api.stop_execution(cell=cell, motion=motion_id)
 
-    # TODO: should we rather return RobotState? motion group code would be cleaner
     async def get_motion_group_state(
         self, cell: str, motion_group_id: str, tcp: str | None = None
     ) -> wb.models.MotionGroupStateResponse:
@@ -531,7 +537,6 @@ class ApiGateway:
         )
         return len(spec.mechanical_joint_limits)
 
-    # this API is gone in the V2 but we could still have the some functionality with other APIs
     async def plan_collision_free_ptp(
         self, cell: str, motion_group_id: str, request: wb.models.PlanCollisionFreePTPRequest
     ):
