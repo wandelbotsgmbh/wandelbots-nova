@@ -387,6 +387,10 @@ class ApiGateway:
     async def wait_for_controller_ready(self, cell: str, name: str, timeout: int = 25) -> None:
         """
         Wait until the given controller has finished initializing or until timeout.
+        Args:
+            cell: The cell to check.
+            name: The name of the controller.
+            timeout: The timeout in seconds.
         """
         iteration = 0
         controller = await self.get_controller_instance(cell=cell, name=name)
@@ -428,6 +432,16 @@ class ApiGateway:
         """
         Add a virtual robot controller to the cell and wait until it's ready.
         Returns the resulting ControllerInstance.
+        Args:
+            cell: The cell to add the controller to.
+            name: The name of the controller.
+            controller_type: The type of the controller.
+            controller_manufacturer: The manufacturer of the controller.
+            timeout: The timeout for waiting for the controller to be ready.
+            position: The position of the controller in the cell.
+
+        Returns:
+            The resulting ControllerInstance.
         """
         if position is None:
             position = "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]"  # fallback
