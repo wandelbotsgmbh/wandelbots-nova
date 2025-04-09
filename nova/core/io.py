@@ -5,7 +5,7 @@ from enum import Enum
 
 from nova.api import models
 from nova.core.robot_cell import Device, ValueType
-from nova.integrations.api.gateway import ApiGateway
+from nova.core.gateway import ApiGateway
 
 
 class IOType(Enum):

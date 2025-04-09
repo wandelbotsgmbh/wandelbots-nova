@@ -8,7 +8,7 @@ from nova import api
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.robot_cell import RobotCell
-from nova.integrations.api.gateway import ApiGateway
+from nova.core.gateway import ApiGateway
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 CELL_NAME = config("CELL_NAME", default="cell")
