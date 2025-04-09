@@ -2,6 +2,7 @@ import asyncio
 from typing import AsyncIterable, cast
 
 import wandelbots_api_client as wb
+from IPython.core.magic import cell_magic
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.motions import CollisionFreeMotion, Motion
@@ -369,7 +370,9 @@ class MotionGroup(AbstractRobot):
 
         execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
         execution_task = asyncio.create_task(
-            self._api_gateway.execute_trajectory(self._cell, execute_response_streaming_controller)
+            self._api_gateway.motion_api.execute_trajectory(
+                cell=self._cell, client_request_generator=execute_response_streaming_controller
+            )
         )
         async for execute_response in execute_response_streaming_controller:
             yield execute_response
@@ -381,8 +384,8 @@ class MotionGroup(AbstractRobot):
             self._optimizer_setup = await self._api_gateway.get_optimizer_config(
                 cell=self._cell, motion_group_id=self.motion_group_id, tcp=tcp
             )
-        # TODO: mypy failed on code from main branch need to check
-        return self._optimizer_setup  # type: ignore
+
+        return self._optimizer_setup
 
     async def _load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str
@@ -442,7 +445,7 @@ class MotionGroup(AbstractRobot):
         response = await self._api_gateway.list_tcps(
             cell=self._cell, motion_group_id=self.motion_group_id
         )
-        return response.tcps
+        return response.tcps if response.tcps else []
 
     async def tcp_names(self) -> list[str]:
         return [tcp.id for tcp in await self.tcps()]
