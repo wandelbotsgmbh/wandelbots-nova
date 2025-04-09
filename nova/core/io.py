@@ -77,7 +77,10 @@ class IOAccess(Device):
 
         async with self._io_operation_in_progress:
             await self._api_gateway.write_controller_io(
-                cell=self._cell, controller=self._controller_id, io=key, value=value # type: ignore
+                cell=self._cell,
+                controller=self._controller_id,
+                io=key,
+                value=value,  # type: ignore
             )
 
     async def _ensure_value_type(self, key: str, value: ValueType):
