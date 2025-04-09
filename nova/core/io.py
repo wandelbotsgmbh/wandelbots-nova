@@ -105,6 +105,7 @@ class IOAccess(Device):
 
     async def wait_for_bool_io(self, io: str, value: bool):
         """Blocks until the requested IO equals the provided value."""
+        # TODO proper implementation utilising also the comparison operators
         await self._api_gateway.wait_for_bool_io(
             cell=self._cell, controller=self._controller_id, io=io, value=value
         )

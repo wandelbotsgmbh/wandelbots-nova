@@ -21,7 +21,7 @@ MANUFACTURER_HOME_POSITIONS = {
     api.models.Manufacturer.UNIVERSALROBOTS: [0.0, -pi / 2, -pi / 2, -pi / 2, pi / 2, -pi / 2, 0.0],
 }
 
-
+# TODO: could also extend NovaDevice
 class Nova:
     """A high-level Nova client for interacting with robot cells and controllers."""
 
@@ -77,11 +77,22 @@ class Cell:
     """A representation of a robot cell, providing high-level operations on controllers."""
 
     def __init__(self, api_gateway: ApiGateway, cell_id: str):
+        """
+        Initializes a Cell instance.
+        Args:
+            api_gateway (ApiGateway): The underlying gateway for making API calls.
+            cell_id (str): The unique identifier for the cell.
+        """
         self._api_gateway = api_gateway
         self._cell_id = cell_id
 
     @property
     def cell_id(self) -> str:
+        """
+        Returns unique identifier for this cell.
+        Returns:
+            str: The cell ID.
+        """
         return self._cell_id
 
     def _create_controller(self, controller_id: str) -> Controller:
