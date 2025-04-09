@@ -127,8 +127,14 @@ class Cell:
         timeout: int = 25,
     ) -> Controller:
         """
-        Ensure a virtual robot controller with the given name exists by delegating
-        to the gateway's ensure_virtual_robot_controller method.
+        Ensure a virtual robot controller with the given name exists.
+        If the controller already exists, it is returned. Otherwise, it is created.
+        Args:
+            name (str): The name of the controller.
+            controller_type (api.models.VirtualControllerTypes): The type of virtual controller.
+            controller_manufacturer (api.models.Manufacturer): The manufacturer of the controller.
+        Returns:
+            Controller: The existing or newly created Controller object.
         """
         controller_instance = await self._api_gateway.get_controller_instance(
             cell=self.cell_id, name=name
@@ -140,10 +146,24 @@ class Cell:
         )
 
     async def controllers(self) -> list[Controller]:
+        """
+        List all controllers for this cell.
+        Returns:
+            list[Controller]: A list of Controller objects associated with this cell.
+        """
         instances = await self._api_gateway.list_controllers(cell=self._cell_id)
         return [self._create_controller(ci.controller) for ci in instances]
 
     async def controller(self, name: str) -> Controller:
+        """
+        Retrieve a specific controller by name.
+        Args:
+            name (str): The name of the controller.
+        Returns:
+            Controller: The Controller object.
+        Raises:
+            ControllerNotFound: If no controller with the specified name exists.
+        """
         controller_instance = await self._api_gateway.get_controller_instance(
             cell=self._cell_id, name=name
         )
@@ -152,10 +172,21 @@ class Cell:
         return self._create_controller(controller_instance.controller)
 
     async def delete_robot_controller(self, name: str, timeout: int = 25):
+        """
+        Delete a robot controller from the cell.
+        Args:
+            name (str): The name of the controller to delete.
+            timeout (int): The time to wait for the controller deletion to complete (default: 25).
+        """
         await self._api_gateway.delete_robot_controller(
             cell=self._cell_id, controller=name, completion_timeout=timeout
         )
 
     async def get_robot_cell(self) -> RobotCell:
+        """
+        Return a RobotCell object containing all known controllers.
+        Returns:
+            RobotCell: A RobotCell initialized with the available controllers.
+        """
         controllers = await self.controllers()
         return RobotCell(timer=None, **{controller.id: controller for controller in controllers})

@@ -49,9 +49,6 @@ class IOAccess(Device):
             }
         return cache[self._controller_id]
 
-    # TODO: IOType and IOValueType are referencing what is in the API, but not the actual type,
-    #       this is problematic because when we move to API V2 these values will have to change or map
-    #       need to find a better solution here
     @staticmethod
     def filter_io_descriptions(
         io_descriptions: dict[str, models.IODescription],
