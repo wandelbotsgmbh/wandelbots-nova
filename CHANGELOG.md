@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.48.0 (2025-04-10)
+
+### Features
+
+- **rps-1476**: Isolate api client usage to api gateway class
+  ([#136](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/136),
+  [`c398467`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c39846728fd983b84c5d23e9e94ea32c8acc35ab))
+
+
 ## v0.47.12 (2025-04-05)
 
 ### Chores
