@@ -4,7 +4,8 @@ import asyncio
 import functools
 import time
 from abc import ABC
-from typing import TypeVar
+from enum import Enum
+from typing import AsyncGenerator, TypeVar
 
 import wandelbots_api_client as wb
 from decouple import config
@@ -13,6 +14,7 @@ from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.core import logger
 from nova.core.env_handler import set_key
+from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.robot_cell import ConfigurablePeriphery, Device
 from nova.version import version as pkg_version
 
@@ -21,7 +23,15 @@ T = TypeVar("T")
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 
 
-def intercept(api_instance: T, gateway: "ApiGateway"):
+class ComparisonType(Enum):
+    COMPARISON_TYPE_EQUAL = "COMPARISON_TYPE_EQUAL"
+    COMPARISON_TYPE_GREATER = "COMPARISON_TYPE_GREATER"
+    COMPARISON_TYPE_LESS = "COMPARISON_TYPE_LESS"
+
+
+def intercept(api_instance: T, gateway: "ApiGateway") -> T:
+    """Extend api interface classes to add logging and token validation"""
+
     class Interceptor:
         def __init__(self, instance: T):
             self._instance = instance
@@ -70,7 +80,9 @@ def intercept(api_instance: T, gateway: "ApiGateway"):
 
             return sync_wrapper
 
-    return Interceptor(api_instance)
+    # we ignore the type error here because
+    # we want the return type to be the same as the original api instance to not break typing support
+    return Interceptor(api_instance)  # type: ignore[return-value]
 
 
 class ApiGateway:
@@ -154,28 +166,24 @@ class ApiGateway:
         self.motion_group_kinematic_api = intercept(
             wb.MotionGroupKinematicApi(api_client=self._api_client), self
         )
-
         self.store_collision_components_api = intercept(
             wb.StoreCollisionComponentsApi(api_client=self._api_client), self
         )
-
         self.store_collision_scenes_api = intercept(
             wb.StoreCollisionScenesApi(api_client=self._api_client), self
         )
-
         self.virtual_robot_api = intercept(wb.VirtualRobotApi(api_client=self._api_client), self)
         self.virtual_robot_behavior_api = intercept(
             wb.VirtualRobotBehaviorApi(api_client=self._api_client), self
         )
-
         self.virtual_robot_mode_api = intercept(
             wb.VirtualRobotModeApi(api_client=self._api_client), self
         )
         self.virtual_robot_setup_api = intercept(
             wb.VirtualRobotSetupApi(api_client=self._api_client), self
         )
-
         self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client), self)
+
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
     async def close(self):
@@ -185,10 +193,9 @@ class ApiGateway:
         """Ensure we have a valid access token, requesting a new one if needed"""
         if not self._auth0 or self._validating_token or self._has_valid_token:
             return
-
         try:
-            self._validating_token = True
             # Test token with a direct API call without interception
+            self._validating_token = True
             async with wb.ApiClient(self._api_client.configuration) as client:
                 api = wb.SystemApi(client)
                 await api.get_system_version()
@@ -197,7 +204,6 @@ class ApiGateway:
             if "401" in str(e) or "403" in str(e):
                 logger.info("Access token expired, starting device authorization flow")
                 self._auth0.request_device_code()
-
                 self._auth0.display_user_instructions()
 
                 new_token = await self._auth0.poll_token_endpoint()
@@ -225,20 +231,15 @@ class ApiGateway:
         """
         The protocol prefix is required for the API client to work properly.
         This method adds the 'http://' prefix if it is missing.
-
         For all wandelbots.io virtual instances the prefix will 'https://'.
         """
         is_wabo_host = "wandelbots.io" in host
-
         if host.startswith("http") and not is_wabo_host:
             return host
-
         if host.startswith("http") and is_wabo_host:
             return host.replace("http://", "https://")
-
         if is_wabo_host:
             return f"https://{host}"
-
         return f"http://{host}"
 
     @property
@@ -256,6 +257,311 @@ class ApiGateway:
     @property
     def password(self) -> str | None:
         return self._password
+
+    async def stream_robot_controller_state(
+        self, cell: str, controller_id: str, response_rate: int = 200
+    ) -> AsyncGenerator[wb.models.RobotControllerState, None]:
+        """
+        Stream the robot controller state.
+        """
+        async for state in self.controller_api.stream_robot_controller_state(
+            cell=cell, controller=controller_id, response_rate=response_rate
+        ):
+            yield state
+
+    async def activate_motion_group(self, cell: str, motion_group_id: str):
+        await self.motion_group_api.activate_motion_group(cell=cell, motion_group=motion_group_id)
+
+    async def activate_all_motion_groups(self, cell: str, controller: str) -> list[str]:
+        """
+        Activate all motion groups for the given cell and controller.
+        Returns the id of the activated motion groups.
+        """
+        activate_all_motion_groups_response = (
+            await self.motion_group_api.activate_all_motion_groups(cell=cell, controller=controller)
+        )
+        motion_groups = activate_all_motion_groups_response.instances
+        return [mg.motion_group for mg in motion_groups]
+
+    async def list_controller_io_descriptions(
+        self, cell: str, controller: str, ios: list[str]
+    ) -> list[wb.models.IODescription]:
+        if not ios:
+            ios = []
+
+        response = await self.controller_ios_api.list_io_descriptions(
+            cell=cell, controller=controller, ios=ios
+        )
+        return response.io_descriptions
+
+    async def read_controller_io(self, cell: str, controller: str, io: str) -> float | bool | int:
+        response = await self.controller_ios_api.list_io_values(
+            cell=cell, controller=controller, ios=[io]
+        )
+
+        found_io = response.io_values[0]
+        if found_io.boolean_value is not None:
+            return bool(found_io.boolean_value)
+        if found_io.integer_value is not None:
+            return int(found_io.integer_value)
+        if found_io.floating_value is not None:
+            return float(found_io.floating_value)
+        raise ValueError(
+            f"IO value for {io} is of an unexpected type. Expected bool, int or float."
+        )
+
+    async def write_controller_io(
+        self, cell: str, controller: str, io: str, value: bool | int | float
+    ):
+        if isinstance(value, bool):
+            io_value = wb.models.IOValue(io=io, boolean_value=value)
+        elif isinstance(value, int):
+            io_value = wb.models.IOValue(io=io, integer_value=str(value))
+        elif isinstance(value, float):
+            io_value = wb.models.IOValue(io=io, floating_value=value)
+        else:
+            raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
+
+        await self.controller_ios_api.set_output_values(
+            cell=cell, controller=controller, io_value=[io_value]
+        )
+
+    async def wait_for_bool_io(self, cell: str, controller: str, io: str, value: bool):
+        await self.controller_ios_api.wait_for_io_event(
+            cell=cell,
+            controller=controller,
+            io=io,
+            comparison_type=ComparisonType.COMPARISON_TYPE_EQUAL,
+            boolean_value=value,
+        )
+
+    async def list_controllers(self, *, cell: str) -> list[wb.models.ControllerInstance]:
+        response = await self.controller_api.list_controllers(cell=cell)
+        return response.instances
+
+    async def get_controller_instance(
+        self, *, cell: str, name: str
+    ) -> wb.models.ControllerInstance | None:
+        controllers = await self.list_controllers(cell=cell)
+        return next((c for c in controllers if c.controller == name), None)
+
+    async def get_current_robot_controller_state(
+        self, *, cell: str, controller_id: str
+    ) -> wb.models.RobotControllerState:
+        return await self.controller_api.get_current_robot_controller_state(
+            cell=cell, controller=controller_id
+        )
+
+    async def add_robot_controller(
+        self,
+        *,
+        cell: str,
+        name: str,
+        controller_type: wb.models.VirtualControllerTypes,
+        controller_manufacturer: wb.models.Manufacturer,
+        position: str,
+        completion_timeout: int = 25,
+    ) -> None:
+        """
+        Add a virtual robot controller to the specified cell.
+        """
+        robot_controller = wb.models.RobotController(
+            name=name,
+            configuration=wb.models.RobotControllerConfiguration(
+                wb.models.VirtualController(
+                    type=controller_type, manufacturer=controller_manufacturer, position=position
+                )
+            ),
+        )
+        await self.controller_api.add_robot_controller(
+            cell=cell, robot_controller=robot_controller, completion_timeout=completion_timeout
+        )
+
+    async def delete_robot_controller(
+        self, *, cell: str, controller: str, completion_timeout: int = 25
+    ) -> None:
+        await self.controller_api.delete_robot_controller(
+            cell=cell, controller=controller, completion_timeout=completion_timeout
+        )
+
+    async def wait_for_controller_ready(self, cell: str, name: str, timeout: int = 25) -> None:
+        """
+        Wait until the given controller has finished initializing or until timeout.
+        Args:
+            cell: The cell to check.
+            name: The name of the controller.
+            timeout: The timeout in seconds.
+        """
+        iteration = 0
+        controller = await self.get_controller_instance(cell=cell, name=name)
+
+        while iteration < timeout:
+            if controller is not None:
+                # Check if it's still initializing
+                if controller.error_details in [
+                    "Controller not initialized or disposed",
+                    "Initializing controller connection.",
+                ]:
+                    # Force an update by calling get_current_robot_controller_state
+                    await self.get_current_robot_controller_state(
+                        cell=cell, controller_id=controller.host
+                    )
+                elif controller.has_error:
+                    # As long as it has an error, it's still not ready
+                    logger.error(controller.error_details)
+                else:
+                    # Controller is good to go
+                    return
+
+            logger.info(f"Waiting for {cell}/{name} controller availability")
+            await asyncio.sleep(1)
+            controller = await self.get_controller_instance(cell=cell, name=name)
+            iteration += 1
+
+        raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")
+
+    async def add_virtual_robot_controller(
+        self,
+        cell: str,
+        name: str,
+        controller_type: wb.models.VirtualControllerTypes,
+        controller_manufacturer: wb.models.Manufacturer,
+        timeout: int = 25,
+        position: str | None = None,
+    ) -> wb.models.ControllerInstance:
+        """
+        Add a virtual robot controller to the cell and wait until it's ready.
+        Returns the resulting ControllerInstance.
+        Args:
+            cell: The cell to add the controller to.
+            name: The name of the controller.
+            controller_type: The type of the controller.
+            controller_manufacturer: The manufacturer of the controller.
+            timeout: The timeout for waiting for the controller to be ready.
+            position: The position of the controller in the cell.
+
+        Returns:
+            The resulting ControllerInstance.
+        """
+        if position is None:
+            position = "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]"  # fallback
+
+        # Step 1: Add the controller
+        await self.add_robot_controller(
+            cell=cell,
+            name=name,
+            controller_type=controller_type,
+            controller_manufacturer=controller_manufacturer,
+            position=position,
+            completion_timeout=timeout,
+        )
+        # Step 2: Wait for it to become ready
+        await self.wait_for_controller_ready(cell=cell, name=name, timeout=timeout)
+
+        # Step 3: Retrieve the instance
+        controller_instance = await self.get_controller_instance(cell=cell, name=name)
+        if controller_instance is None:
+            raise ValueError(f"Controller not found after creation: {name}")
+
+        return controller_instance
+
+    async def plan_trajectory(
+        self, cell: str, motion_group_id: str, request: wb.models.PlanTrajectoryRequest
+    ) -> wb.models.JointTrajectory:
+        """
+        Plan a trajectory for the given motion group.
+        """
+
+        plan_trajectory_response = await self.motion_api.plan_trajectory(
+            cell=cell, plan_trajectory_request=request
+        )
+        if isinstance(
+            plan_trajectory_response.response.actual_instance,
+            wb.models.PlanTrajectoryFailedResponse,
+        ):
+            # TODO: handle partially executable path
+            raise PlanTrajectoryFailed(
+                plan_trajectory_response.response.actual_instance, motion_group_id
+            )
+        return plan_trajectory_response.response.actual_instance
+
+    async def load_planned_motion(
+        self, cell: str, motion_group_id: str, joint_trajectory: wb.models.JointTrajectory, tcp: str
+    ) -> wb.models.PlanSuccessfulResponse:
+        load_plan_response = await self.motion_api.load_planned_motion(
+            cell=cell,
+            planned_motion=wb.models.PlannedMotion(
+                motion_group=motion_group_id,
+                times=joint_trajectory.times,
+                joint_positions=joint_trajectory.joint_positions,
+                locations=joint_trajectory.locations,
+                tcp=tcp,
+            ),
+        )
+
+        if (
+            load_plan_response.plan_failed_on_trajectory_response is not None
+            or load_plan_response.plan_failed_on_trajectory_response is not None
+        ):
+            raise LoadPlanFailed(load_plan_response)
+
+        return load_plan_response.plan_successful_response
+
+    def stream_move_to_trajectory_via_join_ptp(
+        self,
+        cell: str,
+        motion_id: str,
+        location_on_trajectory: int,
+        joint_velocity_limits: wb.models.Joints | None = None,
+    ) -> AsyncGenerator[wb.models.StreamMoveResponse, None]:
+        return self.motion_api.stream_move_to_trajectory_via_joint_ptp(
+            cell=cell,
+            motion=motion_id,
+            location_on_trajectory=location_on_trajectory,
+            # limit_override_joint_velocity_limits_joints=joint_velocity_limits,
+        )
+
+    async def stop_motion(self, cell: str, motion_id: str):
+        await self.motion_api.stop_execution(cell=cell, motion=motion_id)
+
+    async def get_motion_group_state(
+        self, cell: str, motion_group_id: str, tcp: str | None = None
+    ) -> wb.models.MotionGroupStateResponse:
+        return await self.motion_group_infos_api.get_current_motion_group_state(
+            cell=cell, motion_group=motion_group_id, tcp=tcp
+        )
+
+    async def list_tcps(self, cell: str, motion_group_id: str) -> wb.models.ListTcpsResponse:
+        return await self.motion_group_infos_api.list_tcps(cell=cell, motion_group=motion_group_id)
+
+    async def get_active_tcp(self, cell: str, motion_group_id: str) -> wb.models.RobotTcp:
+        return await self.motion_group_infos_api.get_active_tcp(
+            cell=cell, motion_group=motion_group_id
+        )
+
+    async def get_optimizer_config(
+        self, cell: str, motion_group_id: str, tcp: str
+    ) -> wb.models.OptimizerSetup:
+        return await self.motion_group_infos_api.get_optimizer_configuration(
+            cell=cell, motion_group=motion_group_id, tcp=tcp
+        )
+
+    async def get_joint_number(self, cell: str, motion_group_id: str) -> int:
+        spec = await self.motion_group_infos_api.get_motion_group_specification(
+            cell=cell, motion_group=motion_group_id
+        )
+        return len(spec.mechanical_joint_limits)
+
+    async def plan_collision_free_ptp(
+        self, cell: str, motion_group_id: str, request: wb.models.PlanCollisionFreePTPRequest
+    ):
+        plan_result = await self.motion_api.plan_collision_free_ptp(
+            cell=cell, plan_collision_free_ptp_request=request
+        )
+
+        if isinstance(plan_result.response.actual_instance, wb.models.PlanTrajectoryFailedResponse):
+            raise PlanTrajectoryFailed(plan_result.response.actual_instance, motion_group_id)
+        return plan_result.response.actual_instance
 
 
 class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
