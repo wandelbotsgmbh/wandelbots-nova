@@ -40,7 +40,7 @@ pip install "wandelbots-nova[nova-rerun-bridge]"
 You need to download the robot models to visualize the robot models in the rerun viewer.
 
 ```bash
-poetry run download-models
+uv run download-models
 ```
 
 ## 🚀 Quick Start
@@ -357,14 +357,14 @@ async def setup_coordinated_robots():
 To install the development dependencies, run the following command
 
 ```bash
-poetry install --extras "nova-rerun-bridge"
+uv sync --extra "nova-rerun-bridge"
 ```
 
 ### Formatting
 
 ```bash
-poetry run ruff format
-poetry run ruff check --select I --fix
+uv run ruff format
+uv run ruff check --select I --fix
 ```
 
 ### Yaml Linting
@@ -376,15 +376,11 @@ docker run --rm -it -v $(pwd):/data cytopia/yamllint -d .yamllint .
 ### Using Branch Versions For Testing
 
 When having feature branches or forks, or might be helpful to test the library as dependency in other projects first.
-Poetry allows to pull the library from different sources. See the [Poetry Doc](https://python-poetry.org/docs/dependency-specification/#git-rev-project) for more information.
-
-Poetry Version < 2:
+The pyproject.toml allows to pull the library from different sources.
 
 ```toml
 wandelbots-nova = { git = "https://github.com/wandelbotsgmbh/wandelbots-nova.git", branch = "fix/http-prefix" }
 ```
-
-Poetry Version >=2
 
 ```toml
 wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/http-prefix
