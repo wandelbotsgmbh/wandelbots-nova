@@ -3,7 +3,7 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #     "wandelbots-nova",
-#     "pydantic",
+#     "pydantic==2.11.3",
 #     "httpx",
 # ]
 # ///
@@ -17,6 +17,9 @@ Prerequisites:
     - NOVA_API=<api>
     - NOVA_ACCESS_TOKEN=<token>
 """
+
+import asyncio
+import os
 
 import pydantic
 
@@ -39,7 +42,6 @@ async def main(args: ProgramParameter):
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
-        print(args.number_of_picks)
         controller = await cell.controller("controller")
 
         # Connect to the controller and activate motion groups
@@ -75,3 +77,10 @@ async def main(args: ProgramParameter):
         for i in range(args.number_of_picks):
             print(f"Executing pick {i + 1} of {args.number_of_picks}")
             await motion_group.execute(joint_trajectory, tcp, actions=actions)
+
+
+if __name__ == "__main__":
+    # TODO: add nova util to create a parser based on the ProgramParameter model
+    # ./examples/02_plan_and_execute.py --args={"number_of_picks": 3}
+    args = ProgramParameter.model_validate_json(os.environ.get("NOVA_PROGRAM_ARGS", "{}"))
+    asyncio.run(main(args))
