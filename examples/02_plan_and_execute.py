@@ -1,3 +1,4 @@
+#!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
@@ -33,47 +34,7 @@ class ProgramParameter(program.ProgramParameter):
 
 
 @program.define_program(parameter=ProgramParameter, name="example_program")
-async def pick_and_place_program(nova_context: Nova, number_of_picks: int):
-    print(number_of_picks)
-    cell = nova_context.cell()
-    controller = await cell.controller("controller")
-
-    # Connect to the controller and activate motion groups
-    async with controller[0] as motion_group:
-        home_joints = await motion_group.joints()
-        tcp_names = await motion_group.tcp_names()
-        tcp = tcp_names[0]
-        current_pose = await motion_group.tcp_pose(tcp)
-
-        pick_pose = Pose((100, 0, 0, 0, 0, 0))
-        drop_pose = Pose((0, 100, 0, 0, 0, 0))
-
-        actions = [
-            joint_ptp(home_joints),
-            # go to pick pose
-            cartesian_ptp(current_pose @ pick_pose @ (0, 0, -100, 0, 0, 0)),
-            linear(current_pose @ pick_pose),
-            linear(current_pose @ pick_pose @ (0, 0, -100, 0, 0, 0)),
-            # go to drop pose
-            cartesian_ptp(current_pose @ drop_pose @ (0, 0, -100, 0, 0, 0)),
-            linear(current_pose @ drop_pose),
-            linear(current_pose @ drop_pose @ (0, 0, -100, 0, 0, 0)),
-            linear(current_pose @ drop_pose @ (0, 0, -100, 0, 0, 0)),
-            # go to home pose
-            joint_ptp(home_joints),
-        ]
-
-    # you can update the settings of the action
-    for action in actions:
-        action.settings = MotionSettings(tcp_velocity_limit=200)
-
-    joint_trajectory = await motion_group.plan(actions, tcp)
-    for i in range(number_of_picks):
-        print(f"Executing pick {i+1} of {number_of_picks}")
-        await motion_group.execute(joint_trajectory, tcp, actions=actions)
-
-
-async def main():
+async def pick_and_place_program(number_of_picks: int):
     async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.ensure_virtual_robot_controller(
@@ -81,8 +42,47 @@ async def main():
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
-        await program.run(pick_and_place_program, ProgramParameter(number_of_picks=2))
-        # await cell.delete_robot_controller(controller.controller_id)
+        print(number_of_picks)
+        controller = await cell.controller("controller")
+
+        # Connect to the controller and activate motion groups
+        async with controller[0] as motion_group:
+            home_joints = await motion_group.joints()
+            tcp_names = await motion_group.tcp_names()
+            tcp = tcp_names[0]
+            current_pose = await motion_group.tcp_pose(tcp)
+
+            pick_pose = Pose((100, 0, 0, 0, 0, 0))
+            drop_pose = Pose((0, 100, 0, 0, 0, 0))
+
+            actions = [
+                joint_ptp(home_joints),
+                # go to pick pose
+                cartesian_ptp(current_pose @ pick_pose @ (0, 0, -100, 0, 0, 0)),
+                linear(current_pose @ pick_pose),
+                linear(current_pose @ pick_pose @ (0, 0, -100, 0, 0, 0)),
+                # go to drop pose
+                cartesian_ptp(current_pose @ drop_pose @ (0, 0, -100, 0, 0, 0)),
+                linear(current_pose @ drop_pose),
+                linear(current_pose @ drop_pose @ (0, 0, -100, 0, 0, 0)),
+                linear(current_pose @ drop_pose @ (0, 0, -100, 0, 0, 0)),
+                # go to home pose
+                joint_ptp(home_joints),
+            ]
+
+        # you can update the settings of the action
+        for action in actions:
+            action.settings = MotionSettings(tcp_velocity_limit=200)
+
+        joint_trajectory = await motion_group.plan(actions, tcp)
+        for i in range(number_of_picks):
+            print(f"Executing pick {i+1} of {number_of_picks}")
+            await motion_group.execute(joint_trajectory, tcp, actions=actions)
+
+
+async def main():
+    await program.run(pick_and_place_program, ProgramParameter(number_of_picks=2))
+    # await cell.delete_robot_controller(controller.controller_id)
 
 
 if __name__ == "__main__":
