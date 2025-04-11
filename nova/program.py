@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 import dotenv
@@ -113,9 +114,11 @@ class SandboxedProgramRunner:
             # Convert parameters to environment variables
             env = os.environ.copy()
             env["PYTHONPATH"] = str(self.project_dir)
-            env["NOVA_API"] = os.getenv("NOVA_API")
-            env["NOVA_ACCESS_TOKEN"] = os.getenv("NOVA_ACCESS_TOKEN")
-            env["NOVA_PROGRAM_ARGS"] = json.dumps(parameters)  # Convert dict to JSON string
+            if (api := os.getenv("NOVA_API")) is not None:
+                env["NOVA_API"] = api
+            if (token := os.getenv("NOVA_ACCESS_TOKEN")) is not None:
+                env["NOVA_ACCESS_TOKEN"] = token
+            env["NOVA_PROGRAM_ARGS"] = json.dumps(parameters)
 
             # Add our argument handling to the end of the program
             program_with_args = (
@@ -125,13 +128,20 @@ class SandboxedProgramRunner:
 if __name__ == "__main__":
     import os
     import asyncio
+    import traceback
 
-    # Create parameter instance from environment
-    args = ProgramParameter.model_validate_json(os.environ.get("NOVA_PROGRAM_ARGS", "{}"))
-    print(args)
+    try:
+        # Create parameter instance from environment
+        args = ProgramParameter.model_validate_json(os.environ.get("NOVA_PROGRAM_ARGS", "{}"))
+        print(args)
 
-    # Run main with the parameter instance
-    asyncio.run(main(args))
+        # Run main with the parameter instance
+        asyncio.run(main(args))
+    except Exception as e:
+        print(f"Error in program execution: {str(e)}")
+        print("Traceback:")
+        print(traceback.format_exc())
+        sys.exit(1)
 """
             )
             # Write the modified program
@@ -141,6 +151,9 @@ if __name__ == "__main__":
             logger.info("Starting program execution")
             start_time = datetime.datetime.now()
             process = await asyncio.create_subprocess_exec(
+                "uv",
+                "run",
+                "--script",
                 str(self.program_file),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -159,13 +172,17 @@ if __name__ == "__main__":
                 logger.error(f"Program errors:\n{stderr.decode()}")
 
             if process.returncode != 0:
-                raise RuntimeError(f"Program failed with exit code {process.returncode}")
+                error_msg = f"Program failed with exit code {process.returncode}"
+                if stderr:
+                    error_msg += f"\nError output:\n{stderr.decode()}"
+                raise RuntimeError(error_msg)
 
             logger.info("Program execution completed successfully")
 
         except Exception as e:
-            logger.error(f"Error running program: {e}")
-            raise
+            error_msg = f"Error running program: {str(e)}\nTraceback:\n{traceback.format_exc()}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
 
     async def cleanup(self):
         """Clean up the temporary environment."""
@@ -191,9 +208,10 @@ if __name__ == "__main__":
 async def run_program_endpoint(program_text: str, parameters: dict):
     """REST endpoint handler for running programs."""
     try:
-        logger.info(parameters)
+        logger.info(f"Running program with parameters: {parameters}")
         await SandboxedProgramRunner.run(program_text, parameters)
         return {"status": "success"}
     except Exception as e:
-        logger.error(f"Failed to run program: {e}")
-        return {"status": "error", "message": str(e)}
+        error_msg = f"Failed to run program: {str(e)}\nTraceback:\n{traceback.format_exc()}"
+        logger.error(error_msg)
+        return {"status": "error", "message": str(e), "traceback": traceback.format_exc()}
