@@ -3,18 +3,13 @@ import asyncio
 import datetime
 import json
 import os
-import subprocess
 import sys
 import tempfile
-import venv
-from functools import wraps
 from pathlib import Path
 
 import dotenv
 import pydantic
 from loguru import logger
-
-from nova import Nova
 
 dotenv.load_dotenv()
 
@@ -108,24 +103,24 @@ class SandboxedProgramRunner:
 
         logger.info("Environment setup complete")
 
-    async def run_program(self, parameter: dict):
+    async def run_program(self, parameters: dict):
         """Run the program using uv with the given parameters."""
         try:
             # Convert parameters to environment variables
             env = os.environ.copy()
             env["PYTHONPATH"] = str(self.project_dir)
-            env["NOVA_PROGRAM_ARGS"] = parameter
+            env["NOVA_API"] = os.getenv("NOVA_API")
+            env["NOVA_PROGRAM_ARGS"] = json.dumps(parameters)  # Convert dict to JSON string
 
             # Add our argument handling to the end of the program
             program_with_args = self.program_text + """
 
 if __name__ == "__main__":
     import os
-    import json
     import asyncio
 
     # Create parameter instance from environment
-    args = ProgramParameter.model_validate(os.environ.get("NOVA_PROGRAM_ARGS", {}))
+    args = ProgramParameter.model_validate_json(os.environ.get("NOVA_PROGRAM_ARGS", "{}"))
     print(args)
 
     # Run main with the parameter instance
@@ -136,12 +131,16 @@ if __name__ == "__main__":
 
             # Run the program using uv
             logger.info("Starting program execution")
+            start_time = datetime.datetime.now()
             process = await asyncio.create_subprocess_exec(
                 str(self.program_file),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env
             )
+            end_time = datetime.datetime.now()
+            execution_time = end_time - start_time
+            logger.info(f"Program execution time: {execution_time}")
 
             # Capture output
             stdout, stderr = await process.communicate()
