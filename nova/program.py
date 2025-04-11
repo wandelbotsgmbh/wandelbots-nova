@@ -114,6 +114,7 @@ class SandboxedProgramRunner:
             env = os.environ.copy()
             env["PYTHONPATH"] = str(self.project_dir)
             env["NOVA_API"] = os.getenv("NOVA_API")
+            env["NOVA_ACCESS_TOKEN"] = os.getenv("NOVA_ACCESS_TOKEN")
             env["NOVA_PROGRAM_ARGS"] = json.dumps(parameters)  # Convert dict to JSON string
 
             # Add our argument handling to the end of the program
