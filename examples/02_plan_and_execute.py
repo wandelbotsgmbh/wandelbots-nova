@@ -75,9 +75,3 @@ async def main(args: ProgramParameter):
         for i in range(args.number_of_picks):
             print(f"Executing pick {i+1} of {args.number_of_picks}")
             await motion_group.execute(joint_trajectory, tcp, actions=actions)
-
-
-#if __name__ == "__main__":
-#    # This will be replaced when run in sandbox
-#    import asyncio
-#    asyncio.run(main(number_of_picks=2))
