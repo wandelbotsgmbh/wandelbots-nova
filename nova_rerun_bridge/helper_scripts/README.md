@@ -3,8 +3,8 @@
 After installing the library, you need to download the robot models:
 
 ```bash
-# If installed via poetry
-poetry run download-models
+# If installed via uv
+uv run download-models
 
 # If installed via pip
 python -m nova_rerun_bridge.models.download_models

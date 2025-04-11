@@ -31,10 +31,10 @@ The platform enables developers to program industrial applications like gluing, 
 To use the bridge you need to install the [wandelbots-nova](https://github.com/wandelbotsgmbh/wandelbots-nova) package and apply for a instance and access token at [wandelbots.com](https://www.wandelbots.com/).
 
 ```bash
-poetry install wandelbots-nova --extras "nova-rerun-bridge"
+uv add wandelbots-nova --extra "nova-rerun-bridge"
 
 # Download the required models
-poetry run download-models
+uv run download-models
 ```
 
 The example creates a bridge between Nova and rerun:

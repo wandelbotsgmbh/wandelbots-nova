@@ -22,10 +22,6 @@ tests/
 *.log
 *.tmp
 
-# Poetry
-dist/
-build/
-
 # IDE
 .vscode/
 .idea/
