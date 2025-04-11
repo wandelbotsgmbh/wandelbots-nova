@@ -149,7 +149,6 @@ if __name__ == "__main__":
 
             # Run the program using uv
             logger.info("Starting program execution")
-            start_time = datetime.datetime.now()
             process = await asyncio.create_subprocess_exec(
                 "uv",
                 "run",
@@ -159,12 +158,13 @@ if __name__ == "__main__":
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
             )
+
+            # Capture output and measure actual execution time
+            start_time = datetime.datetime.now()
+            stdout, stderr = await process.communicate()
             end_time = datetime.datetime.now()
             execution_time = end_time - start_time
             logger.info(f"Program execution time: {execution_time}")
-
-            # Capture output
-            stdout, stderr = await process.communicate()
 
             if stdout:
                 logger.info(f"Program output:\n{stdout.decode()}")
