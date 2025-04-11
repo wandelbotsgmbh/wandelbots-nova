@@ -159,22 +159,31 @@ if __name__ == "__main__":
                 env=env,
             )
 
-            # Capture output and measure actual execution time
+            # Start timing
             start_time = datetime.datetime.now()
-            stdout, stderr = await process.communicate()
+
+            # Create tasks to read stdout and stderr streams
+            async def read_stream(stream, prefix):
+                while True:
+                    line = await stream.readline()
+                    if not line:
+                        break
+                    logger.info(f"{prefix}: {line.decode().strip()}")
+
+            # Run both stream readers concurrently
+            await asyncio.gather(
+                read_stream(process.stdout, "stdout"),
+                read_stream(process.stderr, "stderr")
+            )
+
+            # Wait for process to complete
+            return_code = await process.wait()
             end_time = datetime.datetime.now()
             execution_time = end_time - start_time
             logger.info(f"Program execution time: {execution_time}")
 
-            if stdout:
-                logger.info(f"Program output:\n{stdout.decode()}")
-            if stderr:
-                logger.error(f"Program errors:\n{stderr.decode()}")
-
-            if process.returncode != 0:
-                error_msg = f"Program failed with exit code {process.returncode}"
-                if stderr:
-                    error_msg += f"\nError output:\n{stderr.decode()}"
+            if return_code != 0:
+                error_msg = f"Program failed with exit code {return_code}"
                 raise RuntimeError(error_msg)
 
             logger.info("Program execution completed successfully")
