@@ -48,6 +48,7 @@ mypy = "^1.13.0"
 pre-commit = "^4.0.1"
 icecream = "^2.1.4"
 ipython = "<9"
+docstring-parser = "^0.16.0"
 
 [tool.poetry.extras]
 nova-rerun-bridge = [

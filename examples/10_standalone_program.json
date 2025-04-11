@@ -1,0 +1,24 @@
+{
+  "$defs": {
+    "Input": {
+      "properties": {
+        "number_of_picks": {
+          "description": "Number of picks to perform",
+          "exclusiveMinimum": 0,
+          "title": "Number Of Picks",
+          "type": "integer",
+          "x-order": 0
+        }
+      },
+      "required": [
+        "number_of_picks"
+      ],
+      "title": "Input",
+      "type": "object"
+    },
+    "Output": {
+      "title": "Output"
+    }
+  },
+  "title": "main"
+}

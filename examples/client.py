@@ -6,7 +6,7 @@ from nova import program
 
 async def main():
     # Read the example program file
-    program_file = pathlib.Path(__file__).parent / "02_plan_and_execute.py"
+    program_file = pathlib.Path(__file__).parent / "10_standalone_program.py"
     program_text = program_file.read_text()
 
     print(program_text)

@@ -61,30 +61,14 @@ class SandboxedProgramRunner:
 
         tree = ast.parse(self.program_text)
         main_func = None
-        parameter_class = None
 
         # Find the main function and parameter class
         for node in ast.walk(tree):
             if isinstance(node, ast.AsyncFunctionDef) and node.name == "main":
                 main_func = node
-            elif (
-                isinstance(node, ast.ClassDef) and node.name == "ProgramParameter"
-            ):  # Look for class named ProgramParameter
-                parameter_class = node
 
         if not main_func:
             raise ValueError("Program must have an async main function")
-
-        if not parameter_class:
-            raise ValueError("Program must define a ProgramParameter class")
-
-        # Validate main function has exactly one parameter of type ProgramParameter
-        if len(main_func.args.args) != 1:
-            raise ValueError("Main function must have exactly one parameter")
-
-        arg = main_func.args.args[0]
-        if not isinstance(arg.annotation, ast.Name) or arg.annotation.id != "ProgramParameter":
-            raise ValueError(f"Main function parameter must be annotated with ProgramParameter")
 
         logger.info("Program validation successful")
 
