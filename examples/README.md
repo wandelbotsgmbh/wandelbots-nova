@@ -7,11 +7,11 @@ Examples on how to use the wandelbots-nova library.
 Run an example by executing the following command:
 
 ```bash
-PYTHONPATH=. poetry run python examples/<file>.py
+PYTHONPATH=. uv run python examples/<file>.py
 ```
 
 For example:
 
 ```bash
-PYTHONPATH=. poetry run python examples/01_basic.py
+PYTHONPATH=. uv run python examples/01_basic.py
 ```

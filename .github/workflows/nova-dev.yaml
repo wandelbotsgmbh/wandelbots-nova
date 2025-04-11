@@ -18,16 +18,16 @@ jobs:
           python-version: "3.10"
       - name: Set up Python environment
         run: |
-          pip install poetry
-          poetry install --extras "nova-rerun-bridge"
+          pip install uv
+          uv sync --extra "nova-rerun-bridge"
       - name: Check formatting with ruff
-        run: poetry run ruff format --check .
+        run: uv run ruff format --check .
       - name: Check import order
-        run: poetry run ruff check --select I
+        run: uv run ruff check --select I
       - name: Check ruff for linting
-        run: poetry run ruff check .
+        run: uv run ruff check .
       - name: Typecheck
-        run: poetry run mypy
+        run: uv run mypy
       - name: Run tests
         run: |
-          PYTHONPATH=. poetry run pytest -rs -v
+          PYTHONPATH=. uv run pytest -rs -v

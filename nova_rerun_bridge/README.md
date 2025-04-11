@@ -21,7 +21,7 @@ wandelbots-nova = { version = ">=0.12", extras = ["nova-rerun-bridge"] }
 
 ```bash
 # Download required robot models
-poetry run download-models
+uv run download-models
 ```
 
 ```python
@@ -110,8 +110,8 @@ The bridge can be configured through environment variables:
 After installing the library, you need to download the robot models:
 
 ```bash
-# If installed via poetry
-poetry run download-models
+# If installed via uv
+uv run download-models
 
 # If installed via pip
 python -m nova_rerun_bridge.models.download_models
@@ -124,8 +124,8 @@ This will download the robot models into your project folder. You can use the li
 Code formatting and linting is done with [ruff]
 
 ```bash
-poetry run ruff check scripts/. --fix
-poetry run ruff format
+uv run ruff check scripts/. --fix
+uv run ruff format
 ```
 
 ### Build
@@ -133,12 +133,12 @@ poetry run ruff format
 To build the package locally, run the following command
 
 ```bash
-poetry build
+uv build
 ```
 
 This will create a dist/ directory with the built package (.tar.gz and .whl files).
 
-#### Install a development branch in Poetry
+#### Install a Development Branch
 
 ```
 nova-rerun-bridge = { git = "https://github.com/wandelbotsgmbh/nova-rerun-bridge.git", branch = "feature/branchname" }

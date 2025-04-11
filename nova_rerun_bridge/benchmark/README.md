@@ -4,10 +4,10 @@ This suite provides tools to benchmark and visualize motion planning strategies 
 
 ```bash
 # install the dependencies
-poetry install --extras "benchmark"
+uv sync --extra "benchmark"
 
 # run a benchmark
-poetry run python -m nova_rerun_bridge/benchmark/run_collision_free_benchmark.py
+uv run python -m nova_rerun_bridge/benchmark/run_collision_free_benchmark.py
 ```
 
 ## Overview

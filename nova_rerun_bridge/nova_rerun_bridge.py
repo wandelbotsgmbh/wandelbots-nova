@@ -64,7 +64,7 @@ class NovaRerunBridge:
         """Ensure robot models are downloaded"""
         models_dir = Path(get_project_root()) / "models"
         if not models_dir.exists() or not list(models_dir.glob("*.glb")):
-            print("Models not found, run update_robot_models() or poetry run download-models")
+            print("Models not found, run update_robot_models() or uv run download-models")
 
     async def setup_blueprint(self) -> None:
         """Configure and send blueprint configuration to Rerun.
