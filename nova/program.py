@@ -98,10 +98,6 @@ class SandboxedProgramRunner:
         # Ensure uv is installed
         await self.install_uv()
 
-        # Create program file with shebang
-        if not self.program_text.startswith("#!/usr/bin/env"):
-            self.program_text = "#!/usr/bin/env -S uv run --script\n" + self.program_text
-
         # Write program file
         self.program_file.write_text(self.program_text)
         self.program_file.chmod(0o755)  # equivalent to chmod u+x
@@ -120,32 +116,7 @@ class SandboxedProgramRunner:
                 env["NOVA_ACCESS_TOKEN"] = token
             env["NOVA_PROGRAM_ARGS"] = json.dumps(parameters)
 
-            # Add our argument handling to the end of the program
-            program_with_args = (
-                self.program_text
-                + """
-
-if __name__ == "__main__":
-    import os
-    import asyncio
-    import traceback
-
-    try:
-        # Create parameter instance from environment
-        args = ProgramParameter.model_validate_json(os.environ.get("NOVA_PROGRAM_ARGS", "{}"))
-        print(args)
-
-        # Run main with the parameter instance
-        asyncio.run(main(args))
-    except Exception as e:
-        print(f"Error in program execution: {str(e)}")
-        print("Traceback:")
-        print(traceback.format_exc())
-        sys.exit(1)
-"""
-            )
-            # Write the modified program
-            self.program_file.write_text(program_with_args)
+            self.program_file.write_text(self.program_text)
 
             # Run the program using uv
             logger.info("Starting program execution")
@@ -172,12 +143,12 @@ if __name__ == "__main__":
 
             # Run both stream readers concurrently
             await asyncio.gather(
-                read_stream(process.stdout, "stdout"),
-                read_stream(process.stderr, "stderr")
+                read_stream(process.stdout, "stdout"), read_stream(process.stderr, "stderr")
             )
 
             # Wait for process to complete
             return_code = await process.wait()
+
             end_time = datetime.datetime.now()
             execution_time = end_time - start_time
             logger.info(f"Program execution time: {execution_time}")
@@ -214,6 +185,7 @@ if __name__ == "__main__":
             await runner.cleanup()
 
 
+# Server endpoint
 async def run_program_endpoint(program_text: str, parameters: dict):
     """REST endpoint handler for running programs."""
     try:
