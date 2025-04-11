@@ -1,6 +1,7 @@
 import abc
 import asyncio
 import datetime
+import json
 import os
 import subprocess
 import sys
@@ -8,7 +9,6 @@ import tempfile
 import venv
 from functools import wraps
 from pathlib import Path
-from typing import Callable, Optional
 
 import dotenv
 import pydantic
@@ -32,7 +32,6 @@ class SandboxedProgramRunner:
     async def install_uv(self):
         """Install uv if not already installed."""
         try:
-            # Check if uv is already installed
             process = await asyncio.create_subprocess_exec(
                 "uv", "--version",
                 stdout=asyncio.subprocess.PIPE,
@@ -46,8 +45,6 @@ class SandboxedProgramRunner:
 
         except FileNotFoundError:
             logger.info("Installing uv...")
-
-            # Install uv using pip
             process = await asyncio.create_subprocess_exec(
                 sys.executable, "-m", "pip", "install", "uv",
                 stdout=asyncio.subprocess.PIPE,
@@ -60,9 +57,43 @@ class SandboxedProgramRunner:
 
             logger.info("uv installed successfully")
 
+    async def validate_program(self):
+        """Validate that the program has a main function with correct parameters."""
+        import ast
+
+        tree = ast.parse(self.program_text)
+        main_func = None
+        parameter_class = None
+
+        # Find the main function and parameter class
+        for node in ast.walk(tree):
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "main":
+                main_func = node
+            elif isinstance(node, ast.ClassDef) and node.name == "ProgramParameter":  # Look for class named ProgramParameter
+                parameter_class = node
+
+        if not main_func:
+            raise ValueError("Program must have an async main function")
+
+        if not parameter_class:
+            raise ValueError("Program must define a ProgramParameter class")
+
+        # Validate main function has exactly one parameter of type ProgramParameter
+        if len(main_func.args.args) != 1:
+            raise ValueError("Main function must have exactly one parameter")
+
+        arg = main_func.args.args[0]
+        if not isinstance(arg.annotation, ast.Name) or arg.annotation.id != "ProgramParameter":
+            raise ValueError(f"Main function parameter must be annotated with ProgramParameter")
+
+        logger.info("Program validation successful")
+
     async def setup_environment(self):
         """Create program file and make it executable."""
         logger.info(f"Setting up program at {self.program_file}")
+
+        # Validate program structure
+        await self.validate_program()
 
         # Ensure uv is installed
         await self.install_uv()
@@ -73,57 +104,43 @@ class SandboxedProgramRunner:
 
         # Write program file
         self.program_file.write_text(self.program_text)
-
-        # Make program file executable
         self.program_file.chmod(0o755)  # equivalent to chmod u+x
 
         logger.info("Environment setup complete")
 
-    async def run_program(self, parameter_instance: ProgramParameter):
+    async def run_program(self, parameter: dict):
         """Run the program using uv with the given parameters."""
         try:
-            # Convert parameters to JSON for passing to the subprocess
-            params_json = parameter_instance.model_dump_json()
+            # Convert parameters to environment variables
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(self.project_dir)
+            env["NOVA_PROGRAM_ARGS"] = parameter
 
-            # Create a wrapper script that will run the program with the parameters
-            wrapper_script = f"""#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.12"
-# dependencies = ["wandelbots-nova"]
-# ///
+            # Add our argument handling to the end of the program
+            program_with_args = self.program_text + """
 
-import asyncio
-import json
-from pathlib import Path
-import sys
+if __name__ == "__main__":
+    import os
+    import json
+    import asyncio
 
-# Add the program directory to the path
-program_dir = Path(__file__).parent
-sys.path.append(str(program_dir))
+    # Create parameter instance from environment
+    args = ProgramParameter.model_validate(os.environ.get("NOVA_PROGRAM_ARGS", {}))
+    print(args)
 
-# Import the program
-from program import main
-
-# Load parameters
-params = json.loads('{params_json}')
-
-# Run the program
-asyncio.run(main(**params))
+    # Run main with the parameter instance
+    asyncio.run(main(args))
 """
-            wrapper_file = self.project_dir / "wrapper.py"
-            wrapper_file.write_text(wrapper_script)
-            wrapper_file.chmod(0o755)
+            # Write the modified program
+            self.program_file.write_text(program_with_args)
 
             # Run the program using uv
             logger.info("Starting program execution")
             process = await asyncio.create_subprocess_exec(
-                str(wrapper_file),
+                str(self.program_file),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env={
-                    "PYTHONPATH": str(self.project_dir),
-                    "PATH": os.environ["PATH"]
-                }
+                env=env
             )
 
             # Capture output
@@ -153,43 +170,21 @@ asyncio.run(main(**params))
             logger.error(f"Error during cleanup: {e}")
 
     @classmethod
-    async def run(cls, program_text: str, parameter_instance: ProgramParameter):
+    async def run(cls, program_text: str, parameters: dict):
         """Create a runner, execute the program, and clean up."""
         runner = cls(program_text)
         try:
             await runner.setup_environment()
-            await runner.run_program(parameter_instance)
+            await runner.run_program(parameters)
         finally:
             await runner.cleanup()
-
-def define_program(parameter: type[ProgramParameter], name: str | None = None):
-    def decorator(func):
-        @wraps(func)
-        async def wrapped_function(*, nova_context: Nova, args: ProgramParameter, **kwargs):
-            if not isinstance(args, parameter):
-                raise TypeError(f"Arguments must be an instance of {parameter.__name__}")
-
-            logger.info(f"Starting program: {name or func.__name__}")
-            try:
-                start_time = datetime.datetime.now()
-                result = await func(nova_context=nova_context, **args.model_dump(), **kwargs)
-                end_time = datetime.datetime.now()
-                execution_time = end_time - start_time
-                logger.info(f"Program completed successfully: {name or func.__name__}")
-                logger.info(f"Execution time: {execution_time}")
-                return result
-            except Exception as e:
-                logger.error(f"Program failed: {name or func.__name__} with error: {e}")
-                raise
-        return wrapped_function
-    return decorator
 
 
 async def run_program_endpoint(program_text: str, parameters: dict):
     """REST endpoint handler for running programs."""
     try:
-        param_instance = ProgramParameter(**parameters)
-        await SandboxedProgramRunner.run(program_text, param_instance)
+        logger.info(parameters)
+        await SandboxedProgramRunner.run(program_text, parameters)
         return {"status": "success"}
     except Exception as e:
         logger.error(f"Failed to run program: {e}")

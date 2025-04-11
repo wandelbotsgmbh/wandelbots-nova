@@ -18,23 +18,20 @@ Prerequisites:
     - NOVA_ACCESS_TOKEN=<token>
 """
 
-import asyncio
-
 import pydantic
 
-from nova import MotionSettings, Nova, program
+from nova import MotionSettings, Nova
 from nova.actions import cartesian_ptp, joint_ptp, linear
 from nova.api import models
 from nova.types import Pose
 
 
-class ProgramParameter(program.ProgramParameter):
+class ProgramParameter(pydantic.BaseModel):
     # Required integer with validation
     number_of_picks: int = pydantic.Field(gt=0, description="Number of picks to perform")
 
 
-@program.define_program(parameter=ProgramParameter, name="example_program")
-async def pick_and_place_program(number_of_picks: int):
+async def main(args: ProgramParameter):
     async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.ensure_virtual_robot_controller(
@@ -42,7 +39,7 @@ async def pick_and_place_program(number_of_picks: int):
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
-        print(number_of_picks)
+        print(args.number_of_picks)
         controller = await cell.controller("controller")
 
         # Connect to the controller and activate motion groups
@@ -75,18 +72,12 @@ async def pick_and_place_program(number_of_picks: int):
             action.settings = MotionSettings(tcp_velocity_limit=200)
 
         joint_trajectory = await motion_group.plan(actions, tcp)
-        for i in range(number_of_picks):
-            print(f"Executing pick {i+1} of {number_of_picks}")
+        for i in range(args.number_of_picks):
+            print(f"Executing pick {i+1} of {args.number_of_picks}")
             await motion_group.execute(joint_trajectory, tcp, actions=actions)
 
 
-async def main():
-    await program.run(pick_and_place_program, ProgramParameter(number_of_picks=2))
-    # await cell.delete_robot_controller(controller.controller_id)
-
-
-if __name__ == "__main__":
-    #schema = ProgramParameter.model_json_schema()
-    #with open("schema.json", "w") as f:
-    #    json.dump(schema, f, indent=2)
-    asyncio.run(main())
+#if __name__ == "__main__":
+#    # This will be replaced when run in sandbox
+#    import asyncio
+#    asyncio.run(main(number_of_picks=2))
