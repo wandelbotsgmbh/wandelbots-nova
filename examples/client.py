@@ -12,9 +12,8 @@ async def main():
     print(program_text)
     # Run the program in sandboxed environment
     # await program.SandboxedProgramRunner.run(program_text, params)
-    await program.run_program_endpoint(program_text, parameters={
-        "number_of_picks": 3
-    })
+    await program.run_program_endpoint(program_text, parameters={"number_of_picks": 3})
+
 
 if __name__ == "__main__":
     asyncio.run(main())

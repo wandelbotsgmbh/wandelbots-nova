@@ -12,14 +12,15 @@ class PydanticClassFinder(ast.NodeVisitor):
     def visit_ClassDef(self, node):
         # Check if the class inherits from nova.ProgramParameter or ProgramParameter
         for base in node.bases:
-            if (isinstance(base, ast.Attribute) and base.attr == 'ProgramParameter') or \
-               (isinstance(base, ast.Name) and base.id == 'ProgramParameter'):
+            if (isinstance(base, ast.Attribute) and base.attr == "ProgramParameter") or (
+                isinstance(base, ast.Name) and base.id == "ProgramParameter"
+            ):
                 self.program_parameter_class = node.name
 
 
 def find_program_parameter_class(file_path: Path) -> str | None:
     """Find the ProgramParameter class name in the given file."""
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         tree = ast.parse(f.read())
 
     finder = PydanticClassFinder()
@@ -54,10 +55,10 @@ def generate_schema_from_file(file_path: Path) -> None:
     schema = parameter_class.model_json_schema()
 
     # Create output filename
-    output_path = file_path.with_suffix('.json')
+    output_path = file_path.with_suffix(".json")
 
     # Write the schema to file
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         json.dump(schema, f, indent=2)
 
     print(f"Schema generated: {output_path}")

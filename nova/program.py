@@ -28,9 +28,7 @@ class SandboxedProgramRunner:
         """Install uv if not already installed."""
         try:
             process = await asyncio.create_subprocess_exec(
-                "uv", "--version",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                "uv", "--version", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             await process.communicate()
 
@@ -41,9 +39,13 @@ class SandboxedProgramRunner:
         except FileNotFoundError:
             logger.info("Installing uv...")
             process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "pip", "install", "uv",
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "uv",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await process.communicate()
 
@@ -64,7 +66,9 @@ class SandboxedProgramRunner:
         for node in ast.walk(tree):
             if isinstance(node, ast.AsyncFunctionDef) and node.name == "main":
                 main_func = node
-            elif isinstance(node, ast.ClassDef) and node.name == "ProgramParameter":  # Look for class named ProgramParameter
+            elif (
+                isinstance(node, ast.ClassDef) and node.name == "ProgramParameter"
+            ):  # Look for class named ProgramParameter
                 parameter_class = node
 
         if not main_func:
@@ -113,7 +117,9 @@ class SandboxedProgramRunner:
             env["NOVA_PROGRAM_ARGS"] = json.dumps(parameters)  # Convert dict to JSON string
 
             # Add our argument handling to the end of the program
-            program_with_args = self.program_text + """
+            program_with_args = (
+                self.program_text
+                + """
 
 if __name__ == "__main__":
     import os
@@ -126,6 +132,7 @@ if __name__ == "__main__":
     # Run main with the parameter instance
     asyncio.run(main(args))
 """
+            )
             # Write the modified program
             self.program_file.write_text(program_with_args)
 
@@ -136,7 +143,7 @@ if __name__ == "__main__":
                 str(self.program_file),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=env
+                env=env,
             )
             end_time = datetime.datetime.now()
             execution_time = end_time - start_time
@@ -163,6 +170,7 @@ if __name__ == "__main__":
         """Clean up the temporary environment."""
         try:
             import shutil
+
             shutil.rmtree(self.project_dir)
             logger.info("Cleaned up temporary environment")
         except Exception as e:

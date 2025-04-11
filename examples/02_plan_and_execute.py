@@ -73,5 +73,5 @@ async def main(args: ProgramParameter):
 
         joint_trajectory = await motion_group.plan(actions, tcp)
         for i in range(args.number_of_picks):
-            print(f"Executing pick {i+1} of {args.number_of_picks}")
+            print(f"Executing pick {i + 1} of {args.number_of_picks}")
             await motion_group.execute(joint_trajectory, tcp, actions=actions)
