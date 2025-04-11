@@ -18,24 +18,56 @@ Prerequisites:
 """
 
 import asyncio
+import json
+from pathlib import Path
+
+import pydantic
+import yaml
 
 import nova
 from nova import MotionSettings, Nova
 from nova.actions import cartesian_ptp, joint_ptp, linear
 from nova.api import models
 from nova.types import Pose
-import pydantic
 
 
 class ProgramParameter(nova.ProgramParameter):
-    # box size greater than 3 and less than 6 and required
-    box_size: int = pydantic.Field(gt=3, lt=6, description="Size of the box")
-    # box length greater than 0 and not required
-    box_length: int = pydantic.Field(default=10, gt=0, description="Length of the box")
+    # Required integer with validation
+    number_of_picks: int = pydantic.Field(gt=0, description="Number of picks to perform")
+
+    # Optional float with range validation
+    speed_factor: float = pydantic.Field(default=1.0, ge=0.1, le=2.0, description="Speed multiplier for movements")
+
+    # Required string with regex pattern
+    robot_name: str = pydantic.Field(..., pattern="^[A-Za-z0-9_-]+$", description="Name of the robot to control")
+
+    # Optional boolean with default
+    enable_logging: bool = pydantic.Field(default=False, description="Enable detailed motion logging")
+
+    # List of integers with length validation
+    waypoint_indices: list[int] = pydantic.Field(
+        default_factory=list,
+        min_items=1,
+        max_items=10,
+        description="Indices of waypoints to visit"
+    )
+
+    # Optional string with allowed values
+    operation_mode: str = pydantic.Field(
+        default="standard",
+        pattern="^(standard|advanced|debug)$",
+        description="Operation mode for the program"
+    )
+
+    # Required tuple of floats for coordinates
+    home_pose: Pose = pydantic.Field(
+        ...,
+        description="Home position coordinates (x, y, z)"
+    )
 
 
 @nova.program(parameter=ProgramParameter, name="example_program")
-async def program(nova_context: Nova, arguments: ProgramParameter):
+async def program(nova_context: Nova, number_of_picks: int):
     cell = nova_context.cell()
     controller = await cell.controller("controller")
 
@@ -67,9 +99,8 @@ async def program(nova_context: Nova, arguments: ProgramParameter):
         action.settings = MotionSettings(tcp_velocity_limit=200)
 
     joint_trajectory = await motion_group.plan(actions, tcp)
-    motion_iter = motion_group.stream_execute(joint_trajectory, tcp, actions=actions)
-    async for motion_state in motion_iter:
-        print(motion_state)
+    for i in range(number_of_picks):
+        await motion_group.execute(joint_trajectory, tcp, actions=actions)
 
 
 async def main():
@@ -80,9 +111,12 @@ async def main():
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
-        await program(nova_context=nova.context(), arguments=ProgramParameter(box_size=4, box_length=5))
+        await program(nova, **ProgramParameter(number_of_picks=2).model_dump())
         await cell.delete_robot_controller(controller.controller_id)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    schema = ProgramParameter.model_json_schema()
+    with open("schema.json", "w") as f:
+        json.dump(schema, f, indent=2)
+    # asyncio.run(main())
