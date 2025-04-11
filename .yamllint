@@ -7,7 +7,7 @@ ignore: |
   dist
   build
   .git
-  poetry.lock
+  uv.lock
 
 rules:
   line-length:
