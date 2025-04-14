@@ -101,9 +101,6 @@ class SandboxedProgramRunner:
 
             self.program_file.write_text(self.program_text)
 
-            # Run the program using uv
-            logger.info("Starting program execution")
-
             # Convert parameters to command line arguments
             args = []
             for key, value in parameters.items():
@@ -112,19 +109,15 @@ class SandboxedProgramRunner:
                     args.extend([f"--{key}", json.dumps(value)])
                 else:
                     # For simple types, convert to string
-                    args.extend([f"--{key}", str(value)])
+                    args.extend([f"--{key}={str(value)}"])
 
-            logger.info(f"Running program with arguments: {args}")
+            # Build the command for logging
+            cmd = ["uv", "run", "--script", str(self.program_file)] + args
+            logger.info(f"Running command: {' '.join(cmd)}")
 
+            # Run the program using uv
             process = await asyncio.create_subprocess_exec(
-                "uv",
-                "run",
-                "--script",
-                str(self.program_file),
-                *args,  # Pass the arguments
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env,
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=env
             )
 
             # Start timing

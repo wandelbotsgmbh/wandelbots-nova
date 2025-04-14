@@ -2,13 +2,21 @@ import argparse
 import inspect
 import json
 from collections.abc import Callable, Mapping
-from typing import (Annotated, Any, Generic, ParamSpec, TypeVar, Union,
-                    get_args, get_origin, get_type_hints)
+from typing import (
+    Annotated,
+    Any,
+    Generic,
+    ParamSpec,
+    TypeVar,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from docstring_parser import Docstring
 from docstring_parser import parse as parse_docstring
-from pydantic import (BaseModel, Field, PrivateAttr, RootModel, create_model,
-                      validate_call)
+from pydantic import BaseModel, Field, PrivateAttr, RootModel, create_model, validate_call
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
@@ -17,7 +25,7 @@ Return = TypeVar("Return")
 
 
 class Function(BaseModel, Generic[Parameters, Return]):
-    _wrapped: Callable[Parameters, Return] = PrivateAttr(
+    _wrapped: Callable[Parameters, Return] = PrivateAttr(  # type: ignore
         default_factory=lambda: lambda *args, **kwargs: None
     )
     name: str
@@ -63,17 +71,18 @@ class Function(BaseModel, Generic[Parameters, Return]):
 
     def __repr__(self) -> str:
         input_fields = ", ".join(
-            f"{k}: {v.annotation.__name__}" for k, v in self.input.model_fields.items()
+            f"{k}: {v.annotation.__name__}"
+            for k, v in self.input.model_fields.items()  # type: ignore
         )
 
         # Get the actual output type from RootModel
         if hasattr(self.output, "model_fields") and "root" in self.output.model_fields:
             root_annotation = self.output.model_fields["root"].annotation
             # If it's a TypeVar, get its bound type
-            if hasattr(root_annotation, "__bound__") and root_annotation.__bound__:
-                output_type = root_annotation.__bound__.__name__
+            if hasattr(root_annotation, "__bound__") and root_annotation.__bound__:  # type: ignore
+                output_type = root_annotation.__bound__.__name__  # type: ignore
             else:
-                output_type = root_annotation.__name__
+                output_type = root_annotation.__name__  # type: ignore
         else:
             output_type = self.output.__name__
 
@@ -93,13 +102,13 @@ class Function(BaseModel, Generic[Parameters, Return]):
         for name, field in self.input.model_fields.items():
             # Convert field type to appropriate Python type
             field_type = field.annotation
-            if hasattr(field_type, "__origin__") and field_type.__origin__ is Annotated:
-                field_type = field_type.__origin__
+            if hasattr(field_type, "__origin__") and field_type.__origin__ is Annotated:  # type: ignore
+                field_type = field_type.__origin__  # type: ignore
 
             # Handle optional fields
             is_optional = False
-            if hasattr(field_type, "__origin__") and field_type.__origin__ is Union:
-                field_type = field_type.__args__[0]
+            if hasattr(field_type, "__origin__") and field_type.__origin__ is Union:  # type: ignore
+                field_type = field_type.__args__[0]  # type: ignore
                 is_optional = True
 
             # For complex types (like Pydantic models), use JSON parsing
@@ -124,7 +133,7 @@ class Function(BaseModel, Generic[Parameters, Return]):
                 parser.add_argument(
                     f"--{name}",
                     dest=name,
-                    type=field_type,
+                    type=field_type,  # type: ignore
                     default=field.default if field.default is not None else None,
                     required=not is_optional and field.default is None,
                     help=field.description or f"{name} parameter",
@@ -160,7 +169,7 @@ def input_and_output_types(
             if param_doc := next((p for p in docstring.params if p.arg_name == name), None):
                 default.description = param_doc.description
 
-        input_field_definitions[name] = (parameter.annotation, default)
+        input_field_definitions[name] = (parameter.annotation, default)  # type: ignore
     input = create_model("Input", **input_field_definitions, __module__=func.__module__)
 
     if output_type and isinstance(output_type, type) and issubclass(output_type, BaseModel):
@@ -183,9 +192,7 @@ def input_and_output_types(
                 description = docstring.returns.description
 
         class Output(RootModel[T]):  # pylint: disable=redefined-outer-name
-            root: T = Field(  # type: ignore
-                ..., description=description
-            )
+            root: T = Field(..., description=description)
 
         output = Output
 
