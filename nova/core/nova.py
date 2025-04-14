@@ -117,19 +117,15 @@ class Cell:
         timeout: int = 25,
         position: str | None = None,
     ) -> Controller:
-        """Add a virtual robot controller to the cell."""
-        if position is None:
-            position = str(MANUFACTURER_HOME_POSITIONS.get(controller_manufacturer, [0.0] * 7))
-
-        controller_instance = await self._api_gateway.add_virtual_robot_controller(
-            cell=self._cell_id,
-            name=name,
-            controller_type=controller_type,
-            controller_manufacturer=controller_manufacturer,
+        await self.add_controller(
+            robot_controller=virtual_controller(
+                name=name,
+                type=controller_type,
+                manufacturer=controller_manufacturer,
+                position=position,
+            ),
             timeout=timeout,
-            position=position,
         )
-        return self._create_controller(controller_instance.controller)
 
     async def ensure_virtual_robot_controller(
         self,
@@ -138,24 +134,39 @@ class Cell:
         controller_manufacturer: api.models.Manufacturer,
         timeout: int = 25,
     ) -> Controller:
-        """
-        Ensure a virtual robot controller with the given name exists.
-        If the controller already exists, it is returned. Otherwise, it is created.
-        Args:
-            name (str): The name of the controller.
-            controller_type (api.models.VirtualControllerTypes): The type of virtual controller.
-            controller_manufacturer (api.models.Manufacturer): The manufacturer of the controller.
-        Returns:
-            Controller: The existing or newly created Controller object.
-        """
-        controller_instance = await self._api_gateway.get_controller_instance(
-            cell=self.cell_id, name=name
+        return await self.ensure_controller(
+            robot_controller=virtual_controller(
+                name=name, type=controller_type, manufacturer=controller_manufacturer
+            ),
+            timeout=timeout,
         )
-        if controller_instance:
-            return self._create_controller(controller_instance.controller)
-        return await self.add_virtual_robot_controller(
-            name, controller_type, controller_manufacturer, timeout=timeout
+
+    async def add_controller(self, robot_controller: api.models.RobotController, timeout: int = 25):
+        """
+        Add a controller to the current cell and wait until the controller becomes active
+        This can be a virtual or physical controller.
+        """
+        # TODO: calculate timeout properly
+        await self._api_gateway.add_robot_controller(
+            cell=self._cell_id, robot_controller=robot_controller, timeout=timeout
         )
+
+        await self._api_gateway.wait_for_controller_ready(
+            cell=self._cell_id, name=robot_controller.name, timeout=timeout
+        )
+
+        return self._create_controller(robot_controller.name)
+
+    async def ensure_controller(
+        self, robot_controller: api.models.RobotController, timeout: int = 25
+    ) -> Controller:
+        controller = await self._api_gateway.get_controller_instance(
+            cell=self.cell_id, name=robot_controller.name
+        )
+
+        if controller:
+            return self._create_controller(controller.controller)
+        return await self.add_controller(robot_controller, timeout=timeout)
 
     async def controllers(self) -> list[Controller]:
         """
@@ -202,3 +213,107 @@ class Cell:
         """
         controllers = await self.controllers()
         return RobotCell(timer=None, **{controller.id: controller for controller in controllers})
+
+
+from wandelbots_api_client.models.abb_controller import AbbController
+from wandelbots_api_client.models.fanuc_controller import FanucController
+from wandelbots_api_client.models.kuka_controller import KukaController
+from wandelbots_api_client.models.universalrobots_controller import UniversalrobotsController
+from wandelbots_api_client.models.yaskawa_controller import YaskawaController
+
+
+def abb_controller(
+    name: str, controller_ip: str, egm_server_ip: str, egm_server_port: str
+) -> api.models.RobotController:
+    return api.models.RobotController(
+        name=name,
+        configuration=api.models.RobotControllerConfiguration(
+            AbbController(
+                controller_ip=controller_ip,
+                egm_server=api.models.AbbControllerEgmServer(
+                    ip=egm_server_ip, port=egm_server_port
+                ),
+            )
+        ),
+    )
+
+
+def universal_robots_controller(name: str, ip: str) -> api.models.RobotController:
+    """
+    Create a Universal Robots controller configuration.
+    Args:
+        ip (str): The IP address of the Universal Robots robot.
+    """
+    return api.models.RobotController(
+        name=name,
+        configuration=api.models.RobotControllerConfiguration(
+            UniversalrobotsController(controller_ip=ip)
+        ),
+    )
+
+
+def kuka_controller(
+    name: str, controller_ip: str, controller_port: str, rsi_server_ip: str, rsi_server_port: str
+) -> api.models.RobotController:
+    return api.models.RobotController(
+        name=name,
+        configuration=api.models.RobotControllerConfiguration(
+            KukaController(
+                controller_ip=controller_ip,
+                controller_port=controller_port,
+                rsi_server=api.models.KukaControllerRsiServer(
+                    ip=rsi_server_ip, port=rsi_server_port
+                ),
+            )
+        ),
+    )
+
+
+def fanuc_controller(name: str, ip: str) -> api.models.RobotController:
+    """
+    Create a Fanuc controller configuration.
+    Args:
+        ip (str): The IP address of the Fanuc robot.
+    """
+    return api.models.RobotController(
+        name=name,
+        configuration=api.models.RobotControllerConfiguration(FanucController(controller_ip=ip)),
+    )
+
+
+def yaskawa_controller(name: str, ip: str) -> api.models.RobotController:
+    """
+    Create a Yaskawa controller configuration.
+    Args:
+        ip (str): The IP address of the Yaskawa robot.
+    """
+    return api.models.RobotController(
+        name=name,
+        configuration=api.models.RobotControllerConfiguration(YaskawaController(controller_ip=ip)),
+    )
+
+
+def virtual_controller(
+    name: str,
+    manufacturer: api.models.Manufacturer,
+    type: api.models.VirtualControllerTypes | None = None,
+    json: str | None = None,
+    position: str | None = None,
+) -> api.models.RobotController:
+    """
+    Create a virtual controller configuration.
+    Args:
+        name (str): The name of the controller.
+        manufacturer (api.models.Manufacturer): The manufacturer of the robot.
+    """
+    if position is None:
+        position = str(MANUFACTURER_HOME_POSITIONS.get(manufacturer, [0.0] * 7))
+
+    return api.models.RobotController(
+        name=name,
+        configuration=api.models.RobotControllerConfiguration(
+            api.models.VirtualController(
+                manufacturer=manufacturer, type=type, json=json, position=position
+            )
+        ),
+    )

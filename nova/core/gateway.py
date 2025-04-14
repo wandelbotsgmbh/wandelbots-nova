@@ -353,28 +353,13 @@ class ApiGateway:
         )
 
     async def add_robot_controller(
-        self,
-        *,
-        cell: str,
-        name: str,
-        controller_type: wb.models.VirtualControllerTypes,
-        controller_manufacturer: wb.models.Manufacturer,
-        position: str,
-        completion_timeout: int = 25,
-    ) -> None:
+        self, cell: str, robot_controller: wb.models.RobotController, timeout: int = 25
+    ):
         """
-        Add a virtual robot controller to the specified cell.
+        Add a robot controller to the specified cell.
         """
-        robot_controller = wb.models.RobotController(
-            name=name,
-            configuration=wb.models.RobotControllerConfiguration(
-                wb.models.VirtualController(
-                    type=controller_type, manufacturer=controller_manufacturer, position=position
-                )
-            ),
-        )
         await self.controller_api.add_robot_controller(
-            cell=cell, robot_controller=robot_controller, completion_timeout=completion_timeout
+            cell=cell, robot_controller=robot_controller, completion_timeout=timeout
         )
 
     async def delete_robot_controller(
@@ -446,14 +431,13 @@ class ApiGateway:
         if position is None:
             position = "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]"  # fallback
 
+        configuration = wb.models.VirtualController(
+            manufacturer=controller_manufacturer, type=controller_type, position=position
+        )
+
         # Step 1: Add the controller
         await self.add_robot_controller(
-            cell=cell,
-            name=name,
-            controller_type=controller_type,
-            controller_manufacturer=controller_manufacturer,
-            position=position,
-            completion_timeout=timeout,
+            cell=cell, name=name, configuration=configuration, timeout=timeout
         )
         # Step 2: Wait for it to become ready
         await self.wait_for_controller_ready(cell=cell, name=name, timeout=timeout)
