@@ -98,17 +98,30 @@ class SandboxedProgramRunner:
                 env["NOVA_API"] = api
             if (token := os.getenv("NOVA_ACCESS_TOKEN")) is not None:
                 env["NOVA_ACCESS_TOKEN"] = token
-            env["NOVA_PROGRAM_ARGS"] = json.dumps(parameters)
 
             self.program_file.write_text(self.program_text)
 
             # Run the program using uv
             logger.info("Starting program execution")
+
+            # Convert parameters to command line arguments
+            args = []
+            for key, value in parameters.items():
+                if isinstance(value, (dict, list)):
+                    # For complex types, convert to JSON string
+                    args.extend([f"--{key}", json.dumps(value)])
+                else:
+                    # For simple types, convert to string
+                    args.extend([f"--{key}", str(value)])
+
+            logger.info(f"Running program with arguments: {args}")
+
             process = await asyncio.create_subprocess_exec(
                 "uv",
                 "run",
                 "--script",
                 str(self.program_file),
+                *args,  # Pass the arguments
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,

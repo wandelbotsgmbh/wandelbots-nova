@@ -1,13 +1,22 @@
 import argparse
 import inspect
+import json
 from collections.abc import Callable, Mapping
-from typing import (Annotated, Any, Generic, ParamSpec, TypeVar, Union,
-                    get_args, get_origin, get_type_hints)
+from typing import (
+    Annotated,
+    Any,
+    Generic,
+    ParamSpec,
+    TypeVar,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from docstring_parser import Docstring
 from docstring_parser import parse as parse_docstring
-from pydantic import (BaseModel, Field, PrivateAttr, RootModel, create_model,
-                      validate_call)
+from pydantic import BaseModel, Field, PrivateAttr, RootModel, create_model, validate_call
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
@@ -101,15 +110,33 @@ class Function(BaseModel, Generic[Parameters, Return]):
                 field_type = field_type.__args__[0]
                 is_optional = True
 
-            # Add argument to parser
-            parser.add_argument(
-                f"--{name}",
-                dest=name,
-                type=field_type,
-                default=field.default if field.default is not None else None,
-                required=not is_optional and field.default is None,
-                help=field.description or f"{name} parameter",
-            )
+            # For complex types (like Pydantic models), use JSON parsing
+            if isinstance(field_type, type) and issubclass(field_type, BaseModel):
+
+                def json_type(value: str) -> Any:
+                    try:
+                        return json.loads(value)
+                    except json.JSONDecodeError as e:
+                        raise argparse.ArgumentTypeError(f"Invalid JSON for {name}: {e}")
+
+                parser.add_argument(
+                    f"--{name}",
+                    dest=name,
+                    type=json_type,
+                    default=field.default if field.default is not None else None,
+                    required=not is_optional and field.default is None,
+                    help=field.description or f"{name} parameter (JSON format)",
+                )
+            else:
+                # Add argument to parser
+                parser.add_argument(
+                    f"--{name}",
+                    dest=name,
+                    type=field_type,
+                    default=field.default if field.default is not None else None,
+                    required=not is_optional and field.default is None,
+                    help=field.description or f"{name} parameter",
+                )
 
         return parser
 
