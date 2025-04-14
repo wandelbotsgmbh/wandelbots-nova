@@ -1,13 +1,3 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.12"
-# dependencies = [
-#     "wandelbots-nova",
-#     "pydantic==2.11.3",
-#     "httpx",
-# ]
-# ///
-
 """
 Example: Perform relative movements with a robot.
 
@@ -19,51 +9,41 @@ Prerequisites:
 """
 
 import asyncio
-import json
-import os
 
-from pydantic import Field
-
-import nova
 from nova import MotionSettings, Nova
-from nova.actions import cartesian_ptp, joint_ptp, linear
+from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
 from nova.types import Pose
 
 
-@nova.function
-async def main(number_of_picks: int = Field(gt=0, description="Number of picks to perform")):
+async def main():
     async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.ensure_virtual_robot_controller(
-            "controller",
+            "ur",
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
-        controller = await cell.controller("controller")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
             home_joints = await motion_group.joints()
             tcp_names = await motion_group.tcp_names()
             tcp = tcp_names[0]
-            current_pose = await motion_group.tcp_pose(tcp)
 
-            pick_pose = Pose((100, 0, 0, 0, 0, 0))
-            drop_pose = Pose((0, 100, 0, 0, 0, 0))
+            # Get current TCP pose and offset it slightly along the x-axis
+            current_pose = await motion_group.tcp_pose(tcp)
+            target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
 
             actions = [
                 joint_ptp(home_joints),
-                # go to pick pose
-                cartesian_ptp(current_pose @ pick_pose @ (0, 0, -100, 0, 0, 0)),
-                linear(current_pose @ pick_pose),
-                linear(current_pose @ pick_pose @ (0, 0, -100, 0, 0, 0)),
-                # go to drop pose
-                cartesian_ptp(current_pose @ drop_pose @ (0, 0, -100, 0, 0, 0)),
-                linear(current_pose @ drop_pose),
-                linear(current_pose @ drop_pose @ (0, 0, -100, 0, 0, 0)),
-                linear(current_pose @ drop_pose @ (0, 0, -100, 0, 0, 0)),
-                # go to home pose
+                cartesian_ptp(target_pose),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
                 joint_ptp(home_joints),
             ]
 
@@ -72,13 +52,12 @@ async def main(number_of_picks: int = Field(gt=0, description="Number of picks t
             action.settings = MotionSettings(tcp_velocity_limit=200)
 
         joint_trajectory = await motion_group.plan(actions, tcp)
-        for i in range(number_of_picks):
-            print(f"Executing pick {i + 1} of {number_of_picks}")
-            await motion_group.execute(joint_trajectory, tcp, actions=actions)
+        motion_iter = motion_group.stream_execute(joint_trajectory, tcp, actions=actions)
+        async for motion_state in motion_iter:
+            print(motion_state)
+
+        await cell.delete_robot_controller(controller.controller_id)
 
 
 if __name__ == "__main__":
-    # TODO: add nova util to create a parser based on the ProgramParameter model
-    # ./examples/02_plan_and_execute.py --args={"number_of_picks": 3}
-    args = json.loads(os.environ.get("NOVA_PROGRAM_ARGS", "{}"))
-    asyncio.run(main(**args))
+    asyncio.run(main())
