@@ -4,23 +4,12 @@
 # dependencies = [
 #     "wandelbots-nova",
 #     "pydantic==2.11.3",
+#     "docstring_parser",
 #     "httpx",
 # ]
 # ///
 
-"""
-Example: Perform relative movements with a robot.
-
-Prerequisites:
-- Create an NOVA instance
-- Set env variables (you can specify them in an .env file):
-    - NOVA_API=<api>
-    - NOVA_ACCESS_TOKEN=<token>
-"""
-
 import asyncio
-import json
-import os
 
 from pydantic import Field
 
@@ -78,7 +67,9 @@ async def main(number_of_picks: int = Field(gt=0, description="Number of picks t
 
 
 if __name__ == "__main__":
-    # TODO: add nova util to create a parser based on the ProgramParameter model
-    # ./examples/02_plan_and_execute.py --args={"number_of_picks": 3}
-    args = json.loads(os.environ.get("NOVA_PROGRAM_ARGS", "{}"))
-    asyncio.run(main(**args))
+    # TODO: also handle args from env
+    # Create parser from the function's input model
+    args = main.create_parser().parse_args()
+
+    # Convert args to dict and run the function
+    asyncio.run(main(**vars(args)))

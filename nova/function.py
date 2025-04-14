@@ -1,10 +1,13 @@
+import argparse
 import inspect
 from collections.abc import Callable, Mapping
-from typing import Annotated, Any, Generic, ParamSpec, TypeVar, get_args, get_origin, get_type_hints
+from typing import (Annotated, Any, Generic, ParamSpec, TypeVar, Union,
+                    get_args, get_origin, get_type_hints)
 
 from docstring_parser import Docstring
 from docstring_parser import parse as parse_docstring
-from pydantic import BaseModel, Field, PrivateAttr, RootModel, create_model, validate_call
+from pydantic import (BaseModel, Field, PrivateAttr, RootModel, create_model,
+                      validate_call)
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
@@ -77,6 +80,38 @@ class Function(BaseModel, Generic[Parameters, Return]):
         return (
             f"Function(name='{self.name}'{desc_part}, input=({input_fields}), output={output_type})"
         )
+
+    def create_parser(self) -> argparse.ArgumentParser:
+        """Create an argument parser based on the function's input model.
+
+        Returns:
+            argparse.ArgumentParser: A parser configured with arguments matching the input model fields.
+        """
+        parser = argparse.ArgumentParser(description=self.description or self.name)
+
+        for name, field in self.input.model_fields.items():
+            # Convert field type to appropriate Python type
+            field_type = field.annotation
+            if hasattr(field_type, "__origin__") and field_type.__origin__ is Annotated:
+                field_type = field_type.__origin__
+
+            # Handle optional fields
+            is_optional = False
+            if hasattr(field_type, "__origin__") and field_type.__origin__ is Union:
+                field_type = field_type.__args__[0]
+                is_optional = True
+
+            # Add argument to parser
+            parser.add_argument(
+                f"--{name}",
+                dest=name,
+                type=field_type,
+                default=field.default if field.default is not None else None,
+                required=not is_optional and field.default is None,
+                help=field.description or f"{name} parameter",
+            )
+
+        return parser
 
 
 def input_and_output_types(
