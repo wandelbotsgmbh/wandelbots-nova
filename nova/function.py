@@ -2,21 +2,13 @@ import argparse
 import inspect
 import json
 from collections.abc import Callable, Mapping
-from typing import (
-    Annotated,
-    Any,
-    Generic,
-    ParamSpec,
-    TypeVar,
-    Union,
-    get_args,
-    get_origin,
-    get_type_hints,
-)
+from typing import (Annotated, Any, Generic, ParamSpec, TypeVar, Union,
+                    get_args, get_origin, get_type_hints)
 
 from docstring_parser import Docstring
 from docstring_parser import parse as parse_docstring
-from pydantic import BaseModel, Field, PrivateAttr, RootModel, create_model, validate_call
+from pydantic import (BaseModel, Field, PrivateAttr, RootModel, create_model,
+                      validate_call)
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
