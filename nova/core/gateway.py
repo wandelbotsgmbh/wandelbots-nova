@@ -357,6 +357,10 @@ class ApiGateway:
     ):
         """
         Add a robot controller to the specified cell.
+        Args:
+            cell: The cell to add the controller to.
+            robot_controller: The robot controller to add.
+            timeout: The timeout in seconds for the operation.
         """
         await self.controller_api.add_robot_controller(
             cell=cell, robot_controller=robot_controller, completion_timeout=timeout
