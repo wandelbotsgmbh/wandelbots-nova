@@ -382,29 +382,19 @@ class ApiGateway:
             timeout: The timeout in seconds.
         """
         iteration = 0
-        controller = await self.get_controller_instance(cell=cell, name=name)
-
         while iteration < timeout:
-            if controller is not None:
-                # Check if it's still initializing
-                if controller.error_details in [
-                    "Controller not initialized or disposed",
-                    "Initializing controller connection.",
-                ]:
-                    # Force an update by calling get_current_robot_controller_state
-                    await self.get_current_robot_controller_state(
-                        cell=cell, controller_id=controller.host
-                    )
-                elif controller.has_error:
-                    # As long as it has an error, it's still not ready
-                    logger.error(controller.error_details)
-                else:
-                    # Controller is good to go
-                    return
-
-            logger.info(f"Waiting for {cell}/{name} controller availability")
-            await asyncio.sleep(1)
             controller = await self.get_controller_instance(cell=cell, name=name)
+            if controller is None:
+                logger.info(f"Controller not found: {cell}/{name}")
+            elif controller.has_error:
+                logger.error(
+                    f"Controller has error: {cell}/{name}, error: {controller.error_details}"
+                )
+            else:
+                logger.info(f"Controller {cell}/{name} is ready")
+                return
+
+            await asyncio.sleep(1)
             iteration += 1
 
         raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")

@@ -22,8 +22,7 @@ async def main():
                 name="ur",
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
                 type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            ),
-            timeout=30,
+            )
         )
 
         async with controller[0] as motion_group:
