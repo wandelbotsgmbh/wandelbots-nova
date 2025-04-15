@@ -10,7 +10,7 @@ LOGGER_NAME: str = config("LOGGER_NAME", default="wandelbots-nova")
 
 # Setting up the underlying logger
 formatter: logging.Formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT)
-handler: logging.StreamHandler = logging.StreamHandler(sys.stderr)
+handler: logging.StreamHandler = logging.StreamHandler(sys.stdout)
 handler.setLevel(LOG_LEVEL)
 handler.setFormatter(formatter)
 
