@@ -120,6 +120,7 @@ class Cell:
         controller_type: api.models.VirtualControllerTypes,
         controller_manufacturer: api.models.Manufacturer,
         timeout: int = 25,
+        wait_for_ready_timeout: int = 25,
         position: str | None = None,
     ) -> Controller:
         await self.add_controller(
@@ -128,8 +129,10 @@ class Cell:
                 type=controller_type,
                 manufacturer=controller_manufacturer,
                 position=position,
+                wait_for_ready_timeout=wait_for_ready_timeout,
             ),
             add_timeout=timeout,
+            wait_for_ready_timeout=timeout,
         )
 
     async def ensure_virtual_robot_controller(
@@ -138,12 +141,14 @@ class Cell:
         controller_type: api.models.VirtualControllerTypes,
         controller_manufacturer: api.models.Manufacturer,
         timeout: int = 25,
+        wait_for_ready_timeout: int = 25,
     ) -> Controller:
         return await self.ensure_controller(
             robot_controller=virtual_controller(
                 name=name, type=controller_type, manufacturer=controller_manufacturer
             ),
-            timeout=timeout,
+            add_timeout=timeout,
+            waitfor_ready_timeout=wait_for_ready_timeout,
         )
 
     async def add_controller(
@@ -354,7 +359,7 @@ def virtual_controller(
         name (str): The name of the controller.
         manufacturer (api.models.Manufacturer): The manufacturer of the robot.
         type (api.models.VirtualControllerTypes | None): One of the available virtual controller types for this manufacturer.
-        position: (str | None): Initial joint position of the first motion group from the virtual robot controller.
+        position: (list[float] | None): Initial joint position of the first motion group from the virtual robot controller.
         json (str | None): Additional data to save on controller.
     """
     if position is None:
