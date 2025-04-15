@@ -7,7 +7,6 @@ import tempfile
 import traceback
 from pathlib import Path
 
-import pydantic
 from loguru import logger
 
 
