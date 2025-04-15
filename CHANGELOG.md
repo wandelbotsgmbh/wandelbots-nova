@@ -1,6 +1,29 @@
 # CHANGELOG
 
 
+## v0.48.1 (2025-04-14)
+
+### Chores
+
+- **RPS-1557**: Adjust CI files for `uv`
+  ([`86fe6c3`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/86fe6c33049d3de2df7c2e970d3fce5d2ce15916))
+
+- **RPS-1557**: Adjust files in `nova_rerun_bridge` to `uv`
+  ([`0de3c5b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0de3c5bc5a07522b212565eb6326dd526d34c277))
+
+- **RPS-1557**: Adjust files to `uv`
+  ([`a429599`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a429599443289f0df71c84d3bedd46f9b90acfd3))
+
+- **RPS-1557**: Migrate from `Poetry` to `uv`
+  ([`aea47b4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/aea47b47dd91d19ced2f6b2fab9d1fb7a88156ce))
+
+# install uv once; I installed it on my specific Python version via pip; ymmv pyenv shell 3.10.16
+  pip install uv
+
+# install and run `migrate-to-uv`` cd wandelbots-nova poetry shell pip install migrate-to-uv uvx
+  migrate-to-uv
+
+
 ## v0.48.0 (2025-04-10)
 
 ### Features

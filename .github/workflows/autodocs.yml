@@ -21,16 +21,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - name: Install Poetry
-        run: pip install poetry
-      - name: Add pdoc to dependencies
-        run: poetry add --dev pdoc
+      - name: Install uv
+        run: pip install uv
       - name: Add rerun to dependencies
-        run: poetry run pip install "wandelbots-nova[nova-rerun-bridge]"
+        run: uv run pip install "wandelbots-nova[nova-rerun-bridge]"
       - name: Install dependencies
-        run: poetry install
+        run: uv sync
       - name: Generate documentation
-        run: poetry run pdoc --docformat google nova nova_rerun_bridge -o ./docs
+        run: uvx pdoc --docformat google nova nova_rerun_bridge -o ./docs
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

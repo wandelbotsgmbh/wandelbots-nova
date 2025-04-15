@@ -1,11 +1,11 @@
 #!/bin/sh
 
-poetry run download-models
+uv run download-models
 
 # Copy directories from parent folder
 PARENT_DIR="../.."
 DIRS_TO_COPY=("nova_rerun_bridge" "nova")
-FILES_TO_COPY=("pyproject.toml" "poetry.lock" "README.md")
+FILES_TO_COPY=("pyproject.toml" "uv.lock" "README.md")
 
 for dir in "${DIRS_TO_COPY[@]}"; do
     if [ -d "$PARENT_DIR/$dir" ]; then

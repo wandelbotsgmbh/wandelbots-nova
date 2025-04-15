@@ -52,8 +52,8 @@ jobs:
           echo "PORTAL_STG_ACCESS_TOKEN=$PORTAL_STG_ACCESS_TOKEN" >> $GITHUB_ENV
       - name: Set up Python environment
         run: |
-          pip install poetry
-          poetry install --extras "nova-rerun-bridge"
+          pip install uv
+          uv sync --extra "nova-rerun-bridge"
       - name: "Run example: examples/${{ matrix.example_file }}"
         run: |
           touch ./.env
@@ -66,7 +66,7 @@ jobs:
           until [ $n -ge $max_retries ]
           do
             echo "Attempt $((n+1)) to run ${{ matrix.example_file }}..."
-            PYTHONPATH=. poetry run python ${{ matrix.example_file }} && break
+            PYTHONPATH=. uv run python ${{ matrix.example_file }} && break
 
             n=$((n+1))
             echo "Failed attempt $n. Retrying in 5s..."
