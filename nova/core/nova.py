@@ -129,7 +129,6 @@ class Cell:
                 type=controller_type,
                 manufacturer=controller_manufacturer,
                 position=position,
-                wait_for_ready_timeout=wait_for_ready_timeout,
             ),
             add_timeout=timeout,
             wait_for_ready_timeout=timeout,
@@ -256,7 +255,7 @@ class Cell:
 
 
 def abb_controller(
-    name: str, controller_ip: str, egm_server_ip: str, egm_server_port: str
+    name: str, controller_ip: str, egm_server_ip: str, egm_server_port: int
 ) -> api.models.RobotController:
     """
     Create an ABB controller configuration for a physical robot.
@@ -269,10 +268,8 @@ def abb_controller(
         name=name,
         configuration=api.models.RobotControllerConfiguration(
             AbbController(
-                controller_ip=controller_ip,
-                egm_server=api.models.AbbControllerEgmServer(
-                    ip=egm_server_ip, port=egm_server_port
-                ),
+                controllerIp=controller_ip,
+                egmServer=api.models.AbbControllerEgmServer(ip=egm_server_ip, port=egm_server_port),
             )
         ),
     )
@@ -287,13 +284,13 @@ def universal_robots_controller(name: str, controller_ip: str) -> api.models.Rob
     return api.models.RobotController(
         name=name,
         configuration=api.models.RobotControllerConfiguration(
-            UniversalrobotsController(controller_ip=controller_ip)
+            UniversalrobotsController(controllerIp=controller_ip)
         ),
     )
 
 
 def kuka_controller(
-    name: str, controller_ip: str, controller_port: str, rsi_server_ip: str, rsi_server_port: str
+    name: str, controller_ip: str, controller_port: int, rsi_server_ip: str, rsi_server_port: int
 ) -> api.models.RobotController:
     """
     Create a KUKA controller configuration for a physical robot.
@@ -308,9 +305,9 @@ def kuka_controller(
         name=name,
         configuration=api.models.RobotControllerConfiguration(
             KukaController(
-                controller_ip=controller_ip,
-                controller_port=controller_port,
-                rsi_server=api.models.KukaControllerRsiServer(
+                controllerIp=controller_ip,
+                controllerPort=controller_port,
+                rsiServer=api.models.KukaControllerRsiServer(
                     ip=rsi_server_ip, port=rsi_server_port
                 ),
             )
@@ -327,7 +324,7 @@ def fanuc_controller(name: str, controller_ip: str) -> api.models.RobotControlle
     return api.models.RobotController(
         name=name,
         configuration=api.models.RobotControllerConfiguration(
-            FanucController(controller_ip=controller_ip)
+            FanucController(controllerIp=controller_ip)
         ),
     )
 
@@ -341,7 +338,7 @@ def yaskawa_controller(name: str, controller_ip: str) -> api.models.RobotControl
     return api.models.RobotController(
         name=name,
         configuration=api.models.RobotControllerConfiguration(
-            YaskawaController(controller_ip=controller_ip)
+            YaskawaController(controllerIp=controller_ip)
         ),
     )
 
@@ -351,7 +348,7 @@ def virtual_controller(
     manufacturer: api.models.Manufacturer,
     type: api.models.VirtualControllerTypes | None = None,
     json: str | None = None,
-    position: list[float] | None = None,
+    position: list[float] | str | None = None,
 ) -> api.models.RobotController:
     """
     Create a virtual controller configuration.
@@ -363,13 +360,16 @@ def virtual_controller(
         json (str | None): Additional data to save on controller.
     """
     if position is None:
-        position = MANUFACTURER_HOME_POSITIONS.get(manufacturer, [0.0] * 7)
+        position = str(MANUFACTURER_HOME_POSITIONS.get(manufacturer, [0.0] * 7))
+
+    if isinstance(position, list):
+        position = str(position)
 
     return api.models.RobotController(
         name=name,
         configuration=api.models.RobotControllerConfiguration(
             api.models.VirtualController(
-                manufacturer=manufacturer, type=type, json=json, position=str(position)
+                manufacturer=manufacturer, type=type, json=json, position=position
             )
         ),
     )
