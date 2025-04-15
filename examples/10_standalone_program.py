@@ -20,7 +20,7 @@ from nova.api import models
 from nova.types import Pose
 
 
-@nova.function
+@nova.program
 async def main(number_of_picks: int = Field(gt=0, description="Number of picks to perform")):
     async with Nova() as nova:
         cell = nova.cell()

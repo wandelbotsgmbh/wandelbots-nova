@@ -1,4 +1,3 @@
-import abc
 import asyncio
 import datetime
 import json
@@ -8,15 +7,8 @@ import tempfile
 import traceback
 from pathlib import Path
 
-import dotenv
 import pydantic
 from loguru import logger
-
-dotenv.load_dotenv()
-
-
-class ProgramParameter(pydantic.BaseModel, abc.ABC):
-    pass
 
 
 class SandboxedProgramRunner:
@@ -61,14 +53,28 @@ class SandboxedProgramRunner:
 
         tree = ast.parse(self.program_text)
         main_func = None
+        has_correct_decorator = False
 
-        # Find the main function and parameter class
+        # Find the main function and check its decorators
         for node in ast.walk(tree):
             if isinstance(node, ast.AsyncFunctionDef) and node.name == "main":
                 main_func = node
+                # Check decorators
+                for decorator in node.decorator_list:
+                    if isinstance(decorator, ast.Name) and decorator.id == "program":
+                        has_correct_decorator = True
+                        break
+                    elif isinstance(decorator, ast.Attribute) and decorator.attr == "program":
+                        has_correct_decorator = True
+                        break
 
         if not main_func:
             raise ValueError("Program must have an async main function")
+
+        if not has_correct_decorator:
+            raise ValueError(
+                "Main function must be decorated with @nova.program or @program (imported from nova)"
+            )
 
         logger.info("Program validation successful")
 

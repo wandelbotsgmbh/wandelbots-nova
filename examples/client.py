@@ -1,7 +1,7 @@
 import asyncio
 import pathlib
 
-from nova import program
+from nova import runtime
 
 
 async def main():
