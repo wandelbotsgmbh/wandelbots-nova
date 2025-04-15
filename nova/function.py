@@ -71,8 +71,8 @@ class Function(BaseModel, Generic[Parameters, Return]):
 
     def __repr__(self) -> str:
         input_fields = ", ".join(
-            f"{k}: {v.annotation.__name__}"
-            for k, v in self.input.model_fields.items()  # type: ignore
+            f"{k}: {v.annotation.__name__}"  # type: ignore
+            for k, v in self.input.model_fields.items()
         )
 
         # Get the actual output type from RootModel

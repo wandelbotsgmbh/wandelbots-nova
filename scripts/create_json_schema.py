@@ -64,11 +64,7 @@ def main():
         print(f"File not found: {file_path}")
         sys.exit(1)
 
-    try:
-        generate_schema_from_file(file_path)
-    except Exception as e:
-        print(f"Error generating schema: {e}")
-        sys.exit(1)
+    generate_schema_from_file(file_path)
 
 
 if __name__ == "__main__":
