@@ -450,6 +450,15 @@ wheels = [
 ]
 
 [[package]]
+name = "docstring-parser"
+version = "0.16"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/12/9c22a58c0b1e29271051222d8906257616da84135af9ed167c9e28f85cb3/docstring_parser-0.16.tar.gz", hash = "sha256:538beabd0af1e2db0146b6bd3caa526c35a34d61af9fd2887f3a8a27a739aa6e", size = 26565 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d5/7c/e9fcff7623954d86bdc17782036cbf715ecab1bec4847c008557affe1ca8/docstring_parser-0.16-py3-none-any.whl", hash = "sha256:bf0a1387354d3691d102edef7ec124f219ef639982d096e26e3b60aeffa90637", size = 36533 },
+]
+
+[[package]]
 name = "exceptiongroup"
 version = "1.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1730,13 +1739,14 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "0.48.0"
+version = "0.48.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
     { name = "anyio" },
     { name = "asyncstdlib" },
     { name = "asyncua" },
+    { name = "docstring-parser" },
     { name = "httpx" },
     { name = "loguru" },
     { name = "numpy" },
@@ -1781,6 +1791,7 @@ requires-dist = [
     { name = "apscheduler", marker = "extra == 'nova-rerun-bridge'", specifier = ">=3.11.0" },
     { name = "asyncstdlib", specifier = ">=3.13.0,<4" },
     { name = "asyncua", specifier = ">=1.1.5,<2" },
+    { name = "docstring-parser", specifier = ">=0.16.0" },
     { name = "httpx", specifier = ">=0.28.0,<0.29" },
     { name = "loguru", specifier = ">=0.7.2,<0.8" },
     { name = "numpy", specifier = ">1.1.19" },
