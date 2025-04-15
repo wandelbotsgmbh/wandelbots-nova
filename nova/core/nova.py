@@ -123,7 +123,7 @@ class Cell:
         wait_for_ready_timeout: int = 25,
         position: str | None = None,
     ) -> Controller:
-        await self.add_controller(
+        return await self.add_controller(
             robot_controller=virtual_controller(
                 name=name,
                 type=controller_type,

@@ -435,13 +435,18 @@ class ApiGateway:
         if position is None:
             position = "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]"  # fallback
 
-        configuration = wb.models.VirtualController(
-            manufacturer=controller_manufacturer, type=controller_type, position=position
+        robot_controller = wb.models.RobotController(
+            configuration=wb.models.RobotControllerConfiguration(
+                wb.models.VirtualController(
+                    manufacturer=controller_manufacturer, type=controller_type, position=position
+                )
+            ),
+            name=name,
         )
 
         # Step 1: Add the controller
         await self.add_robot_controller(
-            cell=cell, name=name, configuration=configuration, timeout=timeout
+            cell=cell, robot_controller=robot_controller, timeout=timeout
         )
         # Step 2: Wait for it to become ready
         await self.wait_for_controller_ready(cell=cell, name=name, timeout=timeout)
