@@ -87,8 +87,8 @@ class Cell:
         Add a robot controller to the cell and wait for it to get ready.
         Args:
             robot_controller (api.models.RobotController): The robot controller to add. You can use helper functions from nova to create these configs easily,
-                see :func:`nova.abb_controller`, :func:`nova.fanuc_controller`, :func:`nova.kuka_controller`,
-                :func:`nova.universal_robots_controller`, :func:`nova.virtual_controller`, :func:`nova.yaskawa_controller`.
+                see :func:`nova.cell.abb_controller`, :func:`nova.cell.fanuc_controller`, :func:`nova.cell.kuka_controller`,
+                :func:`nova.cell.universal_robots_controller`, :func:`nova.cell.virtual_controller`, :func:`nova.cell.yaskawa_controller`.
             add_timeout (int): The time to wait for the controller to be added (default: 25).
             wait_for_ready_timeout (int): The time to wait for the controller to be ready (default: 25).
 
