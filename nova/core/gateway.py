@@ -387,9 +387,7 @@ class ApiGateway:
             if controller is None:
                 logger.info(f"Controller not found: {cell}/{name}")
             elif controller.has_error:
-                logger.error(
-                    f"Controller {cell}/{name} has error: {controller.error_details}"
-                )
+                logger.error(f"Controller {cell}/{name} has error: {controller.error_details}")
             else:
                 logger.info(f"Controller {cell}/{name} is ready")
                 return
