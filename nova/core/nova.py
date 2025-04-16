@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decouple import config
 
-from nova.cell import Cell
+from nova.cell.cell import Cell
 from nova.core.gateway import ApiGateway
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")

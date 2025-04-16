@@ -10,8 +10,9 @@ Prerequisites:
 
 import asyncio
 
-from nova import Nova, virtual_controller
+from nova import Nova
 from nova.api import models
+from nova.cell import virtual_controller
 
 
 async def main():
