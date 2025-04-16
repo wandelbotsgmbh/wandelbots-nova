@@ -74,7 +74,7 @@ class Cell:
                 name=name, type=controller_type, manufacturer=controller_manufacturer
             ),
             add_timeout=timeout,
-            waitfor_ready_timeout=wait_for_ready_timeout,
+            wait_for_ready_timeout=wait_for_ready_timeout,
         )
 
     async def add_controller(
@@ -109,7 +109,7 @@ class Cell:
         self,
         robot_controller: api.models.RobotController,
         add_timeout: int = 25,
-        waitfor_ready_timeout: int = 25,
+        wait_for_ready_timeout: int = 25,
     ) -> Controller:
         """
         Ensure that a robot controller is added to the cell. If it already exists, it will be returned.
@@ -131,7 +131,7 @@ class Cell:
         if controller:
             return self._create_controller(controller.controller)
         return await self.add_controller(
-            robot_controller, add_timeout=add_timeout, wait_for_ready_timeout=waitfor_ready_timeout
+            robot_controller, add_timeout=add_timeout, wait_for_ready_timeout=wait_for_ready_timeout
         )
 
     async def controllers(self) -> list[Controller]:
