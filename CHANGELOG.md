@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.49.0 (2025-04-15)
+
+### Features
+
+- **RPS-1509**: Introduce a way to run a standalone Python robot program via uv
+  ([#138](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/138),
+  [`54ca815`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/54ca815e6767f549439389575b4a7aa8c3f3c0cc))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v0.48.1 (2025-04-14)
 
 ### Chores
