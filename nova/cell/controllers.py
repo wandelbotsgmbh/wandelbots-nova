@@ -39,6 +39,7 @@ def abb_controller(
     """
     Create an ABB controller configuration for a physical robot.
     Args:
+        name (str): The name of the controller.
         controller_ip (str): The IP address of the ABB robot.
         egm_server_ip (str): The IP address of the EGM server.
         egm_server_port (str): The port of the EGM server.
@@ -54,6 +55,7 @@ def universal_robots_controller(name: str, controller_ip: str) -> api.models.Rob
     """
     Create a Universal Robots controller configuration for a physical robot.
     Args:
+        name (str): The name of the controller.
         controller_ip (str): The IP address of the Universal Robots robot.
     """
     universal_config = UniversalrobotsController(controllerIp=controller_ip)
@@ -66,6 +68,7 @@ def kuka_controller(
     """
     Create a KUKA controller configuration for a physical robot.
     Args:
+        name (str): The name of the controller.
         controller_ip (str): The IP address of the KUKA robot.
         controller_port (str): The port of the KUKA robot.
         rsi_server_ip (str): The IP address of the RSI server.
@@ -83,6 +86,7 @@ def fanuc_controller(name: str, controller_ip: str) -> api.models.RobotControlle
     """
     Create a FANUC controller configuration for a physical robot.
     Args:
+        name (str): The name of the controller.
         controller_ip (str): The IP address of the FANUC robot.
     """
     fanuc_config = FanucController(controllerIp=controller_ip)
@@ -93,6 +97,7 @@ def yaskawa_controller(name: str, controller_ip: str) -> api.models.RobotControl
     """
     Create a Yaskawa controller configuration for a physical robot.
     Args:
+        name (str): The name of the controller.
         controller_ip (str): The IP address of the Yaskawa robot.
     """
     yaskawa_config = YaskawaController(controllerIp=controller_ip)
