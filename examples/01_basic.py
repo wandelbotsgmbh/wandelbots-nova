@@ -12,15 +12,18 @@ import asyncio
 
 from nova import Nova
 from nova.api import models
+from nova.cell import virtual_controller
 
 
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "ur",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
+        controller = await cell.ensure_controller(
+            robot_controller=virtual_controller(
+                name="ur",
+                manufacturer=models.Manufacturer.UNIVERSALROBOTS,
+                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
         )
 
         async with controller[0] as motion_group:

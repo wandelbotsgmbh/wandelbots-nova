@@ -353,28 +353,17 @@ class ApiGateway:
         )
 
     async def add_robot_controller(
-        self,
-        *,
-        cell: str,
-        name: str,
-        controller_type: wb.models.VirtualControllerTypes,
-        controller_manufacturer: wb.models.Manufacturer,
-        position: str,
-        completion_timeout: int = 25,
-    ) -> None:
+        self, cell: str, robot_controller: wb.models.RobotController, timeout: int = 25
+    ):
         """
-        Add a virtual robot controller to the specified cell.
+        Add a robot controller to the specified cell.
+        Args:
+            cell: The cell to add the controller to.
+            robot_controller: The robot controller to add.
+            timeout: The timeout in seconds for the operation.
         """
-        robot_controller = wb.models.RobotController(
-            name=name,
-            configuration=wb.models.RobotControllerConfiguration(
-                wb.models.VirtualController(
-                    type=controller_type, manufacturer=controller_manufacturer, position=position
-                )
-            ),
-        )
         await self.controller_api.add_robot_controller(
-            cell=cell, robot_controller=robot_controller, completion_timeout=completion_timeout
+            cell=cell, robot_controller=robot_controller, completion_timeout=timeout
         )
 
     async def delete_robot_controller(
@@ -393,29 +382,17 @@ class ApiGateway:
             timeout: The timeout in seconds.
         """
         iteration = 0
-        controller = await self.get_controller_instance(cell=cell, name=name)
-
         while iteration < timeout:
-            if controller is not None:
-                # Check if it's still initializing
-                if controller.error_details in [
-                    "Controller not initialized or disposed",
-                    "Initializing controller connection.",
-                ]:
-                    # Force an update by calling get_current_robot_controller_state
-                    await self.get_current_robot_controller_state(
-                        cell=cell, controller_id=controller.host
-                    )
-                elif controller.has_error:
-                    # As long as it has an error, it's still not ready
-                    logger.error(controller.error_details)
-                else:
-                    # Controller is good to go
-                    return
-
-            logger.info(f"Waiting for {cell}/{name} controller availability")
-            await asyncio.sleep(1)
             controller = await self.get_controller_instance(cell=cell, name=name)
+            if controller is None:
+                logger.info(f"Controller not found: {cell}/{name}")
+            elif controller.has_error:
+                logger.error(f"Controller {cell}/{name} has error: {controller.error_details}")
+            else:
+                logger.info(f"Controller {cell}/{name} is ready")
+                return
+
+            await asyncio.sleep(1)
             iteration += 1
 
         raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")
@@ -446,14 +423,18 @@ class ApiGateway:
         if position is None:
             position = "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]"  # fallback
 
+        robot_controller = wb.models.RobotController(
+            configuration=wb.models.RobotControllerConfiguration(
+                wb.models.VirtualController(
+                    manufacturer=controller_manufacturer, type=controller_type, position=position
+                )
+            ),
+            name=name,
+        )
+
         # Step 1: Add the controller
         await self.add_robot_controller(
-            cell=cell,
-            name=name,
-            controller_type=controller_type,
-            controller_manufacturer=controller_manufacturer,
-            position=position,
-            completion_timeout=timeout,
+            cell=cell, robot_controller=robot_controller, timeout=timeout
         )
         # Step 2: Wait for it to become ready
         await self.wait_for_controller_ready(cell=cell, name=name, timeout=timeout)
