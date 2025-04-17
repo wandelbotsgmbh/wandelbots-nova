@@ -5,6 +5,12 @@ from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
 from nova.core.robot_cell import RobotCell
 
+# This is the default value we use to wait for add_controller API call to complete.
+DEFAULT_ADD_CONTROLLER_TIMEOUT = 25
+
+# This is the default value we use when we wait for a controller to be ready.
+DEFAULT_WAIT_FOR_READY_TIMEOUT = 25
+
 
 class Cell:
     """A representation of a robot cell, providing high-level operations on controllers."""
@@ -46,8 +52,8 @@ class Cell:
         name: str,
         controller_type: api.models.VirtualControllerTypes,
         controller_manufacturer: api.models.Manufacturer,
-        timeout: int = 25,
-        wait_for_ready_timeout: int = 25,
+        timeout: int = DEFAULT_ADD_CONTROLLER_TIMEOUT,
+        wait_for_ready_timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT,
         position: str | None = None,
     ) -> Controller:
         return await self.add_controller(
@@ -66,8 +72,8 @@ class Cell:
         name: str,
         controller_type: api.models.VirtualControllerTypes,
         controller_manufacturer: api.models.Manufacturer,
-        timeout: int = 25,
-        wait_for_ready_timeout: int = 25,
+        timeout: int = DEFAULT_ADD_CONTROLLER_TIMEOUT,
+        wait_for_ready_timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT,
     ) -> Controller:
         return await self.ensure_controller(
             robot_controller=virtual_controller(
@@ -80,8 +86,8 @@ class Cell:
     async def add_controller(
         self,
         robot_controller: api.models.RobotController,
-        add_timeout: int = 25,
-        wait_for_ready_timeout: int = 25,
+        add_timeout: int = DEFAULT_ADD_CONTROLLER_TIMEOUT,
+        wait_for_ready_timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT,
     ) -> Controller:
         """
         Add a robot controller to the cell and wait for it to get ready.
@@ -108,8 +114,8 @@ class Cell:
     async def ensure_controller(
         self,
         robot_controller: api.models.RobotController,
-        add_timeout: int = 25,
-        wait_for_ready_timeout: int = 25,
+        add_timeout: int = DEFAULT_ADD_CONTROLLER_TIMEOUT,
+        wait_for_ready_timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT,
     ) -> Controller:
         """
         Ensure that a robot controller is added to the cell. If it already exists, it will be returned.
