@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.50.0 (2025-04-17)
+
+### Features
+
+- **rps-1560**: Add support for pysical controllers
+  ([#139](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/139),
+  [`8024d64`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8024d64cc8fb9b5761a28df3298a41ac247967b1))
+
+Co-authored-by: dsonnemann <dirk.sonnemann@gmail.com>
+
+
 ## v0.49.0 (2025-04-15)
 
 ### Features
