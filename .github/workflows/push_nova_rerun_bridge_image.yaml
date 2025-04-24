@@ -2,7 +2,7 @@
 name: "[nova-rerun-bridge] Docker Build Nova Rerun Bridge"
 on:
   workflow_run:
-    workflows: ["[nova] Release"]
+    workflows: ["nova-release.yaml"]
     types:
       - completed
     branches:
