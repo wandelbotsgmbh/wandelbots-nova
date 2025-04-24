@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.50.1 (2025-04-24)
+
+### Bug Fixes
+
+- Specify correct workflow name for rerun bridge builds
+  ([#140](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/140),
+  [`0e919c6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0e919c601ca975c7edf428493e249c43129606a9))
+
+
 ## v0.50.0 (2025-04-17)
 
 ### Features
