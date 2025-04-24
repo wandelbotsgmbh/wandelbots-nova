@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.50.2 (2025-04-24)
+
+### Bug Fixes
+
+- Special chars are not allowed ([#141](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/141),
+  [`b1ed2da`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b1ed2da4091b4c734bca29458bd72fbe3a54a033))
+
+
 ## v0.50.1 (2025-04-24)
 
 ### Bug Fixes
