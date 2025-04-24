@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.50.3 (2025-04-24)
+
+### Bug Fixes
+
+- Update workflow name for rerun image to match standard format
+  ([#142](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/142),
+  [`6a53cc0`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6a53cc0d9a6f6bc63640fbf9cec23e043d004128))
+
+
 ## v0.50.2 (2025-04-24)
 
 ### Bug Fixes
