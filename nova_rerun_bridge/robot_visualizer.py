@@ -22,8 +22,8 @@ class RobotVisualizer:
     def __init__(
         self,
         robot: DHRobot,
-        robot_model_geometries,
-        tcp_geometries,
+        robot_model_geometries: list[models.RobotLinkGeometry],
+        tcp_geometries: list[models.Geometry],
         static_transform: bool = True,
         base_entity_path: str = "robot",
         albedo_factor: list = [255, 255, 255],
@@ -41,8 +41,8 @@ class RobotVisualizer:
         :param glb_path: Path to the GLB file for the robot model.
         """
         self.robot = robot
-        self.link_geometries: dict[int, list[trimesh.Trimesh]] = {}
-        self.tcp_geometries = tcp_geometries
+        self.link_geometries: dict[int, list[models.Geometry]] = {}
+        self.tcp_geometries: list[models.Geometry] = tcp_geometries
         self.logged_meshes: set[str] = set()
         self.static_transform = static_transform
         self.base_entity_path = base_entity_path.rstrip("/")
@@ -355,15 +355,110 @@ class RobotVisualizer:
 
         self.logged_meshes.add(entity_path)
 
-    def init_geometry(self, entity_path: str, capsule):
+    def init_geometry(self, entity_path: str, geometry: models.Geometry):
         """Generic method to log a single geometry, either capsule or box."""
 
         if entity_path in self.logged_meshes:
             return
 
-        if capsule:
-            radius = capsule.radius
-            height = capsule.cylinder_height
+        # Sphere geometry
+        if geometry.sphere:
+            radius = geometry.sphere.radius
+            rr.log(
+                entity_path,
+                rr.Ellipsoids3D(
+                    radii=[radius, radius, radius],
+                    centers=[0, 0, 0],
+                    fill_mode=rr.components.FillMode.Solid,
+                    colors=[(221, 193, 193, 255) if self.static_transform else self.albedo_factor],
+                ),
+            )
+
+        # Box geometry
+        elif geometry.box:
+            rr.log(
+                entity_path,
+                rr.Boxes3D(
+                    centers=[0, 0, 0],
+                    fill_mode=rr.components.FillMode.Solid,
+                    sizes=[geometry.box.size_x, geometry.box.size_y, geometry.box.size_z],
+                    colors=[(221, 193, 193, 255) if self.static_transform else self.albedo_factor],
+                ),
+            )
+
+        # Rectangle geometry
+        elif geometry.rectangle:
+            # Create a flat box with minimal height
+            rr.log(
+                entity_path,
+                rr.Boxes3D(
+                    fill_mode=rr.components.FillMode.Solid,
+                    centers=[0, 0, 0],
+                    sizes=[
+                        geometry.rectangle.size_x,
+                        geometry.rectangle.size_y,
+                        1.0,  # Minimal height for visibility
+                    ],
+                    colors=[(221, 193, 193, 255) if self.static_transform else self.albedo_factor],
+                ),
+            )
+
+        # Cylinder geometry
+        elif geometry.cylinder:
+            radius = geometry.cylinder.radius
+            height = geometry.cylinder.height
+
+            # Create cylinder mesh
+            cylinder = trimesh.creation.cylinder(radius=radius, height=height, sections=16)
+            vertex_normals = cylinder.vertex_normals.tolist()
+
+            rr.log(
+                entity_path,
+                rr.Mesh3D(
+                    vertex_positions=cylinder.vertices.tolist(),
+                    triangle_indices=cylinder.faces.tolist(),
+                    vertex_normals=vertex_normals,
+                    albedo_factor=self.albedo_factor,
+                ),
+            )
+
+        # Convex hull geometry
+        elif geometry.convex_hull:
+            polygons = HullVisualizer.compute_hull_outlines_from_points(
+                [[v.x, v.y, v.z] for v in geometry.convex_hull.vertices]
+            )
+
+            if polygons:
+                # First log wireframe outline
+                line_segments = [p.tolist() for p in polygons]
+                rr.log(
+                    f"{entity_path}_wireframe",
+                    rr.LineStrips3D(
+                        line_segments,
+                        radii=rr.Radius.ui_points(1.0),
+                        colors=[colors.colors[2] if self.static_transform else self.albedo_factor],
+                    ),
+                    static=self.static_transform,
+                )
+
+                # Then log solid mesh
+                vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)
+
+                rr.log(
+                    entity_path,
+                    rr.Mesh3D(
+                        vertex_positions=vertices,
+                        triangle_indices=triangles,
+                        vertex_normals=normals,
+                        albedo_factor=self.albedo_factor,
+                    ),
+                    static=self.static_transform,
+                )
+
+        # Capsule geometry
+        elif geometry.capsule:
+            radius = geometry.capsule.radius
+            height = geometry.capsule.cylinder_height
 
             # Slightly shrink the capsule if static to reduce z-fighting
             if self.static_transform:
@@ -383,11 +478,101 @@ class RobotVisualizer:
                     albedo_factor=self.albedo_factor,
                 ),
             )
-            self.logged_meshes.add(entity_path)
+
+        # Rectangular capsule geometry
+        elif geometry.rectangular_capsule:
+            radius = geometry.rectangular_capsule.radius
+            distance_x = geometry.rectangular_capsule.sphere_center_distance_x
+            distance_y = geometry.rectangular_capsule.sphere_center_distance_y
+
+            # Create a rectangular capsule from its definition - a hull around 4 spheres
+            # First, create the four spheres at the corners
+            sphere_centers = [
+                [distance_x, distance_y, 0],
+                [distance_x, -distance_y, 0],
+                [-distance_x, distance_y, 0],
+                [-distance_x, -distance_y, 0],
+            ]
+
+            # Generate points to create a convex hull
+            all_points = []
+            for center in sphere_centers:
+                # Generate points for each sphere (simplified with key points on the sphere)
+                for dx, dy, dz in [
+                    (1, 0, 0),
+                    (-1, 0, 0),
+                    (0, 1, 0),
+                    (0, -1, 0),
+                    (0, 0, 1),
+                    (0, 0, -1),
+                ]:
+                    all_points.append(
+                        [center[0] + radius * dx, center[1] + radius * dy, center[2] + radius * dz]
+                    )
+
+            # Use our hull visualizer to create outlines
+            polygons = HullVisualizer.compute_hull_outlines_from_points(all_points)
+
+            if polygons:
+                # Log wireframe outline
+                line_segments = [p.tolist() for p in polygons]
+                rr.log(
+                    f"{entity_path}_wireframe",
+                    rr.LineStrips3D(
+                        line_segments,
+                        radii=rr.Radius.ui_points(1.0),
+                        colors=[
+                            (221, 193, 193, 255) if self.static_transform else self.albedo_factor
+                        ],
+                    ),
+                    static=self.static_transform,
+                )
+
+                # Log solid mesh
+                vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)
+
+                rr.log(
+                    entity_path,
+                    rr.Mesh3D(
+                        vertex_positions=vertices,
+                        triangle_indices=triangles,
+                        vertex_normals=normals,
+                        albedo_factor=self.albedo_factor,
+                    ),
+                    static=self.static_transform,
+                )
+
+        # Plane geometry (simplified as a large, thin rectangle)
+        elif geometry.plane:
+            # Create a large, thin rectangle to represent an infinite plane
+            size = 5000  # Large enough to seem infinite in the visualization
+            rr.log(
+                entity_path,
+                rr.Boxes3D(
+                    centers=[0, 0, 0],
+                    sizes=[size, size, 1.0],  # Very thin in z direction
+                    colors=[(200, 200, 220, 100) if self.static_transform else self.albedo_factor],
+                ),
+            )
+
+        # Compound geometry - recursively process child geometries
+        elif geometry.compound and geometry.compound.child_geometries:
+            for i, child_geom in enumerate(geometry.compound.child_geometries):
+                child_path = f"{entity_path}/child_{i}"
+                self.init_geometry(child_path, child_geom)
+
+        # Default fallback for unsupported geometry types
         else:
-            # fallback to a box
-            rr.log(entity_path, rr.Boxes3D(half_sizes=[[50, 50, 50]]))
-            self.logged_meshes.add(entity_path)
+            # Fallback to a box
+            rr.log(
+                entity_path,
+                rr.Boxes3D(
+                    half_sizes=[[50, 50, 50]],
+                    colors=[(255, 0, 0, 128)],  # Red, semi-transparent to indicate unknown type
+                ),
+            )
+
+        self.logged_meshes.add(entity_path)
 
     def log_robot_geometry(self, joint_position):
         transforms = self.compute_forward_kinematics(joint_position)
@@ -460,7 +645,7 @@ class RobotVisualizer:
                 entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
                 final_transform = link_transform @ self.geometry_pose_to_matrix(geom.init_pose)
 
-                self.init_geometry(entity_path, geom.capsule)
+                self.init_geometry(entity_path, geom)
                 log_geometry(entity_path, final_transform)
 
         # Log TCP geometries
@@ -470,7 +655,7 @@ class RobotVisualizer:
                 entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
                 final_transform = tcp_transform @ self.geometry_pose_to_matrix(geom.init_pose)
 
-                self.init_geometry(entity_path, geom.capsule)
+                self.init_geometry(entity_path, geom)
                 log_geometry(entity_path, final_transform)
 
     def log_robot_geometries(self, trajectory: list[models.TrajectorySample], times_column):
@@ -552,7 +737,7 @@ class RobotVisualizer:
                 for i, geom in enumerate(geometries):
                     entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
                     final_transform = link_transform @ self.geometry_pose_to_matrix(geom.init_pose)
-                    self.init_geometry(entity_path, geom.capsule)
+                    self.init_geometry(entity_path, geom)
                     collect_geometry_data(entity_path, final_transform)
 
             # Collect data for TCP geometries
@@ -561,7 +746,7 @@ class RobotVisualizer:
                 for i, geom in enumerate(self.tcp_geometries):
                     entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
                     final_transform = tcp_transform @ self.geometry_pose_to_matrix(geom.init_pose)
-                    self.init_geometry(entity_path, geom.capsule)
+                    self.init_geometry(entity_path, geom)
                     collect_geometry_data(entity_path, final_transform)
 
             # Collect data for collision link geometries
