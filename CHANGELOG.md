@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.51.0 (2025-04-25)
+
+### Features
+
+- Set mounting pose of safety zone
+  ([#143](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/143),
+  [`0e52cd8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0e52cd83a88d24759f86fb2909655e77e6b18f80))
+
+
 ## v0.50.3 (2025-04-24)
 
 ### Bug Fixes
