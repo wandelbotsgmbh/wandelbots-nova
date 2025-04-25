@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.52.0 (2025-04-25)
+
+### Features
+
+- Add more supported types to render safety geometry in rerun
+  ([#144](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/144),
+  [`5087c98`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5087c98feec52b5cb576c9370cb874d4baae2af2))
+
+
 ## v0.51.0 (2025-04-25)
 
 ### Features
