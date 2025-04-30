@@ -183,6 +183,9 @@ class ApiGateway:
             wb.VirtualRobotSetupApi(api_client=self._api_client), self
         )
         self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client), self)
+        self.motion_group_gogging_api = intercept(
+            wb.MotionGroupJoggingApi(api_client=self._api_client), self
+        )
 
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
