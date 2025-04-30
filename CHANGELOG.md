@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.53.1 (2025-04-30)
+
+### Bug Fixes
+
+- Correct typo in motion group jogging API variable name
+  ([#147](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/147),
+  [`eea91f2`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/eea91f2b141969adb3e0fc687eb2fd3823be522a))
+
+
 ## v0.53.0 (2025-04-30)
 
 ### Features
