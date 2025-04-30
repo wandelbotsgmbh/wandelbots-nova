@@ -183,7 +183,7 @@ class ApiGateway:
             wb.VirtualRobotSetupApi(api_client=self._api_client), self
         )
         self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client), self)
-        self.motion_group_gogging_api = intercept(
+        self.motion_group_jogging_api = intercept(
             wb.MotionGroupJoggingApi(api_client=self._api_client), self
         )
 
