@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.53.0 (2025-04-30)
+
+### Features
+
+- Add motion group jogging API to ApiGateway
+  ([#146](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/146),
+  [`fa2ea4b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fa2ea4b0d027d6ff1f8e8e0965a3c8b954ba15eb))
+
+
 ## v0.52.0 (2025-04-25)
 
 ### Features
