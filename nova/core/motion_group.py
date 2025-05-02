@@ -443,7 +443,8 @@ class MotionGroup(AbstractRobot):
         return state.joints
 
     async def tcp_pose(self, tcp: str | None = None) -> Pose:
-        """Returns the current TCP pose of the motion group.
+        """
+        Returns the current TCP pose of the motion group.
         Args:
             tcp (str | None, optional): The reference TCP for the returned pose. Defaults to None.
                                         If None, the current active/selected TCP of the motion group is used.
