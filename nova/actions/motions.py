@@ -375,12 +375,7 @@ class Spline(Motion):
 
     @pydantic.model_serializer
     def serialize_model(self):
-        """Serialize the model to a dictionary
-
-        Examples:
-        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(tcp_velocity_limit=30)).model_dump()
-        {'target_joint_position': [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], 'path_definition_name': 'PathJointPTP'}
-        """
+        """Serialize the model to a dictionary"""
         raise NotImplementedError("Spline motion is not yet implemented")
 
 
