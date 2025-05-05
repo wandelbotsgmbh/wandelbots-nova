@@ -421,14 +421,20 @@ class MotionGroup(AbstractRobot):
             logger.debug(f"No motion to stop for {self}: {e}")
 
     async def get_state(self, tcp: str | None = None) -> RobotState:
+        """
+        Returns the motion group state.
+        Args:
+            tcp (str | None): The reference TCP for the cartesian pose part of the robot state. Defaults to None.
+                                        If None, the current active/selected TCP of the motion group is used.
+        """
         response = await self._api_gateway.get_motion_group_state(
             cell=self._cell, motion_group_id=self.motion_group_id, tcp=tcp
         )
-        return RobotState(
-            pose=Pose(response.state.tcp_pose), joints=tuple(response.state.joint_position.joints)
-        )
+        pose = Pose(response.tcp_pose or response.state.tcp_pose)
+        return RobotState(pose=pose, joints=tuple(response.state.joint_position.joints))
 
     async def joints(self) -> tuple:
+        """Returns the current joint positions of the motion group."""
         state = await self.get_state()
         if state.joints is None:
             raise ValueError(
@@ -437,6 +443,12 @@ class MotionGroup(AbstractRobot):
         return state.joints
 
     async def tcp_pose(self, tcp: str | None = None) -> Pose:
+        """
+        Returns the current TCP pose of the motion group.
+        Args:
+            tcp (str | None): The reference TCP for the returned pose. Defaults to None.
+                                        If None, the current active/selected TCP of the motion group is used.
+        """
         state = await self.get_state(tcp=tcp)
         return state.pose
 
