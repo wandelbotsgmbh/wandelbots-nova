@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.0.0 (2025-05-05)
+
+### Bug Fixes
+
+- **RPS-1595**: Tcp_pose is returned with the correct TCP reference now
+  ([#148](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/148),
+  [`cbabf5d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/cbabf5df864f3187b2e2be8414cc7fa0ab652d78))
+
+Co-authored-by: Christoph Biering <1353438+biering@users.noreply.github.com>
+
+
 ## v0.53.1 (2025-04-30)
 
 ### Bug Fixes
