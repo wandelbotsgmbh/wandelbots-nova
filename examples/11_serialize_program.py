@@ -13,7 +13,7 @@ import json
 
 from wandelbots_api_client.models.joint_trajectory import JointTrajectory
 
-from nova import MotionSettings, Nova
+from nova import Nova
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.actions.base import Action
 from nova.api import models
@@ -24,7 +24,7 @@ async def main():
     async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.ensure_virtual_robot_controller(
-            "ur",
+            "ur10",
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
@@ -39,21 +39,7 @@ async def main():
             current_pose = await motion_group.tcp_pose(tcp)
             target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
 
-            actions = [
-                joint_ptp(home_joints),
-                cartesian_ptp(target_pose),
-                joint_ptp(home_joints),
-                cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
-                joint_ptp(home_joints),
-                cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
-                joint_ptp(home_joints),
-                cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
-                joint_ptp(home_joints),
-            ]
-
-        # you can update the settings of the action
-        for action in actions:
-            action.settings = MotionSettings(tcp_velocity_limit=200)
+            actions = [joint_ptp(home_joints), cartesian_ptp(target_pose), joint_ptp(home_joints)]
 
         joint_trajectory = await motion_group.plan(actions, tcp)
 
@@ -62,9 +48,6 @@ async def main():
         for action in actions:
             # Get the serialized representation of each action
             action_data = action.serialize_model()
-            # Ensure the type is explicitly included
-            if "type" not in action_data:
-                action_data["type"] = action.type
             serialized_actions.append(action_data)
 
         # Create a complete serializable representation
@@ -85,7 +68,7 @@ async def main():
         loaded_tcp = loaded_program["tcp"]
         loaded_actions = []
         for action_data in loaded_program["actions"]:
-            loaded_actions.append(Action.create_from_dict(action_data))
+            loaded_actions.append(Action.from_dict(action_data))
 
         # Execute with the loaded objects
         await motion_group.execute(loaded_joint_trajectory, loaded_tcp, actions=loaded_actions)

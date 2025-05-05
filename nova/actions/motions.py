@@ -29,7 +29,13 @@ class CollisionFreeMotion(Action):
 
     @pydantic.model_serializer
     def serialize_model(self):
-        return self._to_api_model().model_dump()
+        api_model = self._to_api_model()
+        data = api_model.model_dump()
+        data["type"] = self.type
+        data["settings"] = self.settings.model_dump()
+        if self.collision_scene is not None:
+            data["collision_scene"] = self.collision_scene.model_dump()
+        return data
 
     def is_motion(self) -> bool:
         return True
@@ -114,7 +120,12 @@ class Linear(Motion):
 
     @pydantic.model_serializer
     def serialize_model(self):
-        return self._to_api_model().model_dump()
+        api_model = self._to_api_model()
+        data = api_model.model_dump()
+        data["type"] = self.type
+        data["settings"] = self.settings.model_dump()
+        if self.collision_scene is not None:
+            data["collision_scene"] = self.collision_scene.model_dump()
 
 
 def linear(
@@ -174,7 +185,13 @@ class CartesianPTP(Motion):
 
     @pydantic.model_serializer
     def serialize_model(self):
-        return self._to_api_model().model_dump()
+        api_model = self._to_api_model()
+        data = api_model.model_dump()
+        data["type"] = self.type
+        data["settings"] = self.settings.model_dump()
+        if self.collision_scene is not None:
+            data["collision_scene"] = self.collision_scene.model_dump()
+        return data
 
 
 def cartesian_ptp(
@@ -237,7 +254,13 @@ class Circular(Motion):
 
     @pydantic.model_serializer
     def serialize_model(self):
-        return self._to_api_model().model_dump()
+        api_model = self._to_api_model()
+        data = api_model.model_dump()
+        data["type"] = self.type
+        data["settings"] = self.settings.model_dump()
+        if self.collision_scene is not None:
+            data["collision_scene"] = self.collision_scene.model_dump()
+        return data
 
 
 def circular(
@@ -304,7 +327,13 @@ class JointPTP(Motion):
 
     @pydantic.model_serializer
     def serialize_model(self):
-        return self._to_api_model().model_dump()
+        api_model = self._to_api_model()
+        data = api_model.model_dump()
+        data["type"] = self.type
+        data["settings"] = self.settings.model_dump()
+        if self.collision_scene is not None:
+            data["collision_scene"] = self.collision_scene.model_dump()
+        return data
 
 
 def joint_ptp(

@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 
 import pydantic
 
+from nova.types.pose import Pose
+
 
 class Action(pydantic.BaseModel, ABC):
     @abstractmethod
@@ -15,9 +17,51 @@ class Action(pydantic.BaseModel, ABC):
         """Return whether the action is a motion"""
 
     @classmethod
-    def create_from_dict(cls, data: dict) -> "Action":
+    def from_dict(cls, data: dict) -> "Action":
         """Create an action instance from a dictionary based on type"""
-        action_type = data.get("type")
+        processed_data = {}
+
+        if isinstance(data, dict):
+            processed_data = data.copy()
+
+        # Convert target to Pose if present
+        if isinstance(processed_data, dict):
+            if "target_pose" in processed_data and isinstance(processed_data["target_pose"], dict):
+                position = processed_data["target_pose"]["position"]
+                orientation = processed_data["target_pose"]["orientation"]
+                processed_data["target"] = Pose(
+                    (
+                        position[0],
+                        position[1],
+                        position[2],
+                        orientation[0],
+                        orientation[1],
+                        orientation[2],
+                    )
+                )
+
+        # Convert target_joint_position to target tuple if present
+        if "target_joint_position" in processed_data and isinstance(
+            processed_data["target_joint_position"], list
+        ):
+            processed_data["target"] = tuple(processed_data["target_joint_position"])
+
+        # Handle circular motion's via_pose
+        if "via_pose" in processed_data and isinstance(processed_data["via_pose"], dict):
+            position = processed_data["via_pose"]["position"]
+            orientation = processed_data["via_pose"]["orientation"]
+            processed_data["intermediate"] = Pose(
+                (
+                    position[0],
+                    position[1],
+                    position[2],
+                    orientation[0],
+                    orientation[1],
+                    orientation[2],
+                )
+            )
+
+        action_type = processed_data.get("type")
         if not action_type:
             raise ValueError("Missing 'type' field in action data")
 
@@ -26,7 +70,7 @@ class Action(pydantic.BaseModel, ABC):
         if not action_class:
             raise ValueError(f"Unknown action type: {action_type}")
 
-        return action_class.model_construct(**data)
+        return action_class.model_validate(processed_data)
 
     @classmethod
     def _find_action_class_by_type(cls, action_type: str):
