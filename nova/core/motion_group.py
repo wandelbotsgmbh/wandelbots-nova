@@ -4,6 +4,7 @@ from typing import AsyncIterable, cast
 import wandelbots_api_client as wb
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
+from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
 from nova.core import logger
@@ -33,8 +34,9 @@ def compare_collision_scenes(scene1: wb.models.CollisionScene, scene2: wb.models
 #  , we should plan them separately
 def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
     """
-    Splits the list of actions into batches of actions and collision free motions.
+    Splits the list of actions into batches of actions, collision free motions and waits.
     Actions are sent to plan_trajectory API and collision free motions are sent to plan_collision_free_ptp API.
+    Waits generate a trajectory with the same start and end position.
     """
     batches: list[list[Action]] = []
     for action in actions:
@@ -43,6 +45,8 @@ def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
             not batches  # first action no batches yet
             or isinstance(action, CollisionFreeMotion)
             or isinstance(batches[-1][-1], CollisionFreeMotion)
+            or isinstance(action, WaitAction)
+            or isinstance(batches[-1][-1], WaitAction)
         ):
             batches.append([action])
         else:
@@ -296,6 +300,31 @@ class MotionGroup(AbstractRobot):
                     tcp=tcp,
                     start_joint_position=list(current_joints),
                     optimizer_setup=robot_setup,
+                )
+                all_trajectories.append(trajectory)
+                # the last joint position of this trajectory is the starting point for the next one
+                current_joints = tuple(trajectory.joint_positions[-1].joints)
+            elif isinstance(batch[0], WaitAction):
+                # Waits generate a trajectory with the same start and end position
+                # so we can just use the last joint position of the previous trajectory
+                # Waits generate a trajectory with the same joint position at each timestep
+                # Use 50ms timesteps from 0 to wait_for_in_seconds
+                wait_time = batch[0].wait_for_in_seconds
+                timestep = 0.050  # 50ms timestep
+                num_steps = max(2, int(wait_time / timestep) + 1)  # Ensure at least 2 points
+
+                # Create equal-length arrays for positions, times, and locations
+                joint_positions = [
+                    wb.models.Joints(joints=list(current_joints)) for _ in range(num_steps)
+                ]
+                times = [i * timestep for i in range(num_steps)]
+                # Ensure the last timestep is exactly the wait duration
+                times[-1] = wait_time
+                # Use the same location value for all points
+                locations = [0] * num_steps
+
+                trajectory = wb.models.JointTrajectory(
+                    joint_positions=joint_positions, times=times, locations=locations
                 )
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
