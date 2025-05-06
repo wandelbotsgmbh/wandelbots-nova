@@ -30,11 +30,6 @@ class Action(pydantic.BaseModel, ABC):
         """
         Pick the correct concrete Action from the `_registry`
         and let Pydantic validate against that class.
-
-        Examples:
-        #>>> from nova.types import MotionSettings
-        #>>> from nova.actions import linear
-        #>>> Action.from_dict(linear((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
         """
         if not isinstance(data, dict):
             raise TypeError("`data` must be a dict")
