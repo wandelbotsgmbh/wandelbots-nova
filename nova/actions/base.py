@@ -23,7 +23,7 @@ class Action(pydantic.BaseModel, ABC):
             logger.warning(f"Duplicate action type '{action_type}'")
             return
         Action._registry[action_type] = cls
-        logger.info(f"Registered action type: {action_type}")
+        logger.debug(f"Registered action type: {action_type}")
 
     @classmethod
     def from_dict(cls, data: dict) -> Action:
@@ -38,7 +38,6 @@ class Action(pydantic.BaseModel, ABC):
         if action_type is None:
             raise ValueError("Missing required key `type`")
 
-        logger.info(Action._registry)
         try:
             concrete_cls = Action._registry[action_type]
         except KeyError:

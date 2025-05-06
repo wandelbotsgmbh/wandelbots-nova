@@ -37,7 +37,7 @@ async def main():
 
             # Get current TCP pose and offset it slightly along the x-axis
             current_pose = await motion_group.tcp_pose(tcp)
-            target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
+            target_pose = current_pose @ Pose((0, 0, 200, 0, 0, 0))
 
             actions = [joint_ptp(home_joints), cartesian_ptp(target_pose), joint_ptp(home_joints)]
 
@@ -47,7 +47,7 @@ async def main():
         serialized_actions = []
         for action in actions:
             # Get the serialized representation of each action
-            action_data = action.serialize_model()
+            action_data = action.model_dump()
             serialized_actions.append(action_data)
 
         # Create a complete serializable representation
@@ -66,9 +66,10 @@ async def main():
 
         loaded_joint_trajectory = JointTrajectory.from_json(loaded_program["joint_trajectory"])
         loaded_tcp = loaded_program["tcp"]
-        loaded_actions = []
-        for action_data in loaded_program["actions"]:
-            loaded_actions.append(Action.from_dict(action_data))
+        loaded_actions = [
+            Action.from_dict(action_data) for action_data in loaded_program["actions"]
+        ]
+        print("Loaded actions:", loaded_actions)
 
         # Execute with the loaded objects
         await motion_group.execute(loaded_joint_trajectory, loaded_tcp, actions=loaded_actions)

@@ -61,29 +61,6 @@ class Motion(Action, ABC):
         return True
 
 
-class UnresolvedMotion(Motion, ABC):
-    @abstractmethod
-    async def resolve(
-        self,
-        initial_joints: tuple[float, ...],
-        collision_scene: wb.models.CollisionScene | None,
-        configuration: dict,
-        moving_robot_identifier: str,
-    ) -> tuple[list[Motion], tuple[float, ...]] | None:
-        """Convert the motion to a list of motion primitives
-
-        Args:
-            initial_joints: Joint positions at start of motion
-            collision_scene: The collision scene used to check collisions
-            configuration: E.g. data of physical setup of robot system, cell, etc.
-            moving_robot_identifier: The identifier of the robot that is moving in the scene
-
-        Returns:
-            Tuple of resolved motions and the joint position at the end of the motions. None, if the motion can't be resolved
-
-        """
-
-
 class Linear(Motion):
     """A linear motion
 

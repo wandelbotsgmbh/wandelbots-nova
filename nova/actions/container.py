@@ -131,7 +131,7 @@ class CombinedActions(pydantic.BaseModel):
     def to_motion_command(self) -> list[api.models.MotionCommand]:
         motion_commands = []
         for motion in self.motions:
-            path = api.models.MotionCommandPath.from_dict(motion.to_api_model())  # type: ignore
+            path = api.models.MotionCommandPath.from_dict(motion.to_api_model().model_dump())  # type: ignore
             blending = (
                 motion.settings.as_blending_setting()
                 if motion.settings.has_blending_settings()
