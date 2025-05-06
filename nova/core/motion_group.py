@@ -242,9 +242,7 @@ class MotionGroup(AbstractRobot):
 
 
         """
-        target = wb.models.PlanCollisionFreePTPRequestTarget(
-            **action.to_api_model()  # type: ignore
-        )
+        target = wb.models.PlanCollisionFreePTPRequestTarget(**action.to_api_model().model_dump())
         robot_setup = optimizer_setup or await self._get_optimizer_setup(tcp=tcp)
 
         static_colliders = None
