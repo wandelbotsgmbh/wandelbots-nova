@@ -21,7 +21,7 @@ def test_program_serialization_deserialization():
     # Serialize actions
     serialized_actions = []
     for action in actions:
-        action_data = action.serialize_model()
+        action_data = action.model_dump()
         serialized_actions.append(action_data)
 
     # Create a complete serializable program
