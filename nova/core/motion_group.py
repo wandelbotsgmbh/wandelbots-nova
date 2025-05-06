@@ -305,8 +305,6 @@ class MotionGroup(AbstractRobot):
                 # the last joint position of this trajectory is the starting point for the next one
                 current_joints = tuple(trajectory.joint_positions[-1].joints)
             elif isinstance(batch[0], WaitAction):
-                # Waits generate a trajectory with the same start and end position
-                # so we can just use the last joint position of the previous trajectory
                 # Waits generate a trajectory with the same joint position at each timestep
                 # Use 50ms timesteps from 0 to wait_for_in_seconds
                 wait_time = batch[0].wait_for_in_seconds
@@ -324,7 +322,9 @@ class MotionGroup(AbstractRobot):
                 locations = [0] * num_steps
 
                 trajectory = wb.models.JointTrajectory(
-                    joint_positions=joint_positions, times=times, locations=locations
+                    joint_positions=joint_positions,
+                    times=times,
+                    locations=[float(loc) for loc in locations],
                 )
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
