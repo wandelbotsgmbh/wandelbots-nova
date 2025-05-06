@@ -1,105 +1,60 @@
-import inspect
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import ClassVar
 
 import pydantic
-
-from nova.types.pose import Pose
+from loguru import logger
 
 
 class Action(pydantic.BaseModel, ABC):
-    @abstractmethod
-    @pydantic.model_serializer
-    def serialize_model(self):
-        """Serialize the model to a dictionary"""
+    _registry: ClassVar[dict[str, type[Action]]] = {}
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+        action_type = getattr(cls, "type", None)
+        # when no type is found -> skip
+        if not isinstance(action_type, str):
+            logger.warning(f"Action class '{cls.__name__}' does not have a valid type")
+            return
+
+        if action_type in Action._registry:
+            logger.warning(f"Duplicate action type '{action_type}'")
+            return
+        Action._registry[action_type] = cls
+        logger.info(f"Registered action type: {action_type}")
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Action:
+        """
+        Pick the correct concrete Action from the `_registry`
+        and let Pydantic validate against that class.
+
+        Examples:
+        #>>> from nova.types import MotionSettings
+        #>>> from nova.actions import linear
+        #>>> Action.from_dict(linear((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
+        """
+        if not isinstance(data, dict):
+            raise TypeError("`data` must be a dict")
+
+        action_type = data.get("type")
+        if action_type is None:
+            raise ValueError("Missing required key `type`")
+
+        logger.info(Action._registry)
+        try:
+            concrete_cls = Action._registry[action_type]
+        except KeyError:
+            raise ValueError(f"Unknown action type '{action_type}'")
+
+        return concrete_cls.model_validate(data)
 
     @abstractmethod
     def is_motion(self) -> bool:
         """Return whether the action is a motion"""
 
-    @classmethod
-    def from_dict(cls, data: dict) -> "Action":
-        """Create an action instance from a dictionary based on type"""
-        processed_data = {}
-
-        if isinstance(data, dict):
-            processed_data = data.copy()
-
-        # Convert target to Pose if present
-        if isinstance(processed_data, dict):
-            if "target_pose" in processed_data and isinstance(processed_data["target_pose"], dict):
-                position = processed_data["target_pose"]["position"]
-                orientation = processed_data["target_pose"]["orientation"]
-                processed_data["target"] = Pose(
-                    (
-                        position[0],
-                        position[1],
-                        position[2],
-                        orientation[0],
-                        orientation[1],
-                        orientation[2],
-                    )
-                )
-
-        # Convert target_joint_position to target tuple if present
-        if "target_joint_position" in processed_data and isinstance(
-            processed_data["target_joint_position"], list
-        ):
-            processed_data["target"] = tuple(processed_data["target_joint_position"])
-
-        # Handle circular motion's via_pose
-        if "via_pose" in processed_data and isinstance(processed_data["via_pose"], dict):
-            position = processed_data["via_pose"]["position"]
-            orientation = processed_data["via_pose"]["orientation"]
-            processed_data["intermediate"] = Pose(
-                (
-                    position[0],
-                    position[1],
-                    position[2],
-                    orientation[0],
-                    orientation[1],
-                    orientation[2],
-                )
-            )
-
-        action_type = processed_data.get("type")
-        if not action_type:
-            raise ValueError("Missing 'type' field in action data")
-
-        # Find the appropriate action class for this type
-        action_class = cls._find_action_class_by_type(action_type)
-        if not action_class:
-            raise ValueError(f"Unknown action type: {action_type}")
-
-        return action_class.model_validate(processed_data)
-
-    @classmethod
-    def _find_action_class_by_type(cls, action_type: str):
-        """Dynamically find an action class that has the given type literal value"""
-        # First, import all relevant modules to ensure classes are defined
-        from nova.actions import io, motions
-
-        # Look for the action class in all submodules
-        for module in [motions, io]:
-            for name, obj in inspect.getmembers(module):
-                # Check if this is a class that inherits from Action
-                if (
-                    inspect.isclass(obj)
-                    and issubclass(obj, Action)
-                    and obj is not Action
-                    and hasattr(obj, "model_fields")
-                    and "type" in obj.model_fields
-                ):
-                    # Check if this class has the right type value
-                    if hasattr(obj, "type") and getattr(obj, "type") == action_type:
-                        return obj
-
-                    # For Literal types, check default value
-                    type_field = obj.model_fields.get("type")
-                    if (
-                        type_field is not None
-                        and hasattr(type_field, "default")
-                        and type_field.default == action_type
-                    ):
-                        return obj
-
-        return None
+    @abstractmethod
+    def to_api_model(self):
+        """Convert the action to an API model"""
