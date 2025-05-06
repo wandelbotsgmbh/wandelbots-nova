@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v1.1.0 (2025-05-06)
+
+### Features
+
+- Add a example on how to serialize a program
+  ([#145](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/145),
+  [`7185c54`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7185c54116f9deca85deaee53dc688528a4059d7))
+
+Co-authored-by: Christoph Biering <1353438+biering@users.noreply.github.com>
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v1.0.0 (2025-05-05)
 
 ### Bug Fixes
