@@ -1,14 +1,13 @@
 from typing import Literal
 
 import pydantic
-from pydantic import StrictFloat
 
 from nova.actions.base import Action
 
 
 class WaitAction(Action):
     type: Literal["Wait"] = "Wait"
-    wait_for_in_seconds: StrictFloat = 0.0
+    wait_for_in_seconds: float = 0.0
 
     @pydantic.model_serializer
     def serialize_model(self):
@@ -21,5 +20,5 @@ class WaitAction(Action):
         return {"type": self.type, "wait_for_in_seconds": self.wait_for_in_seconds}
 
 
-def wait(wait_for_in_seconds: StrictFloat) -> WaitAction:
+def wait(wait_for_in_seconds: float) -> WaitAction:
     return WaitAction(wait_for_in_seconds=wait_for_in_seconds)
