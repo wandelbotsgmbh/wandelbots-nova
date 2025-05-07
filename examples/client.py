@@ -1,7 +1,7 @@
 import asyncio
 import pathlib
 
-from nova import runtime
+from nova.runtime import uv_runner
 
 
 async def main():
@@ -12,7 +12,7 @@ async def main():
     print(program_text)
     # Run the program in sandboxed environment
     # await program.SandboxedProgramRunner.run(program_text, params)
-    await runtime.run_program_endpoint(program_text, parameters={"number_of_picks": 3})
+    await uv_runner.run_program_endpoint(program_text, args={"number_of_picks": 3})
 
 
 if __name__ == "__main__":

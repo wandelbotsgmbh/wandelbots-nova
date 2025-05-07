@@ -1,9 +1,9 @@
 import nova.api as api
 from nova.cell.controllers import virtual_controller
+from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
-from nova.core.robot_cell import RobotCell
 
 # This is the default value we use to wait for add_controller API call to complete.
 DEFAULT_ADD_CONTROLLER_TIMEOUT = 25

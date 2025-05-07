@@ -29,7 +29,6 @@ async def main(number_of_picks: int = Field(gt=0, description="Number of picks t
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
-        controller = await cell.controller("controller")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:

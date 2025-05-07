@@ -2,6 +2,8 @@ import io
 from collections.abc import Awaitable
 from typing import TextIO
 
+import anyio
+
 
 class Tee(io.StringIO):
     def __init__(self, stream: TextIO, *args, **kwargs) -> None:

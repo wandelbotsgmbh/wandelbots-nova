@@ -9,16 +9,16 @@ from pathlib import Path
 
 from loguru import logger
 
-from nova.runtime import Program
-from nova.runtime.runner import ProgramRun, ProgramRunner
+from nova.cell.robot_cell import RobotCell
+from nova.runtime.runner import ExecutionContext, Program, ProgramRunner, ProgramType
 
 
-class SandboxedProgramRunner(ProgramRunner):
-    def __init__(self, program: Program, args: dict):
-        if not program.program_type == "PYTHON":
-            raise ValueError("Program type must be PYTHON")
+class UVProgramRunner(ProgramRunner):
+    def __init__(self, robot_cell: RobotCell, program: Program, args: dict):
+        if not program.program_type == ProgramType.PYTHON:
+            raise ValueError(f"Program type must be {ProgramType.PYTHON}")
 
-        super().__init__(program=program, args=args)
+        super().__init__(robot_cell=robot_cell, program=program, args=args)
 
         self.project_dir = Path(tempfile.mkdtemp())
         self.program_file = self.project_dir / "program.py"
@@ -110,7 +110,7 @@ class SandboxedProgramRunner(ProgramRunner):
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
 
-    async def _run(self):
+    async def _run(self, execution_context: ExecutionContext):
         """Create a runner, execute the program, and clean up."""
         try:
             await self._setup_environment()
@@ -182,13 +182,22 @@ class SandboxedProgramRunner(ProgramRunner):
             await self._cleanup()
 
 
-
 # Server endpoint
 async def run_program_endpoint(program_content: str, args: dict):
+    from nova import Nova
+
     """REST endpoint handler for running programs."""
     try:
         logger.info(f"Running program with args: {args}")
-        runner = SandboxedProgramRunner(program=Program(content=program_content, program_type="PYTHON"), args=args)
+        async with Nova(host="http://172.30.0.237") as nova:
+            cell = nova.cell()
+            robot_cell = await cell.get_robot_cell()
+            print(robot_cell)
+            runner = UVProgramRunner(
+                robot_cell=robot_cell,
+                program=Program(content=program_content, program_type=ProgramType.PYTHON),
+                args=args,
+            )
         runner.start()
         return {"status": "success"}
     except Exception as e:
