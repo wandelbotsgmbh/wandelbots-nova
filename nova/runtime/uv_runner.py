@@ -7,8 +7,8 @@ import tempfile
 import traceback
 from pathlib import Path
 
-from loguru import logger
 from decouple import config
+from loguru import logger
 
 from nova.cell.robot_cell import RobotCell
 from nova.runtime.runner import ExecutionContext, Program, ProgramRunner, ProgramType
@@ -20,11 +20,11 @@ class UVProgramRunner(ProgramRunner):
     where the dependencies, input parameters and metadata of the program is defined within one file.
     """
 
-    def __init__(self, robot_cell: RobotCell, program: Program, args: dict):
+    def __init__(self, program: Program, args: dict):
         if not program.program_type == ProgramType.PYTHON:
             raise ValueError(f"Program type must be {ProgramType.PYTHON}")
 
-        super().__init__(robot_cell=robot_cell, program=program, args=args)
+        super().__init__( program=program, args=args)
 
         self.project_dir = Path(tempfile.mkdtemp())
         self.program_file = self.project_dir / "program.py"
@@ -147,6 +147,7 @@ class UVProgramRunner(ProgramRunner):
                 cmd = ["uv", "run", "--script", str(self.program_file)] + args
                 logger.info(f"Running command: {' '.join(cmd)}")
 
+                # TODO: pass execution context to the program
                 # Run the program using uv
                 process = await asyncio.create_subprocess_exec(
                     *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=env
@@ -191,20 +192,15 @@ class UVProgramRunner(ProgramRunner):
 
 # Dummy server endpoint
 async def run_program_endpoint(program_content: str, args: dict):
-    from nova import Nova
 
     """REST endpoint handler for running programs."""
     try:
         logger.info(f"Running program with args: {args}")
-        async with Nova() as nova:
-            cell = nova.cell()
-            robot_cell = await cell.get_robot_cell()
-            # TODO: provide context (nova, ...) to the execution
-            runner = UVProgramRunner(
-                robot_cell=robot_cell,
-                program=Program(content=program_content, program_type=ProgramType.PYTHON),
-                args=args,
-            )
+        # TODO: provide context (nova, ...) to the execution
+        runner = UVProgramRunner(
+            program=Program(content=program_content, program_type=ProgramType.PYTHON),
+            args=args,
+        )
         runner.start()
         return {"status": "success"}
     except Exception as e:

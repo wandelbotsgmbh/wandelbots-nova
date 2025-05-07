@@ -17,12 +17,13 @@ from anyio.abc import TaskStatus
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from nova import api
+from nova import api, Nova
 from nova.cell.robot_cell import RobotCell
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.runtime.exceptions import NotPlannableError
 from nova.runtime.utils import Tee, stoppable_run
 from nova.types import RobotState
+# from wandelbots_api_client import v2
 
 # import contextvars
 
@@ -36,9 +37,14 @@ class ExecutionContext:
     # TODO: maybe we should make it public and helper methods to access the data
     # motion_group_recordings: dict[str, list[list[MotionState]]]
 
-    def __init__(self, robot_cell: RobotCell, stop_event: anyio.Event):
+    def __init__(self, nova: Nova, robot_cell: RobotCell, stop_event: anyio.Event):
+        self._nova = nova
         self._robot_cell = robot_cell
         self._stop_event = stop_event
+
+    @property
+    def nova(self) -> Nova:
+        return self._nova
 
     @property
     def robot_cell(self) -> RobotCell:
@@ -47,7 +53,6 @@ class ExecutionContext:
     @property
     def stop_event(self) -> anyio.Event:
         return self._stop_event
-
 
 # api.v2.models.ProgramType
 class ProgramType(Enum):
@@ -115,16 +120,15 @@ class ProgramRunner(ABC):
     def __init__(
         self,
         # TODO: can we remove the robot_cell object?
-        robot_cell: RobotCell,
         program: Program,
         args: dict[str, Any],
     ):
-        self._robot_cell = robot_cell
         self._program = program
         self._args = args
         self._program_run: ProgramRun = ProgramRun(
             id=str(uuid.uuid4()),
             state=ProgramRunState.not_started,
+            logs=None,
             stdout=None,
             error=None,
             traceback=None,
@@ -259,7 +263,6 @@ class ProgramRunner(ABC):
                 try:
                     await stoppable_run(
                         self._run_program(
-                            robot_cell=self._robot_cell,
                             stop_event=async_stop_event,
                             on_state_change=_on_state_change,
                         ),
@@ -322,7 +325,6 @@ class ProgramRunner(ABC):
 
     async def _run_program(
         self,
-        robot_cell: RobotCell,
         stop_event: anyio.Event,
         on_state_change: Callable[[], Awaitable[None]],
     ):
@@ -345,65 +347,62 @@ class ProgramRunner(ABC):
         log_capture = io.StringIO()
         sink_id = logger.add(log_capture)
 
-        # Create a new robot cell from the provided robot cell configuration
-        # logger.info(robot_cell_config)
-        # robot_cell = RobotCell.from_configurations(robot_cell_config)
-        # logger.info("Created RobotCell from configuration")
-
         try:
-            # async with robot_cell:
-            await on_state_change()
+            async with Nova() as nova:
+                await on_state_change()
+                cell = nova.cell()
+                robot_cell = await cell.get_robot_cell()
 
-            self.execution_context = execution_context = ExecutionContext(
-                robot_cell=robot_cell, stop_event=stop_event
-            )
+                self.execution_context = execution_context = ExecutionContext(
+                    nova=nova, robot_cell=robot_cell, stop_event=stop_event
+                )
 
-            # current_execution_context_var.set(execution_context)
+                # current_execution_context_var.set(execution_context)
 
-            monitoring_scope = anyio.CancelScope()
-            async with anyio.create_task_group() as tg:
-                await tg.start(self._estop_handler, monitoring_scope)
+                monitoring_scope = anyio.CancelScope()
+                async with anyio.create_task_group() as tg:
+                    await tg.start(self._estop_handler, monitoring_scope)
 
-                try:
-                    await self._run(execution_context)
-                except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
-                    # Program was stopped
-                    logger.info(f"Program {self.id} cancelled")
-                    # try:
-                    #    with anyio.CancelScope(shield=True):
-                    #        await robot_cell.stop()
-                    # except Exception as e:
-                    #    logger.error(f"Error while stopping robot cell: {e!r}")
-                    #    raise
-
-                    self._program_run.state = ProgramRunState.stopped
-                    raise
-
-                except NotPlannableError as exc:
-                    # Program was not plannable (aka. /plan/ endpoint)
-                    self._handle_general_exception(exc)
-                except Exception as exc:  # pylint: disable=broad-except
-                    self._handle_general_exception(exc)
-                else:
-                    if self.stopped:
+                    try:
+                        await self._run(execution_context)
+                    except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                         # Program was stopped
-                        logger.info(f"Program {self.id} stopped successfully")
+                        logger.info(f"Program {self.id} cancelled")
+                        # try:
+                        #    with anyio.CancelScope(shield=True):
+                        #        await robot_cell.stop()
+                        # except Exception as e:
+                        #    logger.error(f"Error while stopping robot cell: {e!r}")
+                        #    raise
+
                         self._program_run.state = ProgramRunState.stopped
-                    elif self._program_run.state is ProgramRunState.running:
-                        # Program was completed
-                        self._program_run.state = ProgramRunState.completed
-                        logger.info(f"Program {self.id} completed successfully")
-                finally:
-                    # write path to output
-                    # TODO: capture result of the program
+                        raise
 
-                    logger.info(f"Program {self.id} finished. Run teardown routine...")
-                    self._program_run.end_time = time.time()
+                    except NotPlannableError as exc:
+                        # Program was not plannable (aka. /plan/ endpoint)
+                        self._handle_general_exception(exc)
+                    except Exception as exc:  # pylint: disable=broad-except
+                        self._handle_general_exception(exc)
+                    else:
+                        if self.stopped:
+                            # Program was stopped
+                            logger.info(f"Program {self.id} stopped successfully")
+                            self._program_run.state = ProgramRunState.stopped
+                        elif self._program_run.state is ProgramRunState.running:
+                            # Program was completed
+                            self._program_run.state = ProgramRunState.completed
+                            logger.info(f"Program {self.id} completed successfully")
+                    finally:
+                        # write path to output
+                        # TODO: capture result of the program
 
-                    logger.remove(sink_id)
-                    self._program_run.logs = log_capture.getvalue()
-                    monitoring_scope.cancel()
-                    await on_state_change()
+                        logger.info(f"Program {self.id} finished. Run teardown routine...")
+                        self._program_run.end_time = time.time()
+
+                        logger.remove(sink_id)
+                        self._program_run.logs = log_capture.getvalue()
+                        monitoring_scope.cancel()
+                        await on_state_change()
         except anyio.get_cancelled_exc_class():
             raise
         except Exception as exc:  # pylint: disable=broad-except

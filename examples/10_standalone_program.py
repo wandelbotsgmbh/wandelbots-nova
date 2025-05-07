@@ -14,20 +14,26 @@ import asyncio
 from pydantic import Field
 
 import nova
-from nova import MotionSettings, Nova
+from nova import MotionSettings, Nova, api
 from nova.actions import cartesian_ptp, joint_ptp, linear
-from nova.api import models
 from nova.types import Pose
 
 
-@nova.program
-async def main(number_of_picks: int = Field(gt=0, description="Number of picks to perform")):
+@nova.program  # (name="pick_and_place")
+async def main(
+    # TODO: ignore ctx in the signature
+    # ctx: nova.ExecutionContext,
+    number_of_picks: int = Field(gt=0, description="Number of picks to perform"),
+):
+    """
+    Pick and place program for a UR10e robot.
+    """
     async with Nova() as nova:
-        cell = nova.cell()
+        cell = nova.cell()  #  ctx.nova.cell()
         controller = await cell.ensure_virtual_robot_controller(
             "controller",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
+            api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            api.models.Manufacturer.UNIVERSALROBOTS,
         )
 
         # Connect to the controller and activate motion groups
