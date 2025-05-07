@@ -8,12 +8,18 @@ import traceback
 from pathlib import Path
 
 from loguru import logger
+from decouple import config
 
 from nova.cell.robot_cell import RobotCell
 from nova.runtime.runner import ExecutionContext, Program, ProgramRunner, ProgramType
 
 
 class UVProgramRunner(ProgramRunner):
+    """
+    The UV Program runner runs Python programs using the uv library. It enables to run standalone Python programs
+    where the dependencies, input parameters and metadata of the program is defined within one file.
+    """
+
     def __init__(self, robot_cell: RobotCell, program: Program, args: dict):
         if not program.program_type == ProgramType.PYTHON:
             raise ValueError(f"Program type must be {ProgramType.PYTHON}")
@@ -37,6 +43,7 @@ class UVProgramRunner(ProgramRunner):
 
         except FileNotFoundError:
             logger.info("Installing uv...")
+            # TODO: handle stop event within process
             process = await asyncio.create_subprocess_exec(
                 sys.executable,
                 "-m",
@@ -182,17 +189,17 @@ class UVProgramRunner(ProgramRunner):
             await self._cleanup()
 
 
-# Server endpoint
+# Dummy server endpoint
 async def run_program_endpoint(program_content: str, args: dict):
     from nova import Nova
 
     """REST endpoint handler for running programs."""
     try:
         logger.info(f"Running program with args: {args}")
-        async with Nova(host="http://172.30.0.237") as nova:
+        async with Nova() as nova:
             cell = nova.cell()
             robot_cell = await cell.get_robot_cell()
-            print(robot_cell)
+            # TODO: provide context (nova, ...) to the execution
             runner = UVProgramRunner(
                 robot_cell=robot_cell,
                 program=Program(content=program_content, program_type=ProgramType.PYTHON),
