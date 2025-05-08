@@ -6,6 +6,7 @@ import numpy as np
 import rerun as rr
 from loguru import logger
 from wandelbots_api_client.models import (
+    FeedbackCollision,
     FeedbackOutOfWorkspace,
     PlanTrajectoryFailedResponseErrorFeedback,
 )
@@ -260,6 +261,61 @@ class NovaRerunBridge:
                         radii=rr.Radius.ui_points([5.0]),
                         colors=[(255, 0, 0, 255)],
                         labels=["Out of Workspace"],
+                    ),
+                    static=True,
+                )
+
+        if isinstance(error_feedback.actual_instance, FeedbackCollision):
+            collisions = error_feedback.actual_instance.collisions
+            if not collisions:
+                return
+
+            for i, collision in enumerate(collisions):
+                if collision.position_on_a is None or collision.position_on_b is None:
+                    continue
+                if collision.position_on_a.world is None or collision.position_on_b.world is None:
+                    continue
+                if collision.normal_world_on_b is None:
+                    continue
+
+                # Extract positions
+                pos_a = collision.position_on_a.world
+                pos_b = collision.position_on_b.world
+                normal = collision.normal_world_on_b
+
+                # Scale normal for visibility
+                arrow_length = 50
+
+                # Log collision points
+                rr.log(
+                    f"motion/errors/FeedbackCollision/collisions/point_{i}/a",
+                    rr.Points3D(
+                        [pos_a], radii=rr.Radius.ui_points([5.0]), colors=[(255, 0, 0, 255)]
+                    ),
+                    static=True,
+                )
+
+                rr.log(
+                    f"motion/errors/FeedbackCollision/collisions/point_{i}/b",
+                    rr.Points3D(
+                        [pos_b], radii=rr.Radius.ui_points([5.0]), colors=[(0, 0, 255, 255)]
+                    ),
+                    static=True,
+                )
+
+                # Log normal vector as arrow
+                rr.log(
+                    f"motion/errors/FeedbackCollision/collisions/normal_{i}",
+                    rr.Arrows3D(
+                        origins=[pos_b],
+                        vectors=[
+                            [
+                                normal[0] * arrow_length,
+                                normal[1] * arrow_length,
+                                normal[2] * arrow_length,
+                            ]
+                        ],
+                        colors=[(255, 255, 0, 255)],
                     ),
                     static=True,
                 )
