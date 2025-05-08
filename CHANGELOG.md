@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v1.3.0 (2025-05-08)
+
+### Features
+
+- Add FeedbackCollision error visu
+  ([#154](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/154),
+  [`2cfe834`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2cfe8342d2673152f7b49904f3a68130a5452676))
+
+
 ## v1.2.0 (2025-05-08)
 
 ### Features
