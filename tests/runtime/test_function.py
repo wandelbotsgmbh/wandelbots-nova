@@ -57,7 +57,7 @@ def test_function_wrapping():
 
 def test_function_validation():
     with pytest.raises(TypeError):
-        Function.validate("not a function")  # type: ignore
+        Function.validate("not a function")
 
 
 def test_function_calling():
@@ -80,12 +80,12 @@ def test_function_calling():
 
 def test_function_with_complex_types():
     class Address(BaseModel):
-        street: str
-        city: str
+        street: str = Field(..., description="Street address")
+        city: str = Field(..., description="City name")
 
     class Person(BaseModel):
-        name: str
-        address: Address
+        name: str = Field(..., description="Name of the person")
+        address: Address = Field(..., description="Address of the person")
 
     @wrap
     def process_person(person: Person) -> str:

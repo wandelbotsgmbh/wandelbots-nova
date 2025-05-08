@@ -169,6 +169,8 @@ class ProgramRunner(ABC):
         Returns:
             bool: True if the program has been stopped, False otherwise
         """
+        if self._stop_event is None:
+            return False
         return self._stop_event.is_set()
 
     @property
@@ -217,7 +219,8 @@ class ProgramRunner(ABC):
         """
         if not self.is_running():
             raise RuntimeError("Program is not running")
-        self._stop_event.set()
+        if self._stop_event is not None:
+            self._stop_event.set()
         if sync:
             self.join()
 
