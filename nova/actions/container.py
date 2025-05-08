@@ -6,6 +6,7 @@ import pydantic
 
 from nova import api
 from nova.actions.io import WriteAction
+from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.types import MovementControllerFunction, Pose
 
@@ -18,7 +19,7 @@ class ActionLocation(pydantic.BaseModel):
 
 
 # TODO: all actions should be allowed (Action)
-ActionContainerItem = Motion | WriteAction | CollisionFreeMotion
+ActionContainerItem = Motion | WriteAction | CollisionFreeMotion | WaitAction
 
 
 class CombinedActions(pydantic.BaseModel):
@@ -69,6 +70,8 @@ class CombinedActions(pydantic.BaseModel):
         last_motion_index = 0
 
         for item in self.items:
+            if isinstance(item, WaitAction):
+                continue  # Skip WaitAction items
             if isinstance(item, Motion) or isinstance(item, CollisionFreeMotion):
                 motions.append(item)
                 last_motion_index += 1  # Increment the motion index for each new Motion
