@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.2.0 (2025-05-08)
+
+### Features
+
+- Add wait action ([#152](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/152),
+  [`8d3968a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8d3968a4e5abfc20626663948a9dbc9ff8fa432b))
+
+
 ## v1.1.0 (2025-05-06)
 
 ### Features
