@@ -89,6 +89,9 @@ testpaths = """
     nova
     tests
 """
+markers = """
+    integration: mark a test as requiring a running Nova instance
+"""
 
 [tool.mypy]
 python_version = "3.10"

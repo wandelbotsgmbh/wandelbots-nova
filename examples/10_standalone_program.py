@@ -19,7 +19,7 @@ from nova.actions import cartesian_ptp, joint_ptp, linear
 from nova.types import Pose
 
 
-@nova.program  # (name="pick_and_place")
+@nova.program
 async def main(
     # TODO: ignore ctx in the signature
     # ctx: nova.ExecutionContext,
@@ -29,7 +29,7 @@ async def main(
     Pick and place program for a UR10e robot.
     """
     async with Nova() as nova:
-        cell = nova.cell()  #  ctx.nova.cell()
+        cell = nova.cell()
         controller = await cell.ensure_virtual_robot_controller(
             "controller",
             api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,

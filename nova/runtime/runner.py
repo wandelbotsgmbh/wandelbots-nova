@@ -301,7 +301,7 @@ class ProgramRunner(ABC):
                     logger.info(f"ESTOP detected: {state}")
                     self.stop()  # TODO is this clean
 
-    def _handle_general_exception(self, exc: Exception) -> None:
+    def _handle_general_exception(self, exc: Exception):
         # Handle any exceptions raised during task execution
         traceback = tb.format_exc()
         logger.error(f"Program {self.id} failed")
@@ -319,7 +319,7 @@ class ProgramRunner(ABC):
 
     async def _run_program(
         self, stop_event: anyio.Event, on_state_change: Callable[[], Awaitable[None]]
-    ):
+    ) -> None:
         """This function is executed in another thread when the start method is called
         The parameters that are needed for the program execution are loaded into
         the new thread and provided to the program execution

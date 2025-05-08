@@ -29,5 +29,4 @@ jobs:
       - name: Typecheck
         run: uv run mypy
       - name: Run tests
-        run: |
-          PYTHONPATH=. uv run pytest -rs -v
+        run: PYTHONPATH=. uv run pytest -rs -v -m "not integration"
