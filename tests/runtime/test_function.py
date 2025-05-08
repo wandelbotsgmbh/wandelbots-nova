@@ -42,13 +42,13 @@ def test_function_wrapping():
 
     # Check name field
     name_field = input_fields["name"]
-    assert name_field.annotation == str
+    assert name_field.annotation is str
     assert name_field.description == "Name of the person"
     assert name_field.is_required()
 
     # Check age field
     age_field = input_fields["age"]
-    assert age_field.annotation == int
+    assert age_field.annotation is int
     assert age_field.description == "Age of the person"
     assert age_field.is_required()
 

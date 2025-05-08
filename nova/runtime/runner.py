@@ -264,7 +264,7 @@ class ProgramRunner(ABC):
                             stopper, self._stop_event, async_stop_event, abandon_on_cancel=True
                         ),
                     )
-                except ExceptionGroup as eg:
+                except ExceptionGroup as eg:  # noqa: F821
                     raise eg.exceptions[0]
                 self._program_run.stdout = stdout.getvalue()
 

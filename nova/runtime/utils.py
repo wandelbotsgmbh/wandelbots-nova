@@ -36,7 +36,7 @@ async def stoppable_run(run: Awaitable[None], stop: Awaitable[None]) -> None:
 
     try:
         await group()
-    except ExceptionGroup as eg:
+    except ExceptionGroup as eg:  # noqa: F821
         # since we only have two tasks, we can be sure that the first exception is the one we want to raise
         # in case of debugging, one might want to log all exceptions
         raise eg.exceptions[0]
