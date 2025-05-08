@@ -17,12 +17,13 @@ from anyio.abc import TaskStatus
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from nova import api, Nova
+from nova import Nova, api
 from nova.cell.robot_cell import RobotCell
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.runtime.exceptions import NotPlannableError
 from nova.runtime.utils import Tee, stoppable_run
 from nova.types import RobotState
+
 # from wandelbots_api_client import v2
 
 # import contextvars
@@ -53,6 +54,7 @@ class ExecutionContext:
     @property
     def stop_event(self) -> anyio.Event:
         return self._stop_event
+
 
 # api.v2.models.ProgramType
 class ProgramType(Enum):
@@ -100,7 +102,6 @@ class ProgramRun(BaseModel):
     state: ProgramRunState = Field(..., description="State of the program run")
     logs: str | None = Field(None, description="Logs of the program run")
     stdout: str | None = Field(None, description="Stdout of the program run")
-    # store: dict = Field(default_factory=dict, description="Stores runtime variables of the run")
     error: str | None = Field(None, description="Error message of the program run, if any")
     traceback: str | None = Field(None, description="Traceback of the program run, if any")
     start_time: float | None = Field(None, description="Start time of the program run")
@@ -117,12 +118,7 @@ class ProgramRunner(ABC):
     It provides the core functionality for running and managing program execution.
     """
 
-    def __init__(
-        self,
-        # TODO: can we remove the robot_cell object?
-        program: Program,
-        args: dict[str, Any],
-    ):
+    def __init__(self, program: Program, args: dict[str, Any]):
         self._program = program
         self._args = args
         self._program_run: ProgramRun = ProgramRun(
@@ -135,7 +131,6 @@ class ProgramRunner(ABC):
             start_time=None,
             end_time=None,
         )
-        # TODO: should this be here?
         self._thread: threading.Thread | None = None
         self._stop_event: threading.Event | None = None
         self._exc: Exception | None = None
@@ -263,8 +258,7 @@ class ProgramRunner(ABC):
                 try:
                     await stoppable_run(
                         self._run_program(
-                            stop_event=async_stop_event,
-                            on_state_change=_on_state_change,
+                            stop_event=async_stop_event, on_state_change=_on_state_change
                         ),
                         to_thread.run_sync(
                             stopper, self._stop_event, async_stop_event, abandon_on_cancel=True
@@ -324,9 +318,7 @@ class ProgramRunner(ABC):
         self._program_run.state = ProgramRunState.failed
 
     async def _run_program(
-        self,
-        stop_event: anyio.Event,
-        on_state_change: Callable[[], Awaitable[None]],
+        self, stop_event: anyio.Event, on_state_change: Callable[[], Awaitable[None]]
     ):
         """This function is executed in another thread when the start method is called
         The parameters that are needed for the program execution are loaded into

@@ -24,7 +24,7 @@ class UVProgramRunner(ProgramRunner):
         if not program.program_type == ProgramType.PYTHON:
             raise ValueError(f"Program type must be {ProgramType.PYTHON}")
 
-        super().__init__( program=program, args=args)
+        super().__init__(program=program, args=args)
 
         self.project_dir = Path(tempfile.mkdtemp())
         self.program_file = self.project_dir / "program.py"
@@ -192,14 +192,12 @@ class UVProgramRunner(ProgramRunner):
 
 # Dummy server endpoint
 async def run_program_endpoint(program_content: str, args: dict):
-
     """REST endpoint handler for running programs."""
     try:
         logger.info(f"Running program with args: {args}")
         # TODO: provide context (nova, ...) to the execution
         runner = UVProgramRunner(
-            program=Program(content=program_content, program_type=ProgramType.PYTHON),
-            args=args,
+            program=Program(content=program_content, program_type=ProgramType.PYTHON), args=args
         )
         runner.start()
         return {"status": "success"}

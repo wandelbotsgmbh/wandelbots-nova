@@ -1,3 +1,3 @@
-from nova.runtime.runner import Program, ExecutionContext
+from nova.runtime.runner import ExecutionContext, Program
 
 __all__ = ["Program", "ExecutionContext"]
