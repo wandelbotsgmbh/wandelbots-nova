@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v1.3.1 (2025-05-08)
+
+### Bug Fixes
+
+- Include WaitAction in ActionContainerItem and skip in trajectory…
+  ([#155](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/155),
+  [`b89f6e9`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b89f6e9b9223071a0711a5836517c02e81ae9fe9))
+
+
 ## v1.3.0 (2025-05-08)
 
 ### Features
