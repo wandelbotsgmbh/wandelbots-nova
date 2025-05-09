@@ -223,7 +223,7 @@ class ProgramRunner(ABC):
     def start(
         self, sync: bool = False, on_state_change: Callable[[Any], Awaitable[None]] | None = None
     ):
-        """Create another thread and starts the program execution. If the program was executed already, is currently
+        """Creates another thread and starts the program execution. If the program was executed already, is currently
         running, failed or was stopped a new program runner needs to be created.
 
         Args:
