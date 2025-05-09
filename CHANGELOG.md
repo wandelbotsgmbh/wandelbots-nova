@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v1.4.0 (2025-05-09)
+
+### Features
+
+- **RPS-1615**: Implemented program runner for Python program
+  ([#153](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/153),
+  [`0838520`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/083852080ac535bf824f33bcfa8754676e52f2aa))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+Co-authored-by: dsonnemann <dirk.sonnemann@gmail.com>
+
+
 ## v1.3.1 (2025-05-08)
 
 ### Bug Fixes
