@@ -63,15 +63,6 @@ def test_function_validation():
 def test_function_calling():
     @wrap
     def add(a: int, b: int) -> int:
-        """Add two numbers.
-
-        Args:
-            a: First number
-            b: Second number
-
-        Returns:
-            Sum of the numbers
-        """
         return a + b
 
     result = add(5, 3)
