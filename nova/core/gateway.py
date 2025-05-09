@@ -12,10 +12,10 @@ from decouple import config
 
 from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
+from nova.cell.robot_cell import ConfigurablePeriphery, Device
 from nova.core import logger
 from nova.core.env_handler import set_key
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
-from nova.core.robot_cell import ConfigurablePeriphery, Device
 from nova.version import version as pkg_version
 
 T = TypeVar("T")
