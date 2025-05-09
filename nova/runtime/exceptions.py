@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class TextPosition:
-    """A position in a wandelscript code"""
+    """A position in a program"""
 
     line: int
     column: int
@@ -11,7 +11,7 @@ class TextPosition:
 
 @dataclass(frozen=True)
 class TextRange:
-    """A region in a wandelscript code"""
+    """A region in a program"""
 
     start: TextPosition
     end: TextPosition

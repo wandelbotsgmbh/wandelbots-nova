@@ -9,6 +9,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from nova.cell.robot_cell import RobotCell
 from nova.runtime.runner import ExecutionContext, Program, ProgramRunner, ProgramType
 
 
@@ -18,11 +19,11 @@ class UVProgramRunner(ProgramRunner):
     where the dependencies, input parameters and metadata of the program is defined within one file.
     """
 
-    def __init__(self, program: Program, args: dict):
+    def __init__(self, program: Program, args: dict, robot_cell_override: RobotCell | None = None):
         if not program.program_type == ProgramType.PYTHON:
             raise ValueError(f"Program type must be {ProgramType.PYTHON}")
 
-        super().__init__(program=program, args=args)
+        super().__init__(program=program, args=args, robot_cell_override=robot_cell_override)
 
         self.project_dir = Path(tempfile.mkdtemp())
         self.program_file = self.project_dir / "program.py"
