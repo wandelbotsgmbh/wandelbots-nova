@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v1.5.0 (2025-05-12)
+
+### Features
+
+- Enhance log_actions method to support optional motion_group par…
+  ([#156](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/156),
+  [`928ffc8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/928ffc8adb79232a7f5c58a58184bbc837bba0df))
+
+
 ## v1.4.0 (2025-05-09)
 
 ### Features
