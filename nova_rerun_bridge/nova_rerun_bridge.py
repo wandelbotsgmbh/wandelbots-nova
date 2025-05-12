@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import rerun as rr
@@ -335,7 +336,10 @@ class NovaRerunBridge:
         self._streaming_tasks.clear()
 
     async def log_actions(
-        self, actions: list[Action | CollisionFreeMotion] | Action, show_connection: bool = False
+        self,
+        actions: list[Action | CollisionFreeMotion] | Action,
+        show_connection: bool = False,
+        motion_group: Optional[MotionGroup] = None,
     ) -> None:
         from nova_rerun_bridge import trajectory
 
@@ -379,17 +383,20 @@ class NovaRerunBridge:
                 positions.append([pose.position.x, pose.position.y, pose.position.z])
                 point_colors.append(colors.colors[1] if use_red else colors.colors[9])
 
+        enity_path = (
+            f"motion/{motion_group.motion_group_id}/actions" if motion_group else "motion/actions"
+        )
+
         # Log all positions at once
         rr.log(
-            "motion/actions",
+            enity_path,
             rr.Points3D(positions, colors=point_colors, radii=rr.Radius.ui_points([5.0])),
             static=True,
         )
 
         if show_connection:
             rr.log(
-                "motion/actions/connection",
-                rr.LineStrips3D([positions], colors=[155, 155, 155, 50]),
+                f"{enity_path}/connection", rr.LineStrips3D([positions], colors=[155, 155, 155, 50])
             )
 
     async def __aenter__(self) -> "NovaRerunBridge":
