@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v1.5.2 (2025-05-13)
+
+### Bug Fixes
+
+- Show collision of robots while using multiple robots
+  ([#159](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/159),
+  [`6e9764b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6e9764b131b763289e42572ecfc9e11feab4d62c))
+
+
 ## v1.5.1 (2025-05-13)
 
 ### Bug Fixes
