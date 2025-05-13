@@ -1764,7 +1764,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "1.5.0"
+version = "1.5.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
@@ -1772,6 +1772,7 @@ dependencies = [
     { name = "asyncstdlib" },
     { name = "asyncua" },
     { name = "docstring-parser" },
+    { name = "exceptiongroup" },
     { name = "httpx" },
     { name = "loguru" },
     { name = "numpy" },
@@ -1817,6 +1818,7 @@ requires-dist = [
     { name = "asyncstdlib", specifier = ">=3.13.0,<4" },
     { name = "asyncua", specifier = ">=1.1.5,<2" },
     { name = "docstring-parser", specifier = ">=0.16.0" },
+    { name = "exceptiongroup", specifier = ">=1.2.2" },
     { name = "httpx", specifier = ">=0.28.0,<0.29" },
     { name = "loguru", specifier = ">=0.7.2,<0.8" },
     { name = "numpy", specifier = ">1.1.19" },

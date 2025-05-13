@@ -3,6 +3,7 @@ from collections.abc import Awaitable
 from typing import TextIO
 
 import anyio
+from exceptiongroup import ExceptionGroup
 
 
 class Tee(io.StringIO):
@@ -36,7 +37,7 @@ async def stoppable_run(run: Awaitable[None], stop: Awaitable[None]) -> None:
 
     try:
         await group()
-    except ExceptionGroup as eg:  # type: ignore  # noqa: F821
+    except ExceptionGroup as eg:
         # since we only have two tasks, we can be sure that the first exception is the one we want to raise
         # in case of debugging, one might want to log all exceptions
         raise eg.exceptions[0]

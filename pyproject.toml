@@ -27,6 +27,7 @@ dependencies = [
     "numpy >1.1.19",
     "asyncua >=1.1.5,<2",
     "docstring-parser >=0.16.0",
+    "exceptiongroup>=1.2.2",
 ]
 
 [project.optional-dependencies]
