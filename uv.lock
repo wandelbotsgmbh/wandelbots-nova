@@ -1739,7 +1739,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "0.48.1"
+version = "0.50.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
@@ -1752,6 +1752,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pydantic" },
     { name = "python-decouple" },
+    { name = "requests" },
     { name = "scipy" },
     { name = "wandelbots-api-client" },
     { name = "websockets" },
@@ -1798,6 +1799,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.10.3,<3" },
     { name = "python-decouple", specifier = "~=3.8" },
     { name = "pyyaml", marker = "extra == 'benchmark'", specifier = ">5.3" },
+    { name = "requests", specifier = ">=2.32.3" },
     { name = "requests", marker = "extra == 'benchmark'", specifier = ">=2.32.3" },
     { name = "requests", marker = "extra == 'nova-rerun-bridge'", specifier = ">=2.32.3" },
     { name = "rerun-sdk", marker = "extra == 'benchmark'", specifier = "==0.22.1" },

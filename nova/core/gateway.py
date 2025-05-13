@@ -184,6 +184,9 @@ class ApiGateway:
         )
         self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client), self)
 
+        self.program_library_metadata_api = intercept(wb.LibraryProgramMetadataApi(api_client=self._api_client), self)
+        self.program_library_api = intercept(wb.LibraryProgramApi(api_client=self._api_client), self)
+        
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
     async def close(self):

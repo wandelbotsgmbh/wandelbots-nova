@@ -26,7 +26,8 @@ dependencies = [
     "asyncstdlib >=3.13.0,<4",
     "numpy >1.1.19",
     "asyncua >=1.1.5,<2",
-    "docstring-parser >=0.16.0"
+    "docstring-parser >=0.16.0",
+    "requests>=2.32.3",
 ]
 
 [project.optional-dependencies]
