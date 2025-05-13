@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v1.5.1 (2025-05-13)
+
+### Bug Fixes
+
+- **RPS-1380**: Upgrade pydantic
+  ([`efbf8c2`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/efbf8c2d3843ff85dcc090cd11c9eddb0cda74f4))
+
+Pydantic is the main bottleneck of our import times. The Pydantic team is aware of the performance
+  issues and its recent 3.11 release was mainly focused on build performance. Upping its version
+  effectively reduces our nova's import times. Since pydantic relies on only few harmless other
+  libraries, I deem this narrowing of 3rd party dependencies to our SDK OK.
+
+
 ## v1.5.0 (2025-05-12)
 
 ### Features
