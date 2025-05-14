@@ -68,7 +68,10 @@ jobs:
           uv sync --extra "nova-rerun-bridge"
       - name: "Run ${{ matrix.id }} suite"
         run: |
-          echo $PORTAL_STG_HOST
+          # export the environment variables for the run command
+          echo "NOVA_API=https://${{ env.PORTAL_STG_HOST }}" >> ./.env
+          echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_STG_ACCESS_TOKEN }}" >> ./.env
+          echo "CELL_NAME=cell" >> ./.env
 
           # generic retry wrapper for *all* commands
           n=0
