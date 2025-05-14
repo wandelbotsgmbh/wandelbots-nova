@@ -116,6 +116,28 @@ async def create_program(file_name: str, file_content: str) -> None:
     print(response.status_code)
     print(response.text)
 
+
+async def update_program(program_id: str, file_content: str) -> None:
+    """Create a program in Nova with the given file name and content."""
+    async with Nova() as nova:
+        cell = nova.cell()
+        await cell.controllers() # just to force token refrest
+        api_client_config = nova._api_client._api_client.configuration
+        url = f'{api_client_config.host}/cells/cell/store/programs/{program_id}'
+        
+        headers = {
+            'Accept': 'application/json, text/plain',
+            'Authorization': f'Bearer {api_client_config.access_token}',
+            'Content-Type': 'text/plain'
+        }
+        data = file_content
+
+    import requests
+    response = requests.put(url, data=data, headers=headers)
+    print(response.status_code)
+    print(response.text)
+
+
 async def upload_files_to_nova(files: dict[str, str]) -> None:
     from nova import Nova
     async with Nova() as nova:
@@ -127,11 +149,7 @@ async def upload_files_to_nova(files: dict[str, str]) -> None:
             if any(metadata.name == file_name for metadata in program_metadata_list):
                 logger.info(f"File {file_name} already exists in Nova program library. Updating...")
                 program_id = [metadata.id for metadata in program_metadata_list if metadata.name == file_name][0]
-                await nova._api_client.program_library_api.update_program(
-                    cell="cell",
-                    program=program_id,
-                    body=file_content
-                )
+                await update_program(program_id, file_content)
                 continue
 
             logger.info(f"Program {file_name} not found in Nova program library. Uploading...")

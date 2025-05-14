@@ -125,7 +125,7 @@ class ApiGateway:
         if auth0_config.is_complete():
             self._auth0 = Auth0DeviceAuthorization(auth0_config=auth0_config)
 
-        self._host = self._host_with_prefix(host=host)
+        self._host = "https://enstjodk.instance.wandelbots.io"
         stripped_host = self._host.rstrip("/")
         api_client_config = wb.Configuration(
             host=f"{stripped_host}/api/{version}",
@@ -135,7 +135,7 @@ class ApiGateway:
         )
         api_client_config.verify_ssl = verify_ssl
 
-        self._access_token = access_token
+        self._access_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImpGWkFUaWc5bk1TUERrT0lpV2hJSyJ9.eyJpc3MiOiJodHRwczovL2F1dGgucG9ydGFsLndhbmRlbGJvdHMuaW8vIiwic3ViIjoiYXV0aDB8NjZiMjI0Yzc3NzEyMDhlNDU4YThiNzg0IiwiYXVkIjpbIm5vdmEtYXBpIiwiaHR0cHM6Ly93YW5kZWxib3RzLmV1LmF1dGgwLmNvbS91c2VyaW5mbyJdLCJpYXQiOjE3NDcyMDM2NzgsImV4cCI6MTc0NzI5MDA3OCwic2NvcGUiOiJvcGVuaWQgcHJvZmlsZSBlbWFpbCIsImF6cCI6Im5xQnMyV0Z3RlRocjc1WHZ2eVlJa2d2b0s2MjNVdWRBIn0.QwQD5y7wSSzQ4TC5AGD7fDjSCxWyx4hw5h6flkNcsXXbFIK2OVdQzLkuiwPoQCwB9jPWV6ZRHzkw_NMIcdMW5_RhNHFq1Q5r8ihU_1B1ANcFgfRFkdgFysDRE25ngSKcdKtOlgS4prSi-cnPAF3P5tM8sqC7TVuQIXhtjIxFYborSNeZCHiq8XuxUDQiEDKNgN31qqtZfRzRKlig7SuTi15sb3J5K_1Fs5PFUhZ7e35p_qmxy4dow-4uSXtOdGHZcODYS2Zb5ZAx_PM7IquyW4DsNLYFstfb47fN9mtaOZB85gjU-dUheaoFzT4l3iZAKnw0ld7ZP49L7bIdC4Q90A"
         self._username = username
         self._password = password
 
@@ -205,6 +205,7 @@ class ApiGateway:
                 self._has_valid_token = True
         except Exception as e:
             if "401" in str(e) or "403" in str(e):
+                logger.info(f"current token: {self._access_token}")
                 logger.info("Access token expired, starting device authorization flow")
                 self._auth0.request_device_code()
                 self._auth0.display_user_instructions()
