@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.5.4 (2025-05-14)
+
+### Bug Fixes
+
+- Pass the collision scene to non collision motions
+  ([#160](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/160),
+  [`e2d2f1b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e2d2f1bbde945346da6669ce7deaeaf2a5396459))
+
+Co-authored-by: mahsumdemirwb <mahsum.demir@wandelbots.com>
+
+
 ## v1.5.3 (2025-05-14)
 
 ### Chores
