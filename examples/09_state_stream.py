@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 from contextlib import suppress
 
 from nova import Nova
-from nova.core.robot_cell import RobotCell
+from nova.cell.robot_cell import RobotCell
 
 
 async def main(controller_name: str = "controller") -> None:
