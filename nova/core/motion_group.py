@@ -198,7 +198,7 @@ class MotionGroup(AbstractRobot):
         collision_scenes = [
             action.collision_scene
             for action in actions
-            if isinstance(action, CollisionFreeMotion) and action.collision_scene is not None
+            if isinstance(action, Motion) and action.collision_scene is not None
         ]
 
         if len(collision_scenes) != 0 and len(collision_scenes) != motion_count:
