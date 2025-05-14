@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v1.5.3 (2025-05-14)
+
+### Chores
+
+- Make test pass ([#158](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/158),
+  [`02ea30e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/02ea30edb07179a82d25a60a8518160c3da9dc93))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
 ## v1.5.2 (2025-05-13)
 
 ### Bug Fixes
