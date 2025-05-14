@@ -1,5 +1,5 @@
 ---
-name: "[nova] Run examples"
+name: "[nova] Run integration tests & examples"
 on:
   pull_request:
     branches:
@@ -8,21 +8,33 @@ concurrency:
   group: run-examples-workflow
   cancel-in-progress: false
 jobs:
-  run-examples:
+  test-integration:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       max-parallel: 1
       matrix:
-        example_file:
-          - "examples/01_basic.py"
-          - "examples/02_plan_and_execute.py"
-          - "examples/03_move_and_set_ios.py"
-          - "examples/04_move_multiple_robots.py"
-          - "examples/05_selection_motion_group_activation.py"
-          - "examples/06_api_usage.py"
-          - "examples/08_multi_step_movement_with_collision_free.py"
-          - "nova_rerun_bridge/examples/14_welding_example.py"
+        include:
+          # single entry for the whole integration‑test batch
+          - id: integration
+            run_cmd: "pytest -rs -v -m integration"
+          # each example gets its own matrix entry
+          - id: 01_basic
+            run_cmd: "python examples/01_basic.py"
+          - id: 02_plan_and_execute
+            run_cmd: "python examples/02_plan_and_execute.py"
+          - id: 03_move_and_set_ios
+            run_cmd: "python examples/03_move_and_set_ios.py"
+          - id: 04_move_multiple_robots
+            run_cmd: "python examples/04_move_multiple_robots.py"
+          - id: 05_selection_motion_group_activation
+            run_cmd: "python examples/05_selection_motion_group_activation.py"
+          - id: 06_api_usage
+            run_cmd: "python examples/06_api_usage.py"
+          - id: 08_multi_step_movement_with_collision_free
+            run_cmd: "python examples/08_multi_step_movement_with_collision_free.py"
+          - id: 14_welding_example
+            run_cmd: "python nova_rerun_bridge/examples/14_welding_example.py"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -54,33 +66,24 @@ jobs:
         run: |
           pip install uv
           uv sync --extra "nova-rerun-bridge"
-      - name: Run integration tests
+      - name: "Run ${{ matrix.id }} suite"
         run: |
-          echo "NOVA_API=https://${{ env.PORTAL_STG_HOST }}" >> ./.env
-          echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_STG_ACCESS_TOKEN }}" >> ./.env
-          echo "CELL_NAME=cell" >> ./.env
-
-          PYTHONPATH=. uv run pytest -rs -v -m "integration"
-      - name: "Run example: examples/${{ matrix.example_file }}"
-        run: |
-          echo "NOVA_API=https://${{ env.PORTAL_STG_HOST }}" >> ./.env
-          echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_STG_ACCESS_TOKEN }}" >> ./.env
-          echo "CELL_NAME=cell" >> ./.env
-
+          # generic retry wrapper for *all* commands
           n=0
-          max_retries=3
-          until [ $n -ge $max_retries ]
-          do
-            echo "Attempt $((n+1)) to run ${{ matrix.example_file }}..."
-            PYTHONPATH=. uv run python ${{ matrix.example_file }} && break
-
+          max=3
+          until [ "$n" -ge "$max" ]; do
+            echo "\nAttempt $((n+1))/$(($max)) : ${{ matrix.run_cmd }}"
+            if PYTHONPATH=. uv run ${{ matrix.run_cmd }}; then
+              echo "Succeeded on attempt $((n+1))"
+              break
+            fi
             n=$((n+1))
-            echo "Failed attempt $n. Retrying in 5s..."
+            echo "Retrying in 5s..."
             sleep 5
           done
 
-          if [ $n -ge $max_retries ]; then
-            echo "Failed after $max_retries attempts."
+          if [ "$n" -ge "$max" ]; then
+            echo "Command failed after $max attempts." >&2
             exit 1
           fi
       - name: Download diagnose package
