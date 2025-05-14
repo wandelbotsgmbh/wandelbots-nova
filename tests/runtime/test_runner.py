@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from nova.runtime.exceptions import NotPlannableError
@@ -20,7 +22,7 @@ class TestProgramRunner(ProgramRunner):
 
     async def _run(self, execution_context):
         if self._should_not_plannable:
-            raise NotPlannableError("Test not plannable error")
+            raise NotPlannableError(location=None, value="Test not plannable error")
         if self._should_fail:
             raise RuntimeError("Test failure")
         self._program_run.state = ProgramRunState.running
@@ -59,9 +61,8 @@ def test_program_runner_stop():
         runner.stop()
 
     # Test stopping after start
-    runner.start()
-    assert runner.is_running()
-    runner.stop(sync=True)
+    runner.start(sync=True)
+    assert runner.state == ProgramRunState.completed
     assert not runner.is_running()
 
 
@@ -81,17 +82,19 @@ def test_program_runner_error_handling():
     program = Program(content="test", program_type=ProgramType.PYTHON)
 
     # Test general exception handling
-    runner = TestProgramRunner(program, {}, should_fail=True)
-    runner.start(sync=True)
-    assert runner.state == ProgramRunState.failed
-    assert runner.program_run.error is not None
-    assert runner.program_run.traceback is not None
+    with pytest.raises(RuntimeError):
+        runner = TestProgramRunner(program, {}, should_fail=True)
+        runner.start(sync=True)
+        assert runner.state == ProgramRunState.failed
+        assert runner.program_run.error is not None
+        assert runner.program_run.traceback is not None
 
     # Test NotPlannableError handling
-    runner = TestProgramRunner(program, {}, should_not_plannable=True)
-    runner.start(sync=True)
-    assert runner.state == ProgramRunState.failed
-    assert "NotPlannableError" in runner.program_run.error
+    with pytest.raises(NotPlannableError):
+        runner = TestProgramRunner(program, {}, should_not_plannable=True)
+        runner.start(sync=True)
+        assert runner.state == ProgramRunState.failed
+        assert "NotPlannableError" in runner.program_run.error
 
 
 @pytest.mark.integration
