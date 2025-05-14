@@ -68,6 +68,8 @@ jobs:
           uv sync --extra "nova-rerun-bridge"
       - name: "Run ${{ matrix.id }} suite"
         run: |
+          echo $PORTAL_STG_HOST
+
           # generic retry wrapper for *all* commands
           n=0
           max=3
