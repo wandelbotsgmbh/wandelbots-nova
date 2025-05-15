@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v1.6.0 (2025-05-15)
+
+### Features
+
+- Expose combine_trajectories in the module exports
+  ([#161](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/161),
+  [`34dde3d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/34dde3dc95e68394ecb7db5c58b9828119bef106))
+
+
 ## v1.5.4 (2025-05-14)
 
 ### Bug Fixes
