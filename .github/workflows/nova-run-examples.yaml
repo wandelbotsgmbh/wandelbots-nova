@@ -54,9 +54,15 @@ jobs:
         run: |
           pip install uv
           uv sync --extra "nova-rerun-bridge"
+      - name: Run integration tests
+        run: |
+          echo "NOVA_API=https://${{ env.PORTAL_STG_HOST }}" >> ./.env
+          echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_STG_ACCESS_TOKEN }}" >> ./.env
+          echo "CELL_NAME=cell" >> ./.env
+
+          PYTHONPATH=. uv run pytest -rs -v -m "integration"
       - name: "Run example: examples/${{ matrix.example_file }}"
         run: |
-          touch ./.env
           echo "NOVA_API=https://${{ env.PORTAL_STG_HOST }}" >> ./.env
           echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_STG_ACCESS_TOKEN }}" >> ./.env
           echo "CELL_NAME=cell" >> ./.env

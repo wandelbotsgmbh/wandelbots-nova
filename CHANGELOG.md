@@ -1,6 +1,162 @@
 # CHANGELOG
 
 
+## v1.5.2 (2025-05-13)
+
+### Bug Fixes
+
+- Show collision of robots while using multiple robots
+  ([#159](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/159),
+  [`6e9764b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6e9764b131b763289e42572ecfc9e11feab4d62c))
+
+
+## v1.5.1 (2025-05-13)
+
+### Bug Fixes
+
+- **RPS-1380**: Upgrade pydantic
+  ([`efbf8c2`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/efbf8c2d3843ff85dcc090cd11c9eddb0cda74f4))
+
+Pydantic is the main bottleneck of our import times. The Pydantic team is aware of the performance
+  issues and its recent 3.11 release was mainly focused on build performance. Upping its version
+  effectively reduces our nova's import times. Since pydantic relies on only few harmless other
+  libraries, I deem this narrowing of 3rd party dependencies to our SDK OK.
+
+
+## v1.5.0 (2025-05-12)
+
+### Features
+
+- Enhance log_actions method to support optional motion_group par…
+  ([#156](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/156),
+  [`928ffc8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/928ffc8adb79232a7f5c58a58184bbc837bba0df))
+
+
+## v1.4.0 (2025-05-09)
+
+### Features
+
+- **RPS-1615**: Implemented program runner for Python program
+  ([#153](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/153),
+  [`0838520`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/083852080ac535bf824f33bcfa8754676e52f2aa))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+Co-authored-by: dsonnemann <dirk.sonnemann@gmail.com>
+
+
+## v1.3.1 (2025-05-08)
+
+### Bug Fixes
+
+- Include WaitAction in ActionContainerItem and skip in trajectory…
+  ([#155](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/155),
+  [`b89f6e9`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b89f6e9b9223071a0711a5836517c02e81ae9fe9))
+
+
+## v1.3.0 (2025-05-08)
+
+### Features
+
+- Add FeedbackCollision error visu
+  ([#154](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/154),
+  [`2cfe834`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2cfe8342d2673152f7b49904f3a68130a5452676))
+
+
+## v1.2.0 (2025-05-08)
+
+### Features
+
+- Add wait action ([#152](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/152),
+  [`8d3968a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8d3968a4e5abfc20626663948a9dbc9ff8fa432b))
+
+
+## v1.1.0 (2025-05-06)
+
+### Features
+
+- Add a example on how to serialize a program
+  ([#145](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/145),
+  [`7185c54`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7185c54116f9deca85deaee53dc688528a4059d7))
+
+Co-authored-by: Christoph Biering <1353438+biering@users.noreply.github.com>
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
+## v1.0.0 (2025-05-05)
+
+### Bug Fixes
+
+- **RPS-1595**: Tcp_pose is returned with the correct TCP reference now
+  ([#148](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/148),
+  [`cbabf5d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/cbabf5df864f3187b2e2be8414cc7fa0ab652d78))
+
+Co-authored-by: Christoph Biering <1353438+biering@users.noreply.github.com>
+
+
+## v0.53.1 (2025-04-30)
+
+### Bug Fixes
+
+- Correct typo in motion group jogging API variable name
+  ([#147](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/147),
+  [`eea91f2`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/eea91f2b141969adb3e0fc687eb2fd3823be522a))
+
+
+## v0.53.0 (2025-04-30)
+
+### Features
+
+- Add motion group jogging API to ApiGateway
+  ([#146](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/146),
+  [`fa2ea4b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fa2ea4b0d027d6ff1f8e8e0965a3c8b954ba15eb))
+
+
+## v0.52.0 (2025-04-25)
+
+### Features
+
+- Add more supported types to render safety geometry in rerun
+  ([#144](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/144),
+  [`5087c98`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5087c98feec52b5cb576c9370cb874d4baae2af2))
+
+
+## v0.51.0 (2025-04-25)
+
+### Features
+
+- Set mounting pose of safety zone
+  ([#143](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/143),
+  [`0e52cd8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0e52cd83a88d24759f86fb2909655e77e6b18f80))
+
+
+## v0.50.3 (2025-04-24)
+
+### Bug Fixes
+
+- Update workflow name for rerun image to match standard format
+  ([#142](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/142),
+  [`6a53cc0`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6a53cc0d9a6f6bc63640fbf9cec23e043d004128))
+
+
+## v0.50.2 (2025-04-24)
+
+### Bug Fixes
+
+- Special chars are not allowed ([#141](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/141),
+  [`b1ed2da`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b1ed2da4091b4c734bca29458bd72fbe3a54a033))
+
+
+## v0.50.1 (2025-04-24)
+
+### Bug Fixes
+
+- Specify correct workflow name for rerun bridge builds
+  ([#140](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/140),
+  [`0e919c6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0e919c601ca975c7edf428493e249c43129606a9))
+
+
 ## v0.50.0 (2025-04-17)
 
 ### Features

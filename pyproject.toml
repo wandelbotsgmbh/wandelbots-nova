@@ -1,6 +1,6 @@
 [project]
 name = "wandelbots-nova"
-version = "0.50.0"
+version = "1.5.2"
 description = "Official Python SDK for the Wandelbots"
 authors = [
     { name = "Wandelbots GmbH" },
@@ -18,7 +18,7 @@ dependencies = [
     "wandelbots_api_client ==25.1.0",
     "websockets >=14.1.0,<15",
     "loguru >=0.7.2,<0.8",
-    "pydantic >=2.10.3,<3",
+    "pydantic >=2.11.4,<3",
     "python-decouple ~=3.8",
     "scipy >=1.14.1,<2",
     "aiostream >=0.6.4,<0.7",
@@ -89,6 +89,9 @@ norecursedirs = "develop .ipynb_checkpoints .venv .tox *.egg"
 testpaths = """
     nova
     tests
+"""
+markers = """
+    integration: mark a test as requiring a running Nova instance
 """
 
 [tool.mypy]

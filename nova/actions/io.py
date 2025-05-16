@@ -1,7 +1,5 @@
 from typing import Any, Literal
 
-import pydantic
-
 from nova import api
 from nova.actions.base import Action
 
@@ -12,8 +10,7 @@ class WriteAction(Action):
     value: Any
     device_id: str | None
 
-    @pydantic.model_serializer
-    def serialize_model(self):
+    def to_api_model(self):
         return api.models.IOValue(io=self.key, boolean_value=self.value).model_dump()
 
     def is_motion(self) -> bool:
@@ -40,8 +37,7 @@ class ReadAction(Action):
     key: str
     device_id: str
 
-    @pydantic.model_serializer
-    def serialize_model(self):
+    def to_api_model(self):
         return super().model_dump()
 
     def is_motion(self) -> bool:
@@ -55,8 +51,7 @@ class CallAction(Action):
     key: str
     arguments: list
 
-    @pydantic.model_serializer
-    def serialize_model(self):
+    def to_api_model(self):
         return super().model_dump()
 
     def is_motion(self) -> bool:
@@ -69,8 +64,7 @@ class ReadPoseAction(Action):
     device_id: str
     tcp: str | None = None
 
-    @pydantic.model_serializer
-    def serialize_model(self):
+    def to_api_model(self):
         return super().model_dump()
 
     def is_motion(self) -> bool:
@@ -82,8 +76,7 @@ class ReadJointsAction(Action):
     type: Literal["ReadJoints"] = "ReadJoints"
     device_id: str
 
-    @pydantic.model_serializer
-    def serialize_model(self):
+    def to_api_model(self):
         return super().model_dump()
 
     def is_motion(self) -> bool:

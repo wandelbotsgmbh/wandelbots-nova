@@ -6,6 +6,7 @@ import pydantic
 
 from nova import api
 from nova.actions.io import WriteAction
+from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.types import MovementControllerFunction, Pose
 
@@ -18,7 +19,7 @@ class ActionLocation(pydantic.BaseModel):
 
 
 # TODO: all actions should be allowed (Action)
-ActionContainerItem = Motion | WriteAction | CollisionFreeMotion
+ActionContainerItem = Motion | WriteAction | CollisionFreeMotion | WaitAction
 
 
 class CombinedActions(pydantic.BaseModel):
@@ -69,6 +70,8 @@ class CombinedActions(pydantic.BaseModel):
         last_motion_index = 0
 
         for item in self.items:
+            if isinstance(item, WaitAction):
+                continue  # Skip WaitAction items
             if isinstance(item, Motion) or isinstance(item, CollisionFreeMotion):
                 motions.append(item)
                 last_motion_index += 1  # Increment the motion index for each new Motion
@@ -131,7 +134,7 @@ class CombinedActions(pydantic.BaseModel):
     def to_motion_command(self) -> list[api.models.MotionCommand]:
         motion_commands = []
         for motion in self.motions:
-            path = api.models.MotionCommandPath.from_dict(motion.model_dump())
+            path = api.models.MotionCommandPath.from_dict(motion.to_api_model().model_dump())
             blending = (
                 motion.settings.as_blending_setting()
                 if motion.settings.has_blending_settings()
@@ -152,7 +155,7 @@ class CombinedActions(pydantic.BaseModel):
     def to_set_io(self) -> list[api.models.SetIO]:
         return [
             api.models.SetIO(
-                io=api.models.IOValue(**action.action.model_dump(exclude_unset=True)),
+                io=api.models.IOValue(**action.action.to_api_model()),
                 location=action.path_parameter,
             )
             for action in self.actions

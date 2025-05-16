@@ -4,13 +4,14 @@ from typing import AsyncIterable, cast
 import wandelbots_api_client as wb
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
+from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
+from nova.cell.robot_cell import AbstractRobot
 from nova.core import logger
 from nova.core.exceptions import InconsistentCollisionScenes
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
-from nova.core.robot_cell import AbstractRobot
 from nova.types import InitialMovementStream, LoadPlanResponse, MovementResponse, Pose, RobotState
 from nova.utils import StreamExtractor
 
@@ -33,8 +34,9 @@ def compare_collision_scenes(scene1: wb.models.CollisionScene, scene2: wb.models
 #  , we should plan them separately
 def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
     """
-    Splits the list of actions into batches of actions and collision free motions.
+    Splits the list of actions into batches of actions, collision free motions and waits.
     Actions are sent to plan_trajectory API and collision free motions are sent to plan_collision_free_ptp API.
+    Waits generate a trajectory with the same start and end position.
     """
     batches: list[list[Action]] = []
     for action in actions:
@@ -43,6 +45,8 @@ def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
             not batches  # first action no batches yet
             or isinstance(action, CollisionFreeMotion)
             or isinstance(batches[-1][-1], CollisionFreeMotion)
+            or isinstance(action, WaitAction)
+            or isinstance(batches[-1][-1], WaitAction)
         ):
             batches.append([action])
         else:
@@ -242,9 +246,7 @@ class MotionGroup(AbstractRobot):
 
 
         """
-        target = wb.models.PlanCollisionFreePTPRequestTarget(
-            **action.model_dump(exclude_unset=True)
-        )
+        target = wb.models.PlanCollisionFreePTPRequestTarget(**action.to_api_model().model_dump())
         robot_setup = optimizer_setup or await self._get_optimizer_setup(tcp=tcp)
 
         static_colliders = None
@@ -298,6 +300,31 @@ class MotionGroup(AbstractRobot):
                     tcp=tcp,
                     start_joint_position=list(current_joints),
                     optimizer_setup=robot_setup,
+                )
+                all_trajectories.append(trajectory)
+                # the last joint position of this trajectory is the starting point for the next one
+                current_joints = tuple(trajectory.joint_positions[-1].joints)
+            elif isinstance(batch[0], WaitAction):
+                # Waits generate a trajectory with the same joint position at each timestep
+                # Use 50ms timesteps from 0 to wait_for_in_seconds
+                wait_time = batch[0].wait_for_in_seconds
+                timestep = 0.050  # 50ms timestep
+                num_steps = max(2, int(wait_time / timestep) + 1)  # Ensure at least 2 points
+
+                # Create equal-length arrays for positions, times, and locations
+                joint_positions = [
+                    wb.models.Joints(joints=list(current_joints)) for _ in range(num_steps)
+                ]
+                times = [i * timestep for i in range(num_steps)]
+                # Ensure the last timestep is exactly the wait duration
+                times[-1] = wait_time
+                # Use the same location value for all points
+                locations = [0] * num_steps
+
+                trajectory = wb.models.JointTrajectory(
+                    joint_positions=joint_positions,
+                    times=times,
+                    locations=[float(loc) for loc in locations],
                 )
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
@@ -421,14 +448,20 @@ class MotionGroup(AbstractRobot):
             logger.debug(f"No motion to stop for {self}: {e}")
 
     async def get_state(self, tcp: str | None = None) -> RobotState:
+        """
+        Returns the motion group state.
+        Args:
+            tcp (str | None): The reference TCP for the cartesian pose part of the robot state. Defaults to None.
+                                        If None, the current active/selected TCP of the motion group is used.
+        """
         response = await self._api_gateway.get_motion_group_state(
             cell=self._cell, motion_group_id=self.motion_group_id, tcp=tcp
         )
-        return RobotState(
-            pose=Pose(response.state.tcp_pose), joints=tuple(response.state.joint_position.joints)
-        )
+        pose = Pose(response.tcp_pose or response.state.tcp_pose)
+        return RobotState(pose=pose, joints=tuple(response.state.joint_position.joints))
 
     async def joints(self) -> tuple:
+        """Returns the current joint positions of the motion group."""
         state = await self.get_state()
         if state.joints is None:
             raise ValueError(
@@ -437,6 +470,12 @@ class MotionGroup(AbstractRobot):
         return state.joints
 
     async def tcp_pose(self, tcp: str | None = None) -> Pose:
+        """
+        Returns the current TCP pose of the motion group.
+        Args:
+            tcp (str | None): The reference TCP for the returned pose. Defaults to None.
+                                        If None, the current active/selected TCP of the motion group is used.
+        """
         state = await self.get_state(tcp=tcp)
         return state.pose
 

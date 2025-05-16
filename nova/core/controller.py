@@ -1,11 +1,11 @@
 from typing import AsyncGenerator, Literal, Sized
 
 from nova.api import models
+from nova.cell.robot_cell import AbstractController, AbstractRobot, IODevice, ValueType
 from nova.core import logger
 from nova.core.gateway import NovaDevice
 from nova.core.io import IOAccess
 from nova.core.motion_group import MotionGroup
-from nova.core.robot_cell import AbstractController, AbstractRobot, IODevice, ValueType
 
 
 class Controller(Sized, AbstractController, NovaDevice, IODevice):

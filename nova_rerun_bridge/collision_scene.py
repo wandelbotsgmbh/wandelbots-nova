@@ -288,15 +288,15 @@ def log_colliders_once(entity_path: str, colliders: dict[str, models.Collider]):
 def extract_link_chain_and_tcp(
     collision_scenes: dict, motion_group_type: str
 ) -> tuple[list[Any], list[Any]]:
-    """Extract link chain and TCP from collision scenes."""
-    # Get first scene (name can vary)
-    scene = next(iter(collision_scenes.values()), None)
-    if not scene:
-        return [], []
+    """Extract link chain and TCP from collision scenes.
+    Searches through all scenes for a matching motion group.
+    """
+    # Iterate through all scenes
+    for scene_name, scene in collision_scenes.items():
+        # Check if this scene has the motion group we're looking for
+        motion_group = scene.motion_groups.get(motion_group_type)
+        if motion_group:
+            return (getattr(motion_group, "link_chain", []), getattr(motion_group, "tool", []))
 
-    # Try to get motion groups
-    motion_group = scene.motion_groups.get(motion_group_type)
-    if not motion_group:
-        return [], []
-
-    return (getattr(motion_group, "link_chain", []), getattr(motion_group, "tool", []))
+    # If no matching motion group is found in any scene
+    return [], []

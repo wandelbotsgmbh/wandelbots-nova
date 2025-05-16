@@ -4,8 +4,8 @@ import asyncio
 from enum import Enum
 
 from nova.api import models
+from nova.cell.robot_cell import Device, ValueType
 from nova.core.gateway import ApiGateway
-from nova.core.robot_cell import Device, ValueType
 
 
 class IOType(Enum):

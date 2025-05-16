@@ -1,11 +1,13 @@
 import asyncio
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import rerun as rr
 from loguru import logger
 from wandelbots_api_client.models import (
+    FeedbackCollision,
     FeedbackOutOfWorkspace,
     PlanTrajectoryFailedResponseErrorFeedback,
 )
@@ -179,7 +181,7 @@ class NovaRerunBridge:
         motion_id: str,
         timing_mode=TimingMode.CONTINUE,
         time_offset: float = 0,
-        tool_asset: str = None,
+        tool_asset: Optional[str] = None,
     ) -> None:
         # Fetch motion details from api
         motion = await self.nova._api_client.motion_api.get_planned_motion(
@@ -264,6 +266,61 @@ class NovaRerunBridge:
                     static=True,
                 )
 
+        if isinstance(error_feedback.actual_instance, FeedbackCollision):
+            collisions = error_feedback.actual_instance.collisions
+            if not collisions:
+                return
+
+            for i, collision in enumerate(collisions):
+                if collision.position_on_a is None or collision.position_on_b is None:
+                    continue
+                if collision.position_on_a.world is None or collision.position_on_b.world is None:
+                    continue
+                if collision.normal_world_on_b is None:
+                    continue
+
+                # Extract positions
+                pos_a = collision.position_on_a.world
+                pos_b = collision.position_on_b.world
+                normal = collision.normal_world_on_b
+
+                # Scale normal for visibility
+                arrow_length = 50
+
+                # Log collision points
+                rr.log(
+                    f"motion/errors/FeedbackCollision/collisions/point_{i}/a",
+                    rr.Points3D(
+                        [pos_a], radii=rr.Radius.ui_points([5.0]), colors=[(255, 0, 0, 255)]
+                    ),
+                    static=True,
+                )
+
+                rr.log(
+                    f"motion/errors/FeedbackCollision/collisions/point_{i}/b",
+                    rr.Points3D(
+                        [pos_b], radii=rr.Radius.ui_points([5.0]), colors=[(0, 0, 255, 255)]
+                    ),
+                    static=True,
+                )
+
+                # Log normal vector as arrow
+                rr.log(
+                    f"motion/errors/FeedbackCollision/collisions/normal_{i}",
+                    rr.Arrows3D(
+                        origins=[pos_b],
+                        vectors=[
+                            [
+                                normal[0] * arrow_length,
+                                normal[1] * arrow_length,
+                                normal[2] * arrow_length,
+                            ]
+                        ],
+                        colors=[(255, 255, 0, 255)],
+                    ),
+                    static=True,
+                )
+
     async def start_streaming(self, motion_group: MotionGroup) -> None:
         """Start streaming real-time robot state to Rerun viewer."""
         if motion_group in self._streaming_tasks:
@@ -279,7 +336,10 @@ class NovaRerunBridge:
         self._streaming_tasks.clear()
 
     async def log_actions(
-        self, actions: list[Action | CollisionFreeMotion] | Action, show_connection: bool = False
+        self,
+        actions: list[Action | CollisionFreeMotion] | Action,
+        show_connection: bool = False,
+        motion_group: Optional[MotionGroup] = None,
     ) -> None:
         from nova_rerun_bridge import trajectory
 
@@ -323,17 +383,20 @@ class NovaRerunBridge:
                 positions.append([pose.position.x, pose.position.y, pose.position.z])
                 point_colors.append(colors.colors[1] if use_red else colors.colors[9])
 
+        enity_path = (
+            f"motion/{motion_group.motion_group_id}/actions" if motion_group else "motion/actions"
+        )
+
         # Log all positions at once
         rr.log(
-            "motion/actions",
+            enity_path,
             rr.Points3D(positions, colors=point_colors, radii=rr.Radius.ui_points([5.0])),
             static=True,
         )
 
         if show_connection:
             rr.log(
-                "motion/actions/connection",
-                rr.LineStrips3D([positions], colors=[155, 155, 155, 50]),
+                f"{enity_path}/connection", rr.LineStrips3D([positions], colors=[155, 155, 155, 50])
             )
 
     async def __aenter__(self) -> "NovaRerunBridge":
