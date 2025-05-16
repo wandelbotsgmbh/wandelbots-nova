@@ -85,6 +85,11 @@ def intercept(api_instance: T, gateway: "ApiGateway") -> T:
     return Interceptor(api_instance)  # type: ignore[return-value]
 
 
+def log_config_file_path():
+    file_path = config._find_file(config._caller_path())
+    logger.info(f"Config will be loaded from file at: {file_path}")
+
+
 class ApiGateway:
     def __init__(
         self,
@@ -97,6 +102,7 @@ class ApiGateway:
         verify_ssl: bool = True,
         auth0_config: Auth0Config | None = None,
     ):
+        log_config_file_path()
         if host is None:
             host = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
 
@@ -125,7 +131,7 @@ class ApiGateway:
         if auth0_config.is_complete():
             self._auth0 = Auth0DeviceAuthorization(auth0_config=auth0_config)
 
-        self._host = "https://enstjodk.instance.wandelbots.io"
+        self._host = host
         stripped_host = self._host.rstrip("/")
         api_client_config = wb.Configuration(
             host=f"{stripped_host}/api/{version}",
@@ -135,7 +141,7 @@ class ApiGateway:
         )
         api_client_config.verify_ssl = verify_ssl
 
-        self._access_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImpGWkFUaWc5bk1TUERrT0lpV2hJSyJ9.eyJpc3MiOiJodHRwczovL2F1dGgucG9ydGFsLndhbmRlbGJvdHMuaW8vIiwic3ViIjoiYXV0aDB8NjZiMjI0Yzc3NzEyMDhlNDU4YThiNzg0IiwiYXVkIjpbIm5vdmEtYXBpIiwiaHR0cHM6Ly93YW5kZWxib3RzLmV1LmF1dGgwLmNvbS91c2VyaW5mbyJdLCJpYXQiOjE3NDcyMDM2NzgsImV4cCI6MTc0NzI5MDA3OCwic2NvcGUiOiJvcGVuaWQgcHJvZmlsZSBlbWFpbCIsImF6cCI6Im5xQnMyV0Z3RlRocjc1WHZ2eVlJa2d2b0s2MjNVdWRBIn0.QwQD5y7wSSzQ4TC5AGD7fDjSCxWyx4hw5h6flkNcsXXbFIK2OVdQzLkuiwPoQCwB9jPWV6ZRHzkw_NMIcdMW5_RhNHFq1Q5r8ihU_1B1ANcFgfRFkdgFysDRE25ngSKcdKtOlgS4prSi-cnPAF3P5tM8sqC7TVuQIXhtjIxFYborSNeZCHiq8XuxUDQiEDKNgN31qqtZfRzRKlig7SuTi15sb3J5K_1Fs5PFUhZ7e35p_qmxy4dow-4uSXtOdGHZcODYS2Zb5ZAx_PM7IquyW4DsNLYFstfb47fN9mtaOZB85gjU-dUheaoFzT4l3iZAKnw0ld7ZP49L7bIdC4Q90A"
+        self._access_token = access_token
         self._username = username
         self._password = password
 
@@ -184,9 +190,13 @@ class ApiGateway:
         )
         self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client), self)
 
-        self.program_library_metadata_api = intercept(wb.LibraryProgramMetadataApi(api_client=self._api_client), self)
-        self.program_library_api = intercept(wb.LibraryProgramApi(api_client=self._api_client), self)
-        
+        self.program_library_metadata_api = intercept(
+            wb.LibraryProgramMetadataApi(api_client=self._api_client), self
+        )
+        self.program_library_api = intercept(
+            wb.LibraryProgramApi(api_client=self._api_client), self
+        )
+
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
     async def close(self):
