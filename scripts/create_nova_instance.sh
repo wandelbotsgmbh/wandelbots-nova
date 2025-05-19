@@ -55,21 +55,30 @@ echo "Instance-ID: ${PORTAL_STG_INSTANCE_ID}"
 API_URL="https://${PORTAL_STG_HOST}/api"
 
 # --- 4) CREATE THE DEFAULT CELL ----------------------------------------------
-echo "Creating cell 'cell' ..."
-curl -sS -X --insecure POST "${API_URL}/v2/cells?completion_timeout=180" \
-     -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
-     -H "Content-Type: application/json" \
-     -H "Accept: application/json" \
-     -d '{"name":"cell"}' | jq .
-
-# --- 5) WAIT FOR ROBOTENGINE INSIDE THE CELL ----------------------------------
-echo "Waiting for RobotEngine to reach state 'Running' (timeout: 120 s)..."
+echo "Waiting for RobotEngine to reach state 'Running' (timeout: 120 s)…"
+STATUS_URL="${API_URL}/v2/cells/cell/status"
 START_TIME=$(date +%s)
+
 while :; do
-  STATUS="$(curl -sS --insecure "${API_URL}/v2/cells/cell/status" \
-                -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
-                -H "Accept: application/json" \
-          | jq -r '.service_status[] | select(.service=="RobotEngine") | .status.code')"
+  HTTP_AND_BODY="$(curl "${CURL_ARGS[@]}" \
+                        -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
+                        -H "Accept: application/json" \
+                        "${STATUS_URL}" -w '\n%{http_code}' || true)"
+
+  BODY="$(echo "${HTTP_AND_BODY}" | head -n -1)"
+  HTTP_CODE="$(echo "${HTTP_AND_BODY}" | tail -n 1)"
+
+  echo "DEBUG(status): HTTP ${HTTP_CODE}"
+  [[ -n "${BODY}" ]] && echo "DEBUG(status) body: $(echo "${BODY}" | head -c 200)…"
+
+  # Retry on non-200 or non-JSON
+  if [[ "${HTTP_CODE}" != "200" ]] || ! echo "${BODY}" | jq empty >/dev/null 2>&1; then
+    echo "⚠️  Bad response; retrying in 10 s…"
+    sleep 10; continue
+  fi
+
+  STATUS="$(echo "${BODY}" \
+           | jq -r '.service_status[]? | select(.service=="RobotEngine") | .status.code')"
 
   echo "RobotEngine: ${STATUS:-<empty>}"
   [[ "${STATUS}" == "Running" ]] && break
