@@ -59,15 +59,13 @@ API_URL="https://${PORTAL_STG_HOST}/api"
 # --- 4) CREATE THE DEFAULT CELL ----------------------------------------------
 CURL_ARGS=(--silent --show-error --fail-with-body --insecure)
 
-echo "Creating cell 'cell' …"
-CREATE_BODY='{"name":"cell"}'
-CREATE_URL="${API_URL}/v2/cells?completion_timeout=180"
-
-HTTP_AND_BODY="$(curl "${CURL_ARGS[@]}" -X POST "${CREATE_URL}" \
-                      -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
-                      -H "Content-Type: application/json" \
-                      -H "Accept: application/json" \
-                      -d "${CREATE_BODY}" -w '\n%{http_code}')"
+echo "Creating cell 'cell' ..."
+HTTP_AND_BODY="$(curl "${CURL_ARGS[@]}" --request POST \
+                      --url "${API_URL}/v2/cells?completion_timeout=180" \
+                      --header "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
+                      --header "Content-Type: application/json" \
+                      --header "Accept: application/json" \
+                      --data '{"name": "cell"}' -w '\n%{http_code}')"
 
 BODY="$(echo "${HTTP_AND_BODY}" | head -n -1)"
 HTTP_CODE="$(echo "${HTTP_AND_BODY}" | tail -n 1)"
