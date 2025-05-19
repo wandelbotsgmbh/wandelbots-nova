@@ -41,10 +41,12 @@ if ! INSTANCE_RESPONSE="$(curl -X "POST" "https://io.stg.wandelbots.io/instance"
   exit 1
 fi
 
+echo "Instance creation response: ${INSTANCE_RESPONSE}"
+
 PORTAL_STG_HOST="$(echo "${INSTANCE_RESPONSE}" | jq -r .host)"
 PORTAL_STG_INSTANCE_ID="$(echo "${INSTANCE_RESPONSE}" | jq -r .instance_id)"
 
-[[ -z "${PORTAL_STG_HOST}"        || "${PORTAL_STG_HOST}"        == "null" ]] && {
+[[ -z "${PORTAL_STG_HOST}" || "${PORTAL_STG_HOST}" == "null" ]] && {
   echo "[ERROR] No host returned"; exit 1; }
 [[ -z "${PORTAL_STG_INSTANCE_ID}" || "${PORTAL_STG_INSTANCE_ID}" == "null" ]] && {
   echo "[ERROR] No instance-id returned"; exit 1; }
