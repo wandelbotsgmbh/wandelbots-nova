@@ -127,7 +127,7 @@ jobs:
   # This job cleans up the NOVA instance
   cleanup-instance:
     if: always()
-    needs: [ setup-instance, test-integration ]
+    needs: [setup-instance, test-integration]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

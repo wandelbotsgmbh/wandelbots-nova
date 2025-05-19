@@ -60,7 +60,7 @@ API_URL="https://${PORTAL_STG_HOST}/api"
 CURL_ARGS=(--silent --show-error --fail-with-body --insecure)
 
 echo "Creating cell 'cell' ..."
-HTTP_AND_BODY="$(curl "${CURL_ARGS[@]}" --request PUT \
+HTTP_AND_BODY="$(curl "${CURL_ARGS[@]}" -X "POST" \
                       --url "${API_URL}/v1/cells?completionTimeout=180" \
                       --header "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
                       --header "Content-Type: application/json" \
