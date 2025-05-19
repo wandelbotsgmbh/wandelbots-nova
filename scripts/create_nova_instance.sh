@@ -65,7 +65,7 @@ HTTP_AND_BODY="$(curl "${CURL_ARGS[@]}" -X "POST" \
                       --header "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
                       --header "Content-Type: application/json" \
                       --header "Accept: application/json" \
-                      --data '{"name": "cell"}'
+                      --data '{"name": "cell"}')"
 
 BODY="$(echo "${HTTP_AND_BODY}" | head -n -1)"
 HTTP_CODE="$(echo "${HTTP_AND_BODY}" | tail -n 1)"
