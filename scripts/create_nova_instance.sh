@@ -59,7 +59,7 @@ API_URL="https://${PORTAL_STG_HOST}/api"
 # --- 4) WAIT UNTIL /api/v2/cells RETURNS A NON-EMPTY ARRAY --------------------
 CURL_ARGS=(--silent --show-error --fail-with-body --insecure)
 
-echo "Waiting for cells to appear at ${CELLS_URL} (timeout: 120 s)..."
+echo "Waiting for cells to appear (timeout: 180 s)..."
 START_TIME=$(date +%s)
 
 while :; do
@@ -87,8 +87,8 @@ while :; do
       fi
   fi
 
-  if (( $(date +%s) - START_TIME > 120 )); then
-      echo "❌ Timeout: still no cells after 120 s."; exit 1
+  if (( $(date +%s) - START_TIME > 180 )); then
+      echo "❌ Timeout: still no cells after 180 s."; exit 1
   fi
   sleep 5
 done
