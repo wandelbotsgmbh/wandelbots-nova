@@ -56,7 +56,7 @@ API_URL="https://${PORTAL_STG_HOST}/api"
 
 # --- 4) CREATE THE DEFAULT CELL ----------------------------------------------
 echo "Creating cell 'cell' ..."
-curl -sS -X POST "${API_URL}/v2/cells?completion_timeout=180" \
+curl -sS -X --insecure POST "${API_URL}/v2/cells?completion_timeout=180" \
      -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
      -H "Content-Type: application/json" \
      -H "Accept: application/json" \
@@ -66,7 +66,7 @@ curl -sS -X POST "${API_URL}/v2/cells?completion_timeout=180" \
 echo "Waiting for RobotEngine to reach state 'Running' (timeout: 120 s)..."
 START_TIME=$(date +%s)
 while :; do
-  STATUS="$(curl -sS "${API_URL}/v2/cells/cell/status" \
+  STATUS="$(curl -sS --insecure "${API_URL}/v2/cells/cell/status" \
                 -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
                 -H "Accept: application/json" \
           | jq -r '.service_status[] | select(.service=="RobotEngine") | .status.code')"
