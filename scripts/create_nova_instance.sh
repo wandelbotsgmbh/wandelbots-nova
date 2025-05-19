@@ -56,28 +56,42 @@ echo "Instance-ID: ${PORTAL_STG_INSTANCE_ID}"
 
 API_URL="https://${PORTAL_STG_HOST}/api"
 
-# --- 4) CREATE THE DEFAULT CELL ----------------------------------------------
+# --- 4) WAIT UNTIL /api/v2/cells RETURNS A NON-EMPTY ARRAY --------------------
 CURL_ARGS=(--silent --show-error --fail-with-body --insecure)
 
-echo "Creating cell 'cell' ..."
-echo "${API_URL}/v2/cells?completion_timeout=180"
-HTTP_AND_BODY="$(curl -I "${CURL_ARGS[@]}" -X "POST" \
-                      --url "${API_URL}/v2/cells?completion_timeout=180" \
-                      --header "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
-                      --header "Content-Type: application/json" \
-                      --header "Accept: application/json" \
-                      --data '{"name": "cell"}')"
+echo "Waiting for cells to appear at ${CELLS_URL} (timeout: 120 s)..."
+START_TIME=$(date +%s)
 
-BODY="$(echo "${HTTP_AND_BODY}" | head -n -1)"
-HTTP_CODE="$(echo "${HTTP_AND_BODY}" | tail -n 1)"
+while :; do
+  # Capture body + HTTP code in one shot
+  HTTP_AND_BODY="$(
+    curl "${CURL_ARGS[@]}" \
+         -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
+         -H "Accept: application/json" \
+         "${API_URL}/v2/cells" -w '\n%{http_code}' || true
+  )"
 
-echo "DEBUG(create): HTTP ${HTTP_CODE}"
-[[ -n "${BODY}" ]] && echo "DEBUG(create) body: $(echo "${BODY}" | head -c 200)…"
+  BODY="$(echo "${HTTP_AND_BODY}" | head -n -1)"
+  HTTP_CODE="$(echo "${HTTP_AND_BODY}" | tail -n 1)"
 
-[[ "${HTTP_CODE}" != "201" && "${HTTP_CODE}" != "200" ]] && {
-  echo "❌ Failed to create cell (HTTP ${HTTP_CODE})"; exit 1; }
+  echo "DEBUG(cells): HTTP ${HTTP_CODE}"
+  [[ -n "${BODY}" ]] && echo "DEBUG(cells) body: $(echo "${BODY}" | head -c 200)…"
 
-echo "${BODY}" | jq .
+  # Proceed only if we got 200 and valid JSON
+  if [[ "${HTTP_CODE}" == "200" ]] && echo "${BODY}" | jq empty >/dev/null 2>&1; then
+      COUNT="$(echo "${BODY}" | jq 'length')"
+      echo "Current cell count: ${COUNT}"
+      if (( COUNT > 0 )); then
+          echo "✅ At least one cell present."
+          break
+      fi
+  fi
+
+  if (( $(date +%s) - START_TIME > 120 )); then
+      echo "❌ Timeout: still no cells after 120 s."; exit 1
+  fi
+  sleep 5
+done
 
 # --- 5) WAIT FOR ROBOTENGINE INSIDE THE CELL ----------------------------------
 echo "Waiting for RobotEngine to reach state 'Running' (timeout: 120 s)…"
