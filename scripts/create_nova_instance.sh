@@ -56,28 +56,6 @@ echo "Instance-ID: ${PORTAL_STG_INSTANCE_ID}"
 
 API_URL="https://${PORTAL_STG_HOST}/api"
 
-# --- 4) CREATE THE DEFAULT CELL ----------------------------------------------
-CURL_ARGS=(--silent --show-error --fail-with-body --insecure)
-
-echo "Creating cell 'cell' ..."
-HTTP_AND_BODY="$(curl "${CURL_ARGS[@]}" --request POST \
-                      --url "${API_URL}/v2/cells?completion_timeout=180" \
-                      --header "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
-                      --header "Content-Type: application/json" \
-                      --header "Accept: application/json" \
-                      --data '{"name": "cell"}' -w '\n%{http_code}')"
-
-BODY="$(echo "${HTTP_AND_BODY}" | head -n -1)"
-HTTP_CODE="$(echo "${HTTP_AND_BODY}" | tail -n 1)"
-
-echo "DEBUG(create): HTTP ${HTTP_CODE}"
-[[ -n "${BODY}" ]] && echo "DEBUG(create) body: $(echo "${BODY}" | head -c 200)…"
-
-[[ "${HTTP_CODE}" != "201" && "${HTTP_CODE}" != "200" ]] && {
-  echo "❌ Failed to create cell (HTTP ${HTTP_CODE})"; exit 1; }
-
-echo "${BODY}" | jq .
-
 # --- 5) WAIT FOR ROBOTENGINE INSIDE THE CELL ----------------------------------
 echo "Waiting for RobotEngine to reach state 'Running' (timeout: 120 s)…"
 STATUS_URL="${API_URL}/v2/cells/cell/status"
