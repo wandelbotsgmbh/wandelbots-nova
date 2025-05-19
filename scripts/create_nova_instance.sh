@@ -10,7 +10,6 @@ set -euo pipefail
 : "${PORTAL_STG_REFRESH_URL:?Missing PORTAL_STG_REFRESH_URL}"
 : "${PORTAL_STG_REFRESH_CLIENT_ID:?Missing PORTAL_STG_REFRESH_CLIENT_ID}"
 : "${PORTAL_STG_REFRESH_TOKEN:?Missing PORTAL_STG_REFRESH_TOKEN}"
-: "${API_VERSION:?Missing API_VERSION}"       # e.g. "v2"
 
 # --- 2) RETRIEVE ACCESS TOKEN --------------------------------------------------
 echo "## Refreshing access token..."
@@ -52,39 +51,21 @@ PORTAL_STG_INSTANCE_ID="$(echo "${INSTANCE_RESPONSE}" | jq -r .instance_id)"
 echo "Host: ${PORTAL_STG_HOST}"
 echo "Instance-ID: ${PORTAL_STG_INSTANCE_ID}"
 
-# --- 4) WAIT UNTIL /cells RETURNS VALID JSON ----------------------------------
-CURL_ARGS=(--fail --location --retry-all-errors --retry 30 --retry-max-time 200)
-[[ "${INSECURE_CURL:-}" == "true" ]] && CURL_ARGS+=(--insecure)
+API_URL="https://${PORTAL_STG_HOST}/api"
 
-API_URL="https://${PORTAL_STG_HOST}/api/${API_VERSION}"
-
-echo "Waiting for service to answer at ${API_URL}/cells ..."
-for (( i=1; i<=5; i++ )); do
-  echo "  • Attempt $i/5"
-  RESPONSE="$(curl -sS "${CURL_ARGS[@]}" \
-                    -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
-                    -H "Accept: application/json" \
-                    "${API_URL}/cells/cell/status" || true)"
-  if [[ -n "${RESPONSE}" && $(echo "${RESPONSE}" | jq empty >/dev/null 2>&1; echo $?) -eq 0 ]]; then
-    echo "✅ API responded with valid JSON"; break
-  fi
-  [[ $i -eq 5 ]] && { echo "❌ API never responded with JSON"; exit 1; }
-  sleep 5
-done
-
-# --- 5) CREATE THE DEFAULT CELL ----------------------------------------------
+# --- 4) CREATE THE DEFAULT CELL ----------------------------------------------
 echo "Creating cell 'cell' ..."
-curl -sS -X PUT "${API_URL}/internal/cells/cell" \
+curl -sS -X POST "${API_URL}/v2/cells?completion_timeout=180" \
      -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
      -H "Content-Type: application/json" \
      -H "Accept: application/json" \
      -d '{"name":"cell"}' | jq .
 
-# --- 6) WAIT FOR ROBOTENGINE INSIDE THE CELL ----------------------------------
+# --- 5) WAIT FOR ROBOTENGINE INSIDE THE CELL ----------------------------------
 echo "Waiting for RobotEngine to reach state 'Running' (timeout: 120 s)..."
 START_TIME=$(date +%s)
 while :; do
-  STATUS="$(curl -sS "${API_URL}/cells/cell/status" \
+  STATUS="$(curl -sS "${API_URL}/v2/cells/cell/status" \
                 -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
                 -H "Accept: application/json" \
           | jq -r '.service_status[] | select(.service=="RobotEngine") | .status.code')"
