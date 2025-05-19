@@ -11,34 +11,35 @@ set -euo pipefail
 : "${PORTAL_STG_REFRESH_CLIENT_ID:?Missing PORTAL_STG_REFRESH_CLIENT_ID}"
 : "${PORTAL_STG_REFRESH_TOKEN:?Missing PORTAL_STG_REFRESH_TOKEN}"
 
-# --- 2) RETRIEVE ACCESS TOKEN --------------------------------------------------
-echo "## Refreshing access token..."
-PORTAL_STG_ACCESS_TOKEN="$(
-  curl --request POST \
-       --url  "${PORTAL_STG_REFRESH_URL}" \
-       --header 'content-type: application/x-www-form-urlencoded' \
-       --data grant_type=refresh_token \
-       --data "client_id=${PORTAL_STG_REFRESH_CLIENT_ID}" \
-       --data "refresh_token=${PORTAL_STG_REFRESH_TOKEN}" \
-  | jq -r .access_token
-)"
+echo "## Updating the refresh token..."
+PORTAL_STG_ACCESS_TOKEN="$(curl --request POST \
+  --url "${PORTAL_STG_REFRESH_URL}" \
+  --header 'content-type: application/x-www-form-urlencoded' \
+  --data grant_type=refresh_token \
+  --data "client_id=${PORTAL_STG_REFRESH_CLIENT_ID}" \
+  --data "refresh_token=${PORTAL_STG_REFRESH_TOKEN}" \
+  | jq -r .access_token)"
 
-if [[ -z "${PORTAL_STG_ACCESS_TOKEN}" || "${PORTAL_STG_ACCESS_TOKEN}" == "null" ]]; then
-  echo "[ERROR] Failed to retrieve a valid access token"; exit 1
+if [ -z "$PORTAL_STG_ACCESS_TOKEN" ] || [ "$PORTAL_STG_ACCESS_TOKEN" = "null" ]; then
+  echo "[ERROR] Failed to retrieve a valid access token."
+  exit 1
 fi
+
 echo "Access-token acquired."
 
 # --- 3) CREATE SANDBOX INSTANCE -----------------------------------------------
 SANDBOX_NAME="svcmgr-${GITHUB_RUN_ID:-local-run}"
 echo "Creating instance: ${SANDBOX_NAME}"
 
-INSTANCE_RESPONSE="$(
-  curl -sS -X POST "https://io.stg.wandelbots.io/instance" \
-       -H "accept: application/json" \
-       -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
-       -H "Content-Type: application/json" \
-       -d "{\"sandbox_name\":\"${SANDBOX_NAME}\"}"
-)"
+if ! INSTANCE_RESPONSE="$(curl -X "POST" "https://io.stg.wandelbots.io/instance" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{\"sandbox_name\": \"${SANDBOX_NAME}\"}")"; then
+  echo "Failed to create a new instance."
+  echo "Response from create instance: ${INSTANCE_RESPONSE}"
+  exit 1
+fi
 
 PORTAL_STG_HOST="$(echo "${INSTANCE_RESPONSE}" | jq -r .host)"
 PORTAL_STG_INSTANCE_ID="$(echo "${INSTANCE_RESPONSE}" | jq -r .instance_id)"
