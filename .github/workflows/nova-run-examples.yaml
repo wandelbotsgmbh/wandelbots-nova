@@ -88,11 +88,10 @@ jobs:
       - name: "Run ${{ matrix.id }} suite"
         run: |
           # export the environment variables for the run command
-          {
-            echo "NOVA_API=https://${PORTAL_STG_HOST}"
-            echo "NOVA_ACCESS_TOKEN=${PORTAL_STG_ACCESS_TOKEN}"
-            echo "CELL_NAME=cell"
-          } >> ./.env
+          echo "NOVA_API=https://${{ env.PORTAL_STG_HOST }}" >> ./.env
+          echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_STG_ACCESS_TOKEN }}" >> ./.env
+          echo "CELL_NAME=cell" >> ./.env
+          cat ./.env
 
           # generic retry wrapper for *all* commands
           n=0; max=3
