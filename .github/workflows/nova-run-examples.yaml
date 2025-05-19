@@ -12,9 +12,9 @@ jobs:
   setup-instance:
     runs-on: ubuntu-latest
     outputs:
-      portal_stg_host: ${{ steps.export-vars.outputs.portal_stg_host }}
-      portal_stg_instance_id: ${{ steps.export-vars.outputs.portal_stg_instance_id }}
-      portal_stg_access_token: ${{ steps.export-vars.outputs.portal_stg_access_token }}
+      portal_stg_host: ${{ steps.create.outputs.portal_stg_host }}
+      portal_stg_instance_id: ${{ steps.create.outputs.portal_stg_instance_id }}
+      portal_stg_access_token: ${{ steps.create.outputs.portal_stg_access_token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
