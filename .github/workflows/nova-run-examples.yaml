@@ -89,7 +89,6 @@ jobs:
         uses: cloudposse/github-action-secret-outputs@main
         id: role
         with:
-          ## PASSWORD is a gpg passphrase stored in Github Secrets.
           secret: ${{ secrets.GPG_PASSWORD }}
           op: decode
           in: ${{ needs.setup-instance.outputs.portal_stg_access_token }}
@@ -139,8 +138,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Decode output secrets
+        uses: cloudposse/github-action-secret-outputs@main
+        id: role
+        with:
+          secret: ${{ secrets.GPG_PASSWORD }}
+          op: decode
+          in: ${{ needs.setup-instance.outputs.portal_stg_access_token }}
       - name: Cleanup – Delete instance
         run: ./scripts/delete_nova_instance.sh
         env:
           PORTAL_STG_INSTANCE_ID: ${{ needs.setup-instance.outputs.portal_stg_instance_id }}
-          PORTAL_STG_ACCESS_TOKEN: ${{ needs.setup-instance.outputs.portal_stg_access_token }}
+          PORTAL_STG_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
