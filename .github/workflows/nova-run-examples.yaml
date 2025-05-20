@@ -14,7 +14,7 @@ jobs:
     outputs:
       portal_stg_host: ${{ steps.create.outputs.portal_stg_host }}
       portal_stg_instance_id: ${{ steps.create.outputs.portal_stg_instance_id }}
-      portal_stg_access_token: ${{ steps.create.outputs.portal_stg_access_token }}
+      portal_stg_access_token_b64: ${{ steps.create.outputs.portal_stg_access_token_b64 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,11 +36,12 @@ jobs:
             exit 1
           fi
           # expose as job outputs
-          {
-            echo "portal_stg_host=$PORTAL_STG_HOST"
-            echo "portal_stg_instance_id=$PORTAL_STG_INSTANCE_ID"
-            echo "portal_stg_access_token=$PORTAL_STG_ACCESS_TOKEN"
-          } >> "$GITHUB_OUTPUT"
+          echo "portal_stg_host=$PORTAL_STG_HOST" >> "$GITHUB_ENV"
+          echo "portal_stg_instance_id=$PORTAL_STG_INSTANCE_ID" >> "$GITHUB_ENV"
+          echo "::add-mask::$PORTAL_STG_ACCESS_TOKEN"
+          TOKEN_B64="$(printf '%s' "$PORTAL_STG_ACCESS_TOKEN" | base64 -w0)"
+          echo "::add-mask::$TOKEN_B64"
+          echo "portal_stg_access_token_b64=$TOKEN_B64" >> "$GITHUB_ENV"
           cat $GITHUB_OUTPUT
   # This job runs the integration tests and examples
   test-integration:
@@ -73,7 +74,7 @@ jobs:
             run_cmd: "python nova_rerun_bridge/examples/14_welding_example.py"
     env:
       NOVA_API: ${{ needs.setup-instance.outputs.portal_stg_host }}
-      NOVA_ACCESS_TOKEN: ${{ needs.setup-instance.outputs.portal_stg_access_token }}
+      NOVA_ACCESS_TOKEN_B64: ${{ needs.setup-instance.outputs.portal_stg_access_token_b64 }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -87,10 +88,8 @@ jobs:
           uv sync --extra "nova-rerun-bridge"
       - name: "Run ${{ matrix.id }} suite"
         run: |
-          echo $NOVA_API
-          echo $NOVA_ACCESS_TOKEN
-          cat $env
-          echo "DEBUG: access-token length = ${#NOVA_ACCESS_TOKEN}"
+          NOVA_ACCESS_TOKEN="$(echo "$NOVA_ACCESS_TOKEN_B64" | base64 -d)"
+          echo "DEBUG: decoded token length = ${#NOVA_ACCESS_TOKEN}"
           [[ -z "${NOVA_ACCESS_TOKEN}" ]] && {
             echo "❌ NOVA_ACCESS_TOKEN is empty. Aborting."; exit 1; }
 
