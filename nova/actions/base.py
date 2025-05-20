@@ -4,7 +4,8 @@ from abc import ABC, abstractmethod
 from typing import ClassVar
 
 import pydantic
-from loguru import logger
+
+from nova.core.logging import logger
 
 
 class Action(pydantic.BaseModel, ABC):
