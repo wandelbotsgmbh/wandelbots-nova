@@ -134,7 +134,7 @@ jobs:
           path: diagnose-${{ github.run_id }}.zip
   # This job cleans up the NOVA instance
   cleanup-instance:
-    if: always()
+    if: ${{ always() }}
     needs: [setup-instance, test-integration]
     runs-on: ubuntu-latest
     steps:
