@@ -97,7 +97,6 @@ jobs:
           in: ${{ needs.setup-instance.outputs.role }}
       - name: "Run ${{ matrix.id }} suite"
         run: |
-          echo "github env"
           echo $GITHUB_ENV
 
           NOVA_API=$PORTAL_STG_HOST
