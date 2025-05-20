@@ -72,9 +72,8 @@ jobs:
           - id: 14_welding_example
             run_cmd: "python nova_rerun_bridge/examples/14_welding_example.py"
     env:
-      PORTAL_STG_HOST: ${{ needs.setup-instance.outputs.portal_stg_host }}
-      PORTAL_STG_INSTANCE_ID: ${{ needs.setup-instance.outputs.portal_stg_instance_id }}
-      PORTAL_STG_ACCESS_TOKEN: ${{ needs.setup-instance.outputs.portal_stg_access_token }}
+      NOVA_API: ${{ needs.setup-instance.outputs.portal_stg_host }}
+      NOVA_ACCESS_TOKEN: ${{ needs.setup-instance.outputs.portal_stg_access_token }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -88,21 +87,18 @@ jobs:
           uv sync --extra "nova-rerun-bridge"
       - name: "Run ${{ matrix.id }} suite"
         run: |
-          # export the environment variables for the run command
-          echo "NOVA_API=https://${{ env.PORTAL_STG_HOST }}" >> ./.env
-          echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_STG_ACCESS_TOKEN }}" >> ./.env
-          echo "CELL_NAME=cell" >> ./.env
-          cat ./.env
-
-          echo "DEBUG: access-token length = ${#PORTAL_STG_ACCESS_TOKEN}"
-          [[ -z "${PORTAL_STG_ACCESS_TOKEN}" ]] && {
-            echo "❌ PORTAL_STG_ACCESS_TOKEN is empty. Aborting."; exit 1; }
+          echo $NOVA_API
+          echo $NOVA_ACCESS_TOKEN
+          cat $env
+          echo "DEBUG: access-token length = ${#NOVA_ACCESS_TOKEN}"
+          [[ -z "${NOVA_ACCESS_TOKEN}" ]] && {
+            echo "❌ NOVA_ACCESS_TOKEN is empty. Aborting."; exit 1; }
 
           # generic retry wrapper for *all* commands
           n=0; max=3
           until [ "$n" -ge "$max" ]; do
             echo -e "\nAttempt $((n+1))/$max : ${{ matrix.run_cmd }}"
-            if PYTHONPATH=. uv run ${{ matrix.run_cmd }}; then
+            if PYTHONPATH=. NOVA_API=$NOVA_API NOVA_ACCESS_TOKEN=$NOVA_ACCESS_TOKEN uv run ${{ matrix.run_cmd }}; then
               echo "Succeeded on attempt $((n+1))"
               break
             fi
