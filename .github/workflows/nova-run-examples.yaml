@@ -58,10 +58,10 @@ jobs:
             exit 1
           fi
 
-          echo $PORTAL_STG_HOST
-          echo "PORTAL_STG_HOST=$PORTAL_STG_HOST" >> $GITHUB_ENV
-          echo "PORTAL_STG_INSTANCE_ID=$PORTAL_STG_INSTANCE_ID" >> $GITHUB_ENV
-          echo "PORTAL_STG_ACCESS_TOKEN=$PORTAL_STG_ACCESS_TOKEN" >> $GITHUB_ENV
+          echo $PORTAL_PROD_HOST
+          echo "PORTAL_PROD_HOST=$PORTAL_PROD_HOST" >> $GITHUB_ENV
+          echo "PORTAL_PROD_INSTANCE_ID=$PORTAL_PROD_INSTANCE_ID" >> $GITHUB_ENV
+          echo "PORTAL_PROD_ACCESS_TOKEN=$PORTAL_PROD_ACCESS_TOKEN" >> $GITHUB_ENV
       - name: Set up Python environment
         run: |
           pip install uv
@@ -69,8 +69,8 @@ jobs:
       - name: "Run ${{ matrix.id }} suite"
         run: |
           # export the environment variables for the run command
-          echo "NOVA_API=https://${{ env.PORTAL_STG_HOST }}" >> ./.env
-          echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_STG_ACCESS_TOKEN }}" >> ./.env
+          echo "NOVA_API=https://${{ env.PORTAL_PROD_HOST }}" >> ./.env
+          echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_PROD_ACCESS_TOKEN }}" >> ./.env
           echo "CELL_NAME=cell" >> ./.env
 
           # generic retry wrapper for *all* commands
@@ -96,9 +96,9 @@ jobs:
         run: |
           echo "Attempting to fetch the diagnosis package..."
           curl --fail -s -X GET \
-            "https://${{ env.PORTAL_STG_HOST }}/api/v1/internal/system/diagnosis-package/zip" \
+            "https://${{ env.PORTAL_PROD_HOST }}/api/v1/internal/system/diagnosis-package/zip" \
             -H 'Accept: application/zip' \
-            -H "Authorization: Bearer ${{ env.PORTAL_STG_ACCESS_TOKEN }}" \
+            -H "Authorization: Bearer ${{ env.PORTAL_PROD_ACCESS_TOKEN }}" \
             -o "diagnose-${{ github.run_id }}.zip"
       - name: Upload diagnose artifact
         if: failure()
@@ -112,5 +112,5 @@ jobs:
         run: |
           ./scripts/delete_nova_instance.sh
         env:
-          PORTAL_STG_INSTANCE_ID: ${{ env.PORTAL_STG_INSTANCE_ID }}
-          PORTAL_STG_ACCESS_TOKEN: ${{ env.PORTAL_STG_ACCESS_TOKEN }}
+          PORTAL_PROD_INSTANCE_ID: ${{ env.PORTAL_PROD_INSTANCE_ID }}
+          PORTAL_PROD_ACCESS_TOKEN: ${{ env.PORTAL_PROD_ACCESS_TOKEN }}

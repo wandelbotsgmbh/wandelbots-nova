@@ -7,9 +7,9 @@ set -euo pipefail
 #   1. Ensure the following environment variables are set (see "Required env vars").
 #   2. Mark script as executable: chmod +x create_instance_check_connection.sh
 #   3. Ensure the following environment variables are set via `source .env`:
-#         PORTAL_STG_INSTANCE_ID
-#         PORTAL_STG_ACCESS_TOKEN
-#         PORTAL_STG_HOST
+#         PORTAL_PROD_INSTANCE_ID
+#         PORTAL_PROD_ACCESS_TOKEN
+#         PORTAL_PROD_HOST
 #   3. Run it: ./create_instance_check_connection.sh
 #
 # Required env vars (you can pass them from your CI Secrets/Env): 
@@ -24,9 +24,9 @@ set -euo pipefail
 #   INSECURE_CURL                   Set to "true" if you want to skip SSL checks (for self-signed)
 #
 # Outputs (exported):
-#   PORTAL_STG_ACCESS_TOKEN         Access token from the refresh endpoint
-#   PORTAL_STG_HOST                Host of the newly created instance
-#   PORTAL_STG_INSTANCE_ID         Instance ID of the newly created instance
+#   PORTAL_PROD_ACCESS_TOKEN         Access token from the refresh endpoint
+#   PORTAL_PROD_HOST                Host of the newly created instance
+#   PORTAL_PROD_INSTANCE_ID         Instance ID of the newly created instance
 # ------------------------------------------------------------------------------
 
 # --- 1) CHECK REQUIRED ENV VARS ---
@@ -42,7 +42,7 @@ set -euo pipefail
 
 # --- 2) RETRIEVE ACCESS TOKEN ---
 echo "## Updating the refresh token..."
-PORTAL_STG_ACCESS_TOKEN="$(curl --request POST \
+PORTAL_PROD_ACCESS_TOKEN="$(curl --request POST \
   --url "${PORTAL_PROD_REFRESH_URL}" \
   --header 'content-type: application/x-www-form-urlencoded' \
   --data grant_type=refresh_token \
@@ -50,7 +50,7 @@ PORTAL_STG_ACCESS_TOKEN="$(curl --request POST \
   --data "refresh_token=${PORTAL_PROD_REFRESH_TOKEN}" \
   | jq -r .access_token)"
 
-if [ -z "$PORTAL_STG_ACCESS_TOKEN" ] || [ "$PORTAL_STG_ACCESS_TOKEN" = "null" ]; then
+if [ -z "$PORTAL_PROD_ACCESS_TOKEN" ] || [ "$PORTAL_PROD_ACCESS_TOKEN" = "null" ]; then
   echo "[ERROR] Failed to retrieve a valid access token."
   exit 1
 fi
@@ -62,9 +62,9 @@ echo "Access token received."
 SANDBOX_NAME="svcmgr-${GITHUB_RUN_ID:-local-run}"
 echo "Creating instance with sandbox name: ${SANDBOX_NAME}"
 
-if ! INSTANCE_RESPONSE="$(curl -X "POST" "https://io.stg.wandelbots.io/instance" \
+if ! INSTANCE_RESPONSE="$(curl -X "POST" "https://io.wandelbots.io/instance" \
   -H "accept: application/json" \
-  -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
+  -H "Authorization: Bearer ${PORTAL_PROD_ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "{\"sandbox_name\": \"${SANDBOX_NAME}\"}")"; then
   echo "Failed to create a new instance."
@@ -73,21 +73,21 @@ if ! INSTANCE_RESPONSE="$(curl -X "POST" "https://io.stg.wandelbots.io/instance"
 fi
 
 echo "Response from create instance: ${INSTANCE_RESPONSE}"
-PORTAL_STG_HOST="$(echo "${INSTANCE_RESPONSE}" | jq -r .host)"
-PORTAL_STG_INSTANCE_ID="$(echo "${INSTANCE_RESPONSE}" | jq -r .instance_id)"
+PORTAL_PROD_HOST="$(echo "${INSTANCE_RESPONSE}" | jq -r .host)"
+PORTAL_PROD_INSTANCE_ID="$(echo "${INSTANCE_RESPONSE}" | jq -r .instance_id)"
 
-if [ -z "$PORTAL_STG_HOST" ] || [ "$PORTAL_STG_HOST" = "null" ]; then
+if [ -z "$PORTAL_PROD_HOST" ] || [ "$PORTAL_PROD_HOST" = "null" ]; then
   echo "[ERROR] Failed to retrieve a valid host from the instance creation response."
   exit 1
 fi
 
-if [ -z "$PORTAL_STG_INSTANCE_ID" ] || [ "$PORTAL_STG_INSTANCE_ID" = "null" ]; then
+if [ -z "$PORTAL_PROD_INSTANCE_ID" ] || [ "$PORTAL_PROD_INSTANCE_ID" = "null" ]; then
   echo "[ERROR] Failed to retrieve a valid instance ID from the instance creation response."
   exit 1
 fi
 
-echo "Host: ${PORTAL_STG_HOST}"
-echo "Instance ID: ${PORTAL_STG_INSTANCE_ID}"
+echo "Host: ${PORTAL_PROD_HOST}"
+echo "Instance ID: ${PORTAL_PROD_INSTANCE_ID}"
 
 # --- 4) CHECK SERVICE AVAILABILITY ---
 # By default, use secure curl. If you have a self-signed certificate and want to skip verification,
@@ -97,7 +97,7 @@ if [ "${INSECURE_CURL:-}" = "true" ]; then
   CURL_ARGS+=("--insecure")
 fi
 
-API_URL="https://${PORTAL_STG_HOST}/api/${API_VERSION}"
+API_URL="https://${PORTAL_PROD_HOST}/api/${API_VERSION}"
 
 echo "Checking service availability at: ${API_URL}/cells"
 
@@ -112,7 +112,7 @@ while [ $ATTEMPT -le $MAX_JSON_RETRIES ]; do
   #  -sS: silent mode but show errors
   #  - For extra safety, we add `|| true` after curl so we can handle any error codes ourselves.
   RESPONSE=$(curl -sS "${CURL_ARGS[@]}" \
-    --header "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
+    --header "Authorization: Bearer ${PORTAL_PROD_ACCESS_TOKEN}" \
     --header "Accept: application/json" \
     "${API_URL}/cells" || true)
 
@@ -147,7 +147,7 @@ fi
 echo "Service is up and reachable."
 
 # Export environment variables for further steps if needed:
-export PORTAL_STG_ACCESS_TOKEN
-export PORTAL_STG_HOST
-export PORTAL_STG_INSTANCE_ID
+export PORTAL_PROD_ACCESS_TOKEN
+export PORTAL_PROD_HOST
+export PORTAL_PROD_INSTANCE_ID
 echo "NOVA instance created successfully"
