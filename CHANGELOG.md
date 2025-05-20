@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.6.1 (2025-05-20)
+
+### Bug Fixes
+
+- **NDX-45**: Improved integration test CI & open robot_cell before running
+  ([#162](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/162),
+  [`3c89d61`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3c89d61d4bd3422f2e4d0ecebcce273a8460388a))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.6.0 (2025-05-15)
 
 ### Features
