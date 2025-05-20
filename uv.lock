@@ -1810,7 +1810,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/91/26/430de0d8aaf5aad9f
 
 [[package]]
 name = "wandelbots-api-client"
-version = "25.1.0"
+version = "25.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1825,14 +1825,14 @@ dependencies = [
     { name = "urllib3" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ed/f8/706c615dae24fae7b247989f6b9cb655cf4ecabec44a99e71dd5059ae1d8/wandelbots_api_client-25.1.0.tar.gz", hash = "sha256:83ca6c7810f9a13d29f2cf38312932128babce1452e66d1f65e91186b22051f5", size = 385188, upload-time = "2025-01-30T15:41:57.042Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/73/f9/b5c8c4a23890e92b1b10c029365c12b0412695fba0bf8db5de700f907c00/wandelbots_api_client-25.4.0.tar.gz", hash = "sha256:7851c7917d5315aa2f59ca2dfaafa0920c66aa65ff8be2dfbcc44b684cc8272a", size = 396314, upload-time = "2025-05-06T12:44:11.56Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/f9/a9d404e3f21c11ac4183d61419f145ed7737ab89bdb54761ea155975237d/wandelbots_api_client-25.1.0-py3-none-any.whl", hash = "sha256:1ec92d9bc4c008367e027c94154cecd97d8d350c48341eeed5f6a0ee3da19f61", size = 1107354, upload-time = "2025-01-30T15:41:52.257Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/e7/b6952ead23da4baab64c5c4db58b09ba6963679083ff945bbf1edc37777f/wandelbots_api_client-25.4.0-py3-none-any.whl", hash = "sha256:f366ab414c6b15ca0c5909c671d04c25ee656c2bb7104b2446dbca32b4dd6e5c", size = 1154167, upload-time = "2025-05-06T12:44:07.326Z" },
 ]
 
 [[package]]
 name = "wandelbots-nova"
-version = "1.7.0"
+version = "1.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
@@ -1900,7 +1900,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.14.1,<2" },
     { name = "trimesh", marker = "extra == 'benchmark'", specifier = ">=4.5.3" },
     { name = "trimesh", marker = "extra == 'nova-rerun-bridge'", specifier = ">=4.5.3" },
-    { name = "wandelbots-api-client", specifier = "==25.1.0" },
+    { name = "wandelbots-api-client", specifier = "==25.4.0" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
 ]
 provides-extras = ["nova-rerun-bridge", "benchmark"]
