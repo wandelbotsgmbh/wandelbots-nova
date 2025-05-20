@@ -44,7 +44,7 @@ jobs:
     outputs:
       portal_stg_host: ${{ steps.create.outputs.portal_stg_host }}
       portal_stg_instance_id: ${{ steps.create.outputs.portal_stg_instance_id }}
-      portal_stg_access_token: ${{ steps.create.outputs.portal_stg_access_token }}
+      portal_stg_access_token: ${{ steps.role.outputs.out }}
   # This job runs the integration tests and examples
   test-integration:
     runs-on: ubuntu-latest
@@ -94,7 +94,7 @@ jobs:
           ## PASSWORD is a gpg passphrase stored in Github Secrets.
           secret: ${{ secrets.GPG_PASSWORD }}
           op: decode
-          in: ${{ needs.setup-instance.outputs.role }}
+          in: ${{ needs.setup-instance.outputs.portal_stg_access_token }}
       - name: "Run ${{ matrix.id }} suite"
         run: |
           echo $GITHUB_ENV
