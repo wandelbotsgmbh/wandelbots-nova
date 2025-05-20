@@ -32,17 +32,17 @@ dependencies = [
 
 [project.optional-dependencies]
 nova-rerun-bridge = [
-    "rerun-sdk ==0.22.1",
-    "requests >=2.32.3",
-    "APScheduler >=3.11.0",
-    "trimesh >=4.5.3",
+    "rerun-sdk==0.22.1",
+    "requests>=2.32.3",
+    "APScheduler>=3.11.0",
+    "trimesh>=4.5.3",
 ]
 benchmark = [
-    "rerun-sdk ==0.22.1",
-    "requests >=2.32.3",
-    "APScheduler >=3.11.0",
-    "trimesh >=4.5.3",
-    "pyyaml >5.3",
+    "rerun-sdk==0.22.1",
+    "requests>=2.32.3",
+    "APScheduler>=3.11.0",
+    "trimesh>=4.5.3",
+    "pyyaml>5.3",
 ]
 
 [project.scripts]
