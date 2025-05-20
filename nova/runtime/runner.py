@@ -16,12 +16,12 @@ import anyio
 from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
 from exceptiongroup import ExceptionGroup
-from nova.core.logging import logger
 from pydantic import BaseModel, Field
 
 from nova import Nova, api
 from nova.cell.robot_cell import RobotCell
 from nova.core.exceptions import PlanTrajectoryFailed
+from nova.core.logging import logger
 from nova.runtime.exceptions import NotPlannableError
 from nova.runtime.utils import Tee, stoppable_run
 from nova.types import RobotState
