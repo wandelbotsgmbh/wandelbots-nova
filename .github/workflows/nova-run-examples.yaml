@@ -11,10 +11,6 @@ jobs:
   # This job creates a NOVA instance and captures the connection details
   setup-instance:
     runs-on: ubuntu-latest
-    outputs:
-      portal_stg_host: ${{ steps.create.outputs.portal_stg_host }}
-      portal_stg_instance_id: ${{ steps.create.outputs.portal_stg_instance_id }}
-      portal_stg_access_token: ${{ steps.create.outputs.portal_stg_access_token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,10 +22,7 @@ jobs:
           PORTAL_STG_REFRESH_URL: ${{ secrets.PORTAL_STG_REFRESH_URL }}
           PORTAL_STG_REFRESH_CLIENT_ID: ${{ secrets.PORTAL_STG_REFRESH_CLIENT_ID }}
           PORTAL_STG_REFRESH_TOKEN: ${{ secrets.PORTAL_STG_REFRESH_TOKEN }}
-          API_VERSION: "v1"
-          PROJECT_VERSION: "1.0.0"
           GITHUB_RUN_ID: ${{ github.run_id }}
-          INSECURE_CURL: "true"
         run: |
           if ! source ./scripts/create_nova_instance.sh; then
             echo "Failed to create NOVA instance."
@@ -38,10 +31,20 @@ jobs:
           # expose as job outputs
           echo "portal_stg_host=$PORTAL_STG_HOST" >> "$GITHUB_OUTPUT"
           echo "portal_stg_instance_id=$PORTAL_STG_INSTANCE_ID" >> "$GITHUB_OUTPUT"
-
-          TOKEN_B64="$(printf '%s' "$PORTAL_STG_ACCESS_TOKEN" | base64 -w0)"
-          echo "portal_stg_access_token=$(echo $TOKEN_B64 | base64 -w0 | base64 -w0)" >> $GITHUB_OUTPUT
+          echo "portal_stg_access_token=$PORTAL_STG_ACCESS_TOKEN" >> $GITHUB_OUTPUT
           cat $GITHUB_OUTPUT
+      - name: Store secret ouput
+        uses: cloudposse/github-action-secret-outputs@main
+        id: role
+        with:
+          ## PASSWORD is a gpg passphrase stored in Github Secrets.
+          secret: ${{ secrets.GPG_PASSWORD }}
+          op: encode
+          in: ${{ steps.create.outputs.portal_stg_access_token }}
+    outputs:
+      portal_stg_host: ${{ steps.create.outputs.portal_stg_host }}
+      portal_stg_instance_id: ${{ steps.create.outputs.portal_stg_instance_id }}
+      portal_stg_access_token: ${{ steps.create.outputs.portal_stg_access_token }}
   # This job runs the integration tests and examples
   test-integration:
     runs-on: ubuntu-latest
@@ -71,12 +74,8 @@ jobs:
             run_cmd: "python examples/08_multi_step_movement_with_collision_free.py"
           - id: 14_welding_example
             run_cmd: "python nova_rerun_bridge/examples/14_welding_example.py"
-    secrets:
-      env_vars: |
-        PORTAL_STG_ACCESS_TOKEN: ${{ needs.setup-instance.outputs.portal_stg_access_token }}
     env:
       PORTAL_STG_HOST: ${{ needs.setup-instance.outputs.portal_stg_host }}
-      env_vars: ${{ secrets.env_vars }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -88,13 +87,14 @@ jobs:
         run: |
           pip install uv
           uv sync --extra "nova-rerun-bridge"
-      - name: Decode secrets as environment variables
-        run: |
-          for i in $env_vars; do
-            i=$(echo $i | sed 's/=.*//g')=$(echo ${i#*=} | base64 -di | base64 -di)
-            echo ::add-mask::${i#*=}
-            printf '%s\n' "$i" >> $GITHUB_ENV
-          done
+      - name: Decode output secrets
+        uses: cloudposse/github-action-secret-outputs@main
+        id: role
+        with:
+          ## PASSWORD is a gpg passphrase stored in Github Secrets.
+          secret: ${{ secrets.GPG_PASSWORD }}
+          op: decode
+          in: ${{ needs.setup-instance.outputs.role }}
       - name: "Run ${{ matrix.id }} suite"
         run: |
           echo "github env"
