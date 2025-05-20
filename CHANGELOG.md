@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v1.6.2 (2025-05-20)
+
+### Bug Fixes
+
+- Remove loguru logger ([#164](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/164),
+  [`5fd1cec`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5fd1cecba37044b3167dcbf7988d94c7c0cabc95))
+
+don't use loguru logger in nova packages
+
+
 ## v1.6.1 (2025-05-20)
 
 ### Bug Fixes
