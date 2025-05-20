@@ -12,7 +12,7 @@ set -euo pipefail
 #         PORTAL_STG_HOST
 #   3. Run it: ./create_instance_check_connection.sh
 #
-# Required env vars (you can pass them from your CI Secrets/Env):
+# Required env vars (you can pass them from your CI Secrets/Env): 
 #   PORTAL_PROD_REFRESH_URL          The refresh token URL to obtain access token
 #   PORTAL_PROD_REFRESH_CLIENT_ID    The refresh token client ID
 #   PORTAL_PROD_REFRESH_TOKEN        The refresh token value
