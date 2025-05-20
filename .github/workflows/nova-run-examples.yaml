@@ -39,11 +39,11 @@ jobs:
           echo "Expose"
           echo "portal_stg_host=$PORTAL_STG_HOST" >> "$GITHUB_ENV"
           echo "portal_stg_instance_id=$PORTAL_STG_INSTANCE_ID" >> "$GITHUB_ENV"
-          echo "::add-mask::$PORTAL_STG_ACCESS_TOKEN"
           TOKEN_B64="$(printf '%s' "$PORTAL_STG_ACCESS_TOKEN" | base64 -w0)"
           echo "::add-mask::$TOKEN_B64"
           echo "portal_stg_access_token_b64=$TOKEN_B64" >> "$GITHUB_ENV"
           cat $GITHUB_OUTPUT
+          cat $GITHUB_ENV
   # This job runs the integration tests and examples
   test-integration:
     runs-on: ubuntu-latest
@@ -89,6 +89,9 @@ jobs:
           uv sync --extra "nova-rerun-bridge"
       - name: "Run ${{ matrix.id }} suite"
         run: |
+          echo "github env"
+          cat $GITHUB_ENV
+
           NOVA_ACCESS_TOKEN="$(echo "$NOVA_ACCESS_TOKEN_B64" | base64 -d)"
           echo "DEBUG: decoded token length = ${#NOVA_ACCESS_TOKEN}"
           [[ -z "${NOVA_ACCESS_TOKEN}" ]] && {
