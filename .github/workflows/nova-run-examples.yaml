@@ -93,6 +93,10 @@ jobs:
           echo "CELL_NAME=cell" >> ./.env
           cat ./.env
 
+          echo "DEBUG: access-token length = ${#PORTAL_STG_ACCESS_TOKEN}"
+          [[ -z "${PORTAL_STG_ACCESS_TOKEN}" ]] && {
+            echo "❌ PORTAL_STG_ACCESS_TOKEN is empty. Aborting."; exit 1; }
+
           # generic retry wrapper for *all* commands
           n=0; max=3
           until [ "$n" -ge "$max" ]; do
