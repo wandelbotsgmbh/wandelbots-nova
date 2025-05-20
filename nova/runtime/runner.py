@@ -1,4 +1,5 @@
 import contextlib
+import contextvars
 import io
 import sys
 import threading
@@ -25,9 +26,9 @@ from nova.runtime.exceptions import NotPlannableError
 from nova.runtime.utils import Tee, stoppable_run
 from nova.types import RobotState
 
-# import contextvars
-
-# current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar("current_execution_context_var")
+current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
+    "current_execution_context_var"
+)
 
 
 # TODO: should provide a number of tools to the program to control the execution of the program
@@ -338,6 +339,7 @@ class ProgramRunner(ABC):
         sink_id = logger.add(log_capture)
 
         try:
+            robot_cell = None
             # Use robot_cell_override or fetch robot cell when not set
             if self._robot_cell_override:
                 robot_cell = self._robot_cell_override
@@ -346,15 +348,18 @@ class ProgramRunner(ABC):
                     cell = nova.cell()
                     robot_cell = await cell.get_robot_cell()
 
+            if robot_cell is None:
+                raise RuntimeError("No robot cell available")
+
             self.execution_context = execution_context = ExecutionContext(
                 robot_cell=robot_cell, stop_event=stop_event
             )
-            # current_execution_context_var.set(execution_context)
+            current_execution_context_var.set(execution_context)
 
             await on_state_change()
 
             monitoring_scope = anyio.CancelScope()
-            async with anyio.create_task_group() as tg:
+            async with robot_cell, anyio.create_task_group() as tg:
                 await tg.start(self._estop_handler, monitoring_scope)
 
                 try:
@@ -362,12 +367,12 @@ class ProgramRunner(ABC):
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped
                     logger.info(f"Program {self.id} cancelled")
-                    # try:
-                    #    with anyio.CancelScope(shield=True):
-                    #        await robot_cell.stop()
-                    # except Exception as e:
-                    #    logger.error(f"Error while stopping robot cell: {e!r}")
-                    #    raise
+                    try:
+                        with anyio.CancelScope(shield=True):
+                            await robot_cell.stop()
+                    except Exception as e:
+                        logger.error(f"Error while stopping robot cell: {e!r}")
+                        raise
 
                     self._program_run.state = ProgramRunState.stopped
                     raise
