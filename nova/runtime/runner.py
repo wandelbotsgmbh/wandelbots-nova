@@ -16,7 +16,7 @@ import anyio
 from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
 from exceptiongroup import ExceptionGroup
-from loguru import logger
+from nova import logger
 from pydantic import BaseModel, Field
 
 from nova import Nova, api

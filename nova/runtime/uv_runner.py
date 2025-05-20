@@ -7,7 +7,7 @@ import tempfile
 import traceback
 from pathlib import Path
 
-from loguru import logger
+from nova import logger
 
 from nova.cell.robot_cell import RobotCell
 from nova.runtime.runner import ExecutionContext, Program, ProgramRunner, ProgramType
