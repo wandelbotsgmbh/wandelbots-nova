@@ -89,7 +89,10 @@ jobs:
       - name: "Run ${{ matrix.id }} suite"
         run: |
           echo "github env"
-          cat $GITHUB_OUTPUT
+          echo "nova api:"
+          echo $NOVA_API
+          echo "nova access token:"
+          echo $NOVA_ACCESS_TOKEN_B64
 
           NOVA_ACCESS_TOKEN="$(echo "$NOVA_ACCESS_TOKEN_B64" | base64 -d)"
           echo "DEBUG: decoded token length = ${#NOVA_ACCESS_TOKEN}"
