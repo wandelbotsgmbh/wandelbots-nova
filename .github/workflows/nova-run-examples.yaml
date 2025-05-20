@@ -36,6 +36,7 @@ jobs:
             exit 1
           fi
           # expose as job outputs
+          echo "Expose"
           echo "portal_stg_host=$PORTAL_STG_HOST" >> "$GITHUB_ENV"
           echo "portal_stg_instance_id=$PORTAL_STG_INSTANCE_ID" >> "$GITHUB_ENV"
           echo "::add-mask::$PORTAL_STG_ACCESS_TOKEN"
