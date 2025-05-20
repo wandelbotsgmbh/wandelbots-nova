@@ -41,6 +41,7 @@ jobs:
             echo "portal_stg_instance_id=$PORTAL_STG_INSTANCE_ID"
             echo "portal_stg_access_token=$PORTAL_STG_ACCESS_TOKEN"
           } >> "$GITHUB_OUTPUT"
+          cat $GITHUB_OUTPUT
   # This job runs the integration tests and examples
   test-integration:
     runs-on: ubuntu-latest
