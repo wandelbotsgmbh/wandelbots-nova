@@ -98,10 +98,6 @@ jobs:
           NOVA_API: ${{ needs.setup-instance.outputs.portal_stg_host }}
           NOVA_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
         run: |
-          echo $GITHUB_ENV
-          echo "${{ steps.role.outputs.out }}"
-          echo $NOVA_API
-          echo $NOVA_ACCESS_TOKEN
           echo "DEBUG: decoded token length = ${#NOVA_ACCESS_TOKEN}"
           [[ -z "${NOVA_ACCESS_TOKEN}" ]] && {
             echo "❌ NOVA_ACCESS_TOKEN is empty. Aborting."; exit 1; }
