@@ -13,9 +13,9 @@ set -euo pipefail
 #   3. Run it: ./create_instance_check_connection.sh
 #
 # Required env vars (you can pass them from your CI Secrets/Env):
-#   PORTAL_STG_REFRESH_URL          The refresh token URL to obtain access token
-#   PORTAL_STG_REFRESH_CLIENT_ID    The refresh token client ID
-#   PORTAL_STG_REFRESH_TOKEN        The refresh token value
+#   PORTAL_PROD_REFRESH_URL          The refresh token URL to obtain access token
+#   PORTAL_PROD_REFRESH_CLIENT_ID    The refresh token client ID
+#   PORTAL_PROD_REFRESH_TOKEN        The refresh token value
 #   PROJECT_VERSION                 (Optional) Your project/version label
 #   GITHUB_RUN_ID                   (Optional) Unique run ID (used in sandbox name)
 #   API_VERSION                     e.g. "v1"
@@ -31,9 +31,9 @@ set -euo pipefail
 
 # --- 1) CHECK REQUIRED ENV VARS ---
 
-: "${PORTAL_STG_REFRESH_URL:?Environment variable PORTAL_STG_REFRESH_URL is not set or empty.}"
-: "${PORTAL_STG_REFRESH_CLIENT_ID:?Environment variable PORTAL_STG_REFRESH_CLIENT_ID is not set or empty.}"
-: "${PORTAL_STG_REFRESH_TOKEN:?Environment variable PORTAL_STG_REFRESH_TOKEN is not set or empty.}"
+: "${PORTAL_PROD_REFRESH_URL:?Environment variable PORTAL_PROD_REFRESH_URL is not set or empty.}"
+: "${PORTAL_PROD_REFRESH_CLIENT_ID:?Environment variable PORTAL_PROD_REFRESH_CLIENT_ID is not set or empty.}"
+: "${PORTAL_PROD_REFRESH_TOKEN:?Environment variable PORTAL_PROD_REFRESH_TOKEN is not set or empty.}"
 : "${API_VERSION:?Environment variable API_VERSION is not set or empty.}"
 
 # Some variables might be optional. If they are used below, uncomment and ensure they're set:
@@ -43,11 +43,11 @@ set -euo pipefail
 # --- 2) RETRIEVE ACCESS TOKEN ---
 echo "## Updating the refresh token..."
 PORTAL_STG_ACCESS_TOKEN="$(curl --request POST \
-  --url "${PORTAL_STG_REFRESH_URL}" \
+  --url "${PORTAL_PROD_REFRESH_URL}" \
   --header 'content-type: application/x-www-form-urlencoded' \
   --data grant_type=refresh_token \
-  --data "client_id=${PORTAL_STG_REFRESH_CLIENT_ID}" \
-  --data "refresh_token=${PORTAL_STG_REFRESH_TOKEN}" \
+  --data "client_id=${PORTAL_PROD_REFRESH_CLIENT_ID}" \
+  --data "refresh_token=${PORTAL_PROD_REFRESH_TOKEN}" \
   | jq -r .access_token)"
 
 if [ -z "$PORTAL_STG_ACCESS_TOKEN" ] || [ "$PORTAL_STG_ACCESS_TOKEN" = "null" ]; then

@@ -44,9 +44,9 @@ jobs:
           python-version: "3.10"
       - name: Create NOVA instance and check connection
         env:
-          PORTAL_STG_REFRESH_URL: ${{ secrets.PORTAL_STG_REFRESH_URL }}
-          PORTAL_STG_REFRESH_CLIENT_ID: ${{ secrets.PORTAL_STG_REFRESH_CLIENT_ID }}
-          PORTAL_STG_REFRESH_TOKEN: ${{ secrets.PORTAL_STG_REFRESH_TOKEN }}
+          PORTAL_PROD_REFRESH_URL: ${{ secrets.PORTAL_PROD_REFRESH_URL }}
+          PORTAL_PROD_REFRESH_CLIENT_ID: ${{ secrets.PORTAL_PROD_REFRESH_CLIENT_ID }}
+          PORTAL_PROD_REFRESH_TOKEN: ${{ secrets.PORTAL_PROD_REFRESH_TOKEN }}
           API_VERSION: "v1"
           # Optional
           PROJECT_VERSION: "1.0.0"
