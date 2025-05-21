@@ -19,9 +19,9 @@ jobs:
       - name: Create NOVA instance and capture connection details
         id: create
         env:
-          PORTAL_STG_REFRESH_URL: ${{ secrets.PORTAL_STG_REFRESH_URL }}
-          PORTAL_STG_REFRESH_CLIENT_ID: ${{ secrets.PORTAL_STG_REFRESH_CLIENT_ID }}
-          PORTAL_STG_REFRESH_TOKEN: ${{ secrets.PORTAL_STG_REFRESH_TOKEN }}
+          PORTAL_PROD_REFRESH_URL: ${{ secrets.PORTAL_PROD_REFRESH_URL }}
+          PORTAL_PROD_REFRESH_CLIENT_ID: ${{ secrets.PORTAL_PROD_REFRESH_CLIENT_ID }}
+          PORTAL_PROD_REFRESH_TOKEN: ${{ secrets.PORTAL_PROD_REFRESH_TOKEN }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
           if ! source ./scripts/create_nova_instance.sh; then
@@ -29,9 +29,9 @@ jobs:
             exit 1
           fi
           # expose as job outputs
-          echo "portal_stg_host=$PORTAL_STG_HOST" >> "$GITHUB_OUTPUT"
-          echo "portal_stg_instance_id=$PORTAL_STG_INSTANCE_ID" >> "$GITHUB_OUTPUT"
-          echo "portal_stg_access_token=$PORTAL_STG_ACCESS_TOKEN" >> $GITHUB_OUTPUT
+          echo "PORTAL_PROD_HOST=$PORTAL_PROD_HOST" >> "$GITHUB_OUTPUT"
+          echo "PORTAL_PROD_INSTANCE_ID=$PORTAL_PROD_INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "PORTAL_PROD_ACCESS_TOKEN=$PORTAL_PROD_ACCESS_TOKEN" >> $GITHUB_OUTPUT
           cat $GITHUB_OUTPUT
       - name: Store secret ouput
         uses: cloudposse/github-action-secret-outputs@main
@@ -40,11 +40,11 @@ jobs:
           ## PASSWORD is a gpg passphrase stored in Github Secrets.
           secret: ${{ secrets.GPG_PASSWORD }}
           op: encode
-          in: ${{ steps.create.outputs.portal_stg_access_token }}
+          in: ${{ steps.create.outputs.PORTAL_PROD_ACCESS_TOKEN }}
     outputs:
-      portal_stg_host: ${{ steps.create.outputs.portal_stg_host }}
-      portal_stg_instance_id: ${{ steps.create.outputs.portal_stg_instance_id }}
-      portal_stg_access_token: ${{ steps.role.outputs.out }}
+      PORTAL_PROD_HOST: ${{ steps.create.outputs.PORTAL_PROD_HOST }}
+      PORTAL_PROD_INSTANCE_ID: ${{ steps.create.outputs.PORTAL_PROD_INSTANCE_ID }}
+      PORTAL_PROD_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
   # This job runs the integration tests and examples
   test-integration:
     runs-on: ubuntu-latest
@@ -91,10 +91,10 @@ jobs:
         with:
           secret: ${{ secrets.GPG_PASSWORD }}
           op: decode
-          in: ${{ needs.setup-instance.outputs.portal_stg_access_token }}
+          in: ${{ needs.setup-instance.outputs.PORTAL_PROD_ACCESS_TOKEN }}
       - name: "Run ${{ matrix.id }} suite"
         env:
-          NOVA_API: ${{ needs.setup-instance.outputs.portal_stg_host }}
+          NOVA_API: ${{ needs.setup-instance.outputs.PORTAL_PROD_HOST }}
           NOVA_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
         run: |
           echo "DEBUG: decoded token length = ${#NOVA_ACCESS_TOKEN}"
@@ -121,9 +121,9 @@ jobs:
         run: |
           echo "Attempting to fetch the diagnosis package…"
           curl --fail -s -X GET \
-            "https://${PORTAL_STG_HOST}/api/v1/internal/system/diagnosis-package/zip" \
+            "https://${PORTAL_PROD_HOST}/api/v1/internal/system/diagnosis-package/zip" \
             -H 'Accept: application/zip' \
-            -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
+            -H "Authorization: Bearer ${PORTAL_PROD_ACCESS_TOKEN}" \
             -o "diagnose-${{ github.run_id }}.zip"
       - name: Upload diagnose artifact
         if: failure()
@@ -144,9 +144,9 @@ jobs:
         with:
           secret: ${{ secrets.GPG_PASSWORD }}
           op: decode
-          in: ${{ needs.setup-instance.outputs.portal_stg_access_token }}
+          in: ${{ needs.setup-instance.outputs.PORTAL_PROD_ACCESS_TOKEN }}
       - name: Cleanup – Delete instance
         run: ./scripts/delete_nova_instance.sh
         env:
-          PORTAL_STG_INSTANCE_ID: ${{ needs.setup-instance.outputs.portal_stg_instance_id }}
-          PORTAL_STG_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
+          PORTAL_PROD_INSTANCE_ID: ${{ needs.setup-instance.outputs.PORTAL_PROD_INSTANCE_ID }}
+          PORTAL_PROD_ACCESS_TOKEN: ${{ steps.role.outputs.out }}

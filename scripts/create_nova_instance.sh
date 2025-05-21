@@ -7,9 +7,9 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 
 # --- 1) CHECK REQUIRED ENV VARS ------------------------------------------------
-: "${PORTAL_STG_REFRESH_URL:?Missing PORTAL_STG_REFRESH_URL}"
-: "${PORTAL_STG_REFRESH_CLIENT_ID:?Missing PORTAL_STG_REFRESH_CLIENT_ID}"
-: "${PORTAL_STG_REFRESH_TOKEN:?Missing PORTAL_STG_REFRESH_TOKEN}"
+: "${PORTAL_PROD_REFRESH_URL:?Missing PORTAL_PROD_REFRESH_URL}"
+: "${PORTAL_PROD_REFRESH_CLIENT_ID:?Missing PORTAL_PROD_REFRESH_CLIENT_ID}"
+: "${PORTAL_PROD_REFRESH_TOKEN:?Missing PORTAL_PROD_REFRESH_TOKEN}"
 
 echo "## Updating the refresh token..."
 PORTAL_PROD_ACCESS_TOKEN="$(curl --request POST \
@@ -43,18 +43,18 @@ fi
 
 echo "Instance creation response: ${INSTANCE_RESPONSE}"
 
-PORTAL_STG_HOST="$(echo "${INSTANCE_RESPONSE}" | jq -r .host)"
-PORTAL_STG_INSTANCE_ID="$(echo "${INSTANCE_RESPONSE}" | jq -r .instance_id)"
+PORTAL_PROD_HOST="$(echo "${INSTANCE_RESPONSE}" | jq -r .host)"
+PORTAL_PROD_INSTANCE_ID="$(echo "${INSTANCE_RESPONSE}" | jq -r .instance_id)"
 
-[[ -z "${PORTAL_STG_HOST}" || "${PORTAL_STG_HOST}" == "null" ]] && {
+[[ -z "${PORTAL_PROD_HOST}" || "${PORTAL_PROD_HOST}" == "null" ]] && {
   echo "[ERROR] No host returned"; exit 1; }
-[[ -z "${PORTAL_STG_INSTANCE_ID}" || "${PORTAL_STG_INSTANCE_ID}" == "null" ]] && {
+[[ -z "${PORTAL_PROD_INSTANCE_ID}" || "${PORTAL_PROD_INSTANCE_ID}" == "null" ]] && {
   echo "[ERROR] No instance-id returned"; exit 1; }
 
-echo "Host: ${PORTAL_STG_HOST}"
-echo "Instance-ID: ${PORTAL_STG_INSTANCE_ID}"
+echo "Host: ${PORTAL_PROD_HOST}"
+echo "Instance-ID: ${PORTAL_PROD_INSTANCE_ID}"
 
-API_URL="https://${PORTAL_STG_HOST}/api"
+API_URL="https://${PORTAL_PROD_HOST}/api"
 
 # --- 4) WAIT UNTIL /api/v2/cells RETURNS A NON-EMPTY ARRAY --------------------
 CURL_ARGS=(--silent --show-error --fail-with-body --insecure)
@@ -66,7 +66,7 @@ while :; do
   # Capture body + HTTP code in one shot
   HTTP_AND_BODY="$(
     curl "${CURL_ARGS[@]}" \
-         -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
+         -H "Authorization: Bearer ${PORTAL_PROD_ACCESS_TOKEN}" \
          -H "Accept: application/json" \
          "${API_URL}/v2/cells" -w '\n%{http_code}' || true
   )"
@@ -100,7 +100,7 @@ START_TIME=$(date +%s)
 
 while :; do
   HTTP_AND_BODY="$(curl "${CURL_ARGS[@]}" \
-                        -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
+                        -H "Authorization: Bearer ${PORTAL_PROD_ACCESS_TOKEN}" \
                         -H "Accept: application/json" \
                         "${STATUS_URL}" -w '\n%{http_code}' || true)"
 
@@ -130,7 +130,7 @@ done
 echo "✅ Cell ready – RobotEngine is Running."
 
 # --- 7) EXPORT VARS FOR DOWNSTREAM STEPS -------------------------------------
-export PORTAL_STG_ACCESS_TOKEN
-export PORTAL_STG_HOST
-export PORTAL_STG_INSTANCE_ID
+export PORTAL_PROD_ACCESS_TOKEN
+export PORTAL_PROD_HOST
+export PORTAL_PROD_INSTANCE_ID
 echo "NOVA instance and cell created successfully."
