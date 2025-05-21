@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v1.7.0 (2025-05-21)
+
+### Features
+
+- **NDX-37**: Update environment variables to use prod
+  ([#163](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/163),
+  [`a22ec11`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a22ec119c04fa350709f367aea8b7db57902a779))
+
+
 ## v1.6.2 (2025-05-20)
 
 ### Bug Fixes
