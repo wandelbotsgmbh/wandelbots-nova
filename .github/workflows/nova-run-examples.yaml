@@ -8,8 +8,47 @@ concurrency:
   group: run-examples-workflow
   cancel-in-progress: false
 jobs:
+  # This job creates a NOVA instance and captures the connection details
+  setup-instance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Create NOVA instance and capture connection details
+        id: create
+        env:
+          PORTAL_STG_REFRESH_URL: ${{ secrets.PORTAL_STG_REFRESH_URL }}
+          PORTAL_STG_REFRESH_CLIENT_ID: ${{ secrets.PORTAL_STG_REFRESH_CLIENT_ID }}
+          PORTAL_STG_REFRESH_TOKEN: ${{ secrets.PORTAL_STG_REFRESH_TOKEN }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          if ! source ./scripts/create_nova_instance.sh; then
+            echo "Failed to create NOVA instance."
+            exit 1
+          fi
+          # expose as job outputs
+          echo "portal_stg_host=$PORTAL_STG_HOST" >> "$GITHUB_OUTPUT"
+          echo "portal_stg_instance_id=$PORTAL_STG_INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "portal_stg_access_token=$PORTAL_STG_ACCESS_TOKEN" >> $GITHUB_OUTPUT
+          cat $GITHUB_OUTPUT
+      - name: Store secret ouput
+        uses: cloudposse/github-action-secret-outputs@main
+        id: role
+        with:
+          ## PASSWORD is a gpg passphrase stored in Github Secrets.
+          secret: ${{ secrets.GPG_PASSWORD }}
+          op: encode
+          in: ${{ steps.create.outputs.portal_stg_access_token }}
+    outputs:
+      portal_stg_host: ${{ steps.create.outputs.portal_stg_host }}
+      portal_stg_instance_id: ${{ steps.create.outputs.portal_stg_instance_id }}
+      portal_stg_access_token: ${{ steps.role.outputs.out }}
+  # This job runs the integration tests and examples
   test-integration:
     runs-on: ubuntu-latest
+    needs: setup-instance
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -42,51 +81,37 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - name: Create NOVA instance and check connection
-        env:
-          PORTAL_PROD_REFRESH_URL: ${{ secrets.PORTAL_PROD_REFRESH_URL }}
-          PORTAL_PROD_REFRESH_CLIENT_ID: ${{ secrets.PORTAL_PROD_REFRESH_CLIENT_ID }}
-          PORTAL_PROD_REFRESH_TOKEN: ${{ secrets.PORTAL_PROD_REFRESH_TOKEN }}
-          API_VERSION: "v1"
-          # Optional
-          PROJECT_VERSION: "1.0.0"
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          INSECURE_CURL: "true"
-        run: |
-          if ! source ./scripts/create_nova_instance.sh; then
-            echo "Failed to create NOVA instance."
-            exit 1
-          fi
-
-          echo $PORTAL_PROD_HOST
-          echo "PORTAL_PROD_HOST=$PORTAL_PROD_HOST" >> $GITHUB_ENV
-          echo "PORTAL_PROD_INSTANCE_ID=$PORTAL_PROD_INSTANCE_ID" >> $GITHUB_ENV
-          echo "PORTAL_PROD_ACCESS_TOKEN=$PORTAL_PROD_ACCESS_TOKEN" >> $GITHUB_ENV
       - name: Set up Python environment
         run: |
           pip install uv
           uv sync --extra "nova-rerun-bridge"
+      - name: Decode output secrets
+        uses: cloudposse/github-action-secret-outputs@main
+        id: role
+        with:
+          secret: ${{ secrets.GPG_PASSWORD }}
+          op: decode
+          in: ${{ needs.setup-instance.outputs.portal_stg_access_token }}
       - name: "Run ${{ matrix.id }} suite"
+        env:
+          NOVA_API: ${{ needs.setup-instance.outputs.portal_stg_host }}
+          NOVA_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
         run: |
-          # export the environment variables for the run command
-          echo "NOVA_API=https://${{ env.PORTAL_PROD_HOST }}" >> ./.env
-          echo "NOVA_ACCESS_TOKEN=${{ env.PORTAL_PROD_ACCESS_TOKEN }}" >> ./.env
-          echo "CELL_NAME=cell" >> ./.env
+          echo "DEBUG: decoded token length = ${#NOVA_ACCESS_TOKEN}"
+          [[ -z "${NOVA_ACCESS_TOKEN}" ]] && {
+            echo "❌ NOVA_ACCESS_TOKEN is empty. Aborting."; exit 1; }
 
           # generic retry wrapper for *all* commands
-          n=0
-          max=3
+          n=0; max=3
           until [ "$n" -ge "$max" ]; do
-            echo "\nAttempt $((n+1))/$(($max)) : ${{ matrix.run_cmd }}"
-            if PYTHONPATH=. uv run ${{ matrix.run_cmd }}; then
+            echo -e "\nAttempt $((n+1))/$max : ${{ matrix.run_cmd }}"
+            if PYTHONPATH=. NOVA_API=$NOVA_API NOVA_ACCESS_TOKEN=$NOVA_ACCESS_TOKEN uv run ${{ matrix.run_cmd }}; then
               echo "Succeeded on attempt $((n+1))"
               break
             fi
             n=$((n+1))
-            echo "Retrying in 5s..."
-            sleep 5
+            echo "Retrying in 5 s…"; sleep 5
           done
-
           if [ "$n" -ge "$max" ]; then
             echo "Command failed after $max attempts." >&2
             exit 1
@@ -94,11 +119,11 @@ jobs:
       - name: Download diagnose package
         if: failure()
         run: |
-          echo "Attempting to fetch the diagnosis package..."
+          echo "Attempting to fetch the diagnosis package…"
           curl --fail -s -X GET \
-            "https://${{ env.PORTAL_PROD_HOST }}/api/v1/internal/system/diagnosis-package/zip" \
+            "https://${PORTAL_STG_HOST}/api/v1/internal/system/diagnosis-package/zip" \
             -H 'Accept: application/zip' \
-            -H "Authorization: Bearer ${{ env.PORTAL_PROD_ACCESS_TOKEN }}" \
+            -H "Authorization: Bearer ${PORTAL_STG_ACCESS_TOKEN}" \
             -o "diagnose-${{ github.run_id }}.zip"
       - name: Upload diagnose artifact
         if: failure()
@@ -106,11 +131,22 @@ jobs:
         with:
           name: diagnose-package
           path: diagnose-${{ github.run_id }}.zip
-      # Always run cleanup, whether success or failure
-      - name: Cleanup - Delete instance
-        if: always()
-        run: |
-          ./scripts/delete_nova_instance.sh
+  # This job cleans up the NOVA instance
+  cleanup-instance:
+    if: ${{ always() }}
+    needs: [setup-instance, test-integration]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode output secrets
+        uses: cloudposse/github-action-secret-outputs@main
+        id: role
+        with:
+          secret: ${{ secrets.GPG_PASSWORD }}
+          op: decode
+          in: ${{ needs.setup-instance.outputs.portal_stg_access_token }}
+      - name: Cleanup – Delete instance
+        run: ./scripts/delete_nova_instance.sh
         env:
-          PORTAL_PROD_INSTANCE_ID: ${{ env.PORTAL_PROD_INSTANCE_ID }}
-          PORTAL_PROD_ACCESS_TOKEN: ${{ env.PORTAL_PROD_ACCESS_TOKEN }}
+          PORTAL_STG_INSTANCE_ID: ${{ needs.setup-instance.outputs.portal_stg_instance_id }}
+          PORTAL_STG_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
