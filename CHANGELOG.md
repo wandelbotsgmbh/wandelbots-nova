@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.8.0 (2025-05-21)
+
+### Features
+
+- Track runner motion state result
+  ([#166](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/166),
+  [`bccdb8d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bccdb8d0ae775c597a1ec3d3358aece2d8d67851))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.7.0 (2025-05-21)
 
 ### Features
