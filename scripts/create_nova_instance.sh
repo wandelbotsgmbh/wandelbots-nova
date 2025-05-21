@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ------------------------------------------------------------------------------
 # Description: Retrieve access token, create instance, create default cell,
-#              and verify that RobotEngine is up.
+#              and verify that WandelEngine is up.
 # ------------------------------------------------------------------------------
 
 # --- 1) CHECK REQUIRED ENV VARS ------------------------------------------------
@@ -93,8 +93,8 @@ while :; do
   sleep 5
 done
 
-# --- 5) WAIT FOR ROBOTENGINE INSIDE THE CELL ----------------------------------
-echo "Waiting for RobotEngine to reach state 'Running' (timeout: 120 s)…"
+# --- 5) WAIT FOR WandelEngine INSIDE THE CELL ----------------------------------
+echo "Waiting for WandelEngine to reach state 'Running' (timeout: 120 s)…"
 STATUS_URL="${API_URL}/v2/cells/cell/status"
 START_TIME=$(date +%s)
 
@@ -117,17 +117,17 @@ while :; do
   fi
 
   STATUS="$(echo "${BODY}" \
-           | jq -r '.service_status[]? | select(.service=="RobotEngine") | .status.code')"
+           | jq -r '.service_status[]? | select(.service=="WandelEngine") | .status.code')"
 
-  echo "RobotEngine: ${STATUS:-<empty>}"
+  echo "WandelEngine: ${STATUS:-<empty>}"
   [[ "${STATUS}" == "Running" ]] && break
 
   if (( $(date +%s) - START_TIME > 120 )); then
-    echo "❌ Timeout: RobotEngine did not reach 'Running'"; exit 1
+    echo "❌ Timeout: WandelEngine did not reach 'Running'"; exit 1
   fi
   sleep 10
 done
-echo "✅ Cell ready – RobotEngine is Running."
+echo "✅ Cell ready – WandelEngine is Running."
 
 # --- 7) EXPORT VARS FOR DOWNSTREAM STEPS -------------------------------------
 export PORTAL_PROD_ACCESS_TOKEN
