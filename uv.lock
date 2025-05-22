@@ -243,6 +243,15 @@ wheels = [
 ]
 
 [[package]]
+name = "blinker"
+version = "1.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/28/9b3f50ce0e048515135495f198351908d99540d69bfdc8c1d15b73dc55ce/blinker-1.9.0.tar.gz", hash = "sha256:b4ce2265a7abece45e7cc896e98dbebe6cead56bcf805a3d23136d145f5445bf", size = 22460, upload-time = "2024-11-08T17:25:47.436Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/cb/f2ad4230dc2eb1a74edf38f1a38b9b52277f75bef262d8908e60d957e13c/blinker-1.9.0-py3-none-any.whl", hash = "sha256:ba0efaa9080b619ff2f3459d1d500c57bddea4a6b424b60a91141db6fd2f08bc", size = 8458, upload-time = "2024-11-08T17:25:46.184Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2025.4.26"
 source = { registry = "https://pypi.org/simple" }
@@ -879,6 +888,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/a2/6e/371856a3fb9d31ca8
 wheels = [
     { url = "https://files.pythonhosted.org/packages/79/7b/2c79738432f5c924bef5071f933bcc9efd0473bac3b4aa584a6f7c1c8df8/mypy_extensions-1.1.0-py3-none-any.whl", hash = "sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505", size = 4963, upload-time = "2025-04-22T14:54:22.983Z" },
 ]
+
+[[package]]
+name = "nats-py"
+version = "2.10.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/83/2f/0f1b94844760a894659388059bc618b59fd794a3ef2f5113d710864d3fa7/nats_py-2.10.0.tar.gz", hash = "sha256:9d44265a097edb30d40e214c1dd1a7405c1451d33480ce714c041fb73bb66a10", size = 113637, upload-time = "2025-03-25T05:11:22.102Z" }
 
 [[package]]
 name = "nodeenv"
@@ -1832,17 +1847,19 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "1.10.1"
+version = "1.10.3"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
     { name = "anyio" },
     { name = "asyncstdlib" },
     { name = "asyncua" },
+    { name = "blinker" },
     { name = "docstring-parser" },
     { name = "exceptiongroup" },
     { name = "httpx" },
     { name = "loguru" },
+    { name = "nats-py" },
     { name = "numpy" },
     { name = "pydantic" },
     { name = "python-decouple" },
@@ -1885,10 +1902,12 @@ requires-dist = [
     { name = "apscheduler", marker = "extra == 'nova-rerun-bridge'", specifier = ">=3.11.0" },
     { name = "asyncstdlib", specifier = ">=3.13.0,<4" },
     { name = "asyncua", specifier = ">=1.1.5,<2" },
+    { name = "blinker", specifier = ">=1.9.0" },
     { name = "docstring-parser", specifier = ">=0.16.0" },
     { name = "exceptiongroup", specifier = ">=1.2.2" },
     { name = "httpx", specifier = ">=0.28.0,<0.29" },
     { name = "loguru", specifier = ">=0.7.2,<0.8" },
+    { name = "nats-py", specifier = ">=2.10.0" },
     { name = "numpy", specifier = ">1.1.19" },
     { name = "pydantic", specifier = ">=2.11.4,<3" },
     { name = "python-decouple", specifier = "~=3.8" },
