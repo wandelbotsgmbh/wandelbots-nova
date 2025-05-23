@@ -3,12 +3,10 @@ import contextvars
 import io
 import sys
 import threading
-import time
 import traceback as tb
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
-from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -25,6 +23,7 @@ from nova.core.exceptions import PlanTrajectoryFailed
 from nova.runtime.exceptions import NotPlannableError
 from nova.runtime.utils import Tee, stoppable_run
 from nova.types import MotionState
+import datetime as dt
 
 current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
     "current_execution_context_var"
@@ -81,8 +80,8 @@ class ProgramRun(BaseModel):
     stdout: str | None = Field(None, description="Stdout of the program run")
     error: str | None = Field(None, description="Error message of the program run, if any")
     traceback: str | None = Field(None, description="Traceback of the program run, if any")
-    start_time: float | None = Field(None, description="Start time of the program run")
-    end_time: float | None = Field(None, description="End time of the program run")
+    start_time: str | None = Field(None, description="Start time of the program run")
+    end_time: str | None = Field(None, description="End time of the program run")
     execution_results: list[list[MotionState]] = Field(
         default_factory=list, description="Execution results of the program run"
     )
@@ -154,7 +153,7 @@ class ProgramRunner(ABC):
         return self._stop_event.is_set()
 
     @property
-    def start_time(self) -> datetime | None:
+    def start_time(self) -> dt.datetime | None:
         """Get the start time of the program run.
 
         Returns:
@@ -162,16 +161,18 @@ class ProgramRunner(ABC):
         """
         if self._program_run.start_time is None:
             return None
-        return datetime.fromtimestamp(self._program_run.start_time)
+        return dt.datetime.fromisoformat(self._program_run.start_time)
 
     @property
-    def execution_time(self) -> float | None:
+    def end_time(self) -> dt.datetime | None:
         """Get the execution time of the program run.
 
         Returns:
             Optional[float]: The execution time in seconds if the program has finished, None otherwise
         """
-        return self._program_run.end_time
+        if self._program_run.end_time is None:
+            return None
+        return dt.datetime.fromisoformat(self._program_run.end_time)
 
     def is_running(self) -> bool:
         """Check if a program is currently running.
@@ -347,7 +348,7 @@ class ProgramRunner(ABC):
                 try:
                     logger.info(f"Run program {self.id}...")
                     self._program_run.state = ProgramRunState.RUNNING
-                    self._program_run.start_time = time.time()
+                    self._program_run.start_time = dt.datetime.now(dt.timezone.utc).isoformat()
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped
@@ -381,7 +382,7 @@ class ProgramRunner(ABC):
                     self._program_run.execution_results = execution_context.motion_group_recordings
 
                     logger.info(f"Program {self.id} finished. Run teardown routine...")
-                    self._program_run.end_time = time.time()
+                    self._program_run.end_time = dt.datetime.now(dt.timezone.utc).isoformat()
 
                     logger.remove(sink_id)
                     self._program_run.logs = log_capture.getvalue()
