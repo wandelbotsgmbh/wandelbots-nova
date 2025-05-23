@@ -1,5 +1,6 @@
 import contextlib
 import contextvars
+import datetime as dt
 import io
 import sys
 import threading
@@ -23,7 +24,6 @@ from nova.core.exceptions import PlanTrajectoryFailed
 from nova.runtime.exceptions import NotPlannableError
 from nova.runtime.utils import Tee, stoppable_run
 from nova.types import MotionState
-import datetime as dt
 
 current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
     "current_execution_context_var"
