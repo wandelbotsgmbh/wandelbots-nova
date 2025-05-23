@@ -35,12 +35,12 @@ current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
 class ExecutionContext:
     # Maps the motion group id to the list of recorded motion lists
     # Each motion list is a path the was planned separately
-    motion_group_recordings: dict[str, list[list[MotionState]]]
+    motion_group_recordings: list[list[MotionState]]
 
     def __init__(self, robot_cell: RobotCell, stop_event: anyio.Event):
         self._robot_cell = robot_cell
         self._stop_event = stop_event
-        self.motion_group_recordings = {}
+        self.motion_group_recordings = []
 
     @property
     def robot_cell(self) -> RobotCell:
@@ -73,24 +73,6 @@ class ProgramRunState(Enum):
     STOPPED = "STOPPED"
 
 
-# TODO: import from api.v2.models.ProgramRunResult
-class ProgramRunResult(BaseModel):
-    """The ProgramRunResult object contains the execution results of a robot.
-
-    Arguments:
-        motion_group_id: The unique id of the motion group
-        motion_duration: The total execution duration of the motion group
-        paths: The paths of the motion group as list of Path objects
-
-    """
-
-    motion_group_id: str = Field(..., description="Unique id of the motion group that was executed")
-    motion_duration: float = Field(..., description="Total execution duration of the motion group")
-    paths: list[list[RobotState]] = Field(
-        ..., description="Paths of the motion group as list of Path objects"
-    )
-
-
 # TODO: import from api.v2.models.ProgramRun
 class ProgramRun(BaseModel):
     id: str = Field(..., description="Unique id of the program run")
@@ -101,7 +83,7 @@ class ProgramRun(BaseModel):
     traceback: str | None = Field(None, description="Traceback of the program run, if any")
     start_time: float | None = Field(None, description="Start time of the program run")
     end_time: float | None = Field(None, description="End time of the program run")
-    execution_results: list[ProgramRunResult] = Field(
+    execution_results: list[list[MotionState]] = Field(
         default_factory=list, description="Execution results of the program run"
     )
 
@@ -363,6 +345,9 @@ class ProgramRunner(ABC):
                 await tg.start(self._estop_handler, monitoring_scope)
 
                 try:
+                    logger.info(f"Run program {self.id}...")
+                    self._program_run.state = ProgramRunState.RUNNING
+                    self._program_run.start_time = time.time()
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped
@@ -393,25 +378,7 @@ class ProgramRunner(ABC):
                         logger.info(f"Program {self.id} completed successfully")
                 finally:
                     # write path to output
-                    self._program_run.execution_results = [
-                        ProgramRunResult(
-                            motion_group_id=motion_group_id,
-                            motion_duration=0,
-                            paths=[
-                                [
-                                    RobotState(
-                                        pose=motion_state.state.pose,
-                                        joints=motion_state.state.joints
-                                        if motion_state.state.joints is not None
-                                        else None,
-                                    )
-                                    for motion_state in motion_states
-                                ]
-                                for motion_states in motion_state_list
-                            ],
-                        )
-                        for motion_group_id, motion_state_list in execution_context.motion_group_recordings.items()
-                    ]
+                    self._program_run.execution_results = execution_context.motion_group_recordings
 
                     logger.info(f"Program {self.id} finished. Run teardown routine...")
                     self._program_run.end_time = time.time()
