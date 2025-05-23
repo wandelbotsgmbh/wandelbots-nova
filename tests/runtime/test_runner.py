@@ -23,7 +23,7 @@ class TestProgramRunner(ProgramRunner):
             raise NotPlannableError(location=None, value="Test not plannable error")
         if self._should_fail:
             raise RuntimeError("Test failure")
-        self._program_run.state = ProgramRunState.running
+        self._program_run.state = ProgramRunState.RUNNING
 
 
 def test_program_runner_initialization():
@@ -32,7 +32,7 @@ def test_program_runner_initialization():
     runner = TestProgramRunner(program, {})
 
     assert runner.id is not None
-    assert runner.state == ProgramRunState.not_started
+    assert runner.state == ProgramRunState.NOT_STARTED
     assert not runner.is_running()
     assert runner.start_time is None
     assert runner.execution_time is None
@@ -44,9 +44,9 @@ def test_program_runner_state_transitions():
     runner = TestProgramRunner(program, {})
 
     # Test state transitions
-    assert runner.state == ProgramRunState.not_started
+    assert runner.state == ProgramRunState.NOT_STARTED
     runner.start(sync=True)
-    assert runner.state == ProgramRunState.completed
+    assert runner.state == ProgramRunState.COMPLETED
 
 
 @pytest.mark.integration
@@ -60,7 +60,7 @@ def test_program_runner_stop():
 
     # Test stopping after start
     runner.start(sync=True)
-    assert runner.state == ProgramRunState.completed
+    assert runner.state == ProgramRunState.COMPLETED
     assert not runner.is_running()
 
 
@@ -83,7 +83,7 @@ def test_program_runner_error_handling():
     with pytest.raises(RuntimeError):
         runner = TestProgramRunner(program, {}, should_fail=True)
         runner.start(sync=True)
-        assert runner.state == ProgramRunState.failed
+        assert runner.state == ProgramRunState.FAILED
         assert runner.program_run.error is not None
         assert runner.program_run.traceback is not None
 
@@ -91,7 +91,7 @@ def test_program_runner_error_handling():
     with pytest.raises(NotPlannableError):
         runner = TestProgramRunner(program, {}, should_not_plannable=True)
         runner.start(sync=True)
-        assert runner.state == ProgramRunState.failed
+        assert runner.state == ProgramRunState.FAILED
         assert "NotPlannableError" in runner.program_run.error
 
 
