@@ -1,12 +1,12 @@
 from abc import ABC
-import time
 from datetime import datetime, timedelta
-from typing import Optional, Literal
+from typing import Literal
 from uuid import UUID, uuid4
 
 from blinker import signal
 from pydantic import BaseModel, Field
 
+from nova import Cell
 
 cycle_started = signal("cycle_started")
 cycle_finished = signal("cycle_finished")
@@ -41,42 +41,59 @@ class Timer:
 
     def is_running(self) -> bool:
         return self.start_time is not None and self.stop_time is None
-    
+
 
 class Cycle:
-    def __init__(self, cell_id: str):
+    """
+    Context manager for tracking a process cycle in the cell.
+    It generates events for cycle start, finish, and failure.
+    """
+
+    def __init__(self, cell: Cell):
         self.cycle_id: UUID | None = None
-        self._cell_id = cell_id
+        self._cell_id = cell.cell_id
         self._timer = Timer()
 
-    async def start(self):
+    async def start(self) -> datetime:
         try:
             start_time = self._timer.start()
         except RuntimeError as e:
             raise RuntimeError("Cycle already started") from e
-        
+
         self.cycle_id = uuid4()
         event = CycleStartedEvent(cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id)
         await cycle_started.send_async("nova", message=event)
+        return start_time
 
-    async def finish(self):
+    async def finish(self) -> timedelta:
         try:
             end_time = self._timer.stop()
         except RuntimeError as e:
             raise RuntimeError("Cycle not started") from e
-        
-        duration_ms = int((end_time - self._timer.start_time).total_seconds() * 1000)
-        event = CycleFinishedEvent(cycle_id=self.cycle_id, timestamp=end_time, duration_ms=duration_ms, cell=self._cell_id)
-        await cycle_finished.send_async("nova", message=event)
-        self._timer.reset()
 
-    async def fail(self, reason: str):
+        duration_ms = int((end_time - self._timer.start_time).total_seconds() * 1000)
+        event = CycleFinishedEvent(
+            cycle_id=self.cycle_id, timestamp=end_time, duration_ms=duration_ms, cell=self._cell_id
+        )
+        await cycle_finished.send_async("nova", message=event)
+        cycle_time = self._timer.elapsed()
+        self._timer.reset()
+        return cycle_time
+
+    async def fail(self, reason: Exception | str) -> None:
+        if not reason:
+            raise ValueError("Reason for failure must be provided")
+
         try:
             failure_time = self._timer.stop()
         except RuntimeError as e:
             raise RuntimeError("Cycle not started") from e
-        
-        event = CycleFailedEvent(cycle_id=self.cycle_id, timestamp=failure_time, cell=self._cell_id, reason=reason)
+
+        if isinstance(reason, Exception):
+            reason = str(reason)
+        event = CycleFailedEvent(
+            cycle_id=self.cycle_id, timestamp=failure_time, cell=self._cell_id, reason=reason
+        )
         await cycle_failed.send_async("nova", message=event)
         self._timer.reset()
 
