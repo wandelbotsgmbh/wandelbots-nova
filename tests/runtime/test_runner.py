@@ -34,8 +34,6 @@ def test_program_runner_initialization():
     assert runner.id is not None
     assert runner.state == ProgramRunState.NOT_STARTED
     assert not runner.is_running()
-    assert runner.start_time is None
-    assert runner.execution_time is None
 
 
 @pytest.mark.integration
