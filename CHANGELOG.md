@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v1.8.1 (2025-05-23)
+
+### Chores
+
+- Cleanup state enum ([#167](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/167),
+  [`b5b38c8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b5b38c823b5b3e3d1a4ae069b42216b05a849642))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.8.0 (2025-05-21)
 
 ### Features
