@@ -181,7 +181,7 @@ class NovaRerunBridge:
         motion_id: str,
         timing_mode=TimingMode.CONTINUE,
         time_offset: float = 0,
-        tool_asset: str = None,
+        tool_asset: Optional[str] = None,
     ) -> None:
         # Fetch motion details from api
         motion = await self.nova._api_client.motion_api.get_planned_motion(

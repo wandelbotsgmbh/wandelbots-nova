@@ -1,4 +1,5 @@
 import contextlib
+import contextvars
 import io
 import sys
 import threading
@@ -14,6 +15,7 @@ from typing import Any
 import anyio
 from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
+from exceptiongroup import ExceptionGroup
 from loguru import logger
 from pydantic import BaseModel, Field
 
@@ -22,23 +24,23 @@ from nova.cell.robot_cell import RobotCell
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.runtime.exceptions import NotPlannableError
 from nova.runtime.utils import Tee, stoppable_run
-from nova.types import RobotState
+from nova.types import MotionState, RobotState
 
-# import contextvars
-
-# current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar("current_execution_context_var")
+current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
+    "current_execution_context_var"
+)
 
 
 # TODO: should provide a number of tools to the program to control the execution of the program
 class ExecutionContext:
     # Maps the motion group id to the list of recorded motion lists
     # Each motion list is a path the was planned separately
-    # TODO: maybe we should make it public and helper methods to access the data
-    # motion_group_recordings: dict[str, list[list[MotionState]]]
+    motion_group_recordings: dict[str, list[list[MotionState]]]
 
     def __init__(self, robot_cell: RobotCell, stop_event: anyio.Event):
         self._robot_cell = robot_cell
         self._stop_event = stop_event
+        self.motion_group_recordings = {}
 
     @property
     def robot_cell(self) -> RobotCell:
@@ -64,11 +66,11 @@ class Program(BaseModel):
 
 # TODO: import from api.v2.models.ProgramRunState
 class ProgramRunState(Enum):
-    not_started = "not started"
-    running = "running"
-    completed = "completed"
-    failed = "failed"
-    stopped = "stopped"
+    NOT_STARTED = "NOT_STARTED"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    STOPPED = "STOPPED"
 
 
 # TODO: import from api.v2.models.ProgramRunResult
@@ -119,7 +121,7 @@ class ProgramRunner(ABC):
         self._robot_cell_override = robot_cell_override
         self._program_run: ProgramRun = ProgramRun(
             id=str(uuid.uuid4()),
-            state=ProgramRunState.not_started,
+            state=ProgramRunState.NOT_STARTED,
             logs=None,
             stdout=None,
             error=None,
@@ -195,7 +197,7 @@ class ProgramRunner(ABC):
         Returns:
             bool: True if a program is running, False otherwise
         """
-        return self._thread is not None and self.state is ProgramRunState.running
+        return self._thread is not None and self.state is ProgramRunState.RUNNING
 
     def join(self):
         """Wait for the program execution to finish.
@@ -234,7 +236,7 @@ class ProgramRunner(ABC):
             RuntimeError: when the runner is not in IDLE state
         """
         # Check if another program execution is already in progress
-        if self.state is not ProgramRunState.not_started:
+        if self.state is not ProgramRunState.NOT_STARTED:
             raise RuntimeError(
                 "The runner is not in the not_started state. Create a new runner to execute again."
             )
@@ -314,7 +316,7 @@ class ProgramRunner(ABC):
         logger.error(message)
         self._program_run.error = message
         self._program_run.traceback = traceback
-        self._program_run.state = ProgramRunState.failed
+        self._program_run.state = ProgramRunState.FAILED
 
     async def _run_program(
         self, stop_event: anyio.Event, on_state_change: Callable[[], Awaitable[None]]
@@ -337,6 +339,7 @@ class ProgramRunner(ABC):
         sink_id = logger.add(log_capture)
 
         try:
+            robot_cell = None
             # Use robot_cell_override or fetch robot cell when not set
             if self._robot_cell_override:
                 robot_cell = self._robot_cell_override
@@ -345,15 +348,18 @@ class ProgramRunner(ABC):
                     cell = nova.cell()
                     robot_cell = await cell.get_robot_cell()
 
+            if robot_cell is None:
+                raise RuntimeError("No robot cell available")
+
             self.execution_context = execution_context = ExecutionContext(
                 robot_cell=robot_cell, stop_event=stop_event
             )
-            # current_execution_context_var.set(execution_context)
+            current_execution_context_var.set(execution_context)
 
             await on_state_change()
 
             monitoring_scope = anyio.CancelScope()
-            async with anyio.create_task_group() as tg:
+            async with robot_cell, anyio.create_task_group() as tg:
                 await tg.start(self._estop_handler, monitoring_scope)
 
                 try:
@@ -361,14 +367,14 @@ class ProgramRunner(ABC):
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped
                     logger.info(f"Program {self.id} cancelled")
-                    # try:
-                    #    with anyio.CancelScope(shield=True):
-                    #        await robot_cell.stop()
-                    # except Exception as e:
-                    #    logger.error(f"Error while stopping robot cell: {e!r}")
-                    #    raise
+                    try:
+                        with anyio.CancelScope(shield=True):
+                            await robot_cell.stop()
+                    except Exception as e:
+                        logger.error(f"Error while stopping robot cell: {e!r}")
+                        raise
 
-                    self._program_run.state = ProgramRunState.stopped
+                    self._program_run.state = ProgramRunState.STOPPED
                     raise
 
                 except NotPlannableError as exc:
@@ -380,14 +386,32 @@ class ProgramRunner(ABC):
                     if self.stopped:
                         # Program was stopped
                         logger.info(f"Program {self.id} stopped successfully")
-                        self._program_run.state = ProgramRunState.stopped
-                    elif self._program_run.state is ProgramRunState.running:
+                        self._program_run.state = ProgramRunState.STOPPED
+                    elif self._program_run.state is ProgramRunState.RUNNING:
                         # Program was completed
-                        self._program_run.state = ProgramRunState.completed
+                        self._program_run.state = ProgramRunState.COMPLETED
                         logger.info(f"Program {self.id} completed successfully")
                 finally:
                     # write path to output
-                    # TODO: capture result of the program
+                    self._program_run.execution_results = [
+                        ProgramRunResult(
+                            motion_group_id=motion_group_id,
+                            motion_duration=0,
+                            paths=[
+                                [
+                                    RobotState(
+                                        pose=motion_state.state.pose,
+                                        joints=motion_state.state.joints
+                                        if motion_state.state.joints is not None
+                                        else None,
+                                    )
+                                    for motion_state in motion_states
+                                ]
+                                for motion_states in motion_state_list
+                            ],
+                        )
+                        for motion_group_id, motion_state_list in execution_context.motion_group_recordings.items()
+                    ]
 
                     logger.info(f"Program {self.id} finished. Run teardown routine...")
                     self._program_run.end_time = time.time()

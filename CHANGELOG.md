@@ -1,6 +1,96 @@
 # CHANGELOG
 
 
+## v1.8.1 (2025-05-23)
+
+### Chores
+
+- Cleanup state enum ([#167](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/167),
+  [`b5b38c8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b5b38c823b5b3e3d1a4ae069b42216b05a849642))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.8.0 (2025-05-21)
+
+### Features
+
+- Track runner motion state result
+  ([#166](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/166),
+  [`bccdb8d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bccdb8d0ae775c597a1ec3d3358aece2d8d67851))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.7.0 (2025-05-21)
+
+### Features
+
+- **NDX-37**: Update environment variables to use prod
+  ([#163](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/163),
+  [`a22ec11`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a22ec119c04fa350709f367aea8b7db57902a779))
+
+
+## v1.6.2 (2025-05-20)
+
+### Bug Fixes
+
+- Remove loguru logger ([#164](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/164),
+  [`5fd1cec`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5fd1cecba37044b3167dcbf7988d94c7c0cabc95))
+
+don't use loguru logger in nova packages
+
+
+## v1.6.1 (2025-05-20)
+
+### Bug Fixes
+
+- **NDX-45**: Improved integration test CI & open robot_cell before running
+  ([#162](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/162),
+  [`3c89d61`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3c89d61d4bd3422f2e4d0ecebcce273a8460388a))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.6.0 (2025-05-15)
+
+### Features
+
+- Expose combine_trajectories in the module exports
+  ([#161](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/161),
+  [`34dde3d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/34dde3dc95e68394ecb7db5c58b9828119bef106))
+
+
+## v1.5.4 (2025-05-14)
+
+### Bug Fixes
+
+- Pass the collision scene to non collision motions
+  ([#160](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/160),
+  [`e2d2f1b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e2d2f1bbde945346da6669ce7deaeaf2a5396459))
+
+Co-authored-by: mahsumdemirwb <mahsum.demir@wandelbots.com>
+
+
+## v1.5.3 (2025-05-14)
+
+### Chores
+
+- Make test pass ([#158](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/158),
+  [`02ea30e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/02ea30edb07179a82d25a60a8518160c3da9dc93))
+
+Co-authored-by: cbiering <christoph.biering@wandelbots.com>
+
+
+## v1.5.2 (2025-05-13)
+
+### Bug Fixes
+
+- Show collision of robots while using multiple robots
+  ([#159](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/159),
+  [`6e9764b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6e9764b131b763289e42572ecfc9e11feab4d62c))
+
+
 ## v1.5.1 (2025-05-13)
 
 ### Bug Fixes

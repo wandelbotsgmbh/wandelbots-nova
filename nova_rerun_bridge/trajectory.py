@@ -1,4 +1,5 @@
 from enum import Enum, auto
+from typing import Optional
 
 import numpy as np
 import rerun as rr
@@ -36,7 +37,7 @@ def log_motion(
     collision_scenes: dict[str, models.CollisionScene],
     time_offset: float = 0,
     timing_mode: TimingMode = TimingMode.CONTINUE,
-    tool_asset: str = None,
+    tool_asset: Optional[str] = None,
 ):
     """
     Fetch and process a single motion with timing control.
@@ -95,8 +96,8 @@ def log_motion(
 
         _visualizer_cache[motion_group] = RobotVisualizer(
             robot=robot,
-            robot_model_geometries=optimizer_config.safety_setup.robot_model_geometries,
-            tcp_geometries=optimizer_config.safety_setup.tcp_geometries,
+            robot_model_geometries=optimizer_config.safety_setup.robot_model_geometries or [],
+            tcp_geometries=optimizer_config.safety_setup.tcp_geometries or [],
             static_transform=False,
             base_entity_path=f"motion/{motion_group}",
             model_from_controller=model_from_controller,
@@ -178,7 +179,7 @@ def log_trajectory(
     trajectory: list[models.TrajectorySample],
     optimizer_config: models.OptimizerSetup,
     timer_offset: float,
-    tool_asset: str,
+    tool_asset: Optional[str] = None,
 ):
     """
     Process a single trajectory point and log relevant data.
@@ -219,7 +220,12 @@ def log_trajectory(
     log_scalar_values(trajectory, motion_group, times_column, optimizer_config)
 
 
-def log_tcp_pose(trajectory: list[models.TrajectorySample], motion_group, times_column, tool_asset):
+def log_tcp_pose(
+    trajectory: list[models.TrajectorySample],
+    motion_group,
+    times_column,
+    tool_asset: Optional[str] = None,
+):
     """
     Log TCP pose (position + orientation) data.
     """
