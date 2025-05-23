@@ -80,8 +80,8 @@ class ProgramRun(BaseModel):
     stdout: str | None = Field(None, description="Stdout of the program run")
     error: str | None = Field(None, description="Error message of the program run, if any")
     traceback: str | None = Field(None, description="Traceback of the program run, if any")
-    start_time: str | None = Field(None, description="Start time of the program run")
-    end_time: str | None = Field(None, description="End time of the program run")
+    start_time: dt.datetime | None = Field(None, description="Start time of the program run")
+    end_time: dt.datetime | None = Field(None, description="End time of the program run")
     execution_results: list[list[MotionState]] = Field(
         default_factory=list, description="Execution results of the program run"
     )
@@ -151,28 +151,6 @@ class ProgramRunner(ABC):
         if self._stop_event is None:
             return False
         return self._stop_event.is_set()
-
-    @property
-    def start_time(self) -> dt.datetime | None:
-        """Get the start time of the program run.
-
-        Returns:
-            Optional[datetime]: The start time if the program has started, None otherwise
-        """
-        if self._program_run.start_time is None:
-            return None
-        return dt.datetime.fromisoformat(self._program_run.start_time)
-
-    @property
-    def end_time(self) -> dt.datetime | None:
-        """Get the execution time of the program run.
-
-        Returns:
-            Optional[float]: The execution time in seconds if the program has finished, None otherwise
-        """
-        if self._program_run.end_time is None:
-            return None
-        return dt.datetime.fromisoformat(self._program_run.end_time)
 
     def is_running(self) -> bool:
         """Check if a program is currently running.
@@ -348,7 +326,7 @@ class ProgramRunner(ABC):
                 try:
                     logger.info(f"Run program {self.id}...")
                     self._program_run.state = ProgramRunState.RUNNING
-                    self._program_run.start_time = dt.datetime.now(dt.timezone.utc).isoformat()
+                    self._program_run.start_time = dt.datetime.now(dt.timezone.utc)
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped
@@ -382,7 +360,7 @@ class ProgramRunner(ABC):
                     self._program_run.execution_results = execution_context.motion_group_recordings
 
                     logger.info(f"Program {self.id} finished. Run teardown routine...")
-                    self._program_run.end_time = dt.datetime.now(dt.timezone.utc).isoformat()
+                    self._program_run.end_time = dt.datetime.now(dt.timezone.utc)
 
                     logger.remove(sink_id)
                     self._program_run.logs = log_capture.getvalue()
