@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.8.2 (2025-05-23)
+
+### Chores
+
+- Improve runner motion state recording & cleanup
+  ([#168](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/168),
+  [`d1067f8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d1067f8f3d6563917c6bdc925ec8c00171c7dd8c))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.8.1 (2025-05-23)
 
 ### Chores
