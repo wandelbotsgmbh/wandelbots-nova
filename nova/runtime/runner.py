@@ -66,11 +66,11 @@ class Program(BaseModel):
 
 # TODO: import from api.v2.models.ProgramRunState
 class ProgramRunState(Enum):
-    not_started = "not started"
-    running = "running"
-    completed = "completed"
-    failed = "failed"
-    stopped = "stopped"
+    NOT_STARTED = "NOT_STARTED"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    STOPPED = "STOPPED"
 
 
 # TODO: import from api.v2.models.ProgramRunResult
@@ -121,7 +121,7 @@ class ProgramRunner(ABC):
         self._robot_cell_override = robot_cell_override
         self._program_run: ProgramRun = ProgramRun(
             id=str(uuid.uuid4()),
-            state=ProgramRunState.not_started,
+            state=ProgramRunState.NOT_STARTED,
             logs=None,
             stdout=None,
             error=None,
@@ -197,7 +197,7 @@ class ProgramRunner(ABC):
         Returns:
             bool: True if a program is running, False otherwise
         """
-        return self._thread is not None and self.state is ProgramRunState.running
+        return self._thread is not None and self.state is ProgramRunState.RUNNING
 
     def join(self):
         """Wait for the program execution to finish.
@@ -236,7 +236,7 @@ class ProgramRunner(ABC):
             RuntimeError: when the runner is not in IDLE state
         """
         # Check if another program execution is already in progress
-        if self.state is not ProgramRunState.not_started:
+        if self.state is not ProgramRunState.NOT_STARTED:
             raise RuntimeError(
                 "The runner is not in the not_started state. Create a new runner to execute again."
             )
@@ -316,7 +316,7 @@ class ProgramRunner(ABC):
         logger.error(message)
         self._program_run.error = message
         self._program_run.traceback = traceback
-        self._program_run.state = ProgramRunState.failed
+        self._program_run.state = ProgramRunState.FAILED
 
     async def _run_program(
         self, stop_event: anyio.Event, on_state_change: Callable[[], Awaitable[None]]
@@ -374,7 +374,7 @@ class ProgramRunner(ABC):
                         logger.error(f"Error while stopping robot cell: {e!r}")
                         raise
 
-                    self._program_run.state = ProgramRunState.stopped
+                    self._program_run.state = ProgramRunState.STOPPED
                     raise
 
                 except NotPlannableError as exc:
@@ -386,10 +386,10 @@ class ProgramRunner(ABC):
                     if self.stopped:
                         # Program was stopped
                         logger.info(f"Program {self.id} stopped successfully")
-                        self._program_run.state = ProgramRunState.stopped
-                    elif self._program_run.state is ProgramRunState.running:
+                        self._program_run.state = ProgramRunState.STOPPED
+                    elif self._program_run.state is ProgramRunState.RUNNING:
                         # Program was completed
-                        self._program_run.state = ProgramRunState.completed
+                        self._program_run.state = ProgramRunState.COMPLETED
                         logger.info(f"Program {self.id} completed successfully")
                 finally:
                     # write path to output
