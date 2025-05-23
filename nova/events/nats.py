@@ -8,12 +8,12 @@ from . import BaseCycleEvent, cycle_failed, cycle_finished, cycle_started
 NATS_SERVERS = config("NATS_SERVERS", cast=Csv(), default="")
 NATS_SUBJECT_CYCLE = config("NATS_SUBJECT_CYCLE", default="cell.process.cycle")
 
-_nats_client = None
+_nats_client: nats.NATS | None = None
 
 
 async def get_client() -> nats.NATS:
     global _nats_client
-    if _nats_client:
+    if _nats_client is not None:
         return _nats_client
     _nats_client = await nats.connect(servers=NATS_SERVERS)
     return _nats_client

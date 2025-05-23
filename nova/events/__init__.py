@@ -71,6 +71,8 @@ class Cycle:
         except RuntimeError as e:
             raise RuntimeError("Cycle not started") from e
 
+        assert self.cycle_id is not None, "Cycle ID is missing; ensure start() was called first"
+
         duration_ms = int((end_time - self._timer.start_time).total_seconds() * 1000)
         event = CycleFinishedEvent(
             cycle_id=self.cycle_id, timestamp=end_time, duration_ms=duration_ms, cell=self._cell_id
@@ -88,6 +90,8 @@ class Cycle:
             failure_time = self._timer.stop()
         except RuntimeError as e:
             raise RuntimeError("Cycle not started") from e
+
+        assert self.cycle_id is not None, "Cycle ID is missing; ensure start() was called first"
 
         if isinstance(reason, Exception):
             reason = str(reason)
@@ -128,4 +132,4 @@ class CycleFinishedEvent(BaseCycleEvent):
 
 class CycleFailedEvent(BaseCycleEvent):
     event_type: Literal["cycle_failed"] = "cycle_failed"
-    reason: str = Field(None, description="Human-readable explanation of failure")
+    reason: str = Field(..., description="Human-readable explanation of failure")
