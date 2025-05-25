@@ -45,8 +45,40 @@ class Timer:
 
 class Cycle:
     """
-    Context manager for tracking a process cycle in the cell.
-    It generates events for cycle start, finish, and failure.
+    Context manager for tracking a process cycle in a robotic cell.
+
+    The Cycle class provides a standardized way to track automation cycles,
+    measure their execution time, and emit events for observability. It's designed
+    to be used as an async context manager for automatic event handling.
+
+    Events are emitted when:
+    - A cycle starts (CycleStartedEvent)
+    - A cycle finishes successfully (CycleFinishedEvent)
+    - A cycle fails with an error (CycleFailedEvent)
+
+    Example usage:
+        ```python
+        async with Cycle(cell) as cycle:
+            # Your automation logic here
+            await perform_task()
+            # On successful completion, finish() is called automatically
+        # If an exception occurs, fail() is called automatically
+        ```
+
+    Alternative manual usage:
+        ```python
+        cycle = Cycle(cell)
+        try:
+            await cycle.start()
+            # Your automation logic here
+            await perform_task()
+            duration = await cycle.finish()
+        except Exception as e:
+            await cycle.fail(e)
+        ```
+
+    Attributes:
+        cycle_id (UUID | None): Unique identifier for the cycle, set after start()
     """
 
     def __init__(self, cell: Cell):
@@ -55,6 +87,18 @@ class Cycle:
         self._timer = Timer()
 
     async def start(self) -> datetime:
+        """
+        Start a new automation cycle and emit a CycleStartedEvent.
+
+        This method starts the internal timer, generates a unique cycle ID,
+        and sends a notification that a new cycle has begun.
+
+        Returns:
+            datetime: The timestamp when the cycle started
+
+        Raises:
+            RuntimeError: If the cycle has already been started
+        """
         try:
             start_time = self._timer.start()
         except RuntimeError as e:
@@ -66,6 +110,19 @@ class Cycle:
         return start_time
 
     async def finish(self) -> timedelta:
+        """
+        Mark the automation cycle as successfully completed and emit a CycleFinishedEvent.
+
+        This method stops the internal timer, calculates the cycle duration,
+        and sends a notification that the cycle has completed successfully.
+
+        Returns:
+            timedelta: The total duration of the cycle
+
+        Raises:
+            RuntimeError: If the cycle has not been started
+            AssertionError: If cycle_id is None (start() was never called)
+        """
         try:
             end_time = self._timer.stop()
         except RuntimeError as e:
@@ -83,6 +140,20 @@ class Cycle:
         return cycle_time
 
     async def fail(self, reason: Exception | str) -> None:
+        """
+        Mark the automation cycle as failed and emit a CycleFailedEvent.
+
+        This method stops the internal timer and sends a notification
+        that the cycle has failed with the provided reason.
+
+        Args:
+            reason: The reason for failure, either as a string or an Exception
+
+        Raises:
+            ValueError: If an empty reason is provided
+            RuntimeError: If the cycle has not been started
+            AssertionError: If cycle_id is None (start() was never called)
+        """
         if not reason:
             raise ValueError("Reason for failure must be provided")
 
@@ -102,10 +173,30 @@ class Cycle:
         self._timer.reset()
 
     async def __aenter__(self):
+        """
+        Async context manager entry point that starts the cycle.
+
+        Returns:
+            Cycle: The cycle instance for use within the context
+        """
         await self.start()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """
+        Async context manager exit point that completes the cycle.
+
+        Automatically calls finish() on successful completion or
+        fail() if an exception occurred within the context.
+
+        Args:
+            exc_type: The exception type if an exception was raised, otherwise None
+            exc_val: The exception value if an exception was raised, otherwise None
+            exc_tb: The traceback if an exception was raised, otherwise None
+
+        Returns:
+            bool: True to suppress exceptions (prevents exceptions from propagating)
+        """
         if exc_type is None:
             await self.finish()
         else:
