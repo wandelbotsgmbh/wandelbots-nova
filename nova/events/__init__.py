@@ -62,7 +62,7 @@ class Cycle:
 
         self.cycle_id = uuid4()
         event = CycleStartedEvent(cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id)
-        await cycle_started.send_async("nova", message=event)
+        await cycle_started.send_async(self, message=event)
         return start_time
 
     async def finish(self) -> timedelta:
@@ -77,7 +77,7 @@ class Cycle:
         event = CycleFinishedEvent(
             cycle_id=self.cycle_id, timestamp=end_time, duration_ms=duration_ms, cell=self._cell_id
         )
-        await cycle_finished.send_async("nova", message=event)
+        await cycle_finished.send_async(self, message=event)
         cycle_time = self._timer.elapsed()
         self._timer.reset()
         return cycle_time
@@ -98,7 +98,7 @@ class Cycle:
         event = CycleFailedEvent(
             cycle_id=self.cycle_id, timestamp=failure_time, cell=self._cell_id, reason=reason
         )
-        await cycle_failed.send_async("nova", message=event)
+        await cycle_failed.send_async(self, message=event)
         self._timer.reset()
 
     async def __aenter__(self):
