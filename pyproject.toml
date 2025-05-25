@@ -59,6 +59,7 @@ dev = [
     "pre-commit>=4.0.1,<5",
     "icecream>=2.1.4,<3",
     "ipython<9",
+    "freezegun>=1.5.1",
 ]
 
 [tool.hatch.build.targets.sdist]
