@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.9.0 (2025-05-27)
+
+### Features
+
+- **runner**: Added result field
+  ([#173](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/173),
+  [`7bca3e8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7bca3e82e22d9b2d127a17a515201959249b7246))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.8.2 (2025-05-23)
 
 ### Chores
