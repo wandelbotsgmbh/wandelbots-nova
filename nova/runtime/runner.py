@@ -35,11 +35,13 @@ class ExecutionContext:
     # Maps the motion group id to the list of recorded motion lists
     # Each motion list is a path the was planned separately
     motion_group_recordings: list[list[MotionState]]
+    result: dict
 
     def __init__(self, robot_cell: RobotCell, stop_event: anyio.Event):
         self._robot_cell = robot_cell
         self._stop_event = stop_event
         self.motion_group_recordings = []
+        self.result = {}
 
     @property
     def robot_cell(self) -> RobotCell:
@@ -85,6 +87,7 @@ class ProgramRun(BaseModel):
     execution_results: list[list[MotionState]] = Field(
         default_factory=list, description="Execution results of the program run"
     )
+    result: dict | None = Field(None, description="Result of the program run")
 
 
 class ProgramRunner(ABC):
@@ -109,6 +112,7 @@ class ProgramRunner(ABC):
             traceback=None,
             start_time=None,
             end_time=None,
+            result=None,
         )
         self._thread: threading.Thread | None = None
         self._stop_event: threading.Event | None = None
@@ -358,6 +362,7 @@ class ProgramRunner(ABC):
                 finally:
                     # write path to output
                     self._program_run.execution_results = execution_context.motion_group_recordings
+                    self._program_run.result = execution_context.result
 
                     logger.info(f"Program {self.id} finished. Run teardown routine...")
                     self._program_run.end_time = dt.datetime.now(dt.timezone.utc)
