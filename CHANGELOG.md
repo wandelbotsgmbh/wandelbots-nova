@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v1.9.1 (2025-05-28)
+
+### Chores
+
+- **nova**: Upgrade nova dependency to 25.4.0
+  ([#165](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/165),
+  [`954482a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/954482a5db28b6b01644a854ddb910d7cdc19dcd))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+Co-authored-by: Stefan Wagner <stefan.wagner@wandelbots.com>
+
+Co-authored-by: mahsumdemirwb <mahsum.demir@wandelbots.com>
+
+
 ## v1.9.0 (2025-05-27)
 
 ### Features
