@@ -298,13 +298,9 @@ class ApiGateway:
         return response.io_descriptions
 
     async def read_controller_io(self, cell: str, controller: str, io: str) -> float | bool | int:
-        print(cell)
-        print(controller)
-        print(io)
         response = await self.controller_ios_api.list_io_values(
             cell=cell, controller=controller, ios=[io]
         )
-        print(response)
 
         found_io = response.io_values[0]
         if found_io.boolean_value is not None:

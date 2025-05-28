@@ -34,7 +34,6 @@ async def main():
             # Get current TCP pose and offset it slightly along the x-axis
             current_pose = await motion_group.tcp_pose(tcp)
             target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
-            print(await controller._io_access.get_io_descriptions())
             actions = [
                 joint_ptp(home_joints),
                 io_write(key="tool_out[0]", value=False),
