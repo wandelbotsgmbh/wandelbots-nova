@@ -11,7 +11,6 @@ Prerequisites:
 import asyncio
 import json
 
-from mypy.util import json_loads
 from wandelbots_api_client.models.joint_trajectory import JointTrajectory
 
 from nova import Nova
@@ -68,7 +67,7 @@ async def main():
         loaded_joint_trajectory = JointTrajectory.from_json(loaded_program["joint_trajectory"])
         loaded_tcp = loaded_program["tcp"]
         loaded_actions = [
-            Action.from_dict(json_loads(action_data)) for action_data in loaded_program["actions"]
+            Action.from_dict(json.loads(action_data)) for action_data in loaded_program["actions"]
         ]
         print("Loaded actions:", loaded_actions)
 
