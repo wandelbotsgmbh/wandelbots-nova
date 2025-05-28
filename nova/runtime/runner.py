@@ -1,14 +1,13 @@
 import contextlib
 import contextvars
+import datetime as dt
 import io
 import sys
 import threading
-import time
 import traceback as tb
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
-from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -24,7 +23,7 @@ from nova.cell.robot_cell import RobotCell
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.runtime.exceptions import NotPlannableError
 from nova.runtime.utils import Tee, stoppable_run
-from nova.types import MotionState, RobotState
+from nova.types import MotionState
 
 current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
     "current_execution_context_var"
@@ -35,12 +34,14 @@ current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
 class ExecutionContext:
     # Maps the motion group id to the list of recorded motion lists
     # Each motion list is a path the was planned separately
-    motion_group_recordings: dict[str, list[list[MotionState]]]
+    motion_group_recordings: list[list[MotionState]]
+    result: dict
 
     def __init__(self, robot_cell: RobotCell, stop_event: anyio.Event):
         self._robot_cell = robot_cell
         self._stop_event = stop_event
-        self.motion_group_recordings = {}
+        self.motion_group_recordings = []
+        self.result = {}
 
     @property
     def robot_cell(self) -> RobotCell:
@@ -66,29 +67,11 @@ class Program(BaseModel):
 
 # TODO: import from api.v2.models.ProgramRunState
 class ProgramRunState(Enum):
-    not_started = "not started"
-    running = "running"
-    completed = "completed"
-    failed = "failed"
-    stopped = "stopped"
-
-
-# TODO: import from api.v2.models.ProgramRunResult
-class ProgramRunResult(BaseModel):
-    """The ProgramRunResult object contains the execution results of a robot.
-
-    Arguments:
-        motion_group_id: The unique id of the motion group
-        motion_duration: The total execution duration of the motion group
-        paths: The paths of the motion group as list of Path objects
-
-    """
-
-    motion_group_id: str = Field(..., description="Unique id of the motion group that was executed")
-    motion_duration: float = Field(..., description="Total execution duration of the motion group")
-    paths: list[list[RobotState]] = Field(
-        ..., description="Paths of the motion group as list of Path objects"
-    )
+    NOT_STARTED = "NOT_STARTED"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    STOPPED = "STOPPED"
 
 
 # TODO: import from api.v2.models.ProgramRun
@@ -99,11 +82,12 @@ class ProgramRun(BaseModel):
     stdout: str | None = Field(None, description="Stdout of the program run")
     error: str | None = Field(None, description="Error message of the program run, if any")
     traceback: str | None = Field(None, description="Traceback of the program run, if any")
-    start_time: float | None = Field(None, description="Start time of the program run")
-    end_time: float | None = Field(None, description="End time of the program run")
-    execution_results: list[ProgramRunResult] = Field(
+    start_time: dt.datetime | None = Field(None, description="Start time of the program run")
+    end_time: dt.datetime | None = Field(None, description="End time of the program run")
+    execution_results: list[list[MotionState]] = Field(
         default_factory=list, description="Execution results of the program run"
     )
+    result: dict | None = Field(None, description="Result of the program run")
 
 
 class ProgramRunner(ABC):
@@ -121,13 +105,14 @@ class ProgramRunner(ABC):
         self._robot_cell_override = robot_cell_override
         self._program_run: ProgramRun = ProgramRun(
             id=str(uuid.uuid4()),
-            state=ProgramRunState.not_started,
+            state=ProgramRunState.NOT_STARTED,
             logs=None,
             stdout=None,
             error=None,
             traceback=None,
             start_time=None,
             end_time=None,
+            result=None,
         )
         self._thread: threading.Thread | None = None
         self._stop_event: threading.Event | None = None
@@ -171,33 +156,13 @@ class ProgramRunner(ABC):
             return False
         return self._stop_event.is_set()
 
-    @property
-    def start_time(self) -> datetime | None:
-        """Get the start time of the program run.
-
-        Returns:
-            Optional[datetime]: The start time if the program has started, None otherwise
-        """
-        if self._program_run.start_time is None:
-            return None
-        return datetime.fromtimestamp(self._program_run.start_time)
-
-    @property
-    def execution_time(self) -> float | None:
-        """Get the execution time of the program run.
-
-        Returns:
-            Optional[float]: The execution time in seconds if the program has finished, None otherwise
-        """
-        return self._program_run.end_time
-
     def is_running(self) -> bool:
         """Check if a program is currently running.
 
         Returns:
             bool: True if a program is running, False otherwise
         """
-        return self._thread is not None and self.state is ProgramRunState.running
+        return self._thread is not None and self.state is ProgramRunState.RUNNING
 
     def join(self):
         """Wait for the program execution to finish.
@@ -236,7 +201,7 @@ class ProgramRunner(ABC):
             RuntimeError: when the runner is not in IDLE state
         """
         # Check if another program execution is already in progress
-        if self.state is not ProgramRunState.not_started:
+        if self.state is not ProgramRunState.NOT_STARTED:
             raise RuntimeError(
                 "The runner is not in the not_started state. Create a new runner to execute again."
             )
@@ -316,7 +281,7 @@ class ProgramRunner(ABC):
         logger.error(message)
         self._program_run.error = message
         self._program_run.traceback = traceback
-        self._program_run.state = ProgramRunState.failed
+        self._program_run.state = ProgramRunState.FAILED
 
     async def _run_program(
         self, stop_event: anyio.Event, on_state_change: Callable[[], Awaitable[None]]
@@ -363,6 +328,9 @@ class ProgramRunner(ABC):
                 await tg.start(self._estop_handler, monitoring_scope)
 
                 try:
+                    logger.info(f"Run program {self.id}...")
+                    self._program_run.state = ProgramRunState.RUNNING
+                    self._program_run.start_time = dt.datetime.now(dt.timezone.utc)
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped
@@ -374,7 +342,7 @@ class ProgramRunner(ABC):
                         logger.error(f"Error while stopping robot cell: {e!r}")
                         raise
 
-                    self._program_run.state = ProgramRunState.stopped
+                    self._program_run.state = ProgramRunState.STOPPED
                     raise
 
                 except NotPlannableError as exc:
@@ -386,35 +354,18 @@ class ProgramRunner(ABC):
                     if self.stopped:
                         # Program was stopped
                         logger.info(f"Program {self.id} stopped successfully")
-                        self._program_run.state = ProgramRunState.stopped
-                    elif self._program_run.state is ProgramRunState.running:
+                        self._program_run.state = ProgramRunState.STOPPED
+                    elif self._program_run.state is ProgramRunState.RUNNING:
                         # Program was completed
-                        self._program_run.state = ProgramRunState.completed
+                        self._program_run.state = ProgramRunState.COMPLETED
                         logger.info(f"Program {self.id} completed successfully")
                 finally:
                     # write path to output
-                    self._program_run.execution_results = [
-                        ProgramRunResult(
-                            motion_group_id=motion_group_id,
-                            motion_duration=0,
-                            paths=[
-                                [
-                                    RobotState(
-                                        pose=motion_state.state.pose,
-                                        joints=motion_state.state.joints
-                                        if motion_state.state.joints is not None
-                                        else None,
-                                    )
-                                    for motion_state in motion_states
-                                ]
-                                for motion_states in motion_state_list
-                            ],
-                        )
-                        for motion_group_id, motion_state_list in execution_context.motion_group_recordings.items()
-                    ]
+                    self._program_run.execution_results = execution_context.motion_group_recordings
+                    self._program_run.result = execution_context.result
 
                     logger.info(f"Program {self.id} finished. Run teardown routine...")
-                    self._program_run.end_time = time.time()
+                    self._program_run.end_time = dt.datetime.now(dt.timezone.utc)
 
                     logger.remove(sink_id)
                     self._program_run.logs = log_capture.getvalue()

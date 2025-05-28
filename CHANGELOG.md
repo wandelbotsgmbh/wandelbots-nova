@@ -1,6 +1,38 @@
 # CHANGELOG
 
 
+## v1.9.0 (2025-05-27)
+
+### Features
+
+- **runner**: Added result field
+  ([#173](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/173),
+  [`7bca3e8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7bca3e82e22d9b2d127a17a515201959249b7246))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.8.2 (2025-05-23)
+
+### Chores
+
+- Improve runner motion state recording & cleanup
+  ([#168](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/168),
+  [`d1067f8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d1067f8f3d6563917c6bdc925ec8c00171c7dd8c))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.8.1 (2025-05-23)
+
+### Chores
+
+- Cleanup state enum ([#167](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/167),
+  [`b5b38c8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b5b38c823b5b3e3d1a4ae069b42216b05a849642))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.8.0 (2025-05-21)
 
 ### Features
