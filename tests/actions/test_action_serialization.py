@@ -114,7 +114,7 @@ def test_program_serialization_deserialization_collision_scene():
     # Serialize actions
     serialized_actions = []
     for action in actions:
-        action_data = action.model_dump()
+        action_data = action.model_dump_json()
         serialized_actions.append(action_data)
 
     # Create a complete serializable program
@@ -131,7 +131,8 @@ def test_program_serialization_deserialization_collision_scene():
     # Deserialize actions
     deserialized_actions = []
     for action_data in loaded_program["actions"]:
-        deserialized_actions.append(Action.from_dict(action_data))
+        as_dict = json.loads(action_data)
+        deserialized_actions.append(Action.from_dict(as_dict))
 
     # Verify we have the right number of actions
     assert len(deserialized_actions) == len(actions)
