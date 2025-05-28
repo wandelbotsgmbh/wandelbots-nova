@@ -34,7 +34,11 @@ def _build_controller(
 
 
 def abb_controller(
-    name: str, controller_ip: str, egm_server_ip: str, egm_server_port: int, controller_port: int = 80
+    name: str,
+    controller_ip: str,
+    egm_server_ip: str,
+    egm_server_port: int,
+    controller_port: int = 80,
 ) -> api.models.RobotController:
     """
     Create an ABB controller configuration for a physical robot.
