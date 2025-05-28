@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.10.0 (2025-05-28)
+
+### Features
+
+- Add-test-case-for-action-serialization
+  ([#174](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/174),
+  [`9e36f8d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9e36f8d9227a7b02d0b188ca114bfaa202b548a9))
+
+Co-authored-by: Stefan Wagner <stefan.wagner@wandelbots.com>
+
+
 ## v1.9.1 (2025-05-28)
 
 ### Chores
