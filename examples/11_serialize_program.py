@@ -47,7 +47,7 @@ async def main():
         serialized_actions = []
         for action in actions:
             # Get the serialized representation of each action
-            action_data = action.model_dump()
+            action_data = action.model_dump_json()
             serialized_actions.append(action_data)
 
         # Create a complete serializable representation
