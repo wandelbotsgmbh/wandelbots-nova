@@ -47,7 +47,7 @@ async def main():
         serialized_actions = []
         for action in actions:
             # Get the serialized representation of each action
-            action_data = action.model_dump()
+            action_data = action.model_dump_json()
             serialized_actions.append(action_data)
 
         # Create a complete serializable representation
@@ -67,7 +67,7 @@ async def main():
         loaded_joint_trajectory = JointTrajectory.from_json(loaded_program["joint_trajectory"])
         loaded_tcp = loaded_program["tcp"]
         loaded_actions = [
-            Action.from_dict(action_data) for action_data in loaded_program["actions"]
+            Action.from_dict(json.loads(action_data)) for action_data in loaded_program["actions"]
         ]
         print("Loaded actions:", loaded_actions)
 

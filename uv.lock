@@ -1837,7 +1837,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/91/26/430de0d8aaf5aad9f
 
 [[package]]
 name = "wandelbots-api-client"
-version = "25.1.0"
+version = "25.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1852,14 +1852,14 @@ dependencies = [
     { name = "urllib3" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ed/f8/706c615dae24fae7b247989f6b9cb655cf4ecabec44a99e71dd5059ae1d8/wandelbots_api_client-25.1.0.tar.gz", hash = "sha256:83ca6c7810f9a13d29f2cf38312932128babce1452e66d1f65e91186b22051f5", size = 385188 }
+sdist = { url = "https://files.pythonhosted.org/packages/3e/93/4045cef426b59c506ce843c0339b1c4d9ef247be7cdac55256d014e8f9db/wandelbots_api_client-25.5.0.tar.gz", hash = "sha256:d36db94222f2598038c8d8f3ac828be407622e815a0ebcc44b15ef161975198d", size = 388161 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/f9/a9d404e3f21c11ac4183d61419f145ed7737ab89bdb54761ea155975237d/wandelbots_api_client-25.1.0-py3-none-any.whl", hash = "sha256:1ec92d9bc4c008367e027c94154cecd97d8d350c48341eeed5f6a0ee3da19f61", size = 1107354 },
+    { url = "https://files.pythonhosted.org/packages/b7/cf/22874657727f5148157720f6447c8be14ebce9808185f8897d0eec4ff083/wandelbots_api_client-25.5.0-py3-none-any.whl", hash = "sha256:e258caf7279918f75c272798ad4e1232af8c485041101f6a51a73b3275956fcb", size = 1132336 },
 ]
 
 [[package]]
 name = "wandelbots-nova"
-version = "1.8.2"
+version = "1.9.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
@@ -1932,7 +1932,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.14.1,<2" },
     { name = "trimesh", marker = "extra == 'benchmark'", specifier = ">=4.5.3" },
     { name = "trimesh", marker = "extra == 'nova-rerun-bridge'", specifier = ">=4.5.3" },
-    { name = "wandelbots-api-client", specifier = "==25.1.0" },
+    { name = "wandelbots-api-client", specifier = "==25.5.0" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
 ]
 provides-extras = ["nova-rerun-bridge", "benchmark"]
