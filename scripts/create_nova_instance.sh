@@ -117,7 +117,7 @@ while :; do
   fi
 
   STATUS="$(echo "${BODY}" \
-           | jq -r '.service_status[]? | select(.service=="programengine") | .status.code')"
+           | jq -r '.service_status[]? | select(.service=="ProgramEngine") | .status.code')"
 
   echo "ProgamEngine: ${STATUS:-<empty>}"
   [[ "${STATUS}" == "Running" ]] && break
