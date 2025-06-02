@@ -196,6 +196,8 @@ class ApiGateway:
         """Ensure we have a valid access token, requesting a new one if needed"""
         if not self._auth0 or self._validating_token or self._has_valid_token:
             return
+        if self._username is not None and self._password is not None:
+            return
         try:
             # Test token with a direct API call without interception
             self._validating_token = True
