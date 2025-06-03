@@ -19,7 +19,7 @@ class UVProgramRunner(ProgramRunner):
     """
 
     def __init__(self, program: Program, args: dict, robot_cell_override: RobotCell | None = None):
-        if not program.program_type == ProgramType.PYTHON:
+        if not program.program_type.value == ProgramType.PYTHON.value:
             raise ValueError(f"Program type must be {ProgramType.PYTHON}")
 
         super().__init__(program=program, args=args, robot_cell_override=robot_cell_override)
