@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v1.10.2 (2025-06-03)
+
+### Bug Fixes
+
+- Fixed uv_runner validation ([#177](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/177),
+  [`5c31d82`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5c31d8287bb6354a6f6ebd30202d43124b8eba69))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.10.1 (2025-06-03)
 
 ### Chores
