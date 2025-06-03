@@ -29,13 +29,21 @@ Install the library using pip:
 pip install wandelbots-nova
 ```
 
-### Recommended: Rerun Visualization
+### Recommended: uv project and Rerun Visualization
+
+Firstly you need to install [uv](https://docs.astral.sh/uv/getting-started/installation/) to your system.
+
+Initialize a new uv project with the following command.
+
+```bash
+uv init
+```
 
 We recommend installing the library with the `nova-rerun-bridge` extra to make usage of the visualization tool [rerun](https://rerun.io/).
 See the [extension README.md](nova_rerun_bridge/README.md) for further details.
 
 ```bash
-pip install "wandelbots-nova[nova-rerun-bridge]"
+uv add wandelbots-nova --extra nova-rerun-bridge
 ```
 
 You need to download the robot models to visualize the robot models in the rerun viewer.
