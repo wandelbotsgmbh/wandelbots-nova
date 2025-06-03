@@ -6,6 +6,7 @@ import time
 from abc import ABC
 from enum import Enum
 from typing import AsyncGenerator, TypeVar
+from urllib.parse import quote as original_quote
 
 import wandelbots_api_client as wb
 from decouple import config
@@ -17,6 +18,15 @@ from nova.core import logger
 from nova.core.env_handler import set_key
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.version import version as pkg_version
+
+
+def _custom_quote_for_ios(param, safe=""):
+    """
+    Custom quote function that preserves square brackets for I/O names.
+    This prevents double encoding of I/O names like "tool_out[0]".
+    """
+    return original_quote(param, safe="[]")
+
 
 T = TypeVar("T")
 
@@ -143,6 +153,19 @@ class ApiGateway:
 
     def _init_api_client(self):
         """Initialize or reinitialize the API client with current credentials"""
+
+        # Apply monkey patch for ControllerIOsApi
+        import wandelbots_api_client.api.controller_ios_api as ios_api_module
+
+        original_quote_func = getattr(ios_api_module, "quote", None)
+
+        if original_quote_func:
+            # Store original function for potential restoration
+            if not hasattr(self, "_original_quote_func"):
+                self._original_quote_func = original_quote_func
+            # Apply the monkey patch
+            ios_api_module.quote = _custom_quote_for_ios
+
         stripped_host = self._host.rstrip("/")
         api_client_config = wb.Configuration(
             host=f"{stripped_host}/api/{self._version}",
@@ -190,6 +213,11 @@ class ApiGateway:
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
     async def close(self):
+        # Restore the original quote function
+        if hasattr(self, "_original_quote_func"):
+            import wandelbots_api_client.api.controller_ios_api as ios_api_module
+
+            ios_api_module.quote = self._original_quote_func
         return await self._api_client.close()
 
     async def _ensure_valid_token(self):
