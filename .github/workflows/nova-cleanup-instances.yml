@@ -1,0 +1,20 @@
+name: "[nova] Cleanup Nova Instances"
+on:
+  schedule:
+    # Run at 3 AM UTC every day
+    - cron: '0 3 * * *'
+  # Allow manual triggering
+  workflow_dispatch:
+jobs:
+  cleanup:
+    name: Cleanup Nova Instances
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run cleanup script
+        env:
+          PORTAL_PROD_REFRESH_URL: ${{ secrets.PORTAL_PROD_REFRESH_URL }}
+          PORTAL_PROD_REFRESH_CLIENT_ID: ${{ secrets.PORTAL_PROD_REFRESH_CLIENT_ID }}
+          PORTAL_PROD_REFRESH_TOKEN: ${{ secrets.PORTAL_PROD_REFRESH_TOKEN }}
+        run: ./scripts/delete_all_nova_instances.sh
