@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.10.3 (2025-06-04)
+
+### Bug Fixes
+
+- Skip valid token check if a username and password is set
+  ([#176](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/176),
+  [`e3aee8a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e3aee8a7e2a90ecd2c0ec5a9a1dc9245506f7f95))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.10.2 (2025-06-03)
 
 ### Bug Fixes
