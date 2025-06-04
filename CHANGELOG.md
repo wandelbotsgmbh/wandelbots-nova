@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.11.0 (2025-06-04)
+
+### Features
+
+- **NDX-17**: Introducing cycle events, measurement and NATS propagation thereof
+  ([#169](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/169),
+  [`550d799`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/550d79901be7695dc98022e4ed9b4938de420f69))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.10.4 (2025-06-04)
 
 ### Bug Fixes
