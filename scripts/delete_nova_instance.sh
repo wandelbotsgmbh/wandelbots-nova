@@ -29,10 +29,11 @@ if [ "${INSECURE_CURL:-}" = "true" ]; then
   CURL_ARGS+=("--insecure")
 fi
 
-curl -X DELETE \
-  "https://io.wandelbots.io/instance/${PORTAL_PROD_INSTANCE_ID}" \
-  -H 'accept: application/json' \
-  -H "Authorization: Bearer ${PORTAL_PROD_ACCESS_TOKEN}" \
+# See: https://api.portal.wandelbots.io/v1/ui/#/operations/deleteInstance for API documentation
+curl --request DELETE \
+  --url "https://api.portal.wandelbots.io/v1/instances/${PORTAL_PROD_INSTANCE_ID}" \
+  --header 'accept: application/json' \
+  --header "Authorization: Bearer ${PORTAL_PROD_ACCESS_TOKEN}" \
   "${CURL_ARGS[@]}"
 
 echo "Instance ${PORTAL_PROD_INSTANCE_ID} has been deleted successfully."
