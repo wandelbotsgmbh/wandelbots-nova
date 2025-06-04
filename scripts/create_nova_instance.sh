@@ -32,6 +32,7 @@ echo "Access-token acquired."
 SANDBOX_NAME="svcmgr-${GITHUB_RUN_ID:-local-run}"
 echo "Creating instance: ${SANDBOX_NAME}"
 
+# See: https://api.portal.wandelbots.io/v1/ui/#/operations/createInstance for API documentation
 if ! INSTANCE_RESPONSE="$(curl --request POST \
   --url "https://api.portal.wandelbots.io/v1/instances" \
   --header "accept: application/json" \

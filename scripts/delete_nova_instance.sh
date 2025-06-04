@@ -29,6 +29,7 @@ if [ "${INSECURE_CURL:-}" = "true" ]; then
   CURL_ARGS+=("--insecure")
 fi
 
+# See: https://api.portal.wandelbots.io/v1/ui/#/operations/deleteInstance for API documentation
 curl --request DELETE \
   --url "https://api.portal.wandelbots.io/v1/instances/${PORTAL_PROD_INSTANCE_ID}" \
   --header 'accept: application/json' \
