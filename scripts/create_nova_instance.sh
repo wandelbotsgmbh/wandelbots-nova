@@ -12,12 +12,13 @@ set -euo pipefail
 : "${PORTAL_PROD_REFRESH_TOKEN:?Missing PORTAL_PROD_REFRESH_TOKEN}"
 
 echo "## Updating the refresh token..."
+echo "Refresh URL: ${PORTAL_PROD_REFRESH_URL}"
 PORTAL_PROD_ACCESS_TOKEN="$(curl --request POST \
   --url "${PORTAL_PROD_REFRESH_URL}" \
   --header 'content-type: application/x-www-form-urlencoded' \
   --data grant_type=refresh_token \
   --data "client_id=${PORTAL_PROD_REFRESH_CLIENT_ID}" \
-  --data "refresh_token=${PORTAL_PROD_REFRESH_TOKEN}" \
+  --data "refresh_token=${PORTAL_PROD_REFRESH_TOKEN}" \abe
   | jq -r .access_token)"
 
 if [ -z "$PORTAL_PROD_ACCESS_TOKEN" ] || [ "$PORTAL_PROD_ACCESS_TOKEN" = "null" ]; then
