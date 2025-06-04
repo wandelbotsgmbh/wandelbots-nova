@@ -4,6 +4,7 @@ from decouple import config
 
 from nova.cell.cell import Cell
 from nova.core.gateway import ApiGateway
+from nova.events import nats
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 CELL_NAME = config("CELL_NAME", default="cell")
@@ -52,6 +53,8 @@ class Nova:
 
     async def close(self):
         """Closes the underlying API client session."""
+        # hardcoded for now, later stuff like NATS might become devices
+        await nats.close()
         return await self._api_client.close()
 
     async def __aenter__(self):
