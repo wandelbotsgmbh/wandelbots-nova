@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.10.4 (2025-06-04)
+
+### Bug Fixes
+
+- **NDX-75**: Added scheduled job that cleans up all remaining instances
+  ([#179](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/179),
+  [`3989ca7`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3989ca7a3e5c7a45729157c12e453baa127f80e7))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.10.3 (2025-06-04)
 
 ### Bug Fixes
