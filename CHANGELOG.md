@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.12.0 (2025-06-06)
+
+### Features
+
+- **NDX-76**: Introduce nightly release
+  ([#180](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/180),
+  [`4630ee0`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4630ee0a3457bf3ba87edc0141ad214bafe63ad2))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.11.0 (2025-06-04)
 
 ### Features
