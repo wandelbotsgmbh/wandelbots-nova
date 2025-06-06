@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.13.1 (2025-06-06)
+
+### Chores
+
+- Improved nightly build
+  ([`c6a3b73`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c6a3b73c2537ae9014a3d5c1c168836bd7fb3074))
+
+
 ## v1.13.0 (2025-06-06)
 
 ### Features
