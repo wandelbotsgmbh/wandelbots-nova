@@ -1,4 +1,4 @@
-name: "[nova] Cleanup Nova Instances"
+name: "Cleanup testing instances"
 on:
   schedule:
     # Run at 3 AM UTC every day
