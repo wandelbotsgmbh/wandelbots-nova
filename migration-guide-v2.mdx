@@ -1,0 +1,1328 @@
+# Migration guide v1 -> v2
+
+This migration guide highlights the changes in the Wandelbots NOVA API v2 compared to the Wandelbots NOVA API v1.
+v2 comes with a lot of improvements like a less complex API, a more intuitive way to interact with the robot,
+and a more robust and reliable communication between the robot and the IPC.
+
+Read through the [NOVA API v2 quickstart](/25.3/api/v2-quickstart) and try it out using the [NOVA API v2 reference](https://portal.wandelbots.io/docs/api/v2/ui/#/)!
+If you have any questions or need help, feel free to ask in the Wandelbots Robotics community.
+
+Wandelbots NOVA API V1 will be **deprecated on xx/xx/xx**.
+
+## Parameter conversion
+
+Refer to this table for the parameter conversion between v1 and v2:
+
+| v1 parameter | v2 parameter |
+| ------------ | ------------ |
+| `id`         | `identifier` |
+|              |              |
+
+## Known issues & resolves
+
+## Workflow updates
+
+## Mapping
+
+This table maps v1 endpoints to v2 endpoints, enabling you to see which v2 endpoints you should use for the v1 endpoint.
+The v1 endpoints are grouped as in the API reference.
+
+### System
+
+#### Update Wandelbots NOVA version
+
+| Version | Group  | Endpoint             |
+| ------- | ------ | -------------------- |
+| v1      | System | `PUT /system/update` |
+| v2      | System | `PUT /api/v2/system/update` |
+
+#### Check update
+
+| Version | Group  | Endpoint             |
+| ------- | ------ | -------------------- |
+| v1      | System | `GET /system/update` |
+| v2      | System | `GET /api/v2/system/update` |
+
+#### Wandelbots NOVA Version
+
+| Version | Group  | Endpoint              |
+| ------- | ------ | --------------------- |
+| v1      | System | `GET /system/version` |
+| v2      | System | `GET /api/v2/system/version` |
+
+#### Wandelbots NOVA Status
+
+| Version | Group  | Endpoint             |
+| ------- | ------ | -------------------- |
+| v1      | System | `GET /system/status` |
+| v2      | System | `GET /api/v2/system/status` |
+
+#### Download Diagnosis Package
+
+| Version | Group  | Endpoint                            |
+| ------- | ------ | ----------------------------------- |
+| v1      | System | `GET /system/diagnosis-package/zip` |
+| v2      | System | `GET /api/v2/system/diagnosis-package/zip` |
+
+### Cells
+
+#### List Cells
+
+| Version | Group | Endpoint     |
+| ------- | ----- | ------------ |
+| v1      | Cells | `GET /cells` |
+| v2      | Cells | `GET /api/v2/cells` |
+
+#### Add Cell
+
+| Version | Group | Endpoint      |
+| ------- | ----- | ------------- |
+| v1      | Cells | `POST /cells` |
+| v2      | Cells | `POST /api/v2/cells` |
+
+#### Configuration
+
+| Version | Group | Endpoint            |
+| ------- | ----- | ------------------- |
+| v1      | Cells | `GET /cells/{cell}` |
+| v2      | Cells | `GET /api/v2/cells/{cell}` |
+
+#### Update Configuration
+
+| Version | Group | Endpoint            |
+| ------- | ----- | ------------------- |
+| v1      | Cells | `PUT /cells/{cell}` |
+| v2      | Cells | `PUT /api/v2/cells/{cell}` |
+
+#### Delete Cell
+
+| Version | Group | Endpoint               |
+| ------- | ----- | ---------------------- |
+| v1      | Cells | `DELETE /cells/{cell}` |
+| v2      | Cells | `DELETE /api/v2/cells/{cell}` |
+
+#### Service Status
+
+| Version | Group | Endpoint                   |
+| ------- | ----- | -------------------------- |
+| v1      | Cells | `GET /cells/{cell}/status` |
+| v2      | Cells | `GET /api/v2/cells/{cell}/status` |
+
+### Controller
+
+#### List Robot Controllers
+
+| Version | Group      | Endpoint                               |
+| ------- | ---------- | -------------------------------------- |
+| v1      | Controller | `GET /cells/{cell}/controllers`        |
+| v2      | Controller | List > `GET /api/v2/cells/{cell}/controllers` |
+
+#### Add Robot Controller
+
+| Version | Group      | Endpoint                         |
+| ------- | ---------- | -------------------------------- |
+| v1      | Controller | `POST /cells/{cell}/controllers` |
+| v2      | Controller | `POST /api/v2/cells/{cell}/controllers` |
+
+#### Clear Robot Controllers
+
+| Version | Group      | Endpoint                           |
+| ------- | ---------- | ---------------------------------- |
+| v1      | Controller | `DELETE /cells/{cell}/controllers` |
+| v2      | Controller | `DELETE /api/v2/cells/{cell}/controllers` |
+
+#### Robot Controller Configuration
+
+| Version | Group      | Endpoint                                     |
+| ------- | ---------- | -------------------------------------------- |
+| v1      | Controller | `GET /cells/{cell}/controllers/{controller}` |
+| v2      | Controller | `GET /api/v2/cells/{cell}/controllers/{controller}` |
+#### Update Robot Controller Configuration
+
+| Version | Group      | Endpoint                                     |
+| ------- | ---------- | -------------------------------------------- |
+| v1      | Controller | `PUT /cells/{cell}/controllers/{controller}` |
+| v2      | Controller | `PUT /api/v2cells/{cell}/controllers/{controller}` |
+
+#### Delete Robot Controller
+
+| Version | Group      | Endpoint                                        |
+| ------- | ---------- | ----------------------------------------------- |
+| v1      | Controller | `DELETE /cells/{cell}/controllers/{controller}` |
+| v2      | Controller | `DELETE /api/v2/cells/{cell}/controllers/{controller}` |
+
+#### Supported Motion Modes
+
+| Version | Group      | Endpoint                                                             |
+| ------- | ---------- | -------------------------------------------------------------------- |
+| v1      | Controller | `GET /cells/{cell}/controllers/{controller}/controller-capabilities` |
+| v2      | Controller | `GET /api/v2/cells/{cell}/controllers/{controller}/controller-capabilities` |
+
+#### Stream Free Drive Mode
+
+| Version | Group      | Endpoint                                                       |
+| ------- | ---------- | -------------------------------------------------------------- |
+| v1      | Controller | `GET /cells/{cell}/controllers/{controller}/free-drive-stream` |
+| v2      | Controller | `GET /api/v2/cells/{cell}/controllers/{controller}/free-drive-stream` |
+
+#### Current Mode
+
+| Version | Group      | Endpoint                                          |
+| ------- | ---------- | ------------------------------------------------- |
+| v1      | Controller | `GET /cells/{cell}/controllers/{controller}/mode` |
+| v2      | Controller | `GET /api/v2/cells/{cell}/controllers/{controller}/mode` |
+
+#### Set Default Mode
+
+| Version | Group      | Endpoint                                          |
+| ------- | ---------- | ------------------------------------------------- |
+| v1      | Controller | `PUT /cells/{cell}/controllers/{controller}/mode` |
+| v2      | Controller | `PUT /api/v2/cells/{cell}/controllers/{controller}/mode` |
+
+#### Stream Mode Change
+
+| Version | Group      | Endpoint                                                 |
+| ------- | ---------- | -------------------------------------------------------- |
+| v1      | Controller | `GET /cells/{cell}/controllers/{controller}/mode-stream` |
+| v2      | Controller | `GET /api/v2/cells/{cell}/controllers/{controller}/mode-stream` |
+
+#### State of Device
+
+| Version | Group      | Endpoint                                           |
+| ------- | ---------- | -------------------------------------------------- |
+| v1      | Controller | `GET /cells/{cell}/controllers/{controller}/state` |
+| v2      | Controller | `GET /api/v2/cells/{cell}/controllers/{controller}/state` |
+
+#### Stream State of Device
+
+| Version | Group      | Endpoint                                                  |
+| ------- | ---------- | --------------------------------------------------------- |
+| v1      | Controller | `GET /cells/{cell}/controllers/{controller}/state-stream` |
+| v2      | Controller | `GET /api/v2/cells/{cell}/controllers/{controller}/state-stream` |
+
+#### Virtual Robot Configuration
+
+| Version | Group      | Endpoint                                                                 |
+| ------- | ---------- | ------------------------------------------------------------------------ |
+| v1      | Controller | `GET /cells/{cell}/controllers/{controller}/virtual-robot-configuration` |
+| v2      | Controller | `GET /api/v2/cells/{cell}/controllers/{controller}/virtual-robot-configuration` |
+
+### Motion Group
+
+#### List Active
+
+| Version | Group        | Endpoint                          |
+| ------- | ------------ | --------------------------------- |
+| v1      | Motion Group | `GET /cells/{cell}/motion-groups` |
+| v2      | Motion Group | `GET /api/v2/cells/{cell}/motion-groups` |
+
+#### Activate
+
+| Version | Group        | Endpoint                           |
+| ------- | ------------ | ---------------------------------- |
+| v1      | Motion Group | `POST /cells/{cell}/motion-groups` |
+| v2      | Motion Group | `POST /api/v2/cells/{cell}/motion-groups` |
+#### Activate All
+
+| Version | Group        | Endpoint                               |
+| ------- | ------------ | -------------------------------------- |
+| v1      | Motion Group | `POST /cells/{cell}/motion-groups/all` |
+| v2      | Motion Group | `POST /api/v2/cells/{cell}/motion-groups/all` |
+
+#### Deactivate
+
+| Version | Group        | Endpoint                                            |
+| ------- | ------------ | --------------------------------------------------- |
+| v1      | Motion Group | `DELETE /cells/{cell}/motion-groups/{motion-group}` |
+| v2      | Motion Group | `DELETE /api/v2/cells/{cell}/motion-groups/{motion-group}` |
+
+### Motion Group Infos
+
+#### Capabilities
+
+| Version | Group              | Endpoint                                                           |
+| ------- | ------------------ | ------------------------------------------------------------------ |
+| v1      | Motion Group Infos | `GET /cells/{cell}/motion-groups/{motion-group}/info-capabilities` |
+| v2      | Motion Group Info  | `GET /api/v2/cells/{cell}/motion-groups/{motion-group}/info-capabilities` |
+
+#### Device Mounting
+
+| Version | Group              | Endpoint                                                  |
+| ------- | ------------------ | --------------------------------------------------------- |
+| v1      | Motion Group Infos | `GET /cells/{cell}/motion-groups/{motion-group}/mounting` |
+| v2      | Motion Group Info  | `GET /api/v2/cells/{cell}/motion-groups/{motion-group}/mounting` |
+
+#### Optimizer Configuration
+
+| Version | Group              | Endpoint                                                         |
+| ------- | ------------------ | ---------------------------------------------------------------- |
+| v1      | Motion Group Infos | `GET /cells/{cell}/motion-groups/{motion-group}/optimizer-setup` |
+| v2      | Motion Group Info  | `GET /api/v2/cells/{cell}/motion-groups/{motion-group}/optimizer-setup` |
+
+#### List Payloads
+
+| Version | Group              | Endpoint                                                  |
+| ------- | ------------------ | --------------------------------------------------------- |
+| v1      | Motion Group Infos | `GET /cells/{cell}/motion-groups/{motion-group}/payloads` |
+| v2      | Motion Group Info  | `GET /api/v2/cells/{cell}/motion-groups/{motion-group}/payloads` |
+
+#### Selected Payloads
+
+| Version | Group              | Endpoint                                                          |
+| ------- | ------------------ | ----------------------------------------------------------------- |
+| v1      | Motion Group Infos | `GET /cells/{cell}/motion-groups/{motion-group}/payloads/current` |
+| v2      | Motion Group Info  | `GET /api/v2/cells/{cell}/motion-groups/{motion-group}/payloads/current` |
+
+#### Safety Setup and Limitations
+
+| Version | Group              | Endpoint                                                      |
+| ------- | ------------------ | ------------------------------------------------------------- |
+| v1      | Motion Group Infos | `GET /cells/{cell}/motion-groups/{motion-group}/safety-setup` |
+| v2      | Motion Group Info  | `GET /api/v2/cells/{cell}/motion-groups/{motion-group}/safety-setup` |
+
+#### Get Static Properties
+
+| Version | Group              | Endpoint                                                       |
+| ------- | ------------------ | -------------------------------------------------------------- |
+| v1      | Motion Group Infos | `GET /cells/{cell}/motion-groups/{motion-group}/specification` |
+| v2      | Motion Group Info  | `GET /api/v2/cells/{cell}/motion-groups/{motion-group}/specification` |
+
+#### State of Device
+
+| Version | Group              | Endpoint                                               |
+| ------- | ------------------ | ------------------------------------------------------ |
+| v1      | Motion Group Infos | `GET /cells/{cell}/motion-groups/{motion-group}/state` |
+| v2      | Motion Group Info  | `GET /api/v2/cells/{cell}/motion-groups/{motion-group}/state` |
+
+#### Stream State of Device
+
+| Version | Group              | Endpoint                                                      |
+| ------- | ------------------ | ------------------------------------------------------------- |
+| v1      | Motion Group Infos | `GET /cells/{cell}/motion-groups/{motion-group}/state-stream` |
+| v2      | Motion Group Info  | `GET /api/v2/cells/{cell}/motion-groups/{motion-group}/state-stream` |
+
+#### List TCPs
+
+| Version | Group              | Endpoint                                              |
+| ------- | ------------------ | ----------------------------------------------------- |
+| v1      | Motion Group Infos | `GET /cells/{cell}/motion-groups/{motion-group}/tcps` |
+| v2      | Motion Group Info  | `GET /cells/{cell}/motion-groups/{motion-group}/tcps` |
+
+#### Selected TCP
+
+| Version | Group              | Endpoint                                                      |
+| ------- | ------------------ | ------------------------------------------------------------- |
+| v1      | Motion Group Infos | `GET /cells/{cell}/motion-groups/{motion-group}/tcps/current` |
+| v2      | Motion Group Info  | `GET /api/v2/cells/{cell}/motion-groups/{motion-group}/tcps/current` |
+
+### Motion Group Kinematic
+
+#### Capabilities
+
+| Version | Group                   | Endpoint                                                                |
+| ------- | ----------------------- | ----------------------------------------------------------------------- |
+| v1      | Motion Group Kinematic  | `GET /cells/{cell}/motion-groups/{motion-group}/kinematic-capabilities` |
+| v2      | Motion Group Kinematics | `GET /api/v2/cells/{cell}/motion-groups/{motion-group}/kinematic-capabilities` |
+
+#### All Joint Positions from TCP Pose
+
+| Version | Group                   | Endpoint                                                                        |
+| ------- | ----------------------- | ------------------------------------------------------------------------------- |
+| v1      | Motion Group Kinematic  | `POST /cells/{cell}/motion-groups/{motion-group}/calculate-all-joint-positions` |
+| v2      | Motion Group Kinematics | `POST /api/v2/cells/{cell}/motion-groups/{motion-group}/calculate-all-joint-positions` |
+
+#### Nearest Joint Position from TCP Pose
+
+| Version | Group                   | Endpoint                                                                   |
+| ------- | ----------------------- | -------------------------------------------------------------------------- |
+| v1      | Motion Group Kinematic  | `POST /cells/{cell}/motion-groups/{motion-group}/calculate-joint-position` |
+| v2      | Motion Group Kinematics | `POST /api/v2/cells/{cell}/motion-groups/{motion-group}/calculate-joint-position` |
+
+#### TCP Pose from Joint Position
+
+| Version | Group                   | Endpoint                                                             |
+| ------- | ----------------------- | -------------------------------------------------------------------- |
+| v1      | Motion Group Kinematic  | `POST /cells/{cell}/motion-groups/{motion-group}/calculate-tcp-pose` |
+| v2      | Motion Group Kinematics | `POST /api/v2/cells/{cell}/motion-groups/{motion-group}/calculate-tcp-pose` |
+
+### Motion Group Jogging
+
+#### Capabilities
+
+| Version | Group                | Endpoint                                                                                   |
+| ------- | -------------------- | ------------------------------------------------------------------------------------------ |
+| v1      | Motion Group Jogging | `GET /cells/{cell}/motion-groups/{motion-group}/jogging-capabilities`                      |
+| v2      | Motion Group Info    | Jogging Capabilities > `GET /api/v2/cells/{cell}/motion-groups/{motion-group}/capability/jogging` |
+
+#### Stop
+
+| Version | Group                | Endpoint                                                                                            |
+| ------- | -------------------- | --------------------------------------------------------------------------------------------------- |
+| v1      | Motion Group Jogging | `PUT /cells/{cell}/motion-groups/{motion-group}/stop`                                               |
+| v2      | Jogging              | Execute Jogging > `GET /api/v2/cells/{cell}/execution/jogging`,<br/>send desired request with 0 velocities |
+
+#### Stream Joints
+
+| Version | Group                | Endpoint                                                                                |
+| ------- | -------------------- | --------------------------------------------------------------------------------------- |
+| v1      | Motion Group Jogging | `GET /cells/{cell}/motion-groups/move-joint`                                            |
+| v2      | Jogging              | Execute Jogging > `GET /api/v2/cells/{cell}/execution/jogging`,<br/>use Joint Velocity request |
+
+#### Stream Cartesian
+
+| Version | Group                | Endpoint                                                                              |
+| ------- | -------------------- | ------------------------------------------------------------------------------------- |
+| v1      | Motion Group Jogging | `GET /cells/{cell}/motion-groups/move-tcp`                                            |
+| v2      | Jogging              | Execute Jogging > `GET /api/v2/cells/{cell}/execution/jogging`,<br/>use TCP Velocity request |
+
+### Motion
+
+Planning and executing movements was split into multiple endpoints in v1.
+In v2, the endpoints required for a movement execution were reduced.
+
+#### List All Motions
+
+| Version | Group                | Endpoint                                             |
+| ------- | -------------------- | ---------------------------------------------------- |
+| v1      | Motion               | `GET /cells/{cell}/motions`                          |
+| v2      | Trajectory Execution | List Trajectories > `GET /api/v2/cells/{cell}/trajectories` |
+
+#### Plan Motion
+
+| Version | Group               | Endpoint                                                               |
+| ------- | ------------------- | ---------------------------------------------------------------------- |
+| v1      | Motion              | `POST /cells/{cell}/motions`                                           |
+| v2      | Trajectory Planning | Plan Trajectory > `POST /api/v2/cells/{cell}/motion-planning/plan-trajectory` |
+
+#### Delete All Motions
+
+| Version | Group                | Endpoint                                                 |
+| ------- | -------------------- | -------------------------------------------------------- |
+| v1      | Motion               | `DELETE /cells/{cell}/motions`                           |
+| v2      | Trajectory Execution | Clear trajectories > `DELETE /api/v2/cells/{cell}/trajectories` |
+
+#### Plan Trajectory
+
+| Version | Group               | Endpoint                                                               |
+| ------- | ------------------- | ---------------------------------------------------------------------- |
+| v1      | Motion              | `POST /cells/{cell}/motion-planning/plan-trajectory`                   |
+| v2      | Trajectory Planning | Plan Trajectory > `POST /api/v2/cells/{cell}/motion-planning/plan-trajectory` |
+
+#### Motion Group Models for Planning
+
+| Version | Group               | Endpoint                                                |
+| ------- | ------------------- | ------------------------------------------------------- |
+| v1      | Motion              | `GET /cells/{cell}/motion-planning/motion-group-models` |
+| v2      | Trajectory Planning | `GET /api/v2/cells/{cell}/motion-planning/motion-group-models` |
+
+#### Plan Collision Free P2P
+
+| Version | Group               | Endpoint                                                                                                                              |
+| ------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| v1      | Motion              | `POST /cells/{cell}/motion-planning/plan-collision-free-ptp`                                                                          |
+| v2      | Trajectory Planning | Plan Trajectory > `POST /cells/{cell}/motion-planning/plan-trajectory`,<br/>use static_colliders and collision_motion_group parameter |
+
+#### Load Planned Motion
+
+| Version | Motion               | Endpoint                                                                                     |
+| ------- | -------------------- | -------------------------------------------------------------------------------------------- |
+| v1      | Cells                | `POST /cells/{cell}/motion-planning/planned-motions`                                         |
+| v2      | Trajectory Execution | Add Trajectory > `POST /api/v2/cells/{cell}/trajectories`,<br/>use InitializeMovementRequest |
+
+#### Get Planned Motion
+
+| Version | Group                | Endpoint                                                                                                |
+| ------- | -------------------- | ------------------------------------------------------------------------------------------------------- |
+| v1      | Motion               | `GET /cells/{cell}/motion-planning/planned-motion`                                                      |
+| v2      | Trajectory Execution | Execute Trajectory > `GET /api/v2/cells/{cell}/execution/trajectory`,<br/>use InitializeMovementRequest |
+
+#### Remove
+
+| Version | Group                | Endpoint                                                                    |
+| ------- | -------------------- | --------------------------------------------------------------------------- |
+| v1      | Motion               | `DELETE /cells/{cell}/motions/{motion}/delete`                              |
+| v2      | Trajectory Execution | Delete Trajectory > `DELETE /api/v2/cells/{cell}/trajectories/{trajectory}` |
+
+#### Stream Backward
+
+| Version | Group                | Endpoint                                                                                                                                       |
+| ------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1      | Motion               | `GET /cells/{cell}/motions/{motion}/executebackward`                                                                                           |
+| v2      | Trajectory Execution | Execute Trajectory > `GET /api/v2/cells/{cell}/execution/trajectory`,<br/>use StartMovementRequest and set the direction parameter to backward |
+
+#### Stream Forward
+
+| Version | Group                | Endpoint                                                                                                                                      |
+| ------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1      | Motion               | `GET /cells/{cell}/motions/{motion}/executeforward`                                                                                           |
+| v2      | Trajectory Execution | Execute Trajectory > `GET /api/v2/cells/{cell}/execution/trajectory`,<br/>use StartMovementRequest and set the direction parameter to forward |
+
+
+#### Stream to Trajectory
+
+| Version | Group                | Endpoint                                                                                          |
+| ------- | -------------------- | ------------------------------------------------------------------------------------------------- |
+| v1      | Motion               | `GET /cells/{cell}/motions/{motion}/executetotrajectory`                                          |
+| v2      | Trajectory Execution | Move to Trajectory > `GET /api/v2/cells/{cell}/trajectories/{trajectory}/execution/to-trajectory` |
+
+#### Stop
+
+| Version | Group                | Endpoint                                                                                           |
+| ------- | -------------------- | -------------------------------------------------------------------------------------------------- |
+| v1      | Motion               | `PUT /cells/{cell}/motions/{motion}/stop`                                                          |
+| v2      | Trajectory Execution | Execute Trajectory > `GET /api/v2/cells/{cell}/execution/trajectory`,<br/>use PauseMovementRequest |
+
+#### Get Trajectory
+
+| Version | Group  | Endpoint                                        |
+| ------- | ------ | ----------------------------------------------- |
+| v1      | Motion | `GET /cells/{cell}/motions/{motion}/trajectory` |
+| v2      | -      | -                                               |
+
+#### Get Trajectory Sample
+
+| Version | Group  | Endpoint                                              |
+| ------- | ------ | ----------------------------------------------------- |
+| v1      | Motion | `GET /cells/{cell}/motions/{motion}/trajectorysample` |
+| v2      | -      | -                                                     |
+
+#### Stream Move
+
+| Version | Group                | Endpoint                                                             |
+| ------- | -------------------- | -------------------------------------------------------------------- |
+| v1      | Motion               | `GET /cells/{cell}/motions/streammove`                               |
+| v2      | Trajectory Execution | Execute Trajectory > `GET /api/v2/cells/{cell}/execution/trajectory` |
+
+#### Execute Trajectory
+
+| Version | Group                | Endpoint                                                             |
+| ------- | -------------------- | -------------------------------------------------------------------- |
+| v1      | Motion               | `GET /cells/{cell}/motions/executetrajectory`                        |
+| v2      | Trajectory Execution | Execute Trajectory > `GET /api/v2/cells/{cell}/execution/trajectory` |
+
+### Program
+
+#### List Program Runners
+
+| Version | Group   | Endpoint                            |
+| ------- | ------- | ----------------------------------- |
+| v1      | Program | `GET /cells/{cell}/program/runners` |
+| v2      | Program | `GET /api/v2/cells/{cell}/program/runners` |
+
+#### Create Program Runner
+
+| Version | Group   | Endpoint                             |
+| ------- | ------- | ------------------------------------ |
+| v1      | Program | `POST /cells/{cell}/program/runners` |
+| v2      | Program | `POST /api/v2/cells/{cell}/program/runners` |
+
+#### Stop All Program Runners
+
+| Version | Group   | Endpoint                                  |
+| ------- | ------- | ----------------------------------------- |
+| v1      | Program | `POST /cells/{cell}/program/runners/stop` |
+| v2      | Program | `POST /api/v2/cells/{cell}/program/runners/stop` |
+
+#### Get Program Runner
+
+| Version | Group   | Endpoint                                     |
+| ------- | ------- | -------------------------------------------- |
+| v1      | Program | `GET /cells/{cell}/program/runners/{runner}` |
+| v2      | Program | `GET /api/v2/cells/{cell}/program/runners/{runner}` |
+
+#### Stop Program Runner
+
+| Version | Group   | Endpoint                                           |
+| ------- | ------- | -------------------------------------------------- |
+| v1      | Program | `POST /cells/{cell}/program/runners/{runner}/stop` |
+| v2      | Program | `POST /api/v2/cells/{cell}/program/runners/{runner}/stop` |
+
+#### Execute Program
+
+| Version | Group   | Endpoint                              |
+| ------- | ------- | ------------------------------------- |
+| v1      | Program | `POST /cells/{cell}/programs/execute` |
+| v2      | Program | `POST /api/v2/cells/{cell}/programs/execute` |
+
+#### Plan Program
+
+| Version | Group   | Endpoint                           |
+| ------- | ------- | ---------------------------------- |
+| v1      | Program | `POST /cells/{cell}/programs/plan` |
+| v2      | Program | `POST /api/v2/cells/{cell}/programs/plan` |
+
+#### Migrate Program
+
+| Version | Group   | Endpoint                              |
+| ------- | ------- | ------------------------------------- |
+| v1      | Program | `POST /cells/{cell}/programs/migrate` |
+| v2      | Program | `POST /api/v2/cells/{cell}/programs/migrate` |
+
+### Program Values
+
+The Program Values endpoints were removed in v2. There is no replacement for these endpoints.
+
+#### Get Values
+
+| Version | Group          | Endpoint                            |
+| ------- | -------------- | ----------------------------------- |
+| v1      | Program Values | `GET /cells/{cell}/programs/values` |
+| v2      | -              | -                                   |
+
+#### Add Value(s)
+
+| Version | Group          | Endpoint                             |
+| ------- | -------------- | ------------------------------------ |
+| v1      | Program Values | `POST /cells/{cell}/programs/values` |
+| v2      | -              | -                                    |
+
+#### Delete All Values
+
+| Version | Group          | Endpoint                               |
+| ------- | -------------- | -------------------------------------- |
+| v1      | Program Values | `DELETE /cells/{cell}/programs/values` |
+| v2      | -              | -                                      |
+
+#### Delete Value
+
+| Version | Group          | Endpoint                                     |
+| ------- | -------------- | -------------------------------------------- |
+| v1      | Program Values | `DELETE /cells/{cell}/programs/values/{key}` |
+| v2      | -              | -                                            |
+
+#### Get Value
+
+| Version | Group          | Endpoint                                  |
+| ------- | -------------- | ----------------------------------------- |
+| v1      | Program Values | `GET /cells/{cell}/programs/values/{key}` |
+| v2      | -              | -                                         |
+
+#### Create or Update Value
+
+| Version | Group          | Endpoint                                  |
+| ------- | -------------- | ----------------------------------------- |
+| v1      | Program Values | `PUT /cells/{cell}/programs/values/{key}` |
+| v2      | -              | -                                         |
+
+### Program Operator
+
+#### Run Program from Library
+
+| Version | Group            | Endpoint                                    |
+| ------- | ---------------- | ------------------------------------------- |
+| v1      | Program Operator | `POST /cells/{cell}/operator/programs/runs` |
+| v2      | Program Operator | `POST /api/v2/cells/{cell}/operator/programs/runs` |
+
+#### Get All Program Runs
+
+| Version | Group            | Endpoint                                   |
+| ------- | ---------------- | ------------------------------------------ |
+| v1      | Program Operator | `GET /cells/{cell}/operator/programs/runs` |
+| v2      | Program Operator | `GET /api/v2/cells/{cell}/operator/programs/runs` |
+
+#### Get Program Run
+
+| Version | Group            | Endpoint                                         |
+| ------- | ---------------- | ------------------------------------------------ |
+| v1      | Program Operator | `GET /cells/{cell}/operator/programs/runs/{run}` |
+| v2      | Program Operator | `GET /api/v2/cells/{cell}/operator/programs/runs/{run}` |
+
+#### Create Trigger
+
+| Version | Group            | Endpoint                               |
+| ------- | ---------------- | -------------------------------------- |
+| v1      | Program Operator | `POST /cells/{cell}/operator/triggers` |
+| v2      | Program Operator | `POST /api/v2/cells/{cell}/operator/triggers` |
+
+#### Get All Triggers
+
+| Version | Group            | Endpoint                              |
+| ------- | ---------------- | ------------------------------------- |
+| v1      | Program Operator | `GET /cells/{cell}/operator/triggers` |
+| v2      | Program Operator | `GET /api/v2/cells/{cell}/operator/triggers` |
+
+#### Get Trigger
+
+| Version | Group            | Endpoint                                        |
+| ------- | ---------------- | ----------------------------------------------- |
+| v1      | Program Operator | `GET /cells/{cell}/operator/triggers/{trigger}` |
+| v2      | Program Operator | `GET /api/v2/cells/{cell}/operator/triggers/{trigger}` |
+
+#### Update Trigger
+
+| Version | Group            | Endpoint                                        |
+| ------- | ---------------- | ----------------------------------------------- |
+| v1      | Program Operator | `PUT /cells/{cell}/operator/triggers/{trigger}` |
+| v2      | Program Operator | `PUT /api/v2/cells/{cell}/operator/triggers/{trigger}` |
+
+#### Delete Trigger
+
+| Version | Group            | Endpoint                                           |
+| ------- | ---------------- | -------------------------------------------------- |
+| v1      | Program Operator | `DELETE /cells/{cell}/operator/triggers/{trigger}` |
+| v2      | Program Operator | `DELETE /api/v2/cells/{cell}/operator/triggers/{trigger}` |
+
+### Library Program Metadata
+
+#### List Program Metadata
+
+| Version | Group                    | Endpoint                           |
+| ------- | ------------------------ | ---------------------------------- |
+| v1      | Library Program Metadata | `GET /cells/{cell}/store/programs` |
+| v2      | Program Library Metadata | `GET /api/v2/cells/{cell}/store/programs` |
+
+#### Get Program Metadata
+
+| Version | Group                    | Endpoint                                              |
+| ------- | ------------------------ | ----------------------------------------------------- |
+| v1      | Library Program Metadata | `GET /cells/{cell}/store/programs/{program}/metadata` |
+| v2      | Program Library Metadata | `GET /api/v2/cells/{cell}/store/programs/{program}/metadata` |
+
+#### Update Program Metadata
+
+| Version | Group                    | Endpoint                                              |
+| ------- | ------------------------ | ----------------------------------------------------- |
+| v1      | Library Program Metadata | `PUT /cells/{cell}/store/programs/{program}/metadata` |
+| v2      | Program Library Metadata | `PUT /api/v2/cells/{cell}/store/programs/{program}/metadata` |
+
+#### Upload Program Metadata Image
+
+| Version | Group                    | Endpoint                                                     |
+| ------- | ------------------------ | ------------------------------------------------------------ |
+| v1      | Library Program Metadata | `POST /cells/{cell}/store/programs/{program}/metadata/image` |
+| v2      | Program Library Metadata | `POST /api/v2/cells/{cell}/store/programs/{program}/metadata/image` |
+
+### Library Program
+
+#### Create Program
+
+| Version | Group           | Endpoint                            |
+| ------- | --------------- | ----------------------------------- |
+| v1      | Library Program | `POST /cells/{cell}/store/programs` |
+| v2      | Program Library | `POST /api/v2/cells/{cell}/store/programs` |
+
+#### Delete Program List
+
+| Version | Group           | Endpoint                              |
+| ------- | --------------- | ------------------------------------- |
+| v1      | Library Program | `DELETE /cells/{cell}/store/programs` |
+| v2      | Program Library | `DELETE /api/v2/cells/{cell}/store/programs` |
+
+#### Get Program
+
+| Version | Group           | Endpoint                                     |
+| ------- | --------------- | -------------------------------------------- |
+| v1      | Library Program | `GET /cells/{cell}/store/programs/{program}` |
+| v2      | Program Library | `GET /api/v2/cells/{cell}/store/programs/{program}` |
+
+#### Update Program
+
+| Version | Group           | Endpoint                                     |
+| ------- | --------------- | -------------------------------------------- |
+| v1      | Library Program | `PUT /cells/{cell}/store/programs/{program}` |
+| v2      | Program Library | `PUT /api/v2/cells/{cell}/store/programs/{program}` |
+
+#### Delete Program
+
+| Version | Group           | Endpoint                                        |
+| ------- | --------------- | ----------------------------------------------- |
+| v1      | Library Program | `DELETE /cells/{cell}/store/programs/{program}` |
+| v2      | Program Library | `DELETE /api/v2/api/v2/cells/{cell}/store/programs/{program}` |
+
+### Virtual Robot
+
+#### Motion Group Description
+
+| Version | Group         | Endpoint                                                                    |
+| ------- | ------------- | --------------------------------------------------------------------------- |
+| v1      | Virtual Robot | `GET /cells/{cell}/controllers/{controller}/teach-pendant/motiongroups`     |
+| v2      | Virtual Robot | `GET /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/motion-groups` |
+
+#### List Inputs/Outputs
+
+| Version | Group         | Endpoint                                                                                   |
+| ------- | ------------- | ------------------------------------------------------------------------------------------ |
+| v1      | Virtual Robot | `GET /cells/{cell}/controllers/{controller}/teach-pendant/ios`                             |
+| v2      | Virtual Robot | Get Inputs/Outputs > `GET /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/ios` |
+
+#### Get I/O
+
+| Version | Group         | Endpoint                                                                                                                                           |
+| ------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot | `GET /cells/{cell}/controllers/{controller}/teach-pendant/ios/{io}`                                                                                |
+| v2      | Virtual Robot | Get Inputs/Outputs > `GET /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/ios`,<br/>use ios parameter to get values for the desired IO |
+
+#### Set I/O
+
+| Version | Group         | Endpoint                                                                                                                                               |
+| ------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| v1      | Virtual Robot | `PUT /cells/{cell}/controllers/{controller}/teach-pendant/ios/{io}`                                                                                    |
+| v2      | Virtual Robot | Set Input/Output Values > `PUT /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/ios`,<br/>use io parameter to set values for the desired IO |
+
+#### Get Motion Group State
+
+| Version | Group         | Endpoint                                                                                       |
+| ------- | ------------- | ---------------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot | `GET /cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}`                  |
+| v2      | Virtual Robot | `GET /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{motion-group}` |
+
+#### Set Motion Group State
+
+| Version | Group         | Endpoint                                                                                       |
+| ------- | ------------- | ---------------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot | `PUT /cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}`                  |
+| v2      | Virtual Robot | `PUT /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{motion-group}` |
+
+### Virtual Robot Setup
+
+#### List Coordinate Systems
+
+| Version | Group               | Endpoint                                                                             |
+| ------- | ------------------- | ------------------------------------------------------------------------------------ |
+| v1      | Virtual Robot Setup | `GET /cells/{cell}/controllers/{controller}/teach-pendant/coordinate-systems`        |
+| v2      | Virtual Robot Setup | `GET /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/coordinate-systems` |
+
+#### Add Coordinate Systems
+
+| Version | Group               | Endpoint                                                                             |
+| ------- | ------------------- | ------------------------------------------------------------------------------------ |
+| v1      | Virtual Robot Setup | `PUT /cells/{cell}/controllers/{controller}/teach-pendant/coordinate-systems`        |
+| v2      | Virtual Robot Setup | `PUT /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/coordinate-systems` |
+
+#### Remove Coordinate Systems
+
+| Version | Group               | Endpoint                                                                                                    |
+| ------- | ------------------- | ----------------------------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Setup | `DELETE /cells/{cell}/controllers/{controller}/teach-pendant/coordinate-systems/{coordinate-system}`        |
+| v2      | Virtual Robot Setup | `DELETE /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/coordinate-systems/{coordinate-system}` |
+
+#### Get Mounting
+
+| Version | Group               | Endpoint                                                                                      |
+| ------- | ------------------- | --------------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Setup | `GET /cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/mounting`        |
+| v2      | Virtual Robot Setup | `GET /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/mounting` |
+
+#### Set Mounting
+
+| Version | Group               | Endpoint                                                                                      |
+| ------- | ------------------- | --------------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Setup | `PUT /cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/mounting`        |
+| v2      | Virtual Robot Setup | `PUT /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/mounting` |
+
+#### List TCPs
+
+| Version | Group               | Endpoint                                                                                  |
+| ------- | ------------------- | ----------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Setup | `GET /cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/tcps`        |
+| v2      | Virtual Robot Setup | `GET /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/tcps` |
+
+#### Add TCP
+
+| Version | Group               | Endpoint                                                                                  |
+| ------- | ------------------- | ----------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Setup | `PUT /cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/tcps`        |
+| v2      | Virtual Robot Setup | `PUT /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/tcps` |
+
+#### Remove TCP
+
+| Version | Group               | Endpoint                                                                                           |
+| ------- | ------------------- | -------------------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Setup | `DELETE /cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/tcps/{tcp}`        |
+| v2      | Virtual Robot Setup | `DELETE /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/tcps/{tcp}` |
+
+### Virtual Robot Mode
+
+#### Get E-Stop State
+
+| Version | Group              | Endpoint                                                                         |
+| ------- | ------------------ | -------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Mode | `GET /cells/{cell}/controllers/{controller}/teach-pendant/estop`                 |
+| v2      | Virtual Robot Mode | `GET /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/emergency-stop` |
+
+#### Push E-Stop
+
+| Version | Group              | Endpoint                                                                                                   |
+| ------- | ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Mode | `PUT /cells/{cell}/controllers/{controller}/teach-pendant/estop/push`                                      |
+| v2      | Virtual Robot Mode | `PUT /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/emergency-stop`,<br/>set active to `true` |
+
+#### Release E-Stop
+
+| Version | Group              | Endpoint                                                                                                    |
+| ------- | ------------------ | ----------------------------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Mode | `PUT /cells/{cell}/controllers/{controller}/teach-pendant/release`                                          |
+| v2      | Virtual Robot Mode | `PUT /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/emergency-stop`,<br/>set active to `false` |
+
+#### Get Operation Mode
+
+| Version | Group              | Endpoint                                                                        |
+| ------- | ------------------ | ------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Mode | `GET /cells/{cell}/controllers/{controller}/teach-pendant/operationmode`        |
+| v2      | Virtual Robot Mode | `GET /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/operationmode` |
+
+#### Set Operation Mode
+
+| Version | Group              | Endpoint                                                                        |
+| ------- | ------------------ | ------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Mode | `PUT /cells/{cell}/controllers/{controller}/teach-pendant/operationmode`        |
+| v2      | Virtual Robot Mode | `PUT /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/operationmode` |
+
+#### Cycle Time
+
+| Version | Group              | Endpoint                                                                     |
+| ------- | ------------------ | ---------------------------------------------------------------------------- |
+| v1      | Virtual Robot Mode | `GET /cells/{cell}/controllers/{controller}/teach-pendant/cycle-time`        |
+| v2      | Virtual Robot Mode | `GET /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/cycle-time` |
+
+### Virtual Robot Behavior
+
+#### Behavior
+
+| Version | Group                  | Endpoint                                                                                      |
+| ------- | ---------------------- | --------------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Behavior | `GET /cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/behavior`        |
+| v2      | Virtual Robot Behavior | `GET /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/behavior` |
+
+#### Switch Behavior
+
+| Version | Group                  | Endpoint                                                                                      |
+| ------- | ---------------------- | --------------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Behavior | `PUT /cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/behavior`        |
+| v2      | Virtual Robot Behavior | `PUT /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/{id}/behavior` |
+
+#### Stream Joint Configuraton
+
+| Version | Group                  | Endpoint                                                                                             |
+| ------- | ---------------------- | ---------------------------------------------------------------------------------------------------- |
+| v1      | Virtual Robot Behavior | `PUT /cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/externalJointsStream`        |
+| v2      | Virtual Robot Behavior | `PUT /api/v2/cells/{cell}/controllers/{controller}/teach-pendant/motion-groups/externalJointsStream` |
+
+### Controller I/Os
+
+#### List Descriptions
+
+| Version | Group                     | Endpoint                                                            |
+| ------- | ------------------------- | ------------------------------------------------------------------- |
+| v1      | Controller I/Os           | `GET /cells/{cell}/controllers/{controller}/ios/description`        |
+| v2      | Controller Inputs/Outputs | `GET /api/v2/cells/{cell}/controllers/{controller}/ios/description` |
+
+#### Stream Values
+
+| Version | Group                     | Endpoint                                                                                    |
+| ------- | ------------------------- | ------------------------------------------------------------------------------------------- |
+| v1      | Controller I/Os           | `GET /cells/{cell}/controllers/{controller}/ios/stream`                                     |
+| v2      | Controller Inputs/Outputs | Stream Input/Output Values > `GET /api/v2/cells/{cell}/controllers/{controller}/ios/stream` |
+
+#### Values
+
+| Version | Group                     | Endpoint                                                                                 |
+| ------- | ------------------------- | ---------------------------------------------------------------------------------------- |
+| v1      | Controller I/Os           | `GET /cells/{cell}/controllers/{controller}/ios/values`                                  |
+| v2      | Controller Inputs/Outputs | Get Input/Output Values > `GET /api/v2/cells/{cell}/controllers/{controller}/ios/values` |
+
+#### Set Values
+
+| Version | Group                     | Endpoint                                                                           |
+| ------- | ------------------------- | ---------------------------------------------------------------------------------- |
+| v1      | Controller I/Os           | `PUT /cells/{cell}/controllers/{controller}/ios/values`                            |
+| v2      | Controller Inputs/Outputs | Set Output Values > `PUT /api/v2/cells/{cell}/controllers/{controller}/ios/values` |
+
+#### Wait For
+
+| Version | Group                     | Endpoint                                                         |
+| ------- | ------------------------- | ---------------------------------------------------------------- |
+| v1      | Controller I/Os           | `PUT /cells/{cell}/controllers/{controller}/ios/wait-for`        |
+| v2      | Controller Inputs/Outputs | `GET /api/v2/cells/{cell}/controllers/{controller}/ios/wait-for` |
+
+### Coordinate Systems
+
+#### List
+
+| Version | Group              | Endpoint                                      |
+| ------- | ------------------ | --------------------------------------------- |
+| v1      | Coordinate Systems | `GET /cells/{cell}/coordinate-systems`        |
+| v1      | Coordinate Systems | `GET /api/v2/cells/{cell}/coordinate-systems` |
+
+#### Add
+
+| Version | Group              | Endpoint                               |
+| ------- | ------------------ | -------------------------------------- |
+| v1      | Coordinate Systems | `PUT /cells/{cell}/coordinate-systems` |
+| v2      | -                  | -                                      |
+
+#### Description
+
+| Version | Group              | Endpoint                                                          |
+| ------- | ------------------ | ----------------------------------------------------------------- |
+| v1      | Coordinate Systems | `GET /cells/{cell}/coordinate-systems/{coordinate-system}`        |
+| v2      | Coordinate Systems | `GET /api/v2/cells/{cell}/coordinate-systems/{coordinate-system}` |
+
+#### Delete
+
+| Version | Group              | Endpoint                                                      |
+| ------- | ------------------ | ------------------------------------------------------------- |
+| v1      | Coordinate Systems | `DELETE /cells/{cell}/coordinate-systems/{coordinate-system}` |
+| v2      | -                  | -                                                             |
+
+#### Transform
+
+| Version | Group              | Endpoint                                                                     |
+| ------- | ------------------ | ---------------------------------------------------------------------------- |
+| v1      | Coordinate Systems | `POST /cells/{cell}/coordinate-systems/{coordinate-system}/transform`        |
+| v2      | Coordinate Systems | `POST /api/v2/cells/{cell}/coordinate-systems/{coordinate-system}/transform` |
+
+### Application
+
+#### List Applications
+
+| Version | Group       | Endpoint                        |
+| ------- | ----------- | ------------------------------- |
+| v1      | Application | `GET /cells/{cell}/apps`        |
+| v2      | Application | `GET /api/v2/cells/{cell}/apps` |
+
+#### Add Application
+
+| Version | Group       | Endpoint                         |
+| ------- | ----------- | -------------------------------- |
+| v1      | Application | `POST /cells/{cell}/apps`        |
+| v2      | Application | `POST /api/v2/cells/{cell}/apps` |
+
+#### Clear Applications
+
+| Version | Group       | Endpoint                           |
+| ------- | ----------- | ---------------------------------- |
+| v1      | Application | `DELETE /cells/{cell}/apps`        |
+| v2      | Application | `DELETE /api/v2/cells/{cell}/apps` |
+
+#### Configuration
+
+| Version | Group       | Endpoint                              |
+| ------- | ----------- | ------------------------------------- |
+| v1      | Application | `GET /cells/{cell}/apps/{app}`        |
+| v2      | Application | `GET /api/v2/cells/{cell}/apps/{app}` |
+
+#### Update Configuration
+
+| Version | Group       | Endpoint                              |
+| ------- | ----------- | ------------------------------------- |
+| v1      | Application | `PUT /cells/{cell}/apps/{app}`        |
+| v2      | Application | `PUT /api/v2/cells/{cell}/apps/{app}` |
+
+#### Delete Application
+
+| Version | Group       | Endpoint                                 |
+| ------- | ----------- | ---------------------------------------- |
+| v1      | Application | `DELETE /cells/{cell}/apps/{app}`        |
+| v2      | Application | `DELETE /api/v2/cells/{cell}/apps/{app}` |
+
+### Store Object
+
+#### Clear All Objects
+
+| Version | Group        | Endpoint                                    |
+| ------- | ------------ | ------------------------------------------- |
+| v1      | Store Object | `DELETE /cells/{cell}/store/objects`        |
+| v2      | Store Object | `DELETE /api/v2/cells/{cell}/store/objects` |
+
+#### List All Object Keys
+
+| Version | Group        | Endpoint                                 |
+| ------- | ------------ | ---------------------------------------- |
+| v1      | Store Object | `GET /cells/{cell}/store/objects`        |
+| v2      | Store Object | `GET /api/v2/cells/{cell}/store/objects` |
+
+#### Get Object Metadata
+
+| Version | Group        | Endpoint                                        |
+| ------- | ------------ | ----------------------------------------------- |
+| v1      | Store Object | `HEAD /cells/{cell}/store/objects/{key}`        |
+| v2      | Store Object | `HEAD /api/v2/cells/{cell}/store/objects/{key}` |
+
+#### Get Object
+
+| Version | Group        | Endpoint                                       |
+| ------- | ------------ | ---------------------------------------------- |
+| v1      | Store Object | `GET /cells/{cell}/store/objects/{key}`        |
+| v2      | Store Object | `GET /api/v2/cells/{cell}/store/objects/{key}` |
+
+#### Store Object
+
+| Version | Group        | Endpoint                                       |
+| ------- | ------------ | ---------------------------------------------- |
+| v1      | Store Object | `PUT /cells/{cell}/store/objects/{key}`        |
+| v2      | Store Object | `PUT /api/v2/cells/{cell}/store/objects/{key}` |
+
+#### Delete Object
+
+| Version | Group        | Endpoint                                          |
+| ------- | ------------ | ------------------------------------------------- |
+| v1      | Store Object | `DELETE /cells/{cell}/store/objects/{key}`        |
+| v2      | Store Object | `DELETE /api/v2/cells/{cell}/store/objects/{key}` |
+
+### Store Collision Components
+
+#### List Colliders
+
+| Version | Group                      | Endpoint                                             |
+| ------- | -------------------------- | ---------------------------------------------------- |
+| v1      | Store Collision Components | `GET /cells/{cell}/store/collision/colliders`        |
+| v2      | Store Collision Components | `GET /api/v2/cells/{cell}/store/collision/colliders` |
+
+#### Get Collider
+
+| Version | Group                      | Endpoint                                             |
+| ------- | -------------------------- | ---------------------------------------------------- |
+| v1      | Store Collision Components | `GET /cells/{cell}/store/collision/colliders`        |
+| v2      | Store Collision Components | `GET /api/v2/cells/{cell}/store/collision/colliders` |
+
+#### Store Collider
+
+| Version | Group                      | Endpoint                                                        |
+| ------- | -------------------------- | --------------------------------------------------------------- |
+| v1      | Store Collision Components | `PUT /cells/{cell}/store/collision/colliders/{collider}`        |
+| v2      | Store Collision Components | `PUT /api/v2/cells/{cell}/store/collision/colliders/{collider}` |
+
+#### Delete Collider
+
+| Version | Group                      | Endpoint                                                        |
+| ------- | -------------------------- | --------------------------------------------------------------- |
+| v1      | Store Collision Components | `PUT /cells/{cell}/store/collision/colliders/{collider}`        |
+| v2      | Store Collision Components | `PUT /api/v2/cells/{cell}/store/collision/colliders/{collider}` |
+
+#### List Link Chains
+
+| Version | Group                      | Endpoint                                               |
+| ------- | -------------------------- | ------------------------------------------------------ |
+| v1      | Store Collision Components | `GET /cells/{cell}/store/collision/link-chains`        |
+| v2      | Store Collision Components | `GET /api/v2/cells/{cell}/store/collision/link-chains` |
+
+#### Get Link Chain
+
+| Version | Group                      | Endpoint                                                            |
+| ------- | -------------------------- | ------------------------------------------------------------------- |
+| v1      | Store Collision Components | `GET /cells/{cell}/store/collision/link-chains/{link-chain}`        |
+| v2      | Store Collision Components | `GET /api/v2/cells/{cell}/store/collision/link-chains/{link-chain}` |
+
+#### Store Link Chain
+
+| Version | Group                      | Endpoint                                                            |
+| ------- | -------------------------- | ------------------------------------------------------------------- |
+| v1      | Store Collision Components | `PUT /cells/{cell}/store/collision/link-chains/{link-chain}`        |
+| v2      | Store Collision Components | `PUT /api/v2/cells/{cell}/store/collision/link-chains/{link-chain}` |
+
+#### Delete Link Chain
+
+| Version | Group                      | Endpoint                                                               |
+| ------- | -------------------------- | ---------------------------------------------------------------------- |
+| v1      | Store Collision Components | `DELETE /cells/{cell}/store/collision/link-chains/{link-chain}`        |
+| v2      | Store Collision Components | `DELETE /api/v2/cells/{cell}/store/collision/link-chains/{link-chain}` |
+
+#### Get Default Link Chain
+
+| Version | Group                      | Endpoint                                                                            |
+| ------- | -------------------------- | ----------------------------------------------------------------------------------- |
+| v1      | Store Collision Components | `GET /cells/{cell}/store/collision/default-link-chains/{motion-group-model}`        |
+| v2      | Store Collision Components | `GET /api/v2/cells/{cell}/store/collision/default-link-chains/{motion-group-model}` |
+
+#### List Tools
+
+| Version | Group                      | Endpoint                                         |
+| ------- | -------------------------- | ------------------------------------------------ |
+| v1      | Store Collision Components | `GET /cells/{cell}/store/collision/tools`        |
+| v2      | Store Collision Components | `GET /api/v2/cells/{cell}/store/collision/tools` |
+
+#### Get Tool
+
+| Version | Group                      | Endpoint                                                |
+| ------- | -------------------------- | ------------------------------------------------------- |
+| v1      | Store Collision Components | `GET /cells/{cell}/store/collision/tools/{tool}`        |
+| v2      | Store Collision Components | `GET /api/v2/cells/{cell}/store/collision/tools/{tool}` |
+
+#### Store Tool
+
+| Version | Group                      | Endpoint                                                |
+| ------- | -------------------------- | ------------------------------------------------------- |
+| v1      | Store Collision Components | `PUT /cells/{cell}/store/collision/tools/{tool}`        |
+| v2      | Store Collision Components | `PUT /api/v2/cells/{cell}/store/collision/tools/{tool}` |
+
+#### Delete Link Chain
+
+| Version | Group                      | Endpoint                                                   |
+| ------- | -------------------------- | ---------------------------------------------------------- |
+| v1      | Store Collision Components | `DELETE /cells/{cell}/store/collision/tools/{tool}`        |
+| v2      | Store Collision Components | `DELETE /api/v2/cells/{cell}/store/collision/tools/{tool}` |
+
+### Store Collision Scenes
+
+#### List Scenes
+
+| Version | Group                  | Endpoint                                          |
+| ------- | ---------------------- | ------------------------------------------------- |
+| v1      | Store Collision Scenes | `GET /cells/{cell}/store/collision/scenes`        |
+| v2      | Store Collision Scenes | `GET /api/v2/cells/{cell}/store/collision/scenes` |
+
+#### Get Scene
+
+| Version | Group                  | Endpoint                                                  |
+| ------- | ---------------------- | --------------------------------------------------------- |
+| v1      | Store Collision Scenes | `GET /cells/{cell}/store/collision/scenes/{scene}`        |
+| v2      | Store Collision Scenes | `GET /api/v2/cells/{cell}/store/collision/scenes/{scene}` |
+
+#### Store Scene
+
+| Version | Group                  | Endpoint                                                  |
+| ------- | ---------------------- | --------------------------------------------------------- |
+| v1      | Store Collision Scenes | `PUT /cells/{cell}/store/collision/scenes/{scene}`        |
+| v2      | Store Collision Scenes | `PUT /api/v2/cells/{cell}/store/collision/scenes/{scene}` |
+
+#### Delete Scene
+
+| Version | Group                  | Endpoint                                                     |
+| ------- | ---------------------- | ------------------------------------------------------------ |
+| v1      | Store Collision Scenes | `DELETE /cells/{cell}/store/collision/scenes/{scene}`        |
+| v2      | Store Collision Scenes | `DELETE /api/v2/cells/{cell}/store/collision/scenes/{scene}` |
+
+### Library Recipe Metadata
+
+All Library Recipe Metadata were removed in v2.
+To replace the functionalities, use the Program Library Metadata endpoints in v2.
+
+#### List Recipe Metadata
+
+| Version | Group                    | Endpoint                                  |
+| ------- | ------------------------ | ----------------------------------------- |
+| v1      | Library Recipe Metadata  | `GET /cells/{cell}/store/recipes`         |
+| v2      | Program Library Metadata | `GET /api/v2/cells/{cell}/store/programs` |
+
+#### Get Recipe Metadata
+
+| Version | Group                    | Endpoint                                                     |
+| ------- | ------------------------ | ------------------------------------------------------------ |
+| v1      | Library Recipe Metadata  | `GET /cells/{cell}/store/recipes/{recipe}/metadata`          |
+| v2      | Program Library Metadata | `GET /api/v2/cells/{cell}/store/programs/{program}/metadata` |
+
+#### Update Recipe Metadata
+
+| Version | Group                    | Endpoint                                                     |
+| ------- | ------------------------ | ------------------------------------------------------------ |
+| v1      | Library Recipe Metadata  | `PUT /cells/{cell}/store/recipes/{recipe}/metadata`          |
+| v2      | Program Library Metadata | `PUT /api/v2/cells/{cell}/store/programs/{program}/metadata` |
+
+#### Upload Recipe Metadata Image
+
+| Version | Group                    | Endpoint                                                            |
+| ------- | ------------------------ | ------------------------------------------------------------------- |
+| v1      | Library Recipe Metadata  | `POST /cells/{cell}/store/recipes/{recipe}/metadata/image`          |
+| v2      | Program Library Metadata | `POST /api/v2/cells/{cell}/store/programs/{program}/metadata/image` |
+
+### Library Recipe
+
+All Library Recipe endpoints were removed in v2.
+To replace the functionalities, use the Program Library endpoints in v2.
+
+#### Create Recipe
+
+| Version | Group           | Endpoint                                   |
+| ------- | --------------- | ------------------------------------------ |
+| v1      | Library Recipe  | `POST /cells/{cell}/store/recipes`         |
+| v2      | Program Library | `POST /api/v2/cells/{cell}/store/programs` |
+
+#### Delete Recipe List
+
+| Version | Group           | Endpoint                                     |
+| ------- | --------------- | -------------------------------------------- |
+| v1      | Library Recipe  | `DELETE /cells/{cell}/store/recipes`         |
+| v2      | Program Library | `DELETE /api/v2/cells/{cell}/store/programs` |
+
+#### Get Recipe
+
+| Version | Group           | Endpoint                                            |
+| ------- | --------------- | --------------------------------------------------- |
+| v1      | Library Recipe  | `GET /cells/{cell}/store/recipes/{recipe}`          |
+| v2      | Program Library | `GET /api/v2/cells/{cell}/store/programs/{program}` |
+|         |                 |                                                     |
+
+#### Update Recipe
+
+| Version | Group           | Endpoint                                            |
+| ------- | --------------- | --------------------------------------------------- |
+| v1      | Library Recipe  | `PUT /cells/{cell}/store/recipes/{recipe}`          |
+| v2      | Program Library | `PUT /api/v2/cells/{cell}/store/programs/{program}` |
+
+#### Delete Recipe
+
+| Version | Group           | Endpoint                                             |
+| ------- | --------------- | ---------------------------------------------------- |
+| v1      | Library Recipe  | `POST /cells/{cell}/store/recipes/{recipe}`          |
+| v2      | Program Library | `POST /api/v2/cells/{cell}/store/programs/{program}` |
+
+### Device Configuration
+
+All Device Configuration endpoints were removed in v2.
+To replace the functionalities, use the Controller endpoint and update the devices by updating controller configurations.
+
+#### List All Devices
+
+| Version | Group                | Endpoint                     |
+| ------- | -------------------- | ---------------------------- |
+| v1      | Device Configuration | `POST /cells/{cell}/devices` |
+| v2      | -                    | -                            |
+
+#### Create Devices
+
+| Version | Group                | Endpoint                     |
+| ------- | -------------------- | ---------------------------- |
+| v1      | Device Configuration | `POST /cells/{cell}/devices` |
+| v2      | -                    | -                            |
+
+#### Delete Devices
+
+| Version | Group                | Endpoint                       |
+| ------- | -------------------- | ------------------------------ |
+| v1      | Device Configuration | `DELETE /cells/{cell}/devices` |
+| v2      | -                    | -                              |
+
+#### Device Information
+
+| Version | Group                | Endpoint                                 |
+| ------- | -------------------- | ---------------------------------------- |
+| v1      | Device Configuration | `GET /cells/{cell}/devices/{identifier}` |
+| v2      | -                    | -                                        |
+
+#### Delete Device
+
+| Version | Group                | Endpoint                                    |
+| ------- | -------------------- | ------------------------------------------- |
+| v1      | Device Configuration | `DELETE /cells/{cell}/devices/{identifier}` |
+| v2      | -                    | -                                           |
+
+### License
+
+#### Get license
+
+| Version | Group   | Endpoint              |
+| ------- | ------- | --------------------- |
+| v1      | License | `GET /license`        |
+| v2      | License | `GET /api/v2/license` |
+
+#### Activate license
+
+| Version | Group   | Endpoint               |
+| ------- | ------- | ---------------------- |
+| v1      | License | `POST /license`        |
+| v2      | License | `POST /api/v2/license` |
+
+#### Deactivate license
+
+| Version | Group   | Endpoint                 |
+| ------- | ------- | ------------------------ |
+| v1      | License | `DELETE /license`        |
+| v2      | License | `DELETE /api/v2/license` |
+
+#### Get license status
+
+| Version | Group   | Endpoint                     |
+| ------- | ------- | ---------------------------- |
+| v1      | License | `GET /license/status`        |
+| v2      | License | `GET /api/v2/license/status` |
