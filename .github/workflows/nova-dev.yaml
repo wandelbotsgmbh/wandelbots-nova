@@ -1,9 +1,10 @@
 ---
-name: "[nova] Typecheck, Lint and Format"
+name: "Nova SDK: Typecheck, Lint and Format"
 on:
   pull_request:
     branches:
       - main
+      - nightly
 jobs:
   test:
     runs-on: ubuntu-latest

@@ -1,13 +1,15 @@
 ---
-name: "[nova] Release"
+name: "Release package"
 on:
   push:
     branches:
       - main
+      - nightly
 jobs:
   release:
     runs-on: ubuntu-latest
-    concurrency: release
+    # allow parallel releases from different branches
+    concurrency: release-${{ github.ref_name }}
     permissions:
       id-token: write
       contents: write

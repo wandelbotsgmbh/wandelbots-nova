@@ -1,4 +1,4 @@
-name: "Sync main → nightly"
+name: "Sync main with nightly"
 on:
   # keep nightly fresh every time main changes
   push:

@@ -2,7 +2,9 @@
 name: "YAML Lint"
 on:
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - nightly
 jobs:
   yamllint:
     runs-on: ubuntu-latest

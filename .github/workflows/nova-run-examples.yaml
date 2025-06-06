@@ -1,5 +1,5 @@
 ---
-name: "[nova] Run integration tests & examples"
+name: "Nova SDK: Run integration tests & examples"
 on:
   pull_request:
     branches:
