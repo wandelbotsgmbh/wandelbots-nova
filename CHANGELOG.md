@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.13.0 (2025-06-06)
+
+### Features
+
+- Build wheel in feature branches
+  ([#182](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/182),
+  [`37f4a4b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/37f4a4b50e9fd775c029f07f6b2c1b8db53be797))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.12.0 (2025-06-06)
 
 ### Features
