@@ -1,0 +1,36 @@
+name: "Sync main → nightly"
+on:
+  # keep nightly fresh every time main changes
+  push:
+    branches: [ main ]
+  # and as a safety-net once a night at 03:00 UTC
+  schedule:
+    - cron: "0 3 * * *"
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fast-forward/merge main into nightly
+        run: |
+          git config user.name  "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+
+          # create nightly locally if it does not exist yet
+          git fetch origin nightly || true
+
+          git checkout nightly || git checkout -b nightly
+          # first try a clean fast-forward
+          if git merge --ff-only origin/main ; then
+              echo "Fast-forwarded."
+          else
+              # fall back to a regular merge; fail if there are conflicts
+              git merge --no-edit origin/main
+          fi
+
+          git push origin nightly
