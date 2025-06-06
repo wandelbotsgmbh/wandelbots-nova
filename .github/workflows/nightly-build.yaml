@@ -1,4 +1,4 @@
-name: "Create disposable nightly wheel"
+name: "Create nightly wheel"
 on:
   # Allow manual triggering
   workflow_dispatch:
