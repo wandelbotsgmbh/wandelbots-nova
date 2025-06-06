@@ -1,0 +1,50 @@
+name: "Create nightly wheel"
+on:
+  # Allow manual triggering
+  workflow_dispatch:
+jobs:
+  build-wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Gather metadata
+        id: meta
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"                 # e.g. feat/new-ui
+          SAFE_BRANCH=$(echo "$BRANCH" | tr '/' '-')  # feat-new-ui
+          echo "branch=$SAFE_BRANCH"   >> "$GITHUB_OUTPUT"
+      - name: Build wheel
+        run: |
+          # Gather more metadata
+          COMMIT=$(git rev-parse --short=12 HEAD)     # 1a2b3c4d5e6f
+          DATE=$(date +%Y%m%d)                        # 20250606
+          BASE_VER=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)  # 1.12.0
+
+          python -m pip install --upgrade build
+          python -m build --wheel --outdir dist
+
+          # rename the wheel so branch & sha are visible
+          WHEEL_ORIG=$(ls dist/*.whl)
+          NAME="wandelbots_nova-${BASE_VER}.dev${DATE}+${{ steps.meta.outputs.branch }}.${COMMIT}.whl"
+          echo "Renaming wheel to: $NAME"
+          mv "$WHEEL_ORIG" "dist/$NAME"
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ steps.meta.outputs.branch }}
+          path: dist/*.whl
+          retention-days: 7
+      - name: Install helper
+        run: |
+          FILE="wheel-${{ steps.meta.outputs.branch }}.zip"
+          echo ""
+          echo "------------------------------------------------------------"
+          echo "📦  Nightly wheel ready!"
+          echo ""
+          echo "To download & install on any machine:"
+          echo ""
+          echo "  gh run download ${{ github.run_id }} -n wheel-${{ steps.meta.outputs.branch }}"
+          echo "  unzip $FILE"
+          echo "  pip install dist/*.whl"
+          echo "------------------------------------------------------------"
