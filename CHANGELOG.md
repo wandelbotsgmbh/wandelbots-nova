@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.13.3 (2025-06-06)
+
+### Chores
+
+- Add AGENTS guidelines ([#184](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/184),
+  [`4fda575`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4fda575e6baef9d55724402696f24565c5d1483a))
+
+
 ## v1.13.2 (2025-06-06)
 
 ### Chores
