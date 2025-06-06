@@ -1,4 +1,4 @@
-name: "Create nightly wheel"
+name: "Nova SDK: Build dev wheel"
 on:
   # Allow manual triggering
   workflow_dispatch:
@@ -35,7 +35,7 @@ jobs:
           name: wheel-${{ steps.meta.outputs.branch }}
           path: dist/*.whl
           retention-days: 7
-      - name: Install helper
+      - name: Install instructions
         run: |
           echo ""
           echo "------------------------------------------------------------"
