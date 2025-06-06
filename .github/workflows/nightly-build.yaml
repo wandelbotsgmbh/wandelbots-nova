@@ -37,14 +37,11 @@ jobs:
           retention-days: 7
       - name: Install helper
         run: |
-          FILE="wheel-${{ steps.meta.outputs.branch }}.zip"
           echo ""
           echo "------------------------------------------------------------"
-          echo "📦  Nightly wheel ready!"
+          echo "📦  Install this build straight from GitHub:"
           echo ""
-          echo "To download & install on any machine:"
+          echo "    pip install \"wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@${{ github.sha }}\""
           echo ""
-          echo "  gh run download ${{ github.run_id }} -n wheel-${{ steps.meta.outputs.branch }}"
-          echo "  unzip $FILE"
-          echo "  pip install dist/*.whl"
+          echo "(The command pins to the commit that produced this workflow run.)"
           echo "------------------------------------------------------------"
