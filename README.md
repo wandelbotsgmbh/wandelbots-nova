@@ -369,6 +369,12 @@ To install the development dependencies, run the following command
 uv sync --extra "nova-rerun-bridge"
 ```
 
+### Create a nightly build
+
+To create a nightly build without pushing it to PyPI, go to the [actions](https://github.com/wandelbotsgmbh/wandelbots-nova/actions) 
+tab in Github and click on the "Create nightly wheel" workflow. Now click on "Run workflow" and select the branch you want to build.
+When the workflow is finished go to the "Install helper" job to get instructions on how to install the nightly build.
+
 ### Formatting
 
 ```bash
