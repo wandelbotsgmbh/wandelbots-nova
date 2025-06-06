@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.13.2 (2025-06-06)
+
+### Chores
+
+- Updated readme to create dev builds
+  ([#183](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/183),
+  [`8f35545`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8f355459f04960587605616e0bd50a0d72fc4ea6))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.13.1 (2025-06-06)
 
 ### Chores
