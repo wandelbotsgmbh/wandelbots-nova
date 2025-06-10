@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.14.0 (2025-06-10)
+
+### Features
+
+- **NDX-76**: Add action to release from release/** branch
+  ([#185](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/185),
+  [`e0ac563`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e0ac56390c4a71e32d87d2685947d9ac826a3e10))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.13.3 (2025-06-06)
 
 ### Chores
