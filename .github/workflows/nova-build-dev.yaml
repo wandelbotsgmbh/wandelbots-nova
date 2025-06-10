@@ -1,3 +1,4 @@
+---
 name: "Nova SDK: Build dev wheel"
 on:
   # Allow manual triggering

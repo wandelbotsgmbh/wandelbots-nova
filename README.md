@@ -369,12 +369,6 @@ To install the development dependencies, run the following command
 uv sync --extra "nova-rerun-bridge"
 ```
 
-### Create a dev build
-
-To create a dev build without pushing it to PyPI, go to the [actions](https://github.com/wandelbotsgmbh/wandelbots-nova/actions) 
-tab in Github and click on the "Nova SDK: Build dev wheel" workflow. Now click on "Run workflow" and select the branch you want to build.
-When the workflow is finished go to the "Install instructions" job to get instructions on how to install the nightly build.
-
 ### Formatting
 
 ```bash
@@ -420,3 +414,32 @@ wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/
 > - If using an **access token**: Ensure `NOVA_ACCESS_TOKEN` is set, and leave `NOVA_USERNAME` and `NOVA_PASSWORD` unset.
 >
 > **Only one method should be used at a time.** If both methods are set, the token-based authentication (`NOVA_ACCESS_TOKEN`) will typically take precedence.
+
+## Release Process
+
+### Overview
+
+| Variable     | Description                                                            | Where                                | Example version      |
+|--------------|------------------------------------------------------------------------|--------------------------------------|----------------------|
+| `main`       | Stable releases (normal semver vX.Y.Z)                                 | PyPI (`pip install wandelbots-nova`) | `v1.13.0`            |
+| `release/*`  | The username credential used for authentication with the NOVA service. | PyPI                                 | `v1.8.7-release-1.x` |
+| any branch   | Development builds (not published to PyPI)                             | GitHub Actions                       | `e4c8af0647839...`   |
+
+### Stable releases (main)
+
+Every merge to main triggers the Release package workflow:
+	1.	Semantic-release inspects the commit messages, bumps the version, builds the wheel/sdist.
+	2.	The package is uploaded to PyPI.
+	3.	A GitHub Release is created/updated with the assets.
+
+### Long-term-support lines (release/*)
+
+For customers stuck on an older major or for special LTS contracts:
+- Open (or keep) a branch named `release/1.x`, `release/customer-foo`, etc.
+- Every commit on that branch triggers the same workflow and publishes stable numbers, but the git tag and PyPI version carry the branch slug so lines never collide.
+
+### Create a dev build
+
+If you only need a throw-away test build, go to the
+[Actions](https://github.com/wandelbotsgmbh/wandelbots-nova/actions) tab → "**Nova SDK: Build dev wheel**" → Run workflow (pick the branch).
+When it finishes, open the Install instructions job for a ready-to-copy `pip install "wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@<commit>"` line.

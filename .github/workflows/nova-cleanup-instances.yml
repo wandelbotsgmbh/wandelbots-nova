@@ -1,3 +1,4 @@
+---
 name: "Cleanup testing instances"
 on:
   schedule:
