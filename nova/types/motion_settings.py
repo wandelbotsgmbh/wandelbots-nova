@@ -1,5 +1,5 @@
 import pydantic
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 
 
 class MotionSettings(pydantic.BaseModel):
