@@ -7,7 +7,7 @@ import pydantic
 from nova import api
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
-from nova.actions.motions import CollisionFreeMotion, Motion
+from nova.actions.motions import Motion
 from nova.types import MovementControllerFunction, Pose
 
 
@@ -19,7 +19,7 @@ class ActionLocation(pydantic.BaseModel):
 
 
 # TODO: all actions should be allowed (Action)
-ActionContainerItem = Motion | WriteAction | CollisionFreeMotion | WaitAction
+ActionContainerItem = Motion | WriteAction | WaitAction
 
 
 class CombinedActions(pydantic.BaseModel):
@@ -50,9 +50,7 @@ class CombinedActions(pydantic.BaseModel):
     def append(self, item: ActionContainerItem):
         super().__setattr__("items", self.items + (item,))
 
-    def _generate_trajectory(
-        self,
-    ) -> tuple[list[Motion | CollisionFreeMotion], list[ActionLocation]]:
+    def _generate_trajectory(self) -> tuple[list[Motion], list[ActionLocation]]:
         """Generate two lists: one of Motion objects and another of ActionContainer objects,
         where each ActionContainer wraps a non-Motion action with its path parameter.
 
@@ -72,7 +70,7 @@ class CombinedActions(pydantic.BaseModel):
         for item in self.items:
             if isinstance(item, WaitAction):
                 continue  # Skip WaitAction items
-            if isinstance(item, Motion) or isinstance(item, CollisionFreeMotion):
+            if isinstance(item, Motion):
                 motions.append(item)
                 last_motion_index += 1  # Increment the motion index for each new Motion
             else:
@@ -82,7 +80,7 @@ class CombinedActions(pydantic.BaseModel):
         return motions, actions
 
     @property
-    def motions(self) -> list[Motion | CollisionFreeMotion]:
+    def motions(self) -> list[Motion]:
         motions, _ = self._generate_trajectory()
         return motions
 

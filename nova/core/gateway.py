@@ -376,7 +376,7 @@ class ApiGateway:
             boolean_value=value,
         )
 
-    async def list_controllers(self, *, cell: str) -> list[wb.models.ControllerInstance]:
+    async def list_controllers(self, *, cell: str) -> list[wb.models.Controller]:
         response = await self.controller_api.list_controllers(cell=cell)
         return response.controllers
 
