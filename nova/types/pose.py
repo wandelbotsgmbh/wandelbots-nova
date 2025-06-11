@@ -4,7 +4,7 @@ from typing import Iterable, Sized
 
 import numpy as np
 import pydantic
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 from scipy.spatial.transform import Rotation
 
 from nova.types.vector3d import Vector3d
@@ -200,8 +200,8 @@ class Pose(pydantic.BaseModel, Sized):
         Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3), coordinate_system=None)
         """
         return wb.models.Pose(
-            position=wb.models.Vector3d(**self.position.model_dump()),
-            orientation=wb.models.Vector3d(**self.orientation.model_dump()),
+            position=[self.position.x, self.position.y, self.position.z],
+            orientation=[self.orientation.x, self.orientation.y, self.orientation.z],
         )
 
     def _to_wb_pose2(self) -> wb.models.Pose2:

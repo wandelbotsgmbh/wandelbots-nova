@@ -378,7 +378,7 @@ class ApiGateway:
 
     async def list_controllers(self, *, cell: str) -> list[wb.models.ControllerInstance]:
         response = await self.controller_api.list_controllers(cell=cell)
-        return response.instances
+        return response.controllers
 
     async def get_controller_instance(
         self, *, cell: str, name: str
