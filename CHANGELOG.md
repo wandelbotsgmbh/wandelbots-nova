@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.15.2 (2025-06-11)
+
+### Bug Fixes
+
+- **NDX-76**: #4 fixes to the release CI
+  ([`c91116f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c91116f42de1a64032f84ccd3a0c2fa1b0534606))
+
+
 ## v1.15.1 (2025-06-11)
 
 ### Bug Fixes
