@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.15.3 (2025-06-11)
+
+### Bug Fixes
+
+- **NDX-76**: #5 fixed job that creates a release wheel
+  ([`bf5f3a5`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bf5f3a5c7cbaa2c4d0511afbae3ae108151c366e))
+
+
 ## v1.15.2 (2025-06-11)
 
 ### Bug Fixes
