@@ -1,7 +1,7 @@
 import asyncio
 from typing import AsyncIterable, cast
 
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
@@ -12,7 +12,7 @@ from nova.core import logger
 from nova.core.exceptions import InconsistentCollisionScenes
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
-from nova.types import InitialMovementStream, LoadPlanResponse, MovementResponse, Pose, RobotState
+from nova.types import InitialMovementStream, MovementResponse, Pose, RobotState
 from nova.utils import StreamExtractor
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
@@ -432,7 +432,7 @@ class MotionGroup(AbstractRobot):
 
     async def _load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str
-    ) -> wb.models.PlanSuccessfulResponse:
+    ) -> wb.models.AddTrajectoryResponse:
         return await self._api_gateway.load_planned_motion(
             cell=self._cell,
             motion_group_id=self.motion_group_id,
@@ -441,17 +441,14 @@ class MotionGroup(AbstractRobot):
         )
 
     async def move_to_start_position(
-        self, joint_velocities, load_plan_response: LoadPlanResponse
+        self, joint_velocities, trajectory_id: str
     ) -> InitialMovementStream:
         limit_override = wb.models.LimitsOverride()
         if joint_velocities is not None:
             limit_override.joint_velocity_limits = wb.models.Joints(joints=joint_velocities)
 
-        return self._api_gateway.stream_move_to_trajectory_via_join_ptp(
-            cell=self._cell,
-            motion_id=load_plan_response.motion,
-            location_on_trajectory=0,
-            joint_velocity_limits=limit_override.joint_velocity_limits,
+        return self._api_gateway.trajectory_execution_api.execute_to_trajectory(
+            cell=self._cell, trajectory=trajectory_id, location_on_trajectory=0
         )
 
     async def stop(self):
