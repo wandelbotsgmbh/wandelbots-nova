@@ -47,7 +47,7 @@ jobs:
           # slugify branch name  (release/1.x → 1.x → 1.x ; slash → -, dots ok)
           BRANCH_SLUG=$(echo "${GITHUB_REF_NAME#release/}" | tr '/' '-')
           BASE_VER=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
-          NEW_VER="${BASE_VER}.b{BUILD_NUM}+${BRANCH_SLUG}"
+          NEW_VER="${BASE_VER}.b${BUILD_NUM}+${BRANCH_SLUG}"
 
           echo "Building ${NEW_VER} for release branch ${BRANCH_SLUG}"
 
