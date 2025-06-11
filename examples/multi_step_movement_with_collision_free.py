@@ -10,9 +10,8 @@ Prerequisites:
 
 import asyncio
 
-import nova
-from nova import Nova
-from nova.actions import cartesian_ptp, collision_free, io_write, joint_ptp
+from nova import MotionSettings, Nova
+from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -51,12 +50,12 @@ async def main():
 
             actions = [
                 cartesian_ptp(target_pose),
-                collision_free(home_joints),
+                # collision_free(home_joints),
                 cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
-                io_write(key="digital_out[0]", value=True),
+                # io_write(key="digital_out[0]", value=True),
                 joint_ptp(home_joints),
                 cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
-                collision_free(home_pose),
+                # collision_free(home_pose),
                 cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
                 joint_ptp(home_joints),
             ]

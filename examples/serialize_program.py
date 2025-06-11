@@ -11,7 +11,7 @@ Prerequisites:
 import asyncio
 import json
 
-from wandelbots_api_client.models.joint_trajectory import JointTrajectory
+from wandelbots_api_client.v2.models import JointTrajectory
 
 import nova
 from nova import Nova
@@ -64,7 +64,7 @@ async def main():
 
         # Create a complete serializable representation
         serialized_program = {
-            "joint_trajectory": joint_trajectory.to_json(),
+            "joint_trajectory": joint_trajectory.model_dump_json(),
             "tcp": tcp,
             "actions": serialized_actions,
         }
