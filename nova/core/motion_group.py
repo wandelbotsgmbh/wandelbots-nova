@@ -345,7 +345,7 @@ class MotionGroup(AbstractRobot):
 
         execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
         execution_task = asyncio.create_task(
-            self._api_gateway.motion_api.execute_trajectory(
+            self._api_gateway.trajectory_execution_api.execute_trajectory(
                 cell=self._cell, client_request_generator=execute_response_streaming_controller
             )
         )
@@ -403,8 +403,8 @@ class MotionGroup(AbstractRobot):
         response = await self._api_gateway.get_motion_group_state(
             cell=self._cell, motion_group_id=self.motion_group_id, tcp=tcp
         )
-        pose = Pose(response.tcp_pose or response.state.tcp_pose)
-        return RobotState(pose=pose, joints=tuple(response.state.joint_position.joints))
+        pose = Pose(response.tcp_pose or response.tcp_pose)
+        return RobotState(pose=pose, joints=tuple(response.joint_position.joints))
 
     async def joints(self) -> tuple:
         """Returns the current joint positions of the motion group."""

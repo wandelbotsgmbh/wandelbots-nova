@@ -543,9 +543,9 @@ class ApiGateway:
 
     async def get_motion_group_state(
         self, cell: str, motion_group_id: str, tcp: str | None = None
-    ) -> wb.models.MotionGroupStateResponse:
+    ) -> wb.models.MotionGroupState:
         return await self.motion_group_infos_api.get_current_motion_group_state(
-            cell=cell, motion_group=motion_group_id, tcp=tcp
+            cell=cell, motion_group=motion_group_id
         )
 
     async def list_tcps(self, cell: str, motion_group_id: str) -> wb.models.ListTcpsResponse:

@@ -18,13 +18,9 @@ def _parse_args(*args):
         pos = args[0].position
         ori = args[0].orientation
         return {
-            "position": Vector3d(x=pos.x, y=pos.y, z=pos.z),
-            "orientation": Vector3d(x=ori.x, y=ori.y, z=ori.z),
+            "position": Vector3d(x=pos[0], y=pos[1], z=pos[2]),
+            "orientation": Vector3d(x=ori[0], y=ori[1], z=ori[2]),
         }
-    if len(args) == 1 and isinstance(args[0], wb.models.Pose2):
-        x1, y1, z1 = args[0].position
-        x2, y2, z2 = args[0].orientation
-        return {"position": Vector3d(x=x1, y=y1, z=z1), "orientation": Vector3d(x=x2, y=y2, z=z2)}
     if len(args) == 1 and isinstance(args[0], tuple):
         args = args[0]
     if len(args) == 6:
