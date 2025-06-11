@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.14.2 (2025-06-11)
+
+### Bug Fixes
+
+- **NDX-76**: #2 create build number + branch slug
+  ([`98307df`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/98307dfdaf26e08681d3c1a3753bd66baf76d30a))
+
+
 ## v1.14.1 (2025-06-11)
 
 ### Bug Fixes
