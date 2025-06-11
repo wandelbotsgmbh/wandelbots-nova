@@ -333,6 +333,7 @@ class ApiGateway:
         )
         return response.io_descriptions
 
+    # TODO: this is also broken, returns wrong api type
     async def read_controller_io(self, cell: str, controller: str, io: str) -> float | bool | int:
         response = await self.controller_ios_api.list_io_values(
             cell=cell, controller=controller, ios=[io]
