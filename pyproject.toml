@@ -60,6 +60,7 @@ dev = [
     "icecream>=2.1.4,<3",
     "ipython<9",
     "freezegun>=1.5.1",
+    "pyinstrument>=5.0.2",
 ]
 
 [tool.hatch.build.targets.sdist]
