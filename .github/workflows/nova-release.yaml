@@ -53,12 +53,9 @@ jobs:
           sed -i -E 's/^(version = ")[^"]+(")$/\1'"${NEW_VER}"'\2/' pyproject.toml
 
           python -m pip install --upgrade build
-          python -m build --wheel --outdir dist
+          python -m build --wheel --outdir dist    # keep default wheel name
 
-          WHEEL=$(ls dist/*.whl)
-          FINAL_NAME="${WHEEL%.whl}-${BRANCH_SLUG}.whl"
-          mv "$WHEEL" "$FINAL_NAME"
-          echo "wheel=$FINAL_NAME" >> "$GITHUB_OUTPUT"
+          echo "wheel=$(ls dist/*.whl)" >> "$GITHUB_OUTPUT"
       - name: Publish package to PyPI
         if: |
           (github.ref_name == 'main'  && steps.semrel.outputs.released == 'true') ||
