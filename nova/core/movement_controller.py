@@ -101,11 +101,12 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                 raise InitMovementFailed(r1.init_response)
 
         # The second request is to start the movement
-        set_io_list = context.combined_actions.to_set_io()
+        # TODO: the request model doesn't have the location field anymore, so set io is broken
+        # set_io_list = context.combined_actions.to_set_io()
         yield wb.models.StartMovementRequest(
             message_type="StartMovementRequest",
             direction=wb.models.Direction.DIRECTION_FORWARD,
-            set_ios=set_io_list,
+            # set_ios=set_io_list,
             start_on_io=None,
             pause_on_io=None,
         )  # type: ignore
