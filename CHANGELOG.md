@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.14.1 (2025-06-11)
+
+### Bug Fixes
+
+- **NDX-76**: Added semantic version handling
+  ([`bbb9744`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bbb97442e78b046ead079a2b7b6baad2b625ca93))
+
+
 ## v1.14.0 (2025-06-10)
 
 ### Features
