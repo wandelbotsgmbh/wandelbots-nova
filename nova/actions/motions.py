@@ -114,7 +114,7 @@ class CartesianPTP(Motion):
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
         return api.models.PathCartesianPTP(
-            target_pose=api.models.Pose2(**self.target.model_dump()),
+            target_pose=api.models.Pose(**self.target.model_dump()),
             path_definition_name="PathCartesianPTP",
         )
 

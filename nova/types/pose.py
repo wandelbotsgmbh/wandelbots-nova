@@ -218,7 +218,7 @@ class Pose(pydantic.BaseModel, Sized):
         >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).model_dump()
         {'position': [10, 20, 30], 'orientation': [1, 2, 3]}
         """
-        return self._to_wb_pose2().model_dump()
+        return self._to_wb_pose().model_dump()
 
     @pydantic.model_validator(mode="before")
     @classmethod
