@@ -150,9 +150,9 @@ class CombinedActions(pydantic.BaseModel):
             )
         return motion_commands
 
-    def to_set_io(self) -> list[api.models.SetIO]:
+    def to_set_io(self) -> list[api.models.SetOutputValuesRequestInner]:
         return [
-            api.models.SetIO(
+            api.models.SetOutputValuesRequestInner(
                 io=api.models.IOValue(**action.action.to_api_model()),
                 location=action.path_parameter,
             )
