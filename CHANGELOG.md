@@ -1,6 +1,35 @@
 # CHANGELOG
 
 
+## v1.15.1 (2025-06-11)
+
+### Bug Fixes
+
+- **NDX-76**: #3 fixed CI to release on release/ branches
+  ([`1cee9e1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1cee9e1228f16f12b5310c45aeb79fdad03ff1bc))
+
+
+## v1.15.0 (2025-06-11)
+
+### Features
+
+- Standardize controller creation pattern across examples
+  ([#186](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/186),
+  [`14be7bc`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/14be7bc893583206f696cc7887b8c0ae7d65dcf7))
+
+Co-authored-by: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+
+Co-authored-by: mahsum.demir@wandelbots.com <mahsum.demir@wandelbots.com>
+
+
+## v1.14.2 (2025-06-11)
+
+### Bug Fixes
+
+- **NDX-76**: #2 create build number + branch slug
+  ([`98307df`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/98307dfdaf26e08681d3c1a3753bd66baf76d30a))
+
+
 ## v1.14.1 (2025-06-11)
 
 ### Bug Fixes
