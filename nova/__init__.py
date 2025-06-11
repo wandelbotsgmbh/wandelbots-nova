@@ -1,5 +1,7 @@
 from typing import Any
 
+import nova.api as api
+from nova import types
 from nova.version import version
 
 _lazy_imports: dict[str, Any] = {}
@@ -15,16 +17,8 @@ def __getattr__(name: str) -> Any:
 
         _lazy_imports["actions"] = actions
         return actions
-    elif name == "types":
-        from nova import types
 
-        _lazy_imports["types"] = types
-        return types
-    elif name == "api":
-        import nova.api as api
 
-        _lazy_imports["api"] = api
-        return api
     elif name == "Cell":
         from nova.cell.cell import Cell
 
