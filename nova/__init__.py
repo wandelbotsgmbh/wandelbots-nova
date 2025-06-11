@@ -1,8 +1,8 @@
-from typing import Any, Dict
+from typing import Any
 
 from nova.version import version
 
-_lazy_imports: Dict[str, Any] = {}
+_lazy_imports: dict[str, Any] = {}
 
 
 def __getattr__(name: str) -> Any:
