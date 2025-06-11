@@ -1,11 +1,11 @@
 import asyncio
-from typing import AsyncIterable, cast
+from typing import AsyncIterable
 
 import wandelbots_api_client.v2 as wb
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
-from nova.actions.motions import CollisionFreeMotion, Motion
+from nova.actions.motions import Motion
 from nova.api import models
 from nova.cell.robot_cell import AbstractRobot
 from nova.core import logger
@@ -43,8 +43,6 @@ def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
         if (
             # Start a new batch if:
             not batches  # first action no batches yet
-            or isinstance(action, CollisionFreeMotion)
-            or isinstance(batches[-1][-1], CollisionFreeMotion)
             or isinstance(action, WaitAction)
             or isinstance(batches[-1][-1], WaitAction)
         ):
@@ -235,63 +233,6 @@ class MotionGroup(AbstractRobot):
             cell=self._cell, motion_group_id=self.motion_group_id, request=request
         )
 
-    # TODO: we get the optimizer setup from as an input because
-    #  it has a velocity setting which is used in collision free movement, I need to double check this
-    async def _plan_collision_free(
-        self,
-        action: CollisionFreeMotion,
-        tcp: str,
-        start_joint_position: list[float],
-        optimizer_setup: wb.models.OptimizerSetup | None = None,
-    ) -> wb.models.JointTrajectory:
-        """
-        This method plans a trajectory and avoids collisions.
-        This means if there is a collision along the way to the target pose or joint positions,
-        It will adjust the trajectory to avoid the collision.
-
-        The collision check only happens if the action have collision scene data.
-
-        For more information about this API, please refer to the plan_collision_free_ptp in the API documentation.
-
-        Args:
-            action: The target pose or joint positions to reach
-            tcp:     The tool to use
-            start_joint_position: The starting joint position, if none provided, current position of the robot is used
-            optimizer_setup: The optimizer setup
-
-        Returns: planned joint trajectory
-
-
-        """
-        target = wb.models.PlanCollisionFreePTPRequestTarget(**action.to_api_model().model_dump())
-        robot_setup = optimizer_setup or await self._get_optimizer_setup(tcp=tcp)
-
-        static_colliders = None
-        collision_motion_group = None
-        collision_scene = action.collision_scene
-        if collision_scene and collision_scene.colliders:
-            static_colliders = collision_scene.colliders
-
-            if (
-                collision_scene.motion_groups
-                and robot_setup.motion_group_type in collision_scene.motion_groups
-            ):
-                collision_motion_group = collision_scene.motion_groups[
-                    robot_setup.motion_group_type
-                ]
-
-        request: wb.models.PlanCollisionFreePTPRequest = wb.models.PlanCollisionFreePTPRequest(
-            robot_setup=robot_setup,
-            start_joint_position=start_joint_position,
-            target=target,
-            static_colliders=static_colliders,
-            collision_motion_group=collision_motion_group,
-        )
-
-        return await self._api_gateway.plan_collision_free_ptp(
-            cell=self._cell, motion_group_id=self.motion_group_id, request=request
-        )
-
     async def _plan(
         self,
         actions: list[Action],
@@ -311,16 +252,7 @@ class MotionGroup(AbstractRobot):
                 raise ValueError("Empty batch of actions")
 
             if isinstance(batch[0], CollisionFreeMotion):
-                motion: CollisionFreeMotion = cast(CollisionFreeMotion, batch[0])
-                trajectory = await self._plan_collision_free(
-                    action=motion,
-                    tcp=tcp,
-                    start_joint_position=list(current_joints),
-                    optimizer_setup=robot_setup,
-                )
-                all_trajectories.append(trajectory)
-                # the last joint position of this trajectory is the starting point for the next one
-                current_joints = tuple(trajectory.joint_positions[-1].joints)
+                pass
             elif isinstance(batch[0], WaitAction):
                 # Waits generate a trajectory with the same joint position at each timestep
                 # Use 50ms timesteps from 0 to wait_for_in_seconds
