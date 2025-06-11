@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v1.15.0 (2025-06-11)
+
+### Features
+
+- Standardize controller creation pattern across examples
+  ([#186](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/186),
+  [`14be7bc`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/14be7bc893583206f696cc7887b8c0ae7d65dcf7))
+
+Co-authored-by: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+
+Co-authored-by: mahsum.demir@wandelbots.com <mahsum.demir@wandelbots.com>
+
+
 ## v1.14.2 (2025-06-11)
 
 ### Bug Fixes
