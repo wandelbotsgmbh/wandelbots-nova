@@ -251,8 +251,6 @@ class MotionGroup(AbstractRobot):
             if len(batch) == 0:
                 raise ValueError("Empty batch of actions")
 
-            if isinstance(batch[0], CollisionFreeMotion):
-                pass
             elif isinstance(batch[0], WaitAction):
                 # Waits generate a trajectory with the same joint position at each timestep
                 # Use 50ms timesteps from 0 to wait_for_in_seconds
@@ -305,24 +303,25 @@ class MotionGroup(AbstractRobot):
             movement_controller = move_forward
 
         # Load planned trajectory
-        load_plan_response = await self._load_planned_motion(joint_trajectory, tcp)
+        trajecory_id = await self._load_planned_motion(joint_trajectory, tcp)
 
         # Move to start position
         number_of_joints = await self._api_gateway.get_joint_number(
             cell=self._cell, motion_group_id=self.motion_group_id
         )
         joints_velocities = [MAX_JOINT_VELOCITY_PREPARE_MOVE] * number_of_joints
-        movement_stream = await self.move_to_start_position(joints_velocities, load_plan_response)
+        movement_stream = await self.move_to_start_position(joints_velocities, trajecory_id)
 
         # If there's an initial consumer, feed it the data
         async for move_to_response in movement_stream:
             # TODO: refactor
             if (
-                move_to_response.state is None
-                or move_to_response.state.motion_groups is None
-                or len(move_to_response.state.motion_groups) == 0
-                or move_to_response.move_response is None
-                or move_to_response.move_response.current_location_on_trajectory is None
+                move_to_response.actual_instance is None
+                or isinstance(move_to_response.actual_instance, wb.models.Standstill)
+                or move_to_response.actual_instance.movement.state.active_motion_groups is None
+                or len(move_to_response.actual_instance.movement.state.active_motion_groups) == 0
+                or move_to_response.actual_instance.movement is None
+                or move_to_response.actual_instance.movement.current_location is None
             ):
                 continue
 
@@ -331,7 +330,7 @@ class MotionGroup(AbstractRobot):
         controller = movement_controller(
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
-                motion_id=load_plan_response.motion,
+                motion_id=trajecory_id,
             )
         )
 
@@ -364,7 +363,7 @@ class MotionGroup(AbstractRobot):
 
     async def _load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str
-    ) -> wb.models.AddTrajectoryResponse:
+    ) -> str:
         return await self._api_gateway.load_planned_motion(
             cell=self._cell,
             motion_group_id=self.motion_group_id,
