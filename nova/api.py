@@ -9,7 +9,7 @@ def __getattr__(name: str) -> Any:
     if name in _lazy_imports:
         return _lazy_imports[name]
 
-    import wandelbots_api_client as wb
+    import wandelbots_api_client.v2 as wb
 
     _lazy_imports.update(
         {

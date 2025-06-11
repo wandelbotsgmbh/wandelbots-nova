@@ -8,7 +8,7 @@ from enum import Enum
 from typing import AsyncGenerator, TypeVar
 from urllib.parse import quote as original_quote
 
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 from decouple import config
 
 from nova.auth.auth_config import Auth0Config
@@ -34,9 +34,9 @@ INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:808
 
 
 class ComparisonType(Enum):
-    COMPARISON_TYPE_EQUAL = "COMPARISON_TYPE_EQUAL"
-    COMPARISON_TYPE_GREATER = "COMPARISON_TYPE_GREATER"
-    COMPARISON_TYPE_LESS = "COMPARISON_TYPE_LESS"
+    COMPARISON_TYPE_EQUAL = "COMPARATOR_EQUALS"
+    COMPARISON_TYPE_GREATER = "COMPARATOR_GREATER"
+    COMPARISON_TYPE_LESS = "COMPARATOR_LESS"
 
 
 def intercept(api_instance: T, gateway: "ApiGateway") -> T:
@@ -103,7 +103,7 @@ class ApiGateway:
         username: str | None = None,
         password: str | None = None,
         access_token: str | None = None,
-        version: str = "v1",
+        version: str = "v2",
         verify_ssl: bool = True,
         auth0_config: Auth0Config | None = None,
     ):
@@ -182,13 +182,6 @@ class ApiGateway:
         self.system_api = intercept(wb.SystemApi(api_client=self._api_client), self)
         self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client), self)
         self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client), self)
-        self.motion_api = intercept(wb.MotionApi(api_client=self._api_client), self)
-        self.motion_group_infos_api = intercept(
-            wb.MotionGroupInfosApi(api_client=self._api_client), self
-        )
-        self.motion_group_kinematic_api = intercept(
-            wb.MotionGroupKinematicApi(api_client=self._api_client), self
-        )
         self.store_collision_components_api = intercept(
             wb.StoreCollisionComponentsApi(api_client=self._api_client), self
         )
@@ -205,14 +198,27 @@ class ApiGateway:
         self.virtual_robot_setup_api = intercept(
             wb.VirtualRobotSetupApi(api_client=self._api_client), self
         )
-        self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client), self)
-        self.motion_group_jogging_api = intercept(
-            wb.MotionGroupJoggingApi(api_client=self._api_client), self
+        self.motion_group_jogging_api = intercept(wb.JoggingApi(api_client=self._api_client), self)
+        self.trajectory_planning_api: wb.TrajectoryPlanningApi = intercept(
+            wb.TrajectoryPlanningApi(api_client=self._api_client), self
+        )
+        self.trajectory_execution_api: wb.TrajectoryExecutionApi = intercept(
+            wb.TrajectoryExecutionApi(api_client=self._api_client), self
+        )
+        self.motion_group_infos_api = intercept(
+            wb.MotionGroupInfoApi(api_client=self._api_client), self
+        )
+        self.motion_group_kinematic_api = intercept(
+            wb.MotionGroupKinematicsApi(api_client=self._api_client), self
+        )
+        self.controller_ios_api = intercept(
+            wb.ControllerInputsOutputsApi(api_client=self._api_client), self
         )
 
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
     async def close(self):
+        # TODO: what is this ?
         # Restore the original quote function
         if hasattr(self, "_original_quote_func"):
             import wandelbots_api_client.api.controller_ios_api as ios_api_module
@@ -313,7 +319,7 @@ class ApiGateway:
         activate_all_motion_groups_response = (
             await self.motion_group_api.activate_all_motion_groups(cell=cell, controller=controller)
         )
-        motion_groups = activate_all_motion_groups_response.instances
+        motion_groups = activate_all_motion_groups_response.motion_groups
         return [mg.motion_group for mg in motion_groups]
 
     async def list_controller_io_descriptions(
@@ -347,16 +353,18 @@ class ApiGateway:
         self, cell: str, controller: str, io: str, value: bool | int | float
     ):
         if isinstance(value, bool):
-            io_value = wb.models.IOValue(io=io, boolean_value=value)
+            io_value = wb.models.IOBooleanValue(io=io, boolean_value=value)
         elif isinstance(value, int):
-            io_value = wb.models.IOValue(io=io, integer_value=str(value))
+            io_value = wb.models.IOIntegerValue(io=io, integer_value=str(value))
         elif isinstance(value, float):
-            io_value = wb.models.IOValue(io=io, floating_value=value)
+            io_value = wb.models.IOFloatValue(io=io, floating_value=value)
         else:
             raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
 
         await self.controller_ios_api.set_output_values(
-            cell=cell, controller=controller, io_value=[io_value]
+            cell=cell,
+            controller=controller,
+            set_output_values_request_inner=[wb.models.SetOutputValuesRequestInner(io_value)],
         )
 
     async def wait_for_bool_io(self, cell: str, controller: str, io: str, value: bool):
@@ -437,7 +445,7 @@ class ApiGateway:
         Plan a trajectory for the given motion group.
         """
 
-        plan_trajectory_response = await self.motion_api.plan_trajectory(
+        plan_trajectory_response = await self.trajectory_planning_api.plan_trajectory(
             cell=cell, plan_trajectory_request=request
         )
         if isinstance(
@@ -453,24 +461,19 @@ class ApiGateway:
     async def load_planned_motion(
         self, cell: str, motion_group_id: str, joint_trajectory: wb.models.JointTrajectory, tcp: str
     ) -> wb.models.PlanSuccessfulResponse:
-        load_plan_response = await self.motion_api.load_planned_motion(
-            cell=cell,
-            planned_motion=wb.models.PlannedMotion(
-                motion_group=motion_group_id,
-                times=joint_trajectory.times,
-                joint_positions=joint_trajectory.joint_positions,
-                locations=joint_trajectory.locations,
-                tcp=tcp,
-            ),
+        load_plan_response: wb.models.AddTrajectoryResponse = (
+            await self.trajectory_execution_api.add_trajectory(
+                cell=cell,
+                add_trajectory_request=wb.models.AddTrajectoryRequest(
+                    motion_group=motion_group_id, trajectory=joint_trajectory, tcp=tcp
+                ),
+            )
         )
 
-        if (
-            load_plan_response.plan_failed_on_trajectory_response is not None
-            or load_plan_response.plan_failed_on_trajectory_response is not None
-        ):
-            raise LoadPlanFailed(load_plan_response)
+        if load_plan_response.trajectory is None or load_plan_response.error is not None:
+            raise LoadPlanFailed(load_plan_response.error)
 
-        return load_plan_response.plan_successful_response
+        return load_plan_response.trajectory
 
     def stream_move_to_trajectory_via_join_ptp(
         self,
