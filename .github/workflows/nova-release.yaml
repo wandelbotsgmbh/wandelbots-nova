@@ -40,26 +40,25 @@ jobs:
         if: startsWith(github.ref_name, 'release/')
         id: build
         run: |
-          # commits since divergence from main  → monotonically-increasing build #
           BASE_POINT=$(git merge-base origin/main HEAD || git rev-list --max-parents=0 HEAD)
-          BUILD_NUM=$(git rev-list --count ${BASE_POINT}..HEAD)
+          COMMITS=$(git rev-list --count ${BASE_POINT}..HEAD)
 
-          # slugify branch name  (release/1.x → 1.x → 1.x ; slash → -, dots ok)
+          DATE=$(date +%Y%m%d)
           BRANCH_SLUG=$(echo "${GITHUB_REF_NAME#release/}" | tr '/' '-')
           BASE_VER=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
-          NEW_VER="${BASE_VER}.b${BUILD_NUM}+${BRANCH_SLUG}"
 
+          NEW_VER="${BASE_VER}.post${DATE}$(printf '%02d' ${COMMITS})"
           echo "Building ${NEW_VER} for release branch ${BRANCH_SLUG}"
 
-          # patch version locally (no commit)
           sed -i -E 's/^(version = ")[^"]+(")$/\1'"${NEW_VER}"'\2/' pyproject.toml
 
           python -m pip install --upgrade build
           python -m build --wheel --outdir dist
 
-          # wheel filename already contains NEW_VER, so no extra rename needed
           WHEEL=$(ls dist/*.whl)
-          echo "wheel=$WHEEL" >> "$GITHUB_OUTPUT"
+          FINAL_NAME="${WHEEL%.whl}-${BRANCH_SLUG}.whl"
+          mv "$WHEEL" "$FINAL_NAME"
+          echo "wheel=$FINAL_NAME" >> "$GITHUB_OUTPUT"
       - name: Publish package to PyPI
         if: |
           (github.ref_name == 'main'  && steps.semrel.outputs.released == 'true') ||
