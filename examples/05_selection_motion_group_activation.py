@@ -29,7 +29,7 @@ async def move_robot(motion_group: MotionGroup, tcp: str):
         cartesian_ptp(home_pose),
     ]
 
-    await motion_group.plan_and_execute(actions, tcp=tcp)
+    await motion_group.plan_and_execute(actions, tcp=tcp)  # type: ignore
 
 
 async def main():

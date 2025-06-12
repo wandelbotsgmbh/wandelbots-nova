@@ -10,11 +10,11 @@ Prerequisites:
 
 import asyncio
 
-from nova import MotionSettings, Nova
+from nova import Nova
 from nova.actions import cartesian_ptp, collision_free, io_write, joint_ptp
 from nova.api import models
 from nova.cell import virtual_controller
-from nova.types import Pose
+from nova.types import MotionSettings, Pose
 
 
 async def main():

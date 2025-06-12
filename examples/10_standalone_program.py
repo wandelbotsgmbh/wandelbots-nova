@@ -14,10 +14,10 @@ import asyncio
 from pydantic import Field
 
 import nova
-from nova import MotionSettings, Nova, api
+from nova import Nova, api
 from nova.actions import cartesian_ptp, joint_ptp, linear
 from nova.cell import virtual_controller
-from nova.types import Pose
+from nova.types import MotionSettings, Pose
 
 
 @nova.program
