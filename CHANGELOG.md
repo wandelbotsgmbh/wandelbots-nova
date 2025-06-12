@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v1.16.0 (2025-06-12)
+
+### Features
+
+- **NDX-80**: Improve nova module import performance with lazy loading
+  ([#187](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/187),
+  [`5e878a4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5e878a4ee8b2a3fe08c6170f77eeb74fcd975c3b))
+
+Co-authored-by: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+
+Co-authored-by: Christoph Biering <christoph.biering@gmail.com>
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.15.3 (2025-06-11)
 
 ### Bug Fixes
