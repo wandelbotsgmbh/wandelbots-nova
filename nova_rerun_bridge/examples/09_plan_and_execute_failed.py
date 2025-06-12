@@ -1,11 +1,10 @@
 import asyncio
 
-from nova import MotionSettings
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
-from nova.types import Pose
+from nova.types import MotionSettings, Pose
 from nova_rerun_bridge import NovaRerunBridge
 
 

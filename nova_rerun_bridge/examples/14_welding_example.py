@@ -11,12 +11,11 @@ from wandelbots_api_client.models import (
     Vector3d,
 )
 
-from nova import MotionSettings
 from nova.actions import collision_free, linear
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
-from nova.types import Pose
+from nova.types import MotionSettings, Pose
 from nova_rerun_bridge import NovaRerunBridge
 
 """
