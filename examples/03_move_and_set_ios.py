@@ -44,9 +44,9 @@ async def main():
             async for motion_state in motion_group.stream_plan_and_execute(actions, tcp):
                 print(motion_state)
 
-            io_value = await controller.read("tool_out[0]")
-            print(io_value)
-            await controller.write("tool_out[0]", True)
+            # io_value = await controller.read("tool_out[0]")
+            # print(io_value)
+            # await controller.write("tool_out[0]", True)
             # written_io_value = await controller.read("tool_out[0]")
             # print(written_io_value)
 
