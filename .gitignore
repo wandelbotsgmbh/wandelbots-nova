@@ -12,7 +12,6 @@ report/**
 reports
 .DS_Store
 **/.idea/*
-packages/wbigeometry.protobuf/wbigeometry/protobuf/pb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
