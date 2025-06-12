@@ -81,7 +81,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
         # The first request is to initialize the movement
-        yield wb.models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)  # type: ignore
+        yield wb.models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)
 
         # then we get the response
         initialize_movement_response = await anext(response_stream)
@@ -96,7 +96,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         set_io_list = context.combined_actions.to_set_io()
         yield wb.models.StartMovementRequest(
             set_ios=set_io_list, start_on_io=None, pause_on_io=None
-        )  # type: ignore
+        )
 
         # then we wait until the movement is finished
         async for execute_trajectory_response in response_stream:
@@ -116,7 +116,7 @@ def speed_up(
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
         # The first request is to initialize the movement
-        yield wb.models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)  # type: ignore
+        yield wb.models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)
 
         # then we get the response
         initialize_movement_response = await anext(response_stream)
@@ -131,7 +131,7 @@ def speed_up(
         set_io_list = context.combined_actions.to_set_io()
         yield wb.models.StartMovementRequest(
             set_ios=set_io_list, start_on_io=None, pause_on_io=None
-        )  # type: ignore
+        )
 
         counter = 0
         latest_speed = 10
