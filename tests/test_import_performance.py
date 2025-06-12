@@ -78,18 +78,3 @@ def test_backward_compatibility():
     assert api.models is not None, "nova.api.models should work"
 
     print("Backward compatibility maintained for existing import patterns")
-
-
-if __name__ == "__main__":
-    print("Running nova import performance tests...")
-    print("-" * 50)
-
-    test_nova_import_performance()
-
-    test_nova_import_profile()
-
-    test_api_module_lazy_loading()
-
-    test_backward_compatibility()
-
-    print("\nAll tests completed successfully!")
