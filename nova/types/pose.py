@@ -4,7 +4,7 @@ from typing import Iterable, Sized
 
 import numpy as np
 import pydantic
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 from scipy.spatial.transform import Rotation
 
 from nova.types.vector3d import Vector3d
@@ -18,13 +18,9 @@ def _parse_args(*args):
         pos = args[0].position
         ori = args[0].orientation
         return {
-            "position": Vector3d(x=pos.x, y=pos.y, z=pos.z),
-            "orientation": Vector3d(x=ori.x, y=ori.y, z=ori.z),
+            "position": Vector3d(x=pos[0], y=pos[1], z=pos[2]),
+            "orientation": Vector3d(x=ori[0], y=ori[1], z=ori[2]),
         }
-    if len(args) == 1 and isinstance(args[0], wb.models.Pose2):
-        x1, y1, z1 = args[0].position
-        x2, y2, z2 = args[0].orientation
-        return {"position": Vector3d(x=x1, y=y1, z=z1), "orientation": Vector3d(x=x2, y=y2, z=z2)}
     if len(args) == 1 and isinstance(args[0], tuple):
         args = args[0]
     if len(args) == 6:
@@ -200,8 +196,8 @@ class Pose(pydantic.BaseModel, Sized):
         Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3), coordinate_system=None)
         """
         return wb.models.Pose(
-            position=wb.models.Vector3d(**self.position.model_dump()),
-            orientation=wb.models.Vector3d(**self.orientation.model_dump()),
+            position=[self.position.x, self.position.y, self.position.z],
+            orientation=[self.orientation.x, self.orientation.y, self.orientation.z],
         )
 
     def _to_wb_pose2(self) -> wb.models.Pose2:
@@ -222,7 +218,7 @@ class Pose(pydantic.BaseModel, Sized):
         >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).model_dump()
         {'position': [10, 20, 30], 'orientation': [1, 2, 3]}
         """
-        return self._to_wb_pose2().model_dump()
+        return self._to_wb_pose().model_dump()
 
     @pydantic.model_validator(mode="before")
     @classmethod
