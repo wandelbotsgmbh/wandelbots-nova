@@ -1,11 +1,11 @@
 import asyncio
 import json
 
-from nova import MotionSettings, api
+from nova import api
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
 from nova.core.nova import Nova
-from nova.types import Pose
+from nova.types import MotionSettings, Pose
 from nova_rerun_bridge import NovaRerunBridge
 
 TOOL_ASSET = "nova_rerun_bridge/example_data/tool.stl"

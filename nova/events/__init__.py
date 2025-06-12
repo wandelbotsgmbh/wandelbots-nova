@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from blinker import signal
 from pydantic import BaseModel, Field
 
-from nova import Cell
+from nova.cell.cell import Cell
 
 cycle_started = signal("cycle_started")
 cycle_finished = signal("cycle_finished")
