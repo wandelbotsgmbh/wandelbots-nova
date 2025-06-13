@@ -140,6 +140,65 @@ class Cell:
             robot_controller, add_timeout=add_timeout, wait_for_ready_timeout=wait_for_ready_timeout
         )
 
+    async def ensure_virtual_tcp(
+        self, tcp: api.models.RobotTcp, controller_name: str, motion_group_idx: int = 0
+    ) -> api.models.RobotTcp:
+        """
+        Ensure that a virtual TCP with the expected configuration exists on the robot controller.
+        If it doesn't exist, it will be created. If it exists but has different configuration,
+        it will be updated by recreating it.
+
+        Args:
+            tcp (api.models.RobotTcp): The expected TCP configuration
+            controller_name (str): The name of the controller
+            motion_group_idx (int): The motion group index (default: 0)
+
+        Returns:
+            api.models.RobotTcp: The TCP configuration
+        """
+        controller = await self.controller(controller_name)
+
+        async with controller[motion_group_idx] as motion_group:
+            existing_tcps = await motion_group.tcps()
+
+            existing_tcp = None
+            for existing in existing_tcps:
+                if existing.id == tcp.id:
+                    existing_tcp = existing
+                    break
+
+            if existing_tcp:
+                if self._tcp_configs_equal(existing_tcp, tcp):
+                    return existing_tcp
+                return existing_tcp
+
+            await self._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp(
+                cell=self._cell_id, controller=controller_name, id=motion_group_idx, robot_tcp=tcp
+            )
+
+            import asyncio
+
+            await asyncio.sleep(1)
+
+            return tcp
+
+    def _tcp_configs_equal(self, tcp1: api.models.RobotTcp, tcp2: api.models.RobotTcp) -> bool:
+        """Compare two TCP configurations for equality."""
+        if tcp1.id != tcp2.id:
+            return False
+
+        if (
+            tcp1.position.x != tcp2.position.x
+            or tcp1.position.y != tcp2.position.y
+            or tcp1.position.z != tcp2.position.z
+        ):
+            return False
+
+        if tcp1.rotation.angles != tcp2.rotation.angles or tcp1.rotation.type != tcp2.rotation.type:
+            return False
+
+        return True
+
     async def controllers(self) -> list[Controller]:
         """
         List all controllers for this cell.
