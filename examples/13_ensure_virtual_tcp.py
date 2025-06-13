@@ -21,7 +21,7 @@ async def main():
         cell = nova.cell()
 
         controller = await cell.ensure_virtual_robot_controller(
-            "test_robot",
+            "test-robot",
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
@@ -38,13 +38,13 @@ async def main():
 
         print("Test 1: Creating new TCP...")
         result_tcp = await cell.ensure_virtual_tcp(
-            tcp=test_tcp, controller_name="test_robot", motion_group_idx=0
+            tcp=test_tcp, controller_name="test-robot", motion_group_idx=0
         )
         print(f"Created TCP: {result_tcp.id}")
 
         print("Test 2: Ensuring existing TCP with same config...")
         result_tcp2 = await cell.ensure_virtual_tcp(
-            tcp=test_tcp, controller_name="test_robot", motion_group_idx=0
+            tcp=test_tcp, controller_name="test-robot", motion_group_idx=0
         )
         print(f"Ensured TCP: {result_tcp2.id}")
 
@@ -61,7 +61,7 @@ async def main():
             else:
                 print("✗ TCP not found in motion group")
 
-        await cell.delete_robot_controller("test_robot")
+        await cell.delete_robot_controller("test-robot")
         print("Cleanup completed")
 
 
