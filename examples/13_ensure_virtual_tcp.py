@@ -14,7 +14,6 @@ from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngle
 
 from nova import Nova
 from nova.api import models
-from nova.cell import virtual_controller
 
 
 async def main():
