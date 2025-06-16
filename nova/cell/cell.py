@@ -1,3 +1,5 @@
+import asyncio
+
 import nova.api as api
 from nova.cell.controllers import virtual_controller
 from nova.cell.robot_cell import RobotCell
@@ -170,13 +172,10 @@ class Cell:
             if existing_tcp:
                 if self._tcp_configs_equal(existing_tcp, tcp):
                     return existing_tcp
-                return existing_tcp
 
             await self._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp(
                 cell=self._cell_id, controller=controller_name, id=motion_group_idx, robot_tcp=tcp
             )
-
-            import asyncio
 
             await asyncio.sleep(1)
 
@@ -194,8 +193,18 @@ class Cell:
         ):
             return False
 
-        if tcp1.rotation.angles != tcp2.rotation.angles or tcp1.rotation.type != tcp2.rotation.type:
+        if tcp1.rotation.type != tcp2.rotation.type:
             return False
+
+        angles1 = tcp1.rotation.angles
+        angles2 = tcp2.rotation.angles
+
+        if len(angles1) != len(angles2):
+            return False
+
+        for i in range(len(angles1)):
+            if angles1[i] != angles2[i]:
+                return False
 
         return True
 
