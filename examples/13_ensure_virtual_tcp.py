@@ -34,35 +34,21 @@ async def main():
             ),
         )
 
-        print("Testing ensure_virtual_tcp functionality...")
-
-        print("Test 1: Creating new TCP...")
         result_tcp = await cell.ensure_virtual_tcp(
             tcp=test_tcp, controller_name="test-robot", motion_group_idx=0
         )
-        print(f"Created TCP: {result_tcp.id}")
 
-        print("Test 2: Ensuring existing TCP with same config...")
         result_tcp2 = await cell.ensure_virtual_tcp(
             tcp=test_tcp, controller_name="test-robot", motion_group_idx=0
         )
-        print(f"Ensured TCP: {result_tcp2.id}")
 
-        print("Test 3: Verifying TCP is available...")
         async with controller[0] as motion_group:
             tcp_names = await motion_group.tcp_names()
-            print(f"Available TCPs: {tcp_names}")
 
             if "test_gripper" in tcp_names:
-                print("✓ TCP successfully created and available")
-
                 tcp_pose = await motion_group.tcp_pose("test_gripper")
-                print(f"TCP pose: {tcp_pose}")
-            else:
-                print("✗ TCP not found in motion group")
 
         await cell.delete_robot_controller("test-robot")
-        print("Cleanup completed")
 
 
 if __name__ == "__main__":
