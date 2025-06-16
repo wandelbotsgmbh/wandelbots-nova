@@ -1,0 +1,6 @@
+{
+  "flange2robot": {
+    "position": [100, -270, -100],
+    "orientation": [3.1415926535, 0, 0]
+  }
+}

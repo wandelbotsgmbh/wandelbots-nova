@@ -1,0 +1,8 @@
+{
+  "a": "last",
+  "b": {
+    "position": [0, 0, 0],
+    "orientation": [0, 0, 0]
+  },
+  "c": "last"
+}

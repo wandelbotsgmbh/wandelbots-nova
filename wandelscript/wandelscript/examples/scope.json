@@ -1,0 +1,7 @@
+{
+  "global_before_modification": "global",
+  "global_after_modification": "global modified",
+  "g_local_modified_by_local_setter": "outer modified",
+  "g_local_modified_by_2nd_level_local_setter": "outer modified",
+  "g_definition_order_inside_closure": "outer value"
+}

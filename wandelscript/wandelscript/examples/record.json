@@ -1,0 +1,70 @@
+{
+  "r_empty": {},
+  "r_datatypes": {
+    "keystr": "str",
+    "keyint": 1,
+    "keyfloat": 1.1,
+    "keybool": true,
+    "keybool2": false
+  },
+  "r_inline": {
+    "a": 5,
+    "b": 6,
+    "c": {
+      "d": 7,
+      "e": 8
+    }
+  },
+  "r_multiline": {
+    "a": 1,
+    "b": 2,
+    "c": {
+      "d": 3,
+      "e": 4
+    }
+  },
+  "r_mixedline": {
+    "a": 1,
+    "b": 2,
+    "c": {
+      "d": 3,
+      "e": 4
+    }
+  },
+  "r_trailing_comma": {
+    "a": 10,
+    "b": {
+      "c": 11,
+      "d": 12
+    }
+  },
+  "r_mixedline_written": {
+    "a": 1,
+    "b": 5,
+    "c": {
+      "d": 3,
+      "e": 4
+    }
+  },
+  "r_mixedline_written_deep": {
+    "a": 1,
+    "b": 2,
+    "c": {
+      "d": 6,
+      "e": 4
+    }
+  },
+  "r_passed_to_fn": {
+    "a": 5,
+    "b": 6,
+    "c": {
+      "d": 7,
+      "e": 8
+    }
+  },
+  "read_keystr_attr_access": "str",
+  "read_keystr_item_access": "str",
+  "read_keystr_attr_access_deep": 4,
+  "read_keystr_item_access_deep": 3,
+  "read_keystr_item_access_deep2": 4
+}

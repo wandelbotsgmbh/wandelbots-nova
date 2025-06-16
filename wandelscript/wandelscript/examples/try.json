@@ -1,0 +1,10 @@
+{
+  "stopped_pose": {
+    "position": [-200, -600, 300],
+    "orientation": [0, 3.14, 0]
+  },
+  "final_pose": {
+    "position": [-200, -600, 350],
+    "orientation": [0, 3.14, 0]
+  }
+}
