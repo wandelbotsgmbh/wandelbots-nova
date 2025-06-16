@@ -37,7 +37,7 @@ async def main():
             ),
         )
 
-        result_tcp = await cell.ensure_virtual_tcp(
+        await cell.ensure_virtual_tcp(
             tcp=robot_tcp, controller_name=CONTROLLER_NAME, motion_group_idx=0
         )
 
