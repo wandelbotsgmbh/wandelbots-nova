@@ -72,8 +72,6 @@ jobs:
             run_cmd: "python examples/06_api_usage.py"
           - id: 08_multi_step_movement_with_collision_free
             run_cmd: "python examples/08_multi_step_movement_with_collision_free.py"
-          - id: 13_ensure_virtual_tcp
-            run_cmd: "python examples/13_ensure_virtual_tcp.py"
           - id: 14_welding_example
             run_cmd: "python nova_rerun_bridge/examples/14_welding_example.py"
     steps:

@@ -10,6 +10,8 @@ Prerequisites:
 
 import asyncio
 
+from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngleTypes, Vector3d
+
 from nova import Nova
 from nova.api import models
 from nova.cell import virtual_controller
@@ -31,6 +33,19 @@ async def main():
             print(tcp_names)
 
             tcp = tcp_names[0]
+
+            test_tcp = RobotTcp(
+                id="test_gripper",
+                position=Vector3d(x=0, y=0, z=150),
+                rotation=RotationAngles(
+                    angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
+                ),
+            )
+
+            await motion_group.ensure_virtual_tcp(tcp=test_tcp)
+
+            updated_tcp_names = await motion_group.tcp_names()
+            assert "test_gripper" in updated_tcp_names
 
             # Current motion group state
             state = await motion_group.get_state(tcp)
