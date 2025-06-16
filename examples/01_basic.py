@@ -29,11 +29,6 @@ async def main():
         )
 
         async with controller[0] as motion_group:
-            tcp_names = await motion_group.tcp_names()
-            print(tcp_names)
-
-            tcp = tcp_names[0]
-
             test_tcp = RobotTcp(
                 id="test_gripper",
                 position=Vector3d(x=0, y=0, z=150),
@@ -44,8 +39,10 @@ async def main():
 
             await motion_group.ensure_virtual_tcp(tcp=test_tcp)
 
-            updated_tcp_names = await motion_group.tcp_names()
-            assert "test_gripper" in updated_tcp_names
+            tcp_names = await motion_group.tcp_names()
+            print(tcp_names)
+
+            tcp = "test_gripper"
 
             # Current motion group state
             state = await motion_group.get_state(tcp)
