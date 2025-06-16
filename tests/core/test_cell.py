@@ -1,32 +1,49 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngleTypes, Vector3d
 
-from nova.cell.cell import Cell
 from nova.core.gateway import ApiGateway
+from nova.core.motion_group import MotionGroup
 
 
 @pytest.fixture
-def mock_cell():
-    """Create a Cell instance for testing."""
+def mock_motion_group():
+    """Create a MotionGroup instance for testing."""
     mock_api_gateway = MagicMock(spec=ApiGateway)
-    return Cell(api_gateway=mock_api_gateway, cell_id="test_cell")
+    mock_api_gateway.virtual_robot_setup_api = AsyncMock()
+    return MotionGroup(
+        api_gateway=mock_api_gateway, cell="test_cell", motion_group_id="0@test-controller"
+    )
 
 
-class TestCellTcpConfigsEqual:
-    """Test cases for the _tcp_configs_equal method in Cell class."""
+class TestMotionGroupEnsureVirtualTcp:
+    """Test cases for the ensure_virtual_tcp method in MotionGroup class."""
 
-    def test_tcp_configs_equal_identical(self, mock_cell):
-        """Test that identical TCP configurations are considered equal."""
-        tcp1 = RobotTcp(
+    @pytest.mark.asyncio
+    async def test_ensure_virtual_tcp_creates_new_tcp(self, mock_motion_group):
+        """Test that ensure_virtual_tcp creates a new TCP when it doesn't exist."""
+        tcp = RobotTcp(
             id="test_tcp",
             position=Vector3d(x=0, y=0, z=150),
             rotation=RotationAngles(
                 angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
             ),
         )
-        tcp2 = RobotTcp(
+
+        mock_motion_group.tcps = AsyncMock(return_value=[])
+
+        result = await mock_motion_group.ensure_virtual_tcp(tcp)
+
+        assert result == tcp
+        mock_motion_group._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp.assert_called_once_with(
+            cell="test_cell", controller="test-controller", id=0, robot_tcp=tcp
+        )
+
+    @pytest.mark.asyncio
+    async def test_ensure_virtual_tcp_returns_existing_identical_tcp(self, mock_motion_group):
+        """Test that ensure_virtual_tcp returns existing TCP when configurations are identical."""
+        tcp = RobotTcp(
             id="test_tcp",
             position=Vector3d(x=0, y=0, z=150),
             rotation=RotationAngles(
@@ -34,81 +51,92 @@ class TestCellTcpConfigsEqual:
             ),
         )
 
-        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is True
-
-    def test_tcp_configs_different_ids(self, mock_cell):
-        """Test that TCPs with different IDs are not equal."""
-        tcp1 = RobotTcp(
-            id="tcp1",
-            position=Vector3d(x=0, y=0, z=150),
-            rotation=RotationAngles(
-                angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-            ),
-        )
-        tcp2 = RobotTcp(
-            id="tcp2",
-            position=Vector3d(x=0, y=0, z=150),
-            rotation=RotationAngles(
-                angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-            ),
-        )
-
-        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is False
-
-    @pytest.mark.parametrize("x,y,z", [(10, 0, 150), (0, 10, 150), (0, 0, 100)])
-    def test_tcp_configs_different_positions(self, mock_cell, x, y, z):
-        """Test that TCPs with different positions are not equal."""
-        tcp1 = RobotTcp(
+        existing_tcp = RobotTcp(
             id="test_tcp",
             position=Vector3d(x=0, y=0, z=150),
             rotation=RotationAngles(
                 angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
             ),
         )
-        tcp2 = RobotTcp(
-            id="test_tcp",
-            position=Vector3d(x=x, y=y, z=z),
-            rotation=RotationAngles(
-                angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-            ),
-        )
 
-        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is False
+        mock_motion_group.tcps = AsyncMock(return_value=[existing_tcp])
 
-    @pytest.mark.parametrize("angle_diff_index", [0, 1, 2])
-    def test_tcp_configs_single_angle_difference(self, mock_cell, angle_diff_index):
-        """Test that TCPs with a single different angle are not equal."""
-        angles1 = [0.0, 0.0, 0.0]
-        angles2 = [0.0, 0.0, 0.0]
-        angles2[angle_diff_index] = 0.1
+        result = await mock_motion_group.ensure_virtual_tcp(tcp)
 
-        tcp1 = RobotTcp(
-            id="test_tcp",
-            position=Vector3d(x=0, y=0, z=150),
-            rotation=RotationAngles(
-                angles=angles1, type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-            ),
-        )
-        tcp2 = RobotTcp(
-            id="test_tcp",
-            position=Vector3d(x=0, y=0, z=150),
-            rotation=RotationAngles(
-                angles=angles2, type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-            ),
-        )
+        assert result == existing_tcp
+        mock_motion_group._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp.assert_not_called()
 
-        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is False
-
-    def test_tcp_configs_different_rotation_types(self, mock_cell):
-        """Test that TCPs with different rotation types are not equal."""
-        tcp1 = RobotTcp(
+    @pytest.mark.asyncio
+    async def test_ensure_virtual_tcp_updates_different_tcp(self, mock_motion_group):
+        """Test that ensure_virtual_tcp updates TCP when configurations differ."""
+        tcp = RobotTcp(
             id="test_tcp",
             position=Vector3d(x=0, y=0, z=150),
             rotation=RotationAngles(
                 angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
             ),
         )
-        tcp2 = RobotTcp(
+
+        existing_tcp = RobotTcp(
+            id="test_tcp",
+            position=Vector3d(x=10, y=0, z=150),
+            rotation=RotationAngles(
+                angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
+            ),
+        )
+
+        mock_motion_group.tcps = AsyncMock(return_value=[existing_tcp])
+
+        result = await mock_motion_group.ensure_virtual_tcp(tcp)
+
+        assert result == tcp
+        mock_motion_group._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp.assert_called_once_with(
+            cell="test_cell", controller="test-controller", id=0, robot_tcp=tcp
+        )
+
+    @pytest.mark.parametrize(
+        "rotation_type",
+        [
+            RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ,
+            RotationAngleTypes.EULER_ANGLES_INTRINSIC_XYZ,
+            RotationAngleTypes.QUATERNION,
+            RotationAngleTypes.ROTATION_VECTOR,
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_ensure_virtual_tcp_different_rotation_types(
+        self, mock_motion_group, rotation_type
+    ):
+        """Test that ensure_virtual_tcp works with different rotation types."""
+        angles = [0, 0, 0] if rotation_type != RotationAngleTypes.QUATERNION else [0, 0, 0, 1]
+
+        tcp = RobotTcp(
+            id="test_tcp",
+            position=Vector3d(x=0, y=0, z=150),
+            rotation=RotationAngles(angles=angles, type=rotation_type),
+        )
+
+        mock_motion_group.tcps = AsyncMock(return_value=[])
+
+        result = await mock_motion_group.ensure_virtual_tcp(tcp)
+
+        assert result == tcp
+        mock_motion_group._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp.assert_called_once_with(
+            cell="test_cell", controller="test-controller", id=0, robot_tcp=tcp
+        )
+
+    @pytest.mark.asyncio
+    async def test_ensure_virtual_tcp_different_rotation_types_not_equal(self, mock_motion_group):
+        """Test that TCPs with different rotation types are not considered equal."""
+        tcp = RobotTcp(
+            id="test_tcp",
+            position=Vector3d(x=0, y=0, z=150),
+            rotation=RotationAngles(
+                angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
+            ),
+        )
+
+        existing_tcp = RobotTcp(
             id="test_tcp",
             position=Vector3d(x=0, y=0, z=150),
             rotation=RotationAngles(
@@ -116,42 +144,11 @@ class TestCellTcpConfigsEqual:
             ),
         )
 
-        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is False
+        mock_motion_group.tcps = AsyncMock(return_value=[existing_tcp])
 
-    def test_tcp_configs_multiple_angle_differences(self, mock_cell):
-        """Test that TCPs with multiple different angles are not equal."""
-        tcp1 = RobotTcp(
-            id="test_tcp",
-            position=Vector3d(x=0, y=0, z=150),
-            rotation=RotationAngles(
-                angles=[0.1, 0.2, 0.3], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-            ),
-        )
-        tcp2 = RobotTcp(
-            id="test_tcp",
-            position=Vector3d(x=0, y=0, z=150),
-            rotation=RotationAngles(
-                angles=[0.4, 0.5, 0.6], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-            ),
-        )
+        result = await mock_motion_group.ensure_virtual_tcp(tcp)
 
-        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is False
-
-    def test_tcp_configs_precision_differences(self, mock_cell):
-        """Test that TCPs with small precision differences in angles are not equal."""
-        tcp1 = RobotTcp(
-            id="test_tcp",
-            position=Vector3d(x=0, y=0, z=150),
-            rotation=RotationAngles(
-                angles=[1.0, 2.0, 3.0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-            ),
+        assert result == tcp
+        mock_motion_group._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp.assert_called_once_with(
+            cell="test_cell", controller="test-controller", id=0, robot_tcp=tcp
         )
-        tcp2 = RobotTcp(
-            id="test_tcp",
-            position=Vector3d(x=0, y=0, z=150),
-            rotation=RotationAngles(
-                angles=[1.0001, 2.0, 3.0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-            ),
-        )
-
-        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is False

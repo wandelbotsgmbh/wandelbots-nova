@@ -1,5 +1,9 @@
 """
-Integration test for ensure_virtual_tcp functionality.
+Example demonstrating ensure_virtual_tcp functionality.
+
+This example shows how to ensure a virtual TCP exists with the expected configuration
+on a motion group. The TCP will be created if it doesn't exist, or updated if the
+configuration differs.
 
 Prerequisites:
 - Create a NOVA instance
@@ -23,6 +27,7 @@ async def main():
     async with Nova() as nova:
         cell = nova.cell()
 
+        print(f"Creating virtual robot controller '{CONTROLLER_NAME}'...")
         controller = await cell.ensure_virtual_robot_controller(
             CONTROLLER_NAME,
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
@@ -37,28 +42,26 @@ async def main():
             ),
         )
 
-        await cell.ensure_virtual_tcp(
-            tcp=robot_tcp, controller_name=CONTROLLER_NAME, motion_group_idx=0
-        )
-
         async with controller[0] as motion_group:
-            tcp_names = await motion_group.tcp_names()
+            print(f"Ensuring TCP '{TCP_ID}' exists with specified configuration...")
 
-            assert TCP_ID in tcp_names, f"TCP '{TCP_ID}' should exist"
+            result_tcp = await motion_group.ensure_virtual_tcp(tcp=robot_tcp)
+            print(f"TCP '{result_tcp.id}' is now available")
+
+            tcp_names = await motion_group.tcp_names()
+            print(f"Available TCPs: {tcp_names}")
 
             existing_tcps = await motion_group.tcps()
-            found_tcp = None
             for tcp in existing_tcps:
                 if tcp.id == TCP_ID:
-                    found_tcp = tcp
+                    print(f"TCP '{TCP_ID}' configuration:")
+                    print(f"  Position: x={tcp.position.x}, y={tcp.position.y}, z={tcp.position.z}")
+                    print(f"  Rotation: {tcp.rotation.angles} ({tcp.rotation.type})")
                     break
 
-            assert found_tcp is not None, f"TCP '{TCP_ID}' should be found in tcps list"
-            assert found_tcp.position.x == 0, f"Expected x=0, got {found_tcp.position.x}"
-            assert found_tcp.position.y == 0, f"Expected y=0, got {found_tcp.position.y}"
-            assert found_tcp.position.z == 150, f"Expected z=150, got {found_tcp.position.z}"
-
+        print(f"Cleaning up: deleting controller '{CONTROLLER_NAME}'...")
         await cell.delete_robot_controller(CONTROLLER_NAME)
+        print("Example completed successfully!")
 
 
 if __name__ == "__main__":
