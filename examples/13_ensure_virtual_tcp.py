@@ -26,7 +26,7 @@ async def main():
             models.Manufacturer.UNIVERSALROBOTS,
         )
 
-        test_tcp = RobotTcp(
+        robot_tcp = RobotTcp(
             id="test_gripper",
             position=Vector3d(x=0, y=0, z=150),
             rotation=RotationAngles(
@@ -35,18 +35,25 @@ async def main():
         )
 
         result_tcp = await cell.ensure_virtual_tcp(
-            tcp=test_tcp, controller_name="test-robot", motion_group_idx=0
-        )
-
-        result_tcp2 = await cell.ensure_virtual_tcp(
-            tcp=test_tcp, controller_name="test-robot", motion_group_idx=0
+            tcp=robot_tcp, controller_name="test-robot", motion_group_idx=0
         )
 
         async with controller[0] as motion_group:
             tcp_names = await motion_group.tcp_names()
-
-            if "test_gripper" in tcp_names:
-                tcp_pose = await motion_group.tcp_pose("test_gripper")
+            
+            assert "test_gripper" in tcp_names, "TCP 'test_gripper' should exist"
+            
+            existing_tcps = await motion_group.tcps()
+            found_tcp = None
+            for tcp in existing_tcps:
+                if tcp.id == "test_gripper":
+                    found_tcp = tcp
+                    break
+            
+            assert found_tcp is not None, "TCP 'test_gripper' should be found in tcps list"
+            assert found_tcp.position.x == 0, f"Expected x=0, got {found_tcp.position.x}"
+            assert found_tcp.position.y == 0, f"Expected y=0, got {found_tcp.position.y}"
+            assert found_tcp.position.z == 150, f"Expected z=150, got {found_tcp.position.z}"
 
         await cell.delete_robot_controller("test-robot")
 
