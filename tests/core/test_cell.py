@@ -7,15 +7,17 @@ from nova.cell.cell import Cell
 from nova.core.gateway import ApiGateway
 
 
+@pytest.fixture
+def mock_cell():
+    """Create a Cell instance for testing."""
+    mock_api_gateway = MagicMock(spec=ApiGateway)
+    return Cell(api_gateway=mock_api_gateway, cell_id="test_cell")
+
+
 class TestCellTcpConfigsEqual:
     """Test cases for the _tcp_configs_equal method in Cell class."""
 
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.mock_api_gateway = MagicMock(spec=ApiGateway)
-        self.cell = Cell(api_gateway=self.mock_api_gateway, cell_id="test_cell")
-
-    def test_tcp_configs_equal_identical(self):
+    def test_tcp_configs_equal_identical(self, mock_cell):
         """Test that identical TCP configurations are considered equal."""
         tcp1 = RobotTcp(
             id="test_tcp",
@@ -32,9 +34,9 @@ class TestCellTcpConfigsEqual:
             ),
         )
 
-        assert self.cell._tcp_configs_equal(tcp1, tcp2) is True
+        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is True
 
-    def test_tcp_configs_different_ids(self):
+    def test_tcp_configs_different_ids(self, mock_cell):
         """Test that TCPs with different IDs are not equal."""
         tcp1 = RobotTcp(
             id="tcp1",
@@ -51,10 +53,10 @@ class TestCellTcpConfigsEqual:
             ),
         )
 
-        assert self.cell._tcp_configs_equal(tcp1, tcp2) is False
+        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is False
 
     @pytest.mark.parametrize("x,y,z", [(10, 0, 150), (0, 10, 150), (0, 0, 100)])
-    def test_tcp_configs_different_positions(self, x, y, z):
+    def test_tcp_configs_different_positions(self, mock_cell, x, y, z):
         """Test that TCPs with different positions are not equal."""
         tcp1 = RobotTcp(
             id="test_tcp",
@@ -71,10 +73,10 @@ class TestCellTcpConfigsEqual:
             ),
         )
 
-        assert self.cell._tcp_configs_equal(tcp1, tcp2) is False
+        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is False
 
     @pytest.mark.parametrize("angle_diff_index", [0, 1, 2])
-    def test_tcp_configs_single_angle_difference(self, angle_diff_index):
+    def test_tcp_configs_single_angle_difference(self, mock_cell, angle_diff_index):
         """Test that TCPs with a single different angle are not equal."""
         angles1 = [0.0, 0.0, 0.0]
         angles2 = [0.0, 0.0, 0.0]
@@ -95,9 +97,9 @@ class TestCellTcpConfigsEqual:
             ),
         )
 
-        assert self.cell._tcp_configs_equal(tcp1, tcp2) is False
+        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is False
 
-    def test_tcp_configs_different_rotation_types(self):
+    def test_tcp_configs_different_rotation_types(self, mock_cell):
         """Test that TCPs with different rotation types are not equal."""
         tcp1 = RobotTcp(
             id="test_tcp",
@@ -114,9 +116,9 @@ class TestCellTcpConfigsEqual:
             ),
         )
 
-        assert self.cell._tcp_configs_equal(tcp1, tcp2) is False
+        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is False
 
-    def test_tcp_configs_multiple_angle_differences(self):
+    def test_tcp_configs_multiple_angle_differences(self, mock_cell):
         """Test that TCPs with multiple different angles are not equal."""
         tcp1 = RobotTcp(
             id="test_tcp",
@@ -133,9 +135,9 @@ class TestCellTcpConfigsEqual:
             ),
         )
 
-        assert self.cell._tcp_configs_equal(tcp1, tcp2) is False
+        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is False
 
-    def test_tcp_configs_precision_differences(self):
+    def test_tcp_configs_precision_differences(self, mock_cell):
         """Test that TCPs with small precision differences in angles are not equal."""
         tcp1 = RobotTcp(
             id="test_tcp",
@@ -152,4 +154,4 @@ class TestCellTcpConfigsEqual:
             ),
         )
 
-        assert self.cell._tcp_configs_equal(tcp1, tcp2) is False
+        assert mock_cell._tcp_configs_equal(tcp1, tcp2) is False
