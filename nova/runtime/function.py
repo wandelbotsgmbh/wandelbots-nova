@@ -20,7 +20,6 @@ from pydantic import BaseModel, Field, PrivateAttr, RootModel, create_model, val
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
-
 Parameters = ParamSpec("Parameters")
 Return = TypeVar("Return")
 
