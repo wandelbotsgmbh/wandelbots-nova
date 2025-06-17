@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v1.17.0 (2025-06-17)
+
+### Features
+
+- Add ensure_virtual_tcp function
+  ([#189](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/189),
+  [`0624326`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/062432699effc77b44f826ea90659a402a325c3c))
+
+Co-authored-by: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+
+Co-authored-by: Juri <juri.ticho@gmail.com>
+
+
 ## v1.16.0 (2025-06-12)
 
 ### Features
