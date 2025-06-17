@@ -514,3 +514,36 @@ class MotionGroup(AbstractRobot):
     async def active_tcp_name(self) -> str:
         active_tcp = await self.active_tcp()
         return active_tcp.id
+
+    async def ensure_virtual_tcp(self, tcp: models.RobotTcp) -> models.RobotTcp:
+        """
+        Ensure that a virtual TCP with the expected configuration exists on this motion group.
+        If it doesn't exist, it will be created. If it exists but has different configuration,
+        it will be updated by recreating it.
+
+        Args:
+            tcp (models.RobotTcp): The expected TCP configuration
+
+        Returns:
+            models.RobotTcp: The TCP configuration
+        """
+        existing_tcps = await self.tcps()
+
+        existing_tcp = None
+        for existing in existing_tcps:
+            if existing.id == tcp.id:
+                existing_tcp = existing
+                break
+
+        if existing_tcp:
+            if existing_tcp == tcp:
+                return existing_tcp
+
+        controller_name = self._motion_group_id.split("@")[1]
+        motion_group_index = int(self._motion_group_id.split("@")[0])
+
+        await self._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp(
+            cell=self._cell, controller=controller_name, id=motion_group_index, robot_tcp=tcp
+        )
+
+        return tcp
