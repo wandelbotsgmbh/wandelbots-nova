@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v1.17.1 (2025-06-17)
+
+### Bug Fixes
+
+- Install `pdoc` into the venv on `autodocs.yml`
+  ([#196](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/196),
+  [`4390fca`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4390fca69b8c85f958cb9e019c8fa3f7762c237d))
+
+
 ## v1.17.0 (2025-06-17)
 
 ### Features
