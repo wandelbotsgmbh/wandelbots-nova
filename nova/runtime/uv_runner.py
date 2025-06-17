@@ -22,7 +22,14 @@ class UVProgramRunner(ProgramRunner):
         if not program.program_type.value == ProgramType.PYTHON.value:
             raise ValueError(f"Program type must be {ProgramType.PYTHON}")
 
-        super().__init__(program=program, args=args, robot_cell_override=robot_cell_override)
+        function_obj = self._extract_function_metadata(program.content)
+
+        super().__init__(
+            program=program,
+            args=args,
+            robot_cell_override=robot_cell_override,
+            function_obj=function_obj,
+        )
 
         self.project_dir = Path(tempfile.mkdtemp())
         self.program_file = self.project_dir / "program.py"
@@ -58,6 +65,51 @@ class UVProgramRunner(ProgramRunner):
 
             logger.info("uv installed successfully")
 
+    def _extract_function_metadata(self, program_content: str):
+        """Extract function metadata including controller configurations from program content."""
+        import ast
+
+        class FunctionMetadata:
+            def __init__(self):
+                self.controller_configs = []
+                self.cleanup_controllers = True
+
+        try:
+            tree = ast.parse(program_content)
+            main_func = None
+
+            # Find the main function and extract decorator metadata
+            for node in ast.walk(tree):
+                if isinstance(node, ast.AsyncFunctionDef) and node.name == "main":
+                    main_func = node
+                    break
+
+            if not main_func:
+                return FunctionMetadata()
+
+            # Extract metadata from decorators
+            metadata = FunctionMetadata()
+            for decorator in main_func.decorator_list:
+                if isinstance(decorator, ast.Call):
+                    if (
+                        isinstance(decorator.func, ast.Name) and decorator.func.id == "program"
+                    ) or (
+                        isinstance(decorator.func, ast.Attribute)
+                        and decorator.func.attr == "program"
+                    ):
+                        for keyword in decorator.keywords:
+                            if keyword.arg == "controllers":
+                                metadata.controller_configs = []
+                            elif keyword.arg == "cleanup_controllers":
+                                if isinstance(keyword.value, ast.Constant):
+                                    metadata.cleanup_controllers = keyword.value.value
+
+            return metadata
+
+        except Exception as e:
+            logger.warning(f"Failed to extract function metadata: {e}")
+            return FunctionMetadata()
+
     async def _validate_program(self):
         """Validate that the program has a main function with correct parameters."""
         import ast
@@ -78,6 +130,15 @@ class UVProgramRunner(ProgramRunner):
                     elif isinstance(decorator, ast.Attribute) and decorator.attr == "program":
                         has_correct_decorator = True
                         break
+                    elif isinstance(decorator, ast.Call):
+                        if (
+                            isinstance(decorator.func, ast.Name) and decorator.func.id == "program"
+                        ) or (
+                            isinstance(decorator.func, ast.Attribute)
+                            and decorator.func.attr == "program"
+                        ):
+                            has_correct_decorator = True
+                            break
 
         if not main_func:
             raise ValueError("Program must have an async main function")

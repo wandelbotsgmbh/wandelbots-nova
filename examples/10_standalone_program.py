@@ -20,7 +20,16 @@ from nova.cell import virtual_controller
 from nova.types import MotionSettings, Pose
 
 
-@nova.program
+@nova.program(
+    controllers=[
+        virtual_controller(
+            name="controller",
+            manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+            type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+        )
+    ],
+    cleanup_controllers=True,
+)
 async def main(
     # TODO: ignore ctx in the signature
     # ctx: nova.ExecutionContext,
@@ -31,13 +40,7 @@ async def main(
     """
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.ensure_controller(
-            robot_controller=virtual_controller(
-                name="controller",
-                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            )
-        )
+        controller = await cell.controller("controller")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:

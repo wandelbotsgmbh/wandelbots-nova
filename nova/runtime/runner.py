@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from nova import Nova, api
 from nova.cell.robot_cell import RobotCell
-from nova.core.exceptions import PlanTrajectoryFailed
+from nova.core.exceptions import ControllerCreationFailed, PlanTrajectoryFailed
 from nova.runtime.exceptions import NotPlannableError
 from nova.runtime.utils import Tee, stoppable_run
 from nova.types import MotionState
@@ -98,11 +98,16 @@ class ProgramRunner(ABC):
     """
 
     def __init__(
-        self, program: Program, args: dict[str, Any], robot_cell_override: RobotCell | None = None
+        self,
+        program: Program,
+        args: dict[str, Any],
+        robot_cell_override: RobotCell | None = None,
+        function_obj: Any = None,
     ):
         self._program = program
         self._args = args
         self._robot_cell_override = robot_cell_override
+        self._function_obj = function_obj
         self._program_run: ProgramRun = ProgramRun(
             id=str(uuid.uuid4()),
             state=ProgramRunState.NOT_STARTED,
@@ -117,6 +122,7 @@ class ProgramRunner(ABC):
         self._thread: threading.Thread | None = None
         self._stop_event: threading.Event | None = None
         self._exc: Exception | None = None
+        self._created_controllers: list[str] = []
 
     @property
     def id(self) -> str:
@@ -321,6 +327,32 @@ class ProgramRunner(ABC):
             )
             current_execution_context_var.set(execution_context)
 
+            self._created_controllers = []
+            if self._function_obj and hasattr(self._function_obj, "controller_configs"):
+                try:
+                    for controller_config in self._function_obj.controller_configs:
+                        try:
+                            async with Nova() as nova:
+                                cell = nova.cell()
+                                controller_name = controller_config.get(
+                                    "name", "unnamed_controller"
+                                )
+                                controller = await cell.ensure_virtual_robot_controller(
+                                    controller_name,
+                                    controller_config.get("type"),
+                                    controller_config.get("manufacturer"),
+                                )
+                                self._created_controllers.append(controller.controller_id)
+                                logger.info(
+                                    f"Created controller '{controller_name}' with ID {controller.controller_id}"
+                                )
+                        except Exception as e:
+                            controller_name = controller_config.get("name", "unnamed_controller")
+                            raise ControllerCreationFailed(controller_name, str(e))
+                except Exception as e:
+                    # If controller creation fails, we should fail the program
+                    raise e
+
             await on_state_change()
 
             monitoring_scope = anyio.CancelScope()
@@ -366,6 +398,21 @@ class ProgramRunner(ABC):
 
                     logger.info(f"Program {self.id} finished. Run teardown routine...")
                     self._program_run.end_time = dt.datetime.now(dt.timezone.utc)
+
+                    if (
+                        self._function_obj
+                        and hasattr(self._function_obj, "cleanup_controllers")
+                        and self._function_obj.cleanup_controllers
+                        and self._created_controllers
+                    ):
+                        try:
+                            async with Nova() as nova:
+                                cell = nova.cell()
+                                for controller_id in self._created_controllers:
+                                    await cell.delete_robot_controller(controller_id)
+                                    logger.info(f"Cleaned up controller with ID {controller_id}")
+                        except Exception as e:
+                            logger.error(f"Error during controller cleanup: {e}")
 
                     logger.remove(sink_id)
                     self._program_run.logs = log_capture.getvalue()
