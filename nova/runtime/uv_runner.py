@@ -23,10 +23,7 @@ class UVProgramRunner(ProgramRunner):
             raise ValueError(f"Program type must be {ProgramType.PYTHON}")
 
         super().__init__(
-            program=program,
-            args=args,
-            robot_cell_override=robot_cell_override,
-            function_obj=None,
+            program=program, args=args, robot_cell_override=robot_cell_override, function_obj=None
         )
 
         self.project_dir = Path(tempfile.mkdtemp())
@@ -62,8 +59,6 @@ class UVProgramRunner(ProgramRunner):
                 raise RuntimeError(f"Failed to install uv: {stderr.decode()}")
 
             logger.info("uv installed successfully")
-
-
 
     async def _validate_program(self):
         """Validate that the program has a main function with correct parameters."""
