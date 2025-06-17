@@ -546,6 +546,4 @@ class MotionGroup(AbstractRobot):
             cell=self._cell, controller=controller_name, id=motion_group_index, robot_tcp=tcp
         )
 
-        await asyncio.sleep(1)
-
         return tcp
