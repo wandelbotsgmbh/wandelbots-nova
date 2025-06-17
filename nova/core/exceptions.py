@@ -70,3 +70,12 @@ class InconsistentCollisionScenes(Exception):
     def message(self) -> str:
         """Return the error message."""
         return self._message
+
+
+class ControllerCreationFailed(Exception):
+    """Raised when controller creation fails during declarative setup."""
+
+    def __init__(self, controller_name: str, error: str):
+        self.controller_name = controller_name
+        self.error = error
+        super().__init__(f"Failed to create controller '{controller_name}': {error}")

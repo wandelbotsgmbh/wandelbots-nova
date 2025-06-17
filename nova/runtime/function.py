@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, PrivateAttr, RootModel, create_model, val
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
+
 Parameters = ParamSpec("Parameters")
 Return = TypeVar("Return")
 
@@ -32,6 +33,8 @@ class Function(BaseModel, Generic[Parameters, Return]):
     description: str | None
     input: type[BaseModel]
     output: type[BaseModel]
+    controller_configs: list[dict[str, Any]] = Field(default_factory=list)
+    cleanup_controllers: bool = Field(default=True)
 
     @classmethod
     def validate(cls, value: Callable[Parameters, Return]) -> "Function[Parameters, Return]":
@@ -197,6 +200,24 @@ def input_and_output_types(
         output = Output
 
     return input, output
+
+
+def program(controllers: list[dict[str, Any]] | None = None, cleanup_controllers: bool = True):
+    """
+    Decorator factory for creating Nova programs with declarative controller setup.
+
+    Args:
+        controllers: List of controller configurations to create before program execution
+        cleanup_controllers: Whether to automatically delete controllers after program completion
+    """
+
+    def decorator(function: Callable[Parameters, Return]) -> Function[Parameters, Return]:
+        func_obj = Function.validate(function)
+        func_obj.controller_configs = controllers or []
+        func_obj.cleanup_controllers = cleanup_controllers
+        return func_obj
+
+    return decorator
 
 
 def wrap(function: Callable[Parameters, Return]) -> Function[Parameters, Return]:
