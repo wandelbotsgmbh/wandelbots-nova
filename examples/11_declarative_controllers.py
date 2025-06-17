@@ -32,7 +32,7 @@ from nova.types import MotionSettings, Pose
             type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
         ),
         virtual_controller(
-            name="abb-robot", 
+            name="abb-robot",
             manufacturer=api.models.Manufacturer.ABB,
             type=api.models.VirtualControllerTypes.ABB_MINUS_IRB1200_7,
         ),
