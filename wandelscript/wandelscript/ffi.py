@@ -30,7 +30,9 @@ class ForeignFunction:
 
     def __post_init__(self):
         if not isinstance(self.function, Callable):
-            raise TypeError(f"Function of {self} must be a Callable, got {type(self.function).__name__}")
+            raise TypeError(
+                f"Function of {self} must be a Callable, got {type(self.function).__name__}"
+            )
 
     @property
     def name(self) -> str:
@@ -67,7 +69,11 @@ def foreign_function(
                     anno = param.annotation
                     if is_dataclass(anno) and isinstance(anno, type) and isinstance(value, dict):
                         converted[name] = anno(**value)
-                    elif inspect.isclass(anno) and issubclass(anno, pydantic.BaseModel) and isinstance(value, dict):
+                    elif (
+                        inspect.isclass(anno)
+                        and issubclass(anno, pydantic.BaseModel)
+                        and isinstance(value, dict)
+                    ):
                         converted[name] = anno.model_validate(value)
                     else:
                         converted[name] = value
@@ -95,7 +101,9 @@ def is_foreign_function(obj: object) -> bool:
     Returns:
         bool: True if the object is a foreign function, False otherwise.
     """
-    return hasattr(obj, FF_MARKER_ATTRIBUTE) and isinstance(getattr(obj, FF_MARKER_ATTRIBUTE), ForeignFunction)
+    return hasattr(obj, FF_MARKER_ATTRIBUTE) and isinstance(
+        getattr(obj, FF_MARKER_ATTRIBUTE), ForeignFunction
+    )
 
 
 def get_foreign_function(obj: object) -> ForeignFunction | None:

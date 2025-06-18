@@ -2,8 +2,8 @@ import json
 from functools import singledispatch
 
 import pydantic
-from nova.types import Pose, Vector3d
 
+from nova.types import Pose, Vector3d
 from wandelscript.datatypes import ElementType
 
 JsonType = float | int | bool | str | list | dict | None

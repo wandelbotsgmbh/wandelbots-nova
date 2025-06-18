@@ -6,10 +6,10 @@ import pydantic
 import pytest
 from glom import glom
 from loguru import logger
-from nova.cell.robot_cell import ConfigurablePeriphery, RobotCell
-from nova.types import Pose, Vector3d
 
 import wandelscript
+from nova.cell.robot_cell import ConfigurablePeriphery, RobotCell
+from nova.types import Pose, Vector3d
 from wandelscript.examples import EXAMPLES
 from wandelscript.simulation import SimulatedRobotCell
 
@@ -32,7 +32,9 @@ def filter_dict(d, ignore_paths: list[str]):
         except (KeyError, TypeError, ValueError):
             continue
 
-    return {k: filter_dict(v, ignore_paths) if isinstance(v, dict) else v for k, v in result.items()}
+    return {
+        k: filter_dict(v, ignore_paths) if isinstance(v, dict) else v for k, v in result.items()
+    }
 
 
 def _robot_cell_from_configuration(data) -> RobotCell:
@@ -80,9 +82,13 @@ def test_example(example_name):
             expected = tuple(tuple(v) if isinstance(v, list) else v for v in expected)
         if isinstance(expected, Pose):
             assert np.allclose(expected.position, store[key]["position"], atol=1e-3, rtol=1e-3)
-            assert np.allclose(expected.orientation, store[key]["orientation"], atol=1e-3, rtol=1e-3)
+            assert np.allclose(
+                expected.orientation, store[key]["orientation"], atol=1e-3, rtol=1e-3
+            )
         elif isinstance(expected, Vector3d):
-            assert np.allclose(expected.to_tuple(), tuple(store[key].values()), atol=1e-3, rtol=1e-3)
+            assert np.allclose(
+                expected.to_tuple(), tuple(store[key].values()), atol=1e-3, rtol=1e-3
+            )
         elif isinstance(expected, dict):
             if example_name == "fetch":
                 ignore_paths = ["headers", "origin", "data"]  # TODO: res_get_error.data should work

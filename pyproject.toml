@@ -32,24 +32,6 @@ dependencies = [
     "blinker>=1.9.0",
 ]
 
-[project.optional-dependencies]
-nova-rerun-bridge = [
-    "rerun-sdk==0.22.1",
-    "requests>=2.32.3",
-    "APScheduler>=3.11.0",
-    "trimesh>=4.5.3",
-]
-benchmark = [
-    "rerun-sdk==0.22.1",
-    "requests>=2.32.3",
-    "APScheduler>=3.11.0",
-    "trimesh>=4.5.3",
-    "pyyaml>5.3",
-]
-
-[project.scripts]
-download-models = "nova_rerun_bridge.helper_scripts.download_models:update_robot_models"
-
 [dependency-groups]
 dev = [
     "ruff>=0.8.2,<0.10.0",
@@ -63,16 +45,42 @@ dev = [
     "pyinstrument>=5.0.2",
 ]
 
+[project.optional-dependencies]
+nova-rerun-bridge = [
+    "rerun-sdk==0.22.1",
+    "requests>=2.32.3",
+    "APScheduler>=3.11.0",
+    "trimesh>=4.5.3",
+]
+wandelscript = [
+    "aiostream>=0.6.1,<0.7",
+    "antlr4-python3-runtime==4.13.1",
+    "geometricalgebra>=0.1.3,<0.2",
+    "typer[all]>=0.12,<0.16",
+]
+benchmark = [
+    "rerun-sdk==0.22.1",
+    "requests>=2.32.3",
+    "APScheduler>=3.11.0",
+    "trimesh>=4.5.3",
+    "pyyaml>5.3",
+]
+
+[project.scripts]
+download-models = "nova_rerun_bridge.helper_scripts.download_models:update_robot_models"
+
 [tool.hatch.build.targets.sdist]
 include = [
     "nova",
     "nova_rerun_bridge",
+    "wandelscript",
 ]
 
 [tool.hatch.build.targets.wheel]
 include = [
     "nova",
     "nova_rerun_bridge",
+    "wandelscript",
 ]
 
 [build-system]
@@ -92,6 +100,7 @@ junit_family = "xunit2"
 norecursedirs = "develop .ipynb_checkpoints .venv .tox *.egg"
 testpaths = """
     nova
+    wandelscript
     tests
 """
 markers = """

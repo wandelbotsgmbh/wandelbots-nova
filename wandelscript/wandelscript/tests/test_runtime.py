@@ -1,18 +1,22 @@
 import asyncio
 
 import pytest
+
 from nova.actions import cartesian_ptp, circular, io_write, linear
 from nova.actions.container import ActionLocation
 from nova.cell.robot_cell import RobotCell
 from nova.types import Pose
 from nova.types.state import MotionState, RobotState
-
 from wandelscript import exception as wsexception
 from wandelscript.exception import NameError_
 from wandelscript.metamodel import register_debug_func, run_program
 from wandelscript.runner import run
 from wandelscript.runtime import ActionQueue, ExecutionContext, Store
-from wandelscript.simulation import SimulatedController, SimulatedRobotCell, get_simulated_robot_configs
+from wandelscript.simulation import (
+    SimulatedController,
+    SimulatedRobotCell,
+    get_simulated_robot_configs,
+)
 
 
 @pytest.mark.asyncio
@@ -83,12 +87,19 @@ do with controller[0]:
             wsexception.WrongRobotError,
         ),
     ],
-    ids=["top_level_one_robot", "top_level_multi_robot", "robot_context_one_robot", "robot_context_multi_robot"],
+    ids=[
+        "top_level_one_robot",
+        "top_level_multi_robot",
+        "robot_context_one_robot",
+        "robot_context_multi_robot",
+    ],
 )
 def test_robot_code_execution(code, num_robots, expected_exception):
     robot_cell = SimulatedRobotCell(
         controller=SimulatedController(
-            SimulatedController.Configuration(robots=get_simulated_robot_configs(num_robots=num_robots))
+            SimulatedController.Configuration(
+                robots=get_simulated_robot_configs(num_robots=num_robots)
+            )
         )
     )
     if expected_exception:
@@ -105,25 +116,52 @@ def test_store_data_dict():
     store["float"] = 10.0
     store["str"] = "string"
     store["pose"] = Pose((0, 0, 0, 0, 0, 0))
-    assert store.data_dict == {"int": 4, "float": 10.0, "str": "string", "pose": Pose((0, 0, 0, 0, 0, 0)).model_dump()}
+    assert store.data_dict == {
+        "int": 4,
+        "float": 10.0,
+        "str": "string",
+        "pose": Pose((0, 0, 0, 0, 0, 0)).model_dump(),
+    }
 
 
 @pytest.mark.asyncio
 async def test_trigger_actions():
     async def motion_iterator():
-        yield MotionState(motion_group_id="0", path_parameter=0, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0))))
-        yield MotionState(motion_group_id="0", path_parameter=1, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0))))
-        yield MotionState(motion_group_id="0", path_parameter=2, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0))))
-        yield MotionState(motion_group_id="0", path_parameter=3, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0))))
-        yield MotionState(motion_group_id="0", path_parameter=4, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0))))
-        yield MotionState(motion_group_id="0", path_parameter=5, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0))))
+        yield MotionState(
+            motion_group_id="0", path_parameter=0, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)))
+        )
+        yield MotionState(
+            motion_group_id="0", path_parameter=1, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)))
+        )
+        yield MotionState(
+            motion_group_id="0", path_parameter=2, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)))
+        )
+        yield MotionState(
+            motion_group_id="0", path_parameter=3, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)))
+        )
+        yield MotionState(
+            motion_group_id="0", path_parameter=4, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)))
+        )
+        yield MotionState(
+            motion_group_id="0", path_parameter=5, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)))
+        )
 
     actions = [
-        ActionLocation(path_parameter=0, action=io_write(device_id="controller", key="some_io", value=0.5)),
-        ActionLocation(path_parameter=3, action=io_write(device_id="controller", key="some_io", value=3.3)),
-        ActionLocation(path_parameter=5, action=io_write(device_id="controller", key="some_io", value=5.71)),
-        ActionLocation(path_parameter=5, action=io_write(device_id="controller", key="some_other_io", value=11)),
-        ActionLocation(path_parameter=19, action=io_write(device_id="controller", key="some_io", value=190)),
+        ActionLocation(
+            path_parameter=0, action=io_write(device_id="controller", key="some_io", value=0.5)
+        ),
+        ActionLocation(
+            path_parameter=3, action=io_write(device_id="controller", key="some_io", value=3.3)
+        ),
+        ActionLocation(
+            path_parameter=5, action=io_write(device_id="controller", key="some_io", value=5.71)
+        ),
+        ActionLocation(
+            path_parameter=5, action=io_write(device_id="controller", key="some_other_io", value=11)
+        ),
+        ActionLocation(
+            path_parameter=19, action=io_write(device_id="controller", key="some_io", value=190)
+        ),
     ]
 
     cell = RobotCell(controller=SimulatedController())
@@ -144,7 +182,11 @@ async def test_run():
     cell = RobotCell(controller=controller)
     execution_context = ExecutionContext(cell, asyncio.Event())
     queue = ActionQueue(execution_context)
-    motions = [linear((400, 0, 0, 0, 0, 0)), circular((500, 0, 0), (0, 0, 0)), cartesian_ptp((500, 0, 0))]
+    motions = [
+        linear((400, 0, 0, 0, 0, 0)),
+        circular((500, 0, 0), (0, 0, 0)),
+        cartesian_ptp((500, 0, 0)),
+    ]
     for motion in motions:
         queue.push(motion, tool="Flange", motion_group_id=robot.id)
 

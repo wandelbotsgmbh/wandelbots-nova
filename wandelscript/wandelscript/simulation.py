@@ -6,6 +6,9 @@ from datetime import datetime
 from typing import Any, AsyncIterable, Literal, SupportsIndex
 
 import numpy as np
+from scipy.spatial.transform import Rotation
+from wandelbots_api_client import models
+
 from nova import api
 from nova.actions import Action, MovementController
 from nova.actions.motions import CartesianPTP, Circular, JointPTP, Linear
@@ -21,8 +24,6 @@ from nova.cell.robot_cell import (
 )
 from nova.core.io import ValueType
 from nova.types import MotionState, MovementResponse, Pose, RobotState
-from scipy.spatial.transform import Rotation
-from wandelbots_api_client import models
 
 
 def default_value():
@@ -87,7 +88,9 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
 
     def __init__(self, configuration: Configuration = Configuration()):
         if not configuration.tools:
-            configuration = configuration.model_copy(update={"tools": {"Flange": Pose((0, 0, 0, 0, 0, 0))}})
+            configuration = configuration.model_copy(
+                update={"tools": {"Flange": Pose((0, 0, 0, 0, 0, 0))}}
+            )
         super().__init__(id=configuration.id, configuration=configuration)
         self._step_size = configuration.step_size if configuration.step_size else math.inf
         self._param = 1
@@ -113,7 +116,9 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         tcp_ori.x, tcp_ori.y, tcp_ori.z, tcp_ori.w = Rotation.from_rotvec(
             self.configuration.tools[tcp_name].orientation
         ).as_quat()
-        joint_position_limits = [api.models.PlanningLimitsLimitRange(lower_limit=-np.pi, upper_limit=np.pi)] * 6
+        joint_position_limits = [
+            api.models.PlanningLimitsLimitRange(lower_limit=-np.pi, upper_limit=np.pi)
+        ] * 6
         joint_velocity_limits = [1.0] * 6
         joint_acceleration_limits = [1e8] * 6
         joint_torque_limits = [200.0] * 6
@@ -133,7 +138,8 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         setup = api.models.SafetyConfiguration(global_limits=limits)
         tcp = api.models.PlannerPose(position=tcp_pos, orientation=tcp_ori)
         mounting = api.models.PlannerPose(
-            position=api.models.Vector3d(x=0, y=0, z=0), orientation=api.models.Quaternion(x=0, y=0, z=0, w=1)
+            position=api.models.Vector3d(x=0, y=0, z=0),
+            orientation=api.models.Quaternion(x=0, y=0, z=0, w=1),
         )
         motion_group_type = "FANUC_CRX25iA"
         payload = api.models.Payload(payload=0.0)
@@ -151,7 +157,12 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
 
         return Pose.from_position_and_quaternion(
             [mounting.position.x, mounting.position.y, mounting.position.z],
-            [mounting.orientation.w, mounting.orientation.x, mounting.orientation.y, mounting.orientation.z],
+            [
+                mounting.orientation.w,
+                mounting.orientation.x,
+                mounting.orientation.y,
+                mounting.orientation.z,
+            ],
         )
 
     async def _plan(
@@ -171,7 +182,9 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
 
         # We assume 6-DOF for this example
         current_joints = (
-            np.zeros(6, dtype=float) if start_joint_position is None else np.array(start_joint_position, dtype=float)
+            np.zeros(6, dtype=float)
+            if start_joint_position is None
+            else np.array(start_joint_position, dtype=float)
         )
 
         joint_positions = []
@@ -250,7 +263,9 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             current_joints = final_joints
 
         joint_positions = [api.models.Joints(joints=list(j)) for j in joint_positions]
-        return api.models.JointTrajectory(joint_positions=joint_positions, times=times, locations=locations)
+        return api.models.JointTrajectory(
+            joint_positions=joint_positions, times=times, locations=locations
+        )
 
     async def _execute(
         self,
@@ -330,11 +345,15 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
                                         orientation=motion_state.state.pose.orientation.model_dump(),
                                     ),
                                     joint_velocity=api.models.Joints(joints=[0.0] * 6),
-                                    velocity=api.models.MotionVector(linear=api.models.Vector3d(x=0, y=0, z=0)),
+                                    velocity=api.models.MotionVector(
+                                        linear=api.models.Vector3d(x=0, y=0, z=0)
+                                    ),
                                     joint_limit_reached=api.models.MotionGroupStateJointLimitReached(
                                         limit_reached=[False]
                                     ),
-                                    joint_position=api.models.Joints(joints=list(motion_state.state.joints)),
+                                    joint_position=api.models.Joints(
+                                        joints=list(motion_state.state.joints)
+                                    ),
                                     sequence_number="0",
                                 )
                             ],
@@ -519,7 +538,11 @@ class SimulatedRobotCell(RobotCell):
     """A robot cell fully simulated (on default)"""
 
     def __init__(self, **kwargs):
-        defaults = {"timer": SimulatedTimer(), "controller": SimulatedController(), "sensor": SimulatedAsyncCallable()}
+        defaults = {
+            "timer": SimulatedTimer(),
+            "controller": SimulatedController(),
+            "sensor": SimulatedAsyncCallable(),
+        }
         for key, value in defaults.items():
             if key not in kwargs:
                 kwargs[key] = value
@@ -530,12 +553,16 @@ def get_simulated_robot_configs(
     controller_id: str = "controller", num_robots: SupportsIndex = 2
 ) -> list[SimulatedRobot.Configuration]:
     return [
-        SimulatedRobot.Configuration(id=f"{i}@{controller_id}", tools={"Flange": Pose((0, 0, 0, 0, 0, 0))})
+        SimulatedRobot.Configuration(
+            id=f"{i}@{controller_id}", tools={"Flange": Pose((0, 0, 0, 0, 0, 0))}
+        )
         for i in range(num_robots)
     ]
 
 
-def get_robot_controller(controller_id="controller", num_robots=1, raises_on_open=False) -> SimulatedController:
+def get_robot_controller(
+    controller_id="controller", num_robots=1, raises_on_open=False
+) -> SimulatedController:
     """Get a simulated controller"""
     return SimulatedController(
         SimulatedController.Configuration(

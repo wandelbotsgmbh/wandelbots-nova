@@ -1,6 +1,5 @@
 from nova.actions import CombinedActions
 from nova.cell.robot_cell import AbstractRobot
-
 from wandelscript.metamodel import register_builtin_func
 from wandelscript.runtime import ExecutionContext
 

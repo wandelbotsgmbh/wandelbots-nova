@@ -1,17 +1,18 @@
 import asyncio
 from pathlib import Path
 
+import wandelscript
 from nova import Nova, api
 from nova.types import Pose
-
-import wandelscript
 
 
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.ensure_virtual_robot_controller(
-            "ur", api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E, api.models.Manufacturer.UNIVERSALROBOTS
+            "ur",
+            api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            api.models.Manufacturer.UNIVERSALROBOTS,
         )
 
         async with controller[0] as motion_group:

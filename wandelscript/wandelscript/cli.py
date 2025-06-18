@@ -117,7 +117,9 @@ def _load_included_ffs(paths: list[Path]) -> dict[str, ffi.ForeignFunction]:
     return foreign_functions
 
 
-async def main(code: str, nova_api: str, foreign_functions: dict[str, ffi.ForeignFunction] | None = None):
+async def main(
+    code: str, nova_api: str, foreign_functions: dict[str, ffi.ForeignFunction] | None = None
+):
     """Main program logic."""
     runner = wandelscript.run(code, args={}, default_tcp=None, default_robot=None)
     echo(f"Execution results:\n{runner.program_run.execution_results}")

@@ -9,8 +9,8 @@ from typing import Any, Callable, Generic, TypeVar, Union
 
 import numpy as np
 import pydantic
-from nova.types import Pose, Vector3d
 
+from nova.types import Pose, Vector3d
 from wandelscript.frames import FrameSystem
 from wandelscript.utils.pose import pose_to_versor
 

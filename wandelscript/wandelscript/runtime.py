@@ -11,14 +11,14 @@ from typing import Any
 import anyio
 from aiostream import stream
 from loguru import logger
+
+import wandelscript.metamodel as metamodel
 from nova.actions import Action, CombinedActions
 from nova.actions.container import ActionLocation
 from nova.actions.io import CallAction, ReadAction, ReadJointsAction, ReadPoseAction, WriteAction
 from nova.actions.motions import Motion
 from nova.cell.robot_cell import AbstractRobot, Device, RobotCell
 from nova.types import MotionSettings, MotionState, Pose
-
-import wandelscript.metamodel as metamodel
 from wandelscript import exception as wsexception
 from wandelscript.datatypes import ElementType, Frame, as_builtin_type
 from wandelscript.exception import MotionError, NotPlannableError
@@ -30,7 +30,9 @@ from wandelscript.utils.serializer import encode, is_encodable
 DEFAULT_CALL_STACK_SIZE = 64
 """Default size of the call stack. Currently arbitrary."""
 
-current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar("current_execution_context_var")
+current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
+    "current_execution_context_var"
+)
 
 
 class Store:
@@ -97,7 +99,9 @@ class Store:
     @property
     def data_dict(self) -> dict[str, ElementType]:
         serialized_store = {k: encode(v) for k, v in self.data.items() if is_encodable(v)}
-        serialized_store = {k: v for k, v in serialized_store.items() if not isinstance(v, float) or not isinf(v)}
+        serialized_store = {
+            k: v for k, v in serialized_store.items() if not isinstance(v, float) or not isinf(v)
+        }
         return serialized_store
 
     def get_motion_settings(self) -> MotionSettings:
@@ -201,7 +205,9 @@ class ExecutionContext:
 
         """
         if not self._robot_ids:
-            raise wsexception.WrongRobotError(text="No robot found in robot cell.", location=self.location_in_code)
+            raise wsexception.WrongRobotError(
+                text="No robot found in robot cell.", location=self.location_in_code
+            )
         if self._active_robot is not None:
             return self._active_robot
         if self._default_robot is None:
@@ -214,7 +220,9 @@ class ExecutionContext:
     @contextmanager
     def with_robot(self, robot: str):
         if self.is_in_robot_context():
-            raise ValueError(f"Cannot change to robot '{robot}' while another robot '{self.active_robot}' is active")
+            raise ValueError(
+                f"Cannot change to robot '{robot}' while another robot '{self.active_robot}' is active"
+            )
         self._active_robot = robot
         try:
             yield self
@@ -248,7 +256,9 @@ class ExecutionContext:
         try:
             return self.robot_cell.get_robot(name)
         except KeyError as exc:
-            raise wsexception.WrongRobotError(location=self.location_in_code, text=f"Unknown robot: '{name}'") from exc
+            raise wsexception.WrongRobotError(
+                location=self.location_in_code, text=f"Unknown robot: '{name}'"
+            ) from exc
 
     async def read_pose(self, robot_name: str, tcp: str | None = None) -> Pose:
         tcp = tcp or await self.get_robot(robot_name).active_tcp_name()
@@ -401,12 +411,17 @@ class ActionQueue:
 
                 # TODO: not only pass motions, do we need the CombinedActions anymore?
                 joint_trajectory = await motion_group.plan(
-                    actions=container.motions, tcp=tcp, start_joint_position=None, optimizer_setup=None
+                    actions=container.motions,
+                    tcp=tcp,
+                    start_joint_position=None,
+                    optimizer_setup=None,
                 )
                 motion_iter = motion_group.stream_execute(
                     joint_trajectory=joint_trajectory, tcp=tcp, actions=container.motions
                 )
-                planned_motions[motion_group_id] = self.trigger_actions(motion_iter, container.actions.copy())
+                planned_motions[motion_group_id] = self.trigger_actions(
+                    motion_iter, container.actions.copy()
+                )
                 # When the motion trajectory is empty, execute the actions
                 for action_container in container.actions:
                     await self.run_action(action_container.action)

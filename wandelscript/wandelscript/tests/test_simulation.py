@@ -1,7 +1,7 @@
 import pytest
+
 from nova.actions.motions import CartesianPTP, JointPTP
 from nova.types import MotionState, RobotState
-
 from wandelscript.datatypes import Pose
 from wandelscript.simulation import SimulatedRobot, naive_joints_to_pose
 
@@ -24,7 +24,9 @@ async def test_simulated_robot_execution():
     #    a) Move joints directly to [0, 1, 2, 0, 0, 0] with JointPTP
     #    b) Then move to a cartesian Pose using naive IK with CartesianPTP
     joint_target = (0, 1, 2, 0, 0, 0)
-    cartesian_target = Pose((100, 200, 300, 10, 20, 30))  # x=100mm, y=200mm, z=300mm, rx=10°, ry=20°, rz=30°
+    cartesian_target = Pose(
+        (100, 200, 300, 10, 20, 30)
+    )  # x=100mm, y=200mm, z=300mm, rx=10°, ry=20°, rz=30°
 
     actions = [JointPTP(target=joint_target), CartesianPTP(target=cartesian_target)]
 

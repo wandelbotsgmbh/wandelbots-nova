@@ -64,7 +64,9 @@ class WandelscriptLexerBase(Lexer):
     def common_token(self, type_: int, text: str):
         stop = self.getCharIndex() - 1
         start = stop if text == "" else stop - len(text) + 1
-        return CommonToken(self._tokenFactorySourcePair, type_, Lexer.DEFAULT_TOKEN_CHANNEL, start, stop)
+        return CommonToken(
+            self._tokenFactorySourcePair, type_, Lexer.DEFAULT_TOKEN_CHANNEL, start, stop
+        )
 
     def at_start_of_input(self):
         return self.getCharIndex() == 0

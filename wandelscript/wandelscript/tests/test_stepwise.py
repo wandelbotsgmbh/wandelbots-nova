@@ -1,6 +1,6 @@
 import pytest
-from nova.cell.robot_cell import RobotCell
 
+from nova.cell.robot_cell import RobotCell
 from wandelscript.metamodel import Program
 from wandelscript.simulation import SimulatedRobot
 

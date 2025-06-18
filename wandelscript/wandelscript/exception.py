@@ -61,7 +61,9 @@ class ProgramError(Exception):
                 f"At line {self.location.start.line} column {self.location.start.column}: {self.message()}"
             )
         elif isinstance(self.location, TextPosition):
-            super().__init__(f"At line {self.location.line} column {self.location.column}: {self.message()}")
+            super().__init__(
+                f"At line {self.location.line} column {self.location.column}: {self.message()}"
+            )
         else:
             super().__init__(self.message())
 

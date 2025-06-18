@@ -2,9 +2,9 @@ import asyncio
 
 import numpy as np
 import pytest
+
 from nova.actions import CombinedActions, cartesian_ptp, linear
 from nova.types import MotionSettings, Pose
-
 from wandelscript.metamodel import run_program
 
 
@@ -85,7 +85,11 @@ def test_move(code, expected):
     for path, expected_path in zip(paths, expected):
         assert len(path.motions) == len(expected_path.motions)
         for motion, expected_motion in zip(path.motions, expected_path.motions):
-            target_np = motion.target.position if isinstance(motion.target, Pose) else np.array(motion.target)
+            target_np = (
+                motion.target.position
+                if isinstance(motion.target, Pose)
+                else np.array(motion.target)
+            )
             expected_target_np = (
                 expected_motion.target.position
                 if isinstance(expected_motion.target, Pose)

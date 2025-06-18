@@ -66,7 +66,11 @@ class FrameSystem:
         chain_frames = [frames_list[i] for i in chain]
         v = cga3d.Vector.from_identity()
         for rb, ra in zip(chain_frames, chain_frames[1:]):
-            t = self._relations[ra, rb] if (ra, rb) in self._relations else self._relations[rb, ra].inverse()
+            t = (
+                self._relations[ra, rb]
+                if (ra, rb) in self._relations
+                else self._relations[rb, ra].inverse()
+            )
             v = t & v
         return v
 

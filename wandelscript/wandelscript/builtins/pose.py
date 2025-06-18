@@ -3,8 +3,8 @@ import math
 import numpy as np
 from geometricalgebra import cga3d
 from geometricalgebra.cga import project_to_flat
-from nova.types import Pose, Vector3d
 
+from nova.types import Pose, Vector3d
 from wandelscript.metamodel import register_builtin_func
 from wandelscript.utils.pose import pose_to_versor, versor_to_pose
 
@@ -50,7 +50,9 @@ def to_orientation(pose: Pose) -> Vector3d:
 
 
 @register_builtin_func()
-def find_edge_from_4_poses(left_start: Pose, left_end: Pose, right_start: Pose, right_end: Pose) -> tuple[Pose, Pose]:
+def find_edge_from_4_poses(
+    left_start: Pose, left_end: Pose, right_start: Pose, right_end: Pose
+) -> tuple[Pose, Pose]:
     """Given 6 points, two poses describing the edge are returned
 
     Args:
@@ -94,8 +96,14 @@ def find_edge_from_4_poses(left_start: Pose, left_end: Pose, right_start: Pose, 
 
     points = cga3d.Vector.from_euclid(
         [
-            [left_start_versor.apply(cga3d.e_0).to_euclid(), left_end_versor.apply(cga3d.e_0).to_euclid()],
-            [right_start_versor.apply(cga3d.e_0).to_euclid(), right_end_versor.apply(cga3d.e_0).to_euclid()],
+            [
+                left_start_versor.apply(cga3d.e_0).to_euclid(),
+                left_end_versor.apply(cga3d.e_0).to_euclid(),
+            ],
+            [
+                right_start_versor.apply(cga3d.e_0).to_euclid(),
+                right_end_versor.apply(cga3d.e_0).to_euclid(),
+            ],
         ]
     )
 
@@ -105,7 +113,11 @@ def find_edge_from_4_poses(left_start: Pose, left_end: Pose, right_start: Pose, 
     poses = [
         cga3d.Vector.from_motor_estimation(
             cga3d.Vector.stack(
-                [cga3d.e_0, -cga3d.e_1 ^ cga3d.e_2 ^ cga3d.e_0 ^ cga3d.e_inf, cga3d.e_0 ^ cga3d.e_1 ^ cga3d.e_inf]
+                [
+                    cga3d.e_0,
+                    -cga3d.e_1 ^ cga3d.e_2 ^ cga3d.e_0 ^ cga3d.e_inf,
+                    cga3d.e_0 ^ cga3d.e_1 ^ cga3d.e_inf,
+                ]
             ),
             cga3d.Vector.stack([start_end[i], planes[i], edge]),
         )
@@ -147,7 +159,11 @@ def find_edge(  # pylint: disable=too-many-positional-arguments
     poses = [
         cga3d.Vector.from_motor_estimation(
             cga3d.Vector.stack(
-                [cga3d.e_0, -cga3d.e_1 ^ cga3d.e_2 ^ cga3d.e_0 ^ cga3d.e_inf, cga3d.e_0 ^ cga3d.e_1 ^ cga3d.e_inf]
+                [
+                    cga3d.e_0,
+                    -cga3d.e_1 ^ cga3d.e_2 ^ cga3d.e_0 ^ cga3d.e_inf,
+                    cga3d.e_0 ^ cga3d.e_1 ^ cga3d.e_inf,
+                ]
             ),
             cga3d.Vector.stack([start_end[i], planes[i], edge]),
         )

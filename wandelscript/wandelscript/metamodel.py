@@ -11,6 +11,9 @@ from pathlib import Path as FilePath
 from typing import Any, ClassVar, Generic, Literal, TypeVar
 
 import anyio
+
+import wandelscript.datatypes as t
+import wandelscript.exception
 from nova.actions.io import CallAction, ReadAction, ReadJointsAction, ReadPoseAction, WriteAction
 from nova.cell.robot_cell import (
     AbstractRobot,
@@ -21,9 +24,6 @@ from nova.cell.robot_cell import (
     RobotMotionError,
 )
 from nova.types import MotionSettings, Pose, Vector3d
-
-import wandelscript.datatypes as t
-import wandelscript.exception
 from wandelscript.exception import GenericRuntimeError, TextRange
 from wandelscript.operators import (
     AdditionOperator,
@@ -96,7 +96,9 @@ class Rule(ABC):
     async def __call__(self, context: ExecutionContext, **kwargs) -> Any:
         context.location_in_code = self.location
         interceptor_chain = reduce(
-            lambda inner, outer: outer(inner, context), context.interceptors, self.call(context, **kwargs)
+            lambda inner, outer: outer(inner, context),
+            context.interceptors,
+            self.call(context, **kwargs),
         )
         return await asyncio.shield(interceptor_chain)
 
@@ -333,7 +335,9 @@ class RobotContext(Statement):
         for robot, body in zip(self.robots, self.bodies):
             robot = await robot(context)
             if not isinstance(robot, AbstractRobot):
-                raise GenericRuntimeError(self.location, text=f"The device must be a robot but is a: {type(robot)}")
+                raise GenericRuntimeError(
+                    self.location, text=f"The device must be a robot but is a: {type(robot)}"
+                )
             with context.with_robot(robot.id):
                 await body(context)
         await context.sync()
@@ -449,16 +453,19 @@ class Motion(Statement):
 
             if isinstance(source, AbstractRobot):
                 start = context.action_queue.last_pose(source.id)
-                await self.connector(context, start=start, end=end, tool=target.name, robot=source.id)
+                await self.connector(
+                    context, start=start, end=end, tool=target.name, robot=source.id
+                )
                 return
             if isinstance(end, Vector3d):
                 raise wandelscript.exception.ProgramSyntaxError(
                     location=self.location, text="No position is supported when here"
                 )
             fs = context.store.frame_system.copy()
-            fs[(await self.frame_relation.target(context)).name, (await self.frame_relation.source(context)).name] = (
-                pose_to_versor(end)
-            )
+            fs[
+                (await self.frame_relation.target(context)).name,
+                (await self.frame_relation.source(context)).name,
+            ] = pose_to_versor(end)
             end = versor_to_pose(fs.eval(context.store.ROBOT.name, context.store.FLANGE.name))
             tcp = None  # TODO can we still allow this
         elif self.tcp:
@@ -486,7 +493,11 @@ class Motion(Statement):
         robot_identifier = context.active_robot
         start = context.action_queue.last_pose(robot_identifier)
         await self.connector(
-            context, start=start, end=end, tool=tcp if tcp is not None else None, robot=robot_identifier
+            context,
+            start=start,
+            end=end,
+            tool=tcp if tcp is not None else None,
+            robot=robot_identifier,
         )
         if on_exit:
             await on_exit(context)  # pylint: disable=not-callable
@@ -590,7 +601,9 @@ class Atom(Rule, Generic[ElementType], ABC):
 
     def __truediv__(self, other: Atom | Multiplication) -> Atom[Any]:
         other = other.to_expression()
-        return Expression(a=Multiplication(a=self, b=(other,), op=(MultiplicationOperator.truediv,)))
+        return Expression(
+            a=Multiplication(a=self, b=(other,), op=(MultiplicationOperator.truediv,))
+        )
 
     def __add__(self, other: Atom[ElementType] | Multiplication[ElementType]) -> Atom[ElementType]:
         other = other.to_expression()
@@ -797,7 +810,9 @@ class ExpressionsList(Atom[t.ElementType]):
             return Vector3d.from_tuple(values)
         if len(values) == 6:
             return Pose(values)
-        raise wandelscript.exception.ProgramSyntaxError(None, f"Unexpected number of elements: {len(self.value)}")
+        raise wandelscript.exception.ProgramSyntaxError(
+            None, f"Unexpected number of elements: {len(self.value)}"
+        )
 
     def __str__(self):
         return "[" + ",".join(map(str, self.value)) + "]"
@@ -911,7 +926,9 @@ class Conditional(Statement):
     else_body: Suite | None = None
 
     async def call(self, context: ExecutionContext, **kwargs):
-        for condition, body in zip([self.condition, *self.elif_condition], [self.body, *self.elif_body]):
+        for condition, body in zip(
+            [self.condition, *self.elif_condition], [self.body, *self.elif_body]
+        ):
             if await condition(context):
                 await body(context)
                 break
@@ -1004,7 +1021,9 @@ class Connector(Rule):
                     # TODO: follow-up handle more orientation strategies
                     end = add_orientation("last", end, start)
                 context.action_queue.push(
-                    motions=func(start, end, args, motion_settings), tool=tool, motion_group_id=robot
+                    motions=func(start, end, args, motion_settings),
+                    tool=tool,
+                    motion_group_id=robot,
                 )
             elif func_ := context.store.get(self.name, None):
                 func = func_
@@ -1140,7 +1159,9 @@ class Reference(Atom[ElementType]):
         try:
             return context.store[self.name]
         except KeyError as error:
-            raise wandelscript.exception.NameError_(location=self.location, name=self.name) from error
+            raise wandelscript.exception.NameError_(
+                location=self.location, name=self.name
+            ) from error
 
     def to_expression(self) -> Expression[ElementType]:
         return Expression(a=self)
@@ -1172,8 +1193,12 @@ class FrameRelation(Atom[Pose]):
         source = await self.source(context)
         if isinstance(target, t.Frame) and isinstance(source, t.Frame):
             fs = context.store.frame_system.copy()
-            if (current_pose_of_robot := context.action_queue.last_pose(context.active_robot)) is not None:
-                fs[context.store.ROBOT.name, context.store.FLANGE.name] = pose_to_versor(current_pose_of_robot)
+            if (
+                current_pose_of_robot := context.action_queue.last_pose(context.active_robot)
+            ) is not None:
+                fs[context.store.ROBOT.name, context.store.FLANGE.name] = pose_to_versor(
+                    current_pose_of_robot
+                )
             return versor_to_pose(fs.eval(target.name, source.name))
         if isinstance(target, t.Frame) ^ isinstance(source, t.Frame):
             raise TypeError("Either both or neither of the two arguments must be of type 'Frame'")
@@ -1253,7 +1278,9 @@ class RootBlock(Rule):
     body: Block
 
     async def call(self, context: ExecutionContext, **kwargs):
-        await plugins()(context)  # TODO move to somewhere where it is called not for every test (maybe at startup)
+        await plugins()(
+            context
+        )  # TODO move to somewhere where it is called not for every test (maybe at startup)
         await self.body(context)
         await context.sync()
 
@@ -1404,7 +1431,9 @@ class FunctionCall(Atom[ElementType], Statement):
         if self.name == "planned_pose":
             result = context.action_queue.last_pose(context.active_robot)
             if result is None:
-                raise RuntimeError("Before planned pose can be used, a move commands needs to be executed")
+                raise RuntimeError(
+                    "Before planned pose can be used, a move commands needs to be executed"
+                )
             return result
         if self.name == "frame":
             assert len(arguments) == 1
@@ -1555,7 +1584,9 @@ class Read(Atom[ElementType]):
         device = await self.device(context)
 
         if not isinstance(device, (InputDevice, AbstractRobot)):
-            raise GenericRuntimeError(self.location, text=f"{device.id} does not support the read operation")
+            raise GenericRuntimeError(
+                self.location, text=f"{device.id} does not support the read operation"
+            )
         # classify read action according to user input
         try:
             if isinstance(device, AbstractRobot):
@@ -1598,7 +1629,9 @@ class Write(Statement, Generic[ElementType]):
         value = await self.value(context)
         device = await self.device(context)
         if not isinstance(device, OutputDevice):
-            raise GenericRuntimeError(self.location, text=f"{device.id} does not support the write operation")
+            raise GenericRuntimeError(
+                self.location, text=f"{device.id} does not support the write operation"
+            )
 
         if not isinstance(key, str):
             raise GenericRuntimeError(
@@ -1640,7 +1673,9 @@ class Call(Atom[ElementType], Statement):
         arguments = await self.arguments(context)
         device = await self.device(context)
         if not isinstance(device, AsyncCallableDevice):
-            raise GenericRuntimeError(self.location, text=f"{device.id} does not support the call operation.")
+            raise GenericRuntimeError(
+                self.location, text=f"{device.id} does not support the call operation."
+            )
         try:
             action = CallAction(device_id=device.id, key=key, arguments=arguments)
             result = await context.action_queue.run_action(action)
@@ -1685,15 +1720,24 @@ async def run_program(
         cell = SimulatedRobotCell()
     stop_event = anyio.Event()
     context = ExecutionContext(
-        cell, stop_event, default_robot=default_robot, default_tcp=default_tcp, run_args=run_args, debug=debug
+        cell,
+        stop_event,
+        default_robot=default_robot,
+        default_tcp=default_tcp,
+        run_args=run_args,
+        debug=debug,
     )
     async with cell:
         await program(context)
     return context
 
 
-def _run_program_debug(program: Program | str, default_robot: str | None = "0@controller") -> ExecutionContext:
-    return asyncio.run(run_program(program, default_robot=default_robot, default_tcp="Flange", debug=True))
+def _run_program_debug(
+    program: Program | str, default_robot: str | None = "0@controller"
+) -> ExecutionContext:
+    return asyncio.run(
+        run_program(program, default_robot=default_robot, default_tcp="Flange", debug=True)
+    )
 
 
 async def run_rule(rule: Rule, **kwargs):

@@ -8,9 +8,9 @@ from typing import Any
 import numpy as np
 import pytest
 from icecream import ic
+
 from nova.cell.robot_cell import RobotCell
 from nova.runtime.runner import Program, ProgramRun, ProgramType
-
 from wandelscript import ProgramRunner, ProgramRunState, run
 from wandelscript.exception import NameError_, ProgramSyntaxError
 from wandelscript.ffi import ForeignFunction
@@ -24,7 +24,9 @@ raising_robot_cell = RobotCell(controller=get_robot_controller(raises_on_open=Tr
 ic.configureOutput(prefix=lambda: f"{datetime.now().time()} | ", includeContext=True)
 
 
-def check_program_state(program_runner: ProgramRunner, expected_state: ProgramRunState, timeout: int) -> bool:
+def check_program_state(
+    program_runner: ProgramRunner, expected_state: ProgramRunState, timeout: int
+) -> bool:
     """Checks a specific program state after a certain period of time
 
     Args:
@@ -125,7 +127,11 @@ print(a)
 
 def test_program_runner():
     program_runner = ProgramRunner(
-        Program(content="move via p2p() to [100, 0, 300, 0, pi, 0]", program_type=ProgramType.WANDELSCRIPT), args={}
+        Program(
+            content="move via p2p() to [100, 0, 300, 0, pi, 0]",
+            program_type=ProgramType.WANDELSCRIPT,
+        ),
+        args={},
     )
     assert uuid.UUID(str(program_runner.id)) is not None
     assert program_runner.state is ProgramRunState.NOT_STARTED
@@ -181,7 +187,10 @@ move via line() to (0, 100, 300, 0, pi, 0)
     assert np.allclose(last_state.state.pose.to_tuple(), (0, 100, 300, 0, np.pi, 0))
     # Check store
     store = program_runner.program_run.result
-    assert np.allclose(tuple(store["home"]["position"]) + tuple(store["home"]["orientation"]), (0, 0, 400, 0, np.pi, 0))
+    assert np.allclose(
+        tuple(store["home"]["position"]) + tuple(store["home"]["orientation"]),
+        (0, 0, 400, 0, np.pi, 0),
+    )
     # Check stdout
     stdout = program_runner.program_run.stdout
     assert "before wait" in stdout

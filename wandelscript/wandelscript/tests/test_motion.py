@@ -1,12 +1,17 @@
 import numpy as np
 import pytest
+
+import wandelscript
 from nova.actions.motions import CartesianPTP, JointPTP, Linear
 from nova.cell.robot_cell import RobotCell
 from nova.types import Pose
-
-import wandelscript
 from wandelscript.exception import ProgramRuntimeError
-from wandelscript.simulation import SimulatedController, SimulatedRobot, SimulatedRobotCell, get_robot_cell
+from wandelscript.simulation import (
+    SimulatedController,
+    SimulatedRobot,
+    SimulatedRobotCell,
+    get_robot_cell,
+)
 
 
 def test_forbidden_tcp_change_in_one_motion_example():
@@ -16,12 +21,17 @@ move frame("Flange") to (1, 2, 0)
 move frame("tool") to (2, 2, 0)
 """
     robot_configuration = SimulatedRobot.Configuration(
-        id="0@controller", tools={"Flange": Pose((0, 0, 0, 0, np.pi, 0)), "tool": Pose((2, 0, 0, 0, np.pi, 0))}
+        id="0@controller",
+        tools={"Flange": Pose((0, 0, 0, 0, np.pi, 0)), "tool": Pose((2, 0, 0, 0, np.pi, 0))},
     )
-    controller = SimulatedController(SimulatedController.Configuration(robots=[robot_configuration]))
+    controller = SimulatedController(
+        SimulatedController.Configuration(robots=[robot_configuration])
+    )
     with pytest.raises(ProgramRuntimeError):
         wandelscript.run(
-            code, robot_cell_override=SimulatedRobotCell(controller=controller), default_robot="0@controller"
+            code,
+            robot_cell_override=SimulatedRobotCell(controller=controller),
+            default_robot="0@controller",
         )
 
 
@@ -32,7 +42,9 @@ move via line() to (0, 10, 10, 0, 0, 0)
 sync
 """
     cell = get_robot_cell()
-    runner = wandelscript.run(code, robot_cell_override=cell, default_robot="0@controller", default_tcp="Flange")
+    runner = wandelscript.run(
+        code, robot_cell_override=cell, default_robot="0@controller", default_tcp="Flange"
+    )
     assert len(runner.program_run.execution_results) == 1
     first_pose = runner.program_run.execution_results[-1][0].state.pose
     last_pose = runner.program_run.execution_results[-1][-1].state.pose
@@ -58,12 +70,18 @@ sync
 move via line() to (21, 0, 1111, 0, 0, 0)
 move via ptp() to (23, 0, 626, 0, 0, 0)
 """
-    expected_motion_types = [[CartesianPTP, Linear, CartesianPTP], [CartesianPTP, Linear], [Linear, CartesianPTP]]
+    expected_motion_types = [
+        [CartesianPTP, Linear, CartesianPTP],
+        [CartesianPTP, Linear],
+        [Linear, CartesianPTP],
+    ]
 
     cell = get_robot_cell()
     runner = wandelscript.run(code, robot_cell_override=cell, default_tcp="Flange")
 
-    record_of_commands = runner.execution_context.robot_cell.get_robot("0@controller").record_of_commands
+    record_of_commands = runner.execution_context.robot_cell.get_robot(
+        "0@controller"
+    ).record_of_commands
 
     assert len(record_of_commands) == 3
 
@@ -93,7 +111,14 @@ sync
 move via joint_p2p() to [31, 0, 626, 0, 0, 0]
 """
     expected_joint_values = [
-        [(1, 0, 626, 0, 0, 0), None, None, (4, 0, 626, 0, 0, 0), (5, 0, 626, 0, 0, 0), (6, 0, 626, 0, 0, 0)],
+        [
+            (1, 0, 626, 0, 0, 0),
+            None,
+            None,
+            (4, 0, 626, 0, 0, 0),
+            (5, 0, 626, 0, 0, 0),
+            (6, 0, 626, 0, 0, 0),
+        ],
         [
             # After a sync there will always first be a CartesianPTP motion added (this point has joints of a previous point)
             (6, 0, 626, 0, 0, 0),
@@ -138,7 +163,9 @@ move via joint_p2p() to [31, 0, 626, 0, 0, 0]
     # Execute code:
     runner = wandelscript.run(code, robot_cell_override=cell)
 
-    record_of_commands = runner.execution_context.robot_cell.get_robot("0@controller").record_of_commands
+    record_of_commands = runner.execution_context.robot_cell.get_robot(
+        "0@controller"
+    ).record_of_commands
 
     assert len(record_of_commands) == 4
 

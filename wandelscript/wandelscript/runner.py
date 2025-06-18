@@ -3,13 +3,13 @@ import time
 from pathlib import Path
 
 from loguru import logger
+
 from nova.cell.robot_cell import RobotCell
 from nova.runtime import ProgramRunner as NovaProgramRunner
 from nova.runtime.runner import ExecutionContext as NovaExecutionContext
 
 # TODO: this should come from the api package
 from nova.runtime.runner import Program, ProgramRun, ProgramRunState, ProgramType
-
 from wandelscript.datatypes import ElementType
 from wandelscript.ffi import ForeignFunction
 from wandelscript.metamodel import Program as WandelscriptProgram
@@ -57,7 +57,9 @@ class ProgramRunner(NovaProgramRunner):
         program = WandelscriptProgram.from_code(self._program.content)
         # Execute Wandelscript
         await program(ws_execution_context)
-        self.execution_context.motion_group_recordings = ws_execution_context.motion_group_recordings
+        self.execution_context.motion_group_recordings = (
+            ws_execution_context.motion_group_recordings
+        )
         self.execution_context.result = ws_execution_context.store.data_dict
 
 

@@ -52,7 +52,9 @@ def test_decorator_autoconversion():
     result = auto_convert_dataclass(*[dict(str_attr="test", int_attr=42)] * 2)
     assert isinstance(result, dict)
 
-    result = auto_convert_list([CustomTypePydantic(str_attr=f"test {i}", float_attr=1.0 * i) for i in range(3)])
+    result = auto_convert_list(
+        [CustomTypePydantic(str_attr=f"test {i}", float_attr=1.0 * i) for i in range(3)]
+    )
     assert isinstance(result, tuple)  # no lists in Wandelscript
     assert len(result) == 3
     for item in result:

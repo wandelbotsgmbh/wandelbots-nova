@@ -1,9 +1,8 @@
 from functools import singledispatch
 from typing import Any, TypeVar
 
-from nova.types import Pose, Vector3d
-
 import wandelscript.datatypes as t
+from nova.types import Pose, Vector3d
 from wandelscript.metamodel import register_builtin_func
 
 # TODO naming. updated, updating

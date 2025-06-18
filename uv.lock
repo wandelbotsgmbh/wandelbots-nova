@@ -164,6 +164,15 @@ wheels = [
 ]
 
 [[package]]
+name = "antlr4-python3-runtime"
+version = "4.13.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b6/00/7f1cab9b44518ca225a03f4493ac9294aab5935a7a28486ba91a20ea29cf/antlr4-python3-runtime-4.13.1.tar.gz", hash = "sha256:3cd282f5ea7cfb841537fe01f143350fdb1c0b1ce7981443a2fa8513fddb6d1a", size = 117451, upload-time = "2023-09-04T22:17:42.812Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/57/09/0c2874e3e8c53250b40afa7399c70acf7d23cac80138f1792ea3797f7452/antlr4_python3_runtime-4.13.1-py3-none-any.whl", hash = "sha256:78ec57aad12c97ac039ca27403ad61cb98aaec8a3f9bb8144f889aa0fa28b943", size = 144460, upload-time = "2023-09-04T22:17:40.977Z" },
+]
+
+[[package]]
 name = "anyio"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -389,6 +398,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/44/96/392abd49b094d30b91d9fbda6a69519e95802250b777841cf3bda8fe136c/charset_normalizer-3.4.2-cp313-cp313-win32.whl", hash = "sha256:aaeeb6a479c7667fbe1099af9617c83aaca22182d6cf8c53966491a0f1b7ffb7", size = 98064, upload-time = "2025-05-02T08:33:17.06Z" },
     { url = "https://files.pythonhosted.org/packages/e9/b0/0200da600134e001d91851ddc797809e2fe0ea72de90e09bec5a2fbdaccb/charset_normalizer-3.4.2-cp313-cp313-win_amd64.whl", hash = "sha256:aa6af9e7d59f9c12b33ae4e9450619cf2488e2bbe9b44030905877f0b2324980", size = 105641, upload-time = "2025-05-02T08:33:18.753Z" },
     { url = "https://files.pythonhosted.org/packages/20/94/c5790835a017658cbfabd07f3bfb549140c3ac458cfc196323996b10095a/charset_normalizer-3.4.2-py3-none-any.whl", hash = "sha256:7f56930ab0abd1c45cd15be65cc741c28b1c9a34876ce8c17a2fa107810c0af0", size = 52626, upload-time = "2025-05-02T08:34:40.053Z" },
+]
+
+[[package]]
+name = "click"
+version = "8.1.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b9/2e/0090cbf739cee7d23781ad4b89a9894a41538e4fcf4c31dcdd705b78eb8b/click-8.1.8.tar.gz", hash = "sha256:ed53c9d8990d83c2a27deae68e4ee337473f6330c040a31d4225c9574d16096a", size = 226593, upload-time = "2024-12-21T18:38:44.339Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/d4/7ebdbd03970677812aac39c869717059dbb71a4cfc033ca6e5221787892c/click-8.1.8-py3-none-any.whl", hash = "sha256:63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2", size = 98188, upload-time = "2024-12-21T18:38:41.666Z" },
 ]
 
 [[package]]
@@ -624,6 +645,19 @@ wheels = [
 ]
 
 [[package]]
+name = "geometricalgebra"
+version = "0.1.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/15/ee/09819b362d30399eb5f02d6a8e42e6c933f8405c712f38d0604da2ea520e/geometricalgebra-0.1.3.tar.gz", hash = "sha256:7488dd206fbae146edfca941c673c980bf7ea8a0390f4528db367b193ea5643d", size = 36378, upload-time = "2024-05-13T09:41:14.856Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/98/88/1a8ab57e731c3960d4e3852faa91ed8a3bac9ccf56c978fa18d806d30088/geometricalgebra-0.1.3-py3-none-any.whl", hash = "sha256:2483944d2c878088aabc5a6af7d3b1f209eb54ae6008863c18f13e4cb232058c", size = 42492, upload-time = "2024-05-13T09:41:13.183Z" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -750,6 +784,18 @@ wheels = [
 ]
 
 [[package]]
+name = "markdown-it-py"
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "mdurl" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/38/71/3b932df36c1a044d397a1f92d1cf91ee0a503d91e470cbd670aa66b07ed0/markdown-it-py-3.0.0.tar.gz", hash = "sha256:e3f60a94fa066dc52ec76661e37c851cb232d92f9886b15cb560aaada2df8feb", size = 74596, upload-time = "2023-06-03T06:41:14.443Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/42/d7/1ec15b46af6af88f19b8e5ffea08fa375d433c998b8a7639e76935c14f1f/markdown_it_py-3.0.0-py3-none-any.whl", hash = "sha256:355216845c60bd96232cd8d8c40e8f9765cc86f46880e43a8fd22dc1a1a8cab1", size = 87528, upload-time = "2023-06-03T06:41:11.019Z" },
+]
+
+[[package]]
 name = "matplotlib-inline"
 version = "0.1.7"
 source = { registry = "https://pypi.org/simple" }
@@ -759,6 +805,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/99/5b/a36a337438a14116b16480db471ad061c36c3694df7c2084a0da7ba538b7/matplotlib_inline-0.1.7.tar.gz", hash = "sha256:8423b23ec666be3d16e16b60bdd8ac4e86e840ebd1dd11a30b9f117f2fa0ab90", size = 8159, upload-time = "2024-04-15T13:44:44.803Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/8e/9ad090d3553c280a8060fbf6e24dc1c0c29704ee7d1c372f0c174aa59285/matplotlib_inline-0.1.7-py3-none-any.whl", hash = "sha256:df192d39a4ff8f21b1895d72e6a13f5fcc5099f00fa84384e0ea28c2cc0653ca", size = 9899, upload-time = "2024-04-15T13:44:43.265Z" },
+]
+
+[[package]]
+name = "mdurl"
+version = "0.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec958cb99bd3efefba235e65cdeb9c84d24a8293ba1d90/mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba", size = 8729, upload-time = "2022-08-14T12:40:10.846Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8", size = 9979, upload-time = "2022-08-14T12:40:09.779Z" },
 ]
 
 [[package]]
@@ -1654,6 +1709,20 @@ wheels = [
 ]
 
 [[package]]
+name = "rich"
+version = "14.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "markdown-it-py" },
+    { name = "pygments" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a1/53/830aa4c3066a8ab0ae9a9955976fb770fe9c6102117c8ec4ab3ea62d89e8/rich-14.0.0.tar.gz", hash = "sha256:82f1bc23a6a21ebca4ae0c45af9bdbc492ed20231dcb63f297d6d1021a9d5725", size = 224078, upload-time = "2025-03-30T14:15:14.23Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0d/9b/63f4c7ebc259242c89b3acafdb37b41d1185c07ff0011164674e9076b491/rich-14.0.0-py3-none-any.whl", hash = "sha256:1c9491e1951aac09caffd42f448ee3d04e58923ffe14993f6e83068dc395d7e0", size = 243229, upload-time = "2025-03-30T14:15:12.283Z" },
+]
+
+[[package]]
 name = "ruff"
 version = "0.9.10"
 source = { registry = "https://pypi.org/simple" }
@@ -1732,6 +1801,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/8e/038ccfe29d272b30086b25a4960f757f97122cb2ec42e62b460d02fe98e9/scipy-1.15.3-cp313-cp313t-musllinux_1_2_aarch64.whl", hash = "sha256:40e54d5c7e7ebf1aa596c374c49fa3135f04648a0caabcb66c52884b943f02b4", size = 36393132, upload-time = "2025-05-08T16:08:15.34Z" },
     { url = "https://files.pythonhosted.org/packages/10/7e/5c12285452970be5bdbe8352c619250b97ebf7917d7a9a9e96b8a8140f17/scipy-1.15.3-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:5e721fed53187e71d0ccf382b6bf977644c533e506c4d33c3fb24de89f5c3ed5", size = 38979503, upload-time = "2025-05-08T16:08:21.513Z" },
     { url = "https://files.pythonhosted.org/packages/81/06/0a5e5349474e1cbc5757975b21bd4fad0e72ebf138c5592f191646154e06/scipy-1.15.3-cp313-cp313t-win_amd64.whl", hash = "sha256:76ad1fb5f8752eabf0fa02e4cc0336b4e8f021e2d5f061ed37d6d264db35e3ca", size = 40308097, upload-time = "2025-05-08T16:08:27.627Z" },
+]
+
+[[package]]
+name = "shellingham"
+version = "1.5.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/15/8b3609fd3830ef7b27b655beb4b4e9c62313a4e8da8c676e142cc210d58e/shellingham-1.5.4.tar.gz", hash = "sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de", size = 10310, upload-time = "2023-10-24T04:13:40.426Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl", hash = "sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686", size = 9755, upload-time = "2023-10-24T04:13:38.866Z" },
 ]
 
 [[package]]
@@ -1836,6 +1914,21 @@ wheels = [
 ]
 
 [[package]]
+name = "typer"
+version = "0.15.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "rich" },
+    { name = "shellingham" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6c/89/c527e6c848739be8ceb5c44eb8208c52ea3515c6cf6406aa61932887bf58/typer-0.15.4.tar.gz", hash = "sha256:89507b104f9b6a0730354f27c39fae5b63ccd0c95b1ce1f1a6ba0cfd329997c3", size = 101559, upload-time = "2025-05-14T16:34:57.704Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c9/62/d4ba7afe2096d5659ec3db8b15d8665bdcb92a3c6ff0b95e99895b335a9c/typer-0.15.4-py3-none-any.whl", hash = "sha256:eb0651654dcdea706780c466cf06d8f174405a659ffff8f163cfbfee98c0e173", size = 45258, upload-time = "2025-05-14T16:34:55.583Z" },
+]
+
+[[package]]
 name = "typing-extensions"
 version = "4.14.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1930,7 +2023,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "1.16.0"
+version = "1.17.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
@@ -1965,6 +2058,12 @@ nova-rerun-bridge = [
     { name = "rerun-sdk" },
     { name = "trimesh" },
 ]
+wandelscript = [
+    { name = "aiostream" },
+    { name = "antlr4-python3-runtime" },
+    { name = "geometricalgebra" },
+    { name = "typer" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1982,6 +2081,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiostream", specifier = ">=0.6.4,<0.7" },
+    { name = "aiostream", marker = "extra == 'wandelscript'", specifier = ">=0.6.1,<0.7" },
+    { name = "antlr4-python3-runtime", marker = "extra == 'wandelscript'", specifier = "==4.13.1" },
     { name = "anyio", specifier = ">=4.8.0,<5" },
     { name = "apscheduler", marker = "extra == 'benchmark'", specifier = ">=3.11.0" },
     { name = "apscheduler", marker = "extra == 'nova-rerun-bridge'", specifier = ">=3.11.0" },
@@ -1990,6 +2091,7 @@ requires-dist = [
     { name = "blinker", specifier = ">=1.9.0" },
     { name = "docstring-parser", specifier = ">=0.16.0" },
     { name = "exceptiongroup", specifier = ">=1.2.2" },
+    { name = "geometricalgebra", marker = "extra == 'wandelscript'", specifier = ">=0.1.3,<0.2" },
     { name = "httpx", specifier = ">=0.28.0,<0.29" },
     { name = "loguru", specifier = ">=0.7.2,<0.8" },
     { name = "nats-py", specifier = ">=2.10.0" },
@@ -2004,10 +2106,11 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.14.1,<2" },
     { name = "trimesh", marker = "extra == 'benchmark'", specifier = ">=4.5.3" },
     { name = "trimesh", marker = "extra == 'nova-rerun-bridge'", specifier = ">=4.5.3" },
+    { name = "typer", extras = ["all"], marker = "extra == 'wandelscript'", specifier = ">=0.12,<0.16" },
     { name = "wandelbots-api-client", specifier = "==25.5.0" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
 ]
-provides-extras = ["nova-rerun-bridge", "benchmark"]
+provides-extras = ["nova-rerun-bridge", "wandelscript", "benchmark"]
 
 [package.metadata.requires-dev]
 dev = [

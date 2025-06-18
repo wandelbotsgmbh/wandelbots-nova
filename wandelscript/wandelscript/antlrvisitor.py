@@ -19,7 +19,8 @@ def tracked(func):
         result = func(self, ctx, *args, **kwargs)
         try:
             location = TextRange(
-                TextPosition(ctx.start.line, ctx.start.column), TextPosition(ctx.stop.line, ctx.stop.column)
+                TextPosition(ctx.start.line, ctx.start.column),
+                TextPosition(ctx.stop.line, ctx.stop.column),
             )
         except:  # noqa: E722
             location = None
@@ -102,7 +103,11 @@ class Visitor(wandelscriptParserVisitor):  # pylint: disable=too-many-public-met
         else:
             else_body = None
         return metamodel.Conditional(
-            condition=condition, body=body, elif_condition=elif_condition, elif_body=elif_body, else_body=else_body
+            condition=condition,
+            body=body,
+            elif_condition=elif_condition,
+            elif_body=elif_body,
+            else_body=else_body,
         )
 
     @tracked
@@ -110,7 +115,9 @@ class Visitor(wandelscriptParserVisitor):  # pylint: disable=too-many-public-met
         do_body = self.visit(ctx.do_body) if ctx.do_body else None
         sync_body = self.visit(ctx.sync_body) if ctx.sync_body else None
         exception_handler = self.visit(ctx.handler) if ctx.handler else None
-        return metamodel.SyncContext(do_body=do_body, sync_body=sync_body, exception_handler=exception_handler)
+        return metamodel.SyncContext(
+            do_body=do_body, sync_body=sync_body, exception_handler=exception_handler
+        )
 
     @tracked
     def visitRobotContext(self, ctx):
@@ -135,12 +142,16 @@ class Visitor(wandelscriptParserVisitor):  # pylint: disable=too-many-public-met
     @tracked
     def visitRange_(self, ctx):
         return metamodel.Range(
-            start=self.visit(ctx.start), interval_type=bool(ctx.interval_type), end=self.visit(ctx.end)
+            start=self.visit(ctx.start),
+            interval_type=bool(ctx.interval_type),
+            end=self.visit(ctx.end),
         )
 
     @tracked
     def visitForLoop(self, ctx):
-        return metamodel.ForLoop(name=self.visit(ctx.name), range=self.visit(ctx.range_()), body=self.visit(ctx.body))
+        return metamodel.ForLoop(
+            name=self.visit(ctx.name), range=self.visit(ctx.range_()), body=self.visit(ctx.body)
+        )
 
     @tracked
     def visitInterrupt(self, ctx):
@@ -285,7 +296,10 @@ class Visitor(wandelscriptParserVisitor):  # pylint: disable=too-many-public-met
         left = self.visit(ctx.left)
         right = self.visit(ctx.right)
         selected_node = (
-            ctx.multiplicationOperator() or ctx.additionOperator() or ctx.comparisonOperator() or ctx.logicalOperator()
+            ctx.multiplicationOperator()
+            or ctx.additionOperator()
+            or ctx.comparisonOperator()
+            or ctx.logicalOperator()
         )
         operation = self.visit(selected_node)
         return operation(left, right)
@@ -425,7 +439,9 @@ def parse_code(code: str):
         model = Visitor().visit(tree)
         result = metamodel.Program(body=model)
     except ParseCancellationException as error:
-        location = TextRange(TextPosition(error.line, error.column), TextPosition(error.line, error.column + 1))
+        location = TextRange(
+            TextPosition(error.line, error.column), TextPosition(error.line, error.column + 1)
+        )
         raise ProgramSyntaxError(location=location, text=error.message) from error
     return result
 
