@@ -12,6 +12,7 @@ import asyncio
 
 from nova import Nova
 from nova.actions import cartesian_ptp, joint_ptp
+from nova.actions.io import io_write
 from nova.api import models
 from nova.types import Pose
 
@@ -36,7 +37,7 @@ async def main():
             target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
             actions = [
                 joint_ptp(home_joints),
-                # io_write(key="tool_out[0]", value=False),
+                io_write(key="tool_out[0]", value=False),
                 cartesian_ptp(target_pose),
                 joint_ptp(home_joints),
             ]
@@ -44,11 +45,11 @@ async def main():
             async for motion_state in motion_group.stream_plan_and_execute(actions, tcp):
                 print(motion_state)
 
-            # io_value = await controller.read("tool_out[0]")
-            # print(io_value)
-            # await controller.write("tool_out[0]", True)
-            # written_io_value = await controller.read("tool_out[0]")
-            # print(written_io_value)
+            io_value = await controller.read("tool_out[0]")
+            print(io_value)
+            await controller.write("tool_out[0]", True)
+            written_io_value = await controller.read("tool_out[0]")
+            print(written_io_value)
 
         await cell.delete_robot_controller(controller.controller_id)
 

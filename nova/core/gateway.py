@@ -322,25 +322,29 @@ class ApiGateway:
         )
 
         found_io = response.io_values[0]
-        if found_io.boolean_value is not None:
-            return bool(found_io.boolean_value)
-        if found_io.integer_value is not None:
-            return int(found_io.integer_value)
-        if found_io.floating_value is not None:
-            return float(found_io.floating_value)
+
+        if isinstance(found_io.actual_instance, wb.models.IOBooleanValue):
+            return bool(found_io.actual_instance.boolean_value)
+        elif isinstance(found_io.actual_instance, wb.models.IOIntegerValue):
+            return int(found_io.actual_instance.integer_value)
+        elif isinstance(found_io.actual_instance, wb.models.IOFloatValue):
+            return float(found_io.actual_instance.float_value)
+
         raise ValueError(
-            f"IO value for {io} is of an unexpected type. Expected bool, int or float."
+            f"IO value for {io} is of an unexpected type. Expected bool, int or float. Got: {type(found_io.actual_instance)}"
         )
 
     async def write_controller_io(
         self, cell: str, controller: str, io: str, value: bool | int | float
     ):
+        io_value: wb.models.IOBooleanValue | wb.models.IOIntegerValue | wb.models.IOFloatValue
+
         if isinstance(value, bool):
             io_value = wb.models.IOBooleanValue(io=io, boolean_value=value)
         elif isinstance(value, int):
             io_value = wb.models.IOIntegerValue(io=io, integer_value=str(value))
         elif isinstance(value, float):
-            io_value = wb.models.IOFloatValue(io=io, floating_value=value)
+            io_value = wb.models.IOFloatValue(io=io, float_value=value)
         else:
             raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
 
@@ -351,12 +355,14 @@ class ApiGateway:
         )
 
     async def wait_for_bool_io(self, cell: str, controller: str, io: str, value: bool):
+        io_value = wb.models.IOBooleanValue(io=io, boolean_value=value)
+
+        wait_request = wb.models.WaitForIOEventRequest(
+            io=wb.models.SetOutputValuesRequestInner(io_value),
+            comparator=wb.models.Comparator.COMPARATOR_EQUALS,
+        )
         await self.controller_ios_api.wait_for_io_event(
-            cell=cell,
-            controller=controller,
-            io=io,
-            comparison_type=ComparisonType.COMPARISON_TYPE_EQUAL,
-            boolean_value=value,
+            cell=cell, controller=controller, wait_for_io_event_request=wait_request
         )
 
     async def list_controllers(self, *, cell: str) -> list[wb.models.RobotController]:
@@ -373,15 +379,9 @@ class ApiGateway:
         # Filter out None results and return the list of controller instances
         return [result for result in [task.result() for task in tasks]]
 
-    async def get_controller_instance(
-        self, *, cell: str, name: str
-    ) -> wb.models.RobotController | None:
-        # TODO maybe let exceptions bubble up instead of returning None?
-        try:
-            return await self.controller_api.get_robot_controller(cell=cell, controller=name)
-        except wb.exceptions.NotFoundException:
-            logger.warning(f"Controller {name} not found in cell {cell}.")
-            return None
+    async def get_controller_instance(self, *, cell: str, name: str) -> wb.models.Controller | None:
+        controllers = await self.list_controllers(cell=cell)
+        return next((c for c in controllers if c.controller == name), None)
 
     async def get_current_robot_controller_state(
         self, *, cell: str, controller_id: str
