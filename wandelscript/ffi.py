@@ -5,7 +5,7 @@ programs so that you can use those functions within your Wandelscript code.
 """
 
 import inspect
-from dataclasses import dataclass, field, is_dataclass
+from dataclasses import dataclass, is_dataclass
 from functools import wraps
 from typing import Any, Callable, TypeVar
 

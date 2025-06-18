@@ -1,4 +1,3 @@
-import numpy as np
 from geometricalgebra import cga3d
 
 from nova.types import Pose

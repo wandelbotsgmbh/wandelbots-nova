@@ -1,6 +1,5 @@
 # Generated from wandelscriptLexer.g4 by ANTLR 4.13.2
 import sys
-from io import StringIO
 
 from antlr4 import *
 

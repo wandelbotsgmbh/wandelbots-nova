@@ -1,7 +1,6 @@
 from functools import singledispatch
 from typing import Any, TypeVar
 
-import wandelscript.datatypes as t
 from nova.types import Pose, Vector3d
 from wandelscript.metamodel import register_builtin_func
 
