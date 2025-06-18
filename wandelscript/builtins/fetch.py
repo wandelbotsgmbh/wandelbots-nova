@@ -98,17 +98,17 @@ async def fetch(url: str, options: dict | None = None) -> dict:
 
     try:
         client_kwargs: dict[str, Any] = {}
-        
+
         if redirect == "error":
             client_kwargs["follow_redirects"] = False
         elif redirect == "manual":
             client_kwargs["follow_redirects"] = False
         else:  # "follow"
             client_kwargs["follow_redirects"] = True
-        
+
         if keepalive:
             client_kwargs["timeout"] = None
-        
+
         request_kwargs: dict[str, Any] = {"headers": headers}
 
         # Handle different body types and set appropriate content-type
