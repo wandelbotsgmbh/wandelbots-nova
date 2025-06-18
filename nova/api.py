@@ -4,6 +4,7 @@ from wandelbots_api_client.v2 import api, api_client, configuration, exceptions,
 
 __all__ = [
     "models",
+    "v2",
     "api",
     "api_client",
     "configuration",

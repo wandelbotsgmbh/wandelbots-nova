@@ -13,6 +13,7 @@ import asyncio
 from nova import Controller, Nova
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
+from nova.cell import virtual_controller
 
 
 async def move_robot(controller: Controller):
@@ -31,15 +32,19 @@ async def move_robot(controller: Controller):
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        ur10 = await cell.ensure_virtual_robot_controller(
-            "ur10",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
+        ur10 = await cell.ensure_controller(
+            robot_controller=virtual_controller(
+                name="ur10",
+                manufacturer=models.Manufacturer.UNIVERSALROBOTS,
+                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
         )
-        ur5 = await cell.ensure_virtual_robot_controller(
-            "ur5",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
-            models.Manufacturer.UNIVERSALROBOTS,
+        ur5 = await cell.ensure_controller(
+            robot_controller=virtual_controller(
+                name="ur5",
+                manufacturer=models.Manufacturer.UNIVERSALROBOTS,
+                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
+            )
         )
         await asyncio.gather(move_robot(ur5), move_robot(ur10))
         await cell.delete_robot_controller(ur5.controller_id)
