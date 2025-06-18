@@ -52,6 +52,36 @@ You need to download the robot models to visualize the robot models in the rerun
 uv run download-models
 ```
 
+## Wandelscript
+
+Wandelscript is a domain-specific language for programming robots. It is a declarative language that allows you to describe the robot's behavior in a high-level way.
+
+```bash
+uv add wandelbots-nova --extra wandelscript
+```
+
+Here is a simple example of a Wandelscript program:
+
+```python
+robot = get_controller("controller")[0]
+tcp("Flange")
+home = read(robot, "pose")
+sync
+
+# Set the velocity of the robot to 200 mm/s
+velocity(200)
+
+for i = 0..3:
+    move via ptp() to home
+    # Move to a pose concatenating the home pose
+    move via line() to (50, 20, 30, 0, 0, 0) :: home
+    move via line() to (100, 20, 30, 0, 0, 0) :: home
+    move via line() to (50, 20, 30, 0, 0, 0) :: home
+    move via ptp() to home
+```
+
+To get more information about Wandelscript, check out the [Wandelscript documentation](/wandelscript/README.md).
+
 ## 🚀 Quick Start
 
 See the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) for usage of this library and further [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples) utilizing rerun as a visualizer

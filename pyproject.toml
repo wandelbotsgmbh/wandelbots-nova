@@ -43,6 +43,7 @@ dev = [
     "ipython<9",
     "freezegun>=1.5.1",
     "pyinstrument>=5.0.2",
+    "glom>=24.11.0",
 ]
 
 [project.optional-dependencies]
@@ -100,7 +101,6 @@ junit_family = "xunit2"
 norecursedirs = "develop .ipynb_checkpoints .venv .tox *.egg"
 testpaths = """
     nova
-    wandelscript
     tests
 """
 markers = """
@@ -117,7 +117,7 @@ show_error_context = true
 warn_unused_ignores = true
 strict_equality = true
 mypy_path = ".mypy_stubs"
-files = "nova, examples, tests"
+files = "nova, examples, tests, wandelscript"
 namespace_packages = true
 explicit_package_bases = true
 

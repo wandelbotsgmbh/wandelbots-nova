@@ -19,7 +19,7 @@ jobs:
       - name: Set up Python environment
         run: |
           pip install uv
-          uv sync --extra "nova-rerun-bridge"
+          uv sync --extra "nova-rerun-bridge" --extra "wandelscript"
       - name: Check formatting with ruff
         run: uv run ruff format --check .
       - name: Check import order
