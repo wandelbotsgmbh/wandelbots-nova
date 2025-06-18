@@ -32,7 +32,7 @@ class ProgramRunner(NovaProgramRunner):
         default_tcp: str | None = None,
         foreign_functions: dict[str, ForeignFunction] | None = None,
     ):
-        super().__init__(program=program, args=args, robot_cell_override=robot_cell_override)
+        super().__init__(program=program, args=args, robot_cell_override=robot_cell_override)  # type: ignore
         self._default_robot: str | None = default_robot
         self._default_tcp: str | None = default_tcp
         self._foreign_functions: dict[str, ForeignFunction] = foreign_functions or {}

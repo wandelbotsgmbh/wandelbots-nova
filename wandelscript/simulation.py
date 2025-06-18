@@ -155,7 +155,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
     async def get_mounting(self) -> Pose:
         mounting = (await self.get_optimizer_setup((await self.tcp_names())[0])).mounting
 
-        return Pose.from_position_and_quaternion(
+        return Pose.from_position_and_quaternion(  # type: ignore
             [mounting.position.x, mounting.position.y, mounting.position.z],
             [
                 mounting.orientation.w,
@@ -352,7 +352,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
                                         limit_reached=[False]
                                     ),
                                     joint_position=api.models.Joints(
-                                        joints=list(motion_state.state.joints)
+                                        joints=list(motion_state.state.joints)  # type: ignore
                                     ),
                                     sequence_number="0",
                                 )
@@ -383,7 +383,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
     async def active_tcp_name(self) -> str:
         return next(iter(self.configuration.tools))
 
-    async def get_state(self, tcp: str) -> RobotState:
+    async def get_state(self, tcp: str | None = None) -> RobotState:
         if not self._trajectory:
             raise UnknownPose
         flange2robot = self._trajectory[-1]
@@ -400,7 +400,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
     async def joints(self) -> tuple:
         if not self._trajectory:
             raise UnknownPose
-        return self._trajectory[-1].state.joints
+        return self._trajectory[-1].state.joints  # type: ignore
 
     async def tcp_pose(self, tcp: str | None = None) -> Pose:
         if tcp is None:

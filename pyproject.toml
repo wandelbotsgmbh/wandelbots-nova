@@ -118,6 +118,7 @@ warn_unused_ignores = true
 strict_equality = true
 mypy_path = ".mypy_stubs"
 files = "nova, examples, tests, wandelscript"
+exclude = ["wandelscript/grammar", "wandelscript/motions.py", "wandelscript/builtins/fs.py", "wandelscript/metamodel.py"]
 namespace_packages = true
 explicit_package_bases = true
 

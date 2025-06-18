@@ -14,7 +14,7 @@ Vector3d(x=0.0, y=1.0, z=5.0)
 import wandelscript.antlrvisitor  # load Program.from_code # noqa: F401
 from wandelscript import builtins, motions
 from wandelscript.metamodel import Program, register_builtin_func
-from wandelscript.runner import ProgramRunner, ProgramRunState, run, run_file
+from wandelscript.runner import ProgramRunner, run, run_file
 from wandelscript.runtime import Store
 from wandelscript.version import version
 
@@ -29,9 +29,7 @@ __all__ = [
     "run",
     "run_file",
     "Program",
-    "ProgramRun",
     "ProgramRunner",
-    "ProgramRunState",
     "Store",
     "__version__",
     "register_builtin_func",

@@ -10,8 +10,8 @@ import pytest
 from icecream import ic
 
 from nova.cell.robot_cell import RobotCell
-from nova.runtime.runner import Program, ProgramRun, ProgramType
-from wandelscript import ProgramRunner, ProgramRunState, run
+from nova.runtime.runner import Program, ProgramRun, ProgramRunState, ProgramType
+from wandelscript import ProgramRunner, run
 from wandelscript.exception import NameError_, ProgramSyntaxError
 from wandelscript.ffi import ForeignFunction
 from wandelscript.runtime import ExecutionContext
@@ -52,7 +52,7 @@ def custom_foreign_function(v: Any) -> str:
 
 def other_foreign_function(ctx: ExecutionContext, v: int) -> None:
     robot = list(ctx.robot_cell.get_robots().values())[0]
-    type_ = robot.configuration.type
+    type_ = robot.configuration.type  # type: ignore
     print(f"For context, we've got a robot of type: {type_}")
 
     print(f"{v * 2} little Jaegermeisters check if another arg does work")

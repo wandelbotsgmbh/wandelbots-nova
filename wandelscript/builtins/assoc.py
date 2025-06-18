@@ -44,7 +44,7 @@ def _(tup: tuple, key: int, val: Any) -> tuple:
 def _(vec: Vector3d, key: int, val: float) -> Vector3d:
     tmp = list(vec)
     tmp[key] = val
-    return vec.__class__(*tmp)
+    return Vector3d(x=tmp[0], y=tmp[1], z=tmp[2])
 
 
 @assoc.register

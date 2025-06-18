@@ -155,7 +155,7 @@ class ExecutionContext:
         if run_args is None:
             run_args = {}
 
-        run_args.update(__tcp__=default_tcp, **robot_cell.devices)
+        run_args.update(__tcp__=default_tcp, **robot_cell.devices)  # type: ignore
 
         for name, ff in (foreign_functions or {}).items():
             metamodel.register_builtin_func(name=name, pass_context=ff.pass_context)(ff.function)
@@ -265,7 +265,7 @@ class ExecutionContext:
         robot_state = await self.get_robot(robot_name).get_state(tcp)
         return robot_state.pose
 
-    async def read_joints(self, robot_name: str) -> tuple:
+    async def read_joints(self, robot_name: str) -> tuple[float, ...] | None:
         tcp = await self.get_robot(robot_name).active_tcp_name()
         robot_state = await self.get_robot(robot_name).get_state(tcp)
         return robot_state.joints
@@ -313,13 +313,13 @@ def run_action(arg, context: ExecutionContext):
 @run_action.register(WriteAction)
 async def _(arg: WriteAction, context: ExecutionContext) -> None:
     device = context.robot_cell.devices.get(arg.device_id)
-    return await device.write(arg.key, arg.value)
+    return await device.write(arg.key, arg.value)  # type: ignore
 
 
 @run_action.register(ReadAction)
 async def _(arg: ReadAction, context: ExecutionContext):
     device = context.robot_cell.devices.get(arg.device_id)
-    return as_builtin_type(await device.read(arg.key))
+    return as_builtin_type(await device.read(arg.key))  # type: ignore
 
 
 @run_action.register(ReadPoseAction)
@@ -335,7 +335,7 @@ async def _(arg: ReadJointsAction, context: ExecutionContext):
 @run_action.register(CallAction)
 async def _(arg: CallAction, context: ExecutionContext) -> None:
     device = context.robot_cell.devices.get(arg.device_id)
-    return await device(arg.key, *arg.arguments)
+    return await device(arg.key, *arg.arguments)  # type: ignore
 
 
 class ActionQueue:
@@ -462,7 +462,7 @@ class ActionQueue:
         for callback in self._on_motion_callbacks.values():
             await callback(None, motion_state.path_parameter, motion_state.state.pose)
 
-    def last_pose(self, robot: str) -> Pose | None:
+    def last_pose(self, robot: str) -> Pose | tuple[float, ...] | None:
         """Return the last pose of the collected motion trajectory
 
         Args:
@@ -485,7 +485,7 @@ class ActionQueue:
         """
         if motion_group_id not in self._record:
             self._record[motion_group_id] = CombinedActions()
-        self._record[motion_group_id].append(action)
+        self._record[motion_group_id].append(action)  # type: ignore
 
     def push(self, motions: Motion | tuple[Motion, ...], tool: str, motion_group_id: str):
         """Append a new motion to the queue.
