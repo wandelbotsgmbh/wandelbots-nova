@@ -15,7 +15,7 @@ requires-python = ">=3.10, <3.13"
 readme = "README.md"
 dependencies = [
     "httpx>=0.28.0,<0.29",
-    "wandelbots_api_client==25.6.0",
+    "wandelbots_api_client~=25.5",
     "websockets>=14.1.0,<15",
     "loguru>=0.7.2,<0.8",
     "pydantic>=2.11.4,<3",
@@ -60,11 +60,7 @@ wandelscript = [
     "geometricalgebra>=0.1.3,<0.2",
     "typer[all]>=0.12,<0.16",
 ]
-novax = [
-    "fastapi>=0.115.6",
-    "uvicorn>=0.34.0",
-    "python-decouple>=3.8",
-]
+novax = ["fastapi>=0.115.6", "uvicorn>=0.34.0", "python-decouple>=3.8"]
 benchmark = [
     "rerun-sdk==0.23.3",
     "requests>=2.32.3",
@@ -78,21 +74,14 @@ download-models = "nova_rerun_bridge.helper_scripts.download_models:update_robot
 wandelscript = "wandelscript.cli:app"
 ws = "wandelscript.cli:app"
 
+[tool.uv]
+prerelease = "allow"
+
 [tool.hatch.build.targets.sdist]
-include = [
-    "nova",
-    "nova_rerun_bridge",
-    "wandelscript",
-    "novax",
-]
+include = ["nova", "nova_rerun_bridge", "wandelscript", "novax"]
 
 [tool.hatch.build.targets.wheel]
-include = [
-    "nova",
-    "nova_rerun_bridge",
-    "wandelscript",
-    "novax",
-]
+include = ["nova", "nova_rerun_bridge", "wandelscript", "novax"]
 
 [build-system]
 requires = ["hatchling"]
@@ -128,7 +117,12 @@ warn_unused_ignores = true
 strict_equality = true
 mypy_path = ".mypy_stubs"
 files = "nova, examples, tests, wandelscript, novax"
-exclude = ["wandelscript/grammar", "wandelscript/motions.py", "wandelscript/builtins/fs.py", "wandelscript/metamodel.py"]
+exclude = [
+    "wandelscript/grammar",
+    "wandelscript/motions.py",
+    "wandelscript/builtins/fs.py",
+    "wandelscript/metamodel.py",
+]
 namespace_packages = true
 explicit_package_bases = true
 

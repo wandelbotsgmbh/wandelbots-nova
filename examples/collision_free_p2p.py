@@ -112,9 +112,7 @@ async def test() -> None:
         async with controller[0] as motion_group:
             tcp = "Flange"
 
-            robot_setup: api.models.OptimizerSetup = await motion_group._get_optimizer_setup(
-                tcp=tcp
-            )
+            robot_setup: models.OptimizerSetup = await motion_group._get_robot_setup(tcp=tcp)
             robot_setup.safety_setup.global_limits.tcp_velocity_limit = 200
 
             collision_scene_id = await build_collision_world(nova, "cell", robot_setup)

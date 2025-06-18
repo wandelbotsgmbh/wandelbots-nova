@@ -108,7 +108,7 @@ class NovaRerunBridge:
             return
 
         for controller in controllers:
-            for motion_group in await controller.activated_motion_groups():
+            for motion_group in await controller.motion_groups():
                 motion_groups.append(motion_group.motion_group_id)
 
         rr.reset_time()
@@ -194,9 +194,7 @@ class NovaRerunBridge:
         rr.reset_time()
         rr.set_time(TIME_INTERVAL_NAME, duration=0)
 
-        log_safety_zones(
-            motion_group.motion_group_id, await motion_group._get_optimizer_setup(tcp=tcp)
-        )
+        log_safety_zones(motion_group.motion_group_id, await motion_group._get_robot_setup(tcp=tcp))
 
     # Backward compatibility method (deprecated)
     async def log_saftey_zones(self, motion_group: MotionGroup) -> None:

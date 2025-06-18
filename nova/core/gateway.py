@@ -205,12 +205,8 @@ class ApiGateway:
         self.trajectory_execution_api: wb.TrajectoryExecutionApi = intercept(
             wb.TrajectoryExecutionApi(api_client=self._api_client), self
         )
-        self.motion_group_infos_api = intercept(
-            wb.MotionGroupInfoApi(api_client=self._api_client), self
-        )
-        self.motion_group_kinematic_api = intercept(
-            wb.MotionGroupKinematicsApi(api_client=self._api_client), self
-        )
+        self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client), self)
+        self.kinematics_api = intercept(wb.KinematicsApi(api_client=self._api_client), self)
         self.controller_ios_api = intercept(
             wb.ControllerInputsOutputsApi(api_client=self._api_client), self
         )
@@ -308,20 +304,6 @@ class ApiGateway:
         ):
             yield state
 
-    async def activate_motion_group(self, cell: str, motion_group_id: str):
-        await self.motion_group_api.activate_motion_group(cell=cell, motion_group=motion_group_id)
-
-    async def activate_all_motion_groups(self, cell: str, controller: str) -> list[str]:
-        """
-        Activate all motion groups for the given cell and controller.
-        Returns the id of the activated motion groups.
-        """
-        activate_all_motion_groups_response = (
-            await self.motion_group_api.activate_all_motion_groups(cell=cell, controller=controller)
-        )
-        motion_groups = activate_all_motion_groups_response.motion_groups
-        return [mg.motion_group for mg in motion_groups]
-
     async def list_controller_io_descriptions(
         self, cell: str, controller: str, ios: list[str]
     ) -> list[wb.models.IODescription]:
@@ -377,15 +359,29 @@ class ApiGateway:
             boolean_value=value,
         )
 
-    async def list_controllers(self, *, cell: str) -> list[wb.models.Controller]:
-        response = await self.controller_api.list_controllers(cell=cell)
-        return response.controllers
+    async def list_controllers(self, *, cell: str) -> list[wb.models.RobotController]:
+        # TODO The API returns a list of controller names as of v2, should we rally offer
+        # the instance listing at all?
+        controller_names = await self.controller_api.list_robot_controllers(cell=cell)
+        # Create tasks to get all controller instances concurrently
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(self.controller_api.get_robot_controller(cell=cell, controller=name))
+                for name in controller_names
+            ]
+
+        # Filter out None results and return the list of controller instances
+        return [result for result in [task.result() for task in tasks]]
 
     async def get_controller_instance(
         self, *, cell: str, name: str
-    ) -> wb.models.ControllerInstance | None:
-        controllers = await self.list_controllers(cell=cell)
-        return next((c for c in controllers if c.controller == name), None)
+    ) -> wb.models.RobotController | None:
+        # TODO maybe let exceptions bubble up instead of returning None?
+        try:
+            return await self.controller_api.get_robot_controller(cell=cell, controller=name)
+        except wb.exceptions.NotFoundException:
+            logger.warning(f"Controller {name} not found in cell {cell}.")
+            return None
 
     async def get_current_robot_controller_state(
         self, *, cell: str, controller_id: str
@@ -496,27 +492,53 @@ class ApiGateway:
     async def get_motion_group_state(
         self, cell: str, motion_group_id: str, tcp: str | None = None
     ) -> wb.models.MotionGroupState:
-        return await self.motion_group_infos_api.get_current_motion_group_state(
+        return await self.motion_group_api.get_current_motion_group_state(
             cell=cell, motion_group=motion_group_id
         )
 
     async def list_tcps(self, cell: str, motion_group_id: str) -> wb.models.ListTcpsResponse:
-        return await self.motion_group_infos_api.list_tcps(cell=cell, motion_group=motion_group_id)
+        return await self.motion_group_api.list_tcps(cell=cell, motion_group=motion_group_id)
 
     async def get_active_tcp(self, cell: str, motion_group_id: str) -> wb.models.RobotTcp:
-        return await self.motion_group_infos_api.get_active_tcp(
-            cell=cell, motion_group=motion_group_id
+        return await self.motion_group_api.get_active_tcp(cell=cell, motion_group=motion_group_id)
+
+    def robot_setup_from_motion_group_description(
+        self,
+        motion_group_description: wb.models.MotionGroupDescription,
+        tcp_name: str,
+        payload: wb.models.Payload | None = None,
+    ) -> wb.models.RobotSetup:
+        # TODO the function does multiple things not separated very well
+        collision_scene = wb.models.SingleMotionGroupCollisionScene(
+            static_colliders=motion_group_description.safety_zones,
+            link_chain=motion_group_description.safety_link_colliders,
+            tool=motion_group_description.safety_tool_colliders,
+            motion_group_self_collision_detection=True,  # explicitly set here until we have a better understanding
+        )
+        # TODO maybe we also wast to give the user more control over the collision scene
+        return wb.models.RobotSetup(
+            motion_group_model=motion_group_description.motion_group_type,
+            cycle_time=motion_group_description.cycle_time,
+            mounting=motion_group_description.mounting,
+            global_limits=motion_group_description.global_limits,
+            tcp_offset=motion_group_description.tcps[tcp_name],
+            payload=payload,
+            collision_scene=collision_scene,
         )
 
-    async def get_optimizer_config(
+    async def get_robot_setup(
         self, cell: str, motion_group_id: str, tcp: str
-    ) -> wb.models.OptimizerSetup:
-        return await self.motion_group_infos_api.get_optimizer_configuration(
+    ) -> wb.models.RobotSetup:
+        # TODO allow to specify payload
+        motion_group_description = await self.motion_group_api.get_motion_group_description(
             cell=cell, motion_group=motion_group_id, tcp=tcp
+        )
+        return self.robot_setup_from_motion_group_description(
+            motion_group_description=motion_group_description, tcp_name=tcp
         )
 
     async def get_joint_number(self, cell: str, motion_group_id: str) -> int:
-        spec = await self.motion_group_infos_api.get_motion_group_specification(
+        spec = await self.motion_group_api.get_motion_group_specification(
             cell=cell, motion_group=motion_group_id
         )
         return len(spec.mechanical_joint_limits)

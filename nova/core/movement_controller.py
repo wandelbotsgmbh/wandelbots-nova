@@ -1,5 +1,4 @@
-from functools import singledispatch
-from typing import Any, Callable
+from typing import Callable
 
 import wandelbots_api_client.v2 as wb
 
@@ -16,13 +15,7 @@ from nova.types import (
 )
 
 
-@singledispatch
-def movement_to_motion_state(movement: Any) -> MotionState:
-    raise NotImplementedError(f"Unsupported movement type: {type(movement)}")
-
-
-@movement_to_motion_state.register
-def _(movement: wb.models.Movement) -> MotionState:
+def movement_to_motion_state(movement: wb.models.Movement) -> MotionState:
     """Convert a wb.models.Movement to a MotionState."""
     if (
         movement.movement.state is None
@@ -35,25 +28,6 @@ def _(movement: wb.models.Movement) -> MotionState:
     motion_group = movement.movement.state.active_motion_groups[0]
     return motion_group_state_to_motion_state(
         motion_group, float(movement.movement.current_location)
-    )
-
-
-@movement_to_motion_state.register
-def _(movement: wb.models.MoveToTrajectoryViaJointPTPResponse) -> MotionState:
-    """Convert a wb.models.Movement to a MotionState."""
-    if (
-        movement.actual_instance is None
-        or isinstance(movement.actual_instance, wb.models.Standstill)
-        or movement.actual_instance.movement.state is None
-        or movement.actual_instance.movement.current_location is None
-        or len(movement.actual_instance.movement.state.active_motion_groups) == 0
-    ):
-        assert False, "This should not happen"  # depending on NC-1105
-
-    # TODO: in which cases do we have more than one motion group here?
-    motion_group = movement.actual_instance.movement.state.active_motion_groups[0]
-    return motion_group_state_to_motion_state(
-        motion_group, float(movement.actual_instance.movement.current_location)
     )
 
 
@@ -73,6 +47,7 @@ def motion_group_state_to_motion_state(
     )
 
 
+# TODO: when the message exchange is not working as expected we should gracefully close
 def move_forward(context: MovementControllerContext) -> MovementControllerFunction:
     """
     movement_controller is an async function that yields requests to the server.
@@ -89,7 +64,8 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                 wb.models.TrajectoryId(message_type="TrajectoryId", id=context.motion_id)
             ),
             initial_location=0,
-        )
+        )  # type: ignore
+
         # then we get the response
         initialize_movement_response = await anext(response_stream)
         if isinstance(
@@ -100,11 +76,10 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                 raise InitMovementFailed(r1.init_response)
 
         # The second request is to start the movement
-        # TODO: the request model doesn't have the location field anymore, so set io is broken
-        # set_io_list = context.combined_actions.to_set_io()
+        set_io_list = context.combined_actions.to_set_io()
         yield wb.models.StartMovementRequest(
             direction=wb.models.Direction.DIRECTION_FORWARD,
-            # set_ios=set_io_list,
+            set_ios=set_io_list,
             start_on_io=None,
             pause_on_io=None,
         )  # type: ignore
@@ -120,7 +95,6 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     return movement_controller
 
 
-# TODO: this needs to change as well, but no one uses it
 def speed_up(
     context: MovementControllerContext, on_movement: Callable[[MotionState | None], None]
 ) -> MovementControllerFunction:

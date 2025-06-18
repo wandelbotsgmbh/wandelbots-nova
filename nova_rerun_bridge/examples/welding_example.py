@@ -243,9 +243,7 @@ async def test():
         async with controller[0] as motion_group:
             tcp = "torch"
 
-            robot_setup: api.models.OptimizerSetup = await motion_group._get_optimizer_setup(
-                tcp=tcp
-            )
+            robot_setup: models.OptimizerSetup = await motion_group._get_robot_setup(tcp=tcp)
 
             # Add mesh to collision world
             mesh_collider = await add_mesh_to_collision_world(
