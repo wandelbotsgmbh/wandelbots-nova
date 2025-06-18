@@ -1,0 +1,21 @@
+{
+  "res_get": {
+    "data": {
+      "args": {},
+      "url": "https://httpbin.org/get"
+    },
+    "status_code": 200
+  },
+  "res_get_error": {
+    "status_code": 404
+  },
+  "res_post": {
+    "data": {
+      "json": {
+        "name": "JohnDoe"
+      },
+      "url": "https://httpbin.org/post"
+    },
+    "status_code": 200
+  }
+}

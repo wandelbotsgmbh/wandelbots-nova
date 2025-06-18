@@ -1,0 +1,13 @@
+{
+  "int": 1,
+  "float": 2.0,
+  "str": "A string",
+  "bool_true": true,
+  "bool_false": false,
+  "pose": {
+    "position": [100, 0, 0],
+    "orientation": [0, 3.14, 0]
+  },
+  "vec": {"x": 200, "y": 100, "z": 0},
+  "arr": [1, 2, 3, 4]
+}

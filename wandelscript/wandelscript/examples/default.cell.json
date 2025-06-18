@@ -1,0 +1,34 @@
+[
+  {
+    "type": "simulated_timer",
+    "id": "timer"
+  },
+  {
+    "type": "simulated_io",
+    "id": "controller"
+  },
+  {
+    "type": "simulated_controller",
+    "id": "controller",
+    "robots": [
+      {
+        "type": "simulated_robot",
+        "id": "0@controller",
+        "initial_pose": {
+          "position": [0, 0, 0],
+          "orientation": [0, 0, 0]
+        },
+        "tools": {
+          "Flange": {
+            "position": [0, 0, 0],
+            "orientation": [0, 0, 0]
+          },
+          "tool": {
+            "position": [0, 0, 2],
+            "orientation": [0, 0, 0]
+          }
+        }
+      }
+    ]
+  }
+]

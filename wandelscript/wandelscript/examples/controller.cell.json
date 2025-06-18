@@ -1,0 +1,14 @@
+[
+  {
+    "type": "simulated_timer",
+    "id": "timer"
+  },
+  {
+    "type": "simulated_controller",
+    "id": "controller"
+  },
+  {
+    "type": "simulated_controller",
+    "id": "controller2"
+  }
+]
