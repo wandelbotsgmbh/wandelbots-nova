@@ -1,5 +1,4 @@
 version = 1
-revision = 1
 requires-python = ">=3.10, <4"
 
 [[package]]
@@ -1950,7 +1949,6 @@ requires-dist = [
     { name = "wandelbots-api-client", specifier = "==25.5.0" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
 ]
-provides-extras = ["nova-rerun-bridge", "benchmark"]
 
 [package.metadata.requires-dev]
 dev = [

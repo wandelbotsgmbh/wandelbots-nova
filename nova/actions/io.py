@@ -11,6 +11,7 @@ class WriteAction(Action):
     device_id: str | None
 
     def to_api_model(self):
+<<<<<<< ndx-43-migrate-to-v2-api-trial-2
         if isinstance(self.value, bool):
             return api.models.IOBooleanValue(io=self.key, boolean_value=self.value).model_dump()
         elif isinstance(self.value, int):
@@ -19,6 +20,9 @@ class WriteAction(Action):
             ).model_dump()
         elif isinstance(self.value, float):
             return api.models.IOFloatValue(io=self.key, float_value=self.value).model_dump()
+=======
+        return api.v2.models.IOBooleanValue(io=self.key, boolean_value=self.value).model_dump()
+>>>>>>> release/v2
 
     def is_motion(self) -> bool:
         return False
