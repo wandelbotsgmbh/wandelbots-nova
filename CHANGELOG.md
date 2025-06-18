@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.18.0 (2025-06-18)
+
+### Features
+
+- **NDX-90**: Move Wandelscript to SDK repository
+  ([#190](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/190),
+  [`ff1a9a1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ff1a9a16ed53f4e19d75695f592d15f59f5b3e66))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.17.1 (2025-06-17)
 
 ### Bug Fixes
