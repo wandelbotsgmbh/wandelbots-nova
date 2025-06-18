@@ -14,7 +14,9 @@ class WriteAction(Action):
         if isinstance(self.value, bool):
             return api.models.IOBooleanValue(io=self.key, boolean_value=self.value).model_dump()
         elif isinstance(self.value, int):
-            return api.models.IOIntegerValue(io=self.key, integer_value=self.value).model_dump()
+            return api.models.IOIntegerValue(
+                io=self.key, integer_value=str(self.value)
+            ).model_dump()
         elif isinstance(self.value, float):
             return api.models.IOFloatValue(io=self.key, float_value=self.value).model_dump()
 
