@@ -12,6 +12,7 @@ import asyncio
 
 from nova import MotionSettings, Nova
 from nova.actions import cartesian_ptp, joint_ptp
+from nova.actions.io import io_write
 from nova.api import models
 from nova.types import Pose
 
@@ -41,7 +42,7 @@ async def main():
                 cartesian_ptp(target_pose),
                 # collision_free(home_joints),
                 cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
-                # io_write(key="digital_out[0]", value=True),
+                io_write(key="digital_out[0]", value=True),
                 joint_ptp(home_joints),
                 cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
                 # collision_free(home_pose),
@@ -59,8 +60,8 @@ async def main():
         )
         await motion_group.execute(joint_trajectory, tcp, actions=actions)
 
-        # value = await controller.read("digital_out[0]")
-        # print(f"digital out: {value}")
+        value = await controller.read("digital_out[0]")
+        print(f"digital out: {value}")
 
         await cell.delete_robot_controller(controller.controller_id)
 
