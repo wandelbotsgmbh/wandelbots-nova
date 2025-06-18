@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.18.1 (2025-06-18)
+
+### Bug Fixes
+
+- **NDX-90**: Cleanup and make wandelscript pkg optional
+  ([#197](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/197),
+  [`072d83c`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/072d83c0ac499ef31e90fd0049ab563aee26a212))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.18.0 (2025-06-18)
 
 ### Features
