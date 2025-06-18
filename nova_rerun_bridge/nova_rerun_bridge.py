@@ -83,7 +83,7 @@ class NovaRerunBridge:
             return
 
         for controller in controllers:
-            for motion_group in await controller.activated_motion_groups():
+            for motion_group in await controller.motion_groups():
                 motion_groups.append(motion_group.motion_group_id)
 
         rr.reset_time()
@@ -167,9 +167,7 @@ class NovaRerunBridge:
         rr.reset_time()
         rr.set_time_seconds(TIME_INTERVAL_NAME, 0)
 
-        log_safety_zones(
-            motion_group.motion_group_id, await motion_group._get_optimizer_setup(tcp=tcp)
-        )
+        log_safety_zones(motion_group.motion_group_id, await motion_group._get_robot_setup(tcp=tcp))
 
     def log_saftey_zones_(
         self, motion_group_id: str, optimizer_setup: models.OptimizerSetup
@@ -187,10 +185,8 @@ class NovaRerunBridge:
         motion = await self.nova._api_client.motion_api.get_planned_motion(
             self.nova.cell()._cell_id, motion_id
         )
-        optimizer_config = (
-            await self.nova._api_client.motion_group_infos_api.get_optimizer_configuration(
-                self.nova.cell()._cell_id, motion.motion_group
-            )
+        optimizer_config = await self.nova._api_client.motion_group_api.get_optimizer_configuration(
+            self.nova.cell()._cell_id, motion.motion_group
         )
         trajectory = await self.nova._api_client.motion_api.get_motion_trajectory(
             self.nova.cell()._cell_id, motion_id, int(RECORDING_INTERVAL * 1000)

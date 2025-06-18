@@ -1,4 +1,4 @@
-from typing import AsyncIterator, Callable
+from typing import AsyncIterator, Callable, TypeAlias
 
 from nova import api
 from nova.types.motion_settings import MotionSettings
@@ -6,15 +6,11 @@ from nova.types.pose import Pose
 from nova.types.state import MotionState, RobotState
 from nova.types.vector3d import Vector3d
 
-LoadPlanResponse = api.models.AddTrajectoryResponse
-InitialMovementStream = AsyncIterator[api.models.MoveToTrajectoryViaJointPTPResponse]
-InitialMovementConsumer = Callable[[api.models.MoveToTrajectoryViaJointPTPResponse], None]
-MovementResponse = (
-    api.models.ExecuteTrajectoryResponse | api.models.MoveToTrajectoryViaJointPTPResponse
-)
-ExecuteTrajectoryRequestStream = AsyncIterator[api.models.ExecuteTrajectoryRequest]
-ExecuteTrajectoryResponseStream = AsyncIterator[api.models.ExecuteTrajectoryResponse]
-MovementControllerFunction = Callable[
+LoadPlanResponse: TypeAlias = api.models.AddTrajectoryResponse
+MovementResponse: TypeAlias = api.models.ExecuteTrajectoryResponse
+ExecuteTrajectoryRequestStream: TypeAlias = AsyncIterator[api.models.ExecuteTrajectoryRequest]
+ExecuteTrajectoryResponseStream: TypeAlias = AsyncIterator[api.models.ExecuteTrajectoryResponse]
+MovementControllerFunction: TypeAlias = Callable[
     [ExecuteTrajectoryResponseStream], ExecuteTrajectoryRequestStream
 ]
 
@@ -23,8 +19,6 @@ __all__ = [
     "Pose",
     "CollisionScene",
     "LoadPlanResponse",
-    "InitialMovementStream",
-    "InitialMovementConsumer",
     "MovementResponse",
     "MotionState",
     "RobotState",

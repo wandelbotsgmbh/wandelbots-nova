@@ -16,7 +16,7 @@ from nova.cell import virtual_controller
 
 
 async def main():
-    async with Nova() as nova:
+    async with Nova(version="v2") as nova:
         cell = nova.cell()
         controller = await cell.ensure_controller(
             robot_controller=virtual_controller(

@@ -82,19 +82,21 @@ async def test():
 
                 tested_points.append(point)
                 try:
-                    response: AllJointPositionsResponse = await nova._api_client.motion_group_kinematic_api.calculate_all_inverse_kinematic(
-                        cell=cell.cell_id,
-                        motion_group=motion_group.motion_group_id,
-                        all_joint_positions_request=AllJointPositionsRequest(
+                    response: AllJointPositionsResponse = (
+                        await nova._api_client.kinematics_api.calculate_all_inverse_kinematic(
+                            cell=cell.cell_id,
                             motion_group=motion_group.motion_group_id,
-                            tcp_pose=models.TcpPose(
-                                position=models.Vector3d(x=point[0], y=point[1], z=point[2]),
-                                orientation=models.Vector3d(
-                                    x=rotation[0], y=rotation[1], z=rotation[2]
+                            all_joint_positions_request=AllJointPositionsRequest(
+                                motion_group=motion_group.motion_group_id,
+                                tcp_pose=models.TcpPose(
+                                    position=models.Vector3d(x=point[0], y=point[1], z=point[2]),
+                                    orientation=models.Vector3d(
+                                        x=rotation[0], y=rotation[1], z=rotation[2]
+                                    ),
+                                    tcp=tcp,
                                 ),
-                                tcp=tcp,
                             ),
-                        ),
+                        )
                     )
                     valid_configs = len(response.joint_positions)
                 except Exception:
