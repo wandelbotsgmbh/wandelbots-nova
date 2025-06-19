@@ -11,8 +11,6 @@ authors = [
     { name = "Stefan Wagner", email = "stefan.wagner@wandelbots.com" },
     { name = "André Kühnert", email = "andre.kuhnert@wandelbots.com" },
 ]
-
-
 requires-python = "~=3.10"
 readme = "README.md"
 dependencies = [
