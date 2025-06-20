@@ -1,0 +1,10 @@
+{
+  "c": {
+    "position": [0, 0, 15],
+    "orientation": [0, 0, 0]
+  },
+  "f": {
+    "position": [0, 0, 10],
+    "orientation": [0.5, 1, 0]
+  }
+}

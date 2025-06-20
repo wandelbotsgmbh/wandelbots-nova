@@ -6,10 +6,10 @@ from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
 
 # This is the default value we use to wait for add_controller API call to complete.
-DEFAULT_ADD_CONTROLLER_TIMEOUT = 25
+DEFAULT_ADD_CONTROLLER_TIMEOUT = 120
 
 # This is the default value we use when we wait for a controller to be ready.
-DEFAULT_WAIT_FOR_READY_TIMEOUT = 25
+DEFAULT_WAIT_FOR_READY_TIMEOUT = 120
 
 
 class Cell:

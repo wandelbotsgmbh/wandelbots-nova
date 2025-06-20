@@ -1,0 +1,14 @@
+{
+  "a": {
+    "position": [1, 2, 0],
+    "orientation": [0, 0, 0]
+  },
+  "b": {
+    "position": [1, 2, 0],
+    "orientation": [0, 0, 0]
+  },
+  "c": {
+    "position": [1, 2, 0],
+    "orientation": [0, 0, 0]
+  }
+}

@@ -10,19 +10,22 @@ Prerequisites:
 
 import asyncio
 
-from nova import MotionSettings, Nova
+from nova import Nova
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
-from nova.types import Pose
+from nova.cell import virtual_controller
+from nova.types import MotionSettings, Pose
 
 
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "ur",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
+        controller = await cell.ensure_controller(
+            robot_controller=virtual_controller(
+                name="ur",
+                manufacturer=models.Manufacturer.UNIVERSALROBOTS,
+                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
         )
 
         # Connect to the controller and activate motion groups

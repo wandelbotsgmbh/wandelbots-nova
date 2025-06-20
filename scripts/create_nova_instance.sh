@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ------------------------------------------------------------------------------
 # Description: Retrieve access token, create instance, create default cell,
-#              and verify that WandelEngine is up.
+#              and verify that ProgramEngine is up.
 # ------------------------------------------------------------------------------
 
 # --- 1) CHECK REQUIRED ENV VARS ------------------------------------------------
@@ -12,6 +12,7 @@ set -euo pipefail
 : "${PORTAL_PROD_REFRESH_TOKEN:?Missing PORTAL_PROD_REFRESH_TOKEN}"
 
 echo "## Updating the refresh token..."
+echo "Refresh URL: ${PORTAL_PROD_REFRESH_URL}"
 PORTAL_PROD_ACCESS_TOKEN="$(curl --request POST \
   --url "${PORTAL_PROD_REFRESH_URL}" \
   --header 'content-type: application/x-www-form-urlencoded' \
@@ -31,14 +32,16 @@ echo "Access-token acquired."
 SANDBOX_NAME="svcmgr-${GITHUB_RUN_ID:-local-run}"
 echo "Creating instance: ${SANDBOX_NAME}"
 
-if ! INSTANCE_RESPONSE="$(curl -X "POST" "https://io.wandelbots.io/instance" \
-  -H "accept: application/json" \
-  -H "Authorization: Bearer ${PORTAL_PROD_ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d "{\"sandbox_name\": \"${SANDBOX_NAME}\"}")"; then
+# See: https://api.portal.wandelbots.io/v1/ui/#/operations/createInstance for API documentation
+if ! INSTANCE_RESPONSE="$(curl --request POST \
+  --url "https://api.portal.wandelbots.io/v1/instances" \
+  --header "accept: application/json" \
+  --header "Authorization: Bearer ${PORTAL_PROD_ACCESS_TOKEN}" \
+  --header "Content-Type: application/json" \
+  --data "{\"sandbox_name\": \"${SANDBOX_NAME}\"}")"; then
   echo "Failed to create a new instance."
   echo "Response from create instance: ${INSTANCE_RESPONSE}"
-  exit 1
+  exit 13
 fi
 
 echo "Instance creation response: ${INSTANCE_RESPONSE}"
@@ -93,8 +96,8 @@ while :; do
   sleep 5
 done
 
-# --- 5) WAIT FOR WandelEngine INSIDE THE CELL ----------------------------------
-echo "Waiting for WandelEngine to reach state 'Running' (timeout: 120 s)…"
+# --- 5) WAIT FOR ProgramEngine INSIDE THE CELL ----------------------------------
+echo "Waiting for ProgramEngine to reach state 'Running' (timeout: 120 s)…"
 STATUS_URL="${API_URL}/v2/cells/cell/status"
 START_TIME=$(date +%s)
 
@@ -117,17 +120,17 @@ while :; do
   fi
 
   STATUS="$(echo "${BODY}" \
-           | jq -r '.service_status[]? | select(.service=="wandelengine") | .status.code')"
+           | jq -r '.service_status[]? | select(.service=="ProgramEngine") | .status.code')"
 
-  echo "WandelEngine: ${STATUS:-<empty>}"
+  echo "ProgamEngine: ${STATUS:-<empty>}"
   [[ "${STATUS}" == "Running" ]] && break
 
   if (( $(date +%s) - START_TIME > 120 )); then
-    echo "❌ Timeout: WandelEngine did not reach 'Running'"; exit 1
+    echo "❌ Timeout: ProgramEngine did not reach 'Running'"; exit 1
   fi
   sleep 10
 done
-echo "✅ Cell ready – WandelEngine is Running."
+echo "✅ Cell ready – ProgramEngine is Running."
 
 # --- 7) EXPORT VARS FOR DOWNSTREAM STEPS -------------------------------------
 export PORTAL_PROD_ACCESS_TOKEN

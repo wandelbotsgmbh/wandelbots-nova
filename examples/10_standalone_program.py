@@ -14,9 +14,10 @@ import asyncio
 from pydantic import Field
 
 import nova
-from nova import MotionSettings, Nova, api
+from nova import Nova, api
 from nova.actions import cartesian_ptp, joint_ptp, linear
-from nova.types import Pose
+from nova.cell import virtual_controller
+from nova.types import MotionSettings, Pose
 
 
 @nova.program
@@ -30,10 +31,12 @@ async def main(
     """
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "controller",
-            api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            api.models.Manufacturer.UNIVERSALROBOTS,
+        controller = await cell.ensure_controller(
+            robot_controller=virtual_controller(
+                name="controller",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
         )
 
         # Connect to the controller and activate motion groups

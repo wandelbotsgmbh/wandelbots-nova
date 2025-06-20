@@ -1,5 +1,5 @@
 ---
-name: "[nova] Run integration tests & examples"
+name: "Nova SDK: Run integration tests & examples"
 on:
   pull_request:
     branches:
@@ -131,6 +131,18 @@ jobs:
         with:
           name: diagnose-package
           path: diagnose-${{ github.run_id }}.zip
+  integration-summary:
+    if: ${{ always() }}
+    needs: [test-integration]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check integration results
+        run: |
+          if [ "${{ needs.test-integration.result }}" != "success" ]; then
+            echo "Integration tests failed"
+            exit 1
+          fi
+          echo "All integration tests passed"
   # This job cleans up the NOVA instance
   cleanup-instance:
     if: ${{ always() }}

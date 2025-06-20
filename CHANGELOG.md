@@ -1,6 +1,211 @@
 # CHANGELOG
 
 
+## v1.18.1 (2025-06-18)
+
+### Bug Fixes
+
+- **NDX-90**: Cleanup and make wandelscript pkg optional
+  ([#197](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/197),
+  [`072d83c`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/072d83c0ac499ef31e90fd0049ab563aee26a212))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.18.0 (2025-06-18)
+
+### Features
+
+- **NDX-90**: Move Wandelscript to SDK repository
+  ([#190](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/190),
+  [`ff1a9a1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ff1a9a16ed53f4e19d75695f592d15f59f5b3e66))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.17.1 (2025-06-17)
+
+### Bug Fixes
+
+- Install `pdoc` into the venv on `autodocs.yml`
+  ([#196](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/196),
+  [`4390fca`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4390fca69b8c85f958cb9e019c8fa3f7762c237d))
+
+
+## v1.17.0 (2025-06-17)
+
+### Features
+
+- Add ensure_virtual_tcp function
+  ([#189](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/189),
+  [`0624326`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/062432699effc77b44f826ea90659a402a325c3c))
+
+Co-authored-by: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+
+Co-authored-by: Juri <juri.ticho@gmail.com>
+
+
+## v1.16.0 (2025-06-12)
+
+### Features
+
+- **NDX-80**: Improve nova module import performance with lazy loading
+  ([#187](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/187),
+  [`5e878a4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5e878a4ee8b2a3fe08c6170f77eeb74fcd975c3b))
+
+Co-authored-by: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+
+Co-authored-by: Christoph Biering <christoph.biering@gmail.com>
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.15.3 (2025-06-11)
+
+### Bug Fixes
+
+- **NDX-76**: #5 fixed job that creates a release wheel
+  ([`bf5f3a5`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bf5f3a5c7cbaa2c4d0511afbae3ae108151c366e))
+
+
+## v1.15.2 (2025-06-11)
+
+### Bug Fixes
+
+- **NDX-76**: #4 fixes to the release CI
+  ([`c91116f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c91116f42de1a64032f84ccd3a0c2fa1b0534606))
+
+
+## v1.15.1 (2025-06-11)
+
+### Bug Fixes
+
+- **NDX-76**: #3 fixed CI to release on release/ branches
+  ([`1cee9e1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1cee9e1228f16f12b5310c45aeb79fdad03ff1bc))
+
+
+## v1.15.0 (2025-06-11)
+
+### Features
+
+- Standardize controller creation pattern across examples
+  ([#186](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/186),
+  [`14be7bc`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/14be7bc893583206f696cc7887b8c0ae7d65dcf7))
+
+Co-authored-by: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+
+Co-authored-by: mahsum.demir@wandelbots.com <mahsum.demir@wandelbots.com>
+
+
+## v1.14.2 (2025-06-11)
+
+### Bug Fixes
+
+- **NDX-76**: #2 create build number + branch slug
+  ([`98307df`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/98307dfdaf26e08681d3c1a3753bd66baf76d30a))
+
+
+## v1.14.1 (2025-06-11)
+
+### Bug Fixes
+
+- **NDX-76**: Added semantic version handling
+  ([`bbb9744`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bbb97442e78b046ead079a2b7b6baad2b625ca93))
+
+
+## v1.14.0 (2025-06-10)
+
+### Features
+
+- **NDX-76**: Add action to release from release/** branch
+  ([#185](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/185),
+  [`e0ac563`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e0ac56390c4a71e32d87d2685947d9ac826a3e10))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.13.3 (2025-06-06)
+
+### Chores
+
+- Add AGENTS guidelines ([#184](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/184),
+  [`4fda575`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4fda575e6baef9d55724402696f24565c5d1483a))
+
+
+## v1.13.2 (2025-06-06)
+
+### Chores
+
+- Updated readme to create dev builds
+  ([#183](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/183),
+  [`8f35545`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8f355459f04960587605616e0bd50a0d72fc4ea6))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.13.1 (2025-06-06)
+
+### Chores
+
+- Improved nightly build
+  ([`c6a3b73`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c6a3b73c2537ae9014a3d5c1c168836bd7fb3074))
+
+
+## v1.13.0 (2025-06-06)
+
+### Features
+
+- Build wheel in feature branches
+  ([#182](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/182),
+  [`37f4a4b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/37f4a4b50e9fd775c029f07f6b2c1b8db53be797))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.12.0 (2025-06-06)
+
+### Features
+
+- **NDX-76**: Introduce nightly release
+  ([#180](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/180),
+  [`4630ee0`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4630ee0a3457bf3ba87edc0141ad214bafe63ad2))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.11.0 (2025-06-04)
+
+### Features
+
+- **NDX-17**: Introducing cycle events, measurement and NATS propagation thereof
+  ([#169](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/169),
+  [`550d799`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/550d79901be7695dc98022e4ed9b4938de420f69))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.10.4 (2025-06-04)
+
+### Bug Fixes
+
+- **NDX-75**: Added scheduled job that cleans up all remaining instances
+  ([#179](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/179),
+  [`3989ca7`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3989ca7a3e5c7a45729157c12e453baa127f80e7))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
+## v1.10.3 (2025-06-04)
+
+### Bug Fixes
+
+- Skip valid token check if a username and password is set
+  ([#176](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/176),
+  [`e3aee8a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e3aee8a7e2a90ecd2c0ec5a9a1dc9245506f7f95))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.10.2 (2025-06-03)
 
 ### Bug Fixes

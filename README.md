@@ -52,6 +52,36 @@ You need to download the robot models to visualize the robot models in the rerun
 uv run download-models
 ```
 
+## Wandelscript
+
+Wandelscript is a domain-specific language for programming robots. It is a declarative language that allows you to describe the robot's behavior in a high-level way.
+
+```bash
+uv add wandelbots-nova --extra wandelscript
+```
+
+Here is a simple example of a Wandelscript program:
+
+```python
+robot = get_controller("controller")[0]
+tcp("Flange")
+home = read(robot, "pose")
+sync
+
+# Set the velocity of the robot to 200 mm/s
+velocity(200)
+
+for i = 0..3:
+    move via ptp() to home
+    # Move to a pose concatenating the home pose
+    move via line() to (50, 20, 30, 0, 0, 0) :: home
+    move via line() to (100, 20, 30, 0, 0, 0) :: home
+    move via line() to (50, 20, 30, 0, 0, 0) :: home
+    move via ptp() to home
+```
+
+To get more information about Wandelscript, check out the [Wandelscript documentation](/wandelscript/README.md).
+
 ## 🚀 Quick Start
 
 See the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) for usage of this library and further [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples) utilizing rerun as a visualizer
@@ -414,3 +444,32 @@ wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/
 > - If using an **access token**: Ensure `NOVA_ACCESS_TOKEN` is set, and leave `NOVA_USERNAME` and `NOVA_PASSWORD` unset.
 >
 > **Only one method should be used at a time.** If both methods are set, the token-based authentication (`NOVA_ACCESS_TOKEN`) will typically take precedence.
+
+## Release Process
+
+### Overview
+
+| Variable     | Description                                                            | Where                                | Example version      |
+|--------------|------------------------------------------------------------------------|--------------------------------------|----------------------|
+| `main`       | Stable releases (normal semver vX.Y.Z)                                 | PyPI (`pip install wandelbots-nova`) | `v1.13.0`            |
+| `release/*`  | The username credential used for authentication with the NOVA service. | PyPI                                 | `v1.8.7-release-1.x` |
+| any branch   | Development builds (not published to PyPI)                             | GitHub Actions                       | `e4c8af0647839...`   |
+
+### Stable releases (main)
+
+Every merge to main triggers the Release package workflow:
+	1.	Semantic-release inspects the commit messages, bumps the version, builds the wheel/sdist.
+	2.	The package is uploaded to PyPI.
+	3.	A GitHub Release is created/updated with the assets.
+
+### Long-term-support lines (release/*)
+
+For customers stuck on an older major or for special LTS contracts:
+- Open (or keep) a branch named `release/1.x`, `release/customer-foo`, etc.
+- Every commit on that branch triggers the same workflow and publishes stable numbers, but the git tag and PyPI version carry the branch slug so lines never collide.
+
+### Create a dev build
+
+If you only need a throw-away test build, go to the
+[Actions](https://github.com/wandelbotsgmbh/wandelbots-nova/actions) tab → "**Nova SDK: Build dev wheel**" → Run workflow (pick the branch).
+When it finishes, open the Install instructions job for a ready-to-copy `pip install "wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@<commit>"` line.

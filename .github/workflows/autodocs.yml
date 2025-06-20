@@ -27,8 +27,10 @@ jobs:
         run: uv run pip install "wandelbots-nova[nova-rerun-bridge]"
       - name: Install dependencies
         run: uv sync
+      - name: Install pdoc
+        run: uv run pip install pdoc
       - name: Generate documentation
-        run: uvx pdoc --docformat google nova nova_rerun_bridge -o ./docs
+        run: uv run pdoc --docformat google nova nova_rerun_bridge -o ./docs
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

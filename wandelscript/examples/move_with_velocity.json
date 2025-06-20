@@ -1,0 +1,11 @@
+{
+  "a": {
+    "position": [243, -440, 241],
+    "orientation": [0, 3, 0]
+  },
+  "velocity_uninitialized_global_inside_context": 100,
+  "velocity_global_set": 200,
+  "velocity_global_after_motion_modifier": 200,
+  "velocity_global_inside_context": 400,
+  "velocity_global_after_context": 200
+}
