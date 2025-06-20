@@ -1,8 +1,9 @@
 import importlib
 import pkgutil
 import sys
-from nova_python_app.backbone.decorators import REGISTERED_PROGRAM_TEMPLATES
-from nova_python_app.backbone.database import template_store
+
+from nova_app_template.database import template_store
+from nova_app_template.decorators import REGISTERED_PROGRAM_TEMPLATES
 
 
 def auto_discover_programs(package_name: str):
@@ -21,10 +22,10 @@ def auto_discover_programs(package_name: str):
             package = importlib.import_module(package_name)
 
         # If it's a package (has __path__), walk its modules
-        if hasattr(package, '__path__'):
+        if hasattr(package, "__path__"):
             for _, modname, _ in pkgutil.walk_packages(
                 path=package.__path__,
-                prefix=package.__name__ + '.',
+                prefix=package.__name__ + ".",
                 onerror=lambda x: None,  # Or handle errors as needed
             ):
                 if modname in sys.modules:
@@ -40,7 +41,7 @@ def auto_discover_programs(package_name: str):
     # Removed the specific AttributeError catch for package.__path__ as the logic
     # now handles single modules and packages more uniformly. If import_module fails,
     # the ImportError above will catch it. If it succeeds, hasattr check distinguishes.
-    
+
     # Sync discovered templates to database
     sync_templates_to_database()
 
