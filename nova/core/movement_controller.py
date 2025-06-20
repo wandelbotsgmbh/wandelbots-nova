@@ -1,10 +1,9 @@
 import asyncio
 import bisect
 from datetime import datetime
-from functools import singledispatch
-from typing import Any, Callable
+from typing import AsyncIterator, Callable
 
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 from icecream import ic
 
 from nova.actions import MovementControllerContext
@@ -109,11 +108,12 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
 
 class Jogger:
-    def __init__(self, motion_group_id: str, tcp_name: str | None = None):
+    def __init__(self, effect_stream, motion_group_id: str, tcp_name: str | None = None):
         self._motion_group_id = motion_group_id
         self._tcp_name = tcp_name
         # TODO support the other parameters
         self._command_queue = asyncio.Queue()
+        self._effect_stream: AsyncIterator[wb.models.MotionGroupState] = effect_stream
 
     def __call__(self, context: MovementControllerContext):
         self.context = context
@@ -136,39 +136,43 @@ class Jogger:
         self, response_stream: ExecuteTrajectoryResponseStream
     ) -> ExecuteTrajectoryRequestStream:
         self._response_stream = response_stream
-        async for request in init_movement_gen(self.context.motion_id, response_stream):
+        async for request in init_movement_gen(self._motion_group_id, response_stream):
             yield request
 
-        self._response_consumer_task: asyncio.Task[None] = asyncio.create_task(
-            self._response_consumer(), name="response_consumer"
-        )
+        with asyncio.TaskGroup() as tg:
+            tg.create_task(self._effect_consumer(), name="effect_consumer")
+            tg.create_task(self._response_consumer(), name="request_consumer")
+            tg.create_task(self._combined_response_consumer(), name="combined_response_consumer")
 
-        async for request in self._request_loop():
-            yield request
-        await self._response_consumer_task  # Where to put?
+            async for request in self._request_loop():
+                yield request
 
     async def _request_loop(self):
         while True:
             yield await self._command_queue.get()
             self._command_queue.task_done()
 
+    async def _effect_consumer(self):
+        async for effect in self._effect_stream:
+            self._response_queue.put_nowait(effect)
+
     async def _response_consumer(self):
-        last_movement = None
+        async for response in self._response_stream:
+            self._response_queue.put_nowait(response)
 
+    async def _combined_response_consumer(self):
         try:
-            async for response in self._response_stream:
-                instance = response.actual_instance
-                if isinstance(instance, wb.models.Movement):
-                    if last_movement is None:
-                        last_movement = instance.movement
-                    self._handle_motion_state(instance.movement, last_movement)
-                    last_movement = instance.movement
-
-                if isinstance(instance, wb.models.Standstill):
-                    if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
-                        # self.context.movement_consumer(None)
+            while True:
+                response = await self._response_queue.get()
+                # TODO singledispatch?
+                if isinstance(response, wb.models.MotionGroupState):
+                    self._handle_motion_state(response)
+                elif isinstance(response, wb.models.ExecuteJoggingResponse):
+                    if isinstance(response.actual_instance, wb.models.MovementErrorResponse):
                         ic()
+                        self._response_queue.task_done()
                         break
+                self._response_queue.task_done()
         except asyncio.CancelledError:
             ic()
             raise
@@ -177,8 +181,8 @@ class Jogger:
             raise
         ic()
 
-    def _handle_motion_state(self, motion_state: wb.models.MotionGroupStateWithoutPayload):
-        ic(motion_state)
+    def _handle_motion_state(self, motion_group_state: wb.models.MotionGroupState):
+        ic(motion_group_state)
 
 
 class TrajectoryCursor:
@@ -295,13 +299,17 @@ async def init_jogging_gen(
     yield wb.models.InitializeJoggingRequest(motion_group=motion_group_id, tcp=tcp_name)  # type: ignore
 
     # then we get the response
-    initialize_movement_response = await anext(response_stream)
-    if isinstance(
-        initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
-    ):
-        r1 = initialize_movement_response.actual_instance
-        if not r1.init_response.succeeded:
-            raise InitMovementFailed(r1.init_response)
+    initialize_jogging_response = await anext(response_stream)
+    assert isinstance(initialize_jogging_response, wb.models.ExecuteTrajectoryResponse), (
+        "Expected ExecuteTrajectoryResponse, got: " + str(initialize_jogging_response)
+    )
+    assert isinstance(
+        initialize_jogging_response.actual_instance, wb.models.InitializeJoggingResponse
+    ), "Expected InitializeJoggingResponse, got: " + str(
+        initialize_jogging_response.actual_instance
+    )
+    if isinstance(initialize_jogging_response.actual_instance, wb.models.InitializeJoggingResponse):
+        assert initialize_jogging_response.actual_instance.kind == "INITIALIZE_RECEIVED"
 
 
 async def init_movement_gen(motion_id, response_stream) -> ExecuteTrajectoryRequestStream:
