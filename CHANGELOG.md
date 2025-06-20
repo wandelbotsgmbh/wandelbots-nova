@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.18.2 (2025-06-20)
+
+### Chores
+
+- Update rerun dependency ([#200](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/200),
+  [`59bb1c6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/59bb1c666e36ca2fbed907ae988879398de76fe4))
+
+
 ## v1.18.1 (2025-06-18)
 
 ### Bug Fixes
