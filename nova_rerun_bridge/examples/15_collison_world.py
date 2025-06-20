@@ -5,9 +5,7 @@ from nova.core.nova import Nova
 from nova_rerun_bridge import NovaRerunBridge
 
 
-async def build_collision_world(
-    nova: Nova, cell_name: str, robot_setup: models.OptimizerSetup
-) -> str:
+async def build_collision_world(nova: Nova, cell_name: str, robot_setup: models.RobotSetup) -> str:
     collision_api = nova._api_client.store_collision_components_api
     scene_api = nova._api_client.store_collision_scenes_api
 
@@ -158,7 +156,7 @@ async def test():
 
             tcp = "Flange"
 
-            robot_setup: models.OptimizerSetup = await motion_group._get_optimizer_setup(tcp=tcp)
+            robot_setup: models.RobotSetup = await motion_group._get_robot_setup(tcp=tcp)
 
             await build_collision_world(nova, "cell", robot_setup)
 

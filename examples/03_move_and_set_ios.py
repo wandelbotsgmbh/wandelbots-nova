@@ -11,7 +11,8 @@ Prerequisites:
 import asyncio
 
 from nova import Nova
-from nova.actions import cartesian_ptp, io_write, joint_ptp
+from nova.actions import cartesian_ptp, joint_ptp
+from nova.actions.io import io_write
 from nova.api import models
 from nova.cell import virtual_controller
 from nova.types import Pose

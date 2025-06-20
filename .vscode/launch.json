@@ -2,28 +2,17 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Debug Tests",
-      "type": "python",
+      "name": "Python: Current File",
+      "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/.venv/bin/pytest",
-      "args": ["tests", "--maxfail=1", "--disable-warnings"],
+      "program": "${file}",
       "console": "integratedTerminal",
       "justMyCode": false,
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}"
       }
-    },
-    {
-      "name": "Python: Current File",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${file}",
-      "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      }
     }
+
   ]
 }

@@ -2,7 +2,6 @@ from typing import AsyncGenerator, Literal, Sized
 
 from nova.api import models
 from nova.cell.robot_cell import AbstractController, AbstractRobot, IODevice, ValueType
-from nova.core import logger
 from nova.core.gateway import NovaDevice
 from nova.core.io import IOAccess
 from nova.core.motion_group import MotionGroup
@@ -21,7 +20,6 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
 
     def __init__(self, configuration: Configuration):
         super().__init__(configuration)
-        self._activated_motion_group_ids: list[str] = []
         self._io_access = IOAccess(
             api_gateway=self._nova_api,
             cell=self.configuration.cell_id,
@@ -34,10 +32,6 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         return self.configuration.controller_id
 
     async def open(self):
-        """Activates all motion groups."""
-        motion_group_ids = await self.activated_motion_group_ids()
-        self._activated_motion_group_ids = motion_group_ids
-        logger.info(f"Found motion group {motion_group_ids}")
         return self
 
     async def close(self):
@@ -47,6 +41,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         pass
 
     def __len__(self) -> int:
+        # TODO What is this for? Is it still needed when motion group activation is gone?
         return len(self._activated_motion_group_ids)
 
     def motion_group(self, motion_group_id: str) -> MotionGroup:
@@ -67,25 +62,14 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
     def __getitem__(self, motion_group_id: int) -> MotionGroup:
         return self.motion_group(f"{motion_group_id}@{self.configuration.controller_id}")
 
-    async def activated_motion_group_ids(self) -> list[str]:
-        """Activates and retrieves the list of motion group IDs available on this controller.
-
-        The system automatically activates all motion groups on the associated controller.
+    async def motion_groups(self) -> list[MotionGroup]:
+        """Retrieves a list of `MotionGroup` instances for all motion groups attached to this controller.
 
         Returns:
-            list[str]: A list of activated motion group IDs (e.g., ["0@controller_id"]).
+            list[MotionGroup]: All motion groups as `MotionGroup` objects.
         """
-        return await self._nova_api.activate_all_motion_groups(
-            cell=self.configuration.cell_id, controller=self.configuration.controller_id
-        )
-
-    async def activated_motion_groups(self) -> list[MotionGroup]:
-        """Retrieves a list of `MotionGroup` instances for all activated motion groups.
-
-        Returns:
-            list[MotionGroup]: All activated motion groups as `MotionGroup` objects.
-        """
-        motion_group_ids = await self.activated_motion_group_ids()
+        raise NotImplementedError("This can be implemented when the new controllers/{controller}/description endpoint is available.")
+        motion_group_ids = await self._nova_api.controller_description_api
         return [self.motion_group(motion_group_id) for motion_group_id in motion_group_ids]
 
     def get_robots(self) -> dict[str, AbstractRobot]:
@@ -98,6 +82,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         Returns:
             dict[str, AbstractRobot]: A mapping of motion group ID to `MotionGroup` instance.
         """
+        # TODO Why do we have get_robots() and motion_groups()?
         return {
             motion_group_id: self.motion_group(motion_group_id)
             for motion_group_id in self._activated_motion_group_ids
