@@ -3,6 +3,7 @@ from typing import Optional
 
 import numpy as np
 import rerun as rr
+import rerun.archetypes as ra
 from scipy.spatial.transform import Rotation
 
 from nova.api import models
@@ -86,7 +87,7 @@ def log_motion(
     )
 
     rr.reset_time()
-    rr.set_time_seconds(TIME_INTERVAL_NAME, effective_offset)
+    rr.set_time(TIME_INTERVAL_NAME, duration=effective_offset)
 
     # Get or create visualizer from cache
     if motion_group not in _visualizer_cache:
@@ -165,9 +166,9 @@ def log_trajectory_path(
 
 def get_times_column(
     trajectory: list[models.TrajectorySample], timer_offset: float = 0
-) -> rr.TimeSecondsColumn:
+) -> rr.TimeColumn:
     times = np.array([timer_offset + point.time for point in trajectory])
-    times_column = rr.TimeSecondsColumn(TIME_INTERVAL_NAME, times)
+    times_column = rr.TimeColumn(TIME_INTERVAL_NAME, duration=times)
     return times_column
 
 
@@ -185,7 +186,7 @@ def log_trajectory(
     Process a single trajectory point and log relevant data.
     """
     rr.reset_time()
-    rr.set_time_seconds(TIME_INTERVAL_NAME, timer_offset)
+    rr.set_time(TIME_INTERVAL_NAME, duration=timer_offset)
 
     times_column = get_times_column(trajectory, timer_offset)
 
@@ -195,16 +196,14 @@ def log_trajectory(
     line_segments_batch = []
     for point in trajectory:
         joint_positions = robot.calculate_joint_positions(point.joint_position)
-        line_segments_batch.append(joint_positions)
+        line_segments_batch.append([joint_positions])  # Wrap each as a line strip
 
     rr.send_columns(
         f"motion/{motion_group}/dh_parameters",
         indexes=[times_column],
-        columns=[
-            *rr.LineStrips3D.columns(
-                strips=line_segments_batch, colors=[0.5, 0.5, 0.5, 1.0] * len(line_segments_batch)
-            )
-        ],
+        columns=rr.LineStrips3D.columns(
+            strips=line_segments_batch, colors=[[0.5, 0.5, 0.5, 1.0]] * len(line_segments_batch)
+        ),
     )
 
     # Log the robot geometries
@@ -242,6 +241,7 @@ def log_tcp_pose(
     rr.log(tcp_entity_path, rr.Transform3D(clear=False, axis_length=100))
     if tool_asset:
         rr.log(tcp_entity_path, rr.Asset3D(path=tool_asset), static=True)
+
     rr.send_columns(
         tcp_entity_path,
         indexes=[times_column],
@@ -317,7 +317,7 @@ def log_joint_data(
                 rr.send_columns(
                     f"motion/{motion_group}/joint_{data_type}_{i + 1}",
                     indexes=[times_column],
-                    columns=[*rr.Scalar.columns(scalar=data[i])],
+                    columns=[*ra.Scalars.columns(scalars=data[i])],
                 )
 
 
@@ -395,7 +395,7 @@ def log_scalar_values(
             rr.send_columns(
                 f"motion/{motion_group}/{key}",
                 indexes=[times_column],
-                columns=[*rr.Scalar.columns(scalar=values)],
+                columns=[*ra.Scalars.columns(scalars=values)],
             )
 
 

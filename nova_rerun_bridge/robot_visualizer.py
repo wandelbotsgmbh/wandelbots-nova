@@ -664,7 +664,7 @@ class RobotVisualizer:
 
         Args:
             trajectory (List[wb.models.TrajectorySample]): The list of trajectory sample points.
-            times_column (rr.TimeSecondsColumn): The time column associated with the trajectory points.
+            times_column (rr.TimeColumn): The time column associated with the trajectory points.
         """
         link_positions = {}
         link_rotations = {}
