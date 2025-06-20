@@ -201,9 +201,11 @@ def log_trajectory(
     rr.send_columns(
         f"motion/{motion_group}/dh_parameters",
         indexes=[times_column],
-        columns=rr.LineStrips3D.columns(
-            strips=line_segments_batch, colors=[[0.5, 0.5, 0.5, 1.0]] * len(line_segments_batch)
-        ),
+        columns=rr.LineStrips3D.columns(strips=line_segments_batch),
+    )
+    rr.log(
+        f"motion/{motion_group}/dh_parameters",
+        rr.LineStrips3D.from_fields(clear_unset=True, colors=[0.5, 0.5, 0.5, 1.0]),
     )
 
     # Log the robot geometries
