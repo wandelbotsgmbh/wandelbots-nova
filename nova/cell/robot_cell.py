@@ -25,7 +25,6 @@ from aiostream import pipe, stream
 
 from nova import api
 from nova.actions import Action, MovementController
-from nova.actions.motions import CollisionFreeMotion
 from nova.core import logger
 from nova.core.movement_controller import movement_to_motion_state
 from nova.types import MotionState, MovementResponse, Pose, RobotState
@@ -181,7 +180,7 @@ class StoppableDevice(Protocol):
 class StateStreamingDevice(Protocol):
     """A device which supports streaming its state"""
 
-    def state_stream(self, rate: int) -> AsyncIterable[AbstractDeviceState]:
+    def stream_state(self, rate_msecs: int) -> AsyncIterable[AbstractDeviceState]:
         """Read a value given its key
         Args:
             rate: The rate at which the state should be streamed
@@ -207,7 +206,7 @@ class AbstractRobot(Device):
         actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        optimizer_setup: api.models.OptimizerSetup | None = None,
+        robot_setup: api.models.RobotSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -226,7 +225,7 @@ class AbstractRobot(Device):
         actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        optimizer_setup: api.models.OptimizerSetup | None = None,
+        robot_setup: api.models.RobotSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -236,7 +235,7 @@ class AbstractRobot(Device):
             tcp (str): The id of the tool center point (TCP)
             start_joint_position: the initial position of the robot
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
-            optimizer_setup (api.models.OptimizerSetup | None): The optimizer setup to be used for planning
+            robot_setup (api.models.RobotSetup | None): The robot setup to be used for planning
 
         Returns:
             api.models.JointTrajectory: The planned joint trajectory
@@ -251,7 +250,7 @@ class AbstractRobot(Device):
             actions=actions,
             tcp=tcp,
             start_joint_position=start_joint_position,
-            optimizer_setup=optimizer_setup,
+            robot_setup=robot_setup,
         )
 
     @abstractmethod
@@ -290,22 +289,12 @@ class AbstractRobot(Device):
             actions = [actions]
 
         def is_movement(movement_response: MovementResponse) -> bool:
-            return any(
-                (
-                    isinstance(movement_response, api.models.ExecuteTrajectoryResponse)
-                    and isinstance(movement_response.actual_instance, api.models.Movement),
-                    isinstance(movement_response, api.models.StreamMoveResponse),
-                )
-            )
+            isinstance(movement_response.actual_instance, api.models.Movement)
 
         def movement_response_to_motion_state(
             movement_response: MovementResponse, *_
         ) -> MotionState:
-            if isinstance(movement_response, api.models.ExecuteTrajectoryResponse):
-                return movement_to_motion_state(movement_response.actual_instance)
-            elif isinstance(movement_response, api.models.StreamMoveResponse):
-                return movement_to_motion_state(movement_response)
-            assert False, f"Unexpected movement response: {movement_response}"
+            return movement_to_motion_state(movement_response.actual_instance)
 
         execute_response_stream = self._execute(
             joint_trajectory, tcp, actions, movement_controller=movement_controller
@@ -342,7 +331,7 @@ class AbstractRobot(Device):
 
     async def stream_plan_and_execute(
         self,
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
     ) -> AsyncIterable[MotionState]:
@@ -352,7 +341,7 @@ class AbstractRobot(Device):
 
     async def plan_and_execute(
         self,
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
     ) -> None:
@@ -588,7 +577,7 @@ class RobotCell:
             for device in stoppable_devices:
                 task_group.start_soon(device.stop)
 
-    async def state_stream(self, rate: int):
+    async def stream_state(self, rate_msecs: int):
         """Stream the state of the robot cell"""
         state_streaming_devices = [
             device for device in self._devices.values() if isinstance(device, StateStreamingDevice)
@@ -596,7 +585,7 @@ class RobotCell:
         if not state_streaming_devices:
             return
 
-        state_streams = [device.state_stream(rate) for device in state_streaming_devices]
+        state_streams = [device.stream_state(rate_msecs) for device in state_streaming_devices]
         async with stream.merge(*state_streams).stream() as devices_state_stream:
             async for state in devices_state_stream:
                 yield state

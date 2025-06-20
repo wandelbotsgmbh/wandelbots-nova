@@ -4,7 +4,6 @@ from typing import Any
 
 import numpy as np
 import pydantic
-import wandelbots_api_client as wb
 
 
 class Vector3d(pydantic.BaseModel):
@@ -118,10 +117,10 @@ class Vector3d(pydantic.BaseModel):
         return np.concatenate([np.cos(half_angle)[None], values * np.sinc(half_angle / np.pi) / 2])
 
     @pydantic.model_serializer
-    def serialize_model(self) -> wb.models.Vector3d:
+    def serialize_model(self) -> dict:
         """
         Examples:
         >>> Vector3d.from_tuple((1, 2, 3)).model_dump()
         {'x': 1, 'y': 2, 'z': 3}
         """
-        return wb.models.Vector3d(x=self.x, y=self.y, z=self.z)
+        return {"x": self.x, "y": self.y, "z": self.z}

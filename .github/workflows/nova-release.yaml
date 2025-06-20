@@ -1,27 +1,25 @@
-name: "[nova] Release"
+---
+name: "Nova SDK: Release package"
 on:
   push:
     branches:
       - main
+      - 'release/**'          # release/1.x, release/customer-foo, …
 jobs:
   release:
     runs-on: ubuntu-latest
-    concurrency: release
+    concurrency: release-${{ github.ref_name }}   # isolate queues per branch
     permissions:
       id-token: write
       contents: write
     steps:
-      # Note: we need to checkout the repository at the workflow sha in case during the workflow
-      # the branch was updated. To keep PSR working with the configured release branches,
-      # we force a checkout of the desired release branch but at the workflow sha HEAD.
-      - name: Setup | Checkout Repository at workflow sha
+      - name: Checkout repository at workflow SHA
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
-      - name: Setup | Force correct release branch on workflow sha
-        run: |
-          git checkout -B ${{ github.ref_name }} ${{ github.sha }}
+      - name: Force correct branch at workflow SHA
+        run: git checkout -B ${{ github.ref_name }} ${{ github.sha }}
       - uses: cschleiden/replace-tokens@v1.3
         env:
           NOVA_AUTH0_DOMAIN: ${{ secrets.NOVA_AUTH0_DOMAIN }}
@@ -29,22 +27,45 @@ jobs:
           NOVA_AUTH0_AUDIENCE: ${{ secrets.NOVA_AUTH0_AUDIENCE }}
         with:
           files: '["nova/auth/auth_config.py"]'
-      - name: Action | Semantic Version Release
-        id: release
+      - name: Semantic Version Release
+        id: semrel
+        if: github.ref_name == 'main'
         uses: python-semantic-release/python-semantic-release@v9.20.0
         with:
           build: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
           git_committer_name: "github-actions"
           git_committer_email: "actions@users.noreply.github.com"
-      - name: Publish package distributions to PyPI
+      - name: Build wheel & bump post-build number (release/*)
+        if: startsWith(github.ref_name, 'release/')
+        id: build
+        run: |
+          BASE_POINT=$(git merge-base origin/main HEAD || git rev-list --max-parents=0 HEAD)
+          COMMITS=$(git rev-list --count ${BASE_POINT}..HEAD)
+
+          DATE=$(date +%Y%m%d)
+          BRANCH_SLUG=$(echo "${GITHUB_REF_NAME#release/}" | tr '/' '-')
+          BASE_VER=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+
+          NEW_VER="${BASE_VER}.post${DATE}$(printf '%02d' ${COMMITS})"
+          echo "Building ${NEW_VER} for release branch ${BRANCH_SLUG}"
+
+          sed -i -E 's/^(version = ")[^"]+(")$/\1'"${NEW_VER}"'\2/' pyproject.toml
+
+          python -m pip install --upgrade build
+          python -m build --wheel --outdir dist    # keep default wheel name
+
+          echo "wheel=$(ls dist/*.whl)" >> "$GITHUB_OUTPUT"
+      - name: Publish package to PyPI
+        if: |
+          (github.ref_name == 'main'  && steps.semrel.outputs.released == 'true') ||
+          (startsWith(github.ref_name, 'release/'))
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
-        if: steps.release.outputs.released == 'true'
-      - name: Publish | Upload to GitHub Release Assets
+      - name: Upload wheel to GitHub Release assets
+        if: steps.semrel.outputs.released == 'true'
         uses: python-semantic-release/publish-action@v9.21.0
-        if: steps.release.outputs.released == 'true'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.release.outputs.tag }}
+          tag: ${{ steps.semrel.outputs.tag }}

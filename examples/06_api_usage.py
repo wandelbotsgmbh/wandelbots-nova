@@ -1,12 +1,12 @@
-from nova.api import models
-
 """
 Example: Demonstrates how to use and access API models in the Wandelbots NOVA SDK.
 """
 
+from nova.api import models
+
 
 def main():
-    pose = models.Pose2(position=[10, 20, 30], orientation=[1, 2, 3])
+    pose = models.Pose(position=[10, 20, 30], orientation=[1, 2, 3])
     print(pose)
 
 

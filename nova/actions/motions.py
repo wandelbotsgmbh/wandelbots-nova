@@ -1,8 +1,8 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Literal
 
 import pydantic
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 
 from nova import api
 from nova.actions.base import Action
@@ -14,37 +14,6 @@ PoseOrVectorTuple = (
 )
 
 
-class CollisionFreeMotion(Action):
-    """
-    A motion that is collision free.
-    """
-
-    type: Literal["collision_free_ptp"] = "collision_free_ptp"
-    target: Pose | tuple[float, ...]
-    settings: MotionSettings = MotionSettings()
-    collision_scene: wb.models.CollisionScene | None = None
-
-    def _to_api_model(self) -> api.models.PlanCollisionFreePTPRequestTarget:
-        return wb.models.PlanCollisionFreePTPRequestTarget(
-            self.target._to_wb_pose2() if isinstance(self.target, Pose) else list(self.target)
-        )
-
-    @pydantic.model_serializer
-    def serialize_model(self):
-        return self._to_api_model().model_dump()
-
-    def is_motion(self) -> bool:
-        return True
-
-
-def collision_free(
-    target: Pose | tuple[float, ...],
-    settings: MotionSettings = MotionSettings(),
-    collision_scene: wb.models.CollisionScene | None = None,
-) -> CollisionFreeMotion:
-    return CollisionFreeMotion(target=target, settings=settings, collision_scene=collision_scene)
-
-
 class Motion(Action, ABC):
     """Base model of a motion
 
@@ -54,7 +23,7 @@ class Motion(Action, ABC):
 
     """
 
-    type: Literal["linear", "ptp", "circular", "joint_ptp", "spline"]
+    type: Literal["linear", "cartesian_ptp", "circular", "joint_ptp", "spline"]
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     collision_scene: wb.models.CollisionScene | None = None
@@ -65,29 +34,6 @@ class Motion(Action, ABC):
 
     def is_motion(self) -> bool:
         return True
-
-
-class UnresolvedMotion(Motion, ABC):
-    @abstractmethod
-    async def resolve(
-        self,
-        initial_joints: tuple[float, ...],
-        collision_scene: wb.models.CollisionScene | None,
-        configuration: dict,
-        moving_robot_identifier: str,
-    ) -> tuple[list[Motion], tuple[float, ...]] | None:
-        """Convert the motion to a list of motion primitives
-
-        Args:
-            initial_joints: Joint positions at start of motion
-            collision_scene: The collision scene used to check collisions
-            configuration: E.g. data of physical setup of robot system, cell, etc.
-            moving_robot_identifier: The identifier of the robot that is moving in the scene
-
-        Returns:
-            Tuple of resolved motions and the joint position at the end of the motions. None, if the motion can't be resolved
-
-        """
 
 
 class Linear(Motion):
@@ -102,11 +48,11 @@ class Linear(Motion):
     type: Literal["linear"] = "linear"
     target: Pose
 
-    def _to_api_model(self) -> api.models.PathLine:
+    def to_api_model(self):
         """Serialize the model to the API model
 
         Examples:
-        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10))._to_api_model()
+        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10)).to_api_model()
         PathLine(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathLine')
         """
         return api.models.PathLine(
@@ -114,12 +60,8 @@ class Linear(Motion):
             path_definition_name="PathLine",
         )
 
-    @pydantic.model_serializer
-    def serialize_model(self):
-        return self._to_api_model().model_dump()
 
-
-def lin(
+def linear(
     target: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
     collision_scene: wb.models.CollisionScene | None = None,
@@ -134,9 +76,11 @@ def lin(
 
     Examples:
     >>> ms = MotionSettings(tcp_velocity_limit=10)
-    >>> assert lin((1, 2, 3, 4, 5, 6), settings=ms) == Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
-    >>> assert lin((1, 2, 3)) == lin((1, 2, 3, 0, 0, 0))
-    >>> assert lin(Pose((1, 2, 3, 4, 5, 6)), settings=ms) == lin((1, 2, 3, 4, 5, 6), settings=ms)
+    >>> assert linear((1, 2, 3, 4, 5, 6), settings=ms) == Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
+    >>> assert linear((1, 2, 3)) == linear((1, 2, 3, 0, 0, 0))
+    >>> assert linear(Pose((1, 2, 3, 4, 5, 6)), settings=ms) == linear((1, 2, 3, 4, 5, 6), settings=ms)
+    >>> Action.from_dict(linear((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
+    Linear(type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
 
     """
     if not isinstance(target, Pose):
@@ -146,41 +90,40 @@ def lin(
     return Linear(target=target, settings=settings, collision_scene=collision_scene)
 
 
-class PTP(Motion):
+lin = linear
+
+
+class CartesianPTP(Motion):
     """A point-to-point motion
 
     Examples:
-    >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))
-    PTP(type='ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
+    >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))
+    CartesianPTP(type='cartesian_ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
 
     """
 
-    type: Literal["ptp"] = "ptp"
+    type: Literal["cartesian_ptp"] = "cartesian_ptp"
 
-    def _to_api_model(self) -> api.models.PathCartesianPTP:
+    def to_api_model(self) -> api.models.PathCartesianPTP:
         """Serialize the model to the API model
 
         Examples:
-        >>> PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))._to_api_model()
+        >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
         PathCartesianPTP(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCartesianPTP')
         """
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
         return api.models.PathCartesianPTP(
-            target_pose=api.models.Pose2(**self.target.model_dump()),
+            target_pose=api.models.Pose(**self.target.model_dump()),
             path_definition_name="PathCartesianPTP",
         )
 
-    @pydantic.model_serializer
-    def serialize_model(self):
-        return self._to_api_model().model_dump()
 
-
-def ptp(
+def cartesian_ptp(
     target: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
     collision_scene: wb.models.CollisionScene | None = None,
-) -> PTP:
+) -> CartesianPTP:
     """Convenience function to create a point-to-point motion
 
     Args:
@@ -191,16 +134,21 @@ def ptp(
 
     Examples:
     >>> ms = MotionSettings(tcp_acceleration_limit=10)
-    >>> assert ptp((1, 2, 3, 4, 5, 6), settings=ms) == PTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
-    >>> assert ptp((1, 2, 3)) == ptp((1, 2, 3, 0, 0, 0))
-    >>> assert ptp(Pose((1, 2, 3, 4, 5, 6)), settings=ms) == ptp((1, 2, 3, 4, 5, 6), settings=ms)
+    >>> assert cartesian_ptp((1, 2, 3, 4, 5, 6), settings=ms) == CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
+    >>> assert cartesian_ptp((1, 2, 3)) == cartesian_ptp((1, 2, 3, 0, 0, 0))
+    >>> assert cartesian_ptp(Pose((1, 2, 3, 4, 5, 6)), settings=ms) == cartesian_ptp((1, 2, 3, 4, 5, 6), settings=ms)
+    >>> Action.from_dict(cartesian_ptp((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
+    CartesianPTP(type='cartesian_ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
 
     """
     if not isinstance(target, Pose):
         t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
         target = Pose(t)
 
-    return PTP(target=target, settings=settings, collision_scene=collision_scene)
+    return CartesianPTP(target=target, settings=settings, collision_scene=collision_scene)
+
+
+ptp = cartesian_ptp
 
 
 class Circular(Motion):
@@ -214,11 +162,11 @@ class Circular(Motion):
     type: Literal["circular"] = "circular"
     intermediate: Pose
 
-    def _to_api_model(self) -> api.models.PathCircle:
+    def to_api_model(self) -> api.models.PathCircle:
         """Serialize the model to a dictionary
 
         Examples:
-        >>> Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((10, 20, 30, 40, 50, 60)), settings=MotionSettings(tcp_velocity_limit=30))._to_api_model()
+        >>> Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((10, 20, 30, 40, 50, 60)), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
         PathCircle(via_pose=Pose2(position=[10, 20, 30], orientation=[40, 50, 60]), target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCircle')
         """
         if not isinstance(self.target, Pose):
@@ -231,12 +179,8 @@ class Circular(Motion):
             path_definition_name="PathCircle",
         )
 
-    @pydantic.model_serializer
-    def serialize_model(self):
-        return self._to_api_model().model_dump()
 
-
-def cir(
+def circular(
     target: PoseOrVectorTuple,
     intermediate: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
@@ -254,8 +198,10 @@ def cir(
 
     Examples:
     >>> ms = MotionSettings(tcp_acceleration_limit=10)
-    >>> assert cir((1, 2, 3, 4, 5, 6), (7, 8, 9, 10, 11, 12), settings=ms) == Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((7, 8, 9, 10, 11, 12)), settings=ms)
-    >>> assert cir((1, 2, 3), (4, 5, 6)) == cir((1, 2, 3, 0, 0, 0), (4, 5, 6, 0, 0, 0))
+    >>> assert circular((1, 2, 3, 4, 5, 6), (7, 8, 9, 10, 11, 12), settings=ms) == Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((7, 8, 9, 10, 11, 12)), settings=ms)
+    >>> assert circular((1, 2, 3), (4, 5, 6)) == circular((1, 2, 3, 0, 0, 0), (4, 5, 6, 0, 0, 0))
+    >>> Action.from_dict(circular((1, 2, 3, 4, 5, 6), (7, 8, 9, 10, 11, 12), MotionSettings()).model_dump())
+    Circular(type='circular', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None, intermediate=Pose(position=Vector3d(x=7, y=8, z=9), orientation=Vector3d(x=10, y=11, z=12)))
 
     """
     if not isinstance(target, Pose):
@@ -271,6 +217,9 @@ def cir(
     )
 
 
+cir = circular
+
+
 class JointPTP(Motion):
     """A joint PTP motion
 
@@ -282,11 +231,11 @@ class JointPTP(Motion):
 
     type: Literal["joint_ptp"] = "joint_ptp"
 
-    def _to_api_model(self) -> api.models.PathJointPTP:
+    def to_api_model(self) -> api.models.PathJointPTP:
         """Serialize the model to the API model
 
         Examples:
-        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(tcp_velocity_limit=30))._to_api_model()
+        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
         PathJointPTP(target_joint_position=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], path_definition_name='PathJointPTP')
         """
         if not isinstance(self.target, tuple):
@@ -295,12 +244,8 @@ class JointPTP(Motion):
             target_joint_position=list(self.target), path_definition_name="PathJointPTP"
         )
 
-    @pydantic.model_serializer
-    def serialize_model(self):
-        return self._to_api_model().model_dump()
 
-
-def jnt(
+def joint_ptp(
     target: tuple[float, ...],
     settings: MotionSettings = MotionSettings(),
     collision_scene: wb.models.CollisionScene | None = None,
@@ -315,10 +260,15 @@ def jnt(
 
     Examples:
     >>> ms = MotionSettings(tcp_acceleration_limit=10)
-    >>> assert jnt((1, 2, 3, 4, 5, 6), settings=ms) == JointPTP(target=(1, 2, 3, 4, 5, 6), settings=ms)
+    >>> assert joint_ptp((1, 2, 3, 4, 5, 6), settings=ms) == JointPTP(target=(1, 2, 3, 4, 5, 6), settings=ms)
+    >>> Action.from_dict(joint_ptp((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
+    JointPTP(type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
 
     """
     return JointPTP(target=target, settings=settings, collision_scene=collision_scene)
+
+
+jnt = joint_ptp
 
 
 class Spline(Motion):
@@ -334,18 +284,11 @@ class Spline(Motion):
     path_parameter: float = pydantic.Field(1, ge=0)
     time: float | None = pydantic.Field(default=None, ge=0)
 
-    @pydantic.model_serializer
-    def serialize_model(self):
-        """Serialize the model to a dictionary
-
-        Examples:
-        >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(tcp_velocity_limit=30)).model_dump()
-        {'target_joint_position': [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], 'path_definition_name': 'PathJointPTP'}
-        """
-        raise NotImplementedError("Spline motion is not yet implemented")
+    def to_api_model(self):
+        raise NotImplementedError("Spline motion is not implemented yet")
 
 
-def spl(
+def spline(
     target: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
     path_parameter: float = 1,
@@ -364,8 +307,10 @@ def spl(
 
     Examples:
     >>> ms = MotionSettings(tcp_acceleration_limit=10)
-    >>> assert spl((1, 2, 3, 4, 5, 6), settings=ms) == Spline(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
-    >>> assert spl((1, 2, 3)) == spl((1, 2, 3, 0, 0, 0))
+    >>> assert spline((1, 2, 3, 4, 5, 6), settings=ms) == Spline(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms)
+    >>> assert spline((1, 2, 3)) == spline((1, 2, 3, 0, 0, 0))
+    >>> Action.from_dict(spline((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
+    Spline(type='spline', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None, path_parameter=1.0, time=None)
 
     """
     if not isinstance(target, Pose):
@@ -379,3 +324,6 @@ def spl(
         time=time,
         collision_scene=collision_scene,
     )
+
+
+spl = spline

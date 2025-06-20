@@ -12,7 +12,7 @@ from wandelbots_api_client.models import (
 )
 
 from nova import MotionSettings
-from nova.actions import collision_free, lin
+from nova.actions import collision_free, linear
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
@@ -233,7 +233,7 @@ async def test():
 
             tcp = "torch"
 
-            robot_setup: models.OptimizerSetup = await motion_group._get_optimizer_setup(tcp=tcp)
+            robot_setup: models.OptimizerSetup = await motion_group._get_robot_setup(tcp=tcp)
 
             # Add mesh to collision world
             mesh_collider = await add_mesh_to_collision_world(
@@ -270,15 +270,15 @@ async def test():
                         collision_scene=collision_scene,
                         settings=MotionSettings(tcp_velocity_limit=30),
                     ),
-                    lin(
+                    linear(
                         target=seam1_start,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
-                    lin(
+                    linear(
                         target=seam1_end,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
-                    lin(
+                    linear(
                         target=seam1_departure,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
@@ -289,15 +289,15 @@ async def test():
                         settings=MotionSettings(tcp_velocity_limit=30),
                     ),
                     # Second seam with collision checking
-                    lin(
+                    linear(
                         target=seam2_start,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
-                    lin(
+                    linear(
                         target=seam2_end,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),
-                    lin(
+                    linear(
                         target=seam2_departure,
                         settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
                     ),

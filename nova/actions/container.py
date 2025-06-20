@@ -6,7 +6,8 @@ import pydantic
 
 from nova import api
 from nova.actions.io import WriteAction
-from nova.actions.motions import CollisionFreeMotion, Motion
+from nova.actions.mock import WaitAction
+from nova.actions.motions import Motion
 from nova.types import MovementControllerFunction, Pose
 
 
@@ -18,7 +19,7 @@ class ActionLocation(pydantic.BaseModel):
 
 
 # TODO: all actions should be allowed (Action)
-ActionContainerItem = Motion | WriteAction | CollisionFreeMotion
+ActionContainerItem = Motion | WriteAction | WaitAction
 
 
 class CombinedActions(pydantic.BaseModel):
@@ -49,9 +50,7 @@ class CombinedActions(pydantic.BaseModel):
     def append(self, item: ActionContainerItem):
         super().__setattr__("items", self.items + (item,))
 
-    def _generate_trajectory(
-        self,
-    ) -> tuple[list[Motion | CollisionFreeMotion], list[ActionLocation]]:
+    def _generate_trajectory(self) -> tuple[list[Motion], list[ActionLocation]]:
         """Generate two lists: one of Motion objects and another of ActionContainer objects,
         where each ActionContainer wraps a non-Motion action with its path parameter.
 
@@ -69,7 +68,9 @@ class CombinedActions(pydantic.BaseModel):
         last_motion_index = 0
 
         for item in self.items:
-            if isinstance(item, Motion) or isinstance(item, CollisionFreeMotion):
+            if isinstance(item, WaitAction):
+                continue  # Skip WaitAction items
+            if isinstance(item, Motion):
                 motions.append(item)
                 last_motion_index += 1  # Increment the motion index for each new Motion
             else:
@@ -79,7 +80,7 @@ class CombinedActions(pydantic.BaseModel):
         return motions, actions
 
     @property
-    def motions(self) -> list[Motion | CollisionFreeMotion]:
+    def motions(self) -> list[Motion]:
         motions, _ = self._generate_trajectory()
         return motions
 
@@ -131,7 +132,7 @@ class CombinedActions(pydantic.BaseModel):
     def to_motion_command(self) -> list[api.models.MotionCommand]:
         motion_commands = []
         for motion in self.motions:
-            path = api.models.MotionCommandPath.from_dict(motion.model_dump())
+            path = api.models.MotionCommandPath.from_dict(motion.to_api_model().model_dump())
             blending = (
                 motion.settings.as_blending_setting()
                 if motion.settings.has_blending_settings()
@@ -149,10 +150,10 @@ class CombinedActions(pydantic.BaseModel):
             )
         return motion_commands
 
-    def to_set_io(self) -> list[api.models.SetIO]:
+    def to_set_io(self) -> list[api.models.SetOutputValuesRequestInner]:
         return [
-            api.models.SetIO(
-                io=api.models.IOValue(**action.action.model_dump(exclude_unset=True)),
+            api.models.SetOutputValuesRequestInner(
+                io=api.models.IOValue(**action.action.to_api_model()),
                 location=action.path_parameter,
             )
             for action in self.actions

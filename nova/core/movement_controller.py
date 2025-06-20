@@ -26,50 +26,28 @@ ic.configureOutput(
 )
 
 
-@singledispatch
-def movement_to_motion_state(movement: Any) -> MotionState:
-    raise NotImplementedError(f"Unsupported movement type: {type(movement)}")
-
-
-@movement_to_motion_state.register
-def _(movement: wb.models.Movement) -> MotionState:
+def movement_to_motion_state(movement: wb.models.Movement) -> MotionState:
     """Convert a wb.models.Movement to a MotionState."""
     if (
         movement.movement.state is None
         or movement.movement.current_location is None
-        or len(movement.movement.state.motion_groups) == 0
+        or len(movement.movement.state.active_motion_groups) == 0
     ):
         assert False, "This should not happen"  # depending on NC-1105
 
     # TODO: in which cases do we have more than one motion group here?
-    motion_group = movement.movement.state.motion_groups[0]
+    motion_group = movement.movement.state.active_motion_groups[0]
     return motion_group_state_to_motion_state(
         motion_group, float(movement.movement.current_location)
-    )
-
-
-@movement_to_motion_state.register
-def _(movement: wb.models.StreamMoveResponse) -> MotionState:
-    """Convert a wb.models.Movement to a MotionState."""
-    if (
-        movement.move_response is None
-        or movement.state is None
-        or movement.move_response.current_location_on_trajectory is None
-        or len(movement.state.motion_groups) == 0
-    ):
-        assert False, "This should not happen"  # depending on NC-1105
-
-    # TODO: in which cases do we have more than one motion group here?
-    motion_group = movement.state.motion_groups[0]
-    return motion_group_state_to_motion_state(
-        motion_group, float(movement.move_response.current_location_on_trajectory)
     )
 
 
 def motion_group_state_to_motion_state(
     motion_group_state: wb.models.MotionGroupState, path_parameter: float
 ) -> MotionState:
-    tcp_pose = Pose(motion_group_state.tcp_pose)
+    tcp_pose = Pose(
+        tuple(motion_group_state.tcp_pose.position + motion_group_state.tcp_pose.orientation)
+    )
     joints = (
         tuple(motion_group_state.joint_current.joints) if motion_group_state.joint_current else None
     )
@@ -80,6 +58,7 @@ def motion_group_state_to_motion_state(
     )
 
 
+# TODO: when the message exchange is not working as expected we should gracefully close
 def move_forward(context: MovementControllerContext) -> MovementControllerFunction:
     """
     movement_controller is an async function that yields requests to the server.
@@ -91,7 +70,13 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
         # The first request is to initialize the movement
-        yield wb.models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)  # type: ignore
+        yield wb.models.InitializeMovementRequest(
+            message_type="InitializeMovementRequest",
+            trajectory=wb.models.InitializeMovementRequestTrajectory(
+                wb.models.TrajectoryId(message_type="TrajectoryId", id=context.motion_id)
+            ),
+            initial_location=0,
+        )  # type: ignore
 
         # then we get the response
         initialize_movement_response = await anext(response_stream)
@@ -105,7 +90,11 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         # The second request is to start the movement
         set_io_list = context.combined_actions.to_set_io()
         yield wb.models.StartMovementRequest(
-            set_ios=set_io_list, start_on_io=None, pause_on_io=None
+            message_type="StartMovementRequest",
+            direction=wb.models.Direction.DIRECTION_FORWARD,
+            set_ios=set_io_list,
+            start_on_io=None,
+            pause_on_io=None,
         )  # type: ignore
 
         # then we wait until the movement is finished

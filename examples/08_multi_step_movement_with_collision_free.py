@@ -1,10 +1,3 @@
-import asyncio
-
-from nova import MotionSettings, Nova
-from nova.actions import collision_free, io_write, jnt, ptp
-from nova.api import models
-from nova.types import Pose
-
 """
 Example: Perform a multi-step trajectory with collision avoidance.
 
@@ -15,14 +8,25 @@ Prerequisites:
     - NOVA_ACCESS_TOKEN=<token>
 """
 
+import asyncio
+
+from nova import MotionSettings, Nova
+from nova.actions import cartesian_ptp, joint_ptp
+from nova.actions.io import io_write
+from nova.api import models
+from nova.cell import virtual_controller
+from nova.types import Pose
+
 
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "ur",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
+        controller = await cell.ensure_controller(
+            robot_controller=virtual_controller(
+                name="ur",
+                manufacturer=models.Manufacturer.UNIVERSALROBOTS,
+                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
         )
 
         # Connect to the controller and activate motion groups
@@ -38,15 +42,15 @@ async def main():
             target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
 
             actions = [
-                ptp(target_pose),
-                collision_free(home_joints),
-                ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
+                cartesian_ptp(target_pose),
+                # collision_free(home_joints),
+                cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
                 io_write(key="digital_out[0]", value=True),
-                jnt(home_joints),
-                ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
-                collision_free(home_pose),
-                ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
-                jnt(home_joints),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
+                # collision_free(home_pose),
+                cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
+                joint_ptp(home_joints),
             ]
 
         # you can update the settings of the action

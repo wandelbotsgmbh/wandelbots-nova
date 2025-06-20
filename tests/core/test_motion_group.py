@@ -1,9 +1,17 @@
+from unittest.mock import MagicMock
+
 import pytest
+import wandelbots_api_client as wb
 
 from nova import Nova
-from nova.actions import lin, ptp
+from nova.actions import cartesian_ptp, io_write, linear, wait
+from nova.actions.base import Action
 from nova.actions.motions import CollisionFreeMotion
-from nova.core.motion_group import split_actions_into_batches
+from nova.core.motion_group import (
+    compare_collision_scenes,
+    split_actions_into_batches,
+    validate_collision_scenes,
+)
 from nova.types import Pose
 
 
@@ -16,11 +24,11 @@ async def test_motion_group(nova_api):
 
     actions = [
         # from the default script for ur10
-        ptp((-91.4, -662.0, 851.3, 2.14, 2.14, -0.357)),
-        lin((-160.4, -652.0, 851.3, 2.14, 2.14, -0.357)),
-        ptp((-91.4, -462.0, 851.3, 2.14, 2.14, -0.357)),
-        lin((-60.4, -652.0, 851.3, 2.14, 2.14, -0.357)),
-        ptp((-91.4, -662.0, 851.3, 2.14, 2.14, -0.357)),
+        cartesian_ptp((-91.4, -662.0, 851.3, 2.14, 2.14, -0.357)),
+        linear((-160.4, -652.0, 851.3, 2.14, 2.14, -0.357)),
+        cartesian_ptp((-91.4, -462.0, 851.3, 2.14, 2.14, -0.357)),
+        linear((-60.4, -652.0, 851.3, 2.14, 2.14, -0.357)),
+        cartesian_ptp((-91.4, -662.0, 851.3, 2.14, 2.14, -0.357)),
     ] * 5
 
     async with controller:
@@ -44,9 +52,9 @@ async def test_empty_list():
 @pytest.mark.asyncio
 async def test_only_actions():
     # Create only normal actions.
-    a1 = lin((-60.4, -652.0, 851.3, 2.14, 2.14, -0.357))
-    a2 = ptp((-91.4, -462.0, 851.3, 2.14, 2.14, -0.357))
-    a3 = lin((10, 20, 30, 1, 2, 3))
+    a1 = linear((-60.4, -652.0, 851.3, 2.14, 2.14, -0.357))
+    a2 = cartesian_ptp((-91.4, -462.0, 851.3, 2.14, 2.14, -0.357))
+    a3 = linear((10, 20, 30, 1, 2, 3))
     # Expect a single batch containing all the actions.
     assert split_actions_into_batches([a1, a2, a3]) == [[a1, a2, a3]]
 
@@ -64,8 +72,8 @@ async def test_only_collision_free():
 async def test_collision_free_first():
     # Collision free motion comes first.
     cfm1 = CollisionFreeMotion(target=Pose(1, 2, 3, 4, 5, 6))
-    a1 = lin((0, 0, 0, 0, 0, 0))
-    a2 = ptp((1, 1, 1, 1, 1, 1))
+    a1 = linear((0, 0, 0, 0, 0, 0))
+    a2 = cartesian_ptp((1, 1, 1, 1, 1, 1))
     # Expect: first the collision free motion, then the batch of actions.
     assert split_actions_into_batches([cfm1, a1, a2]) == [[cfm1], [a1, a2]]
 
@@ -73,8 +81,8 @@ async def test_collision_free_first():
 @pytest.mark.asyncio
 async def test_collision_free_last():
     # Collision free motion comes last.
-    a1 = lin((0, 0, 0, 0, 0, 0))
-    a2 = ptp((1, 1, 1, 1, 1, 1))
+    a1 = linear((0, 0, 0, 0, 0, 0))
+    a2 = cartesian_ptp((1, 1, 1, 1, 1, 1))
     cfm1 = CollisionFreeMotion(target=Pose(1, 2, 3, 4, 5, 6))
     # Expect: first a batch of actions, then the collision free motion.
     assert split_actions_into_batches([a1, a2, cfm1]) == [[a1, a2], [cfm1]]
@@ -83,9 +91,9 @@ async def test_collision_free_last():
 @pytest.mark.asyncio
 async def test_interleaved():
     # Test interleaved actions and collision free motions.
-    a1 = lin((0, 0, 0, 0, 0, 0))
-    a2 = ptp((1, 1, 1, 1, 1, 1))
-    a3 = lin((2, 2, 2, 2, 2, 2))
+    a1 = linear((0, 0, 0, 0, 0, 0))
+    a2 = cartesian_ptp((1, 1, 1, 1, 1, 1))
+    a3 = linear((2, 2, 2, 2, 2, 2))
     cfm1 = CollisionFreeMotion(target=Pose(10, 20, 30, 40, 50, 60))
     cfm2 = CollisionFreeMotion(target=Pose(70, 80, 90, 100, 110, 120))
 
@@ -97,8 +105,8 @@ async def test_interleaved():
 @pytest.mark.asyncio
 async def test_multiple_collision_free_in_row():
     # Sequence: [action, collision free, collision free, action]
-    a1 = lin((0, 0, 0, 0, 0, 0))
-    a2 = ptp((1, 1, 1, 1, 1, 1))
+    a1 = linear((0, 0, 0, 0, 0, 0))
+    a2 = cartesian_ptp((1, 1, 1, 1, 1, 1))
     cfm1 = CollisionFreeMotion(target=Pose(10, 20, 30, 40, 50, 60))
     cfm2 = CollisionFreeMotion(target=Pose(70, 80, 90, 100, 110, 120))
     # Simulation:
@@ -117,9 +125,9 @@ async def test_multiple_collision_free_in_row():
 async def test_complex_sequence():
     # A more complex sequence mixing several patterns:
     # Sequence: [a1, cfm1, cfm2, a2, a3, cfm3]
-    a1 = lin((0, 0, 0, 0, 0, 0))
-    a2 = ptp((1, 1, 1, 1, 1, 1))
-    a3 = lin((2, 2, 2, 2, 2, 2))
+    a1 = linear((0, 0, 0, 0, 0, 0))
+    a2 = cartesian_ptp((1, 1, 1, 1, 1, 1))
+    a3 = linear((2, 2, 2, 2, 2, 2))
     cfm1 = CollisionFreeMotion(target=Pose(10, 20, 30, 40, 50, 60))
     cfm2 = CollisionFreeMotion(target=Pose(70, 80, 90, 100, 110, 120))
     cfm3 = CollisionFreeMotion(target=Pose(130, 140, 150, 160, 170, 180))
@@ -127,3 +135,75 @@ async def test_complex_sequence():
     actions = [a1, cfm1, cfm2, a2, a3, cfm3]
     expected = [[a1], [cfm1], [cfm2], [a2, a3], [cfm3]]
     assert split_actions_into_batches(actions) == expected
+
+
+def mock_collision_scene():
+    colliders = MagicMock(spec=dict)
+    colliders.__eq__.side_effect = lambda other, self=colliders: other is self
+    colliders.__ne__.side_effect = lambda other, self=colliders: other is not self
+
+    motion_groups = MagicMock(spec=dict)
+    motion_groups.__eq__.side_effect = lambda other, self=motion_groups: other is self
+    motion_groups.__ne__.side_effect = lambda other, self=motion_groups: other is not self
+
+    return wb.models.CollisionScene.model_construct(
+        colliders=colliders, motion_groups=motion_groups
+    )
+
+
+@pytest.mark.asyncio
+async def test_compare_collision_scene():
+    collision_scene_1 = mock_collision_scene()
+    collision_scene_2 = mock_collision_scene()
+
+    assert compare_collision_scenes(collision_scene_1, collision_scene_2) is False, (
+        "Collision scenes should not be equal"
+    )
+
+
+@pytest.mark.asyncio
+async def test_split_and_verify_collision_scene():
+    def split_and_verify(actions: list[Action]):
+        for batch in split_actions_into_batches(actions):
+            validate_collision_scenes(actions=batch)
+
+    # A complex mixture of actions
+    collision_scene_1 = mock_collision_scene()
+    split_and_verify(
+        [
+            linear(target=(0, 0, 0, 0, 0, 0), collision_scene=collision_scene_1),
+            io_write("digital", 0),
+            linear(target=(0, 0, 0, 0, 0, 0), collision_scene=collision_scene_1),
+            CollisionFreeMotion(
+                target=Pose(1, 2, 3, 4, 5, 6),
+                collision_scene=MagicMock(spec=wb.models.CollisionScene),
+            ),
+            wait(1),
+            linear(
+                target=(1, 2, 3, 4, 5, 6), collision_scene=MagicMock(spec=wb.models.CollisionScene)
+            ),
+            CollisionFreeMotion(
+                target=Pose(7, 8, 9, 10, 11, 12),
+                collision_scene=MagicMock(spec=wb.models.CollisionScene),
+            ),
+            linear(target=(0, 0, 0, 0, 0, 0)),
+            CollisionFreeMotion(target=Pose(7, 8, 9, 10, 11, 12)),
+        ]
+    )
+
+    # This should fail because two consecutive linear motions should't have different collision scenes
+    with pytest.raises(Exception):
+        split_and_verify(
+            [
+                linear(target=(0, 0, 0, 0, 0, 0), collision_scene=mock_collision_scene()),
+                linear(target=(1, 2, 3, 4, 5, 6), collision_scene=mock_collision_scene()),
+            ]
+        )
+
+    with pytest.raises(Exception):
+        split_and_verify(
+            [
+                linear(target=(0, 0, 0, 0, 0, 0), collision_scene=mock_collision_scene()),
+                linear(target=(1, 2, 3, 4, 5, 6)),
+            ]
+        )

@@ -1,6 +1,6 @@
 import json
 
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 
 
 class ControllerNotFound(Exception):
@@ -9,15 +9,27 @@ class ControllerNotFound(Exception):
 
 
 class PlanTrajectoryFailed(Exception):
-    def __init__(self, error: wb.models.PlanTrajectoryFailedResponse):
+    def __init__(self, error: wb.models.PlanTrajectoryFailedResponse, motion_group_id: str):
+        """
+        Create a PlanTrajectoryFailed exception.
+
+        Args:
+            error:           The failure response.
+            motion_group_id: The ID of the motion group that caused the exception, e.g. `0@controller`
+        """
         self._error = error
-        super().__init__(f"Plan trajectory failed: {json.dumps(error.to_dict(), indent=2)}")
+        self._motion_group_id = motion_group_id
+        super().__init__(
+            f"Plan trajectory on {motion_group_id} failed: {json.dumps(error.to_dict(), indent=2)}"
+        )
 
     def to_pretty_string(self) -> str:
         """Give a more lightweight representation of the error, omitting some gritty details."""
         error_dict = self._error.to_dict()
         del error_dict["joint_trajectory"]
-        return f"Plan trajectory failed: {json.dumps(error_dict, indent=2)}"
+        return (
+            f"Plan trajectory on {self._motion_group_id} failed: {json.dumps(error_dict, indent=2)}"
+        )
 
     @property
     def error(self) -> wb.models.PlanTrajectoryFailedResponse:
@@ -37,12 +49,12 @@ class InitMovementFailed(Exception):
 
 
 class LoadPlanFailed(Exception):
-    def __init__(self, error: wb.models.PlanSuccessfulResponse):
+    def __init__(self, error: wb.models.AddTrajectoryError):
         self._error = error
         super().__init__(f"Load plan failed: {json.dumps(error.to_dict(), indent=2)}")
 
     @property
-    def error(self) -> wb.models.PlanSuccessfulResponse:
+    def error(self) -> wb.models.AddTrajectoryError:
         """Return the original PlanSuccessfulResponse object."""
         return self._error
 

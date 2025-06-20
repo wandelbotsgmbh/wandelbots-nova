@@ -1,7 +1,9 @@
-name: "[nova-rerun-bridge] Docker Build Rerun"
+---
+name: "nova-rerun-bridge: Docker Build Rerun"
 on:
   workflow_run:
-    workflows: ["Release"]
+    workflows:
+      - \[nova\] Release
     types:
       - completed
     branches:
@@ -25,7 +27,7 @@ jobs:
           mkdir -p temp_build
 
           DIRS_TO_COPY=("nova" "nova_rerun_bridge")
-          FILES_TO_COPY=("pyproject.toml" "poetry.lock" "README.md")
+          FILES_TO_COPY=("pyproject.toml" "uv.lock" "README.md")
 
           # Copy to temp directory first
           for dir in "${DIRS_TO_COPY[@]}"; do

@@ -1,6 +1,8 @@
+import numpy as np
 import rerun as rr
 
 from nova.api import models
+from nova_rerun_bridge.dh_robot import DHRobot
 from nova_rerun_bridge.hull_visualizer import HullVisualizer
 
 
@@ -11,10 +13,16 @@ def log_safety_zones(motion_group: str, optimizer_config: models.OptimizerSetup)
     if optimizer_config.safety_setup.safety_zones is None:
         return
 
+    if optimizer_config.dh_parameters is None:
+        raise ValueError("DH parameters cannot be None")
+
+    mounting_transform = optimizer_config.mounting
+    robot = DHRobot(optimizer_config.dh_parameters, optimizer_config.mounting)
+
     for zone in optimizer_config.safety_setup.safety_zones:
         geom = zone.geometry
         zone_id = zone.id
-        entity_path = f"{motion_group}/safety_zones/zone_{zone_id}"
+        entity_path = f"{motion_group}/zones/zone_{zone_id}"
 
         if geom.compound is not None:
             child_geoms = geom.compound.child_geometries
@@ -31,9 +39,12 @@ def log_safety_zones(motion_group: str, optimizer_config: models.OptimizerSetup)
         else:
             polygons = []
 
+        accumulated = robot.pose_to_matrix(mounting_transform)
+        polygons = apply_transform_to_polygons(polygons, accumulated)
+
         # Log polygons as wireframe outlines
         if polygons:
-            line_segments = [p.tolist() for p in polygons]
+            line_segments = [p.tolist() for p in polygons]  # convert numpy arrays to lists
             rr.log(
                 entity_path,
                 rr.LineStrips3D(
@@ -41,3 +52,18 @@ def log_safety_zones(motion_group: str, optimizer_config: models.OptimizerSetup)
                 ),
                 static=True,
             )
+
+
+def apply_transform_to_polygons(polygons, transform):
+    """
+    Apply a transformation matrix to a list of polygons.
+    """
+    transformed_polygons = []
+    for polygon in polygons:
+        # Convert polygon to homogeneous coordinates
+        homogeneous_polygon = np.hstack((polygon, np.ones((polygon.shape[0], 1))))
+        # Apply the transformation
+        transformed_polygon = np.dot(transform, homogeneous_polygon.T).T
+        # Convert back to 3D coordinates
+        transformed_polygons.append(transformed_polygon[:, :3])
+    return transformed_polygons

@@ -10,7 +10,7 @@ from wandelbots_api_client.models import (
 )
 
 from nova import MotionSettings
-from nova.actions.motions import collision_free, ptp
+from nova.actions.motions import cartesian_ptp, collision_free
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
@@ -106,7 +106,7 @@ async def test():
 
             tcp = "Flange"
 
-            robot_setup: models.OptimizerSetup = await motion_group._get_optimizer_setup(tcp=tcp)
+            robot_setup: models.OptimizerSetup = await motion_group._get_robot_setup(tcp=tcp)
             robot_setup.safety_setup.global_limits.tcp_velocity_limit = 200
 
             collision_scene_id = await build_collision_world(nova, "cell", robot_setup)
@@ -115,7 +115,10 @@ async def test():
 
             # Use default planner to move to the right of the sphere
             home = await motion_group.tcp_pose(tcp)
-            actions = [ptp(home), ptp(target=Pose((300, -400, 200, np.pi, 0, 0)))]
+            actions = [
+                cartesian_ptp(home),
+                cartesian_ptp(target=Pose((300, -400, 200, np.pi, 0, 0))),
+            ]
 
             for action in actions:
                 action.settings = MotionSettings(tcp_velocity_limit=200)
@@ -138,7 +141,7 @@ async def test():
             # Use default planner to move to the left of the sphere
             # -> this will collide
             # only plan don't move
-            actions = [ptp(target=Pose((-500, -400, 200, np.pi, 0, 0)))]
+            actions = [cartesian_ptp(target=Pose((-500, -400, 200, np.pi, 0, 0)))]
 
             for action in actions:
                 action.settings = MotionSettings(tcp_velocity_limit=200)

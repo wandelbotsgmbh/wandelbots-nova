@@ -2,7 +2,8 @@
 
 [![PyPI version](https://badge.fury.io/py/wandelbots-nova.svg)](https://badge.fury.io/py/wandelbots-nova)
 [![License](https://img.shields.io/github/license/wandelbotsgmbh/wandelbots-nova.svg)](https://github.com/wandelbotsgmbh/wandelbots-nova/blob/main/LICENSE)
-[![Build Status](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/release.yaml/badge.svg)](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/release.yaml)
+[![Build Status](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/nova-release.yaml/badge.svg)](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/nova-release.yaml)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/wandelbotsgmbh/wandelbots-nova)
 
 This library provides an SDK for the Wandelbots NOVA API.
 
@@ -20,21 +21,40 @@ https://github.com/user-attachments/assets/f6157e4b-eea8-4b96-b302-1f3864ae44a9
 - Valid Nova API credentials
 - Python >=3.10
 
+## Installation
+
+Install the library using pip:
+
+```bash
+pip install wandelbots-nova
+```
+
+### Recommended: uv project and Rerun Visualization
+
+Firstly you need to install [uv](https://docs.astral.sh/uv/getting-started/installation/) to your system.
+
+Initialize a new uv project with the following command.
+
+```bash
+uv init
+```
+
+We recommend installing the library with the `nova-rerun-bridge` extra to make usage of the visualization tool [rerun](https://rerun.io/).
+See the [extension README.md](nova_rerun_bridge/README.md) for further details.
+
+```bash
+uv add wandelbots-nova --extra nova-rerun-bridge
+```
+
+You need to download the robot models to visualize the robot models in the rerun viewer.
+
+```bash
+uv run download-models
+```
+
 ## 🚀 Quick Start
 
 See the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) for usage of this library and further [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples) utilizing rerun as a visualizer
-
-```bash
-# Add the package to your pyproject.toml
-dependencies = [
-    "wandelbots-nova[nova-rerun-bridge]>=0.12",
-]
-```
-
-```bash
-# Download the latest robot models
-poetry run download-models
-```
 
 ```python
 # Add credentials and instance to .env file
@@ -46,7 +66,7 @@ NOVA_ACCESS_TOKEN="your-access-token"
 from nova_rerun_bridge import NovaRerunBridge
 from nova import Nova
 from nova import api
-from nova.actions import jnt, ptp
+from nova.actions import joint_ptp, cartesian_ptp
 from nova.types import Pose
 import asyncio
 
@@ -80,9 +100,9 @@ async def main():
       target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
 
       actions = [
-          jnt(home_joints),
-          ptp(target_pose),
-          jnt(home_joints),
+          joint_ptp(home_joints),
+          cartesian_ptp(target_pose),
+          joint_ptp(home_joints),
       ]
 
       # Plan trajectory
@@ -96,30 +116,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Installation
-
-We recommend installing the library with the `nova-rerun-bridge` extra to make usage of the visualization tool [rerun](https://rerun.io/).
-See the [extension README.md](nova_rerun_bridge/README.md) for further details.
-
-```bash
-pip install wandelbots-nova
-# or
-pip install "wandelbots-nova[nova-rerun-bridge]"
-```
-
-Or add to your pyproject.toml:
-
-```bash
-dependencies = [
-    "wandelbots-nova[nova-rerun-bridge]>=0.12",
-]
-```
-
-You need to download the robot models to visualize the robot models in the rerun viewer.
-
-```bash
-poetry run download-models
-```
+For more details check out the [technical wiki](https://deepwiki.com/wandelbotsgmbh/wandelbots-nova) (powered by deepwiki), the [official documentation](https://docs.wandelbots.io/) or the [code documentation](https://wandelbotsgmbh.github.io/wandelbots-nova/).
 
 ## Usage
 
@@ -168,16 +165,16 @@ async def main():
 
 ```python
 from nova import Nova
-from nova.actions import ptp, jnt
+from nova.actions import cartesian_ptp, joint_ptp
 from nova.types import Pose
 
 async def main():
     async with Nova() as nova:
         # ... setup code ...
         actions = [
-            jnt(home_joints),
-            ptp(current_pose @ Pose((100, 0, 0, 0, 0, 0))),  # Move 100mm in X
-            jnt(home_joints)
+            joint_ptp(home_joints),
+            cartesian_ptp(current_pose @ Pose((100, 0, 0, 0, 0, 0))),  # Move 100mm in X
+            joint_ptp(home_joints)
         ]
         trajectory = await motion_group.plan(actions, tcp)
 ```
@@ -186,6 +183,8 @@ async def main():
 
 ```python
 from nova.actions import collision_free
+from nova.types import Pose, MotionSettings
+from math import pi
 
 actions = [
     collision_free(
@@ -201,6 +200,8 @@ https://github.com/user-attachments/assets/0416151f-1304-46e2-a4ab-485fcda766fc
 3. **Multiple Robot Coordination**
 
 ```python
+import asyncio
+
 async def move_robots():
     async with ur10[0] as ur_mg, kuka[0] as kuka_mg:
         await asyncio.gather(
@@ -214,13 +215,13 @@ async def move_robots():
 1. **I/O Control**
 
 ```python
-from nova.actions import io_write
+from nova.actions import io_write, joint_ptp, cartesian_ptp
 
 actions = [
-    jnt(home_joints),
+    joint_ptp(home_joints),
     io_write(key="digital_out[0]", value=False),  # Set digital output
-    ptp(target_pose),
-    jnt(home_joints)
+    cartesian_ptp(target_pose),
+    joint_ptp(home_joints)
 ]
 ```
 
@@ -246,7 +247,10 @@ async with Nova() as nova, NovaRerunBridge(nova) as bridge:
 3. **Adding and Using Custom TCP (Tool Center Point)**
 
 ```python
+from nova import Nova
 from nova.api import models
+from nova.actions import cartesian_ptp
+from nova.types import Pose
 import json
 
 # Define TCP configuration
@@ -278,7 +282,7 @@ async def setup_tcp():
         async with controller[0] as motion_group:
             current_pose = await motion_group.tcp_pose("vacuum_gripper")
             # Plan motions using the new TCP
-            actions = [ptp(current_pose @ Pose((100, 0, 0, 0, 0, 0)))]
+            actions = [cartesian_ptp(current_pose @ Pose((100, 0, 0, 0, 0, 0)))]
             trajectory = await motion_group.plan(actions, "vacuum_gripper")
 ```
 <img width="100%" alt="trajectory" src="https://github.com/user-attachments/assets/649de0b7-d90a-4095-ad51-d38d3ac2e716" />
@@ -287,6 +291,12 @@ async def setup_tcp():
 
 ```python
 from wandelbots_api_client.models import CoordinateSystem, Vector3d, RotationAngles, RotationAngleTypes
+from math import pi
+from nova import Nova
+from nova.types import Pose
+from nova.actions import cartesian_ptp
+import asyncio
+
 
 async def setup_coordinated_robots():
     async with Nova() as nova:
@@ -345,8 +355,8 @@ async def setup_coordinated_robots():
         async with robot1[0] as mg1, robot2[0] as mg2:
             # Movements will be relative to world coordinates
             await asyncio.gather(
-                mg1.plan([ptp(Pose((0, 100, 0, 0, 0, 0)))], "tcp1"),
-                mg2.plan([ptp(Pose((0, -100, 0, 0, 0, 0)))], "tcp2")
+                mg1.plan([cartesian_ptp(Pose((0, 100, 0, 0, 0, 0)))], "tcp1"),
+                mg2.plan([cartesian_ptp(Pose((0, -100, 0, 0, 0, 0)))], "tcp2")
             )
 ```
 <img width="100%" alt="thumbnail" src="https://github.com/user-attachments/assets/6f0c441e-b133-4a3a-bf0e-0e947d3efad4" />
@@ -356,14 +366,14 @@ async def setup_coordinated_robots():
 To install the development dependencies, run the following command
 
 ```bash
-poetry install --extras "nova-rerun-bridge"
+uv sync --extra "nova-rerun-bridge"
 ```
 
 ### Formatting
 
 ```bash
-poetry run ruff format
-poetry run ruff check --select I --fix
+uv run ruff format
+uv run ruff check --select I --fix
 ```
 
 ### Yaml Linting
@@ -375,15 +385,11 @@ docker run --rm -it -v $(pwd):/data cytopia/yamllint -d .yamllint .
 ### Using Branch Versions For Testing
 
 When having feature branches or forks, or might be helpful to test the library as dependency in other projects first.
-Poetry allows to pull the library from different sources. See the [Poetry Doc](https://python-poetry.org/docs/dependency-specification/#git-rev-project) for more information.
-
-Poetry Version < 2:
+The pyproject.toml allows to pull the library from different sources.
 
 ```toml
 wandelbots-nova = { git = "https://github.com/wandelbotsgmbh/wandelbots-nova.git", branch = "fix/http-prefix" }
 ```
-
-Poetry Version >=2
 
 ```toml
 wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/http-prefix
@@ -408,3 +414,32 @@ wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/
 > - If using an **access token**: Ensure `NOVA_ACCESS_TOKEN` is set, and leave `NOVA_USERNAME` and `NOVA_PASSWORD` unset.
 >
 > **Only one method should be used at a time.** If both methods are set, the token-based authentication (`NOVA_ACCESS_TOKEN`) will typically take precedence.
+
+## Release Process
+
+### Overview
+
+| Variable     | Description                                                            | Where                                | Example version      |
+|--------------|------------------------------------------------------------------------|--------------------------------------|----------------------|
+| `main`       | Stable releases (normal semver vX.Y.Z)                                 | PyPI (`pip install wandelbots-nova`) | `v1.13.0`            |
+| `release/*`  | The username credential used for authentication with the NOVA service. | PyPI                                 | `v1.8.7-release-1.x` |
+| any branch   | Development builds (not published to PyPI)                             | GitHub Actions                       | `e4c8af0647839...`   |
+
+### Stable releases (main)
+
+Every merge to main triggers the Release package workflow:
+	1.	Semantic-release inspects the commit messages, bumps the version, builds the wheel/sdist.
+	2.	The package is uploaded to PyPI.
+	3.	A GitHub Release is created/updated with the assets.
+
+### Long-term-support lines (release/*)
+
+For customers stuck on an older major or for special LTS contracts:
+- Open (or keep) a branch named `release/1.x`, `release/customer-foo`, etc.
+- Every commit on that branch triggers the same workflow and publishes stable numbers, but the git tag and PyPI version carry the branch slug so lines never collide.
+
+### Create a dev build
+
+If you only need a throw-away test build, go to the
+[Actions](https://github.com/wandelbotsgmbh/wandelbots-nova/actions) tab → "**Nova SDK: Build dev wheel**" → Run workflow (pick the branch).
+When it finishes, open the Install instructions job for a ready-to-copy `pip install "wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@<commit>"` line.

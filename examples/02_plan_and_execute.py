@@ -1,10 +1,3 @@
-import asyncio
-
-from nova import MotionSettings, Nova
-from nova.actions import jnt, ptp
-from nova.api import models
-from nova.types import Pose
-
 """
 Example: Perform relative movements with a robot.
 
@@ -15,14 +8,24 @@ Prerequisites:
     - NOVA_ACCESS_TOKEN=<token>
 """
 
+import asyncio
+
+from nova import MotionSettings, Nova
+from nova.actions import cartesian_ptp, joint_ptp
+from nova.api import models
+from nova.cell import virtual_controller
+from nova.types import Pose
+
 
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "ur",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
+        controller = await cell.ensure_controller(
+            robot_controller=virtual_controller(
+                name="ur",
+                manufacturer=models.Manufacturer.UNIVERSALROBOTS,
+                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
         )
 
         # Connect to the controller and activate motion groups
@@ -36,15 +39,15 @@ async def main():
             target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
 
             actions = [
-                jnt(home_joints),
-                ptp(target_pose),
-                jnt(home_joints),
-                ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
-                jnt(home_joints),
-                ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
-                jnt(home_joints),
-                ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
-                jnt(home_joints),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
+                joint_ptp(home_joints),
             ]
 
         # you can update the settings of the action

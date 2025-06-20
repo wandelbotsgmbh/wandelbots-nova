@@ -7,7 +7,7 @@ from wandelbots_api_client.models.all_joint_positions_request import AllJointPos
 from wandelbots_api_client.models.all_joint_positions_response import AllJointPositionsResponse
 
 from nova import MotionSettings
-from nova.actions import ptp
+from nova.actions import cartesian_ptp
 from nova.api import models
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
@@ -82,19 +82,21 @@ async def test():
 
                 tested_points.append(point)
                 try:
-                    response: AllJointPositionsResponse = await nova._api_client.motion_group_kinematic_api.calculate_all_inverse_kinematic(
-                        cell=cell.cell_id,
-                        motion_group=motion_group.motion_group_id,
-                        all_joint_positions_request=AllJointPositionsRequest(
+                    response: AllJointPositionsResponse = (
+                        await nova._api_client.kinematics_api.calculate_all_inverse_kinematic(
+                            cell=cell.cell_id,
                             motion_group=motion_group.motion_group_id,
-                            tcp_pose=models.TcpPose(
-                                position=models.Vector3d(x=point[0], y=point[1], z=point[2]),
-                                orientation=models.Vector3d(
-                                    x=rotation[0], y=rotation[1], z=rotation[2]
+                            all_joint_positions_request=AllJointPositionsRequest(
+                                motion_group=motion_group.motion_group_id,
+                                tcp_pose=models.TcpPose(
+                                    position=models.Vector3d(x=point[0], y=point[1], z=point[2]),
+                                    orientation=models.Vector3d(
+                                        x=rotation[0], y=rotation[1], z=rotation[2]
+                                    ),
+                                    tcp=tcp,
                                 ),
-                                tcp=tcp,
                             ),
-                        ),
+                        )
                     )
                     valid_configs = len(response.joint_positions)
                 except Exception:
@@ -115,7 +117,7 @@ async def test():
 
             home = await motion_group.tcp_pose(tcp)
 
-            actions = [ptp(home)]
+            actions = [cartesian_ptp(home)]
 
             for action in actions:
                 action.settings = MotionSettings(tcp_velocity_limit=200)

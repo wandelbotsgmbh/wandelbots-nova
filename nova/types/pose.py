@@ -4,36 +4,32 @@ from typing import Iterable, Sized
 
 import numpy as np
 import pydantic
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 from scipy.spatial.transform import Rotation
 
 from nova.types.vector3d import Vector3d
 
 
 def _parse_args(*args):
+    """Parse the arguments and return a dictionary that pydanctic can validate"""
     if len(args) == 1 and (
         isinstance(args[0], wb.models.Pose) or isinstance(args[0], wb.models.TcpPose)
     ):
         pos = args[0].position
         ori = args[0].orientation
         return {
-            "position": Vector3d(x=pos.x, y=pos.y, z=pos.z),
-            "orientation": Vector3d(x=ori.x, y=ori.y, z=ori.z),
+            "position": Vector3d(x=pos[0], y=pos[1], z=pos[2]),
+            "orientation": Vector3d(x=ori[0], y=ori[1], z=ori[2]),
         }
-    if len(args) == 1 and isinstance(args[0], wb.models.Pose2):
-        x1, y1, z1 = args[0].position
-        x2, y2, z2 = args[0].orientation
-        return {"position": Vector3d(x=x1, y=y1, z=z1), "orientation": Vector3d(x=x2, y=y2, z=z2)}
     if len(args) == 1 and isinstance(args[0], tuple):
         args = args[0]
     if len(args) == 6:
         x1, y1, z1, x2, y2, z2 = args
         return {"position": Vector3d(x=x1, y=y1, z=z1), "orientation": Vector3d(x=x2, y=y2, z=z2)}
-    elif len(args) == 3:
+    if len(args) == 3:
         x1, y1, z1 = args
         return {"position": Vector3d(x=x1, y=y1, z=z1), "orientation": Vector3d(x=0, y=0, z=0)}
-    else:
-        raise ValueError("Invalid number of arguments for Pose")
+    raise ValueError("Invalid number of arguments for Pose")
 
 
 class Pose(pydantic.BaseModel, Sized):
@@ -61,6 +57,11 @@ class Pose(pydantic.BaseModel, Sized):
         Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
         >>> Pose(wb.models.Pose2(position=[1, 2, 3], orientation=[4, 5, 6]))
         Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
+        >>> pose = Pose((1, 2, 3, 4, 5, 6))
+        >>> new_pose = Pose.model_validate(pose.model_dump())
+        >>> pose == new_pose
+        True
+
         """
         if args:
             values = _parse_args(*args)
@@ -166,12 +167,11 @@ class Pose(pydantic.BaseModel, Sized):
         if isinstance(other, Pose):
             transformed_matrix = np.dot(self.matrix, other.matrix)
             return self._matrix_to_pose(transformed_matrix)
-        elif isinstance(other, Iterable):
+        if isinstance(other, Iterable):
             seq = tuple(other)
             return self.__matmul__(Pose(seq))
 
-        else:
-            raise ValueError(f"Cannot multiply Pose with {type(other)}")
+        raise ValueError(f"Cannot multiply Pose with {type(other)}")
 
     def __array__(self, dtype=None):
         """Convert Pose to a 6-element numpy array: [pos.x, pos.y, pos.z, ori.x, ori.y, ori.z].
@@ -196,8 +196,8 @@ class Pose(pydantic.BaseModel, Sized):
         Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3), coordinate_system=None)
         """
         return wb.models.Pose(
-            position=wb.models.Vector3d(**self.position.model_dump()),
-            orientation=wb.models.Vector3d(**self.orientation.model_dump()),
+            position=[self.position.x, self.position.y, self.position.z],
+            orientation=[self.orientation.x, self.orientation.y, self.orientation.z],
         )
 
     def _to_wb_pose2(self) -> wb.models.Pose2:
@@ -218,7 +218,20 @@ class Pose(pydantic.BaseModel, Sized):
         >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).model_dump()
         {'position': [10, 20, 30], 'orientation': [1, 2, 3]}
         """
-        return self._to_wb_pose2().model_dump()
+        return self._to_wb_pose().model_dump()
+
+    @pydantic.model_validator(mode="before")
+    @classmethod
+    def model_validator(cls, data):
+        """Transform the data that is passed into model validator to match what we return in the model_dump"""
+        if not isinstance(data, dict):
+            raise ValueError("model_validator only accepts dicts")
+        pos = data["position"]
+        ori = data["orientation"]
+        return {
+            "position": Vector3d(x=pos[0], y=pos[1], z=pos[2]),
+            "orientation": Vector3d(x=ori[0], y=ori[1], z=ori[2]),
+        }
 
     def _to_homogenous_transformation_matrix(self):
         """Converts the pose (position and rotation vector) to a 4x4 homogeneous transformation matrix."""

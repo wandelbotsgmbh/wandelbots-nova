@@ -1,9 +1,9 @@
-from nova.actions.motions import ptp
+from nova.actions.motions import cartesian_ptp
 from nova_rerun_bridge.benchmark.benchmark_base import BenchmarkStrategy, run_benchmark
 
 
 class PtpStrategy(BenchmarkStrategy):
-    name = "ptp"
+    name = "cartesian_ptp"
 
     async def plan(
         self,
@@ -16,7 +16,7 @@ class PtpStrategy(BenchmarkStrategy):
         start_joint_position,
     ):
         return await motion_group.plan(
-            [ptp(target=target, collision_scene=collision_scene)], tcp=tcp
+            [cartesian_ptp(target=target, collision_scene=collision_scene)], tcp=tcp
         )
 
 

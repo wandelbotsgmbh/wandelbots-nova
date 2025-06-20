@@ -1,7 +1,9 @@
-name: "[nova-rerun-bridge] Docker Build Nova Rerun Bridge"
+---
+name: "nova-rerun-bridge: Docker Build Nova Rerun Bridge"
 on:
   workflow_run:
-    workflows: ["Release"]
+    workflows:
+      - \[nova\] Release
     types:
       - completed
     branches:
@@ -18,13 +20,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Install Poetry
+      - name: Install uv
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
+          curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Download Robot Models
         run: |
-          poetry install --extras "nova-rerun-bridge"
-          poetry run download-models
+          uv sync --extra "nova-rerun-bridge"
+          uv run download-models
       - name: Create and populate nova_rerun_bridge_app directory
         run: |
           # Create temp directory
@@ -32,7 +34,7 @@ jobs:
           mkdir -p temp_build
 
           DIRS_TO_COPY=("models" "nova" "nova_rerun_bridge")
-          FILES_TO_COPY=("pyproject.toml" "poetry.lock" "README.md")
+          FILES_TO_COPY=("pyproject.toml" "uv.lock" "README.md")
 
           # Copy to temp directory first
           for dir in "${DIRS_TO_COPY[@]}"; do
