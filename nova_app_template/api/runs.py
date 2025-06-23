@@ -14,11 +14,11 @@ from pydantic import BaseModel
 
 from nova_app_template.container import NovaContainer
 from nova_app_template.interfaces import (
+    ProgramExecutionServiceInterface,
     ProgramInstanceStoreInterface,
     ProgramRunAPIServiceInterface,
     ProgramRunStoreInterface,
 )
-from nova_app_template.services import ProgramExecutionService
 
 
 # Request/Response models
@@ -119,7 +119,7 @@ async def create_program_run(
     instance_store: ProgramInstanceStoreInterface = Depends(
         Provide[NovaContainer.stores.program_instance_store]
     ),
-    execution_service: ProgramExecutionService = Depends(
+    execution_service: ProgramExecutionServiceInterface = Depends(
         Provide[NovaContainer.services.program_execution_service]
     ),
 ):
