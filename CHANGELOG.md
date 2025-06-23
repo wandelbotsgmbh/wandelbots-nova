@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.18.3 (2025-06-23)
+
+### Bug Fixes
+
+- Migrate to rerun 0.23 ([#202](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/202),
+  [`096d326`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/096d3266f3820e0ddefd6ad54f7d625a105eaa00))
+
+
 ## v1.18.2 (2025-06-20)
 
 ### Chores
