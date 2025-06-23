@@ -69,7 +69,7 @@ async def main():
         with open(json_path) as f:
             var_json = json.load(f)
 
-        controller = await cell._get_controller_instance("yaskawa")
+        controller = await cell.controller("yaskawa")
         if controller is None:
             await nova._api_client.controller_api.add_robot_controller(
                 cell=cell._cell_id,

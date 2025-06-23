@@ -47,7 +47,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, models.Collider]):
                         collider.shape.actual_instance.radius,
                     ],
                     centers=[[pose.position.x, pose.position.y, pose.position.z]],
-                    rotation_axis_angles=[[*axis, angle]],
+                    rotation_axis_angles=[rr.RotationAxisAngle(axis=axis, angle=angle)],
                     colors=[(221, 193, 193, 255)],
                 ),
                 static=True,
