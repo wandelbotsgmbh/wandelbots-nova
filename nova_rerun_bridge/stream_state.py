@@ -88,7 +88,7 @@ async def stream_motion_group(self, motion_group: MotionGroup) -> None:
 
         robot = DHRobot(optimizer_config.dh_parameters, optimizer_config.mounting)
         rr.reset_time()
-        rr.set_time_seconds(TIME_REALTIME_NAME, time.time())
+        rr.set_time(TIME_REALTIME_NAME, timestamp=time.time())
         visualizer = RobotVisualizer(
             robot=robot,
             robot_model_geometries=optimizer_config.safety_setup.robot_model_geometries,
@@ -105,7 +105,7 @@ async def stream_motion_group(self, motion_group: MotionGroup) -> None:
         ):
             if processor.tcp_pose_changed(motion_group.motion_group_id, state.state.tcp_pose):
                 rr.reset_time()
-                rr.set_time_seconds(TIME_REALTIME_NAME, time.time())
+                rr.set_time(TIME_REALTIME_NAME, timestamp=time.time())
 
                 # Log joint positions
                 log_joint_positions_once(

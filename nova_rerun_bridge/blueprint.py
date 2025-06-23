@@ -16,40 +16,44 @@ def configure_joint_line_colors(motion_group: str):
 
         rr.log(
             f"{prefix}_velocity_lower_limit_{i}",
-            rr.SeriesLine(color=[176, 49, 40], name=f"joint_velocity_lower_limit_{i}", width=4),
+            rr.SeriesLines(colors=[176, 49, 40], names=f"joint_velocity_lower_limit_{i}", widths=4),
             static=True,
         )
         rr.log(
             f"{prefix}_velocity_upper_limit_{i}",
-            rr.SeriesLine(color=[176, 49, 40], name=f"joint_velocity_upper_limit_{i}", width=4),
+            rr.SeriesLines(colors=[176, 49, 40], names=f"joint_velocity_upper_limit_{i}", widths=4),
             static=True,
         )
 
         rr.log(
             f"{prefix}_acceleration_lower_limit_{i}",
-            rr.SeriesLine(color=[176, 49, 40], name=f"joint_acceleration_lower_limit_{i}", width=4),
+            rr.SeriesLines(
+                colors=[176, 49, 40], names=f"joint_acceleration_lower_limit_{i}", widths=4
+            ),
             static=True,
         )
         rr.log(
             f"{prefix}_acceleration_upper_limit_{i}",
-            rr.SeriesLine(color=[176, 49, 40], name=f"joint_acceleration_upper_limit_{i}", width=4),
+            rr.SeriesLines(
+                colors=[176, 49, 40], names=f"joint_acceleration_upper_limit_{i}", widths=4
+            ),
             static=True,
         )
 
         rr.log(
             f"{prefix}_position_lower_limit_{i}",
-            rr.SeriesLine(color=[176, 49, 40], name=f"joint_position_lower_limit_{i}", width=4),
+            rr.SeriesLines(colors=[176, 49, 40], names=f"joint_position_lower_limit_{i}", widths=4),
             static=True,
         )
         rr.log(
             f"{prefix}_position_upper_limit_{i}",
-            rr.SeriesLine(color=[176, 49, 40], name=f"joint_position_upper_limit_{i}", width=4),
+            rr.SeriesLines(colors=[176, 49, 40], names=f"joint_position_upper_limit_{i}", widths=4),
             static=True,
         )
 
         rr.log(
             f"{prefix}_torque_limit_{i}",
-            rr.SeriesLine(color=[176, 49, 40], name=f"joint_torques_lower_limit_{i}", width=4),
+            rr.SeriesLines(colors=[176, 49, 40], names=f"joint_torques_lower_limit_{i}", widths=4),
             static=True,
         )
 
@@ -59,40 +63,40 @@ def configure_joint_line_colors(motion_group: str):
 
         rr.log(
             f"{prefix}_velocity_{i}",
-            rr.SeriesLine(color=color, name=f"joint_velocity_{i}", width=2),
+            rr.SeriesLines(colors=color, names=f"joint_velocity_{i}", widths=2),
             static=True,
         )
         rr.log(
             f"{prefix}_velocity_{i}",
-            rr.SeriesLine(color=color, name=f"joint_velocity_{i}", width=2),
+            rr.SeriesLines(colors=color, names=f"joint_velocity_{i}", widths=2),
             static=True,
         )
 
         rr.log(
             f"{prefix}_acceleration_{i}",
-            rr.SeriesLine(color=color, name=f"joint_acceleration_{i}", width=2),
+            rr.SeriesLines(colors=color, names=f"joint_acceleration_{i}", widths=2),
             static=True,
         )
         rr.log(
             f"{prefix}_acceleration_{i}",
-            rr.SeriesLine(color=color, name=f"joint_acceleration_{i}", width=2),
+            rr.SeriesLines(colors=color, names=f"joint_acceleration_{i}", widths=2),
             static=True,
         )
 
         rr.log(
             f"{prefix}_position_{i}",
-            rr.SeriesLine(color=color, name=f"joint_position_{i}", width=2),
+            rr.SeriesLines(colors=color, names=f"joint_position_{i}", widths=2),
             static=True,
         )
         rr.log(
             f"{prefix}_position_{i}",
-            rr.SeriesLine(color=color, name=f"joint_position_{i}", width=2),
+            rr.SeriesLines(colors=color, names=f"joint_position_{i}", widths=2),
             static=True,
         )
 
         rr.log(
             f"{prefix}_torque_{i}",
-            rr.SeriesLine(color=color, name=f"joint_torques_{i}", width=2),
+            rr.SeriesLines(colors=color, names=f"joint_torques_{i}", widths=2),
             static=True,
         )
 
@@ -118,7 +122,7 @@ def configure_tcp_line_colors(motion_group: str):
     for name, color, width in series_specs:
         rr.log(
             f"motion/{motion_group}/{name}",
-            rr.SeriesLine(color=color, name=name, width=width),
+            rr.SeriesLines(colors=color, names=name, widths=width),
             static=True,
         )
 
@@ -282,19 +286,9 @@ def get_blueprint(motion_group_list: list[str]) -> rrb.Blueprint:
         create_motion_group_tabs(group, time_ranges, plot_legend) for group in motion_group_list
     ]
 
-    # Create overrides to hide collision links for each motion group by default
-    overrides = {
-        **{
-            f"motion/{group}/collision/links": [rrb.components.Visible(False)]
-            for group in motion_group_list
-        }
-    }
-
     return rrb.Blueprint(
         rrb.Horizontal(
-            rrb.Spatial3DView(
-                contents=contents, name="3D Nova", background=[20, 22, 35], overrides=overrides
-            ),
+            rrb.Spatial3DView(contents=contents, name="3D Nova", background=[20, 22, 35]),
             rrb.Tabs(
                 *motion_group_tabs,
                 rrb.TextLogView(origin="/logs/motion", name="Motions"),

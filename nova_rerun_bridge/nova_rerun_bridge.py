@@ -87,7 +87,7 @@ class NovaRerunBridge:
                 motion_groups.append(motion_group.motion_group_id)
 
         rr.reset_time()
-        rr.set_time_seconds(TIME_INTERVAL_NAME, 0)
+        rr.set_time(TIME_INTERVAL_NAME, duration=0)
 
         send_blueprint(motion_groups)
         self.log_coordinate_system()
@@ -165,7 +165,7 @@ class NovaRerunBridge:
         tcp = tcp_names[0]
 
         rr.reset_time()
-        rr.set_time_seconds(TIME_INTERVAL_NAME, 0)
+        rr.set_time(TIME_INTERVAL_NAME, duration=0)
 
         log_safety_zones(
             motion_group.motion_group_id, await motion_group._get_optimizer_setup(tcp=tcp)
@@ -344,7 +344,7 @@ class NovaRerunBridge:
         from nova_rerun_bridge import trajectory
 
         rr.reset_time()
-        rr.set_time_seconds(TIME_INTERVAL_NAME, trajectory._last_end_time)
+        rr.set_time(TIME_INTERVAL_NAME, duration=trajectory._last_end_time)
 
         if not isinstance(actions, list):
             actions = [actions]

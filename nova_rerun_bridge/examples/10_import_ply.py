@@ -35,7 +35,7 @@ async def test():
         colors = mesh.visual.vertex_colors[:, :3]  # RGB only, drop alpha
 
         # Log point cloud
-        rr.set_time_seconds(TIME_INTERVAL_NAME, 0)
+        rr.set_time(TIME_INTERVAL_NAME, duration=0)
         rr.log("motion/pointcloud", rr.Points3D(positions, colors=colors))
 
         # Find green points (high G, low R/B values)
