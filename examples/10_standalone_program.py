@@ -31,8 +31,6 @@ from nova.types import MotionSettings, Pose
     cleanup_controllers=True,
 )
 async def main(
-    # TODO: ignore ctx in the signature
-    # ctx: nova.ExecutionContext,
     number_of_picks: int = Field(gt=0, description="Number of picks to perform"),
 ):
     """

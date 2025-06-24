@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import inspect
 import json
 from collections.abc import Callable, Mapping
@@ -20,8 +21,17 @@ from pydantic import BaseModel, Field, PrivateAttr, RootModel, create_model, val
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
+from nova import Nova, api
+from nova.core.exceptions import ControllerCreationFailed
+from nova.core.logging import logger
+
 Parameters = ParamSpec("Parameters")
 Return = TypeVar("Return")
+
+
+class ProgramPreconditions(BaseModel):
+    controllers: list[api.models.RobotController] | None = None
+    cleanup_controllers: bool = False
 
 
 class Function(BaseModel, Generic[Parameters, Return]):
@@ -32,8 +42,7 @@ class Function(BaseModel, Generic[Parameters, Return]):
     description: str | None
     input: type[BaseModel]
     output: type[BaseModel]
-    controller_configs: list[dict[str, Any]] = Field(default_factory=list)
-    cleanup_controllers: bool = Field(default=True)
+    preconditions: ProgramPreconditions | None = None
 
     @classmethod
     def validate(cls, value: Callable[Parameters, Return]) -> "Function[Parameters, Return]":
@@ -55,6 +64,59 @@ class Function(BaseModel, Generic[Parameters, Return]):
 
     def __call__(self, *args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:  # pylint: disable=no-member
         return self._wrapped(*args, **kwargs)
+
+    def _log(self, level: str, message: str) -> None:
+        """Log a message with program prefix."""
+        prefix = f"Nova Program '{self.name}'"
+        formatted_message = f"{prefix}: {message}"
+
+        # TODO: use logger.log(...)
+        if level == "info":
+            logger.info(formatted_message)
+        elif level == "error":
+            logger.error(formatted_message)
+        elif level == "warning":
+            logger.warning(formatted_message)
+        elif level == "debug":
+            logger.debug(formatted_message)
+        else:
+            logger.info(formatted_message)
+
+    async def _create_controllers(self) -> list[str]:
+        """Create controllers based on controller_configs and return their IDs."""
+        created_controllers = []
+        if not self.preconditions or not self.preconditions.controllers:
+            return created_controllers
+
+        async with Nova() as nova:
+            try:
+                for controller_config in self.preconditions.controllers:
+                    cell = nova.cell()
+                    controller_name = controller_config.name or "unnamed_controller"
+                    controller = await cell.ensure_controller(
+                        robot_controller=controller_config
+                    )
+                    created_controllers.append(controller.controller_id)
+                    self._log("info", f"Created controller '{controller_name}' with ID {controller.controller_id}")
+            except Exception as e:
+                controller_name = controller_config.name or "unnamed_controller"
+                raise ControllerCreationFailed(controller_name, str(e))
+
+        return created_controllers
+
+    async def _cleanup_controllers(self, controller_ids: list[str]) -> None:
+        """Clean up controllers by their IDs."""
+        if not self.preconditions or not self.preconditions.cleanup_controllers or not controller_ids:
+            return
+
+        try:
+            async with Nova() as nova:
+                cell = nova.cell()
+                for controller_id in controller_ids:
+                    await cell.delete_robot_controller(controller_id)
+                    self._log("info", f"Cleaned up controller with ID {controller_id}")
+        except Exception as e:
+            self._log("error", f"Error during controller cleanup: {e}")
 
     @property
     def input_schema(self) -> dict[str, Any]:
@@ -201,19 +263,58 @@ def input_and_output_types(
     return input, output
 
 
-def program(controllers: list[dict[str, Any]] | None = None, cleanup_controllers: bool = True):
+def program(name: str | None = None, preconditions: ProgramPreconditions | None = None):
     """
     Decorator factory for creating Nova programs with declarative controller setup.
 
     Args:
-        controllers: List of controller configurations to create before program execution
-        cleanup_controllers: Whether to automatically delete controllers after program completion
+        name: Name of the program
+        preconditions: ProgramPreconditions containing controller configurations and cleanup settings
+        program_id: Unique identifier for the program (used in logging)
     """
 
     def decorator(function: Callable[Parameters, Return]) -> Function[Parameters, Return]:
         func_obj = Function.validate(function)
-        func_obj.controller_configs = controllers or []
-        func_obj.cleanup_controllers = cleanup_controllers
+        if name:
+            func_obj.name = name
+        func_obj.preconditions = preconditions
+
+        # Create a wrapper that handles controller lifecycle
+        original_wrapped = func_obj._wrapped
+
+        async def async_wrapper(*args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:
+            """Async wrapper that handles controller creation and cleanup."""
+            created_controllers = []
+            try:
+                # Create controllers before execution
+                created_controllers = await func_obj._create_controllers()
+
+                # Execute the wrapped function
+                if asyncio.iscoroutinefunction(original_wrapped):
+                    result = await original_wrapped(*args, **kwargs)
+                else:
+                    result = original_wrapped(*args, **kwargs)
+                return result
+            finally:
+                # Clean up controllers after execution
+                await func_obj._cleanup_controllers(created_controllers)
+
+        def sync_wrapper(*args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:
+            """Sync wrapper that handles both sync and async function calls."""
+            import asyncio
+
+            # Check if we're already in an async context
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an async context, return a coroutine
+                return async_wrapper(*args, **kwargs)
+            except RuntimeError:
+                # We're in a sync context, run the async wrapper
+                return asyncio.run(async_wrapper(*args, **kwargs))
+
+        # Replace the wrapped function with our wrapper
+        func_obj._wrapped = sync_wrapper
+
         return func_obj
 
     return decorator

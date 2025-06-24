@@ -3,7 +3,7 @@ from datetime import datetime
 
 from icecream import ic
 
-from nova.runtime.runner import ProgramRunState
+from nova.program.runner import ProgramRunState
 from wandelscript import run
 from wandelscript.simulation import SimulatedRobotCell, get_robot_controller
 from wandelscript.utils.runtime import Tee

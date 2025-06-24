@@ -21,8 +21,8 @@ from pydantic import BaseModel, Field
 from nova import Nova, api
 from nova.cell.robot_cell import RobotCell
 from nova.core.exceptions import ControllerCreationFailed, PlanTrajectoryFailed
-from nova.runtime.exceptions import NotPlannableError
-from nova.runtime.utils import Tee, stoppable_run
+from nova.program.exceptions import NotPlannableError
+from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
 
 current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
@@ -320,39 +320,12 @@ class ProgramRunner(ABC):
                     robot_cell = await cell.get_robot_cell()
 
             if robot_cell is None:
-                raise RuntimeError("No robot cell available")
+                raise RuntimeError("Nova Program: No robot cell available")
 
             self.execution_context = execution_context = ExecutionContext(
                 robot_cell=robot_cell, stop_event=stop_event
             )
             current_execution_context_var.set(execution_context)
-
-            self._created_controllers = []
-            if self._function_obj and hasattr(self._function_obj, "controller_configs"):
-                try:
-                    for controller_config in self._function_obj.controller_configs:
-                        try:
-                            async with Nova() as nova:
-                                cell = nova.cell()
-                                controller_name = controller_config.get(
-                                    "name", "unnamed_controller"
-                                )
-                                controller = await cell.ensure_virtual_robot_controller(
-                                    controller_name,
-                                    controller_config.get("type"),
-                                    controller_config.get("manufacturer"),
-                                )
-                                self._created_controllers.append(controller.controller_id)
-                                logger.info(
-                                    f"Created controller '{controller_name}' with ID {controller.controller_id}"
-                                )
-                        except Exception as e:
-                            controller_name = controller_config.get("name", "unnamed_controller")
-                            raise ControllerCreationFailed(controller_name, str(e))
-                except Exception as e:
-                    # If controller creation fails, we should fail the program
-                    raise e
-
             await on_state_change()
 
             monitoring_scope = anyio.CancelScope()
@@ -360,18 +333,18 @@ class ProgramRunner(ABC):
                 await tg.start(self._estop_handler, monitoring_scope)
 
                 try:
-                    logger.info(f"Run program {self.id}...")
+                    logger.info(f"Nova Program: {self.id} started")
                     self._program_run.state = ProgramRunState.RUNNING
                     self._program_run.start_time = dt.datetime.now(dt.timezone.utc)
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped
-                    logger.info(f"Program {self.id} cancelled")
+                    logger.info(f"Nova Program: {self.id} cancelled")
                     try:
                         with anyio.CancelScope(shield=True):
                             await robot_cell.stop()
                     except Exception as e:
-                        logger.error(f"Error while stopping robot cell: {e!r}")
+                        logger.error(f"Nova Program: Error while stopping robot cell: {e!r}")
                         raise
 
                     self._program_run.state = ProgramRunState.STOPPED
@@ -385,18 +358,18 @@ class ProgramRunner(ABC):
                 else:
                     if self.stopped:
                         # Program was stopped
-                        logger.info(f"Program {self.id} stopped successfully")
+                        logger.info(f"Nova Program: {self.id} stopped successfully")
                         self._program_run.state = ProgramRunState.STOPPED
                     elif self._program_run.state is ProgramRunState.RUNNING:
                         # Program was completed
                         self._program_run.state = ProgramRunState.COMPLETED
-                        logger.info(f"Program {self.id} completed successfully")
+                        logger.info(f"Nova Program: {self.id} completed successfully")
                 finally:
                     # write path to output
                     self._program_run.execution_results = execution_context.motion_group_recordings
                     self._program_run.result = execution_context.result
 
-                    logger.info(f"Program {self.id} finished. Run teardown routine...")
+                    logger.info(f"Nova Program: {self.id} finished. Run teardown routine...")
                     self._program_run.end_time = dt.datetime.now(dt.timezone.utc)
 
                     if (
@@ -410,9 +383,9 @@ class ProgramRunner(ABC):
                                 cell = nova.cell()
                                 for controller_id in self._created_controllers:
                                     await cell.delete_robot_controller(controller_id)
-                                    logger.info(f"Cleaned up controller with ID {controller_id}")
+                                    logger.info(f"Nova Program: Cleaned up controller with ID {controller_id}")
                         except Exception as e:
-                            logger.error(f"Error during controller cleanup: {e}")
+                            logger.error(f"Nova Program: Error during controller cleanup: {e}")
 
                     logger.remove(sink_id)
                     self._program_run.logs = log_capture.getvalue()

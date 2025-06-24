@@ -12,21 +12,29 @@ import asyncio
 
 from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngleTypes, Vector3d
 
-from nova import Nova
-from nova.api import models
+import nova
+from nova import Nova, api
+from nova.program import ProgramPreconditions
 from nova.cell import virtual_controller
 
 
+@nova.program(
+    name="01 Basic Program",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
+        ],
+        cleanup_controllers=True,
+    ),
+)
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.ensure_controller(
-            robot_controller=virtual_controller(
-                name="ur",
-                manufacturer=models.Manufacturer.UNIVERSALROBOTS,
-                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            )
-        )
+        controller = await cell.controller("ur")
 
         async with controller[0] as motion_group:
             test_tcp = RobotTcp(
@@ -55,8 +63,6 @@ async def main():
             # Current TCP pose
             tcp_pose = await motion_group.tcp_pose(tcp)
             print(tcp_pose)
-
-        await cell.delete_robot_controller(controller.controller_id)
 
 
 if __name__ == "__main__":

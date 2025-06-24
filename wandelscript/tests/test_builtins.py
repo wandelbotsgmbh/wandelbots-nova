@@ -4,7 +4,7 @@ import pytest
 
 import wandelscript
 from nova.cell.robot_cell import AbstractController, RobotCellKeyError
-from nova.runtime.runner import ProgramRunState
+from nova.program.runner import ProgramRunState
 from wandelscript.simulation import SimulatedRobotCell
 
 

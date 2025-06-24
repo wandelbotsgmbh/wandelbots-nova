@@ -1,7 +1,7 @@
 import pytest
 
-from nova.runtime.exceptions import NotPlannableError
-from nova.runtime.runner import Program, ProgramRunner, ProgramRunState, ProgramType
+from nova.program.exceptions import NotPlannableError
+from nova.program.runner import Program, ProgramRunner, ProgramRunState, ProgramType
 
 
 class TestProgramRunner(ProgramRunner):

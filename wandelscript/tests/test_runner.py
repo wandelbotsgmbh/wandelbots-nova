@@ -10,7 +10,7 @@ import pytest
 from icecream import ic
 
 from nova.cell.robot_cell import RobotCell
-from nova.runtime.runner import Program, ProgramRun, ProgramRunState, ProgramType
+from nova.program.runner import Program, ProgramRun, ProgramRunState, ProgramType
 from wandelscript import ProgramRunner, run
 from wandelscript.exception import NameError_, ProgramSyntaxError
 from wandelscript.ffi import ForeignFunction

@@ -1,7 +1,7 @@
 import asyncio
 import pathlib
 
-from nova.runtime import uv_runner
+from nova.program import uv_runner
 
 
 async def main():

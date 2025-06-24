@@ -1,7 +1,7 @@
 import pytest
 from pydantic import BaseModel, Field
 
-from nova.runtime.function import Function, wrap
+from nova.program.function import Function, wrap
 
 
 class TestInput(BaseModel):
