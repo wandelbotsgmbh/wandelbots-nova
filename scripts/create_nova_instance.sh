@@ -29,7 +29,7 @@ fi
 echo "Access-token acquired."
 
 # --- 3) CREATE SANDBOX INSTANCE -----------------------------------------------
-SANDBOX_NAME="svcmgr-${GITHUB_RUN_ID:-local-run}"
+SANDBOX_NAME="svcmgr-${GITHUB_RUN_ID:-local-run}-$(date +%Y%m%d-%H%M%S)"
 echo "Creating instance: ${SANDBOX_NAME}"
 
 # See: https://api.portal.wandelbots.io/v1/ui/#/operations/createInstance for API documentation
