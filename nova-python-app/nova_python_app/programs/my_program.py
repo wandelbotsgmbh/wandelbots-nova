@@ -1,25 +1,26 @@
-from nova_app_template import program, BaseProgramModel, parse_model_from_args
-from nova import Nova
 import asyncio
+
 from loguru import logger
+from nova_python_app.programs.common_code import open_laser
+
 from nova import Nova
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
 from nova.cell import virtual_controller
 from nova.types import MotionSettings, Pose
+from novax import BaseProgramModel, parse_model_from_args, program
 
-from nova_python_app.programs.common_code import open_laser
 
 class ProgramModel(BaseProgramModel):
     start_pose: list[float]
     end_pose: list[float]
     ...
 
+
 @program(name="robot_movement_template", model=ProgramModel)
 async def main(model: ProgramModel):
     logger.info("program started")
     async with Nova(host="http://172.31.10.237") as nova:
-
         open_laser()
         cell = nova.cell()
         controller = await cell.ensure_controller(
