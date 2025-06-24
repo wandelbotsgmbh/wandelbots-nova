@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.18.4 (2025-06-24)
+
+### Bug Fixes
+
+- More unique sandbox name when creating an instance
+  ([#206](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/206),
+  [`e3c1399`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e3c139978b2a154df29b5efd48f171384cd6299b))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.18.3 (2025-06-23)
 
 ### Bug Fixes
