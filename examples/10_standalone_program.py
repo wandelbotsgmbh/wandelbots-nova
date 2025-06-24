@@ -17,22 +17,24 @@ import nova
 from nova import Nova, api
 from nova.actions import cartesian_ptp, joint_ptp, linear
 from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 
 
 @nova.program(
-    controllers=[
-        virtual_controller(
-            name="controller",
-            manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-            type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-        )
-    ],
-    cleanup_controllers=True,
+    name="Standalone Program",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="controller",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
+        ],
+        cleanup_controllers=True,
+    ),
 )
-async def main(
-    number_of_picks: int = Field(gt=0, description="Number of picks to perform"),
-):
+async def main(number_of_picks: int = Field(gt=0, description="Number of picks to perform")):
     """
     Pick and place program for a UR10e robot.
     """

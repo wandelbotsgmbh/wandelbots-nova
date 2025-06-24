@@ -14,8 +14,8 @@ from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngle
 
 import nova
 from nova import Nova, api
-from nova.program import ProgramPreconditions
 from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
 
 
 @nova.program(

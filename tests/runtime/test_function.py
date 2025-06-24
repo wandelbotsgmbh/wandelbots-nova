@@ -1,7 +1,7 @@
 import pytest
 from pydantic import BaseModel, Field
 
-from nova.program.function import Function, wrap
+from nova.program.function import Function, ProgramPreconditions, program
 
 
 class TestInput(BaseModel):
@@ -14,7 +14,9 @@ class TestOutput(BaseModel):
 
 
 def test_function_wrapping():
-    @wrap
+    @program(
+        name="greet", preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False)
+    )
     def greet(
         name: str = Field(..., description="Name of the person"),
         age: int = Field(..., description="Age of the person"),
@@ -61,7 +63,9 @@ def test_function_validation():
 
 
 def test_function_calling():
-    @wrap
+    @program(
+        name="add", preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False)
+    )
     def add(a: int, b: int) -> int:
         return a + b
 
@@ -78,7 +82,10 @@ def test_function_with_complex_types():
         name: str = Field(..., description="Name of the person")
         address: Address = Field(..., description="Address of the person")
 
-    @wrap
+    @program(
+        name="process_person",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+    )
     def process_person(person: Person) -> str:
         """Process a person's information.
 
@@ -96,7 +103,10 @@ def test_function_with_complex_types():
 
 
 def test_function_schema_generation():
-    @wrap
+    @program(
+        name="calculate_area",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+    )
     def calculate_area(length: float, width: float) -> float:
         """Calculate the area of a rectangle.
 
@@ -120,7 +130,10 @@ def test_function_schema_generation():
 
 
 def test_function_argument_parser():
-    @wrap
+    @program(
+        name="process_data",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+    )
     def process_data(name: str, count: int = 0) -> str:
         """Process some data.
 
@@ -140,7 +153,10 @@ def test_function_argument_parser():
 
 
 def test_function_with_optional_parameters():
-    @wrap
+    @program(
+        name="greet_optional",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+    )
     def greet_optional(name: str, title: str | None = None) -> str:
         """Greet someone with an optional title.
 
@@ -167,7 +183,7 @@ def test_function_with_json_complex_types():
         setting1: str
         setting2: int
 
-    @wrap
+    @program()
     def process_config(config: Config) -> str:
         """Process a configuration.
 
@@ -187,7 +203,10 @@ def test_function_with_json_complex_types():
 
 
 def test_function_repr():
-    @wrap
+    @program(
+        name="example_func",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+    )
     def example_func(x: int, y: str) -> float:
         """Example function.
 

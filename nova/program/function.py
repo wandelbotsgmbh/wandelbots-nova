@@ -84,7 +84,7 @@ class Function(BaseModel, Generic[Parameters, Return]):
 
     async def _create_controllers(self) -> list[str]:
         """Create controllers based on controller_configs and return their IDs."""
-        created_controllers = []
+        created_controllers: list[str] = []
         if not self.preconditions or not self.preconditions.controllers:
             return created_controllers
 
@@ -93,11 +93,12 @@ class Function(BaseModel, Generic[Parameters, Return]):
                 for controller_config in self.preconditions.controllers:
                     cell = nova.cell()
                     controller_name = controller_config.name or "unnamed_controller"
-                    controller = await cell.ensure_controller(
-                        robot_controller=controller_config
-                    )
+                    controller = await cell.ensure_controller(robot_controller=controller_config)
                     created_controllers.append(controller.controller_id)
-                    self._log("info", f"Created controller '{controller_name}' with ID {controller.controller_id}")
+                    self._log(
+                        "info",
+                        f"Created controller '{controller_name}' with ID {controller.controller_id}",
+                    )
             except Exception as e:
                 controller_name = controller_config.name or "unnamed_controller"
                 raise ControllerCreationFailed(controller_name, str(e))
@@ -106,7 +107,11 @@ class Function(BaseModel, Generic[Parameters, Return]):
 
     async def _cleanup_controllers(self, controller_ids: list[str]) -> None:
         """Clean up controllers by their IDs."""
-        if not self.preconditions or not self.preconditions.cleanup_controllers or not controller_ids:
+        if (
+            not self.preconditions
+            or not self.preconditions.cleanup_controllers
+            or not controller_ids
+        ):
             return
 
         try:
@@ -114,7 +119,7 @@ class Function(BaseModel, Generic[Parameters, Return]):
                 cell = nova.cell()
                 for controller_id in controller_ids:
                     await cell.delete_robot_controller(controller_id)
-                    self._log("info", f"Cleaned up controller with ID {controller_id}")
+                    self._log("info", f"Cleaned up controller with ID '{controller_id}'")
         except Exception as e:
             self._log("error", f"Error during controller cleanup: {e}")
 
@@ -270,10 +275,13 @@ def program(name: str | None = None, preconditions: ProgramPreconditions | None 
     Args:
         name: Name of the program
         preconditions: ProgramPreconditions containing controller configurations and cleanup settings
-        program_id: Unique identifier for the program (used in logging)
     """
 
     def decorator(function: Callable[Parameters, Return]) -> Function[Parameters, Return]:
+        # Validate that the function is async
+        if not asyncio.iscoroutinefunction(function):
+            raise TypeError(f"Program function '{function.__name__}' must be async")
+
         func_obj = Function.validate(function)
         if name:
             func_obj.name = name
@@ -290,35 +298,13 @@ def program(name: str | None = None, preconditions: ProgramPreconditions | None 
                 created_controllers = await func_obj._create_controllers()
 
                 # Execute the wrapped function
-                if asyncio.iscoroutinefunction(original_wrapped):
-                    result = await original_wrapped(*args, **kwargs)
-                else:
-                    result = original_wrapped(*args, **kwargs)
+                result = await original_wrapped(*args, **kwargs)
                 return result
             finally:
                 # Clean up controllers after execution
                 await func_obj._cleanup_controllers(created_controllers)
 
-        def sync_wrapper(*args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:
-            """Sync wrapper that handles both sync and async function calls."""
-            import asyncio
-
-            # Check if we're already in an async context
-            try:
-                loop = asyncio.get_running_loop()
-                # We're in an async context, return a coroutine
-                return async_wrapper(*args, **kwargs)
-            except RuntimeError:
-                # We're in a sync context, run the async wrapper
-                return asyncio.run(async_wrapper(*args, **kwargs))
-
-        # Replace the wrapped function with our wrapper
-        func_obj._wrapped = sync_wrapper
-
+        func_obj._wrapped = async_wrapper
         return func_obj
 
     return decorator
-
-
-def wrap(function: Callable[Parameters, Return]) -> Function[Parameters, Return]:
-    return Function.validate(function)

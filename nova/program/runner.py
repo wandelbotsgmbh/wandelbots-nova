@@ -383,7 +383,9 @@ class ProgramRunner(ABC):
                                 cell = nova.cell()
                                 for controller_id in self._created_controllers:
                                     await cell.delete_robot_controller(controller_id)
-                                    logger.info(f"Nova Program: Cleaned up controller with ID {controller_id}")
+                                    logger.info(
+                                        f"Nova Program: Cleaned up controller with ID '{controller_id}'"
+                                    )
                         except Exception as e:
                             logger.error(f"Nova Program: Error during controller cleanup: {e}")
 
