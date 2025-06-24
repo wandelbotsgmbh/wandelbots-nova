@@ -15,7 +15,7 @@ from nova import Nova, api
 from nova.actions import cartesian_ptp, io_write, joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
-from nova.types import MotionSettings, Pose
+from nova.types import Pose
 
 
 @nova.program(
