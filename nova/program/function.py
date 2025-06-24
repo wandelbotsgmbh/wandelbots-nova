@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from typing import (
     Annotated,
     Any,
+    Coroutine,
     Generic,
     ParamSpec,
     TypeVar,
@@ -35,7 +36,7 @@ class ProgramPreconditions(BaseModel):
 
 
 class Function(BaseModel, Generic[Parameters, Return]):
-    _wrapped: Callable[Parameters, Return] = PrivateAttr(  # type: ignore
+    _wrapped: Callable[Parameters, Any] = PrivateAttr(
         default_factory=lambda: lambda *args, **kwargs: None
     )
     name: str
@@ -62,8 +63,8 @@ class Function(BaseModel, Generic[Parameters, Return]):
         function._wrapped = validate_call(validate_return=True)(value)
         return function
 
-    def __call__(self, *args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:  # pylint: disable=no-member
-        return self._wrapped(*args, **kwargs)
+    async def __call__(self, *args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:  # pylint: disable=no-member
+        return await self._wrapped(*args, **kwargs)
 
     def _log(self, level: str, message: str) -> None:
         """Log a message with program prefix."""
@@ -277,7 +278,9 @@ def program(name: str | None = None, preconditions: ProgramPreconditions | None 
         preconditions: ProgramPreconditions containing controller configurations and cleanup settings
     """
 
-    def decorator(function: Callable[Parameters, Return]) -> Function[Parameters, Return]:
+    def decorator(
+        function: Callable[Parameters, Return],
+    ) -> Function[Parameters, Coroutine[Any, Any, Return]]:
         # Validate that the function is async
         if not asyncio.iscoroutinefunction(function):
             raise TypeError(f"Program function '{function.__name__}' must be async")
@@ -304,6 +307,7 @@ def program(name: str | None = None, preconditions: ProgramPreconditions | None 
                 # Clean up controllers after execution
                 await func_obj._cleanup_controllers(created_controllers)
 
+        # Update the wrapped function to our async wrapper
         func_obj._wrapped = async_wrapper
         return func_obj
 

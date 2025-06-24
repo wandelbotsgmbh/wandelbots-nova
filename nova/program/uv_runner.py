@@ -22,9 +22,7 @@ class UVProgramRunner(ProgramRunner):
         if not program.program_type.value == ProgramType.PYTHON.value:
             raise ValueError(f"Program type must be {ProgramType.PYTHON}")
 
-        super().__init__(
-            program=program, args=args, robot_cell_override=robot_cell_override, function_obj=None
-        )
+        super().__init__(program=program, args=args, robot_cell_override=robot_cell_override)
 
         self.project_dir = Path(tempfile.mkdtemp())
         self.program_file = self.project_dir / "program.py"
@@ -80,15 +78,6 @@ class UVProgramRunner(ProgramRunner):
                     elif isinstance(decorator, ast.Attribute) and decorator.attr == "program":
                         has_correct_decorator = True
                         break
-                    elif isinstance(decorator, ast.Call):
-                        if (
-                            isinstance(decorator.func, ast.Name) and decorator.func.id == "program"
-                        ) or (
-                            isinstance(decorator.func, ast.Attribute)
-                            and decorator.func.attr == "program"
-                        ):
-                            has_correct_decorator = True
-                            break
 
         if not main_func:
             raise ValueError("Program must have an async main function")
