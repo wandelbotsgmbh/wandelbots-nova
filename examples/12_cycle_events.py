@@ -1,9 +1,11 @@
 import asyncio
 
+import nova
 from nova import Nova
 from nova.events import Cycle
 
 
+@nova.program()
 async def main():
     async with Nova() as nova:
         cell = nova.cell()

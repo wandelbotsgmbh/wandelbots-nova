@@ -25,18 +25,21 @@ from nova.types import Pose
 
 @nova.program(
     name="11 Serialize Program",
-    preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
-)
-async def main():
-    async with Nova() as nova:
-        cell = nova.cell()
-        controller = await cell.ensure_controller(
-            robot_controller=virtual_controller(
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
                 name="ur10",
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
                 type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             )
-        )
+        ],
+        cleanup_controllers=True,
+    ),
+)
+async def main():
+    async with Nova() as nova:
+        cell = nova.cell()
+        controller = await cell.controller("ur10")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
@@ -82,8 +85,6 @@ async def main():
 
         # Execute with the loaded objects
         await motion_group.execute(loaded_joint_trajectory, loaded_tcp, actions=loaded_actions)
-
-        await cell.delete_robot_controller(controller.controller_id)
 
 
 if __name__ == "__main__":

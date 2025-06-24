@@ -11,10 +11,12 @@ Prerequisites:
 import asyncio
 from math import pi
 
+import nova
 from nova import MotionGroup, Nova
 from nova.actions import cartesian_ptp
 from nova.api import models
 from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
 from nova.types import Pose
 
 
@@ -32,23 +34,29 @@ async def move_robot(motion_group: MotionGroup, tcp: str):
     await motion_group.plan_and_execute(actions, tcp=tcp)  # type: ignore
 
 
-async def main():
-    async with Nova() as nova:
-        cell = nova.cell()
-        ur10 = await cell.ensure_controller(
-            robot_controller=virtual_controller(
+@nova.program(
+    name="05 Selection Motion Group Activation",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
                 name="ur10",
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
                 type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            )
-        )
-        ur5 = await cell.ensure_controller(
-            robot_controller=virtual_controller(
+            ),
+            virtual_controller(
                 name="ur5",
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
                 type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
-            )
-        )
+            ),
+        ],
+        cleanup_controllers=True,
+    ),
+)
+async def main():
+    async with Nova() as nova:
+        cell = nova.cell()
+        ur10 = await cell.controller("ur10")
+        ur5 = await cell.controller("ur5")
         tcp = "Flange"
 
         flange_state = await ur10[0].get_state(tcp)
@@ -75,9 +83,6 @@ async def main():
         mg_1 = ur5.motion_group("0@ur5")
         async with mg_0, mg_1:
             await asyncio.gather(move_robot(mg_0, tcp), move_robot(mg_1, tcp))
-
-        await cell.delete_robot_controller(ur5.controller_id)
-        await cell.delete_robot_controller(ur10.controller_id)
 
 
 if __name__ == "__main__":
