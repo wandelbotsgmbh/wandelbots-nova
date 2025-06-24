@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.19.0 (2025-06-24)
+
+### Features
+
+- **CI**: Increased cell creation timeout for integration test
+  ([#199](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/199),
+  [`c893418`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c893418a8d2e83c8c3b808472d5e3d7da8a2d3e3))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.18.4 (2025-06-24)
 
 ### Bug Fixes
