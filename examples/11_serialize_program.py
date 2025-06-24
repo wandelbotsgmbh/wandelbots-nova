@@ -13,14 +13,20 @@ import json
 
 from wandelbots_api_client.models.joint_trajectory import JointTrajectory
 
+import nova
 from nova import Nova
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.actions.base import Action
 from nova.api import models
 from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
 from nova.types import Pose
 
 
+@nova.program(
+    name="11 Serialize Program",
+    preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+)
 async def main():
     async with Nova() as nova:
         cell = nova.cell()

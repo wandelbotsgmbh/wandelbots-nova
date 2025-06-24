@@ -10,23 +10,31 @@ Prerequisites:
 
 import asyncio
 
-from nova import Nova
-from nova.actions import cartesian_ptp, joint_ptp
-from nova.api import models
+import nova
+from nova import Nova, api
+from nova.actions import cartesian_ptp, io_write, joint_ptp
 from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 
 
+@nova.program(
+    name="02 Plan and Execute",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
+        ],
+        cleanup_controllers=True,
+    ),
+)
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.ensure_controller(
-            robot_controller=virtual_controller(
-                name="ur",
-                manufacturer=models.Manufacturer.UNIVERSALROBOTS,
-                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            )
-        )
+        controller = await cell.controller("ur")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
@@ -42,24 +50,25 @@ async def main():
                 joint_ptp(home_joints),
                 cartesian_ptp(target_pose),
                 joint_ptp(home_joints),
-                cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
+                cartesian_ptp(target_pose @ Pose((50, 0, 0, 0, 0, 0))),
                 joint_ptp(home_joints),
-                cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
+                io_write(key="tool_out[0]", value=False),
+                cartesian_ptp(target_pose @ Pose((50, 100, 0, 0, 0, 0))),
                 joint_ptp(home_joints),
                 cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
                 joint_ptp(home_joints),
             ]
-
-        # you can update the settings of the action
-        for action in actions:
-            action.settings = MotionSettings(tcp_velocity_limit=200)
 
         joint_trajectory = await motion_group.plan(actions, tcp)
         motion_iter = motion_group.stream_execute(joint_trajectory, tcp, actions=actions)
         async for motion_state in motion_iter:
             print(motion_state)
 
-        await cell.delete_robot_controller(controller.controller_id)
+        io_value = await controller.read("tool_out[0]")
+        print(io_value)
+        await controller.write("tool_out[0]", True)
+        written_io_value = await controller.read("tool_out[0]")
+        print(written_io_value)
 
 
 if __name__ == "__main__":

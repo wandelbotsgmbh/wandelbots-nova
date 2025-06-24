@@ -62,8 +62,6 @@ jobs:
             run_cmd: "python examples/01_basic.py"
           - id: 02_plan_and_execute
             run_cmd: "python examples/02_plan_and_execute.py"
-          - id: 03_move_and_set_ios
-            run_cmd: "python examples/03_move_and_set_ios.py"
           - id: 04_move_multiple_robots
             run_cmd: "python examples/04_move_multiple_robots.py"
           - id: 05_selection_motion_group_activation

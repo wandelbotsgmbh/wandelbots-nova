@@ -22,7 +22,7 @@ from nova.types import MotionSettings, Pose
 
 
 @nova.program(
-    name="Standalone Program",
+    name="10 Standalone Program",
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
