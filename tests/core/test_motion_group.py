@@ -228,12 +228,10 @@ async def test_ensure_virtual_tcp_creates_new_tcp(mock_motion_group):
     tcp = RobotTcp(
         id="test_tcp",
         position=Vector3d(x=0, y=0, z=150),
-        rotation=RotationAngles(
-            angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-        ),
+        rotation=RotationAngles(angles=[0, 0, 0], type=RotationAngleTypes.ROTATION_VECTOR),
     )
 
-    mock_motion_group.tcps = AsyncMock(return_value=[])
+    mock_motion_group.tcps = AsyncMock(side_effect=[[], [tcp]])
 
     result = await mock_motion_group.ensure_virtual_tcp(tcp)
 
@@ -249,17 +247,13 @@ async def test_ensure_virtual_tcp_returns_existing_identical_tcp(mock_motion_gro
     tcp = RobotTcp(
         id="test_tcp",
         position=Vector3d(x=0, y=0, z=150),
-        rotation=RotationAngles(
-            angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-        ),
+        rotation=RotationAngles(angles=[0, 0, 0], type=RotationAngleTypes.ROTATION_VECTOR),
     )
 
     existing_tcp = RobotTcp(
         id="test_tcp",
         position=Vector3d(x=0, y=0, z=150),
-        rotation=RotationAngles(
-            angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-        ),
+        rotation=RotationAngles(angles=[0, 0, 0], type=RotationAngleTypes.ROTATION_VECTOR),
     )
 
     mock_motion_group.tcps = AsyncMock(return_value=[existing_tcp])
@@ -284,9 +278,7 @@ async def test_ensure_virtual_tcp_updates_different_tcp(mock_motion_group):
     existing_tcp = RobotTcp(
         id="test_tcp",
         position=Vector3d(x=10, y=0, z=150),
-        rotation=RotationAngles(
-            angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-        ),
+        rotation=RotationAngles(angles=[0, 0, 0], type=RotationAngleTypes.ROTATION_VECTOR),
     )
 
     mock_motion_group.tcps = AsyncMock(return_value=[existing_tcp])
@@ -319,7 +311,7 @@ async def test_ensure_virtual_tcp_different_rotation_types(mock_motion_group, ro
         rotation=RotationAngles(angles=angles, type=rotation_type),
     )
 
-    mock_motion_group.tcps = AsyncMock(return_value=[])
+    mock_motion_group.tcps = AsyncMock(side_effect=[[], [tcp]])
 
     result = await mock_motion_group.ensure_virtual_tcp(tcp)
 

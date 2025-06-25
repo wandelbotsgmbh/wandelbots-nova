@@ -541,12 +541,13 @@ class MotionGroup(AbstractRobot):
         )
 
         # TODO: this is a workaround to wait for the TCP to be created
-        while timeout > 0:
+        t = timeout
+        while t > 0:
             existing_tcps = await self.tcps()
             tcp_names = [tcp_.id for tcp_ in existing_tcps]
             if tcp.id in tcp_names:
                 return tcp
             await asyncio.sleep(1)
-            timeout -= 1
+            t -= 1
 
-        raise TimeoutError(f"Failed to create TCP {tcp.id} within {timeout} seconds")
+        raise TimeoutError(f"Failed to create TCP '{tcp.id}' within {timeout} seconds")
