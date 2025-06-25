@@ -1,13 +1,11 @@
 import asyncio
 
-from nova_python_app.programs.common_code import open_laser
-
-from nova import Nova
+from nova import Nova, program
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.api import models
 from nova.cell import virtual_controller
 from nova.types import MotionSettings, Pose
-from novax import BaseProgramModel, parse_model_from_args, program
+from novax import BaseProgramModel, parse_model_from_args
 
 
 class ProgramModel(BaseProgramModel):
@@ -15,10 +13,9 @@ class ProgramModel(BaseProgramModel):
     end_pose: list[float]
 
 
-@program(name="robot_movement_template_2", model=ProgramModel)
-async def main(model: ProgramModel):
+@program
+async def my_program_2(model: ProgramModel):
     async with Nova(host="http://172.31.12.193") as nova:
-        open_laser()
         cell = nova.cell()
         controller = await cell.ensure_controller(
             robot_controller=virtual_controller(
@@ -62,4 +59,4 @@ async def main(model: ProgramModel):
 
 if __name__ == "__main__":
     model = parse_model_from_args(ProgramModel)
-    asyncio.run(main(model))
+    asyncio.run(my_program_2(model))

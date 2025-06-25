@@ -5,15 +5,13 @@ description = ""
 requires-python = "~=3.12"
 readme = "README.md"
 dependencies = [
-    "fastapi>=0.111.0,<0.112",
     "loguru>=0.7.2,<0.8",
-    "wandelbots-nova @ file:///Users/mahsumdemir/projects/wandelbots-nova",
     "python-decouple~=3.8",
     "requests>=2.32.3,<3",
-    "uvicorn[standard]>=0.20.0,<0.21.0", # Added uvicorn for serving FastAPI
+    "uvicorn[standard]>=0.20.0", # Added uvicorn for serving FastAPI
     "ipython>=9.3.0",
     "dependency-injector>=4.42.0,<5.0.0",
-    "import-my-library"
+    "wandelbots-nova[novax]",
 ]
 
 [dependency-groups]
@@ -24,6 +22,9 @@ dev = [
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+wandelbots-nova = { path = ".." }
 
 [build-system]
 requires = ["hatchling"]

@@ -6,13 +6,12 @@ Service for executing programs using different processors.
 
 from typing import Any
 
-from ..decorators import REGISTERED_PROGRAM_TEMPLATES
+from novax.processors.interface import ProgramRunProcessorInterface
 from ..interfaces import (
     ProgramExecutionServiceInterface,
-    ProgramInstanceStoreInterface,
-    ProgramRunProcessorInterface,
     ProgramRunStoreInterface,
     ProgramTemplateStoreInterface,
+    ProgramInstanceStoreInterface
 )
 
 
@@ -63,17 +62,16 @@ class ProgramExecutionService(ProgramExecutionServiceInterface):
             template_name = instance_data.get("template_name")
             template_data = self.template_store.get(template_name) if template_name else {}
 
-            # Get the program template from registered templates
+            # Get the program template from the template store
             program_template = None
-            for template in REGISTERED_PROGRAM_TEMPLATES.values():
+            templates = self.template_store.list()
+            for template in templates:
                 if template.name == template_name:
                     program_template = template
                     break
 
             if not program_template:
-                raise ValueError(
-                    f"Program template '{template_name}' not found in registered templates"
-                )
+                raise ValueError(f"Program template '{template_name}' not found in template store")
 
             # Create model instance with combined data
             combined_data = {**instance_data.get("data", {}), **parameters}

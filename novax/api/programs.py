@@ -5,11 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from novax.container import NovaContainer
-from novax.decorators import REGISTERED_PROGRAM_TEMPLATES
 from novax.interfaces import (
     DatabaseConnectionInterface,
     ProgramAPIServiceInterface,
     ProgramInstanceStoreInterface,
+    ProgramTemplateStoreInterface,
 )
 from novax.store.models import ProgramInstance
 
@@ -57,21 +57,33 @@ router = APIRouter()
 # API Endpoints
 @router.get("/program-templates", response_model=ProgramTemplateListResponse)
 @inject
-async def get_program_templates():
+async def get_program_templates(
+    template_store: ProgramTemplateStoreInterface = Depends(
+        Provide[NovaContainer.stores.program_template_store]
+    ),
+):
     """Get list of all available program template names"""
-    return ProgramTemplateListResponse(program_templates=list(REGISTERED_PROGRAM_TEMPLATES.keys()))
+    templates = template_store.get_all()
+    template_names = [template["name"] for template in templates]
+    return ProgramTemplateListResponse(program_templates=template_names)
 
 
 @router.get("/program-templates/{template_name}", response_model=ProgramTemplateDetailResponse)
 @inject
-async def get_program_template_detail(template_name: str):
+async def get_program_template_detail(
+    template_name: str,
+    template_store: ProgramTemplateStoreInterface = Depends(
+        Provide[NovaContainer.stores.program_template_store]
+    ),
+):
     """Get detailed information about a specific program template"""
-    if template_name not in REGISTERED_PROGRAM_TEMPLATES:
+    template = template_store.get(template_name)
+    if not template:
         raise HTTPException(status_code=404, detail=f"Program template '{template_name}' not found")
 
-    template = REGISTERED_PROGRAM_TEMPLATES[template_name]
-
-    return ProgramTemplateDetailResponse(name=template_name, model_schema=template.schema)
+    return ProgramTemplateDetailResponse(
+        name=template_name, model_schema=template.get("schema", {})
+    )
 
 
 @router.get("/programs", response_model=ProgramListResponse)
@@ -118,9 +130,13 @@ async def create_program(
     instance_store: ProgramInstanceStoreInterface = Depends(
         Provide[NovaContainer.stores.program_instance_store]
     ),
+    template_store: ProgramTemplateStoreInterface = Depends(
+        Provide[NovaContainer.stores.program_template_store]
+    ),
 ):
     """Create a new program instance with data based on a template"""
-    if request.template_name not in REGISTERED_PROGRAM_TEMPLATES:
+    template_data = template_store.get(request.template_name)
+    if not template_data:
         raise HTTPException(
             status_code=404, detail=f"Program template '{request.template_name}' not found"
         )
@@ -132,7 +148,18 @@ async def create_program(
             status_code=409, detail=f"Program instance '{program_name}' already exists"
         )
 
-    template = REGISTERED_PROGRAM_TEMPLATES[request.template_name]
+    # Get the actual template object from the store
+    templates = template_store.get_all()
+    template = None
+    for t in templates:
+        if t["name"] == request.template_name:
+            template = t
+            break
+
+    if not template:
+        raise HTTPException(
+            status_code=404, detail=f"Template object for '{request.template_name}' not found"
+        )
 
     try:
         request.data["name"] = program_name
@@ -178,6 +205,9 @@ async def update_program(
     program_service: ProgramAPIServiceInterface = Depends(
         Provide[NovaContainer.services.program_service]
     ),
+    template_store: ProgramTemplateStoreInterface = Depends(
+        Provide[NovaContainer.stores.program_template_store]
+    ),
 ):
     """Update an existing program instance with new data"""
     # Check if program exists
@@ -186,12 +216,24 @@ async def update_program(
         raise HTTPException(status_code=404, detail=f"Program instance '{program_name}' not found")
 
     template_name = existing_instance["template_name"]
-    if template_name not in REGISTERED_PROGRAM_TEMPLATES:
+    template_data = template_store.get(template_name)
+    if not template_data:
         raise HTTPException(
-            status_code=500, detail=f"Template '{template_name}' not found in registered templates"
+            status_code=500, detail=f"Template '{template_name}' not found in template store"
         )
 
-    template = REGISTERED_PROGRAM_TEMPLATES[template_name]
+    # Get the actual template object from the store
+    templates = template_store.list()
+    template = None
+    for t in templates:
+        if t.name == template_name:
+            template = t
+            break
+
+    if not template:
+        raise HTTPException(
+            status_code=500, detail=f"Template object for '{template_name}' not found"
+        )
 
     try:
         data["name"] = program_name
@@ -264,9 +306,13 @@ async def get_programs_by_template(
     instance_store: ProgramInstanceStoreInterface = Depends(
         Provide[NovaContainer.stores.program_instance_store]
     ),
+    template_store: ProgramTemplateStoreInterface = Depends(
+        Provide[NovaContainer.stores.program_template_store]
+    ),
 ):
     """Get all program instances for a specific template"""
-    if template_name not in REGISTERED_PROGRAM_TEMPLATES:
+    template_data = template_store.get(template_name)
+    if not template_data:
         raise HTTPException(status_code=404, detail=f"Program template '{template_name}' not found")
 
     # Using the injected instance store
