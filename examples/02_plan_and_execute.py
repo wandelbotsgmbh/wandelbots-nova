@@ -64,6 +64,7 @@ async def main():
         async for motion_state in motion_iter:
             print(motion_state)
 
+        # Read and write IO values
         io_value = await controller.read("tool_out[0]")
         print(io_value)
         await controller.write("tool_out[0]", True)

@@ -62,13 +62,11 @@ jobs:
             run_cmd: "python examples/01_basic.py"
           - id: 02_plan_and_execute
             run_cmd: "python examples/02_plan_and_execute.py"
-          - id: 04_move_multiple_robots
+          - id: 03_move_multiple_robots
             run_cmd: "python examples/04_move_multiple_robots.py"
-          - id: 05_selection_motion_group_activation
+          - id: 04_selection_motion_group_activation
             run_cmd: "python examples/05_selection_motion_group_activation.py"
-          - id: 06_api_usage
-            run_cmd: "python examples/06_api_usage.py"
-          - id: 08_multi_step_movement_with_collision_free
+          - id: 05_multi_step_movement_with_collision_free
             run_cmd: "python examples/08_multi_step_movement_with_collision_free.py"
           - id: 14_welding_example
             run_cmd: "python nova_rerun_bridge/examples/14_welding_example.py"

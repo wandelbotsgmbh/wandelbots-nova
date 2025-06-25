@@ -23,7 +23,7 @@ from nova.program import ProgramPreconditions
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name="ur",
+                name="ur10e",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
                 type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             )
@@ -34,18 +34,18 @@ from nova.program import ProgramPreconditions
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.controller("ur")
+        controller = await cell.controller("ur10e")
 
         async with controller[0] as motion_group:
-            test_tcp = RobotTcp(
-                id="test_gripper",
-                position=Vector3d(x=0, y=0, z=150),
-                rotation=RotationAngles(
-                    angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-                ),
+            await motion_group.ensure_virtual_tcp(
+                tcp=RobotTcp(
+                    id="test_gripper",
+                    position=Vector3d(x=0, y=0, z=150),
+                    rotation=RotationAngles(
+                        angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
+                    ),
+                )
             )
-
-            await motion_group.ensure_virtual_tcp(tcp=test_tcp)
 
             tcp_names = await motion_group.tcp_names()
             print(tcp_names)

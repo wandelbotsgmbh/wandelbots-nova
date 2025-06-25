@@ -90,9 +90,9 @@ class Function(BaseModel, Generic[Parameters, Return]):
             return created_controllers
 
         async with Nova() as nova:
+            cell = nova.cell()
             try:
                 for controller_config in self.preconditions.controllers:
-                    cell = nova.cell()
                     controller_name = controller_config.name or "unnamed_controller"
                     controller = await cell.ensure_controller(robot_controller=controller_config)
                     created_controllers.append(controller.controller_id)
