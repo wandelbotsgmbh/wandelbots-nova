@@ -66,6 +66,11 @@ benchmark = [
     "trimesh>=4.5.3",
     "pyyaml>5.3",
 ]
+novax = [
+    "uvicorn[standard]>=0.20.0,<0.21.0",
+    "dependency-injector>=4.42.0,<5.0.0",
+    "fastapi>=0.115.13",
+]
 
 [project.scripts]
 download-models = "nova_rerun_bridge.helper_scripts.download_models:update_robot_models"
@@ -75,12 +80,14 @@ include = [
     "nova",
     "nova_rerun_bridge",
     "wandelscript",
+    "novax",
 ]
 
 [tool.hatch.build.targets.wheel]
 include = [
     "nova",
     "nova_rerun_bridge",
+    "novax",
     "wandelscript",
 ]
 

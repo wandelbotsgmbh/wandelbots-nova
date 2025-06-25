@@ -1,0 +1,27 @@
+# General
+.DS_Store
+.git
+.gitignore
+.dockerignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Project-specific
+README.md
+docs/
+tests/
+*.yml
+Dockerfile
+*.dockerfile
+*.env
+.idea/
+.vscode/
+*.log

@@ -15,12 +15,13 @@
       }
     },
     {
-      "name": "Python: Current File",
+      "name": "NOVA PYTHON APP",
       "type": "debugpy",
       "request": "launch",
-      "program": "${file}",
+      "module": "nova_python_app",
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.env",
+      "cwd": "${workspaceFolder}/nova-python-app",
       "env": {
         "PYTHONPATH": "${workspaceFolder}"
       }
