@@ -119,18 +119,22 @@ class Jogger:
         self.context = context
         return self.cntrl
 
-    def forward(self):
+    def jog_tcp(
+        self,
+        translation: list[float] | None = None,
+        rotation: list[float] | None = None,
+        use_tool_coordinate_system: bool = False,
+    ):
         self._command_queue.put_nowait(
-            wb.models.StartMovementRequest(
-                direction=wb.models.Direction.DIRECTION_FORWARD,
-                # set_ios=self.context.combined_actions.to_set_io(),  # somehow gets called before self.context is set
-                start_on_io=None,
-                pause_on_io=None,
+            wb.models.TcpVelocityRequest(
+                translation=translation,
+                rotation=rotation,
+                use_tool_coordinate_system=use_tool_coordinate_system,
             )
         )
 
     def pause(self):
-        self._command_queue.put_nowait(wb.models.PauseMovementRequest())
+        self._command_queue.put_nowait(wb.models.PauseJoggingRequest())
 
     async def cntrl(
         self, response_stream: ExecuteTrajectoryResponseStream
