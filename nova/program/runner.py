@@ -21,8 +21,8 @@ from pydantic import BaseModel, Field
 from nova import Nova, api
 from nova.cell.robot_cell import RobotCell
 from nova.core.exceptions import PlanTrajectoryFailed
-from nova.runtime.exceptions import NotPlannableError
-from nova.runtime.utils import Tee, stoppable_run
+from nova.program.exceptions import NotPlannableError
+from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
 
 current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
@@ -320,7 +320,6 @@ class ProgramRunner(ABC):
                 robot_cell=robot_cell, stop_event=stop_event
             )
             current_execution_context_var.set(execution_context)
-
             await on_state_change()
 
             monitoring_scope = anyio.CancelScope()
@@ -328,7 +327,7 @@ class ProgramRunner(ABC):
                 await tg.start(self._estop_handler, monitoring_scope)
 
                 try:
-                    logger.info(f"Run program {self.id}...")
+                    logger.info(f"Program {self.id} started")
                     self._program_run.state = ProgramRunState.RUNNING
                     self._program_run.start_time = dt.datetime.now(dt.timezone.utc)
                     await self._run(execution_context)
@@ -339,7 +338,7 @@ class ProgramRunner(ABC):
                         with anyio.CancelScope(shield=True):
                             await robot_cell.stop()
                     except Exception as e:
-                        logger.error(f"Error while stopping robot cell: {e!r}")
+                        logger.error(f"Program {self.id}: Error while stopping robot cell: {e!r}")
                         raise
 
                     self._program_run.state = ProgramRunState.STOPPED

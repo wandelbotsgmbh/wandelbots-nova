@@ -3,7 +3,7 @@ from nova.core.controller import Controller
 from nova.core.logging import logger
 from nova.core.motion_group import MotionGroup, combine_trajectories
 from nova.core.nova import Nova
-from nova.runtime.function import wrap as program
+from nova.program import program
 from nova.version import version
 
 __version__ = version

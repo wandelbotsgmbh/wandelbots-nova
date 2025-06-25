@@ -10,23 +10,32 @@ Prerequisites:
 
 import asyncio
 
+import nova
 from nova import Nova
 from nova.actions import cartesian_ptp, collision_free, io_write, joint_ptp
 from nova.api import models
 from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 
 
-async def main():
-    async with Nova() as nova:
-        cell = nova.cell()
-        controller = await cell.ensure_controller(
-            robot_controller=virtual_controller(
+@nova.program(
+    name="08 Multi-Step Movement with Collision Free",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
                 name="ur",
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
                 type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             )
-        )
+        ],
+        cleanup_controllers=True,
+    ),
+)
+async def main():
+    async with Nova() as nova:
+        cell = nova.cell()
+        controller = await cell.controller("ur")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
@@ -64,8 +73,6 @@ async def main():
 
         value = await controller.read("digital_out[0]")
         print(f"digital out: {value}")
-
-        await cell.delete_robot_controller(controller.controller_id)
 
 
 if __name__ == "__main__":

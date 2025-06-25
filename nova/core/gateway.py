@@ -430,55 +430,6 @@ class ApiGateway:
 
         raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")
 
-    async def add_virtual_robot_controller(
-        self,
-        cell: str,
-        name: str,
-        controller_type: wb.models.VirtualControllerTypes,
-        controller_manufacturer: wb.models.Manufacturer,
-        timeout: int = 25,
-        position: str | None = None,
-    ) -> wb.models.ControllerInstance:
-        """
-        Add a virtual robot controller to the cell and wait until it's ready.
-        Returns the resulting ControllerInstance.
-        Args:
-            cell: The cell to add the controller to.
-            name: The name of the controller.
-            controller_type: The type of the controller.
-            controller_manufacturer: The manufacturer of the controller.
-            timeout: The timeout for waiting for the controller to be ready.
-            position: The position of the controller in the cell.
-
-        Returns:
-            The resulting ControllerInstance.
-        """
-        if position is None:
-            position = "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]"  # fallback
-
-        robot_controller = wb.models.RobotController(
-            configuration=wb.models.RobotControllerConfiguration(
-                wb.models.VirtualController(
-                    manufacturer=controller_manufacturer, type=controller_type, position=position
-                )
-            ),
-            name=name,
-        )
-
-        # Step 1: Add the controller
-        await self.add_robot_controller(
-            cell=cell, robot_controller=robot_controller, timeout=timeout
-        )
-        # Step 2: Wait for it to become ready
-        await self.wait_for_controller_ready(cell=cell, name=name, timeout=timeout)
-
-        # Step 3: Retrieve the instance
-        controller_instance = await self.get_controller_instance(cell=cell, name=name)
-        if controller_instance is None:
-            raise ValueError(f"Controller not found after creation: {name}")
-
-        return controller_instance
-
     async def plan_trajectory(
         self, cell: str, motion_group_id: str, request: wb.models.PlanTrajectoryRequest
     ) -> wb.models.JointTrajectory:

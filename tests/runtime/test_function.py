@@ -1,7 +1,7 @@
 import pytest
 from pydantic import BaseModel, Field
 
-from nova.runtime.function import Function, wrap
+from nova.program.function import Function, ProgramPreconditions, program
 
 
 class TestInput(BaseModel):
@@ -13,9 +13,12 @@ class TestOutput(BaseModel):
     message: str = Field(..., description="Greeting message")
 
 
-def test_function_wrapping():
-    @wrap
-    def greet(
+@pytest.mark.asyncio
+async def test_function_wrapping():
+    @program(
+        name="greet", preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False)
+    )
+    async def greet(
         name: str = Field(..., description="Name of the person"),
         age: int = Field(..., description="Age of the person"),
     ) -> TestOutput:
@@ -55,21 +58,26 @@ def test_function_wrapping():
     assert isinstance(greet.output, type(BaseModel))
 
 
-def test_function_validation():
+@pytest.mark.asyncio
+async def test_function_validation():
     with pytest.raises(TypeError):
         Function.validate("not a function")
 
 
-def test_function_calling():
-    @wrap
-    def add(a: int, b: int) -> int:
+@pytest.mark.asyncio
+async def test_function_calling():
+    @program(
+        name="add", preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False)
+    )
+    async def add(a: int, b: int) -> int:
         return a + b
 
-    result = add(5, 3)
+    result = await add(5, 3)
     assert result == 8
 
 
-def test_function_with_complex_types():
+@pytest.mark.asyncio
+async def test_function_with_complex_types():
     class Address(BaseModel):
         street: str = Field(..., description="Street address")
         city: str = Field(..., description="City name")
@@ -78,8 +86,11 @@ def test_function_with_complex_types():
         name: str = Field(..., description="Name of the person")
         address: Address = Field(..., description="Address of the person")
 
-    @wrap
-    def process_person(person: Person) -> str:
+    @program(
+        name="process_person",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+    )
+    async def process_person(person: Person) -> str:
         """Process a person's information.
 
         Args:
@@ -91,13 +102,17 @@ def test_function_with_complex_types():
         return f"{person.name} lives in {person.address.city}"
 
     person = Person(name="John", address=Address(street="123 Main St", city="New York"))
-    result = process_person(person)
+    result = await process_person(person)
     assert "John lives in New York" in result
 
 
-def test_function_schema_generation():
-    @wrap
-    def calculate_area(length: float, width: float) -> float:
+@pytest.mark.asyncio
+async def test_function_schema_generation():
+    @program(
+        name="calculate_area",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+    )
+    async def calculate_area(length: float, width: float) -> float:
         """Calculate the area of a rectangle.
 
         Args:
@@ -119,9 +134,13 @@ def test_function_schema_generation():
     assert output_schema["type"] == "number"
 
 
-def test_function_argument_parser():
-    @wrap
-    def process_data(name: str, count: int = 0) -> str:
+@pytest.mark.asyncio
+async def test_function_argument_parser():
+    @program(
+        name="process_data",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+    )
+    async def process_data(name: str, count: int = 0) -> str:
         """Process some data.
 
         Args:
@@ -139,9 +158,13 @@ def test_function_argument_parser():
     assert args.count == 5
 
 
-def test_function_with_optional_parameters():
-    @wrap
-    def greet_optional(name: str, title: str | None = None) -> str:
+@pytest.mark.asyncio
+async def test_function_with_optional_parameters():
+    @program(
+        name="greet_optional",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+    )
+    async def greet_optional(name: str, title: str | None = None) -> str:
         """Greet someone with an optional title.
 
         Args:
@@ -155,20 +178,21 @@ def test_function_with_optional_parameters():
             return f"Hello {title} {name}!"
         return f"Hello {name}!"
 
-    result1 = greet_optional("John")
+    result1 = await greet_optional("John")
     assert result1 == "Hello John!"
 
-    result2 = greet_optional("John", "Dr.")
+    result2 = await greet_optional("John", "Dr.")
     assert result2 == "Hello Dr. John!"
 
 
-def test_function_with_json_complex_types():
+@pytest.mark.asyncio
+async def test_function_with_json_complex_types():
     class Config(BaseModel):
         setting1: str
         setting2: int
 
-    @wrap
-    def process_config(config: Config) -> str:
+    @program()
+    async def process_config(config: Config) -> str:
         """Process a configuration.
 
         Args:
@@ -186,9 +210,13 @@ def test_function_with_json_complex_types():
     assert args.config["setting2"] == 42
 
 
-def test_function_repr():
-    @wrap
-    def example_func(x: int, y: str) -> float:
+@pytest.mark.asyncio
+async def test_function_repr():
+    @program(
+        name="example_func",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+    )
+    async def example_func(x: int, y: str) -> float:
         """Example function.
 
         Args:

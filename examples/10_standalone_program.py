@@ -17,27 +17,30 @@ import nova
 from nova import Nova, api
 from nova.actions import cartesian_ptp, joint_ptp, linear
 from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 
 
-@nova.program
-async def main(
-    # TODO: ignore ctx in the signature
-    # ctx: nova.ExecutionContext,
-    number_of_picks: int = Field(gt=0, description="Number of picks to perform"),
-):
+@nova.program(
+    name="10 Standalone Program",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="controller",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
+        ],
+        cleanup_controllers=True,
+    ),
+)
+async def main(number_of_picks: int = Field(gt=0, description="Number of picks to perform")):
     """
     Pick and place program for a UR10e robot.
     """
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.ensure_controller(
-            robot_controller=virtual_controller(
-                name="controller",
-                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            )
-        )
+        controller = await cell.controller("controller")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:

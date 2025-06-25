@@ -3,11 +3,11 @@ from pathlib import Path
 from loguru import logger
 
 from nova.cell.robot_cell import RobotCell
-from nova.runtime import ProgramRunner as NovaProgramRunner
-from nova.runtime.runner import ExecutionContext as NovaExecutionContext
+from nova.program import ProgramRunner as NovaProgramRunner
+from nova.program.runner import ExecutionContext as NovaExecutionContext
 
 # TODO: this should come from the api package
-from nova.runtime.runner import Program, ProgramRun, ProgramType
+from nova.program.runner import Program, ProgramRun, ProgramType
 from wandelscript.datatypes import ElementType
 from wandelscript.ffi import ForeignFunction
 from wandelscript.metamodel import Program as WandelscriptProgram
