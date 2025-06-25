@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v1.20.0 (2025-06-25)
+
+### Features
+
+- **NDX-67**: Add declarative controller creation to @nova.program decorator
+  ([#195](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/195),
+  [`bc50be2`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bc50be246cabd01b0f00e1eaa936026b83dd2d2d))
+
+Co-authored-by: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+
+Co-authored-by: Christoph Biering <christoph.biering@gmail.com>
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.19.0 (2025-06-24)
 
 ### Features
