@@ -102,7 +102,7 @@ The SDK also includes an auto-generated API client for the NOVA API. You can acc
 from nova import api
 ```
 
-Checkout the [01_basic](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/01_basic.py) and [02_plan_and_execute](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/02_plan_and_execute.py) examples to learn how to use the library.
+Checkout the [basic](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/basic.py) and [plan_and_execute](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/plan_and_execute.py) examples to learn how to use the library.
 
 In [this](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) directory are more examples to explain the advanced usage of the SDK.
 If you want to utilize rerun as a visualizer you can find examples in the [nova_rerun_bride examples folder](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples).
@@ -197,7 +197,7 @@ async def move_robots():
         )
 ```
 
-See the [03_move_multiple_robots](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/03_move_multiple_robots.py) example for more details.
+See the [move_multiple_robots](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/move_multiple_robots.py) example for more details.
 
 ### Advanced Features
 
@@ -253,7 +253,7 @@ tcp_config = {
 }
 
 @nova.program(
-    name="03_add_tcp",
+    name="Add TCP",
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
