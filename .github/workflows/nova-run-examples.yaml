@@ -68,6 +68,8 @@ jobs:
             run_cmd: "python examples/04_selection_motion_group_activation.py"
           - id: 05_multi_step_movement_with_collision_free
             run_cmd: "python examples/05_multi_step_movement_with_collision_free.py"
+          - id: 07_run_wandelscript_file
+            run_cmd: "python examples/07_run_wandelscript_file.py"
           - id: 14_welding_example
             run_cmd: "python nova_rerun_bridge/examples/14_welding_example.py"
     steps:

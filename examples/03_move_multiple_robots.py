@@ -11,9 +11,8 @@ Prerequisites:
 import asyncio
 
 import nova
-from nova import Controller, Nova
+from nova import Controller, Nova, api
 from nova.actions import cartesian_ptp, joint_ptp
-from nova.api import models
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import Pose
@@ -38,13 +37,13 @@ async def move_robot(controller: Controller):
         controllers=[
             virtual_controller(
                 name="ur10",
-                manufacturer=models.Manufacturer.UNIVERSALROBOTS,
-                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             ),
             virtual_controller(
                 name="ur5",
-                manufacturer=models.Manufacturer.UNIVERSALROBOTS,
-                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
             ),
         ],
         cleanup_controllers=True,
