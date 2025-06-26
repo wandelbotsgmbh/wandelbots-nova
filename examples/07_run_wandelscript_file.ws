@@ -13,7 +13,7 @@ home = read(robot, "pose")
 sync
 
 # p = read(arguments, "pose_a")
-print(p)
+# print(p)
 
 # Set the velocity of the robot to 200 mm/s
 velocity(200)
