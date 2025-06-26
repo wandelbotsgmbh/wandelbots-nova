@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v1.21.0 (2025-06-26)
+
+### Features
+
+- Add json and position parameters to add_virtual_robot_controller
+  ([#178](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/178),
+  [`5249029`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5249029057e88986b5f3f1fcbdb8f42d324108df))
+
+
 ## v1.20.0 (2025-06-25)
 
 ### Features
