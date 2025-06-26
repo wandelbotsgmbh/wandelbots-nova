@@ -55,10 +55,16 @@ class Cell:
         controller_manufacturer: api.models.Manufacturer,
         timeout: int = DEFAULT_ADD_CONTROLLER_TIMEOUT,
         wait_for_ready_timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT,
+        json: str | None = None,
+        position: list[float] | str | None = None,
     ) -> Controller:
         return await self.ensure_controller(
             robot_controller=virtual_controller(
-                name=name, type=controller_type, manufacturer=controller_manufacturer
+                name=name,
+                type=controller_type,
+                manufacturer=controller_manufacturer,
+                json=json,
+                position=position,
             ),
             add_timeout=timeout,
             wait_for_ready_timeout=wait_for_ready_timeout,
