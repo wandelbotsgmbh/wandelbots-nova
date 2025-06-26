@@ -28,7 +28,7 @@ async def main():
         robot_cell = await cell.get_robot_cell()
 
         run = wandelscript.run_file(
-            Path(__file__).parent / "07_run_wandelscript_file.ws",
+            Path(__file__).parent / "run_wandelscript_file.ws",
             args={
                 "pose_a": Pose((0, 0, 400, 0, 3.14, 0)),
                 "a_dict": {"nested": 3},
