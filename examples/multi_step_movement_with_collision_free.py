@@ -20,7 +20,7 @@ from nova.types import MotionSettings, Pose
 
 
 @nova.program(
-    name="08 Multi-Step Movement with Collision Free",
+    name="Multi-Step Movement with Collision Free",
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(

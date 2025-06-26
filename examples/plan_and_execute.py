@@ -19,7 +19,7 @@ from nova.types import Pose
 
 
 @nova.program(
-    name="02 Plan and Execute",
+    name="Plan and Execute",
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(

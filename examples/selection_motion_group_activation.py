@@ -35,7 +35,7 @@ async def move_robot(motion_group: MotionGroup, tcp: str):
 
 
 @nova.program(
-    name="05 Selection Motion Group Activation",
+    name="Selection Motion Group Activation",
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(

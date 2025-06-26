@@ -32,7 +32,7 @@ async def move_robot(controller: Controller):
 
 
 @nova.program(
-    name="04 Move Multiple Robots",
+    name="Move Multiple Robots",
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(

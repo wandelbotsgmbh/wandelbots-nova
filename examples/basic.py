@@ -17,7 +17,7 @@ from nova.program import ProgramPreconditions
 
 
 @nova.program(
-    name="01 Basic Program",
+    name="Basic Program",
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(

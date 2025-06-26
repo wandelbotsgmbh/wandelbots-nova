@@ -24,7 +24,7 @@ from nova.types import Pose
 
 
 @nova.program(
-    name="11 Serialize Program",
+    name="Serialize Program",
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(

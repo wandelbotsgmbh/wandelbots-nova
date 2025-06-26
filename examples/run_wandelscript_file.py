@@ -10,7 +10,7 @@ from nova.types import Pose
 
 
 @nova.program(
-    name="08_run_wandelscript_file",
+    name="Run Wandelscript File",
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
