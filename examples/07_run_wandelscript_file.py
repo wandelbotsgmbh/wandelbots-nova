@@ -25,18 +25,8 @@ from nova.types import Pose
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.controller("ur")
-
-        async with controller[0] as motion_group:
-            tcp_names = await motion_group.tcp_names()
-            print(tcp_names)
-            tcp = tcp_names[0]
-
-            # Current motion group state
-            state = await motion_group.get_state(tcp)
-            print(state)
-
         robot_cell = await cell.get_robot_cell()
+
         run = wandelscript.run_file(
             Path(__file__).parent / "07_run_wandelscript_file.ws",
             args={
