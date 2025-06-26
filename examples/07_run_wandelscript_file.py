@@ -39,14 +39,14 @@ async def main():
         robot_cell = await cell.get_robot_cell()
         run = wandelscript.run_file(
             Path(__file__).parent / "01_basic.ws",
-            cell=robot_cell,
-            default_tcp=None,
-            default_robot=None,
-            run_args={
+            args={
                 "pose_a": Pose((0, 0, 400, 0, 3.14, 0)),
                 "a_dict": {"nested": 3},
                 "a_list": [1, 2, {"nested": 4}],
             },
+            default_tcp=None,
+            default_robot=None,
+            robot_cell_override=robot_cell,
         )
         print(run.program_run.execution_results)
 
