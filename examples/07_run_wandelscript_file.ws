@@ -12,7 +12,7 @@ robot = get_controller("ur")[0]
 home = read(robot, "pose")
 sync
 
-p = read(arguments, "pose_a")
+# p = read(arguments, "pose_a")
 print(p)
 
 # Set the velocity of the robot to 200 mm/s
