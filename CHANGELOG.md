@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.22.0 (2025-06-26)
+
+### Features
+
+- Added removed ws examples to integration tests
+  ([#207](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/207),
+  [`06dd8e2`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/06dd8e2f37469bd69b5ad1176e8edd5acfcaa568))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.21.0 (2025-06-26)
 
 ### Features
