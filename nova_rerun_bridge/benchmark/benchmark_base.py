@@ -12,8 +12,11 @@ from wandelbots_api_client.models import (
     Vector3d,
 )
 
+import nova
+from nova.cell import virtual_controller
 from nova.core.motion_group import MotionGroup
 from nova.core.nova import Nova
+from nova.program import ProgramPreconditions
 from nova.types import Pose
 from nova.types.vector3d import Vector3d as Vector3d_nova
 from nova_rerun_bridge import NovaRerunBridge
@@ -191,15 +194,20 @@ def print_progressive_statistics(
         print_separator()
 
 
-async def run_single_benchmark(strategy: BenchmarkStrategy):
-    async with Nova() as nova, NovaRerunBridge(nova, spawn=False) as bridge:
-        cell = nova.cell()
-
-        controller = await cell.ensure_virtual_robot_controller(
+@nova.program(
+    ProgramPreconditions(
+        virtual_controller(
             "ur10",
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
+    )
+)
+async def run_single_benchmark(strategy: BenchmarkStrategy):
+    async with Nova() as nova, NovaRerunBridge(nova, spawn=False) as bridge:
+        cell = nova.cell()
+
+        controller = await cell.controller("ur10")
 
         # move the robot up to avoid collision with the floor
         await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(

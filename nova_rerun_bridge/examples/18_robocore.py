@@ -17,10 +17,12 @@ from wandelbots_api_client.models import (
     Vector3d,
 )
 
-from nova import Controller, Nova
+import nova
+from nova import Controller, Nova, api
 from nova.actions import Action, cartesian_ptp, joint_ptp
-from nova.api import models
+from nova.cell import virtual_controller
 from nova.core.exceptions import PlanTrajectoryFailed
+from nova.program import ProgramPreconditions
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.trajectory import TimingMode
 
@@ -207,25 +209,43 @@ def calculate_handover_orientation(
     )
 
 
+@nova.program(
+    name="18_robocore",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="fanuc",
+                manufacturer=api.models.Manufacturer.FANUC,
+                type=api.models.VirtualControllerTypes.FANUC_MINUS_LR_MATE_200I_D7_L,
+            ),
+            virtual_controller(
+                name="kuka",
+                manufacturer=api.models.Manufacturer.KUKA,
+                type=api.models.VirtualControllerTypes.KUKA_MINUS_KR6_R700_2,
+            ),
+            virtual_controller(
+                name="abb",
+                manufacturer=api.models.Manufacturer.ABB,
+                type=api.models.VirtualControllerTypes.ABB_MINUS_IRB1200_7,
+            ),
+            virtual_controller(
+                name="yaskawa",
+                manufacturer=api.models.Manufacturer.YASKAWA,
+                type=api.models.VirtualControllerTypes.YASKAWA_MINUS_GP7,
+            ),
+        ],
+        cleanup_controllers=False,
+    ),
+)
 async def main():
     async with Nova() as nova, NovaRerunBridge(nova) as bridge:
         cell = nova.cell()
 
-        # Initialize robots
-        fanuc = await cell.ensure_virtual_robot_controller(
-            "fanuc",
-            models.VirtualControllerTypes.FANUC_MINUS_LR_MATE_200I_D7_L,
-            models.Manufacturer.FANUC,
-        )
-        kuka = await cell.ensure_virtual_robot_controller(
-            "kuka", models.VirtualControllerTypes.KUKA_MINUS_KR6_R700_2, models.Manufacturer.KUKA
-        )
-        abb = await cell.ensure_virtual_robot_controller(
-            "abb", models.VirtualControllerTypes.ABB_MINUS_IRB1200_7, models.Manufacturer.ABB
-        )
-        yaskawa = await cell.ensure_virtual_robot_controller(
-            "yaskawa", models.VirtualControllerTypes.YASKAWA_MINUS_GP7, models.Manufacturer.YASKAWA
-        )
+        # Get robot controllers
+        fanuc = await cell.controller("fanuc")
+        kuka = await cell.controller("kuka")
+        abb = await cell.controller("abb")
+        yaskawa = await cell.controller("yaskawa")
 
         # Set robot mountings
         for robot, pos in [

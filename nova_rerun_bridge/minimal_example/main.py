@@ -4,13 +4,15 @@ Example of planning a collision free PTP motion. A sphere is placed in the robot
 
 import asyncio
 
+import nova
 import numpy as np
 import rerun as rr
-from nova import MotionSettings
+from nova import MotionSettings, api
 from nova.actions import cartesian_ptp, collision_free
-from nova.api import models
+from nova.cell import virtual_controller
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
+from nova.program import ProgramPreconditions
 from nova.types import Pose
 from nova_rerun_bridge import NovaRerunBridge
 from wandelbots_api_client.models import (
@@ -22,24 +24,24 @@ from wandelbots_api_client.models import (
 
 
 async def build_collision_world(
-    nova: Nova, cell_name: str, robot_setup: models.OptimizerSetup
+    nova: Nova, cell_name: str, robot_setup: api.models.OptimizerSetup
 ) -> str:
     collision_api = nova._api_client.store_collision_components_api
     scene_api = nova._api_client.store_collision_scenes_api
 
     # define annoying obstacle
-    sphere_collider = models.Collider(
-        shape=models.ColliderShape(models.Sphere2(radius=100, shape_type="sphere")),
-        pose=models.Pose2(position=[-100, -500, 200]),
+    sphere_collider = api.models.Collider(
+        shape=api.models.ColliderShape(api.models.Sphere2(radius=100, shape_type="sphere")),
+        pose=api.models.Pose2(position=[-100, -500, 200]),
     )
     await collision_api.store_collider(
         cell=cell_name, collider="annoying_obstacle", collider2=sphere_collider
     )
 
     # define TCP collider geometry
-    tool_collider = models.Collider(
-        shape=models.ColliderShape(
-            models.Box2(size_x=100, size_y=100, size_z=100, shape_type="box", box_type="FULL")
+    tool_collider = api.models.Collider(
+        shape=api.models.ColliderShape(
+            api.models.Box2(size_x=100, size_y=100, size_z=100, shape_type="box", box_type="FULL")
         )
     )
     await collision_api.store_collision_tool(
@@ -55,31 +57,37 @@ async def build_collision_world(
     )
 
     # assemble scene
-    scene = models.CollisionScene(
+    scene = api.models.CollisionScene(
         colliders={"annoying_obstacle": sphere_collider},
         motion_groups={
-            robot_setup.motion_group_type: models.CollisionMotionGroup(
+            robot_setup.motion_group_type: api.models.CollisionMotionGroup(
                 tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
             )
         },
     )
     scene_id = "collision_scene"
     await scene_api.store_collision_scene(
-        cell_name, scene_id, models.CollisionSceneAssembly(scene=scene)
+        cell_name, scene_id, api.models.CollisionSceneAssembly(scene=scene)
     )
     return scene_id
 
 
+@nova.program(
+    name="minimal_example",
+    preconditions=ProgramPreconditions(
+        virtual_controller(
+            "ur5",
+            api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
+            api.models.Manufacturer.UNIVERSALROBOTS,
+        )
+    ),
+)
 async def test():
     async with Nova() as nova, NovaRerunBridge(nova) as bridge:
         await bridge.setup_blueprint()
 
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "ur5",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
-            models.Manufacturer.UNIVERSALROBOTS,
-        )
+        controller = await cell.controller("ur5")
 
         await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
             cell="cell",
@@ -105,7 +113,9 @@ async def test():
 
             tcp = "Flange"
 
-            robot_setup: models.OptimizerSetup = await motion_group._get_optimizer_setup(tcp=tcp)
+            robot_setup: api.models.OptimizerSetup = await motion_group._get_optimizer_setup(
+                tcp=tcp
+            )
             robot_setup.safety_setup.global_limits.tcp_velocity_limit = 200
 
             collision_scene_id = await build_collision_world(nova, "cell", robot_setup)

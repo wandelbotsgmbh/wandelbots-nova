@@ -6,10 +6,12 @@ import trimesh
 from wandelbots_api_client.models.all_joint_positions_request import AllJointPositionsRequest
 from wandelbots_api_client.models.all_joint_positions_response import AllJointPositionsResponse
 
+import nova
+from nova import Nova, api
 from nova.actions import cartesian_ptp
-from nova.api import models
+from nova.cell import virtual_controller
 from nova.core.exceptions import PlanTrajectoryFailed
-from nova.core.nova import Nova
+from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 from nova_rerun_bridge import NovaRerunBridge
 
@@ -33,16 +35,25 @@ def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
     )
 
 
+@nova.program(
+    name="16_reachability_check",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur10",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
+        ],
+        cleanup_controllers=False,
+    ),
+)
 async def test():
     async with Nova() as nova, NovaRerunBridge(nova) as bridge:
         await bridge.setup_blueprint()
 
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "ur10",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
-        )
+        controller = await cell.controller("ur10")
 
         scene = trimesh.load_mesh(
             "nova_rerun_bridge/example_data/Welding_Benchmark_USA_01.stl", file_type="stl"
@@ -86,9 +97,9 @@ async def test():
                         motion_group=motion_group.motion_group_id,
                         all_joint_positions_request=AllJointPositionsRequest(
                             motion_group=motion_group.motion_group_id,
-                            tcp_pose=models.TcpPose(
-                                position=models.Vector3d(x=point[0], y=point[1], z=point[2]),
-                                orientation=models.Vector3d(
+                            tcp_pose=api.models.TcpPose(
+                                position=api.models.Vector3d(x=point[0], y=point[1], z=point[2]),
+                                orientation=api.models.Vector3d(
                                     x=rotation[0], y=rotation[1], z=rotation[2]
                                 ),
                                 tcp=tcp,

@@ -4,14 +4,29 @@ import numpy as np
 import rerun as rr
 import trimesh
 
+import nova
+from nova import Nova, api
 from nova.actions import cartesian_ptp, joint_ptp
-from nova.api import models
-from nova.core.nova import Nova
+from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 
 
+@nova.program(
+    name="10_import_ply",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur10",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
+        ],
+        cleanup_controllers=False,
+    ),
+)
 async def test():
     """
     This example demonstrates how to import a PLY file and extract point cloud data.
@@ -52,11 +67,7 @@ async def test():
         rr.log("motion/target", rr.Points3D([green_target_point], radii=[10], colors=[[0, 255, 0]]))
 
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "ur10",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
-        )
+        controller = await cell.controller("ur10")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:

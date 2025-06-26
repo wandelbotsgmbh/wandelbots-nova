@@ -86,66 +86,6 @@ To get more information about Wandelscript, check out the [Wandelscript document
 
 See the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) for usage of this library and further [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples) utilizing rerun as a visualizer
 
-```python
-# Add credentials and instance to .env file
-NOVA_API="https://your-instance.wandelbots.io"
-NOVA_ACCESS_TOKEN="your-access-token"
-```
-
-```python
-from nova_rerun_bridge import NovaRerunBridge
-from nova import Nova
-from nova import api
-from nova.actions import joint_ptp, cartesian_ptp
-from nova.types import Pose
-import asyncio
-
-async def main():
-  # Connect to your Nova instance (or use .env file)
-  nova = Nova(
-      host="https://your-instance.wandelbots.io",
-      access_token="your-access-token"
-  )
-  bridge = NovaRerunBridge(nova)
-
-  # Setup visualization
-  await bridge.setup_blueprint()
-
-  # Setup robot
-  cell = nova.cell()
-  controller = await cell.ensure_virtual_robot_controller(
-      "ur",
-      api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-      api.models.Manufacturer.UNIVERSALROBOTS,
-  )
-
-  # Connect to the controller and activate motion groups
-  async with controller[0] as motion_group:
-      home_joints = await motion_group.joints()
-      tcp_names = await motion_group.tcp_names()
-      tcp = tcp_names[0]
-
-      # Get current TCP pose and offset it slightly along the x-axis
-      current_pose = await motion_group.tcp_pose(tcp)
-      target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
-
-      actions = [
-          joint_ptp(home_joints),
-          cartesian_ptp(target_pose),
-          joint_ptp(home_joints),
-      ]
-
-      # Plan trajectory
-      joint_trajectory = await motion_group.plan(actions, tcp)
-
-      # Log a trajectory
-      await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
 For more details check out the [technical wiki](https://deepwiki.com/wandelbotsgmbh/wandelbots-nova) (powered by deepwiki), the [official documentation](https://docs.wandelbots.io/) or the [code documentation](https://wandelbotsgmbh.github.io/wandelbots-nova/).
 
 ## Usage
@@ -172,18 +112,34 @@ If you want to utilize rerun as a visualizer you can find examples in the [nova_
 ### Basic Usage
 
 ```python
+import nova
 from nova import Nova
+from nova.program import ProgramPreconditions
+from nova.cell import virtual_controller
 
+@nova.program(
+  preconditions=ProgramPreconditions(
+    controllers=[
+      virtual_controller(
+        name="ur10",
+        manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+        type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+      ),
+      virtual_controller(
+        name="kuka",
+        manufacturer=api.models.Manufacturer.KUKA,
+        type=api.models.VirtualControllerTypes.KUKA_MINUS_KR16_R1610_2,
+      ),
+    ],
+  )
+)
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "ur10",
-            "universalrobots-ur10e",
-            "universalrobots"
-        )
+        ur10 = await cell.controller("ur10")
+        kuka = await cell.controller("kuka")
 
-        async with controller[0] as motion_group:
+        async with ur10[0] as motion_group:
             tcp = "Flange"
             home_joints = await motion_group.joints()
             current_pose = await motion_group.tcp_pose(tcp)
@@ -194,13 +150,14 @@ async def main():
 1. **Simple Point-to-Point Movement**
 
 ```python
+import nova
 from nova import Nova
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.types import Pose
 
+@nova.program()
 async def main():
     async with Nova() as nova:
-        # ... setup code ...
         actions = [
             joint_ptp(home_joints),
             cartesian_ptp(current_pose @ Pose((100, 0, 0, 0, 0, 0))),  # Move 100mm in X
@@ -240,6 +197,8 @@ async def move_robots():
         )
 ```
 
+See the [03_move_multiple_robots](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/03_move_multiple_robots.py) example for more details.
+
 ### Advanced Features
 
 1. **I/O Control**
@@ -277,11 +236,13 @@ async with Nova() as nova, NovaRerunBridge(nova) as bridge:
 3. **Adding and Using Custom TCP (Tool Center Point)**
 
 ```python
+import json
+
+import nova
 from nova import Nova
 from nova.api import models
 from nova.actions import cartesian_ptp
 from nova.types import Pose
-import json
 
 # Define TCP configuration
 tcp_config = {
@@ -291,13 +252,23 @@ tcp_config = {
     "rotation": {"angles": [0, 0, 0], "type": "EULER_ANGLES_EXTRINSIC_XYZ"}
 }
 
+@nova.program(
+    name="03_add_tcp",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="robot1",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            ),
+        ],
+        cleanup_controllers=False,
+    ),
+)
 async def setup_tcp():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "robot1", models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS
-        )
+        controller = await cell.controller("robot1")
 
         # Add TCP to virtual robot
         tcp_config_obj = models.RobotTcp.from_json(json.dumps(tcp_config))
@@ -320,21 +291,38 @@ async def setup_tcp():
 4. **Using Common Coordinate Systems for Multiple Robots**
 
 ```python
-from wandelbots_api_client.models import CoordinateSystem, Vector3d, RotationAngles, RotationAngleTypes
 from math import pi
-from nova import Nova
-from nova.types import Pose
-from nova.actions import cartesian_ptp
 import asyncio
 
+import nova
+from nova.api.models import CoordinateSystem, Vector3d, RotationAngles, RotationAngleTypes
+from nova.actions import cartesian_ptp
+from nova.types import Pose
 
+@nova.program(
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur10",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            ),
+            virtual_controller(
+                name="kuka",
+                manufacturer=api.models.Manufacturer.KUKA,
+                type=api.models.VirtualControllerTypes.KUKA_MINUS_KR16_R1610_2,
+            ),
+        ],
+        cleanup_controllers=False,
+    ),
+)
 async def setup_coordinated_robots():
     async with Nova() as nova:
         cell = nova.cell()
 
         # Setup robots
-        robot1 = await cell.ensure_virtual_robot_controller("robot1", ...)
-        robot2 = await cell.ensure_virtual_robot_controller("robot2", ...)
+        robot1 = await cell.controller("ur10")
+        robot2 = await cell.controller("kuka")
 
         # Define common world coordinate system
         world_mounting = CoordinateSystem(

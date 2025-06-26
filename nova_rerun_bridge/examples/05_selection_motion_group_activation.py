@@ -1,9 +1,11 @@
 import asyncio
 from math import pi
 
-from nova import MotionGroup, Nova
+import nova
+from nova import MotionGroup, Nova, api
 from nova.actions import Action, cartesian_ptp
-from nova.api import models
+from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
 from nova.types import Pose
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.trajectory import TimingMode
@@ -38,20 +40,30 @@ async def move_robot(
     await bridge.log_trajectory(trajectory, tcp, motion_group, timing_mode=timing_mode)
 
 
+@nova.program(
+    name="05_selection_motion_group_activation",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur10",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            ),
+            virtual_controller(
+                name="ur5",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
+            ),
+        ],
+        cleanup_controllers=False,
+    ),
+)
 async def main():
     async with Nova() as nova, NovaRerunBridge(nova) as bridge:
         await bridge.setup_blueprint()
         cell = nova.cell()
-        ur10 = await cell.ensure_virtual_robot_controller(
-            "ur10",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
-        )
-        ur5 = await cell.ensure_virtual_robot_controller(
-            "ur5",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
-            models.Manufacturer.UNIVERSALROBOTS,
-        )
+        ur10 = await cell.controller("ur10")
+        ur5 = await cell.controller("ur5")
         tcp = "Flange"
 
         # NC-1047
