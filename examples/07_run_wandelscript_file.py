@@ -2,12 +2,11 @@ import asyncio
 from pathlib import Path
 
 import nova
-from nova import Nova, api
-from nova.types import Pose
-from nova.program import ProgramPreconditions
-from nova.cell import virtual_controller
-
 import wandelscript
+from nova import Nova, api
+from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
+from nova.types import Pose
 
 
 @nova.program(
@@ -18,7 +17,7 @@ import wandelscript
                 name="ur",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
                 type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            ),
+            )
         ],
         cleanup_controllers=True,
     ),
