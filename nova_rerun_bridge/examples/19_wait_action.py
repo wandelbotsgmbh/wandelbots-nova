@@ -1,23 +1,31 @@
 import asyncio
 
+import nova
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.actions.mock import wait
 from nova.actions.motions import Motion
 from nova.api import models
+from nova.cell import virtual_controller
 from nova.core.nova import Nova
+from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 from nova_rerun_bridge import NovaRerunBridge
 
 
-async def test():
-    async with Nova() as nova, NovaRerunBridge(nova) as bridge:
-        await bridge.setup_blueprint()
-        cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
+@nova.program(
+    ProgramPreconditions(
+        virtual_controller(
             "ur10",
             models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             models.Manufacturer.UNIVERSALROBOTS,
         )
+    )
+)
+async def test():
+    async with Nova() as nova, NovaRerunBridge(nova) as bridge:
+        await bridge.setup_blueprint()
+        cell = nova.cell()
+        controller = await cell.controller("ur10")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:

@@ -7,9 +7,11 @@ from wandelbots_api_client.models import (
     Vector3d,
 )
 
-from nova import Controller, Nova
+import nova
+from nova import Controller, Nova, api
 from nova.actions import cartesian_ptp, joint_ptp
-from nova.api import models
+from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.trajectory import TimingMode
 
@@ -37,18 +39,30 @@ async def move_robot(controller: Controller, bridge: NovaRerunBridge):
         await bridge.log_trajectory(trajectory, tcp, motion_group, timing_mode=TimingMode.SYNC)
 
 
+@nova.program(
+    name="04_move_multiple_robots",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur10",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            ),
+            virtual_controller(
+                name="kuka",
+                manufacturer=api.models.Manufacturer.KUKA,
+                type=api.models.VirtualControllerTypes.KUKA_MINUS_KR16_R1610_2,
+            ),
+        ],
+        cleanup_controllers=False,
+    ),
+)
 async def main():
     async with Nova() as nova, NovaRerunBridge(nova) as bridge:
         cell = nova.cell()
 
-        ur10 = await cell.ensure_virtual_robot_controller(
-            "ur10",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
-        )
-        kuka = await cell.ensure_virtual_robot_controller(
-            "kuka", models.VirtualControllerTypes.KUKA_MINUS_KR16_R1610_2, models.Manufacturer.KUKA
-        )
+        ur10 = await cell.controller("ur10")
+        kuka = await cell.controller("kuka")
 
         # NC-1047
         await asyncio.sleep(3)

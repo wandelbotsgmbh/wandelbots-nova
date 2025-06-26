@@ -7,9 +7,11 @@ import asyncio
 import signal
 from contextlib import asynccontextmanager
 
+import nova
+from nova import Nova, api
 from nova.actions import cartesian_ptp, joint_ptp
-from nova.api import models
-from nova.core.nova import Nova
+from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 from nova_rerun_bridge import NovaRerunBridge
 
@@ -30,16 +32,25 @@ async def handle_shutdown():
         loop.remove_signal_handler(signal.SIGINT)
 
 
+@nova.program(
+    name="08_stream_robot",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur10",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
+        ],
+        cleanup_controllers=False,
+    ),
+)
 async def test():
     async with Nova() as nova, NovaRerunBridge(nova) as bridge:
         await bridge.setup_blueprint()
 
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "ur10",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
-        )
+        controller = await cell.controller("ur10")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:

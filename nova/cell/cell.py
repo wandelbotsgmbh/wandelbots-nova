@@ -1,5 +1,4 @@
 import nova.api as api
-from nova.cell.controllers import virtual_controller
 from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
@@ -45,29 +44,6 @@ class Cell:
                 controller_id=controller_id,
                 id=controller_id,
             )
-        )
-
-    # TODO: deprecated
-    async def ensure_virtual_robot_controller(
-        self,
-        name: str,
-        controller_type: api.models.VirtualControllerTypes,
-        controller_manufacturer: api.models.Manufacturer,
-        timeout: int = DEFAULT_ADD_CONTROLLER_TIMEOUT,
-        wait_for_ready_timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT,
-        json: str | None = None,
-        position: list[float] | str | None = None,
-    ) -> Controller:
-        return await self.ensure_controller(
-            robot_controller=virtual_controller(
-                name=name,
-                type=controller_type,
-                manufacturer=controller_manufacturer,
-                json=json,
-                position=position,
-            ),
-            add_timeout=timeout,
-            wait_for_ready_timeout=wait_for_ready_timeout,
         )
 
     async def add_controller(

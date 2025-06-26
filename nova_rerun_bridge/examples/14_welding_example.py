@@ -11,10 +11,12 @@ from wandelbots_api_client.models import (
     Vector3d,
 )
 
+import nova
+from nova import Nova, api
 from nova.actions import collision_free, linear
-from nova.api import models
+from nova.cell import virtual_controller
 from nova.core.exceptions import PlanTrajectoryFailed
-from nova.core.nova import Nova
+from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 from nova_rerun_bridge import NovaRerunBridge
 
@@ -23,7 +25,7 @@ Simple example to demonstrate how to add a welding part to the collision world a
 """
 
 
-async def load_and_transform_mesh(filepath: str, pose: models.Pose2) -> trimesh.Geometry:
+async def load_and_transform_mesh(filepath: str, pose: api.models.Pose2) -> trimesh.Geometry:
     """Load mesh and transform to desired position."""
     scene = trimesh.load_mesh(filepath, file_type="stl")
 
@@ -55,15 +57,15 @@ async def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
 
 async def add_mesh_to_collision_world(
     collision_api, cell_name: str, scene: trimesh.Trimesh, collider_name: str = "welding_part"
-) -> models.Collider:
+) -> api.models.Collider:
     """Add mesh as convex hull to collision world."""
     # Create convex hull
     convex_hull = scene.convex_hull
 
     # Create collider from convex hull vertices
-    mesh_collider = models.Collider(
-        shape=models.ColliderShape(
-            models.ConvexHull2(vertices=convex_hull.vertices.tolist(), shape_type="convex_hull")
+    mesh_collider = api.models.Collider(
+        shape=api.models.ColliderShape(
+            api.models.ConvexHull2(vertices=convex_hull.vertices.tolist(), shape_type="convex_hull")
         ),
         margin=10,  # add 10mm margin to the convex hull
     )
@@ -75,7 +77,10 @@ async def add_mesh_to_collision_world(
 
 
 async def build_collision_world(
-    nova: Nova, cell_name: str, robot_setup: models.OptimizerSetup, additional_colliders: dict = {}
+    nova: Nova,
+    cell_name: str,
+    robot_setup: api.models.OptimizerSetup,
+    additional_colliders: dict = {},
 ) -> str:
     """Build collision world with robot, environment and optional additional colliders.
 
@@ -89,27 +94,29 @@ async def build_collision_world(
     scene_api = nova._api_client.store_collision_scenes_api
 
     # define robot base
-    base_collider = models.Collider(
-        shape=models.ColliderShape(models.Cylinder2(radius=200, height=300, shape_type="cylinder")),
-        pose=models.Pose2(position=[0, 0, -155]),
+    base_collider = api.models.Collider(
+        shape=api.models.ColliderShape(
+            api.models.Cylinder2(radius=200, height=300, shape_type="cylinder")
+        ),
+        pose=api.models.Pose2(position=[0, 0, -155]),
     )
     await collision_api.store_collider(cell=cell_name, collider="base", collider2=base_collider)
 
     # define floor
-    floor_collider = models.Collider(
-        shape=models.ColliderShape(
-            models.Box2(size_x=2000, size_y=2000, size_z=10, shape_type="box", box_type="FULL")
+    floor_collider = api.models.Collider(
+        shape=api.models.ColliderShape(
+            api.models.Box2(size_x=2000, size_y=2000, size_z=10, shape_type="box", box_type="FULL")
         ),
-        pose=models.Pose2(position=[0, 0, -310]),
+        pose=api.models.Pose2(position=[0, 0, -310]),
     )
     await collision_api.store_collider(cell=cell_name, collider="floor", collider2=floor_collider)
 
     # define TCP collider geometry
-    tool_collider = models.Collider(
-        shape=models.ColliderShape(
-            models.Box2(size_x=5, size_y=5, size_z=100, shape_type="box", box_type="FULL")
+    tool_collider = api.models.Collider(
+        shape=api.models.ColliderShape(
+            api.models.Box2(size_x=5, size_y=5, size_z=100, shape_type="box", box_type="FULL")
         ),
-        pose=models.Pose2(position=[0, 0, 50]),
+        pose=api.models.Pose2(position=[0, 0, 50]),
     )
     await collision_api.store_collision_tool(
         cell=cell_name, tool="tool_box", request_body={"tool_collider": tool_collider}
@@ -131,22 +138,22 @@ async def build_collision_world(
         colliders.update(additional_colliders)
 
     # assemble scene
-    scene = models.CollisionScene(
+    scene = api.models.CollisionScene(
         colliders=colliders,
         motion_groups={
-            robot_setup.motion_group_type: models.CollisionMotionGroup(
+            robot_setup.motion_group_type: api.models.CollisionMotionGroup(
                 tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
             )
         },
     )
     scene_id = "collision_scene"
     await scene_api.store_collision_scene(
-        cell_name, scene_id, models.CollisionSceneAssembly(scene=scene)
+        cell_name, scene_id, api.models.CollisionSceneAssembly(scene=scene)
     )
     return scene_id
 
 
-async def calculate_seam_poses(mesh_pose: models.Pose2) -> tuple[Pose, Pose, Pose, Pose]:
+async def calculate_seam_poses(mesh_pose: api.models.Pose2) -> tuple[Pose, Pose, Pose, Pose]:
     """Calculate seam poses relative to the mesh pose using @ operator.
 
     Args:
@@ -172,12 +179,25 @@ async def calculate_seam_poses(mesh_pose: models.Pose2) -> tuple[Pose, Pose, Pos
     return seam1_start, seam1_end, seam2_start, seam2_end
 
 
+@nova.program(
+    name="14_welding_example",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur10",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
+        ],
+        cleanup_controllers=False,
+    ),
+)
 async def test():
     async with Nova() as nova, NovaRerunBridge(nova) as bridge:
         await bridge.setup_blueprint()
 
         # Define position for the welding part
-        mesh_pose = models.Pose2(
+        mesh_pose = api.models.Pose2(
             position=[500, 0, -300], orientation=[0, 0, 0]
         )  # in front of robot, on floor
 
@@ -190,11 +210,7 @@ async def test():
         await log_mesh_to_rerun(scene)
 
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "ur10",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
-        )
+        controller = await cell.controller("ur10")
 
         await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
             cell="cell",
@@ -232,7 +248,9 @@ async def test():
 
             tcp = "torch"
 
-            robot_setup: models.OptimizerSetup = await motion_group._get_optimizer_setup(tcp=tcp)
+            robot_setup: api.models.OptimizerSetup = await motion_group._get_optimizer_setup(
+                tcp=tcp
+            )
 
             # Add mesh to collision world
             mesh_collider = await add_mesh_to_collision_world(
