@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.23.0 (2025-06-26)
+
+### Features
+
+- Removed ensure_virtual_robot_controller & updated examples
+  ([#208](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/208),
+  [`8707dc8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8707dc86214f8a9b49e7d0e1e3ae8f02bf4255df))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.22.0 (2025-06-26)
 
 ### Features
