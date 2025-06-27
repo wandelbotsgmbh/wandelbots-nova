@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v1.24.0 (2025-06-27)
+
+### Features
+
+- Removed enumeration from example files & improved list in readme
+  ([#209](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/209),
+  [`5edd84d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5edd84d9ee0c76af422a4a058aa40539d8bf5797))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.23.0 (2025-06-26)
 
 ### Features
