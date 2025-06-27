@@ -25,4 +25,4 @@ def get_host_address():
 
 
 def get_rerun_address():
-    return f"{get_host_address()}/rerun/?url={get_host_address()}/vscode/nova.rrd"
+    return f"{get_host_address()}/vscode/rerun/?url={get_host_address()}/vscode/nova.rrd"
