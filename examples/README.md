@@ -2,6 +2,17 @@
 
 Examples on how to use the wandelbots-nova library.
 
+## Examples
+
+1. [Read basic information from the robot controller](basic.py)
+2. [Plan and execute a trajectory](plan_and_execute.py)
+3. [Move multiple robots](move_multiple_robots.py)
+4. [Motion group activation](selection_motion_group_activation.py)
+5. [Multi-step collision free movement](multi_step_movement_with_collision_free.py)
+6. [Cycle events](cycle_events.py)
+7. [Run Wandelscript files](run_wandelscript_file.py)
+8. [Serialize program](serialize_program.py)
+
 ## Usage
 
 Run an example by executing the following command:
@@ -16,11 +27,3 @@ For example:
 PYTHONPATH=. uv run python examples/01_basic.py
 ```
 
-## Examples
-
-1. [Read basic information from the controller](01_basic.py)
-2. [Plan and execute a trajectory](02_plan_and_execute.py)
-3. [Move multiple robots](03_move_multiple_robots.py)
-4. [Selection motion group activation](04_selection_motion_group_activation.py)
-5. [Multi-step movement with collision free](05_multi_step_movement_with_collision_free.py)
-6. [Cycle events](06_cycle_events.py)
