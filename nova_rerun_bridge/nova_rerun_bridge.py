@@ -59,13 +59,13 @@ class NovaRerunBridge:
         self._ensure_models_exist()
         self.nova = nova
         self._streaming_tasks: dict[MotionGroup, asyncio.Task] = {}
+        recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
         if "VSCODE_PROXY_URI" in os.environ:
             rr.init(application_id="nova", recording_id=recording_id, spawn=False)
             rr.save("nova.rrd")
             logger.info(f"Install rerun app and open the visual log on {get_rerun_address()}")
         elif spawn:
-            recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             rr.init(application_id="nova", recording_id=recording_id, spawn=True)
         logger.add(sink=rr.LoggingHandler("logs/handler"))
 
@@ -416,6 +416,8 @@ class NovaRerunBridge:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """Context manager exit point, ensures cleanup."""
+        if "VSCODE_PROXY_URI" in os.environ:
+            logger.info(f"Install rerun app and open the visual log on {get_rerun_address()}")
         await self.cleanup()
 
     async def cleanup(self) -> None:
