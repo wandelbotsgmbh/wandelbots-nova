@@ -246,12 +246,47 @@ class AbstractRobot(Device):
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        return await self._plan(
-            actions=actions,
-            tcp=tcp,
-            start_joint_position=start_joint_position,
-            optimizer_setup=optimizer_setup,
-        )
+        # Transparent rerun integration happens automatically in the success/failure paths below
+
+        # Execute planning
+        try:
+            trajectory = await self._plan(
+                actions=actions,
+                tcp=tcp,
+                start_joint_position=start_joint_position,
+                optimizer_setup=optimizer_setup,
+            )
+
+            # Transparent rerun integration
+            try:
+                from nova.rerun_integration import log_trajectory_async
+
+                # Log the successful trajectory
+                await log_trajectory_async(trajectory=trajectory, motion_group=self, tcp=tcp)
+            except Exception:
+                # Rerun logging failed - continue silently
+                pass
+
+            return trajectory
+
+        except Exception as planning_error:
+            # Log partial trajectory if available for rerun
+            try:
+                from nova.rerun_integration import log_trajectory_async
+
+                if hasattr(planning_error, "error") and hasattr(
+                    getattr(planning_error, "error", None), "joint_trajectory"
+                ):
+                    partial_trajectory = getattr(planning_error.error, "joint_trajectory", None)  # type: ignore
+                    if partial_trajectory:
+                        await log_trajectory_async(
+                            trajectory=partial_trajectory, motion_group=self, tcp=tcp
+                        )
+            except Exception:
+                # Rerun logging failed - continue silently
+                pass
+
+            raise planning_error
 
     @abstractmethod
     def _execute(

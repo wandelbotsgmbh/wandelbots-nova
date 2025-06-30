@@ -7,7 +7,7 @@ from nova.core.gateway import ApiGateway
 from nova.events import nats
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
-CELL_NAME = config("CELL_NAME", default="cell")
+CELL_NAME = config("CELL_NAME", default="cell", cast=str)
 
 
 # TODO: could also extend NovaDevice
