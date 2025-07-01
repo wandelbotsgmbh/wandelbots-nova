@@ -26,7 +26,7 @@ from aiostream import pipe, stream
 from nova import api
 from nova.actions import Action, MovementController
 from nova.core import logger
-from nova.core.movement_controller import movement_to_motion_state
+from nova.core.movement_controller import motion_group_state_to_motion_state
 from nova.types import MotionState, MovementResponse, Pose, RobotState
 
 
@@ -288,20 +288,20 @@ class AbstractRobot(Device):
         if not isinstance(actions, list):
             actions = [actions]
 
-        def is_movement(movement_response: MovementResponse) -> bool:
-            isinstance(movement_response.actual_instance, api.models.Movement)
+        def is_motion_state(movement_response: MovementResponse) -> bool:
+            return isinstance(movement_response, api.models.MotionGroupState)
 
         def movement_response_to_motion_state(
             movement_response: MovementResponse, *_
         ) -> MotionState:
-            return movement_to_motion_state(movement_response.actual_instance)
+            return motion_group_state_to_motion_state(movement_response)
 
         execute_response_stream = self._execute(
             joint_trajectory, tcp, actions, movement_controller=movement_controller
         )
         motion_states = (
             stream.iterate(execute_response_stream)
-            | pipe.filter(is_movement)
+            | pipe.filter(is_motion_state)
             | pipe.map(movement_response_to_motion_state)
         )
 
