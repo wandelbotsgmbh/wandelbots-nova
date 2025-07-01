@@ -246,8 +246,6 @@ class AbstractRobot(Device):
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        # Transparent rerun integration happens automatically in the success/failure paths below
-
         # Execute planning
         try:
             trajectory = await self._plan(
@@ -257,36 +255,73 @@ class AbstractRobot(Device):
                 optimizer_setup=optimizer_setup,
             )
 
-            # Transparent rerun integration
-            try:
-                from nova.rerun_integration import log_trajectory_async
-
-                # Log the successful trajectory
-                await log_trajectory_async(trajectory=trajectory, motion_group=self, tcp=tcp)
-            except Exception:
-                # Rerun logging failed - continue silently
-                pass
+            # Automatic viewer integration - log planning results if viewers are active
+            await self._log_planning_results(actions, trajectory, tcp)
 
             return trajectory
 
         except Exception as planning_error:
-            # Log partial trajectory if available for rerun
-            try:
-                from nova.rerun_integration import log_trajectory_async
-
-                if hasattr(planning_error, "error") and hasattr(
-                    getattr(planning_error, "error", None), "joint_trajectory"
-                ):
-                    partial_trajectory = getattr(planning_error.error, "joint_trajectory", None)  # type: ignore
-                    if partial_trajectory:
-                        await log_trajectory_async(
-                            trajectory=partial_trajectory, motion_group=self, tcp=tcp
-                        )
-            except Exception:
-                # Rerun logging failed - continue silently
-                pass
-
             raise planning_error
+
+    async def _log_planning_results(
+        self, actions: list[Action], trajectory: api.models.JointTrajectory, tcp: str
+    ) -> None:
+        """Log planning results to active viewers if any are configured."""
+        try:
+            from nova import viewers
+
+            # Check if any viewers are active
+            if not viewers._active_viewers:
+                return
+
+            # Import here to avoid circular imports
+            from nova.core.motion_group import MotionGroup
+
+            if not isinstance(self, MotionGroup):
+                return  # Only log for motion groups
+
+            # Log to all available bridges using the existing nova_rerun_bridge functionality
+            for viewer in viewers._active_viewers:
+                if isinstance(viewer, viewers.Rerun) and viewer._bridge:
+                    try:
+                        # Log actions using the bridge - this works without additional API calls
+                        await viewer._bridge.log_actions(actions, motion_group=self)
+
+                        # Log trajectory using the bridge - ensure we have an active Nova session
+                        await self._ensure_trajectory_logging(viewer._bridge, trajectory, tcp)
+
+                    except Exception as e:
+                        # Don't fail planning if logging fails
+                        print(f"Warning: Failed to log planning results to viewer: {e}")
+
+        except ImportError:
+            # Viewer not available, skip logging
+            pass
+        except Exception as e:
+            # Don't fail planning if logging fails
+            print(f"Warning: Failed to log planning results: {e}")
+
+    async def _ensure_trajectory_logging(
+        self, bridge, trajectory: api.models.JointTrajectory, tcp: str
+    ) -> None:
+        """Ensure trajectory logging works by providing the bridge with a Nova session."""
+        from nova.core.motion_group import MotionGroup
+
+        if not isinstance(self, MotionGroup):
+            return  # Only log trajectories for motion groups
+
+        try:
+            # Try with the existing bridge first
+            await bridge.log_trajectory(trajectory, tcp, self)
+        except Exception:
+            # If it fails, ensure the bridge has a fresh Nova instance
+            from nova.core.nova import Nova
+            from nova_rerun_bridge import NovaRerunBridge
+
+            # Create a new bridge with a fresh Nova instance for logging
+            async with Nova() as nova:
+                temp_bridge = NovaRerunBridge(nova, spawn=False)
+                await temp_bridge.log_trajectory(trajectory, tcp, self)
 
     @abstractmethod
     def _execute(
