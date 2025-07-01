@@ -529,11 +529,11 @@ class ApiGateway:
         )
 
     async def get_robot_setup(
-        self, cell: str, motion_group_id: str, tcp: str
+        self, cell_id: str, controller_id: str, motion_group_id: str, tcp: str
     ) -> wb.models.RobotSetup:
         # TODO allow to specify payload
         motion_group_description = await self.motion_group_api.get_motion_group_description(
-            cell=cell, motion_group=motion_group_id, tcp=tcp
+            cell=cell_id, controller=controller_id, motion_group=motion_group_id, tcp=tcp
         )
         return self.robot_setup_from_motion_group_description(
             motion_group_description=motion_group_description, tcp_name=tcp
