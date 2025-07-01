@@ -13,7 +13,7 @@ from wandelbots_api_client.models import (
 )
 
 from nova import MotionGroup
-from nova.actions import Action, CombinedActions
+from nova.actions import Action
 from nova.actions.io import WriteAction
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
@@ -340,7 +340,26 @@ class NovaRerunBridge:
         show_connection: bool = False,
         show_labels: bool = True,
         motion_group: Optional[MotionGroup] = None,
+        tcp: Optional[str] = None,
     ) -> None:
+        """Log robot actions as points in the Rerun viewer.
+
+        This method visualizes robot actions by determining their TCP poses and displaying
+        them as colored points in 3D space. Joint motions are converted to poses using
+        forward kinematics with the specified TCP.
+
+        Args:
+            actions: Single action or list of actions to visualize
+            show_connection: Whether to draw lines connecting consecutive action points
+            show_labels: Whether to display action type labels on points
+            motion_group: Motion group for forward kinematics (required for joint motions)
+            tcp: TCP identifier to use for forward kinematics. If None and motion_group
+                 is provided, uses the first available TCP. Should match the TCP used
+                 for trajectory planning to ensure consistency.
+
+        Raises:
+            ValueError: If no actions are provided
+        """
         from nova_rerun_bridge import trajectory
 
         rr.reset_time()
@@ -352,53 +371,90 @@ class NovaRerunBridge:
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        # Collect poses from regular actions
-        regular_actions = [
-            action for action in actions if isinstance(action, (Motion, WriteAction))
-        ]
-        regular_poses = (
-            CombinedActions(items=tuple(regular_actions)).poses() if regular_actions else []
-        )
+        # Determine the TCP to use - if not provided, get the first available TCP
+        if tcp is None and motion_group is not None:
+            tcp_names = await motion_group.tcp_names()
+            tcp = tcp_names[0] if tcp_names else "Flange"
 
-        # Collect poses from CollisionFreeMotion targets
-        collision_free_poses = [
-            action.target
-            for action in actions
-            if isinstance(action, CollisionFreeMotion) and isinstance(action.target, Pose)
-        ]
-
-        # Combine all poses
-        all_poses = regular_poses + collision_free_poses
         positions = []
         point_colors = []
         labels = []
 
-        # Collect all positions, colors, and labels
+        # Keep track of the last pose for write actions
+        last_pose = None
+        last_joints = None
+
+        # Process each action to get its pose
         for i, action in enumerate(actions):
-            if i < len(all_poses):  # Only process if there's a corresponding pose
-                pose = all_poses[i]
-                logger.debug(f"Pose: {pose}")
-                positions.append([pose.position.x, pose.position.y, pose.position.z])
+            pose = None
+            action_type = getattr(action, "type", type(action).__name__)
 
-                # Determine action type and color
-                action_type = getattr(action, "type", type(action).__name__)
-
-                if isinstance(action, WriteAction):
-                    point_colors.append((255, 0, 0))  # Red for IO actions
-                elif action_type == "joint_ptp":
-                    point_colors.append((0, 255, 0))  # Green for joint motions
-                elif action_type == "cartesian_ptp":
-                    point_colors.append((0, 0, 255))  # Blue for cartesian motions
-                elif action_type == "linear":
-                    point_colors.append((255, 255, 0))  # Yellow for linear motions
-                elif action_type == "circular":
-                    point_colors.append((255, 0, 255))  # Magenta for circular motions
+            if isinstance(action, WriteAction):
+                # Write actions use the last pose or joint config
+                if last_pose is not None:
+                    pose = last_pose
+                elif last_joints is not None and motion_group is not None and tcp is not None:
+                    # Use forward kinematics to convert joint config to pose
+                    pose = await self._joint_to_pose(last_joints, motion_group, tcp)
                 else:
-                    point_colors.append((128, 128, 128))  # Gray for other actions
+                    # Skip write actions without a previous pose/joint config
+                    continue
 
-                # Create descriptive label with ID and action type (only if needed)
-                if show_labels:
-                    labels.append(f"{i}: {action_type}")
+            elif isinstance(action, CollisionFreeMotion) and isinstance(action.target, Pose):
+                pose = action.target
+                last_pose = pose
+
+            elif isinstance(action, Motion):
+                if hasattr(action, "target"):
+                    if isinstance(action.target, Pose):
+                        # Cartesian motion
+                        pose = action.target
+                        last_pose = pose
+                    elif (
+                        isinstance(action.target, tuple)
+                        and motion_group is not None
+                        and tcp is not None
+                    ):
+                        # Joint motion - use forward kinematics
+                        pose = await self._joint_to_pose(action.target, motion_group, tcp)
+                        last_joints = action.target
+                        last_pose = pose
+                    else:
+                        # Skip actions without a usable target
+                        continue
+                else:
+                    # Skip actions without a target
+                    continue
+            else:
+                # Skip other action types that we don't know how to handle
+                continue
+
+            # If we reach here, we should have a valid pose or we need to skip
+            if pose is None:
+                continue
+
+            logger.debug(f"Action {i}: {action_type}, Pose: {pose}")
+            positions.append([pose.position.x, pose.position.y, pose.position.z])
+
+            # Determine action type and color using better color palette
+            from nova_rerun_bridge.colors import colors
+
+            if isinstance(action, WriteAction):
+                point_colors.append(tuple(colors[0]))  # Light purple for IO actions
+            elif action_type == "joint_ptp":
+                point_colors.append(tuple(colors[2]))  # Medium purple for joint motions
+            elif action_type == "cartesian_ptp":
+                point_colors.append(tuple(colors[4]))  # Deeper purple for cartesian motions
+            elif action_type == "linear":
+                point_colors.append(tuple(colors[6]))  # Dark purple for linear motions
+            elif action_type == "circular":
+                point_colors.append(tuple(colors[8]))  # Very dark purple for circular motions
+            else:
+                point_colors.append(tuple(colors[10]))  # Darkest color for other actions
+
+            # Create descriptive label with ID and action type (only if needed)
+            if show_labels:
+                labels.append(f"{len(positions) - 1}: {action_type}")
 
         entity_path = (
             f"motion/{motion_group.motion_group_id}/actions" if motion_group else "motion/actions"
@@ -435,6 +491,53 @@ class NovaRerunBridge:
                     ),
                     static=True,
                 )
+
+    async def _joint_to_pose(
+        self, joint_config: tuple[float, ...], motion_group: MotionGroup, tcp: str
+    ) -> Pose:
+        """Convert joint configuration to pose using forward kinematics.
+
+        Args:
+            joint_config: The joint configuration to convert
+            motion_group: The motion group for forward kinematics
+            tcp: The TCP identifier used for planning (should match the TCP used in planning)
+        """
+        try:
+            # Use Nova's forward kinematics API to get TCP pose from joint configuration
+            from nova.api import models
+
+            # Create a joint position object
+            joint_position = models.Joints(joints=list(joint_config))
+
+            # Create TcpPoseRequest for forward kinematics calculation
+            tcp_pose_request = models.TcpPoseRequest(
+                motion_group=motion_group.motion_group_id, joint_position=joint_position, tcp=tcp
+            )
+
+            # Use Nova's API to calculate the TCP pose from joint configuration
+            api_pose = await motion_group._api_gateway.motion_group_kinematic_api.calculate_forward_kinematic(
+                cell=motion_group._cell,
+                motion_group=motion_group.motion_group_id,
+                tcp_pose_request=tcp_pose_request,
+            )
+
+            # Convert API pose to Nova Pose
+            orientation = api_pose.orientation
+            return Pose(
+                (
+                    api_pose.position.x,
+                    api_pose.position.y,
+                    api_pose.position.z,
+                    orientation.x if orientation else 0.0,
+                    orientation.y if orientation else 0.0,
+                    orientation.z if orientation else 0.0,
+                )
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to convert joints to pose using forward kinematics: {e}")
+            # Fallback: return a pose at origin
+            return Pose((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
 
     async def __aenter__(self) -> "NovaRerunBridge":
         """Context manager entry point.
