@@ -5,7 +5,6 @@ from math import pi
 from icecream import ic
 
 from nova import Nova
-from nova.actions import jnt
 from nova.api import models
 from nova.core.movement_controller import Jogger
 
@@ -38,11 +37,6 @@ async def main():
             # tcp_names = await motion_group.tcp_names()
             # tcp = tcp_names[0]
             tcp = "Flange"
-            motion_iter = await motion_group.plan_and_execute([jnt(home_joints)], tcp)
-
-            # Wait for home movement to complete
-            async for motion_state in motion_iter:
-                ic(f"Homing: {motion_state.path_parameter}")
 
             # Get current TCP pose for reference
             current_pose = await motion_group.tcp_pose(tcp)
@@ -55,7 +49,7 @@ async def main():
             jogger = Jogger(effect_stream, motion_group.motion_group_id, tcp)
 
             # Start jogging session
-            motion_iter = motion_group.stream_execute_jogging(movement_controller=jogger)
+            motion_iter = motion_group.stream_jogging(tcp, movement_controller=jogger)
 
             async def driver():
                 # Wait a moment before starting jogging commands
@@ -104,6 +98,7 @@ async def main():
             # Monitor the jogging motion states
             motion_count = 0
             async for motion_state in motion_iter:
+                # ic(motion_state.sequence_number)
                 motion_count += 1
                 if motion_count % 10 == 0:  # Print every 10th state to reduce output
                     ic(f"Motion state: {motion_state}")

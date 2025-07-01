@@ -345,6 +345,39 @@ class MotionGroup(AbstractRobot):
             yield execute_response
         await execution_task
 
+    async def _stream_jogging(self, tcp, movement_controller):
+        controller = movement_controller(
+            MovementControllerContext(
+                combined_actions=CombinedActions(),  # type: ignore
+                motion_id="DUMMY_MOTION_ID",  # TODO This is a dummy ID, not used in jogging
+            )
+        )
+
+        def stop_condition(_response):
+            return True
+
+        execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
+        execution_task = asyncio.create_task(
+            self._api_gateway.motion_group_jogging_api.execute_jogging(
+                cell=self._cell, controller=self._controller_id, client_request_generator=controller
+            )
+        )
+        # TODO refactor
+        MOTION_STATE_STREAM_RATE_MS = 100
+        motion_state_stream = self._api_gateway.motion_group_api.stream_motion_group_state(
+            cell=self._cell,
+            controller=self._controller_id,
+            motion_group=self.motion_group_id,
+            response_rate=MOTION_STATE_STREAM_RATE_MS,
+        )
+        execute_response_stream = stream.merge(
+            execute_response_streaming_controller, motion_state_stream
+        )
+        async for execute_response in execute_response_stream.stream():
+            # async for execute_response in execute_response_streaming_controller:
+            yield execute_response
+        await execution_task
+
     async def _get_robot_setup(self, tcp: str) -> wb.models.RobotSetup:
         # TODO: mypy failed on main branch, need to check
         if self._robot_setup is None or self._robot_setup.tcp != tcp:  # type: ignore
@@ -392,6 +425,26 @@ class MotionGroup(AbstractRobot):
         )
         pose = Pose(response.tcp_pose or response.tcp_pose)
         return RobotState(pose=pose, joints=tuple(response.joint_position.joints))
+
+    async def stream_state(
+        self, tcp: str | None = None, response_rate_msecs=100
+    ) -> AsyncIterable[RobotState]:
+        """
+        Streams the motion group state.
+        Args:
+            tcp (str | None): The reference TCP for the cartesian pose part of the robot state. Defaults to None.
+                                        If None, the current active/selected TCP of the motion group is used.
+        """
+        response_stream = self._api_gateway.motion_group_api.stream_motion_group_state(
+            cell=self._cell,
+            controller=self._controller_id,
+            motion_group=self.motion_group_id,
+            response_rate=response_rate_msecs,
+        )
+        async for response in response_stream:
+            yield response
+            # pose = Pose(response.tcp_pose)
+            # yield RobotState(pose=pose, joints=tuple(response.joint_position.joints))
 
     async def joints(self) -> tuple:
         """Returns the current joint positions of the motion group."""

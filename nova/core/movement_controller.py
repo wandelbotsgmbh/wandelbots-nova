@@ -107,6 +107,7 @@ class Jogger:
         self._tcp_name = tcp_name
         # TODO support the other parameters
         self._command_queue = asyncio.Queue()
+        self._response_queue = asyncio.Queue()
         self._effect_stream: AsyncIterator[wb.models.MotionGroupState] = effect_stream
 
     def __call__(self, context: MovementControllerContext):
@@ -119,6 +120,10 @@ class Jogger:
         rotation: list[float] | None = None,
         use_tool_coordinate_system: bool = False,
     ):
+        if translation is None:
+            translation = [0.0, 0.0, 0.0]
+        if rotation is None:
+            rotation = [0.0, 0.0, 0.0]
         self._command_queue.put_nowait(
             wb.models.TcpVelocityRequest(
                 translation=translation,
@@ -134,10 +139,12 @@ class Jogger:
         self, response_stream: ExecuteTrajectoryResponseStream
     ) -> ExecuteTrajectoryRequestStream:
         self._response_stream = response_stream
-        async for request in init_movement_gen(self._motion_group_id, response_stream):
+        async for request in init_jogging_gen(
+            self._motion_group_id, self._tcp_name, response_stream
+        ):
             yield request
 
-        with asyncio.TaskGroup() as tg:
+        async with asyncio.TaskGroup() as tg:
             tg.create_task(self._effect_consumer(), name="effect_consumer")
             tg.create_task(self._response_consumer(), name="request_consumer")
             tg.create_task(self._combined_response_consumer(), name="combined_response_consumer")
@@ -152,10 +159,12 @@ class Jogger:
 
     async def _effect_consumer(self):
         async for effect in self._effect_stream:
+            # ic(effect)
             self._response_queue.put_nowait(effect)
 
     async def _response_consumer(self):
         async for response in self._response_stream:
+            ic(response)
             self._response_queue.put_nowait(response)
 
     async def _combined_response_consumer(self):
@@ -298,9 +307,6 @@ async def init_jogging_gen(
 
     # then we get the response
     initialize_jogging_response = await anext(response_stream)
-    assert isinstance(initialize_jogging_response, wb.models.ExecuteTrajectoryResponse), (
-        "Expected ExecuteTrajectoryResponse, got: " + str(initialize_jogging_response)
-    )
     assert isinstance(
         initialize_jogging_response.actual_instance, wb.models.InitializeJoggingResponse
     ), "Expected InitializeJoggingResponse, got: " + str(

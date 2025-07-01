@@ -196,6 +196,7 @@ class ApiGateway:
         )
         # TODO migrate stuff in rerun bridge and then remove this
         self.virtual_robot_setup_api = self.virtual_controller_api
+        # TODO rename to jogging_api
         self.motion_group_jogging_api = intercept(wb.JoggingApi(api_client=self._api_client), self)
         self.trajectory_planning_api: wb.TrajectoryPlanningApi = intercept(
             wb.TrajectoryPlanningApi(api_client=self._api_client), self
@@ -587,7 +588,7 @@ class ApiGateway:
     ) -> wb.models.RobotSetup:
         # TODO allow to specify payload
         motion_group_description = await self.motion_group_api.get_motion_group_description(
-            cell=cell_id, controller=controller_id, motion_group=motion_group_id, tcp=tcp
+            cell=cell_id, controller=controller_id, motion_group=motion_group_id
         )
         return self.robot_setup_from_motion_group_description(
             motion_group_description=motion_group_description, tcp_name=tcp
