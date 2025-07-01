@@ -349,7 +349,10 @@ class MotionGroup(AbstractRobot):
         # TODO: mypy failed on main branch, need to check
         if self._robot_setup is None or self._robot_setup.tcp != tcp:  # type: ignore
             self._robot_setup = await self._api_gateway.get_robot_setup(
-                cell=self._cell, motion_group_id=self.motion_group_id, tcp=tcp
+                cell_id=self._cell,
+                controller_id=self._controller_id,
+                motion_group_id=self.motion_group_id,
+                tcp=tcp,
             )
 
         return self._robot_setup
