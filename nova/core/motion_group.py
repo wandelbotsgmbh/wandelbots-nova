@@ -2,6 +2,7 @@ import asyncio
 from typing import AsyncIterable
 
 import wandelbots_api_client.v2 as wb
+from aiostream import stream
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
@@ -124,7 +125,9 @@ def validate_collision_scenes(actions: list[Action]) -> list[models.CollisionSce
 class MotionGroup(AbstractRobot):
     """Manages motion planning and execution within a specified motion group."""
 
-    def __init__(self, api_gateway: ApiGateway, cell: str, motion_group_id: str):
+    def __init__(
+        self, api_gateway: ApiGateway, cell: str, controller_id: str, motion_group_id: str
+    ):
         """
         Initializes a new MotionGroup instance.
 
@@ -135,6 +138,7 @@ class MotionGroup(AbstractRobot):
         """
         self._api_gateway = api_gateway
         self._cell = cell
+        self._controller_id = controller_id
         self._motion_group_id = motion_group_id
         self._current_motion: str | None = None
         self._robot_setup: wb.models.RobotSetup | None = None
@@ -325,7 +329,19 @@ class MotionGroup(AbstractRobot):
                 cell=self._cell, client_request_generator=execute_response_streaming_controller
             )
         )
-        async for execute_response in execute_response_streaming_controller:
+        # TODO refactor
+        MOTION_STATE_STREAM_RATE_MS = 100
+        motion_state_stream = self._api_gateway.motion_group_api.stream_motion_group_state(
+            cell=self._cell,
+            controller=self._controller_id,
+            motion_group=self.motion_group_id,
+            response_rate=MOTION_STATE_STREAM_RATE_MS,
+        )
+        execute_response_stream = stream.merge(
+            execute_response_streaming_controller, motion_state_stream
+        )
+        async for execute_response in execute_response_stream.stream():
+            # async for execute_response in execute_response_streaming_controller:
             yield execute_response
         await execution_task
 
@@ -366,7 +382,10 @@ class MotionGroup(AbstractRobot):
                                         If None, the current active/selected TCP of the motion group is used.
         """
         response = await self._api_gateway.get_motion_group_state(
-            cell=self._cell, motion_group_id=self.motion_group_id, tcp=tcp
+            cell_id=self._cell,
+            controller_id=self._controller_id,
+            motion_group_id=self.motion_group_id,
+            tcp=tcp,
         )
         pose = Pose(response.tcp_pose or response.tcp_pose)
         return RobotState(pose=pose, joints=tuple(response.joint_position.joints))
@@ -392,7 +411,9 @@ class MotionGroup(AbstractRobot):
 
     async def tcps(self) -> list[wb.models.RobotTcp]:
         response = await self._api_gateway.list_tcps(
-            cell=self._cell, motion_group_id=self.motion_group_id
+            cell_id=self._cell,
+            controller_id=self._controller_id,
+            motion_group_id=self.motion_group_id,
         )
         return response.tcps if response.tcps else []
 

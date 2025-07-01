@@ -12,6 +12,18 @@
       "env": {
         "PYTHONPATH": "${workspaceFolder}"
       }
+    },
+   {
+      "name": "Basic Example",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/01_basic.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
     }
 
   ]

@@ -25,30 +25,24 @@ ic.configureOutput(
 )
 
 
-def movement_to_motion_state(movement: wb.models.Movement) -> MotionState:
-    """Convert a wb.models.Movement to a MotionState."""
-    if (
-        movement.movement.state is None
-        or movement.movement.current_location is None
-        or len(movement.movement.state.active_motion_groups) == 0
-    ):
-        assert False, "This should not happen"  # depending on NC-1105
-
-    # TODO: in which cases do we have more than one motion group here?
-    motion_group = movement.movement.state.active_motion_groups[0]
-    return motion_group_state_to_motion_state(
-        motion_group, float(movement.movement.current_location)
-    )
-
-
 def motion_group_state_to_motion_state(
-    motion_group_state: wb.models.MotionGroupState, path_parameter: float
+    motion_group_state: wb.models.MotionGroupState,
 ) -> MotionState:
     tcp_pose = Pose(
         tuple(motion_group_state.tcp_pose.position + motion_group_state.tcp_pose.orientation)
     )
     joints = (
         tuple(motion_group_state.joint_current.joints) if motion_group_state.joint_current else None
+    )
+    # TODO not very clean
+    path_parameter = (
+        motion_group_state.execute.details.actual_instance.location
+        if motion_group_state.execute
+        and motion_group_state.execute.details
+        and isinstance(
+            motion_group_state.execute.details.actual_instance, wb.models.TrajectoryDetails
+        )
+        else None
     )
     return MotionState(
         motion_group_id=motion_group_state.motion_group,
