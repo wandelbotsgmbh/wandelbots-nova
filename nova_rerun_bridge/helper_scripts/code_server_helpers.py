@@ -6,7 +6,7 @@ def get_host_address():
     # Check for VS Code environment variables
     if "VSCODE_PROXY_URI" in os.environ:
         # Extract host and path from VS Code proxy URI
-        # Example: 'http://172.31.11.183/cell/vscode/proxy/{{port}}/'
+        # Example: 'http://172.31.11.183/cell/advanced-code-editor/proxy/{{port}}/'
         proxy_uri = os.environ["VSCODE_PROXY_URI"]
         if "://" in proxy_uri:
             # Split into protocol and rest
@@ -25,4 +25,4 @@ def get_host_address():
 
 
 def get_rerun_address():
-    return f"{get_host_address()}/vscode/rerun/?url={get_host_address()}/vscode/nova.rrd"
+    return f"{get_host_address()}/advanced-code-editor/rerun/?url={get_host_address()}/advanced-code-editor/nova.rrd"
