@@ -19,7 +19,6 @@ from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
 from nova.core.nova import Nova
 from nova.types.pose import Pose
-from nova_rerun_bridge import colors
 from nova_rerun_bridge.blueprint import send_blueprint
 from nova_rerun_bridge.collision_scene import log_collision_scenes
 from nova_rerun_bridge.consts import RECORDING_INTERVAL, TIME_INTERVAL_NAME
@@ -217,7 +216,7 @@ class NovaRerunBridge:
             model_from_controller=motion_motion_group.model_from_controller,
             motion_group=motion.motion_group,
             optimizer_config=optimizer_config,
-            trajectory=trajectory.trajectory,
+            trajectory=trajectory.trajectory or [],
             collision_scenes=collision_scenes,
             time_offset=time_offset,
             timing_mode=timing_mode,
@@ -231,7 +230,7 @@ class NovaRerunBridge:
         motion_group: MotionGroup,
         timing_mode=TimingMode.CONTINUE,
         time_offset: float = 0,
-        tool_asset: str = None,
+        tool_asset: Optional[str] = None,
     ) -> None:
         if len(joint_trajectory.joint_positions) == 0:
             raise ValueError("No joint trajectory provided")
@@ -339,6 +338,7 @@ class NovaRerunBridge:
         self,
         actions: list[Action | CollisionFreeMotion] | Action,
         show_connection: bool = False,
+        show_labels: bool = True,
         motion_group: Optional[MotionGroup] = None,
     ) -> None:
         from nova_rerun_bridge import trajectory
@@ -371,33 +371,70 @@ class NovaRerunBridge:
         all_poses = regular_poses + collision_free_poses
         positions = []
         point_colors = []
-        use_red = False
+        labels = []
 
-        # Collect all positions and determine colors
+        # Collect all positions, colors, and labels
         for i, action in enumerate(actions):
-            if isinstance(action, WriteAction):
-                use_red = True
             if i < len(all_poses):  # Only process if there's a corresponding pose
                 pose = all_poses[i]
                 logger.debug(f"Pose: {pose}")
                 positions.append([pose.position.x, pose.position.y, pose.position.z])
-                point_colors.append(colors.colors[1] if use_red else colors.colors[9])
 
-        enity_path = (
+                # Determine action type and color
+                action_type = getattr(action, "type", type(action).__name__)
+
+                if isinstance(action, WriteAction):
+                    point_colors.append((255, 0, 0))  # Red for IO actions
+                elif action_type == "joint_ptp":
+                    point_colors.append((0, 255, 0))  # Green for joint motions
+                elif action_type == "cartesian_ptp":
+                    point_colors.append((0, 0, 255))  # Blue for cartesian motions
+                elif action_type == "linear":
+                    point_colors.append((255, 255, 0))  # Yellow for linear motions
+                elif action_type == "circular":
+                    point_colors.append((255, 0, 255))  # Magenta for circular motions
+                else:
+                    point_colors.append((128, 128, 128))  # Gray for other actions
+
+                # Create descriptive label with ID and action type (only if needed)
+                if show_labels:
+                    labels.append(f"{i}: {action_type}")
+
+        entity_path = (
             f"motion/{motion_group.motion_group_id}/actions" if motion_group else "motion/actions"
         )
 
-        # Log all positions at once
-        rr.log(
-            enity_path,
-            rr.Points3D(positions, colors=point_colors, radii=rr.Radius.ui_points([5.0])),
-            static=True,
-        )
+        # Log all positions with labels and colors
+        if positions:
+            # Prepare labels only if show_labels is True
+            point_labels = labels if show_labels else None
 
-        if show_connection:
             rr.log(
-                f"{enity_path}/connection", rr.LineStrips3D([positions], colors=[155, 155, 155, 50])
+                entity_path,
+                rr.Points3D(
+                    positions,
+                    colors=point_colors,
+                    labels=point_labels,
+                    radii=rr.Radius.ui_points([8.0]),
+                ),
+                static=True,
             )
+
+            # Log connections between consecutive actions if show_connection is True
+            if show_connection and len(positions) > 1:
+                connection_lines = []
+                for i in range(len(positions) - 1):
+                    connection_lines.append([positions[i], positions[i + 1]])
+
+                rr.log(
+                    f"{entity_path}/connections",
+                    rr.LineStrips3D(
+                        connection_lines,
+                        colors=[(128, 128, 128)],  # Gray connections
+                        radii=rr.Radius.ui_points([2.0]),
+                    ),
+                    static=True,
+                )
 
     async def __aenter__(self) -> "NovaRerunBridge":
         """Context manager entry point.
