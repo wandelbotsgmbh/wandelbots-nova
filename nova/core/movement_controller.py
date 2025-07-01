@@ -246,7 +246,7 @@ class TrajectoryCursor:
         try:
             async for response in self._response_stream:
                 instance = response.actual_instance
-                if isinstance(instance, wb.models.Movement):
+                if isinstance(instance, wb.models.MotionGroupState):
                     if last_movement is None:
                         last_movement = instance.movement
                     self._handle_movement(instance.movement, last_movement)
@@ -266,7 +266,7 @@ class TrajectoryCursor:
         ic()
 
     def _handle_movement(
-        self, curr_movement: wb.models.MovementMovement, last_movement: wb.models.MovementMovement
+        self, curr_movement: wb.models.MotionGroupState, last_movement: wb.models.MotionGroupState
     ):
         if not self._breakpoints:
             return

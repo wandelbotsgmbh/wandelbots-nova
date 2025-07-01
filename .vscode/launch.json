@@ -24,6 +24,18 @@
       "env": {
         "PYTHONPATH": "${workspaceFolder}"
       }
+    },
+   {
+      "name": "Jogger Example",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/09_jogger.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
     }
 
   ]

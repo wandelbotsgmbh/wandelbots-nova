@@ -35,8 +35,9 @@ async def main():
         async with controller[0] as motion_group:
             # Move to home position first
             home_joints = [-pi, -pi / 2, pi / 2, -pi / 2, -pi / 2, 0]
-            tcp_names = await motion_group.tcp_names()
-            tcp = tcp_names[0]
+            # tcp_names = await motion_group.tcp_names()
+            # tcp = tcp_names[0]
+            tcp = "Flange"
             motion_iter = await motion_group.plan_and_execute([jnt(home_joints)], tcp)
 
             # Wait for home movement to complete
