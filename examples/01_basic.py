@@ -16,7 +16,7 @@ from nova.cell import virtual_controller
 
 
 async def main():
-    async with Nova() as nova:
+    async with Nova(version="v2") as nova:
         cell = nova.cell()
         controller = await cell.ensure_controller(
             robot_controller=virtual_controller(
@@ -27,10 +27,11 @@ async def main():
         )
 
         async with controller[0] as motion_group:
-            tcp_names = await motion_group.tcp_names()
-            print(tcp_names)
+            # tcp_names = await motion_group.tcp_names()
+            # print(tcp_names)
 
-            tcp = tcp_names[0]
+            # tcp = tcp_names[0]
+            tcp = "Flange"
 
             # Current motion group state
             state = await motion_group.get_state(tcp)
