@@ -188,16 +188,14 @@ class ApiGateway:
         self.store_collision_scenes_api = intercept(
             wb.StoreCollisionScenesApi(api_client=self._api_client), self
         )
-        self.virtual_robot_api = intercept(wb.VirtualRobotApi(api_client=self._api_client), self)
-        self.virtual_robot_behavior_api = intercept(
-            wb.VirtualRobotBehaviorApi(api_client=self._api_client), self
+        self.virtual_controller_api = intercept(
+            wb.VirtualControllerApi(api_client=self._api_client), self
         )
-        self.virtual_robot_mode_api = intercept(
-            wb.VirtualRobotModeApi(api_client=self._api_client), self
+        self.virtual_controller_behavior_api = intercept(
+            wb.VirtualControllerBehaviorApi(api_client=self._api_client), self
         )
-        self.virtual_robot_setup_api = intercept(
-            wb.VirtualRobotSetupApi(api_client=self._api_client), self
-        )
+        # TODO migrate stuff in rerun bridge and then remove this
+        self.virtual_robot_setup_api = self.virtual_controller_api
         self.motion_group_jogging_api = intercept(wb.JoggingApi(api_client=self._api_client), self)
         self.trajectory_planning_api: wb.TrajectoryPlanningApi = intercept(
             wb.TrajectoryPlanningApi(api_client=self._api_client), self
@@ -490,14 +488,18 @@ class ApiGateway:
         await self.motion_api.stop_execution(cell=cell, motion=motion_id)
 
     async def get_motion_group_state(
-        self, cell: str, motion_group_id: str, tcp: str | None = None
+        self, cell_id: str, controller_id: str, motion_group_id: str, tcp: str | None = None
     ) -> wb.models.MotionGroupState:
         return await self.motion_group_api.get_current_motion_group_state(
-            cell=cell, motion_group=motion_group_id
+            cell=cell_id, controller=controller_id, motion_group=motion_group_id
         )
 
-    async def list_tcps(self, cell: str, motion_group_id: str) -> wb.models.ListTcpsResponse:
-        return await self.motion_group_api.list_tcps(cell=cell, motion_group=motion_group_id)
+    async def list_tcps(
+        self, cell_id: str, controller_id: str, motion_group_id: str
+    ) -> wb.models.ListTcpsResponse:
+        return await self.motion_group_api.get_motion_group_description(
+            cell=cell_id, controller=controller_id, motion_group=motion_group_id
+        )
 
     async def get_active_tcp(self, cell: str, motion_group_id: str) -> wb.models.RobotTcp:
         return await self.motion_group_api.get_active_tcp(cell=cell, motion_group=motion_group_id)

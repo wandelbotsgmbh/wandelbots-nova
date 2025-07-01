@@ -56,6 +56,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         return MotionGroup(
             api_gateway=self._nova_api,
             cell=self.configuration.cell_id,
+            controller_id=self.configuration.controller_id,
             motion_group_id=motion_group_id,
         )
 
@@ -68,7 +69,9 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         Returns:
             list[MotionGroup]: All motion groups as `MotionGroup` objects.
         """
-        raise NotImplementedError("This can be implemented when the new controllers/{controller}/description endpoint is available.")
+        raise NotImplementedError(
+            "This can be implemented when the new controllers/{controller}/description endpoint is available."
+        )
         motion_group_ids = await self._nova_api.controller_description_api
         return [self.motion_group(motion_group_id) for motion_group_id in motion_group_ids]
 

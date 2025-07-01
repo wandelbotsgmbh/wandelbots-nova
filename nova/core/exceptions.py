@@ -38,12 +38,12 @@ class PlanTrajectoryFailed(Exception):
 
 
 class InitMovementFailed(Exception):
-    def __init__(self, error: wb.models.InitializeMovementResponseInitResponse):
+    def __init__(self, error: wb.models.InitializeMovementResponse):
         self._error = error
         super().__init__(f"Initial movement failed: {json.dumps(error.to_dict(), indent=2)}")
 
     @property
-    def error(self) -> wb.models.InitializeMovementResponseInitResponse:
+    def error(self) -> wb.models.InitializeMovementResponse:
         """Return the original InitializeMovementResponseInitResponse object."""
         return self._error
 
