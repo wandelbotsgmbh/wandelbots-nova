@@ -80,6 +80,7 @@ include = [
     "nova",
     "nova_rerun_bridge",
     "wandelscript",
+    "novax",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -87,6 +88,7 @@ include = [
     "nova",
     "nova_rerun_bridge",
     "wandelscript",
+    "novax",
 ]
 
 [build-system]
