@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v1.24.1 (2025-07-02)
+
+### Chores
+
+- Update nova to 25.6 ([#218](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/218),
+  [`8080775`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/808077506b74fb3eb8d04e925cb79af70cf5cedc))
+
+Co-authored-by: Christoph Biering <christoph.biering@wandelbots.com>
+
+
 ## v1.24.0 (2025-06-27)
 
 ### Features
