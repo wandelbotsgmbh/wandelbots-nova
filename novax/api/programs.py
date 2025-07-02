@@ -9,7 +9,7 @@ router = APIRouter(prefix="/programs", tags=["programs"])
 @router.get("", operation_id="getPrograms", response_model=list[ProgramDetails])
 async def get_programs(program_manager: ProgramManager = Depends(get_program_manager)):
     """List all programs"""
-    programs = program_manager.get_programs()
+    programs = await program_manager.get_programs()
     return list(programs.values())
 
 
@@ -19,7 +19,7 @@ async def get_program(
     program_manager: ProgramManager = Depends(get_program_manager),
 ):
     """Get program details"""
-    program_details = program_manager.get_program(program)
+    program_details = await program_manager.get_program(program)
     if not program_details:
         raise HTTPException(status_code=404, detail="Program not found")
 
@@ -41,10 +41,10 @@ async def list_program_runs(
     program_manager: ProgramManager = Depends(get_program_manager),
 ):
     """List all program runs"""
-    if not program_manager.get_program(program):
+    if not await program_manager.get_program(program):
         raise HTTPException(status_code=404, detail="Program not found")
 
-    return program_manager.get_program_runs(program)
+    return await program_manager.get_program_runs(program)
 
 
 @router.post("/{program}/runs", operation_id="runProgram", response_model=ProgramRun)
@@ -54,7 +54,7 @@ async def run_program(
     program_manager: ProgramManager = Depends(get_program_manager),
 ):
     """Run a program"""
-    if not program_manager.get_program(program):
+    if not await program_manager.get_program(program):
         raise HTTPException(status_code=404, detail="Program not found")
 
     return await program_manager.run_program(program, request.parameters)
@@ -67,10 +67,10 @@ async def get_program_run(
     program_manager: ProgramManager = Depends(get_program_manager),
 ):
     """Get state of the run"""
-    if not program_manager.get_program(program):
+    if not await program_manager.get_program(program):
         raise HTTPException(status_code=404, detail="Program not found")
 
-    program_run = program_manager.get_program_run(program, run)
+    program_run = await program_manager.get_program_run(program, run)
     return {
         **program_run.model_dump(),
         "_links": {
@@ -87,8 +87,8 @@ async def stop_program_run(
     program_manager: ProgramManager = Depends(get_program_manager),
 ):
     """Stop the run"""
-    if not program_manager.get_program(program):
+    if not await program_manager.get_program(program):
         raise HTTPException(status_code=404, detail="Program not found")
 
-    program_manager.stop_program(program, run)
+    await program_manager.stop_program(program, run)
     return None

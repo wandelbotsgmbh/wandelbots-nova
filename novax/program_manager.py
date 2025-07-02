@@ -65,6 +65,9 @@ class ProgramManager:
         self._program_functions: dict[str, Function] = {}
         self._runners: dict[str, dict[str, NovaxProgramRunner]] = {}
 
+    def has_program(self, program_id: str) -> bool:
+        return program_id in self._programs
+
     def register_program(self, func_or_path: Function | Path) -> str:
         """
         Register a function or wandelscript file as a program.
@@ -121,19 +124,27 @@ class ProgramManager:
 
         return program_id
 
-    def get_programs(self) -> dict[str, ProgramDetails]:
+    async def _get_programs(self):
+        """
+        This method is used to get all registered programs.
+        It is implemented by the subclass.
+        """
+        pass
+
+    async def get_programs(self) -> dict[str, ProgramDetails]:
         """Get all registered programs"""
+        await self._get_programs()
         return self._programs.copy()
 
-    def get_program(self, program_id: str) -> Optional[ProgramDetails]:
+    async def get_program(self, program_id: str) -> Optional[ProgramDetails]:
         """Get a specific program by ID"""
         return self._programs.get(program_id)
 
-    def get_program_runs(self, program_id: str) -> list[ProgramRun]:
+    async def get_program_runs(self, program_id: str) -> list[ProgramRun]:
         """Get all runs for a specific program"""
         return [runner.program_run for runner in self._runners.get(program_id, {}).values()]
 
-    def get_program_run(self, program_id: str, run_id: str) -> ProgramRun:
+    async def get_program_run(self, program_id: str, run_id: str) -> ProgramRun:
         """Get a specific run for a program"""
         return self._runners[program_id][run_id].program_run
 
@@ -148,7 +159,7 @@ class ProgramManager:
         runner.start(sync=False)
         return runner.program_run
 
-    def stop_program(self, program_id: str, run_id: str):
+    async def stop_program(self, program_id: str, run_id: str):
         """Stop a running program"""
         runner = self._runners[program_id][run_id]
         if not runner:
