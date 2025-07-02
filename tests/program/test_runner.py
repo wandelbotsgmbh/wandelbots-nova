@@ -30,9 +30,9 @@ class TestProgramRunner(ProgramRunner):
 def test_program_runner_initialization():
     # Test basic initialization
     program = Program(content="test", program_type=ProgramType.PYTHON)
-    runner = TestProgramRunner(program, {})
+    runner = TestProgramRunner(program_id="test", program=program, args={})
 
-    assert runner.id is not None
+    assert runner.run_id is not None
     assert runner.state == ProgramRunState.NOT_STARTED
     assert not runner.is_running()
 
@@ -40,7 +40,7 @@ def test_program_runner_initialization():
 @pytest.mark.integration
 def test_program_runner_state_transitions():
     program = Program(content="test", program_type=ProgramType.PYTHON)
-    runner = TestProgramRunner(program, {})
+    runner = TestProgramRunner(program_id="test", program=program, args={})
 
     # Test state transitions
     assert runner.state == ProgramRunState.NOT_STARTED
@@ -51,7 +51,7 @@ def test_program_runner_state_transitions():
 @pytest.mark.integration
 def test_program_runner_stop():
     program = Program(content="test", program_type=ProgramType.PYTHON)
-    runner = TestProgramRunner(program, {})
+    runner = TestProgramRunner(program_id="test", program=program, args={})
 
     # Test stopping before start
     with pytest.raises(RuntimeError):
@@ -66,7 +66,7 @@ def test_program_runner_stop():
 @pytest.mark.integration
 def test_program_runner_double_start():
     program = Program(content="test", program_type=ProgramType.PYTHON)
-    runner = TestProgramRunner(program, {})
+    runner = TestProgramRunner(program_id="test", program=program, args={})
 
     # Test starting twice
     runner.start(sync=True)
@@ -80,7 +80,7 @@ def test_program_runner_error_handling():
 
     # Test general exception handling
     with pytest.raises(RuntimeError):
-        runner = TestProgramRunner(program, {}, should_fail=True)
+        runner = TestProgramRunner(program_id="test", program=program, args={}, should_fail=True)
         runner.start(sync=True)
         assert runner.state == ProgramRunState.FAILED
         assert runner.program_run.error is not None
@@ -88,7 +88,9 @@ def test_program_runner_error_handling():
 
     # Test NotPlannableError handling
     with pytest.raises(NotPlannableError):
-        runner = TestProgramRunner(program, {}, should_not_plannable=True)
+        runner = TestProgramRunner(
+            program_id="test", program=program, args={}, should_not_plannable=True
+        )
         runner.start(sync=True)
         assert runner.state == ProgramRunState.FAILED
         assert "NotPlannableError" in runner.program_run.error
@@ -97,7 +99,7 @@ def test_program_runner_error_handling():
 @pytest.mark.integration
 def test_program_runner_logs_and_stdout():
     program = Program(content="test", program_type=ProgramType.PYTHON)
-    runner = TestProgramRunner(program, {})
+    runner = TestProgramRunner(program_id="test", program=program, args={})
 
     # Test initial state
     assert runner.program_run.logs is None

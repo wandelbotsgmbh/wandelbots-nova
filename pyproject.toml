@@ -106,7 +106,6 @@ junit_family = "xunit2"
 norecursedirs = "develop .ipynb_checkpoints .venv .tox *.egg"
 testpaths = """
     nova
-    novax
     tests
 """
 markers = """
