@@ -1,4 +1,3 @@
-from enum import Enum, auto
 from typing import Optional
 
 import numpy as np
@@ -12,20 +11,6 @@ from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
 from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 
-
-class TimingMode(Enum):
-    """Controls how trajectories are timed relative to each other."""
-
-    RESET = auto()  # Start at time_offset
-    CONTINUE = auto()  # Start after last trajectory
-    SYNC = auto()  # Use exact time_offset, don't update last time
-    OVERRIDE = auto()  # Use exact time_offset and reset last time
-
-
-# Track both last end time and last offset separately
-_last_end_time = 0.0
-_last_offset = 0.0
-
 _visualizer_cache: dict[str, RobotVisualizer] = {}
 
 
@@ -37,33 +22,21 @@ def log_motion(
     trajectory: list[models.TrajectorySample],
     collision_scenes: dict[str, models.CollisionScene],
     time_offset: float = 0,
-    timing_mode: TimingMode = TimingMode.CONTINUE,
     tool_asset: Optional[str] = None,
 ):
     """
-    Fetch and process a single motion with timing control.
+    Fetch and process a single motion for visualization.
 
     Args:
-        ...existing args...
-        timing_mode: Controls how trajectory timing is handled
-            RESET: Start at time_offset (default)
-            CONTINUE: Start after last trajectory
-            SYNC: Use exact time_offset provided
+        motion_id: The motion identifier
+        model_from_controller: The robot model name
+        motion_group: The motion group identifier
+        optimizer_config: Optimizer configuration
+        trajectory: List of trajectory samples
+        collision_scenes: Collision scene data
+        time_offset: Absolute start time for this motion group (per-motion-group timeline)
+        tool_asset: Optional tool asset for visualization
     """
-    global _visualizer_cache, _last_end_time, _last_offset
-
-    # Calculate start time based on timing mode
-    if timing_mode == TimingMode.CONTINUE:
-        effective_offset = _last_end_time + _last_offset
-    elif timing_mode == TimingMode.SYNC:
-        effective_offset = _last_end_time
-    elif timing_mode == TimingMode.OVERRIDE:
-        effective_offset = time_offset
-        _last_end_time = time_offset
-    else:  # TimingMode.RESET
-        effective_offset = time_offset
-        _last_end_time = time_offset
-
     # Initialize DHRobot and Visualizer
     if model_from_controller == "Yaskawa_TURN2":
         if optimizer_config.dh_parameters is not None:
@@ -87,7 +60,7 @@ def log_motion(
     )
 
     rr.reset_time()
-    rr.set_time(TIME_INTERVAL_NAME, duration=effective_offset)
+    rr.set_time(TIME_INTERVAL_NAME, duration=time_offset)
 
     # Get or create visualizer from cache
     if motion_group not in _visualizer_cache:
@@ -116,33 +89,13 @@ def log_motion(
         visualizer=visualizer,
         trajectory=trajectory,
         optimizer_config=optimizer_config,
-        timer_offset=effective_offset,
+        timer_offset=time_offset,
         tool_asset=tool_asset,
     )
-
-    # Update last times based on timing mode
-    if trajectory:
-        if trajectory[-1].time is None:
-            raise ValueError("Last trajectory point has no time")
-
-        if timing_mode == TimingMode.SYNC:
-            _last_offset = trajectory[-1].time
-        else:
-            _last_offset = 0
-            _last_end_time = effective_offset + trajectory[-1].time
 
     del trajectory
     del robot
     del visualizer
-
-
-def continue_after_sync():
-    global _last_end_time, _last_offset
-
-    effective_offset = _last_end_time + _last_offset
-
-    _last_offset = 0
-    _last_end_time = effective_offset
 
 
 def log_trajectory_path(

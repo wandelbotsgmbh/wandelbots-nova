@@ -25,7 +25,7 @@ from nova_rerun_bridge.consts import RECORDING_INTERVAL, TIME_INTERVAL_NAME
 from nova_rerun_bridge.helper_scripts.download_models import get_project_root
 from nova_rerun_bridge.safety_zones import log_safety_zones
 from nova_rerun_bridge.stream_state import stream_motion_group
-from nova_rerun_bridge.trajectory import TimingMode, continue_after_sync, log_motion
+from nova_rerun_bridge.trajectory import log_motion
 
 
 class NovaRerunBridge:
@@ -54,8 +54,13 @@ class NovaRerunBridge:
 
     def __init__(self, nova: Nova, spawn: bool = True, recording_id=None) -> None:
         self._ensure_models_exist()
+        # Store the original nova instance for initial setup and to copy connection parameters
         self.nova = nova
+        # Create a separate Nova instance for the bridge to use for API calls
+        self._bridge_nova = None
         self._streaming_tasks: dict[MotionGroup, asyncio.Task] = {}
+        # Track timing per motion group - each motion group has its own timeline
+        self._motion_group_timers: dict[str, float] = {}
         if spawn:
             recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             rr.init(application_id="nova", recording_id=recording_id, spawn=True)
@@ -127,9 +132,10 @@ class NovaRerunBridge:
 
     async def log_collision_scenes(self) -> dict[str, models.CollisionScene]:
         """Fetch and log all collision scenes from Nova to Rerun."""
+        bridge_nova = self._bridge_nova or self.nova
         collision_scenes = (
-            await self.nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
-                cell=self.nova.cell()._cell_id
+            await bridge_nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
+                cell=bridge_nova.cell()._cell_id
             )
         )
         log_collision_scenes(collision_scenes)
@@ -144,9 +150,10 @@ class NovaRerunBridge:
         Raises:
             ValueError: If scene_id is not found in stored collision scenes
         """
+        bridge_nova = self._bridge_nova or self.nova
         collision_scenes = (
-            await self.nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
-                cell=self.nova.cell()._cell_id
+            await bridge_nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
+                cell=bridge_nova.cell()._cell_id
             )
         )
 
@@ -176,74 +183,110 @@ class NovaRerunBridge:
         log_safety_zones(motion_group_id, optimizer_setup)
 
     async def log_motion(
-        self,
-        motion_id: str,
-        timing_mode=TimingMode.CONTINUE,
-        time_offset: float = 0,
-        tool_asset: Optional[str] = None,
+        self, motion_id: str, time_offset: float = 0, tool_asset: Optional[str] = None
     ) -> None:
-        # Fetch motion details from api
-        motion = await self.nova._api_client.motion_api.get_planned_motion(
-            self.nova.cell()._cell_id, motion_id
-        )
-        optimizer_config = (
-            await self.nova._api_client.motion_group_infos_api.get_optimizer_configuration(
-                self.nova.cell()._cell_id, motion.motion_group
+        logger.debug(f"log_motion called with motion_id: {motion_id}")
+        try:
+            # Use the bridge's own Nova client for API calls
+            bridge_nova = self._bridge_nova or self.nova
+            logger.debug(
+                f"Using bridge_nova: {bridge_nova is not None}, bridge_nova._api_client: {hasattr(bridge_nova, '_api_client') if bridge_nova else False}"
             )
-        )
-        trajectory = await self.nova._api_client.motion_api.get_motion_trajectory(
-            self.nova.cell()._cell_id, motion_id, int(RECORDING_INTERVAL * 1000)
-        )
 
-        motion_groups = await self.nova._api_client.motion_group_api.list_motion_groups(
-            self.nova.cell()._cell_id
-        )
-        motion_motion_group = next(
-            (mg for mg in motion_groups.instances if mg.motion_group == motion.motion_group), None
-        )
-
-        collision_scenes = (
-            await self.nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
-                cell=self.nova.cell()._cell_id
+            # Fetch motion details from api
+            logger.debug("Fetching motion details...")
+            motion = await bridge_nova._api_client.motion_api.get_planned_motion(
+                bridge_nova.cell()._cell_id, motion_id
             )
-        )
+            logger.debug("Fetching optimizer config...")
+            optimizer_config = (
+                await bridge_nova._api_client.motion_group_infos_api.get_optimizer_configuration(
+                    bridge_nova.cell()._cell_id, motion.motion_group
+                )
+            )
+            logger.debug("Fetching trajectory...")
+            trajectory = await bridge_nova._api_client.motion_api.get_motion_trajectory(
+                bridge_nova.cell()._cell_id, motion_id, int(RECORDING_INTERVAL * 1000)
+            )
 
-        if motion_motion_group is None:
-            raise ValueError(f"Motion group {motion.motion_group} not found")
+            logger.debug("Fetching motion groups...")
+            motion_groups = await bridge_nova._api_client.motion_group_api.list_motion_groups(
+                bridge_nova.cell()._cell_id
+            )
+            motion_motion_group = next(
+                (mg for mg in motion_groups.instances if mg.motion_group == motion.motion_group),
+                None,
+            )
 
-        log_motion(
-            motion_id=motion_id,
-            model_from_controller=motion_motion_group.model_from_controller,
-            motion_group=motion.motion_group,
-            optimizer_config=optimizer_config,
-            trajectory=trajectory.trajectory or [],
-            collision_scenes=collision_scenes,
-            time_offset=time_offset,
-            timing_mode=timing_mode,
-            tool_asset=tool_asset,
-        )
+            logger.debug("Fetching collision scenes...")
+            collision_scenes = await bridge_nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
+                cell=bridge_nova.cell()._cell_id
+            )
+
+            if motion_motion_group is None:
+                raise ValueError(f"Motion group {motion.motion_group} not found")
+
+            # Get or initialize the timer for this motion group
+            motion_group_id = motion.motion_group
+            current_time = self._motion_group_timers.get(motion_group_id, 0.0)
+
+            logger.debug(
+                f"Calling log_motion function with trajectory points: {len(trajectory.trajectory or [])}"
+            )
+            log_motion(
+                motion_id=motion_id,
+                model_from_controller=motion_motion_group.model_from_controller,
+                motion_group=motion.motion_group,
+                optimizer_config=optimizer_config,
+                trajectory=trajectory.trajectory or [],
+                collision_scenes=collision_scenes,
+                time_offset=current_time + time_offset,
+                tool_asset=tool_asset,
+            )
+            # Update the timer for this motion group based on trajectory duration
+            if trajectory.trajectory:
+                last_trajectory_point = trajectory.trajectory[-1]
+                if last_trajectory_point.time is not None:
+                    self._motion_group_timers[motion_group_id] = (
+                        current_time + time_offset + last_trajectory_point.time
+                    )
+            logger.debug("log_motion completed successfully")
+        except RuntimeError as e:
+            if "Session is closed" in str(e):
+                # Session is closed, skip trajectory logging
+                logger.debug(f"Skipping trajectory logging due to closed session: {e}")
+                return
+            else:
+                raise
+        except Exception as e:
+            # Log other errors but don't fail
+            logger.error(f"Failed to log motion trajectory: {e}")
+            raise
 
     async def log_trajectory(
         self,
         joint_trajectory: models.JointTrajectory,
         tcp: str,
         motion_group: MotionGroup,
-        timing_mode=TimingMode.CONTINUE,
         time_offset: float = 0,
         tool_asset: Optional[str] = None,
     ) -> None:
         if len(joint_trajectory.joint_positions) == 0:
             raise ValueError("No joint trajectory provided")
+
         load_plan_response = await motion_group._load_planned_motion(joint_trajectory, tcp)
+
         await self.log_motion(
-            load_plan_response.motion,
-            timing_mode=timing_mode,
-            time_offset=time_offset,
-            tool_asset=tool_asset,
+            load_plan_response.motion, time_offset=time_offset, tool_asset=tool_asset
         )
 
     def continue_after_sync(self) -> None:
-        continue_after_sync()
+        """No longer needed with per-motion-group timing.
+
+        This method is now a no-op since timing is automatically managed
+        per motion group. Each motion group maintains its own independent timeline.
+        """
+        pass
 
     async def log_error_feedback(
         self, error_feedback: PlanTrajectoryFailedResponseErrorFeedback
@@ -338,7 +381,7 @@ class NovaRerunBridge:
         self,
         actions: list[Action | CollisionFreeMotion] | Action,
         show_connection: bool = False,
-        show_labels: bool = True,
+        show_labels: bool = False,
         motion_group: Optional[MotionGroup] = None,
         tcp: Optional[str] = None,
     ) -> None:
@@ -360,10 +403,15 @@ class NovaRerunBridge:
         Raises:
             ValueError: If no actions are provided
         """
-        from nova_rerun_bridge import trajectory
-
         rr.reset_time()
-        rr.set_time(TIME_INTERVAL_NAME, duration=trajectory._last_end_time)
+
+        # Use motion group specific timing if available
+        if motion_group is not None:
+            motion_group_time = self._motion_group_timers.get(motion_group.motion_group_id, 0.0)
+            rr.set_time(TIME_INTERVAL_NAME, duration=motion_group_time)
+        else:
+            # Fallback to time 0 if no motion group provided
+            rr.set_time(TIME_INTERVAL_NAME, duration=0.0)
 
         if not isinstance(actions, list):
             actions = [actions]
@@ -453,8 +501,7 @@ class NovaRerunBridge:
                 point_colors.append(tuple(colors[10]))  # Darkest color for other actions
 
             # Create descriptive label with ID and action type (only if needed)
-            if show_labels:
-                labels.append(f"{len(positions) - 1}: {action_type}")
+            labels.append(f"{len(positions) - 1}: {action_type}")
 
         entity_path = (
             f"motion/{motion_group.motion_group_id}/actions" if motion_group else "motion/actions"
@@ -462,8 +509,8 @@ class NovaRerunBridge:
 
         # Log all positions with labels and colors
         if positions:
-            # Prepare labels only if show_labels is True
-            point_labels = labels if show_labels else None
+            # Prepare labels
+            point_labels = labels
 
             rr.log(
                 entity_path,
@@ -471,6 +518,7 @@ class NovaRerunBridge:
                     positions,
                     colors=point_colors,
                     labels=point_labels,
+                    show_labels=show_labels,
                     radii=rr.Radius.ui_points([8.0]),
                 ),
                 static=True,
@@ -539,12 +587,53 @@ class NovaRerunBridge:
             # Fallback: return a pose at origin
             return Pose((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
 
+    def get_motion_group_time(self, motion_group_id: str) -> float:
+        """Get the current timeline position for a motion group.
+
+        Args:
+            motion_group_id: The motion group identifier
+
+        Returns:
+            Current time position for the motion group (0.0 if not seen before)
+        """
+        return self._motion_group_timers.get(motion_group_id, 0.0)
+
+    def reset_motion_group_time(self, motion_group_id: str) -> None:
+        """Reset the timeline for a specific motion group back to 0.
+
+        Args:
+            motion_group_id: The motion group identifier to reset
+        """
+        self._motion_group_timers[motion_group_id] = 0.0
+
     async def __aenter__(self) -> "NovaRerunBridge":
         """Context manager entry point.
+
+        Creates a separate Nova client instance for the bridge to use.
 
         Returns:
             NovaRerunBridge: Self reference for context manager usage.
         """
+        # Create a separate Nova instance for the bridge using the same connection parameters
+        # This ensures the bridge has its own session that won't be closed by the main program
+        api_client = self.nova._api_client
+
+        # Extract the host without the /api/v1 suffix
+        host = api_client._host
+        if host.endswith("/api/v1"):
+            host = host[:-7]  # Remove '/api/v1'
+        elif host.endswith("/api/"):
+            host = host[:-5]  # Remove '/api/'
+
+        self._bridge_nova = Nova(
+            host=host,
+            access_token=api_client._access_token,
+            username=api_client._username,
+            password=api_client._password,
+            version=api_client._version,
+            verify_ssl=api_client._verify_ssl,
+        )
+        await self._bridge_nova.__aenter__()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
@@ -553,5 +642,9 @@ class NovaRerunBridge:
 
     async def cleanup(self) -> None:
         """Cleanup resources and close Nova API client connection."""
-        if hasattr(self.nova, "_api_client"):
-            await self.nova._api_client.close()
+        # Clean up the bridge's own Nova instance
+        if self._bridge_nova is not None:
+            await self._bridge_nova.__aexit__(None, None, None)
+            self._bridge_nova = None
+
+        # Note: Don't clean up self.nova as it belongs to the main program

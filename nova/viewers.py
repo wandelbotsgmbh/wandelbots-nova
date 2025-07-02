@@ -151,6 +151,9 @@ class Rerun(Viewer):
     async def _setup_async_components(self) -> None:
         """Setup async components like blueprint."""
         if self._bridge:
+            # Initialize the bridge's own Nova client before using it
+            await self._bridge.__aenter__()
+
             await self._bridge.setup_blueprint()
             await self._setup_collision_scenes()
             await self._setup_safety_zones()
@@ -222,13 +225,14 @@ class Rerun(Viewer):
     def cleanup(self) -> None:
         """Clean up rerun integration after program execution."""
         if self._bridge:
-            # Stop any streaming tasks
+            # Stop any streaming tasks and properly close the bridge
             import asyncio
 
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     loop.create_task(self._bridge.stop_streaming())
+                    loop.create_task(self._bridge.__aexit__(None, None, None))
             except RuntimeError:
                 # Event loop not running, can't stop streaming
                 pass

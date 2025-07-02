@@ -304,24 +304,21 @@ class AbstractRobot(Device):
     async def _ensure_trajectory_logging(
         self, bridge, trajectory: api.models.JointTrajectory, tcp: str
     ) -> None:
-        """Ensure trajectory logging works by providing the bridge with a Nova session."""
+        """Ensure trajectory logging works with the persistent bridge."""
         from nova.core.motion_group import MotionGroup
 
         if not isinstance(self, MotionGroup):
             return  # Only log trajectories for motion groups
 
         try:
-            # Try with the existing bridge first
+            # Use the persistent bridge - it should work now with dedicated Nova instance
             await bridge.log_trajectory(trajectory, tcp, self)
-        except Exception:
-            # If it fails, ensure the bridge has a fresh Nova instance
-            from nova.core.nova import Nova
-            from nova_rerun_bridge import NovaRerunBridge
+        except Exception as e:
+            # Log the error but don't fail planning
+            print(f"Warning: Failed to log trajectory to Rerun viewer: {e}")
+            import traceback
 
-            # Create a new bridge with a fresh Nova instance for logging
-            async with Nova() as nova:
-                temp_bridge = NovaRerunBridge(nova, spawn=False)
-                await temp_bridge.log_trajectory(trajectory, tcp, self)
+            traceback.print_exc()
 
     @abstractmethod
     def _execute(
