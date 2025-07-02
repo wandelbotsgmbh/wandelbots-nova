@@ -271,7 +271,7 @@ def get_blueprint(motion_group_list: list[str]) -> rrb.Blueprint:
         configure_tcp_line_colors(motion_group)
         configure_joint_line_colors(motion_group)
 
-    contents = ["//**" + "motion/**", "collision_scenes/**", "coordinate_system_world/**"] + [
+    contents = ["//**", "motion/**", "collision_scenes/**", "coordinate_system_world/**"] + [
         f"{group}/**" for group in motion_group_list
     ]
 
