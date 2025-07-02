@@ -93,42 +93,30 @@ uv add wandelbots-nova --extra novax
 To use Novax in your application, you need to create a new `Novax` instance as an entrypoint.
 
 ```python
-import os
 from pathlib import Path
-
 import uvicorn
-from loguru import logger
+from novax import Novax
 
-from schaeffler.novax import Novax
-from schaeffler.programs.program1 import program1
-from schaeffler.programs.schaeffler_py import schaeffler_py
+
+@nova.program()
+def simple_program():
+    print("Hello World!")
 
 
 def main(host: str = "0.0.0.0", port: int = 8000):
+    # Create a new Novax instance
     novax = Novax()
+    # Create a new FastAPI app
     app = novax.create_app()
+    # Include the programs router
     novax.include_programs_router(app)
 
-    log_level = os.getenv("LOG_LEVEL", "info")
-    logger.info("Starting Service...")
+    # Register Python programs (existing functionality)
+    novax.register_program(simple_program)
+    # You can also register wandelscript files
+    novax.register_program(Path(__file__).parent / "programs" / "program2.ws")
 
-    # base path is injected/set when running within the wandelbots environment
-    base_path = os.getenv("BASE_PATH", "")
-    if len(base_path) > 0:
-        logger.info("serving with base path '{}'", base_path)
-
-    # 1) Register Python programs (existing functionality)
-    novax.register_program(program1)
-    novax.register_program(schaeffler_py)
-    # Register wandelscript file (new functionality)
-    novax.register_program(Path(__file__).parent / "programs" / "schaeffler_ws.ws")
-
-    # 2) register programs from path
-    # novax.register_programs(path="./programs")
-
-    # 3) autodiscover programs
-    # novax.autodiscover_programs()
-
+    # Serve the FastAPI app
     uvicorn.run(
         app,
         host=host,
@@ -138,8 +126,9 @@ def main(host: str = "0.0.0.0", port: int = 8000):
         proxy_headers=True,
         forwarded_allow_ips="*",
     )
-
 ```
+
+Now you can inspect the API at `http://localhost:8000/docs`.
 
 ## 🚀 Quick Start
 
