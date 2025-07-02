@@ -36,9 +36,9 @@ class ProgramRunner(NovaProgramRunner):
         super().__init__(
             program_id=program_id,
             program=program,
-            args=args,
+            args=args,  # type: ignore
             robot_cell_override=robot_cell_override,
-        )  # type: ignore
+        )
         self._default_robot: str | None = default_robot
         self._default_tcp: str | None = default_tcp
         self._foreign_functions: dict[str, ForeignFunction] = foreign_functions or {}
