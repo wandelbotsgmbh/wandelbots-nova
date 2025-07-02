@@ -25,6 +25,7 @@ class ProgramRunner(NovaProgramRunner):
 
     def __init__(
         self,
+        program_id: str,
         program: Program,
         args: dict[str, ElementType] | None,
         robot_cell_override: RobotCell | None = None,
@@ -32,7 +33,12 @@ class ProgramRunner(NovaProgramRunner):
         default_tcp: str | None = None,
         foreign_functions: dict[str, ForeignFunction] | None = None,
     ):
-        super().__init__(program=program, args=args, robot_cell_override=robot_cell_override)  # type: ignore
+        super().__init__(
+            program_id=program_id,
+            program=program,
+            args=args,
+            robot_cell_override=robot_cell_override,
+        )  # type: ignore
         self._default_robot: str | None = default_robot
         self._default_tcp: str | None = default_tcp
         self._foreign_functions: dict[str, ForeignFunction] = foreign_functions or {}
@@ -40,7 +46,7 @@ class ProgramRunner(NovaProgramRunner):
 
     async def _run(self, execution_context: NovaExecutionContext):
         # Try parsing the program and handle parsing error
-        logger.info(f"Parse program {self.id}...")
+        logger.info(f"Parse program {self.program_id}...")
         logger.debug(self._program.content)
 
         self._ws_execution_context = ws_execution_context = ExecutionContext(
@@ -62,6 +68,7 @@ class ProgramRunner(NovaProgramRunner):
 
 
 def run(
+    program_id: str,
     program: str,
     args: dict[str, ElementType] | None = None,
     default_robot: str | None = None,
@@ -85,7 +92,8 @@ def run(
 
     """
     runner = ProgramRunner(
-        Program(content=program, program_type=ProgramType.WANDELSCRIPT),
+        program_id=program_id,
+        program=Program(content=program, program_type=ProgramType.WANDELSCRIPT),
         args=args,
         default_robot=default_robot,
         default_tcp=default_tcp,
@@ -108,7 +116,8 @@ def run_file(
         program = f.read()
 
     return run(
-        program,
+        program_id=str(file_path),
+        program=program,
         args=args,
         default_robot=default_robot,
         default_tcp=default_tcp,

@@ -56,7 +56,6 @@ class ExecutionContext:
 class ProgramType(Enum):
     WANDELSCRIPT = "WANDELSCRIPT"
     PYTHON = "PYTHON"
-    JOINT_TRAJECTORY = "JOINT_TRAJECTORY"
 
 
 # TODO: import from api.v2.models.Program
@@ -76,7 +75,8 @@ class ProgramRunState(Enum):
 
 # TODO: import from api.v2.models.ProgramRun
 class ProgramRun(BaseModel):
-    id: str = Field(..., description="Unique id of the program run")
+    run_id: str = Field(..., description="Id of the program run")
+    program_id: str = Field(..., description="Id of the program")
     state: ProgramRunState = Field(..., description="State of the program run")
     logs: str | None = Field(None, description="Logs of the program run")
     stdout: str | None = Field(None, description="Stdout of the program run")
@@ -98,13 +98,20 @@ class ProgramRunner(ABC):
     """
 
     def __init__(
-        self, program: Program, args: dict[str, Any], robot_cell_override: RobotCell | None = None
+        self,
+        program_id: str,
+        program: Program,
+        args: dict[str, Any],
+        robot_cell_override: RobotCell | None = None,
     ):
+        self._run_id = str(uuid.uuid4())
+        self._program_id = program_id
         self._program = program
         self._args = args
         self._robot_cell_override = robot_cell_override
         self._program_run: ProgramRun = ProgramRun(
-            id=str(uuid.uuid4()),
+            run_id=self._run_id,
+            program_id=program_id,
             state=ProgramRunState.NOT_STARTED,
             logs=None,
             stdout=None,
@@ -119,13 +126,22 @@ class ProgramRunner(ABC):
         self._exc: Exception | None = None
 
     @property
-    def id(self) -> str:
+    def run_id(self) -> str:
         """Get the unique identifier of the program run.
 
         Returns:
             str: The unique identifier
         """
-        return self._program_run.id
+        return self._run_id
+
+    @property
+    def program_id(self) -> str:
+        """Get the unique identifier of the program.
+
+        Returns:
+            str: The unique identifier
+        """
+        return self._program_id
 
     @property
     def program_run(self) -> ProgramRun:
@@ -270,7 +286,7 @@ class ProgramRunner(ABC):
     def _handle_general_exception(self, exc: Exception):
         # Handle any exceptions raised during task execution
         traceback = tb.format_exc()
-        logger.error(f"Program {self.id} failed")
+        logger.error(f"Program {self.program_id} run {self.run_id} failed")
 
         if isinstance(exc, PlanTrajectoryFailed):
             message = f"{type(exc)}: {exc.to_pretty_string()}"
@@ -327,18 +343,20 @@ class ProgramRunner(ABC):
                 await tg.start(self._estop_handler, monitoring_scope)
 
                 try:
-                    logger.info(f"Program {self.id} started")
+                    logger.info(f"Program {self.program_id} run {self.run_id} started")
                     self._program_run.state = ProgramRunState.RUNNING
                     self._program_run.start_time = dt.datetime.now(dt.timezone.utc)
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped
-                    logger.info(f"Program {self.id} cancelled")
+                    logger.info(f"Program {self.program_id} run {self.run_id} cancelled")
                     try:
                         with anyio.CancelScope(shield=True):
                             await robot_cell.stop()
                     except Exception as e:
-                        logger.error(f"Program {self.id}: Error while stopping robot cell: {e!r}")
+                        logger.error(
+                            f"Program {self.program_id} run {self.run_id}: Error while stopping robot cell: {e!r}"
+                        )
                         raise
 
                     self._program_run.state = ProgramRunState.STOPPED
@@ -352,18 +370,24 @@ class ProgramRunner(ABC):
                 else:
                     if self.stopped:
                         # Program was stopped
-                        logger.info(f"Program {self.id} stopped successfully")
+                        logger.info(
+                            f"Program {self.program_id} run {self.run_id} stopped successfully"
+                        )
                         self._program_run.state = ProgramRunState.STOPPED
                     elif self._program_run.state is ProgramRunState.RUNNING:
                         # Program was completed
                         self._program_run.state = ProgramRunState.COMPLETED
-                        logger.info(f"Program {self.id} completed successfully")
+                        logger.info(
+                            f"Program {self.program_id} run {self.run_id} completed successfully"
+                        )
                 finally:
                     # write path to output
                     self._program_run.execution_results = execution_context.motion_group_recordings
                     self._program_run.result = execution_context.result
 
-                    logger.info(f"Program {self.id} finished. Run teardown routine...")
+                    logger.info(
+                        f"Program {self.program_id} run {self.run_id} finished. Run teardown routine..."
+                    )
                     self._program_run.end_time = dt.datetime.now(dt.timezone.utc)
 
                     logger.remove(sink_id)

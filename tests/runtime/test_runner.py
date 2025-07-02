@@ -9,12 +9,13 @@ class TestProgramRunner(ProgramRunner):
 
     def __init__(
         self,
+        program_id: str,
         program: Program,
         args: dict,
         should_fail: bool = False,
         should_not_plannable: bool = False,
     ):
-        super().__init__(program, args)
+        super().__init__(program_id=program_id, program=program, args=args)
         self._should_fail = should_fail
         self._should_not_plannable = should_not_plannable
 

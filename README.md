@@ -82,6 +82,65 @@ for i = 0..3:
 
 To get more information about Wandelscript, check out the [Wandelscript documentation](/wandelscript/README.md).
 
+## Novax
+
+Novax is an app framework for building server applications on top of NOVA. It provides common core concepts like the handling of programs and their execution.
+
+```bash
+uv add wandelbots-nova --extra novax
+```
+
+To use Novax in your application, you need to create a new `Novax` instance as an entrypoint.
+
+```python
+import os
+from pathlib import Path
+
+import uvicorn
+from loguru import logger
+
+from schaeffler.novax import Novax
+from schaeffler.programs.program1 import program1
+from schaeffler.programs.schaeffler_py import schaeffler_py
+
+
+def main(host: str = "0.0.0.0", port: int = 8000):
+    novax = Novax()
+    app = novax.create_app()
+    novax.include_programs_router(app)
+
+    log_level = os.getenv("LOG_LEVEL", "info")
+    logger.info("Starting Service...")
+
+    # base path is injected/set when running within the wandelbots environment
+    base_path = os.getenv("BASE_PATH", "")
+    if len(base_path) > 0:
+        logger.info("serving with base path '{}'", base_path)
+
+    # 1) Register Python programs (existing functionality)
+    novax.register_program(program1)
+    novax.register_program(schaeffler_py)
+    # Register wandelscript file (new functionality)
+    novax.register_program(Path(__file__).parent / "programs" / "schaeffler_ws.ws")
+
+    # 2) register programs from path
+    # novax.register_programs(path="./programs")
+
+    # 3) autodiscover programs
+    # novax.autodiscover_programs()
+
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        reload=False,
+        log_level=log_level,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+    )
+
+```
+
 ## 🚀 Quick Start
 
 See the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) for usage of this library including 3D visualization.
