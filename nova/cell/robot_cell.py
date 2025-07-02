@@ -269,43 +269,29 @@ class AbstractRobot(Device):
         self, actions: list[Action], trajectory: api.models.JointTrajectory, tcp: str
     ) -> None:
         """Log planning results to active viewers if any are configured."""
-        try:
-            from nova import viewers
-            from nova.core.motion_group import MotionGroup
+        from nova.core.motion_group import MotionGroup
+        from nova.viewers import get_viewer_manager
 
-            # Only log for motion groups
-            if not isinstance(self, MotionGroup):
-                return
+        # Only log for motion groups
+        if not isinstance(self, MotionGroup):
+            return
 
-            # Delegate to viewers module for cleaner separation of concerns
-            await viewers._log_planning_results_to_viewers(actions, trajectory, tcp, self)
-
-        except ImportError:
-            # Viewer not available, skip logging
-            pass
-        except Exception as e:
-            # Don't fail planning if logging fails
-            print(f"Warning: Failed to log planning results: {e}")
+        viewer_manager = get_viewer_manager()
+        if viewer_manager.has_active_viewers:
+            await viewer_manager.log_planning_success(actions, trajectory, tcp, self)
 
     async def _log_planning_error(self, actions: list[Action], error: Exception, tcp: str) -> None:
         """Log planning error to active viewers if any are configured."""
-        try:
-            from nova import viewers
-            from nova.core.motion_group import MotionGroup
+        from nova.core.motion_group import MotionGroup
+        from nova.viewers import get_viewer_manager
 
-            # Only log for motion groups
-            if not isinstance(self, MotionGroup):
-                return
+        # Only log for motion groups
+        if not isinstance(self, MotionGroup):
+            return
 
-            # Delegate to viewers module for cleaner separation of concerns
-            await viewers._log_planning_error_to_viewers(actions, error, tcp, self)
-
-        except ImportError:
-            # Viewer not available, skip logging
-            pass
-        except Exception as e:
-            # Don't fail planning if logging fails
-            print(f"Warning: Failed to log planning error: {e}")
+        viewer_manager = get_viewer_manager()
+        if viewer_manager.has_active_viewers:
+            await viewer_manager.log_planning_failure(actions, error, tcp, self)
 
     @abstractmethod
     def _execute(

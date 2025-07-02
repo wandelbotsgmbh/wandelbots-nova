@@ -5,8 +5,11 @@ This module provides different viewer backends that can be used
 to visualize and monitor Nova programs during execution.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Optional, Sequence
+from typing import TYPE_CHECKING, Optional, Protocol, Sequence, Union, runtime_checkable
+from weakref import WeakSet
 
 if TYPE_CHECKING:
     from nova.actions import Action
@@ -14,42 +17,164 @@ if TYPE_CHECKING:
     from nova.core.motion_group import MotionGroup
     from nova.core.nova import Nova
 
-# Global registry of active viewers
-_active_viewers: list["Viewer"] = []
+
+@runtime_checkable
+class NovaRerunBridgeProtocol(Protocol):
+    """Protocol defining the interface for NovaRerunBridge."""
+
+    nova: Nova
+
+    async def __aenter__(self) -> NovaRerunBridgeProtocol:
+        """Async context manager entry."""
+        ...
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> Optional[bool]:
+        """Async context manager exit."""
+        ...
+
+    async def setup_blueprint(self) -> None:
+        """Setup the blueprint."""
+        ...
+
+    async def log_saftey_zones(self, motion_group: MotionGroup) -> None:
+        """Log safety zones for a motion group."""
+        ...
+
+    async def log_actions(
+        self,
+        actions: Union[list[Action], Action],
+        show_connection: bool = False,
+        show_labels: bool = False,
+        motion_group: Optional[MotionGroup] = None,
+        tcp: Optional[str] = None,
+    ) -> None:
+        """Log actions to the viewer."""
+        ...
+
+    async def log_trajectory(
+        self,
+        joint_trajectory: models.JointTrajectory,
+        tcp: str,
+        motion_group: MotionGroup,
+        time_offset: float = 0,
+        tool_asset: Optional[str] = None,
+    ) -> None:
+        """Log trajectory to the viewer."""
+        ...
+
+    def _log_collision_scene(self, collision_scenes: dict[str, models.CollisionScene]) -> None:
+        """Log collision scenes to the viewer."""
+        ...
 
 
-def _register_viewer(viewer: "Viewer") -> None:
-    """Register a viewer as active."""
-    global _active_viewers
-    if viewer not in _active_viewers:
-        _active_viewers.append(viewer)
+class ViewerManager:
+    """Manages the lifecycle and coordination of all active viewers."""
+
+    def __init__(self) -> None:
+        self._viewers: WeakSet[Viewer] = WeakSet()
+
+    def register_viewer(self, viewer: Viewer) -> None:
+        """Register a viewer as active."""
+        self._viewers.add(viewer)
+
+    def configure_viewers(self, nova: Nova) -> None:
+        """Configure all active viewers with the Nova instance."""
+        for viewer in self._viewers:
+            viewer.configure(nova)
+
+    async def setup_viewers_after_preconditions(self) -> None:
+        """Setup all active viewers after preconditions are satisfied."""
+        for viewer in self._viewers:
+            await viewer.setup_after_preconditions()
+
+    def cleanup_viewers(self) -> None:
+        """Clean up all active viewers."""
+        for viewer in list(self._viewers):  # Copy to avoid modification during iteration
+            viewer.cleanup()
+        self._viewers.clear()
+
+    async def log_planning_success(
+        self,
+        actions: Sequence[Action],
+        trajectory: models.JointTrajectory,
+        tcp: str,
+        motion_group: MotionGroup,
+    ) -> None:
+        """Log successful planning results to all active viewers."""
+        for viewer in self._viewers:
+            try:
+                await viewer.log_planning_success(actions, trajectory, tcp, motion_group)
+            except Exception as e:
+                # Don't fail planning if logging fails
+                print(f"Warning: Failed to log planning results to viewer: {e}")
+
+    async def log_planning_failure(
+        self, actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
+    ) -> None:
+        """Log planning failure to all active viewers."""
+        for viewer in self._viewers:
+            try:
+                await viewer.log_planning_failure(actions, error, tcp, motion_group)
+            except Exception as e:
+                # Don't fail planning if logging fails
+                print(f"Warning: Failed to log planning error to viewer: {e}")
+
+    @property
+    def has_active_viewers(self) -> bool:
+        """Check if there are any active viewers."""
+        return len(self._viewers) > 0
 
 
-def _configure_active_viewers(nova: "Nova") -> None:
-    """Configure all active viewers with the Nova instance."""
-    global _active_viewers
-    for viewer in _active_viewers:
-        viewer.configure(nova)
+# Global viewer manager instance
+_viewer_manager = ViewerManager()
+
+
+def get_viewer_manager() -> ViewerManager:
+    """Get the global viewer manager instance."""
+    return _viewer_manager
+
+
+# Legacy functions for backward compatibility
+def _register_viewer(viewer: Viewer) -> None:
+    """Register a viewer as active. (Legacy function for backward compatibility)"""
+    _viewer_manager.register_viewer(viewer)
+
+
+def _configure_active_viewers(nova: Nova) -> None:
+    """Configure all active viewers with the Nova instance. (Legacy function for backward compatibility)"""
+    _viewer_manager.configure_viewers(nova)
 
 
 async def _setup_active_viewers_after_preconditions() -> None:
-    """Setup all active viewers after preconditions are satisfied."""
-    global _active_viewers
-    for viewer in _active_viewers:
-        await viewer.setup_after_preconditions()
+    """Setup all active viewers after preconditions are satisfied. (Legacy function for backward compatibility)"""
+    await _viewer_manager.setup_viewers_after_preconditions()
 
 
 def _cleanup_active_viewers() -> None:
-    """Clean up all active viewers."""
-    global _active_viewers
-    for viewer in _active_viewers:
-        viewer.cleanup()
-    _active_viewers.clear()
+    """Clean up all active viewers. (Legacy function for backward compatibility)"""
+    _viewer_manager.cleanup_viewers()
+
+
+async def _log_planning_results_to_viewers(
+    actions: Sequence[Action],
+    trajectory: models.JointTrajectory,
+    tcp: str,
+    motion_group: MotionGroup,
+) -> None:
+    """Log successful planning results to all active viewers. (Legacy function for backward compatibility)"""
+    await _viewer_manager.log_planning_success(actions, trajectory, tcp, motion_group)
+
+
+async def _log_planning_error_to_viewers(
+    actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
+) -> None:
+    """Log planning failure to all active viewers. (Legacy function for backward compatibility)"""
+    await _viewer_manager.log_planning_failure(actions, error, tcp, motion_group)
 
 
 def _extract_collision_scenes_from_actions(
-    actions: Sequence["Action"],
-) -> dict[str, "models.CollisionScene"]:
+    actions: Sequence[Action],
+) -> dict[str, models.CollisionScene]:
     """Extract unique collision scenes from a list of actions.
 
     Args:
@@ -60,7 +185,7 @@ def _extract_collision_scenes_from_actions(
     """
     from nova.actions.motions import CollisionFreeMotion, Motion
 
-    collision_scenes: dict[str, "models.CollisionScene"] = {}
+    collision_scenes: dict[str, models.CollisionScene] = {}
 
     for action in actions:
         # Check if action is a motion with collision_scene attribute
@@ -73,62 +198,11 @@ def _extract_collision_scenes_from_actions(
     return collision_scenes
 
 
-async def _log_planning_results_to_viewers(
-    actions: Sequence["Action"],
-    trajectory: "models.JointTrajectory",
-    tcp: str,
-    motion_group: "MotionGroup",
-) -> None:
-    """Log successful planning results to all active viewers.
-
-    Args:
-        actions: List of actions that were planned
-        trajectory: The resulting trajectory
-        tcp: TCP used for planning
-        motion_group: The motion group used for planning
-    """
-    global _active_viewers
-
-    if not _active_viewers:
-        return
-
-    for viewer in _active_viewers:
-        try:
-            await viewer.log_planning_success(actions, trajectory, tcp, motion_group)
-        except Exception as e:
-            # Don't fail planning if logging fails
-            print(f"Warning: Failed to log planning results to viewer: {e}")
-
-
-async def _log_planning_error_to_viewers(
-    actions: Sequence["Action"], error: Exception, tcp: str, motion_group: "MotionGroup"
-) -> None:
-    """Log planning failure to all active viewers.
-
-    Args:
-        actions: List of actions that failed to plan
-        error: The planning error that occurred
-        tcp: TCP used for planning
-        motion_group: The motion group used for planning
-    """
-    global _active_viewers
-
-    if not _active_viewers:
-        return
-
-    for viewer in _active_viewers:
-        try:
-            await viewer.log_planning_failure(actions, error, tcp, motion_group)
-        except Exception as e:
-            # Don't fail planning if logging fails
-            print(f"Warning: Failed to log planning error to viewer: {e}")
-
-
 class Viewer(ABC):
     """Abstract base class for Nova program viewers."""
 
     @abstractmethod
-    def configure(self, nova: "Nova") -> None:
+    def configure(self, nova: Nova) -> None:
         """Configure the viewer for program execution."""
         pass
 
@@ -147,10 +221,10 @@ class Viewer(ABC):
 
     async def log_planning_success(
         self,
-        actions: Sequence["Action"],
-        trajectory: "models.JointTrajectory",
+        actions: Sequence[Action],
+        trajectory: models.JointTrajectory,
         tcp: str,
-        motion_group: "MotionGroup",
+        motion_group: MotionGroup,
     ) -> None:
         """Log successful planning results.
 
@@ -163,7 +237,7 @@ class Viewer(ABC):
         pass
 
     async def log_planning_failure(
-        self, actions: Sequence["Action"], error: Exception, tcp: str, motion_group: "MotionGroup"
+        self, actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
     ) -> None:
         """Log planning failure results.
 
@@ -207,7 +281,7 @@ class Rerun(Viewer):
         spawn: bool = True,
         show_safety_zones: bool = True,
         show_collision_scenes: bool = True,
-    ):
+    ) -> None:
         """
         Initialize the Rerun viewer.
 
@@ -216,20 +290,19 @@ class Rerun(Viewer):
             spawn: Whether to spawn a rerun viewer process automatically
             show_safety_zones: Whether to visualize safety zones for motion groups
             show_collision_scenes: Whether to show collision scenes
-            enable_streaming: Whether to enable real-time robot state streaming
-            collision_scene_ids: Specific collision scene IDs to show (if None, shows all)
         """
-        self.application_id = application_id
-        self.spawn = spawn
-        self.show_safety_zones = show_safety_zones
-        self.show_collision_scenes = show_collision_scenes
-        self._bridge = None
-        self._configured = False
+        self.application_id: Optional[str] = application_id
+        self.spawn: bool = spawn
+        self.show_safety_zones: bool = show_safety_zones
+        self.show_collision_scenes: bool = show_collision_scenes
+        self._bridge: Optional[NovaRerunBridgeProtocol] = None
+        self._configured: bool = False
+        self._async_setup_done: bool = False
 
         # Register this viewer as active
         _register_viewer(self)
 
-    def configure(self, nova: "Nova") -> None:
+    def configure(self, nova: Nova) -> None:
         """Configure rerun integration for program execution."""
         if self._configured:
             return  # Already configured
@@ -287,10 +360,10 @@ class Rerun(Viewer):
 
     async def _log_planning_results(
         self,
-        actions: Sequence["Action"],
-        trajectory: "models.JointTrajectory",
+        actions: Sequence[Action],
+        trajectory: models.JointTrajectory,
         tcp: str,
-        motion_group: "MotionGroup",
+        motion_group: MotionGroup,
     ) -> None:
         """Log planning results including actions, trajectory, and collision scenes.
 
@@ -320,22 +393,12 @@ class Rerun(Viewer):
         except Exception as e:
             print(f"Warning: Failed to log planning results in Rerun viewer: {e}")
 
-    def get_bridge(self) -> Optional[object]:
-        """Get the underlying NovaRerunBridge instance.
-
-        This allows advanced users to access the full bridge functionality.
-
-        Returns:
-            The NovaRerunBridge instance if configured, None otherwise.
-        """
-        return self._bridge
-
     async def log_planning_success(
         self,
-        actions: Sequence["Action"],
-        trajectory: "models.JointTrajectory",
+        actions: Sequence[Action],
+        trajectory: models.JointTrajectory,
         tcp: str,
-        motion_group: "MotionGroup",
+        motion_group: MotionGroup,
     ) -> None:
         """Log successful planning results to Rerun viewer.
 
@@ -348,7 +411,7 @@ class Rerun(Viewer):
         await self._log_planning_results(actions, trajectory, tcp, motion_group)
 
     async def log_planning_failure(
-        self, actions: Sequence["Action"], error: Exception, tcp: str, motion_group: "MotionGroup"
+        self, actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
     ) -> None:
         """Log planning failure to Rerun viewer.
 
@@ -381,6 +444,16 @@ class Rerun(Viewer):
         except Exception as e:
             print(f"Warning: Failed to log planning failure in Rerun viewer: {e}")
 
+    def get_bridge(self) -> Optional[object]:
+        """Get the underlying NovaRerunBridge instance.
+
+        This allows advanced users to access the full bridge functionality.
+
+        Returns:
+            The NovaRerunBridge instance if configured, None otherwise.
+        """
+        return self._bridge
+
     def cleanup(self) -> None:
         """Clean up rerun integration after program execution."""
         self._bridge = None
@@ -390,7 +463,9 @@ class Rerun(Viewer):
 # For convenience, allow direct import of Rerun
 __all__ = [
     "Viewer",
+    "ViewerManager",
     "Rerun",
+    "get_viewer_manager",
     "_configure_active_viewers",
     "_setup_active_viewers_after_preconditions",
     "_cleanup_active_viewers",
