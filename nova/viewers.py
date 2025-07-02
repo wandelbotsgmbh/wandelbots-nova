@@ -6,9 +6,12 @@ to visualize and monitor Nova programs during execution.
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Sequence
 
 if TYPE_CHECKING:
+    from nova.actions import Action
+    from nova.api import models
+    from nova.core.motion_group import MotionGroup
     from nova.core.nova import Nova
 
 # Global registry of active viewers
@@ -44,6 +47,83 @@ def _cleanup_active_viewers() -> None:
     _active_viewers.clear()
 
 
+def _extract_collision_scenes_from_actions(
+    actions: Sequence["Action"],
+) -> dict[str, "models.CollisionScene"]:
+    """Extract unique collision scenes from a list of actions.
+
+    Args:
+        actions: List of actions to extract collision scenes from
+
+    Returns:
+        Dictionary mapping collision scene IDs to CollisionScene objects
+    """
+    from nova.actions.motions import CollisionFreeMotion, Motion
+
+    collision_scenes: dict[str, "models.CollisionScene"] = {}
+
+    for action in actions:
+        # Check if action is a motion with collision_scene attribute
+        if isinstance(action, (Motion, CollisionFreeMotion)) and action.collision_scene is not None:
+            # Generate a unique ID for the collision scene
+            # Using hash of the collision scene content for uniqueness
+            scene_id = f"action_scene_{hash(str(action.collision_scene))}"
+            collision_scenes[scene_id] = action.collision_scene
+
+    return collision_scenes
+
+
+async def _log_planning_results_to_viewers(
+    actions: Sequence["Action"],
+    trajectory: "models.JointTrajectory",
+    tcp: str,
+    motion_group: "MotionGroup",
+) -> None:
+    """Log successful planning results to all active viewers.
+
+    Args:
+        actions: List of actions that were planned
+        trajectory: The resulting trajectory
+        tcp: TCP used for planning
+        motion_group: The motion group used for planning
+    """
+    global _active_viewers
+
+    if not _active_viewers:
+        return
+
+    for viewer in _active_viewers:
+        try:
+            await viewer.log_planning_success(actions, trajectory, tcp, motion_group)
+        except Exception as e:
+            # Don't fail planning if logging fails
+            print(f"Warning: Failed to log planning results to viewer: {e}")
+
+
+async def _log_planning_error_to_viewers(
+    actions: Sequence["Action"], error: Exception, tcp: str, motion_group: "MotionGroup"
+) -> None:
+    """Log planning failure to all active viewers.
+
+    Args:
+        actions: List of actions that failed to plan
+        error: The planning error that occurred
+        tcp: TCP used for planning
+        motion_group: The motion group used for planning
+    """
+    global _active_viewers
+
+    if not _active_viewers:
+        return
+
+    for viewer in _active_viewers:
+        try:
+            await viewer.log_planning_failure(actions, error, tcp, motion_group)
+        except Exception as e:
+            # Don't fail planning if logging fails
+            print(f"Warning: Failed to log planning error to viewer: {e}")
+
+
 class Viewer(ABC):
     """Abstract base class for Nova program viewers."""
 
@@ -65,6 +145,36 @@ class Viewer(ABC):
         """Clean up the viewer after program execution."""
         pass
 
+    async def log_planning_success(
+        self,
+        actions: Sequence["Action"],
+        trajectory: "models.JointTrajectory",
+        tcp: str,
+        motion_group: "MotionGroup",
+    ) -> None:
+        """Log successful planning results.
+
+        Args:
+            actions: List of actions that were planned
+            trajectory: The resulting trajectory
+            tcp: TCP used for planning
+            motion_group: The motion group used for planning
+        """
+        pass
+
+    async def log_planning_failure(
+        self, actions: Sequence["Action"], error: Exception, tcp: str, motion_group: "MotionGroup"
+    ) -> None:
+        """Log planning failure results.
+
+        Args:
+            actions: List of actions that failed to plan
+            error: The planning error that occurred
+            tcp: TCP used for planning
+            motion_group: The motion group used for planning
+        """
+        pass
+
 
 class Rerun(Viewer):
     """
@@ -76,7 +186,6 @@ class Rerun(Viewer):
     - Motion group states
     - Planning requests and responses
     - Collision scenes and safety zones (optional)
-    - Real-time robot state streaming (optional)
 
     Example usage:
         @nova.program(
@@ -84,7 +193,6 @@ class Rerun(Viewer):
             viewer=nova.viewers.Rerun(
                 show_safety_zones=True,
                 show_collision_scenes=True,
-                enable_streaming=True
             ),
             preconditions=...
         )
@@ -99,8 +207,6 @@ class Rerun(Viewer):
         spawn: bool = True,
         show_safety_zones: bool = True,
         show_collision_scenes: bool = True,
-        enable_streaming: bool = False,
-        collision_scene_ids: Optional[list[str]] = None,
     ):
         """
         Initialize the Rerun viewer.
@@ -117,8 +223,6 @@ class Rerun(Viewer):
         self.spawn = spawn
         self.show_safety_zones = show_safety_zones
         self.show_collision_scenes = show_collision_scenes
-        self.enable_streaming = enable_streaming
-        self.collision_scene_ids = collision_scene_ids
         self._bridge = None
         self._configured = False
 
@@ -157,24 +261,11 @@ class Rerun(Viewer):
             await self._bridge.setup_blueprint()
             await self._setup_collision_scenes()
             await self._setup_safety_zones()
-            await self._setup_streaming()
 
     async def _setup_collision_scenes(self) -> None:
         """Setup collision scene visualization."""
         if not self.show_collision_scenes or not self._bridge:
             return
-
-        try:
-            if self.collision_scene_ids:
-                # Log specific collision scenes
-                for scene_id in self.collision_scene_ids:
-                    await self._bridge.log_collision_scene(scene_id)
-            else:
-                # Log all collision scenes
-                await self._bridge.log_collision_scenes()
-        except Exception as e:
-            # Don't fail the entire setup if collision scenes can't be loaded
-            print(f"Warning: Could not load collision scenes: {e}")
 
     async def _setup_safety_zones(self) -> None:
         """Setup safety zone visualization."""
@@ -194,23 +285,40 @@ class Rerun(Viewer):
             # Don't fail the entire setup if safety zones can't be loaded
             print(f"Warning: Could not load safety zones: {e}")
 
-    async def _setup_streaming(self) -> None:
-        """Setup real-time robot state streaming."""
-        if not self.enable_streaming or not self._bridge:
+    async def _log_planning_results(
+        self,
+        actions: Sequence["Action"],
+        trajectory: "models.JointTrajectory",
+        tcp: str,
+        motion_group: "MotionGroup",
+    ) -> None:
+        """Log planning results including actions, trajectory, and collision scenes.
+
+        Args:
+            actions: List of actions that were planned
+            trajectory: The resulting trajectory
+            tcp: TCP used for planning
+            motion_group: The motion group used for planning
+        """
+        if not self._bridge:
             return
 
         try:
-            # Start streaming for all motion groups
-            cell = self._bridge.nova.cell()
-            controllers = await cell.controllers()
+            # Log actions
+            await self._bridge.log_actions(list(actions), motion_group=motion_group)
 
-            for controller in controllers:
-                motion_groups = await controller.activated_motion_groups()
-                for motion_group in motion_groups:
-                    await self._bridge.start_streaming(motion_group)
+            # Log trajectory
+            await self._bridge.log_trajectory(trajectory, tcp, motion_group)
+
+            # Log collision scenes from actions if configured
+            if self.show_collision_scenes:
+                collision_scenes = _extract_collision_scenes_from_actions(actions)
+                if collision_scenes:
+                    # Log collision scenes using the sync method
+                    self._bridge._log_collision_scene(collision_scenes)
+
         except Exception as e:
-            # Don't fail the entire setup if streaming can't be started
-            print(f"Warning: Could not start streaming: {e}")
+            print(f"Warning: Failed to log planning results in Rerun viewer: {e}")
 
     def get_bridge(self) -> Optional[object]:
         """Get the underlying NovaRerunBridge instance.
@@ -222,23 +330,59 @@ class Rerun(Viewer):
         """
         return self._bridge
 
+    async def log_planning_success(
+        self,
+        actions: Sequence["Action"],
+        trajectory: "models.JointTrajectory",
+        tcp: str,
+        motion_group: "MotionGroup",
+    ) -> None:
+        """Log successful planning results to Rerun viewer.
+
+        Args:
+            actions: List of actions that were planned
+            trajectory: The resulting trajectory
+            tcp: TCP used for planning
+            motion_group: The motion group used for planning
+        """
+        await self._log_planning_results(actions, trajectory, tcp, motion_group)
+
+    async def log_planning_failure(
+        self, actions: Sequence["Action"], error: Exception, tcp: str, motion_group: "MotionGroup"
+    ) -> None:
+        """Log planning failure to Rerun viewer.
+
+        Args:
+            actions: List of actions that failed to plan
+            error: The planning error that occurred
+            tcp: TCP used for planning
+            motion_group: The motion group used for planning
+        """
+        if not self._bridge:
+            return
+
+        try:
+            # Log the failed actions
+            await self._bridge.log_actions(list(actions), motion_group=motion_group)
+
+            # Log error information as text
+            import rerun as rr
+
+            error_message = f"Planning failed: {type(error).__name__}: {str(error)}"
+            rr.log("planning/errors", rr.TextLog(error_message, level=rr.TextLogLevel.ERROR))
+
+            # Log collision scenes from actions if configured (they might be relevant to the failure)
+            if self.show_collision_scenes:
+                collision_scenes = _extract_collision_scenes_from_actions(actions)
+                if collision_scenes:
+                    # Log collision scenes using the sync method
+                    self._bridge._log_collision_scene(collision_scenes)
+
+        except Exception as e:
+            print(f"Warning: Failed to log planning failure in Rerun viewer: {e}")
+
     def cleanup(self) -> None:
         """Clean up rerun integration after program execution."""
-        if self._bridge:
-            # Stop any streaming tasks and properly close the bridge
-            import asyncio
-
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(self._bridge.stop_streaming())
-                    loop.create_task(self._bridge.__aexit__(None, None, None))
-            except RuntimeError:
-                # Event loop not running, can't stop streaming
-                pass
-
-        # Cleanup is handled by the NovaRerunBridge context manager
-        # when the Nova instance is closed
         self._bridge = None
         self._configured = False
 
@@ -250,4 +394,7 @@ __all__ = [
     "_configure_active_viewers",
     "_setup_active_viewers_after_preconditions",
     "_cleanup_active_viewers",
+    "_log_planning_results_to_viewers",
+    "_log_planning_error_to_viewers",
+    "_extract_collision_scenes_from_actions",
 ]

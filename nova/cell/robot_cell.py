@@ -261,6 +261,8 @@ class AbstractRobot(Device):
             return trajectory
 
         except Exception as planning_error:
+            # Log planning failure to viewers
+            await self._log_planning_error(actions, planning_error, tcp)
             raise planning_error
 
     async def _log_planning_results(
@@ -269,30 +271,14 @@ class AbstractRobot(Device):
         """Log planning results to active viewers if any are configured."""
         try:
             from nova import viewers
-
-            # Check if any viewers are active
-            if not viewers._active_viewers:
-                return
-
-            # Import here to avoid circular imports
             from nova.core.motion_group import MotionGroup
 
+            # Only log for motion groups
             if not isinstance(self, MotionGroup):
-                return  # Only log for motion groups
+                return
 
-            # Log to all available bridges using the existing nova_rerun_bridge functionality
-            for viewer in viewers._active_viewers:
-                if isinstance(viewer, viewers.Rerun) and viewer._bridge:
-                    try:
-                        # Log actions using the bridge - this works without additional API calls
-                        await viewer._bridge.log_actions(actions, motion_group=self)
-
-                        # Log trajectory using the bridge - ensure we have an active Nova session
-                        await self._ensure_trajectory_logging(viewer._bridge, trajectory, tcp)
-
-                    except Exception as e:
-                        # Don't fail planning if logging fails
-                        print(f"Warning: Failed to log planning results to viewer: {e}")
+            # Delegate to viewers module for cleaner separation of concerns
+            await viewers._log_planning_results_to_viewers(actions, trajectory, tcp, self)
 
         except ImportError:
             # Viewer not available, skip logging
@@ -301,24 +287,25 @@ class AbstractRobot(Device):
             # Don't fail planning if logging fails
             print(f"Warning: Failed to log planning results: {e}")
 
-    async def _ensure_trajectory_logging(
-        self, bridge, trajectory: api.models.JointTrajectory, tcp: str
-    ) -> None:
-        """Ensure trajectory logging works with the persistent bridge."""
-        from nova.core.motion_group import MotionGroup
-
-        if not isinstance(self, MotionGroup):
-            return  # Only log trajectories for motion groups
-
+    async def _log_planning_error(self, actions: list[Action], error: Exception, tcp: str) -> None:
+        """Log planning error to active viewers if any are configured."""
         try:
-            # Use the persistent bridge - it should work now with dedicated Nova instance
-            await bridge.log_trajectory(trajectory, tcp, self)
-        except Exception as e:
-            # Log the error but don't fail planning
-            print(f"Warning: Failed to log trajectory to Rerun viewer: {e}")
-            import traceback
+            from nova import viewers
+            from nova.core.motion_group import MotionGroup
 
-            traceback.print_exc()
+            # Only log for motion groups
+            if not isinstance(self, MotionGroup):
+                return
+
+            # Delegate to viewers module for cleaner separation of concerns
+            await viewers._log_planning_error_to_viewers(actions, error, tcp, self)
+
+        except ImportError:
+            # Viewer not available, skip logging
+            pass
+        except Exception as e:
+            # Don't fail planning if logging fails
+            print(f"Warning: Failed to log planning error: {e}")
 
     @abstractmethod
     def _execute(
