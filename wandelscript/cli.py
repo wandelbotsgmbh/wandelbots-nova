@@ -124,7 +124,7 @@ async def main(
     runner = wandelscript.run(
         program_id="test", program=code, args={}, default_tcp=None, default_robot=None
     )
-    echo(f"Execution results:\n{runner.program_run.execution_results}")
+    echo(f"Execution results:\n{runner.program_run.output_data}")
 
 
 @app.command()
