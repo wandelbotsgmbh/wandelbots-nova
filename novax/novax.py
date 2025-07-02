@@ -13,8 +13,8 @@ app = FastAPI(title="schaeffler", root_path=BASE_PATH)
 
 
 class Novax:
-    def __init__(self):
-        self._program_manager = ProgramManager()
+    def __init__(self, program_manager_override: ProgramManager | None = None):
+        self._program_manager: ProgramManager = program_manager_override or ProgramManager()
         self._app: FastAPI | None = None
 
     @property
@@ -35,19 +35,19 @@ class Novax:
         """
         return self._program_manager.register_program(func_or_path)
 
-    def get_programs(self) -> dict[str, ProgramDetails]:
+    async def get_programs(self) -> dict[str, ProgramDetails]:
         """Get all registered programs"""
-        return self._program_manager.get_programs()
+        return await self._program_manager.get_programs()
 
-    def get_program(self, program_id: str) -> Optional[ProgramDetails]:
+    async def get_program(self, program_id: str) -> Optional[ProgramDetails]:
         """Get a specific program by ID"""
-        return self._program_manager.get_program(program_id)
+        return await self._program_manager.get_program(program_id)
 
     async def execute_program(
         self, program_id: str, parameters: Optional[dict[str, Any]] = None
     ) -> Any:
         """Execute a registered program with given parameters"""
-        return await self._program_manager.execute_program(program_id, parameters)
+        return await self._program_manager.run_program(program_id, parameters)
 
     def create_app(self, title: str = "Novax API", version: str = "1.0.0") -> FastAPI:
         """
