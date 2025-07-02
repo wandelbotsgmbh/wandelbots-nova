@@ -15,10 +15,8 @@ import nova
 from nova import Nova, api
 from nova.actions import collision_free, linear
 from nova.cell import virtual_controller
-from nova.core.exceptions import PlanTrajectoryFailed
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
-from nova_rerun_bridge import NovaRerunBridge
 
 """
 Simple example to demonstrate how to add a welding part to the collision world and move the robot to a two seams.
@@ -181,6 +179,7 @@ async def calculate_seam_poses(mesh_pose: api.models.Pose2) -> tuple[Pose, Pose,
 
 @nova.program(
     name="14_welding_example",
+    viewer=nova.viewers.Rerun(application_id="14_welding_example"),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -193,9 +192,7 @@ async def calculate_seam_poses(mesh_pose: api.models.Pose2) -> tuple[Pose, Pose,
     ),
 )
 async def test():
-    async with Nova() as nova, NovaRerunBridge(nova) as bridge:
-        await bridge.setup_blueprint()
-
+    async with Nova() as nova:
         # Define position for the welding part
         mesh_pose = api.models.Pose2(
             position=[500, 0, -300], orientation=[0, 0, 0]
@@ -244,8 +241,6 @@ async def test():
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
-            await bridge.log_saftey_zones(motion_group)
-
             tcp = "torch"
 
             robot_setup: api.models.OptimizerSetup = await motion_group._get_optimizer_setup(
@@ -265,8 +260,6 @@ async def test():
             collision_scene = await scene_api.get_stored_collision_scene(
                 cell="cell", scene=collision_scene_id
             )
-            await bridge.log_collision_scene(collision_scene_id)
-
             # Calculate seam positions based on mesh pose
             seam1_start, seam1_end, seam2_start, seam2_end = await calculate_seam_poses(mesh_pose)
 
@@ -279,65 +272,54 @@ async def test():
             seam2_approach = seam2_start @ approach_offset
             seam2_departure = seam2_end @ approach_offset
 
-            try:
-                welding_actions = [
-                    # First seam
-                    collision_free(
-                        target=seam1_approach,
-                        collision_scene=collision_scene,
-                        settings=MotionSettings(tcp_velocity_limit=30),
-                    ),
-                    linear(
-                        target=seam1_start,
-                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                    ),
-                    linear(
-                        target=seam1_end,
-                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                    ),
-                    linear(
-                        target=seam1_departure,
-                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                    ),
-                    # Move to second seam
-                    collision_free(
-                        target=seam2_approach,
-                        collision_scene=collision_scene,
-                        settings=MotionSettings(tcp_velocity_limit=30),
-                    ),
-                    # Second seam with collision checking
-                    linear(
-                        target=seam2_start,
-                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                    ),
-                    linear(
-                        target=seam2_end,
-                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                    ),
-                    linear(
-                        target=seam2_departure,
-                        settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                    ),
-                    collision_free(
-                        target=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
-                        collision_scene=collision_scene,
-                        settings=MotionSettings(tcp_velocity_limit=30),
-                    ),
-                ]
+            welding_actions = [
+                # First seam
+                collision_free(
+                    target=seam1_approach,
+                    collision_scene=collision_scene,
+                    settings=MotionSettings(tcp_velocity_limit=30),
+                ),
+                linear(
+                    target=seam1_start,
+                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                ),
+                linear(
+                    target=seam1_end,
+                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                ),
+                linear(
+                    target=seam1_departure,
+                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                ),
+                # Move to second seam
+                collision_free(
+                    target=seam2_approach,
+                    collision_scene=collision_scene,
+                    settings=MotionSettings(tcp_velocity_limit=30),
+                ),
+                # Second seam with collision checking
+                linear(
+                    target=seam2_start,
+                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                ),
+                linear(
+                    target=seam2_end,
+                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                ),
+                linear(
+                    target=seam2_departure,
+                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                ),
+                collision_free(
+                    target=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
+                    collision_scene=collision_scene,
+                    settings=MotionSettings(tcp_velocity_limit=30),
+                ),
+            ]
 
-                trajectory_plan_combined = await motion_group.plan(
-                    welding_actions,
-                    tcp=tcp,
-                    start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
-                )
-
-                await bridge.log_actions(welding_actions)
-                await bridge.log_trajectory(trajectory_plan_combined, tcp, motion_group)
-
-            except PlanTrajectoryFailed as e:
-                await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)
-                await bridge.log_error_feedback(e.error.error_feedback)
-                raise
+            trajectory_plan_combined = await motion_group.plan(
+                welding_actions, tcp=tcp, start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0)
+            )
 
 
 if __name__ == "__main__":
