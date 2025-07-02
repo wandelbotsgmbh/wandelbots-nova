@@ -260,6 +260,7 @@ class Rerun(Viewer):
     - Motion group states
     - Planning requests and responses
     - Collision scenes and safety zones (optional)
+    - Tool geometries attached to specific TCPs
 
     Example usage:
         @nova.program(
@@ -267,12 +268,17 @@ class Rerun(Viewer):
             viewer=nova.viewers.Rerun(
                 show_safety_zones=True,
                 show_collision_scenes=True,
+                tcp_tools={
+                    "vacuum": "assets/vacuum_cup.stl",
+                    "gripper": "assets/parallel_gripper.stl"
+                }
             ),
             preconditions=...
         )
         async def my_program():
-            # Your program code here
-            pass
+            # Tool geometries are automatically rendered when using configured TCPs
+            await motion_group.plan_and_execute(actions, "vacuum")  # Shows vacuum_cup.stl
+            await motion_group.plan_and_execute(actions, "gripper") # Shows parallel_gripper.stl
     """
 
     def __init__(
@@ -281,6 +287,7 @@ class Rerun(Viewer):
         spawn: bool = True,
         show_safety_zones: bool = True,
         show_collision_scenes: bool = True,
+        tcp_tools: Optional[dict[str, str]] = None,
     ) -> None:
         """
         Initialize the Rerun viewer.
@@ -290,11 +297,13 @@ class Rerun(Viewer):
             spawn: Whether to spawn a rerun viewer process automatically
             show_safety_zones: Whether to visualize safety zones for motion groups
             show_collision_scenes: Whether to show collision scenes
+            tcp_tools: Optional mapping of TCP IDs to tool asset file paths
         """
         self.application_id: Optional[str] = application_id
         self.spawn: bool = spawn
         self.show_safety_zones: bool = show_safety_zones
         self.show_collision_scenes: bool = show_collision_scenes
+        self.tcp_tools: dict[str, str] = tcp_tools or {}
         self._bridge: Optional[NovaRerunBridgeProtocol] = None
         self._configured: bool = False
         self._async_setup_done: bool = False
@@ -380,8 +389,9 @@ class Rerun(Viewer):
             # Log actions
             await self._bridge.log_actions(list(actions), motion_group=motion_group)
 
-            # Log trajectory
-            await self._bridge.log_trajectory(trajectory, tcp, motion_group)
+            # Log trajectory with tool asset if configured for this TCP
+            tool_asset = self._resolve_tool_asset(tcp)
+            await self._bridge.log_trajectory(trajectory, tcp, motion_group, tool_asset=tool_asset)
 
             # Log collision scenes from actions if configured
             if self.show_collision_scenes:
@@ -458,6 +468,17 @@ class Rerun(Viewer):
         """Clean up rerun integration after program execution."""
         self._bridge = None
         self._configured = False
+
+    def _resolve_tool_asset(self, tcp: str) -> Optional[str]:
+        """Resolve the tool asset file path for a given TCP.
+
+        Args:
+            tcp: The TCP ID to resolve tool asset for
+
+        Returns:
+            Path to tool asset file if configured, None otherwise
+        """
+        return self.tcp_tools.get(tcp)
 
 
 # For convenience, allow direct import of Rerun
