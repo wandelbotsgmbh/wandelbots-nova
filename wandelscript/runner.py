@@ -64,7 +64,7 @@ class ProgramRunner(NovaProgramRunner):
         self.execution_context.motion_group_recordings = (
             ws_execution_context.motion_group_recordings
         )
-        self.execution_context.result = ws_execution_context.store.data_dict
+        self.execution_context.output_data = ws_execution_context.store.data_dict
 
 
 def run(
