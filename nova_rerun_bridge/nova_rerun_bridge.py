@@ -418,9 +418,7 @@ class NovaRerunBridge:
         """Context manager exit point, ensures cleanup."""
         if "VSCODE_PROXY_URI" in os.environ:
             logger.info(f"Install rerun app and open the visual log on {get_rerun_address()}")
-            import webbrowser
 
-            webbrowser.open(get_rerun_address(), new=1)
         await self.cleanup()
 
     async def cleanup(self) -> None:
