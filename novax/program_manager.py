@@ -7,10 +7,16 @@ from loguru import logger
 from pydantic import BaseModel
 
 import nova
-import wandelscript
 from nova import Nova
 from nova.program.function import Function
 from nova.program.runner import ExecutionContext, Program, ProgramRun, ProgramRunner, ProgramType
+
+try:
+    import wandelscript
+
+    WANDELSCRIPT_AVAILABLE = True
+except ImportError:
+    WANDELSCRIPT_AVAILABLE = False
 
 
 class ProgramSource(Protocol):
@@ -122,27 +128,35 @@ class ProgramManager:
             path = func_or_path
             if not path.exists():
                 raise FileNotFoundError(f"Wandelscript file not found: {path}")
-            if path.suffix != ".ws":
-                raise ValueError(f"File must have .ws extension: {path}")
 
-            # Create program ID from filename
-            program_id = path.stem
-            logger.info(f"Registering wandelscript program: {program_id}")
+            match path.suffix:
+                case ".ws":
+                    # Check if wandelscript package is available
+                    if not WANDELSCRIPT_AVAILABLE:
+                        raise ImportError(
+                            f"Cannot register wandelscript file {path}: wandelscript package is not installed. "
+                            "Please install it with 'pip install wandelscript' or 'uv add wandelscript'"
+                        )
+                    # Create program ID from filename
+                    program_id = path.stem
+                    logger.info(f"Registering wandelscript program: {program_id}")
 
-            # Create a wrapper function similar to run_ws
-            @nova.program(name=program_id)
-            async def wandelscript_wrapper():
-                # TODO: how to pass parameters here?
-                async with Nova() as nova:
-                    robot_cell = await nova.cell().get_robot_cell()
-                    result = await wandelscript.run_file(
-                        path,
-                        # args=kwargs,
-                        robot_cell_override=robot_cell,
-                    )
-                    return result
+                    # Create a wrapper function similar to run_ws
+                    @nova.program(name=program_id)
+                    async def wandelscript_wrapper():
+                        # TODO: how to pass parameters here?
+                        async with Nova() as nova:
+                            robot_cell = await nova.cell().get_robot_cell()
+                            result = await wandelscript.run_file(
+                                path,
+                                # args=kwargs,
+                                robot_cell_override=robot_cell,
+                            )
+                            return result
 
-            func = wandelscript_wrapper
+                    func = wandelscript_wrapper
+                case _:
+                    raise NotImplementedError(f"File must have .ws extension: {path}")
         else:
             raise TypeError(f"Expected Function or Path, got {type(func_or_path)}")
 
