@@ -94,6 +94,3 @@ class Novax:
         app.include_router(programs_router)
 
         return app
-
-    def run(self):
-        pass
