@@ -58,7 +58,7 @@ def run(
 
     echo(f"NOVA_API: {nova_api}")
 
-    foreign_functions = load_foreign_functions(import_ffs)
+    foreign_functions = load_foreign_functions(import_ffs) if import_ffs else None
 
     code = script.read()
     script.close()
