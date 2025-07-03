@@ -2174,7 +2174,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "1.24.0"
+version = "1.24.2"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
@@ -2267,6 +2267,7 @@ requires-dist = [
     { name = "trimesh", marker = "extra == 'benchmark'", specifier = ">=4.5.3" },
     { name = "trimesh", marker = "extra == 'nova-rerun-bridge'", specifier = ">=4.5.3" },
     { name = "typer", extras = ["all"], marker = "extra == 'wandelscript'", specifier = ">=0.12,<0.16" },
+    { name = "uvicorn", marker = "extra == 'novax'", specifier = ">=0.34.0" },
     { name = "wandelbots-api-client", specifier = "==25.6.0" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
 ]
