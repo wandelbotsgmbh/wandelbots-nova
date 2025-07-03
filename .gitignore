@@ -1,3 +1,4 @@
+nova_import_profile.html
 devportal.env
 .devcontainer/devcontainer.env
 # from Makefile generated
