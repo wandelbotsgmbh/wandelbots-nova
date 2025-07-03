@@ -35,8 +35,8 @@ async def get_program(
     }
 
 
-@router.get("/{program}/runs", operation_id="listProgramRuns", response_model=list[ProgramRun])
-async def list_program_runs(
+@router.get("/{program}/runs", operation_id="getProgramRuns", response_model=list[ProgramRun])
+async def get_program_runs(
     program: str = Path(..., description="The ID of the program"),
     program_manager: ProgramManager = Depends(get_program_manager),
 ):
