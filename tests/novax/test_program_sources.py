@@ -94,7 +94,7 @@ def test_register_program_source():
     assert source in program_manager._program_sources
 
 
-def test_unregister_program_source():
+def test_deregister_program_source():
     """Test unregistering a program source"""
     program_manager = ProgramManager()
 
@@ -105,7 +105,7 @@ def test_unregister_program_source():
     assert source in program_manager._program_sources
 
     # Unregister
-    program_manager.unregister_program_source(source)
+    program_manager.deregister_program_source(source)
 
     # Verify unregistration
     assert source not in program_manager._program_sources

@@ -91,12 +91,12 @@ class ProgramManager:
         """
         self._program_sources.append(program_source)
 
-    def unregister_program_source(self, program_source: ProgramSource) -> None:
+    def deregister_program_source(self, program_source: ProgramSource) -> None:
         """
-        Unregister a program source from the program manager.
+        Deregister a program source from the program manager.
 
         Args:
-            program_source: The program source to unregister
+            program_source: The program source to deregister
         """
         if program_source in self._program_sources:
             self._program_sources.remove(program_source)
