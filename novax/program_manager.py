@@ -1,4 +1,4 @@
-import datetime
+import datetime as dt
 import inspect
 from pathlib import Path
 from typing import Any, AsyncIterator, Optional, Protocol
@@ -9,15 +9,8 @@ from pydantic import BaseModel
 import nova
 from nova import Nova
 from nova.program.function import Program
-from nova.program.runner import (
-    ExecutionContext,
-    ProgramRun,
-    ProgramRunner,
-    ProgramType,
-)
-from nova.program.runner import (
-    Program as SimpleProgram,
-)
+from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner, ProgramType
+from nova.program.runner import Program as SimpleProgram
 from wandelscript.ffi_loader import load_foreign_functions
 
 try:
@@ -77,8 +70,8 @@ class NovaxProgramRunner(ProgramRunner):
 
 class ProgramDetails(BaseModel):
     program_id: str
-    created_at: str
-    updated_at: str
+    created_at: dt.datetime
+    updated_at: dt.datetime
 
 
 class RunProgramRequest(BaseModel):
@@ -130,7 +123,7 @@ class ProgramManager:
         func = program
         program_id = func.name
 
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
+        now = dt.datetime.now(dt.timezone.utc)
 
         # Create ProgramDetails instance
         program_details = ProgramDetails(program_id=program_id, created_at=now, updated_at=now)
