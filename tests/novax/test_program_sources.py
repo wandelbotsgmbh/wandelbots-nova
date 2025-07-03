@@ -6,7 +6,7 @@ from typing import AsyncIterator
 import pytest
 
 import nova
-from nova.program.function import Function
+from nova.program.function import Program
 from novax import Novax
 from novax.program_manager import FileSystemProgramSource, ProgramManager, ProgramSource
 
@@ -35,7 +35,7 @@ class WebDAVProgramSource(ProgramSource):
     def __init__(self, webdav_data: dict[str, str]):
         self.webdav_data = webdav_data
 
-    async def get_programs(self, program_manager: ProgramManager) -> AsyncIterator[Function | Path]:
+    async def get_programs(self, program_manager: ProgramManager) -> AsyncIterator[Program]:
         """Discover and register SHL programs from WebDAV data"""
         for program_name in self.webdav_data.keys():
             if program_manager.has_program(program_name):

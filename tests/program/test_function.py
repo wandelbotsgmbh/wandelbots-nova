@@ -1,7 +1,7 @@
 import pytest
 from pydantic import BaseModel, Field
 
-from nova.program.function import Function, ProgramPreconditions, program
+from nova.program.function import Program, ProgramPreconditions, program
 
 
 class TestInput(BaseModel):
@@ -33,7 +33,7 @@ async def test_function_wrapping():
         """
         return TestOutput(message=f"Hello {name}, you are {age} years old!")
 
-    assert isinstance(greet, Function)
+    assert isinstance(greet, Program)
     assert greet.name == "greet"
     assert "Greet a person" in greet.description
     assert isinstance(greet.input, type(BaseModel))
@@ -61,7 +61,7 @@ async def test_function_wrapping():
 @pytest.mark.asyncio
 async def test_function_validation():
     with pytest.raises(TypeError):
-        Function.validate("not a function")
+        Program.validate("not a function")
 
 
 @pytest.mark.asyncio
@@ -229,7 +229,7 @@ async def test_function_repr():
         return float(x)
 
     func_repr = repr(example_func)
-    assert "Function(name='example_func'" in func_repr
+    assert "Program(name='example_func'" in func_repr
     assert "x: int" in func_repr
     assert "y: str" in func_repr
     assert "output=float" in func_repr

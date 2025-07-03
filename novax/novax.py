@@ -4,7 +4,7 @@ from typing import Any, Optional
 from decouple import config
 from fastapi import FastAPI
 
-from nova.program.function import Function
+from nova.program.function import Program
 from novax.program_manager import ProgramDetails, ProgramManager
 
 CELL_ID = config("CELL_ID", default="cell", cast=str)
@@ -22,18 +22,17 @@ class Novax:
         """Get the program manager instance"""
         return self._program_manager
 
-    def register_program(self, func_or_path: Function | Path) -> str:
+    def register_program(self, program: Program) -> str:
         """
         Register a function or wandelscript file as a program.
 
         Args:
-            func_or_path: Either a Function object (decorated with @nova.program)
-                         or a Path to a wandelscript (.ws) file
+            program: A Program object (decorated with @nova.program)
 
         Returns:
             str: The program ID
         """
-        return self._program_manager.register_program(func_or_path)
+        return self._program_manager.register_program(program)
 
     async def get_programs(self) -> dict[str, ProgramDetails]:
         """Get all registered programs"""
