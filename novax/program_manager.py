@@ -16,17 +16,16 @@ from nova.program.runner import (
     ProgramType,
 )
 from nova.program.runner import (
-    Program as ProgramType,
+    Program as SimpleProgram,
 )
+from wandelscript.ffi_loader import load_foreign_functions
 
 try:
     import wandelscript
-    from wandelscript.ffi import ForeignFunction
 
     WANDELSCRIPT_AVAILABLE = True
 except ImportError:
     WANDELSCRIPT_AVAILABLE = False
-    ForeignFunction = None
 
 
 class ProgramSource(Protocol):
@@ -51,7 +50,7 @@ class NovaxProgramRunner(ProgramRunner):
     ):
         super().__init__(
             program_id=program_id,
-            program=ProgramType(content="", program_type=ProgramType.PYTHON),
+            program=SimpleProgram(content="", program_type=ProgramType.PYTHON),
             args={},
         )
         self.program_functions = program_functions
@@ -185,7 +184,7 @@ class ProgramManager:
 
 
 class WandelscriptProgramSource:
-    def __init__(self, scan_paths: list[Path], foreign_functions: dict[str, Any] | None = None):
+    def __init__(self, scan_paths: list[Path], foreign_functions_paths: list[Path] | None = None):
         """
         Initialize the WandelscriptProgramSource with a list of paths to scan.
 
@@ -194,7 +193,7 @@ class WandelscriptProgramSource:
             foreign_functions: Optional dictionary of foreign functions to attach to all programs.
         """
         self.scan_paths = scan_paths
-        self.foreign_functions = foreign_functions or {}
+        self.foreign_functions = load_foreign_functions(foreign_functions_paths)
 
     async def get_programs(self, program_manager: "ProgramManager") -> AsyncIterator[Program]:
         """Discover and yield programs from filesystem"""
@@ -243,18 +242,3 @@ class WandelscriptProgramSource:
                 return result
 
         return wandelscript_wrapper
-
-
-class FileSystemProgramSource:
-    """Example program source that loads programs from a filesystem directory"""
-
-    def __init__(self, directory_path: Path):
-        self.directory_path = directory_path
-
-    async def get_programs(self) -> AsyncIterator[Program]:
-        """Discover and yield programs from filesystem"""
-        if not self.directory_path.exists():
-            return
-
-        for file_path in self.directory_path.glob("*.ws"):
-            yield file_path
