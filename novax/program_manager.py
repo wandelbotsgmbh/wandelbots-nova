@@ -1,7 +1,7 @@
 import datetime
 import inspect
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional, Protocol
 
 from loguru import logger
 from pydantic import BaseModel
@@ -11,6 +11,19 @@ import wandelscript
 from nova import Nova
 from nova.program.function import Function
 from nova.program.runner import ExecutionContext, Program, ProgramRun, ProgramRunner, ProgramType
+
+
+class ProgramSource(Protocol):
+    """Protocol for program sources that can be registered with ProgramManager"""
+
+    def get_programs(self, program_manager: "ProgramManager") -> AsyncIterator[Function | Path]:
+        """
+        Discover and yield all programs from this source.
+
+        Yields:
+            Function | Path: Either a Function object or a Path to a wandelscript file
+        """
+        ...
 
 
 class NovaxProgramRunner(ProgramRunner):
@@ -64,9 +77,29 @@ class ProgramManager:
         self._programs: dict[str, ProgramDetails] = {}
         self._program_functions: dict[str, Function] = {}
         self._runners: dict[str, dict[str, NovaxProgramRunner]] = {}
+        self._program_sources: list[ProgramSource] = []
 
     def has_program(self, program_id: str) -> bool:
         return program_id in self._programs
+
+    def register_program_source(self, program_source: ProgramSource) -> None:
+        """
+        Register a program source with the program manager.
+
+        Args:
+            program_source: The program source to register
+        """
+        self._program_sources.append(program_source)
+
+    def unregister_program_source(self, program_source: ProgramSource) -> None:
+        """
+        Unregister a program source from the program manager.
+
+        Args:
+            program_source: The program source to unregister
+        """
+        if program_source in self._program_sources:
+            self._program_sources.remove(program_source)
 
     def register_program(self, func_or_path: Function | Path) -> str:
         """
@@ -124,16 +157,11 @@ class ProgramManager:
 
         return program_id
 
-    async def _get_programs(self):
-        """
-        This method is used to get all registered programs.
-        It is implemented by the subclass.
-        """
-        pass
-
     async def get_programs(self) -> dict[str, ProgramDetails]:
         """Get all registered programs"""
-        await self._get_programs()
+        for program_source in self._program_sources:
+            async for program in program_source.get_programs(self):
+                self.register_program(program)
         return self._programs.copy()
 
     async def get_program(self, program_id: str) -> Optional[ProgramDetails]:
@@ -166,3 +194,21 @@ class ProgramManager:
             raise ValueError(f"Runner {run_id} not found")
         runner.stop(sync=True)
         del self._runners[program_id][run_id]
+
+
+# Example implementations of ProgramSource
+
+
+class FileSystemProgramSource:
+    """Example program source that loads programs from a filesystem directory"""
+
+    def __init__(self, directory_path: Path):
+        self.directory_path = directory_path
+
+    async def get_programs(self) -> AsyncIterator[Function | Path]:
+        """Discover and yield programs from filesystem"""
+        if not self.directory_path.exists():
+            return
+
+        for file_path in self.directory_path.glob("*.ws"):
+            yield file_path
