@@ -8,26 +8,36 @@ from pydantic import BaseModel
 
 import nova
 from nova import Nova
-from nova.program.function import Function
-from nova.program.runner import ExecutionContext, Program, ProgramRun, ProgramRunner, ProgramType
+from nova.program.function import Program
+from nova.program.runner import (
+    ExecutionContext,
+    ProgramRun,
+    ProgramRunner,
+    ProgramType,
+)
+from nova.program.runner import (
+    Program as ProgramType,
+)
 
 try:
     import wandelscript
+    from wandelscript.ffi import ForeignFunction
 
     WANDELSCRIPT_AVAILABLE = True
 except ImportError:
     WANDELSCRIPT_AVAILABLE = False
+    ForeignFunction = None
 
 
 class ProgramSource(Protocol):
     """Protocol for program sources that can be registered with ProgramManager"""
 
-    def get_programs(self, program_manager: "ProgramManager") -> AsyncIterator[Function | Path]:
+    def get_programs(self, program_manager: "ProgramManager") -> AsyncIterator[Program]:
         """
         Discover and yield all programs from this source.
 
         Yields:
-            Function | Path: Either a Function object or a Path to a wandelscript file
+            Program: A Program object (decorated with @nova.program)
         """
         ...
 
@@ -36,12 +46,12 @@ class NovaxProgramRunner(ProgramRunner):
     def __init__(
         self,
         program_id: str,
-        program_functions: dict[str, Function],
+        program_functions: dict[str, Program],
         parameters: Optional[dict[str, Any]] = None,
     ):
         super().__init__(
             program_id=program_id,
-            program=Program(content="", program_type=ProgramType.PYTHON),
+            program=ProgramType(content="", program_type=ProgramType.PYTHON),
             args={},
         )
         self.program_functions = program_functions
@@ -81,7 +91,7 @@ class ProgramManager:
 
     def __init__(self):
         self._programs: dict[str, ProgramDetails] = {}
-        self._program_functions: dict[str, Function] = {}
+        self._program_functions: dict[str, Program] = {}
         self._runners: dict[str, dict[str, NovaxProgramRunner]] = {}
         self._program_sources: list[ProgramSource] = []
 
@@ -107,58 +117,19 @@ class ProgramManager:
         if program_source in self._program_sources:
             self._program_sources.remove(program_source)
 
-    def register_program(self, func_or_path: Function | Path) -> str:
+    def register_program(self, program: Program) -> str:
         """
-        Register a function or wandelscript file as a program.
+        Register a function as a program.
 
         Args:
-            func_or_path: Either a Function object (decorated with @nova.program)
-                         or a Path to a wandelscript (.ws) file
+            program: A Program object (decorated with @nova.program)
 
         Returns:
             str: The program ID
         """
 
-        if isinstance(func_or_path, Function):
-            # Handle Function object (existing behavior)
-            func = func_or_path
-            program_id = func.name
-        elif isinstance(func_or_path, Path):
-            # Handle wandelscript file path
-            path = func_or_path
-            if not path.exists():
-                raise FileNotFoundError(f"Wandelscript file not found: {path}")
-
-            match path.suffix:
-                case ".ws":
-                    # Check if wandelscript package is available
-                    if not WANDELSCRIPT_AVAILABLE:
-                        raise ImportError(
-                            f"Cannot register wandelscript file {path}: wandelscript package is not installed. "
-                            "Please install it with 'pip install wandelscript' or 'uv add wandelscript'"
-                        )
-                    # Create program ID from filename
-                    program_id = path.stem
-                    logger.info(f"Registering wandelscript program: {program_id}")
-
-                    # Create a wrapper function similar to run_ws
-                    @nova.program(name=program_id)
-                    async def wandelscript_wrapper():
-                        # TODO: how to pass parameters here?
-                        async with Nova() as nova:
-                            robot_cell = await nova.cell().get_robot_cell()
-                            result = await wandelscript.run_file(
-                                path,
-                                # args=kwargs,
-                                robot_cell_override=robot_cell,
-                            )
-                            return result
-
-                    func = wandelscript_wrapper
-                case _:
-                    raise NotImplementedError(f"File must have .ws extension: {path}")
-        else:
-            raise TypeError(f"Expected Function or Path, got {type(func_or_path)}")
+        func = program
+        program_id = func.name
 
         now = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
 
@@ -213,13 +184,74 @@ class ProgramManager:
 # Example implementations of ProgramSource
 
 
+class WandelscriptProgramSource:
+    def __init__(self, scan_paths: list[Path], foreign_functions: dict[str, Any] | None = None):
+        """
+        Initialize the WandelscriptProgramSource with a list of paths to scan.
+
+        Args:
+            scan_paths: List of paths to scan for .ws files. Can be individual files or directories.
+            foreign_functions: Optional dictionary of foreign functions to attach to all programs.
+        """
+        self.scan_paths = scan_paths
+        self.foreign_functions = foreign_functions or {}
+
+    async def get_programs(self, program_manager: "ProgramManager") -> AsyncIterator[Program]:
+        """Discover and yield programs from filesystem"""
+        for path in self.scan_paths:
+            if not path.exists():
+                logger.warning(f"Path does not exist: {path}")
+                continue
+
+            if path.is_file():
+                # Single file
+                if path.suffix == ".ws":
+                    yield self._create_wandelscript_program(path)
+            elif path.is_dir():
+                # Directory - scan for .ws files
+                for file_path in path.glob("*.ws"):
+                    yield self._create_wandelscript_program(file_path)
+
+    def _create_wandelscript_program(self, path: Path) -> Program:
+        """Create a nova.program wrapper for a wandelscript file"""
+        if not WANDELSCRIPT_AVAILABLE:
+            raise ImportError(
+                f"Cannot register wandelscript file {path}: wandelscript package is not installed. "
+                "Please install it with 'pip install wandelscript' or 'uv add wandelscript'"
+            )
+
+        # Create program ID from filename
+        program_id = path.stem
+        logger.info(f"Creating wandelscript program: {program_id}")
+
+        # Create a wrapper function
+        @nova.program(name=program_id)
+        async def wandelscript_wrapper(**kwargs):
+            async with Nova() as nova:
+                robot_cell = await nova.cell().get_robot_cell()
+                # Read the file content
+                with open(path) as f:
+                    program_content = f.read()
+
+                result = await wandelscript.run(
+                    program_id=program_id,
+                    program=program_content,
+                    args=kwargs,
+                    foreign_functions=self.foreign_functions,
+                    robot_cell_override=robot_cell,
+                )
+                return result
+
+        return wandelscript_wrapper
+
+
 class FileSystemProgramSource:
     """Example program source that loads programs from a filesystem directory"""
 
     def __init__(self, directory_path: Path):
         self.directory_path = directory_path
 
-    async def get_programs(self) -> AsyncIterator[Function | Path]:
+    async def get_programs(self) -> AsyncIterator[Program]:
         """Discover and yield programs from filesystem"""
         if not self.directory_path.exists():
             return

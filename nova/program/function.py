@@ -35,7 +35,7 @@ class ProgramPreconditions(BaseModel):
     cleanup_controllers: bool = False
 
 
-class Function(BaseModel, Generic[Parameters, Return]):
+class Program(BaseModel, Generic[Parameters, Return]):
     _wrapped: Callable[Parameters, Any] = PrivateAttr(
         default_factory=lambda: lambda *args, **kwargs: None
     )
@@ -46,8 +46,8 @@ class Function(BaseModel, Generic[Parameters, Return]):
     preconditions: ProgramPreconditions | None = None
 
     @classmethod
-    def validate(cls, value: Callable[Parameters, Return]) -> "Function[Parameters, Return]":
-        if isinstance(value, Function):
+    def validate(cls, value: Callable[Parameters, Return]) -> "Program[Parameters, Return]":
+        if isinstance(value, Program):
             return value
         if not callable(value):
             raise TypeError("value must be callable")
@@ -170,7 +170,7 @@ class Function(BaseModel, Generic[Parameters, Return]):
 
         desc_part = f", description='{self.description}'" if self.description else ""
         return (
-            f"Function(name='{self.name}'{desc_part}, input=({input_fields}), output={output_type})"
+            f"Program(name='{self.name}'{desc_part}, input=({input_fields}), output={output_type})"
         )
 
     def create_parser(self) -> argparse.ArgumentParser:
@@ -297,12 +297,12 @@ def program(
 
     def decorator(
         function: Callable[Parameters, Return],
-    ) -> Function[Parameters, Coroutine[Any, Any, Return]]:
+    ) -> Program[Parameters, Coroutine[Any, Any, Return]]:
         # Validate that the function is async
         if not asyncio.iscoroutinefunction(function):
             raise TypeError(f"Program function '{function.__name__}' must be async")
 
-        func_obj = Function.validate(function)
+        func_obj = Program.validate(function)
         if name:
             func_obj.name = name
         func_obj.preconditions = preconditions
