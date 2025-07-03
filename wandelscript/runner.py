@@ -4,9 +4,9 @@ from loguru import logger
 
 from nova.cell.robot_cell import RobotCell
 from nova.program import ProgramRunner as NovaProgramRunner
-from nova.program.runner import ExecutionContext as NovaExecutionContext
 
 # TODO: this should come from the api package
+from nova.program.runner import ExecutionContext as NovaExecutionContext
 from nova.program.runner import Program, ProgramRun, ProgramType
 from wandelscript.datatypes import ElementType
 from wandelscript.ffi import ForeignFunction
@@ -101,6 +101,7 @@ def run_file(
     args: dict[str, ElementType] | None = None,
     default_robot: str | None = None,
     default_tcp: str | None = None,
+    foreign_functions: dict[str, ForeignFunction] | None = None,
     robot_cell_override: RobotCell | None = SimulatedRobotCell(),
 ) -> ProgramRunner:
     path = Path(file_path)
@@ -112,5 +113,6 @@ def run_file(
         args=args,
         default_robot=default_robot,
         default_tcp=default_tcp,
+        foreign_functions=foreign_functions,
         robot_cell_override=robot_cell_override,
     )
