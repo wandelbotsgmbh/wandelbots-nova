@@ -4,7 +4,6 @@ from novax.api.dependencies import get_program_manager
 
 def test_novax():
     novax = Novax()
-    assert novax is not None
     app = novax.create_app()
     assert app is not None
     novax.include_programs_router(app)
