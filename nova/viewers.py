@@ -66,6 +66,10 @@ class NovaRerunBridgeProtocol(Protocol):
         """Log collision scenes to the viewer."""
         ...
 
+    def log_coordinate_system(self) -> None:
+        """Log the coordinate system."""
+        ...
+
 
 class ViewerManager:
     """Manages the lifecycle and coordination of all active viewers."""
@@ -260,25 +264,25 @@ class Rerun(Viewer):
     - Motion group states
     - Planning requests and responses
     - Collision scenes and safety zones (optional)
-    - Tool geometries attached to specific TCPs
-
-    Example usage:
+    - Tool geometries attached to specific TCPs    Example usage:
+        # 3D view only (default)
         @nova.program(
-            name="My Program",
             viewer=nova.viewers.Rerun(
+                tcp_tools={"vacuum": "assets/vacuum_cup.stl"}
+            )
+        )
+
+        # Full interface with detailed analysis panels
+        @nova.program(
+            viewer=nova.viewers.Rerun(
+                show_details=True,
                 show_safety_zones=True,
-                show_collision_scenes=True,
                 tcp_tools={
                     "vacuum": "assets/vacuum_cup.stl",
                     "gripper": "assets/parallel_gripper.stl"
                 }
-            ),
-            preconditions=...
+            )
         )
-        async def my_program():
-            # Tool geometries are automatically rendered when using configured TCPs
-            await motion_group.plan_and_execute(actions, "vacuum")  # Shows vacuum_cup.stl
-            await motion_group.plan_and_execute(actions, "gripper") # Shows parallel_gripper.stl
     """
 
     def __init__(
@@ -288,6 +292,7 @@ class Rerun(Viewer):
         show_safety_zones: bool = True,
         show_collision_scenes: bool = True,
         tcp_tools: Optional[dict[str, str]] = None,
+        show_details: bool = False,
     ) -> None:
         """
         Initialize the Rerun viewer.
@@ -298,12 +303,14 @@ class Rerun(Viewer):
             show_safety_zones: Whether to visualize safety zones for motion groups
             show_collision_scenes: Whether to show collision scenes
             tcp_tools: Optional mapping of TCP IDs to tool asset file paths
+            show_details: Whether to show detailed analysis panels with charts and logs (False = 3D view only)
         """
         self.application_id: Optional[str] = application_id
         self.spawn: bool = spawn
         self.show_safety_zones: bool = show_safety_zones
         self.show_collision_scenes: bool = show_collision_scenes
         self.tcp_tools: dict[str, str] = tcp_tools or {}
+        self.show_details: bool = show_details
         self._bridge: Optional[NovaRerunBridgeProtocol] = None
         self._configured: bool = False
         self._async_setup_done: bool = False
@@ -320,7 +327,10 @@ class Rerun(Viewer):
             from nova_rerun_bridge import NovaRerunBridge
 
             self._bridge = NovaRerunBridge(
-                nova=nova, spawn=self.spawn, recording_id=self.application_id
+                nova=nova,
+                spawn=self.spawn,
+                recording_id=self.application_id,
+                show_details=self.show_details,
             )
             self._configured = True
             # Don't setup async components immediately - wait for controllers to be ready
@@ -340,6 +350,7 @@ class Rerun(Viewer):
             # Initialize the bridge's own Nova client before using it
             await self._bridge.__aenter__()
 
+            # Setup blueprint (show_details is already configured in bridge)
             await self._bridge.setup_blueprint()
             await self._setup_collision_scenes()
             await self._setup_safety_zones()

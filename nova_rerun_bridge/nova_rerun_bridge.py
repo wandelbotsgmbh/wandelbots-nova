@@ -54,7 +54,9 @@ class NovaRerunBridge:
         spawn (bool, optional): Whether to spawn Rerun viewer. Defaults to True.
     """
 
-    def __init__(self, nova: Nova, spawn: bool = True, recording_id=None) -> None:
+    def __init__(
+        self, nova: Nova, spawn: bool = True, recording_id=None, show_details: bool = True
+    ) -> None:
         self._ensure_models_exist()
         # Store the original nova instance for initial setup and to copy connection parameters
         self.nova = nova
@@ -63,6 +65,7 @@ class NovaRerunBridge:
         self._streaming_tasks: dict[MotionGroup, asyncio.Task] = {}
         # Track timing per motion group - each motion group has its own timeline
         self._motion_group_timers: dict[str, float] = {}
+        self.show_details = show_details
 
         recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
@@ -72,7 +75,7 @@ class NovaRerunBridge:
             logger.info(f"Install rerun app and open the visual log on {get_rerun_address()}")
         elif spawn:
             rr.init(application_id="nova", recording_id=recording_id, spawn=True)
-        
+
         logger.add(sink=rr.LoggingHandler("logs/handler"))
 
     def _ensure_models_exist(self):
@@ -102,7 +105,7 @@ class NovaRerunBridge:
         rr.reset_time()
         rr.set_time(TIME_INTERVAL_NAME, duration=0)
 
-        send_blueprint(motion_groups)
+        send_blueprint(motion_groups, self.show_details)
         self.log_coordinate_system()
 
     def log_coordinate_system(self) -> None:

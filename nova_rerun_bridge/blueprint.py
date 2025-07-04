@@ -265,8 +265,13 @@ def create_motion_group_tabs(
     )
 
 
-def get_blueprint(motion_group_list: list[str]) -> rrb.Blueprint:
-    """Send blueprint with nested tab structure."""
+def get_blueprint(motion_group_list: list[str], show_details: bool = True) -> rrb.Blueprint:
+    """Create blueprint with optional detailed analysis panels.
+
+    Args:
+        motion_group_list: List of motion group names
+        show_details: Whether to include detailed charts and logs (True) or just 3D view (False)
+    """
     for motion_group in motion_group_list:
         configure_tcp_line_colors(motion_group)
         configure_joint_line_colors(motion_group)
@@ -275,31 +280,44 @@ def get_blueprint(motion_group_list: list[str]) -> rrb.Blueprint:
         f"{group}/**" for group in motion_group_list
     ]
 
-    time_ranges = rrb.VisibleTimeRange(
-        TIME_INTERVAL_NAME,
-        start=rrb.TimeRangeBoundary.cursor_relative(seconds=-2),
-        end=rrb.TimeRangeBoundary.cursor_relative(seconds=2),
-    )
-    plot_legend = rrb.PlotLegend(visible=False)
+    if show_details:
+        # Full blueprint with tabs, charts, and logs
+        time_ranges = rrb.VisibleTimeRange(
+            TIME_INTERVAL_NAME,
+            start=rrb.TimeRangeBoundary.cursor_relative(seconds=-2),
+            end=rrb.TimeRangeBoundary.cursor_relative(seconds=2),
+        )
+        plot_legend = rrb.PlotLegend(visible=False)
 
-    motion_group_tabs = [
-        create_motion_group_tabs(group, time_ranges, plot_legend) for group in motion_group_list
-    ]
+        motion_group_tabs = [
+            create_motion_group_tabs(group, time_ranges, plot_legend) for group in motion_group_list
+        ]
 
-    return rrb.Blueprint(
-        rrb.Horizontal(
-            rrb.Spatial3DView(contents=contents, name="3D Nova", background=[20, 22, 35]),
-            rrb.Tabs(
-                *motion_group_tabs,
-                rrb.TextLogView(origin="/logs/motion", name="Motions"),
-                rrb.TextLogView(origin="/logs", name="API Call Logs"),
+        return rrb.Blueprint(
+            rrb.Horizontal(
+                rrb.Spatial3DView(contents=contents, name="3D Nova", background=[20, 22, 35]),
+                rrb.Tabs(
+                    *motion_group_tabs,
+                    rrb.TextLogView(origin="/logs/motion", name="Motions"),
+                    rrb.TextLogView(origin="/logs", name="API Call Logs"),
+                ),
+                column_shares=[1, 0.3],
             ),
-            column_shares=[1, 0.3],
-        ),
-        collapse_panels=True,
-    )
+            collapse_panels=True,
+        )
+    else:
+        # Minimal blueprint with only 3D view
+        return rrb.Blueprint(
+            rrb.Spatial3DView(contents=contents, name="3D Nova", background=[20, 22, 35]),
+            collapse_panels=True,
+        )
 
 
-def send_blueprint(motion_group_list: list[str]) -> None:
-    """Send blueprint with nested tab structure."""
-    rr.send_blueprint(get_blueprint(motion_group_list))
+def send_blueprint(motion_group_list: list[str], show_details: bool = True) -> None:
+    """Send blueprint with optional detailed analysis panels.
+
+    Args:
+        motion_group_list: List of motion group names
+        show_details: Whether to include detailed charts and logs (True) or just 3D view (False)
+    """
+    rr.send_blueprint(get_blueprint(motion_group_list, show_details))
