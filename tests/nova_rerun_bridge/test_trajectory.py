@@ -32,7 +32,7 @@ class TestLogMotionParameterValidation:
         mock_tcp_pose.orientation.x = 0.0
         mock_tcp_pose.orientation.y = 0.0
         mock_tcp_pose.orientation.z = 0.0
-        
+
         mock_trajectory_point = Mock()
         mock_trajectory_point.time = 1.0
         mock_trajectory_point.tcp_pose = mock_tcp_pose
@@ -61,7 +61,7 @@ class TestLogMotionParameterValidation:
                 collision_scenes={},
                 time_offset=0.0,
             )
-            
+
             # Verify that the sub-functions were called
             mock_log_joint.assert_called_once()
             mock_log_tcp.assert_called_once()
@@ -96,7 +96,7 @@ class TestLogMotionParameterValidation:
                 trajectory=[],  # Empty trajectory
                 collision_scenes={},
             )
-            
+
             # Should still be called but with empty trajectory
             mock_log_tcp.assert_called_once()
 
@@ -130,7 +130,7 @@ class TestLogMotionParameterValidation:
                 collision_scenes={},
                 show_safety_link_chain=True,
             )
-            
+
             # Should be called
             mock_log_tcp.assert_called_once()
 

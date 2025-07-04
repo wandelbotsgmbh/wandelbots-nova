@@ -38,7 +38,7 @@ def test_rerun_viewer_instantiation():
 def test_rerun_viewer_configure_cleanup():
     """Test Rerun viewer configure and cleanup methods don't raise errors."""
     from unittest.mock import Mock
-    
+
     viewer = viewers.Rerun()
     mock_nova = Mock()
 

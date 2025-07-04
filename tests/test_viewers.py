@@ -77,9 +77,9 @@ class TestRerunViewer:
         """Should automatically register itself when created."""
         manager = get_viewer_manager()
         initial_count = len(manager._viewers)
-        
+
         viewer = Rerun()
-        
+
         # Should have one more viewer registered
         assert len(manager._viewers) == initial_count + 1
         assert viewer is not None  # Keep the variable used
@@ -605,11 +605,11 @@ class TestViewerUtilities:
 
         # Create a real viewer instance that won't be garbage collected
         viewer = Rerun()
-        
+
         # Get initial count
         manager = get_viewer_manager()
         initial_count = len(manager._viewers)
-        
+
         # Register should not add it again since Rerun auto-registers
         register_viewer(viewer)
 

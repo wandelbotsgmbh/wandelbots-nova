@@ -222,7 +222,7 @@ def log_tcp_pose(
     """
     Log TCP pose (position + orientation) data.
     """
-    
+
     # Handle empty trajectory
     if not trajectory:
         return
