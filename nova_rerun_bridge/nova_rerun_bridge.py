@@ -27,7 +27,7 @@ from nova_rerun_bridge.helper_scripts.code_server_helpers import get_rerun_addre
 from nova_rerun_bridge.helper_scripts.download_models import get_project_root
 from nova_rerun_bridge.safety_zones import log_safety_zones
 from nova_rerun_bridge.stream_state import stream_motion_group
-from nova_rerun_bridge.trajectory import log_motion
+from nova_rerun_bridge.trajectory import TimingMode, log_motion
 
 
 class NovaRerunBridge:
@@ -208,8 +208,29 @@ class NovaRerunBridge:
         log_safety_zones(motion_group_id, optimizer_setup)
 
     async def log_motion(
-        self, motion_id: str, time_offset: float = 0, tool_asset: Optional[str] = None
+        self,
+        motion_id: str,
+        timing_mode=TimingMode.CONTINUE,
+        time_offset: float = 0,
+        tool_asset: Optional[str] = None,
     ) -> None:
+        """Log motion trajectory to Rerun viewer.
+
+        Args:
+            motion_id: The motion identifier
+            timing_mode: DEPRECATED - Timing mode (ignored in new implementation)
+            time_offset: Time offset for visualization
+            tool_asset: Optional tool asset file path
+        """
+        if timing_mode != TimingMode.CONTINUE:
+            import warnings
+
+            warnings.warn(
+                "timing_mode parameter is deprecated and will be removed in a future version. "
+                "Timing is now handled automatically per motion group.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         logger.debug(f"log_motion called with motion_id: {motion_id}")
         try:
             # Use the bridge's own Nova client for API calls
@@ -295,9 +316,30 @@ class NovaRerunBridge:
         joint_trajectory: models.JointTrajectory,
         tcp: str,
         motion_group: MotionGroup,
+        timing_mode=TimingMode.CONTINUE,
         time_offset: float = 0,
         tool_asset: Optional[str] = None,
     ) -> None:
+        """Log joint trajectory to Rerun viewer.
+
+        Args:
+            joint_trajectory: The joint trajectory to log
+            tcp: TCP identifier
+            motion_group: Motion group for planning
+            timing_mode: DEPRECATED - Timing mode (ignored in new implementation)
+            time_offset: Time offset for visualization
+            tool_asset: Optional tool asset file path
+        """
+        if timing_mode != TimingMode.CONTINUE:
+            import warnings
+
+            warnings.warn(
+                "timing_mode parameter is deprecated and will be removed in a future version. "
+                "Timing is now handled automatically per motion group.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         if len(joint_trajectory.joint_positions) == 0:
             raise ValueError("No joint trajectory provided")
 
@@ -312,8 +354,19 @@ class NovaRerunBridge:
 
         This method is now a no-op since timing is automatically managed
         per motion group. Each motion group maintains its own independent timeline.
+
+        .. deprecated::
+            continue_after_sync() is deprecated and will be removed in a future version.
+            Timing is now handled automatically per motion group.
         """
-        pass
+        import warnings
+
+        warnings.warn(
+            "continue_after_sync() is deprecated and will be removed in a future version. "
+            "Timing is now handled automatically per motion group.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     async def log_error_feedback(
         self, error_feedback: PlanTrajectoryFailedResponseErrorFeedback
