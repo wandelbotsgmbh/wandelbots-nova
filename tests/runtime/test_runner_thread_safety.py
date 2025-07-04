@@ -1,7 +1,6 @@
 import asyncio
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from unittest.mock import AsyncMock, patch
 
 import pytest
