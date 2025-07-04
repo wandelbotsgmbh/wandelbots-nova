@@ -14,6 +14,7 @@ from .manager import cleanup_active_viewers as _cleanup_active_viewers
 from .manager import configure_active_viewers as _configure_active_viewers
 from .manager import log_planning_error_to_viewers as _log_planning_error_to_viewers
 from .manager import log_planning_results_to_viewers as _log_planning_results_to_viewers
+from .manager import register_viewer as _register_viewer
 from .manager import (
     setup_active_viewers_after_preconditions as _setup_active_viewers_after_preconditions,
 )
@@ -21,22 +22,13 @@ from .protocol import NovaRerunBridgeProtocol
 from .rerun import Rerun
 from .utils import extract_collision_scenes_from_actions as _extract_collision_scenes_from_actions
 
-
-# Legacy API compatibility - keep the underscore prefix for internal functions
-def _register_viewer(viewer: Viewer) -> None:
-    """Register a viewer as active. (Legacy function for backward compatibility)"""
-    from .manager import register_viewer
-
-    register_viewer(viewer)
-
-
-# For convenience, allow direct import of Rerun
 __all__ = [
     "Viewer",
     "ViewerManager",
     "Rerun",
     "NovaRerunBridgeProtocol",
     "get_viewer_manager",
+    # Internal functions (prefixed with underscore)
     "_configure_active_viewers",
     "_setup_active_viewers_after_preconditions",
     "_cleanup_active_viewers",
