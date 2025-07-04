@@ -186,7 +186,7 @@ class NovaRerunBridge:
     def _log_collision_scene(self, collision_scenes: dict[str, models.CollisionScene]) -> None:
         log_collision_scenes(collision_scenes=collision_scenes)
 
-    async def log_saftey_zones(self, motion_group: MotionGroup) -> None:
+    async def log_safety_zones(self, motion_group: MotionGroup) -> None:
         tcp_names = await motion_group.tcp_names()
         tcp = tcp_names[0]
 
@@ -197,7 +197,12 @@ class NovaRerunBridge:
             motion_group.motion_group_id, await motion_group._get_optimizer_setup(tcp=tcp)
         )
 
-    def log_saftey_zones_(
+    # Backward compatibility method (deprecated)
+    async def log_saftey_zones(self, motion_group: MotionGroup) -> None:
+        """Deprecated: Use log_safety_zones instead."""
+        await self.log_safety_zones(motion_group)
+
+    def log_safety_zones_(
         self, motion_group_id: str, optimizer_setup: models.OptimizerSetup
     ) -> None:
         log_safety_zones(motion_group_id, optimizer_setup)

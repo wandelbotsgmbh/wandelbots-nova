@@ -7,11 +7,14 @@ to visualize and monitor Nova programs during execution.
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Optional, Protocol, Sequence, Union, cast, runtime_checkable
 from weakref import WeakSet
 
 from wandelbots_api_client.models import PlanTrajectoryFailedResponseErrorFeedback
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nova.actions import Action
@@ -119,7 +122,7 @@ class ViewerManager:
                 await viewer.log_planning_success(actions, trajectory, tcp, motion_group)
             except Exception as e:
                 # Don't fail planning if logging fails
-                print(f"Warning: Failed to log planning results to viewer: {e}")
+                logger.warning("Failed to log planning results to viewer: %s", e)
 
     async def log_planning_failure(
         self, actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
@@ -130,7 +133,7 @@ class ViewerManager:
                 await viewer.log_planning_failure(actions, error, tcp, motion_group)
             except Exception as e:
                 # Don't fail planning if logging fails
-                print(f"Warning: Failed to log planning error to viewer: {e}")
+                logger.warning("Failed to log planning error to viewer: %s", e)
 
     @property
     def has_active_viewers(self) -> bool:
@@ -200,12 +203,11 @@ def _extract_collision_scenes_from_actions(
 
     collision_scenes: dict[str, models.CollisionScene] = {}
 
-    for action in actions:
+    for i, action in enumerate(actions):
         # Check if action is a motion with collision_scene attribute
         if isinstance(action, (Motion, CollisionFreeMotion)) and action.collision_scene is not None:
-            # Generate a unique ID for the collision scene
-            # Using hash of the collision scene content for uniqueness
-            scene_id = f"action_scene_{hash(str(action.collision_scene))}"
+            # Generate a deterministic ID based on action index and type
+            scene_id = f"action_{i}_{type(action).__name__}_scene"
             collision_scenes[scene_id] = action.collision_scene
 
     return collision_scenes
@@ -331,8 +333,6 @@ class Rerun(Viewer):
         self.tcp_tools: dict[str, str] = tcp_tools or {}
         self.show_details: bool = show_details
         self._bridge: Optional[NovaRerunBridgeProtocol] = None
-        self._configured: bool = False
-        self._async_setup_done: bool = False
         self._logged_safety_zones: set[str] = (
             set()
         )  # Track motion groups that already have safety zones logged
@@ -342,7 +342,7 @@ class Rerun(Viewer):
 
     def configure(self, nova: Nova) -> None:
         """Configure rerun integration for program execution."""
-        if self._configured:
+        if self._bridge is not None:
             return  # Already configured
 
         try:
@@ -357,7 +357,6 @@ class Rerun(Viewer):
                 show_safety_link_chain=self.show_safety_link_chain,
             )
             self._bridge = cast(NovaRerunBridgeProtocol, bridge)
-            self._configured = True
             # Don't setup async components immediately - wait for controllers to be ready
         except ImportError:
             # nova_rerun_bridge not available, skip rerun integration
@@ -365,7 +364,7 @@ class Rerun(Viewer):
 
     async def setup_after_preconditions(self) -> None:
         """Setup async components after preconditions (like controllers) are satisfied."""
-        if self._bridge and not getattr(self, "_async_setup_done", False):
+        if self._bridge and not hasattr(self, "_async_setup_done"):
             await self._setup_async_components()
             self._async_setup_done = True
 
@@ -377,19 +376,6 @@ class Rerun(Viewer):
 
             # Setup blueprint (show_details is already configured in bridge)
             await self._bridge.setup_blueprint()
-            await self._setup_collision_scenes()
-            await self._setup_safety_zones()
-
-    async def _setup_collision_scenes(self) -> None:
-        """Setup collision scene visualization."""
-        if not self.show_collision_scenes or not self._bridge:
-            return
-
-    async def _setup_safety_zones(self) -> None:
-        """Setup safety zone visualization on first plan() call."""
-        # Safety zones are now logged on the first plan() call per motion group
-        # This ensures we only show safety zones for motion groups that are actually used
-        pass
 
     async def _ensure_safety_zones_logged(self, motion_group: MotionGroup) -> None:
         """Ensure safety zones are logged for the given motion group.
@@ -411,8 +397,8 @@ class Rerun(Viewer):
                 await self._bridge.log_safety_zones(motion_group)
                 self._logged_safety_zones.add(motion_group_id)
             except Exception as e:
-                print(
-                    f"Warning: Could not log safety zones for motion group {motion_group_id}: {e}"
+                logger.warning(
+                    "Could not log safety zones for motion group %s: %s", motion_group_id, e
                 )
 
     async def _log_planning_results(
@@ -449,7 +435,7 @@ class Rerun(Viewer):
                     self._bridge._log_collision_scene(collision_scenes)
 
         except Exception as e:
-            print(f"Warning: Failed to log planning results in Rerun viewer: {e}")
+            logger.warning("Failed to log planning results in Rerun viewer: %s", e)
 
     async def log_planning_success(
         self,
@@ -521,9 +507,9 @@ class Rerun(Viewer):
                     self._bridge._log_collision_scene(collision_scenes)
 
         except Exception as e:
-            print(f"Warning: Failed to log planning failure in Rerun viewer: {e}")
+            logger.warning("Failed to log planning failure in Rerun viewer: %s", e)
 
-    def get_bridge(self) -> Optional[object]:
+    def get_bridge(self) -> Optional[NovaRerunBridgeProtocol]:
         """Get the underlying NovaRerunBridge instance.
 
         This allows advanced users to access the full bridge functionality.
@@ -536,7 +522,6 @@ class Rerun(Viewer):
     def cleanup(self) -> None:
         """Clean up rerun integration after program execution."""
         self._bridge = None
-        self._configured = False
         self._logged_safety_zones.clear()  # Reset safety zone tracking
 
     def _resolve_tool_asset(self, tcp: str) -> Optional[str]:
