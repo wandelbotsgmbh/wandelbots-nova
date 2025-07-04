@@ -39,7 +39,7 @@ class NovaRerunBridgeProtocol(Protocol):
         """Setup the blueprint."""
         ...
 
-    async def log_saftey_zones(self, motion_group: MotionGroup) -> None:
+    async def log_safety_zones(self, motion_group: MotionGroup) -> None:
         """Log safety zones for a motion group."""
         ...
 
@@ -273,7 +273,9 @@ class Rerun(Viewer):
     - Motion group states
     - Planning requests and responses
     - Collision scenes and safety zones (optional)
-    - Tool geometries attached to specific TCPs    Example usage:
+    - Tool geometries attached to specific TCPs
+
+    Example usage:
         # 3D view only (default)
         @nova.program(
             viewer=nova.viewers.Rerun(
@@ -287,6 +289,7 @@ class Rerun(Viewer):
                 show_details=True,
                 show_safety_zones=True,
                 show_collision_link_chain=True,
+                show_safety_link_chain=True,
                 tcp_tools={
                     "vacuum": "assets/vacuum_cup.stl",
                     "gripper": "assets/parallel_gripper.stl"
@@ -405,7 +408,7 @@ class Rerun(Viewer):
 
         if motion_group_id not in self._logged_safety_zones:
             try:
-                await self._bridge.log_saftey_zones(motion_group)
+                await self._bridge.log_safety_zones(motion_group)
                 self._logged_safety_zones.add(motion_group_id)
             except Exception as e:
                 print(
