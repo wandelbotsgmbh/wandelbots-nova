@@ -2112,7 +2112,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/91/26/430de0d8aaf5aad9f
 
 [[package]]
 name = "wandelbots-api-client"
-version = "25.5.0"
+version = "25.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2127,9 +2127,9 @@ dependencies = [
     { name = "urllib3" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3e/93/4045cef426b59c506ce843c0339b1c4d9ef247be7cdac55256d014e8f9db/wandelbots_api_client-25.5.0.tar.gz", hash = "sha256:d36db94222f2598038c8d8f3ac828be407622e815a0ebcc44b15ef161975198d", size = 388161 }
+sdist = { url = "https://files.pythonhosted.org/packages/a4/36/23999e8ebb329e5feeaa1ff8c02efba9a93e8e34703cca15c810c39e87bc/wandelbots_api_client-25.6.0.tar.gz", hash = "sha256:697219fcbdfe7ac84254a540709cac82631f55c2ee03bc399dbd9658ade28ce4", size = 356449, upload-time = "2025-06-30T08:39:59.187Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/cf/22874657727f5148157720f6447c8be14ebce9808185f8897d0eec4ff083/wandelbots_api_client-25.5.0-py3-none-any.whl", hash = "sha256:e258caf7279918f75c272798ad4e1232af8c485041101f6a51a73b3275956fcb", size = 1132336 },
+    { url = "https://files.pythonhosted.org/packages/b0/e6/339b62a6a31ee5d54a9aca3f191a00ed001d9b080cdfd0e578444a8a31c2/wandelbots_api_client-25.6.0-py3-none-any.whl", hash = "sha256:4e932118278b74362c1e92dd95deb85fb2789e3d85e8615d2ba79bfa2b7597ca", size = 1016746, upload-time = "2025-06-30T08:39:56.566Z" },
 ]
 
 [[package]]
@@ -2220,7 +2220,7 @@ requires-dist = [
     { name = "trimesh", marker = "extra == 'benchmark'", specifier = ">=4.5.3" },
     { name = "trimesh", marker = "extra == 'nova-rerun-bridge'", specifier = ">=4.5.3" },
     { name = "typer", extras = ["all"], marker = "extra == 'wandelscript'", specifier = ">=0.12,<0.16" },
-    { name = "wandelbots-api-client", specifier = "==25.5.0" },
+    { name = "wandelbots-api-client", specifier = "==25.6.0" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
 ]
 
