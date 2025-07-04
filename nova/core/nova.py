@@ -7,7 +7,7 @@ from nova.core.gateway import ApiGateway
 from nova.events import nats
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
-CELL_NAME = config("CELL_NAME", default="cell")
+CELL_NAME = config("CELL_NAME", default="cell", cast=str)
 
 
 # TODO: could also extend NovaDevice
@@ -58,6 +58,13 @@ class Nova:
         return await self._api_client.close()
 
     async def __aenter__(self):
+        # Configure any active viewers
+        try:
+            from nova.viewers import _configure_active_viewers
+
+            _configure_active_viewers(self)
+        except ImportError:
+            pass
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

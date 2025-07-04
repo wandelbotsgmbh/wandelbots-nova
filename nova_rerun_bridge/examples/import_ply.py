@@ -10,12 +10,12 @@ from nova.actions import cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
-from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 
 
 @nova.program(
     name="10_import_ply",
+    viewer=nova.viewers.Rerun(application_id="import-ply"),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -32,9 +32,7 @@ async def test():
     This example demonstrates how to import a PLY file and extract point cloud data.
     We choose the first green point and move the robot to it.
     """
-    async with Nova() as nova, NovaRerunBridge(nova) as bridge:
-        await bridge.setup_blueprint()
-
+    async with Nova() as nova:
         # Load PLY file
         mesh = trimesh.load("nova_rerun_bridge/example_data/bin_everything_05.ply")
 
@@ -71,8 +69,6 @@ async def test():
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
-            await bridge.log_saftey_zones(motion_group)
-
             home_joints = await motion_group.joints()
             tcp_names = await motion_group.tcp_names()
             tcp = tcp_names[0]
@@ -90,10 +86,7 @@ async def test():
             for action in actions:
                 action.settings = MotionSettings(tcp_velocity_limit=200)
 
-            joint_trajectory = await motion_group.plan(actions, tcp)
-
-            await bridge.log_actions(actions)
-            await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
+            await motion_group.plan(actions, tcp)
 
 
 if __name__ == "__main__":

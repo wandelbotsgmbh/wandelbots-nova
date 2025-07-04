@@ -10,10 +10,8 @@ import nova
 from nova import Nova, api
 from nova.actions import cartesian_ptp
 from nova.cell import virtual_controller
-from nova.core.exceptions import PlanTrajectoryFailed
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
-from nova_rerun_bridge import NovaRerunBridge
 
 
 def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
@@ -36,7 +34,8 @@ def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
 
 
 @nova.program(
-    name="16_reachability_check",
+    name="reachability_check",
+    viewer=nova.viewers.Rerun(application_id="reachability-check"),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -49,9 +48,7 @@ def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
     ),
 )
 async def test():
-    async with Nova() as nova, NovaRerunBridge(nova) as bridge:
-        await bridge.setup_blueprint()
-
+    async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.controller("ur10")
 
@@ -73,8 +70,6 @@ async def test():
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
-            await bridge.log_saftey_zones(motion_group)
-
             tcp = "Flange"
 
             # Store points and their configurations count
@@ -130,15 +125,7 @@ async def test():
             for action in actions:
                 action.settings = MotionSettings(tcp_velocity_limit=200)
 
-            try:
-                joint_trajectory = await motion_group.plan(actions, tcp)
-                await bridge.log_actions(actions)
-                await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
-            except PlanTrajectoryFailed as e:
-                await bridge.log_actions(actions)
-                await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)
-                await bridge.log_error_feedback(e.error.error_feedback)
-                return
+            await motion_group.plan(actions, tcp)
 
 
 if __name__ == "__main__":

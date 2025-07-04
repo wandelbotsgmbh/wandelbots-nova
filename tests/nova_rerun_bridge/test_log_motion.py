@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nova_rerun_bridge.trajectory import TimingMode, log_motion
+from nova_rerun_bridge.trajectory import log_motion
 from tests.fixtures.motion_loader import load_motion_data
 
 FIXTURES_DIR = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "recorded_motions"
@@ -29,7 +29,6 @@ async def test_log_motion_with_recorded_data(motion_data):
             trajectory=motion_data["trajectory"],
             collision_scenes=motion_data["collision_scenes"],
             time_offset=0.0,
-            timing_mode=TimingMode.RESET,
         )
 
         # Verify rerun calls

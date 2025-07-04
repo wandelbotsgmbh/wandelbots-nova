@@ -1,3 +1,5 @@
+# Import api, types, and actions modules
+from nova import actions, api, types, viewers
 from nova.cell.cell import Cell
 from nova.core.controller import Controller
 from nova.core.logging import logger
@@ -17,6 +19,7 @@ __all__ = [
     "api",
     "types",
     "actions",
+    "viewers",
     "logger",
     "program",
     "__version__",
