@@ -19,7 +19,7 @@ tcp_config_dict = {
 
 
 @nova.program(
-    name="17_visualize_tool",
+    name="visualize_tool",
     viewer=nova.viewers.Rerun(application_id="visualize-tool", tcp_tools={"vacuum": TOOL_ASSET}),
     preconditions=ProgramPreconditions(
         controllers=[
@@ -68,7 +68,7 @@ async def test():
             for action in actions:
                 action.settings = MotionSettings(tcp_velocity_limit=200)
 
-            joint_trajectory = await motion_group.plan(actions, tcp_id)
+            await motion_group.plan(actions, tcp_id)
 
 
 if __name__ == "__main__":

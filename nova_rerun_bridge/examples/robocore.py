@@ -21,10 +21,7 @@ import nova
 from nova import Controller, Nova, api
 from nova.actions import Action, cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
-from nova.core.exceptions import PlanTrajectoryFailed
 from nova.program import ProgramPreconditions
-from nova_rerun_bridge import NovaRerunBridge
-from nova_rerun_bridge.trajectory import TimingMode
 
 
 @dataclass
@@ -93,7 +90,6 @@ ROBOT_POSITIONS = {
 
 async def pick_and_pass_cube(
     controller: Controller,
-    bridge: NovaRerunBridge,
     pos_config: RobotPosition,
     action: str,
     motion_group_id: int = 0,
@@ -101,7 +97,6 @@ async def pick_and_pass_cube(
 ):
     """Handle cube picking and passing for a single robot"""
     async with controller[motion_group_id] as motion_group:
-        await bridge.log_saftey_zones(motion_group)
         tcp = (await motion_group.tcp_names())[0]
 
         # Calculate handover position with orientation
@@ -133,25 +128,12 @@ async def pick_and_pass_cube(
             ],
         }
 
-        try:
-            joint_trajectory = await motion_group.plan(actions_map[action], tcp)
-            await bridge.log_actions(actions_map[action])
-            await bridge.log_trajectory(
-                joint_trajectory,
-                tcp,
-                motion_group,
-                timing_mode=TimingMode.SYNC if sync else TimingMode.CONTINUE,
-            )
-            await motion_group.execute(joint_trajectory, tcp, actions_map[action])
-        except PlanTrajectoryFailed as e:
-            await bridge.log_actions(actions_map[action], show_connection=True)
-            if e.error.joint_trajectory:
-                await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)
-            await bridge.log_error_feedback(e.error.error_feedback)
+        joint_trajectory = await motion_group.plan(actions_map[action], tcp)
+        await motion_group.execute(joint_trajectory, tcp, actions_map[action])
 
 
 async def move_to_initial_positions(
-    robots: dict[str, Controller], bridge: NovaRerunBridge, positions: dict[str, RobotPosition]
+    robots: dict[str, Controller], positions: dict[str, RobotPosition]
 ) -> None:
     """Move all robots to their initial pickup positions"""
     tasks = []
@@ -165,18 +147,8 @@ async def move_to_initial_positions(
                 # Move to home, then to cube position
                 actions: list[Action] = [joint_ptp(pos_config.home_position)]
 
-                try:
-                    joint_trajectory = await motion_group.plan(actions, tcp)
-                    await bridge.log_actions(actions)
-                    await bridge.log_trajectory(
-                        joint_trajectory, tcp, motion_group, timing_mode=TimingMode.SYNC
-                    )
-                    await motion_group.execute(joint_trajectory, tcp, actions=actions)
-                except PlanTrajectoryFailed as e:
-                    await bridge.log_actions(actions, show_connection=True)
-                    if e.error.joint_trajectory:
-                        await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)
-                    await bridge.log_error_feedback(e.error.error_feedback)
+                joint_trajectory = await motion_group.plan(actions, tcp)
+                await motion_group.execute(joint_trajectory, tcp, actions=actions)
 
         tasks.append(move_robot())
 
@@ -210,7 +182,8 @@ def calculate_handover_orientation(
 
 
 @nova.program(
-    name="18_robocore",
+    name="robocore",
+    viewer=nova.viewers.Rerun(application_id="robocore"),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -238,7 +211,7 @@ def calculate_handover_orientation(
     ),
 )
 async def main():
-    async with Nova() as nova, NovaRerunBridge(nova) as bridge:
+    async with Nova() as nova:
         cell = nova.cell()
 
         # Get robot controllers
@@ -268,12 +241,10 @@ async def main():
             )
 
         await asyncio.sleep(3)  # Wait for setup
-        await bridge.setup_blueprint()
 
         robots = {"FANUC": fanuc, "KUKA": kuka, "ABB": abb, "YASKAWA": yaskawa}
         robot_sequence = ["FANUC", "KUKA", "YASKAWA", "ABB", "FANUC"]  # Complete circle
-        await move_to_initial_positions(robots, bridge, ROBOT_POSITIONS)
-        bridge.continue_after_sync()
+        await move_to_initial_positions(robots, ROBOT_POSITIONS)
 
         for i in range(len(robot_sequence) - 1):
             current_robot = robots[robot_sequence[i]]
@@ -285,7 +256,6 @@ async def main():
             await asyncio.gather(
                 pick_and_pass_cube(
                     current_robot,
-                    bridge,
                     current_pos,
                     "pickup_and_handover",
                     current_pos.motion_group_id,
@@ -294,7 +264,6 @@ async def main():
                 # Step 2: Next robot moves to handover position
                 pick_and_pass_cube(
                     next_robot,
-                    bridge,
                     current_pos,  # Use current robot's handover position
                     "go_to_handover",
                     next_pos.motion_group_id,
@@ -302,32 +271,22 @@ async def main():
                 ),
             )
 
-            bridge.continue_after_sync()
-
             # Step 3: Both robots move to home (after handover)
             await asyncio.gather(
                 pick_and_pass_cube(
                     current_robot,
-                    bridge,
                     current_pos,
                     "go_home_with_cube",
                     current_pos.motion_group_id,
                     sync=True,
                 ),
                 pick_and_pass_cube(
-                    next_robot,
-                    bridge,
-                    next_pos,
-                    "go_home_with_cube",
-                    next_pos.motion_group_id,
-                    sync=True,
+                    next_robot, next_pos, "go_home_with_cube", next_pos.motion_group_id, sync=True
                 ),
             )
 
             # Step 4: Next robot places cube and returns home
-            await pick_and_pass_cube(
-                next_robot, bridge, next_pos, "place_cube", next_pos.motion_group_id
-            )
+            await pick_and_pass_cube(next_robot, next_pos, "place_cube", next_pos.motion_group_id)
 
             await asyncio.sleep(1)  # Small delay between transfers
 
