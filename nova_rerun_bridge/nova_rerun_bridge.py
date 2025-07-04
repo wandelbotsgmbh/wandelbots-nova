@@ -1,4 +1,5 @@
 import asyncio
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -23,6 +24,7 @@ from nova_rerun_bridge import colors
 from nova_rerun_bridge.blueprint import send_blueprint
 from nova_rerun_bridge.collision_scene import log_collision_scenes
 from nova_rerun_bridge.consts import RECORDING_INTERVAL, TIME_INTERVAL_NAME
+from nova_rerun_bridge.helper_scripts.code_server_helpers import get_rerun_address
 from nova_rerun_bridge.helper_scripts.download_models import get_project_root
 from nova_rerun_bridge.safety_zones import log_safety_zones
 from nova_rerun_bridge.stream_state import stream_motion_group
@@ -57,8 +59,13 @@ class NovaRerunBridge:
         self._ensure_models_exist()
         self.nova = nova
         self._streaming_tasks: dict[MotionGroup, asyncio.Task] = {}
-        if spawn:
-            recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        if "VSCODE_PROXY_URI" in os.environ:
+            rr.init(application_id="nova", recording_id=recording_id, spawn=False)
+            rr.save("nova.rrd")
+            logger.info(f"Install rerun app and open the visual log on {get_rerun_address()}")
+        elif spawn:
             rr.init(application_id="nova", recording_id=recording_id, spawn=True)
         logger.add(sink=rr.LoggingHandler("logs/handler"))
 
@@ -409,6 +416,9 @@ class NovaRerunBridge:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """Context manager exit point, ensures cleanup."""
+        if "VSCODE_PROXY_URI" in os.environ:
+            logger.info(f"Install rerun app and open the visual log on {get_rerun_address()}")
+
         await self.cleanup()
 
     async def cleanup(self) -> None:
