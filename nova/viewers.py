@@ -72,8 +72,10 @@ class NovaRerunBridgeProtocol(Protocol):
         """Log the coordinate system."""
         ...
 
-    def log_error_feedback(self, error_feedback: PlanTrajectoryFailedResponseErrorFeedback) -> None:
-        """Log the coordinate system."""
+    async def log_error_feedback(
+        self, error_feedback: PlanTrajectoryFailedResponseErrorFeedback
+    ) -> None:
+        """Log error feedback to the viewer."""
         ...
 
 
@@ -473,7 +475,7 @@ class Rerun(Viewer):
 
                 # Log error feedback if available
                 if hasattr(error.error, "error_feedback") and error.error.error_feedback:
-                    self._bridge.log_error_feedback(error.error.error_feedback)
+                    await self._bridge.log_error_feedback(error.error.error_feedback)
 
             # Log error information as text
             import rerun as rr
