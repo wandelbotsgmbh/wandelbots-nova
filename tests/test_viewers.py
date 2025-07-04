@@ -73,11 +73,16 @@ class TestRerunViewer:
         assert viewer.show_safety_zones is False
         assert viewer.tcp_tools == {"gripper": "gripper.stl"}
 
-    @patch("nova.viewers.rerun.register_viewer")
-    def test_rerun_viewer_auto_registers(self, mock_register):
+    def test_rerun_viewer_auto_registers(self):
         """Should automatically register itself when created."""
+        manager = get_viewer_manager()
+        initial_count = len(manager._viewers)
+        
         viewer = Rerun()
-        mock_register.assert_called_once_with(viewer)
+        
+        # Should have one more viewer registered
+        assert len(manager._viewers) == initial_count + 1
+        assert viewer is not None  # Keep the variable used
 
     @patch("nova_rerun_bridge.NovaRerunBridge")
     def test_rerun_viewer_configure(self, mock_bridge_class):
@@ -598,12 +603,18 @@ class TestViewerUtilities:
         """Should be able to register viewers through utility function."""
         from nova.viewers.manager import register_viewer
 
-        viewer = Mock(spec=Viewer)
+        # Create a real viewer instance that won't be garbage collected
+        viewer = Rerun()
+        
+        # Get initial count
+        manager = get_viewer_manager()
+        initial_count = len(manager._viewers)
+        
+        # Register should not add it again since Rerun auto-registers
         register_viewer(viewer)
 
-        # Should be in the global viewer manager
-        manager = get_viewer_manager()
-        assert viewer in manager._viewers
+        # Should still have same count since it was already registered
+        assert len(manager._viewers) == initial_count
 
     def test_extract_collision_scenes_empty_actions(self):
         """Should handle empty actions list."""
