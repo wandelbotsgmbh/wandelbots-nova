@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Optional, Protocol, Sequence, Union, runtime_checkable
 from weakref import WeakSet
 
+from wandelbots_api_client.models import PlanTrajectoryFailedResponseErrorFeedback
+
 if TYPE_CHECKING:
     from nova.actions import Action
     from nova.api import models
@@ -67,6 +69,10 @@ class NovaRerunBridgeProtocol(Protocol):
         ...
 
     def log_coordinate_system(self) -> None:
+        """Log the coordinate system."""
+        ...
+
+    def log_error_feedback(self, error_feedback: PlanTrajectoryFailedResponseErrorFeedback) -> None:
         """Log the coordinate system."""
         ...
 
@@ -448,6 +454,9 @@ class Rerun(Viewer):
         try:
             # Log the failed actions
             await self._bridge.log_actions(list(actions), motion_group=motion_group)
+
+            await self._bridge.log_trajectory(error.error.joint_trajectory, tcp, motion_group)
+            await self._bridge.log_error_feedback(error.error.error_feedback)
 
             # Log error information as text
             import rerun as rr
