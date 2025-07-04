@@ -25,6 +25,7 @@ class NovaRerunBridgeProtocol(Protocol):
     """Protocol defining the interface for NovaRerunBridge."""
 
     nova: Nova
+    show_safety_link_chain: bool
 
     async def __aenter__(self) -> NovaRerunBridgeProtocol:
         """Async context manager entry."""
@@ -301,6 +302,7 @@ class Rerun(Viewer):
         show_safety_zones: bool = True,
         show_collision_scenes: bool = True,
         show_collision_link_chain: bool = False,
+        show_safety_link_chain: bool = True,
         tcp_tools: Optional[dict[str, str]] = None,
         show_details: bool = False,
     ) -> None:
@@ -313,6 +315,7 @@ class Rerun(Viewer):
             show_safety_zones: Whether to visualize safety zones for motion groups
             show_collision_scenes: Whether to show collision scenes
             show_collision_link_chain: Whether to show robot collision mesh geometry
+            show_safety_link_chain: Whether to show robot safety geometry (from controller)
             tcp_tools: Optional mapping of TCP IDs to tool asset file paths
             show_details: Whether to show detailed analysis panels with charts and logs (False = 3D view only)
         """
@@ -321,6 +324,7 @@ class Rerun(Viewer):
         self.show_safety_zones: bool = show_safety_zones
         self.show_collision_scenes: bool = show_collision_scenes
         self.show_collision_link_chain: bool = show_collision_link_chain
+        self.show_safety_link_chain: bool = show_safety_link_chain
         self.tcp_tools: dict[str, str] = tcp_tools or {}
         self.show_details: bool = show_details
         self._bridge: Optional[NovaRerunBridgeProtocol] = None
@@ -347,6 +351,7 @@ class Rerun(Viewer):
                 recording_id=self.application_id,
                 show_details=self.show_details,
                 show_collision_link_chain=self.show_collision_link_chain,
+                show_safety_link_chain=self.show_safety_link_chain,
             )
             self._bridge = cast(NovaRerunBridgeProtocol, bridge)
             self._configured = True

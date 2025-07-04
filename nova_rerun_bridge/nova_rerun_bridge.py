@@ -61,6 +61,7 @@ class NovaRerunBridge:
         recording_id=None,
         show_details: bool = True,
         show_collision_link_chain: bool = False,
+        show_safety_link_chain: bool = True,
     ) -> None:
         self._ensure_models_exist()
         # Store the original nova instance for initial setup and to copy connection parameters
@@ -72,6 +73,7 @@ class NovaRerunBridge:
         self._motion_group_timers: dict[str, float] = {}
         self.show_details = show_details
         self.show_collision_link_chain = show_collision_link_chain
+        self.show_safety_link_chain = show_safety_link_chain
 
         recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
@@ -261,6 +263,7 @@ class NovaRerunBridge:
                 time_offset=current_time + time_offset,
                 tool_asset=tool_asset,
                 show_collision_link_chain=self.show_collision_link_chain,
+                show_safety_link_chain=self.show_safety_link_chain,
             )
             # Update the timer for this motion group based on trajectory duration
             if trajectory.trajectory:

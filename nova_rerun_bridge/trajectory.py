@@ -24,6 +24,7 @@ def log_motion(
     time_offset: float = 0,
     tool_asset: Optional[str] = None,
     show_collision_link_chain: bool = False,
+    show_safety_link_chain: bool = True,
 ):
     """
     Fetch and process a single motion for visualization.
@@ -79,6 +80,7 @@ def log_motion(
             collision_link_chain=collision_link_chain,
             collision_tcp=collision_tcp,
             show_collision_link_chain=show_collision_link_chain,
+            show_safety_link_chain=show_safety_link_chain,
         )
 
     visualizer = _visualizer_cache[motion_group]

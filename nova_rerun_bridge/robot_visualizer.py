@@ -31,6 +31,7 @@ class RobotVisualizer:
         collision_tcp=None,
         model_from_controller="",
         show_collision_link_chain: bool = False,
+        show_safety_link_chain: bool = True,
     ):
         """
         :param robot: DHRobot instance
@@ -43,6 +44,7 @@ class RobotVisualizer:
         :param collision_tcp: Collision TCP geometries
         :param model_from_controller: Model name from controller for loading robot mesh
         :param show_collision_link_chain: Whether to render robot collision mesh geometry
+        :param show_safety_link_chain: Whether to render robot safety geometry (from controller)
         """
         self.robot = robot
         self.link_geometries: dict[int, list[models.Geometry]] = {}
@@ -55,6 +57,7 @@ class RobotVisualizer:
         self.collision_link_geometries = {}
         self.collision_tcp_geometries = collision_tcp
         self.show_collision_link_chain = show_collision_link_chain
+        self.show_safety_link_chain = show_safety_link_chain
 
         # This will hold the names of discovered joints (e.g. ["robot_J00", "robot_J01", ...])
         self.joint_names: list[str] = []
@@ -643,18 +646,19 @@ class RobotVisualizer:
                     self.init_mesh(entity_path, geom, joint_name)
                     log_geometry(entity_path, final_transform)
 
-        # Log link geometries
-        for link_index, geometries in self.link_geometries.items():
-            link_transform = transforms[link_index]
-            for i, geom in enumerate(geometries):
-                entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
-                final_transform = link_transform @ self.geometry_pose_to_matrix(geom.init_pose)
+        # Log link geometries (safety from controller)
+        if self.show_safety_link_chain:
+            for link_index, geometries in self.link_geometries.items():
+                link_transform = transforms[link_index]
+                for i, geom in enumerate(geometries):
+                    entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
+                    final_transform = link_transform @ self.geometry_pose_to_matrix(geom.init_pose)
 
-                self.init_geometry(entity_path, geom)
-                log_geometry(entity_path, final_transform)
+                    self.init_geometry(entity_path, geom)
+                    log_geometry(entity_path, final_transform)
 
-        # Log TCP geometries
-        if self.tcp_geometries:
+        # Log TCP geometries (safety from controller)
+        if self.show_safety_link_chain and self.tcp_geometries:
             tcp_transform = transforms[-1]  # the final frame transform
             for i, geom in enumerate(self.tcp_geometries):
                 entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
@@ -736,17 +740,20 @@ class RobotVisualizer:
                         self.init_mesh(entity_path, geom, joint_name)
                         collect_geometry_data(entity_path, final_transform)
 
-            # Collect data for link geometries
-            for link_index, geometries in self.link_geometries.items():
-                link_transform = transforms[link_index]
-                for i, geom in enumerate(geometries):
-                    entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
-                    final_transform = link_transform @ self.geometry_pose_to_matrix(geom.init_pose)
-                    self.init_geometry(entity_path, geom)
-                    collect_geometry_data(entity_path, final_transform)
+            # Collect data for link geometries (safety from controller)
+            if self.show_safety_link_chain:
+                for link_index, geometries in self.link_geometries.items():
+                    link_transform = transforms[link_index]
+                    for i, geom in enumerate(geometries):
+                        entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
+                        final_transform = link_transform @ self.geometry_pose_to_matrix(
+                            geom.init_pose
+                        )
+                        self.init_geometry(entity_path, geom)
+                        collect_geometry_data(entity_path, final_transform)
 
-            # Collect data for TCP geometries
-            if self.tcp_geometries:
+            # Collect data for TCP geometries (safety from controller)
+            if self.show_safety_link_chain and self.tcp_geometries:
                 tcp_transform = transforms[-1]  # End-effector transform
                 for i, geom in enumerate(self.tcp_geometries):
                     entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
