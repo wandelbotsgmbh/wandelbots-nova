@@ -283,6 +283,7 @@ class Rerun(Viewer):
             viewer=nova.viewers.Rerun(
                 show_details=True,
                 show_safety_zones=True,
+                show_collision_link_chain=True,
                 tcp_tools={
                     "vacuum": "assets/vacuum_cup.stl",
                     "gripper": "assets/parallel_gripper.stl"
@@ -297,6 +298,7 @@ class Rerun(Viewer):
         spawn: bool = True,
         show_safety_zones: bool = True,
         show_collision_scenes: bool = True,
+        show_collision_link_chain: bool = False,
         tcp_tools: Optional[dict[str, str]] = None,
         show_details: bool = False,
     ) -> None:
@@ -308,6 +310,7 @@ class Rerun(Viewer):
             spawn: Whether to spawn a rerun viewer process automatically
             show_safety_zones: Whether to visualize safety zones for motion groups
             show_collision_scenes: Whether to show collision scenes
+            show_collision_link_chain: Whether to show robot collision mesh geometry
             tcp_tools: Optional mapping of TCP IDs to tool asset file paths
             show_details: Whether to show detailed analysis panels with charts and logs (False = 3D view only)
         """
@@ -315,6 +318,7 @@ class Rerun(Viewer):
         self.spawn: bool = spawn
         self.show_safety_zones: bool = show_safety_zones
         self.show_collision_scenes: bool = show_collision_scenes
+        self.show_collision_link_chain: bool = show_collision_link_chain
         self.tcp_tools: dict[str, str] = tcp_tools or {}
         self.show_details: bool = show_details
         self._bridge: Optional[NovaRerunBridgeProtocol] = None
@@ -337,6 +341,7 @@ class Rerun(Viewer):
                 spawn=self.spawn,
                 recording_id=self.application_id,
                 show_details=self.show_details,
+                show_collision_link_chain=self.show_collision_link_chain,
             )
             self._bridge = cast(NovaRerunBridgeProtocol, bridge)
             self._configured = True

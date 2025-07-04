@@ -23,6 +23,7 @@ def log_motion(
     collision_scenes: dict[str, models.CollisionScene],
     time_offset: float = 0,
     tool_asset: Optional[str] = None,
+    show_collision_link_chain: bool = False,
 ):
     """
     Fetch and process a single motion for visualization.
@@ -77,6 +78,7 @@ def log_motion(
             model_from_controller=model_from_controller,
             collision_link_chain=collision_link_chain,
             collision_tcp=collision_tcp,
+            show_collision_link_chain=show_collision_link_chain,
         )
 
     visualizer = _visualizer_cache[motion_group]
