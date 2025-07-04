@@ -1,20 +1,9 @@
-"""
-Viewer implementations for Nova programs.
-
-This module provides different viewer backends that can be used
-to visualize and monitor Nova programs during execution.
-"""
+"""Rerun viewer implementation for 3D visualization."""
 
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Optional, Protocol, Sequence, Union, cast, runtime_checkable
-from weakref import WeakSet
-
-from wandelbots_api_client.models import PlanTrajectoryFailedResponseErrorFeedback
-
-logger = logging.getLogger(__name__)
+from typing import TYPE_CHECKING, Optional, Sequence, cast
 
 if TYPE_CHECKING:
     from nova.actions import Action
@@ -22,247 +11,12 @@ if TYPE_CHECKING:
     from nova.core.motion_group import MotionGroup
     from nova.core.nova import Nova
 
+from .base import Viewer
+from .manager import register_viewer
+from .protocol import NovaRerunBridgeProtocol
+from .utils import extract_collision_scenes_from_actions
 
-@runtime_checkable
-class NovaRerunBridgeProtocol(Protocol):
-    """Protocol defining the interface for NovaRerunBridge."""
-
-    nova: Nova
-    show_safety_link_chain: bool
-
-    async def __aenter__(self) -> NovaRerunBridgeProtocol:
-        """Async context manager entry."""
-        ...
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> Optional[bool]:
-        """Async context manager exit."""
-        ...
-
-    async def setup_blueprint(self) -> None:
-        """Setup the blueprint."""
-        ...
-
-    async def log_safety_zones(self, motion_group: MotionGroup) -> None:
-        """Log safety zones for a motion group."""
-        ...
-
-    async def log_actions(
-        self,
-        actions: Union[list[Action], Action],
-        show_connection: bool = False,
-        show_labels: bool = False,
-        motion_group: Optional[MotionGroup] = None,
-        tcp: Optional[str] = None,
-    ) -> None:
-        """Log actions to the viewer."""
-        ...
-
-    async def log_trajectory(
-        self,
-        joint_trajectory: models.JointTrajectory,
-        tcp: str,
-        motion_group: MotionGroup,
-        time_offset: float = 0,
-        tool_asset: Optional[str] = None,
-    ) -> None:
-        """Log trajectory to the viewer."""
-        ...
-
-    def _log_collision_scene(self, collision_scenes: dict[str, models.CollisionScene]) -> None:
-        """Log collision scenes to the viewer."""
-        ...
-
-    def log_coordinate_system(self) -> None:
-        """Log the coordinate system."""
-        ...
-
-    async def log_error_feedback(
-        self, error_feedback: PlanTrajectoryFailedResponseErrorFeedback
-    ) -> None:
-        """Log error feedback to the viewer."""
-        ...
-
-
-class ViewerManager:
-    """Manages the lifecycle and coordination of all active viewers."""
-
-    def __init__(self) -> None:
-        self._viewers: WeakSet[Viewer] = WeakSet()
-
-    def register_viewer(self, viewer: Viewer) -> None:
-        """Register a viewer as active."""
-        self._viewers.add(viewer)
-
-    def configure_viewers(self, nova: Nova) -> None:
-        """Configure all active viewers with the Nova instance."""
-        for viewer in self._viewers:
-            viewer.configure(nova)
-
-    async def setup_viewers_after_preconditions(self) -> None:
-        """Setup all active viewers after preconditions are satisfied."""
-        for viewer in self._viewers:
-            await viewer.setup_after_preconditions()
-
-    def cleanup_viewers(self) -> None:
-        """Clean up all active viewers."""
-        for viewer in list(self._viewers):  # Copy to avoid modification during iteration
-            viewer.cleanup()
-        self._viewers.clear()
-
-    async def log_planning_success(
-        self,
-        actions: Sequence[Action],
-        trajectory: models.JointTrajectory,
-        tcp: str,
-        motion_group: MotionGroup,
-    ) -> None:
-        """Log successful planning results to all active viewers."""
-        for viewer in self._viewers:
-            try:
-                await viewer.log_planning_success(actions, trajectory, tcp, motion_group)
-            except Exception as e:
-                # Don't fail planning if logging fails
-                logger.warning("Failed to log planning results to viewer: %s", e)
-
-    async def log_planning_failure(
-        self, actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
-    ) -> None:
-        """Log planning failure to all active viewers."""
-        for viewer in self._viewers:
-            try:
-                await viewer.log_planning_failure(actions, error, tcp, motion_group)
-            except Exception as e:
-                # Don't fail planning if logging fails
-                logger.warning("Failed to log planning error to viewer: %s", e)
-
-    @property
-    def has_active_viewers(self) -> bool:
-        """Check if there are any active viewers."""
-        return len(self._viewers) > 0
-
-
-# Global viewer manager instance
-_viewer_manager = ViewerManager()
-
-
-def get_viewer_manager() -> ViewerManager:
-    """Get the global viewer manager instance."""
-    return _viewer_manager
-
-
-# Legacy functions for backward compatibility
-def _register_viewer(viewer: Viewer) -> None:
-    """Register a viewer as active. (Legacy function for backward compatibility)"""
-    _viewer_manager.register_viewer(viewer)
-
-
-def _configure_active_viewers(nova: Nova) -> None:
-    """Configure all active viewers with the Nova instance. (Legacy function for backward compatibility)"""
-    _viewer_manager.configure_viewers(nova)
-
-
-async def _setup_active_viewers_after_preconditions() -> None:
-    """Setup all active viewers after preconditions are satisfied. (Legacy function for backward compatibility)"""
-    await _viewer_manager.setup_viewers_after_preconditions()
-
-
-def _cleanup_active_viewers() -> None:
-    """Clean up all active viewers. (Legacy function for backward compatibility)"""
-    _viewer_manager.cleanup_viewers()
-
-
-async def _log_planning_results_to_viewers(
-    actions: Sequence[Action],
-    trajectory: models.JointTrajectory,
-    tcp: str,
-    motion_group: MotionGroup,
-) -> None:
-    """Log successful planning results to all active viewers. (Legacy function for backward compatibility)"""
-    await _viewer_manager.log_planning_success(actions, trajectory, tcp, motion_group)
-
-
-async def _log_planning_error_to_viewers(
-    actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
-) -> None:
-    """Log planning failure to all active viewers. (Legacy function for backward compatibility)"""
-    await _viewer_manager.log_planning_failure(actions, error, tcp, motion_group)
-
-
-def _extract_collision_scenes_from_actions(
-    actions: Sequence[Action],
-) -> dict[str, models.CollisionScene]:
-    """Extract unique collision scenes from a list of actions.
-
-    Args:
-        actions: List of actions to extract collision scenes from
-
-    Returns:
-        Dictionary mapping collision scene IDs to CollisionScene objects
-    """
-    from nova.actions.motions import CollisionFreeMotion, Motion
-
-    collision_scenes: dict[str, models.CollisionScene] = {}
-
-    for i, action in enumerate(actions):
-        # Check if action is a motion with collision_scene attribute
-        if isinstance(action, (Motion, CollisionFreeMotion)) and action.collision_scene is not None:
-            # Generate a deterministic ID based on action index and type
-            scene_id = f"action_{i}_{type(action).__name__}_scene"
-            collision_scenes[scene_id] = action.collision_scene
-
-    return collision_scenes
-
-
-class Viewer(ABC):
-    """Abstract base class for Nova program viewers."""
-
-    @abstractmethod
-    def configure(self, nova: Nova) -> None:
-        """Configure the viewer for program execution."""
-        pass
-
-    async def setup_after_preconditions(self) -> None:
-        """Setup viewer components after preconditions are satisfied.
-
-        Override this method in subclasses that need to wait for preconditions
-        like active controllers before setting up visualization components.
-        """
-        pass
-
-    @abstractmethod
-    def cleanup(self) -> None:
-        """Clean up the viewer after program execution."""
-        pass
-
-    async def log_planning_success(
-        self,
-        actions: Sequence[Action],
-        trajectory: models.JointTrajectory,
-        tcp: str,
-        motion_group: MotionGroup,
-    ) -> None:
-        """Log successful planning results.
-
-        Args:
-            actions: List of actions that were planned
-            trajectory: The resulting trajectory
-            tcp: TCP used for planning
-            motion_group: The motion group used for planning
-        """
-        pass
-
-    async def log_planning_failure(
-        self, actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
-    ) -> None:
-        """Log planning failure results.
-
-        Args:
-            actions: List of actions that failed to plan
-            error: The planning error that occurred
-            tcp: TCP used for planning
-            motion_group: The motion group used for planning
-        """
-        pass
+logger = logging.getLogger(__name__)
 
 
 class Rerun(Viewer):
@@ -338,7 +92,7 @@ class Rerun(Viewer):
         )  # Track motion groups that already have safety zones logged
 
         # Register this viewer as active
-        _register_viewer(self)
+        register_viewer(self)
 
     def configure(self, nova: Nova) -> None:
         """Configure rerun integration for program execution."""
@@ -429,7 +183,7 @@ class Rerun(Viewer):
 
             # Log collision scenes from actions if configured
             if self.show_collision_scenes:
-                collision_scenes = _extract_collision_scenes_from_actions(actions)
+                collision_scenes = extract_collision_scenes_from_actions(actions)
                 if collision_scenes:
                     # Log collision scenes using the sync method
                     self._bridge._log_collision_scene(collision_scenes)
@@ -501,7 +255,7 @@ class Rerun(Viewer):
 
             # Log collision scenes from actions if configured (they might be relevant to the failure)
             if self.show_collision_scenes:
-                collision_scenes = _extract_collision_scenes_from_actions(actions)
+                collision_scenes = extract_collision_scenes_from_actions(actions)
                 if collision_scenes:
                     # Log collision scenes using the sync method
                     self._bridge._log_collision_scene(collision_scenes)
@@ -534,18 +288,3 @@ class Rerun(Viewer):
             Path to tool asset file if configured, None otherwise
         """
         return self.tcp_tools.get(tcp)
-
-
-# For convenience, allow direct import of Rerun
-__all__ = [
-    "Viewer",
-    "ViewerManager",
-    "Rerun",
-    "get_viewer_manager",
-    "_configure_active_viewers",
-    "_setup_active_viewers_after_preconditions",
-    "_cleanup_active_viewers",
-    "_log_planning_results_to_viewers",
-    "_log_planning_error_to_viewers",
-    "_extract_collision_scenes_from_actions",
-]
