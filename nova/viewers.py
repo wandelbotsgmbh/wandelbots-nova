@@ -326,6 +326,9 @@ class Rerun(Viewer):
         self._bridge: Optional[NovaRerunBridgeProtocol] = None
         self._configured: bool = False
         self._async_setup_done: bool = False
+        self._logged_safety_zones: set[str] = (
+            set()
+        )  # Track motion groups that already have safety zones logged
 
         # Register this viewer as active
         _register_viewer(self)
@@ -375,22 +378,34 @@ class Rerun(Viewer):
             return
 
     async def _setup_safety_zones(self) -> None:
-        """Setup safety zone visualization."""
+        """Setup safety zone visualization on first plan() call."""
+        # Safety zones are now logged on the first plan() call per motion group
+        # This ensures we only show safety zones for motion groups that are actually used
+        pass
+
+    async def _ensure_safety_zones_logged(self, motion_group: MotionGroup) -> None:
+        """Ensure safety zones are logged for the given motion group.
+
+        This method is called during planning to ensure safety zones are shown
+        only for motion groups that are actually being used.
+
+        Args:
+            motion_group: The motion group to log safety zones for
+        """
         if not self.show_safety_zones or not self._bridge:
             return
 
-        try:
-            # Get all motion groups and show safety zones for each
-            cell = self._bridge.nova.cell()
-            controllers = await cell.controllers()
+        # Use the motion group ID as unique identifier
+        motion_group_id = motion_group.motion_group_id
 
-            for controller in controllers:
-                motion_groups = await controller.activated_motion_groups()
-                for motion_group in motion_groups:
-                    await self._bridge.log_saftey_zones(motion_group)
-        except Exception as e:
-            # Don't fail the entire setup if safety zones can't be loaded
-            print(f"Warning: Could not load safety zones: {e}")
+        if motion_group_id not in self._logged_safety_zones:
+            try:
+                await self._bridge.log_saftey_zones(motion_group)
+                self._logged_safety_zones.add(motion_group_id)
+            except Exception as e:
+                print(
+                    f"Warning: Could not log safety zones for motion group {motion_group_id}: {e}"
+                )
 
     async def _log_planning_results(
         self,
@@ -443,6 +458,10 @@ class Rerun(Viewer):
             tcp: TCP used for planning
             motion_group: The motion group used for planning
         """
+        # Ensure safety zones are logged for this motion group (only on first use)
+        await self._ensure_safety_zones_logged(motion_group)
+
+        # Log the planning results
         await self._log_planning_results(actions, trajectory, tcp, motion_group)
 
     async def log_planning_failure(
@@ -458,6 +477,9 @@ class Rerun(Viewer):
         """
         if not self._bridge:
             return
+
+        # Ensure safety zones are logged for this motion group (only on first use)
+        await self._ensure_safety_zones_logged(motion_group)
 
         try:
             # Log the failed actions
@@ -507,6 +529,7 @@ class Rerun(Viewer):
         """Clean up rerun integration after program execution."""
         self._bridge = None
         self._configured = False
+        self._logged_safety_zones.clear()  # Reset safety zone tracking
 
     def _resolve_tool_asset(self, tcp: str) -> Optional[str]:
         """Resolve the tool asset file path for a given TCP.
