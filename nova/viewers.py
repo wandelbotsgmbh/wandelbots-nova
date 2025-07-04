@@ -8,7 +8,7 @@ to visualize and monitor Nova programs during execution.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Optional, Protocol, Sequence, Union, runtime_checkable
+from typing import TYPE_CHECKING, Optional, Protocol, Sequence, Union, cast, runtime_checkable
 from weakref import WeakSet
 
 from wandelbots_api_client.models import PlanTrajectoryFailedResponseErrorFeedback
@@ -332,12 +332,13 @@ class Rerun(Viewer):
         try:
             from nova_rerun_bridge import NovaRerunBridge
 
-            self._bridge = NovaRerunBridge(
+            bridge = NovaRerunBridge(
                 nova=nova,
                 spawn=self.spawn,
                 recording_id=self.application_id,
                 show_details=self.show_details,
             )
+            self._bridge = cast(NovaRerunBridgeProtocol, bridge)
             self._configured = True
             # Don't setup async components immediately - wait for controllers to be ready
         except ImportError:
@@ -455,8 +456,19 @@ class Rerun(Viewer):
             # Log the failed actions
             await self._bridge.log_actions(list(actions), motion_group=motion_group)
 
-            await self._bridge.log_trajectory(error.error.joint_trajectory, tcp, motion_group)
-            await self._bridge.log_error_feedback(error.error.error_feedback)
+            # Handle specific PlanTrajectoryFailed errors which have additional data
+            from nova.core.exceptions import PlanTrajectoryFailed
+
+            if isinstance(error, PlanTrajectoryFailed):
+                # Log the trajectory from the failed plan
+                if hasattr(error.error, "joint_trajectory") and error.error.joint_trajectory:
+                    await self._bridge.log_trajectory(
+                        error.error.joint_trajectory, tcp, motion_group
+                    )
+
+                # Log error feedback if available
+                if hasattr(error.error, "error_feedback") and error.error.error_feedback:
+                    self._bridge.log_error_feedback(error.error.error_feedback)
 
             # Log error information as text
             import rerun as rr
