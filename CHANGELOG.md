@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v1.25.0 (2025-07-04)
+
+### Features
+
+- Save rerun file instead of streaming on vs code viewer (#210)
+  ([#210](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/210),
+  [`f091e57`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f091e576ed11598b0388fe1961602605c9f57ece))
+
+
 ## v1.24.2 (2025-07-03)
 
 ### Chores
