@@ -83,7 +83,7 @@ async def test_discover_programs_from_source(wandelscript_source):
 
 
 @pytest.mark.asyncio
-async def test_multiple_program_sources():
+async def test_multiple_program_sources(wandelscript_source):
     """Test using multiple program sources"""
     from novax.program_manager import Program, ProgramSource
 
