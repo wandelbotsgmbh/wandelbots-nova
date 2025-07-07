@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.1.0 (2025-07-07)
+
+### Features
+
+- **NDX-104**: Introduced Novax app framework (#217)
+  ([#217](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/217),
+  [`b713415`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b713415debc237ab201b5927cac43787f923c1ec))
+
+
 ## v2.0.0 (2025-07-07)
 
 ### Features
