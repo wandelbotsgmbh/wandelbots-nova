@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from loguru import logger
 
 from nova.cell.robot_cell import RobotCell
@@ -12,7 +10,6 @@ from wandelscript.datatypes import ElementType
 from wandelscript.ffi import ForeignFunction
 from wandelscript.metamodel import Program as WandelscriptProgram
 from wandelscript.runtime import ExecutionContext
-from wandelscript.simulation import SimulatedRobotCell
 
 
 # TODO: how to return this in the end?
@@ -102,26 +99,3 @@ def run(
     )
     runner.start(sync=True)
     return runner
-
-
-def run_file(
-    file_path: Path | str,
-    args: dict[str, ElementType] | None = None,
-    default_robot: str | None = None,
-    default_tcp: str | None = None,
-    foreign_functions: dict[str, ForeignFunction] | None = None,
-    robot_cell_override: RobotCell | None = None,
-) -> ProgramRunner:
-    path = Path(file_path)
-    with open(path) as f:
-        program = f.read()
-
-    return run(
-        program_id=str(file_path),
-        program=program,
-        args=args,
-        default_robot=default_robot,
-        default_tcp=default_tcp,
-        foreign_functions=foreign_functions,
-        robot_cell_override=robot_cell_override,
-    )
