@@ -8,19 +8,19 @@ from nova.cell import virtual_controller
 from nova.core.nova import Nova
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
-from nova_rerun_bridge import NovaRerunBridge
 
 TOOL_ASSET = "nova_rerun_bridge/example_data/tool.stl"
 tcp_config_dict = {
     "id": "vacuum",
     "readable_name": "vacuum",
     "position": {"x": 0, "y": -80, "z": 340},
-    "rotation": {"angles": [0, 0, 0, 0], "type": "ROTATION_VECTOR"},
+    "rotation": {"angles": [0, 0, 0], "type": "ROTATION_VECTOR"},
 }
 
 
 @nova.program(
-    name="17_visualize_tool",
+    name="visualize_tool",
+    viewer=nova.viewers.Rerun(application_id="visualize-tool", tcp_tools={"vacuum": TOOL_ASSET}),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -29,20 +29,17 @@ tcp_config_dict = {
                 type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             )
         ],
-        cleanup_controllers=False,
+        cleanup_controllers=True,
     ),
 )
 async def test():
-    async with Nova() as nova, NovaRerunBridge(nova) as bridge:
-        await bridge.setup_blueprint()
+    async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.controller("ur10")
 
         # Connect to the controller and activate motion groups
         motion_group_idx = 0
         async with controller[motion_group_idx] as motion_group:
-            await bridge.log_saftey_zones(motion_group)
-
             # Define home
             home_joints = await motion_group.joints()
 
@@ -63,7 +60,7 @@ async def test():
 
             # Get current TCP pose and offset it slightly along the x-axis
             current_pose = await motion_group.tcp_pose(tcp_id)
-            target_pose = current_pose @ Pose((0, 0, 500, 0, -1.75, 0))
+            target_pose = current_pose @ Pose((0, 0, 1, 0, 0, 0))
 
             actions = [joint_ptp(home_joints), cartesian_ptp(target_pose), joint_ptp(home_joints)]
 
@@ -71,12 +68,7 @@ async def test():
             for action in actions:
                 action.settings = MotionSettings(tcp_velocity_limit=200)
 
-            joint_trajectory = await motion_group.plan(actions, tcp_id)
-
-            await bridge.log_actions(actions)
-            await bridge.log_trajectory(
-                joint_trajectory, tcp_id, motion_group, tool_asset=TOOL_ASSET
-            )
+            await motion_group.plan(actions, tcp_id)
 
 
 if __name__ == "__main__":

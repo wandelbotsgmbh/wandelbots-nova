@@ -246,12 +246,52 @@ class AbstractRobot(Device):
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        return await self._plan(
-            actions=actions,
-            tcp=tcp,
-            start_joint_position=start_joint_position,
-            optimizer_setup=optimizer_setup,
-        )
+        # Execute planning
+        try:
+            trajectory = await self._plan(
+                actions=actions,
+                tcp=tcp,
+                start_joint_position=start_joint_position,
+                optimizer_setup=optimizer_setup,
+            )
+
+            # Automatic viewer integration - log planning results if viewers are active
+            await self._log_planning_results(actions, trajectory, tcp)
+
+            return trajectory
+
+        except Exception as planning_error:
+            # Log planning failure to viewers
+            await self._log_planning_error(actions, planning_error, tcp)
+            raise planning_error
+
+    async def _log_planning_results(
+        self, actions: list[Action], trajectory: api.models.JointTrajectory, tcp: str
+    ) -> None:
+        """Log planning results to active viewers if any are configured."""
+        from nova.core.motion_group import MotionGroup
+        from nova.viewers import get_viewer_manager
+
+        # Only log for motion groups
+        if not isinstance(self, MotionGroup):
+            return
+
+        viewer_manager = get_viewer_manager()
+        if viewer_manager.has_active_viewers:
+            await viewer_manager.log_planning_success(actions, trajectory, tcp, self)
+
+    async def _log_planning_error(self, actions: list[Action], error: Exception, tcp: str) -> None:
+        """Log planning error to active viewers if any are configured."""
+        from nova.core.motion_group import MotionGroup
+        from nova.viewers import get_viewer_manager
+
+        # Only log for motion groups
+        if not isinstance(self, MotionGroup):
+            return
+
+        viewer_manager = get_viewer_manager()
+        if viewer_manager.has_active_viewers:
+            await viewer_manager.log_planning_failure(actions, error, tcp, self)
 
     @abstractmethod
     def _execute(

@@ -14,7 +14,12 @@ from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 
 
 class TimingMode(Enum):
-    """Controls how trajectories are timed relative to each other."""
+    """Controls how trajectories are timed relative to each other.
+
+    .. deprecated::
+        TimingMode is deprecated and will be removed in a future version.
+        The new viewer system handles timing automatically per motion group.
+    """
 
     RESET = auto()  # Start at time_offset
     CONTINUE = auto()  # Start after last trajectory
@@ -22,7 +27,7 @@ class TimingMode(Enum):
     OVERRIDE = auto()  # Use exact time_offset and reset last time
 
 
-# Track both last end time and last offset separately
+# Deprecated global timing variables - kept for backward compatibility
 _last_end_time = 0.0
 _last_offset = 0.0
 
@@ -37,32 +42,37 @@ def log_motion(
     trajectory: list[models.TrajectorySample],
     collision_scenes: dict[str, models.CollisionScene],
     time_offset: float = 0,
-    timing_mode: TimingMode = TimingMode.CONTINUE,
+    timing_mode: TimingMode = TimingMode.CONTINUE,  # Deprecated parameter kept for compatibility
     tool_asset: Optional[str] = None,
+    show_collision_link_chain: bool = False,
+    show_safety_link_chain: bool = True,
 ):
     """
-    Fetch and process a single motion with timing control.
+    Fetch and process a single motion for visualization.
 
     Args:
-        ...existing args...
-        timing_mode: Controls how trajectory timing is handled
-            RESET: Start at time_offset (default)
-            CONTINUE: Start after last trajectory
-            SYNC: Use exact time_offset provided
+        motion_id: Unique identifier for the motion
+        model_from_controller: Robot model identifier
+        motion_group: Motion group identifier
+        optimizer_config: Configuration for the motion optimizer
+        trajectory: List of trajectory sample points
+        collision_scenes: Dictionary of collision scenes
+        time_offset: Time offset for visualization
+        timing_mode: DEPRECATED - Timing mode control (ignored in new implementation)
+        tool_asset: Optional tool asset file path
+        show_collision_link_chain: Whether to show collision geometry
+        show_safety_link_chain: Whether to show safety geometry
     """
-    global _visualizer_cache, _last_end_time, _last_offset
+    # Issue deprecation warning if timing_mode is explicitly used
+    if timing_mode != TimingMode.CONTINUE:
+        import warnings
 
-    # Calculate start time based on timing mode
-    if timing_mode == TimingMode.CONTINUE:
-        effective_offset = _last_end_time + _last_offset
-    elif timing_mode == TimingMode.SYNC:
-        effective_offset = _last_end_time
-    elif timing_mode == TimingMode.OVERRIDE:
-        effective_offset = time_offset
-        _last_end_time = time_offset
-    else:  # TimingMode.RESET
-        effective_offset = time_offset
-        _last_end_time = time_offset
+        warnings.warn(
+            "TimingMode parameter is deprecated and will be removed in a future version. "
+            "Timing is now handled automatically per motion group.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     # Initialize DHRobot and Visualizer
     if model_from_controller == "Yaskawa_TURN2":
@@ -87,7 +97,7 @@ def log_motion(
     )
 
     rr.reset_time()
-    rr.set_time(TIME_INTERVAL_NAME, duration=effective_offset)
+    rr.set_time(TIME_INTERVAL_NAME, duration=time_offset)
 
     # Get or create visualizer from cache
     if motion_group not in _visualizer_cache:
@@ -104,6 +114,8 @@ def log_motion(
             model_from_controller=model_from_controller,
             collision_link_chain=collision_link_chain,
             collision_tcp=collision_tcp,
+            show_collision_link_chain=show_collision_link_chain,
+            show_safety_link_chain=show_safety_link_chain,
         )
 
     visualizer = _visualizer_cache[motion_group]
@@ -116,33 +128,13 @@ def log_motion(
         visualizer=visualizer,
         trajectory=trajectory,
         optimizer_config=optimizer_config,
-        timer_offset=effective_offset,
+        timer_offset=time_offset,
         tool_asset=tool_asset,
     )
-
-    # Update last times based on timing mode
-    if trajectory:
-        if trajectory[-1].time is None:
-            raise ValueError("Last trajectory point has no time")
-
-        if timing_mode == TimingMode.SYNC:
-            _last_offset = trajectory[-1].time
-        else:
-            _last_offset = 0
-            _last_end_time = effective_offset + trajectory[-1].time
 
     del trajectory
     del robot
     del visualizer
-
-
-def continue_after_sync():
-    global _last_end_time, _last_offset
-
-    effective_offset = _last_end_time + _last_offset
-
-    _last_offset = 0
-    _last_end_time = effective_offset
 
 
 def log_trajectory_path(
@@ -230,6 +222,10 @@ def log_tcp_pose(
     """
     Log TCP pose (position + orientation) data.
     """
+
+    # Handle empty trajectory
+    if not trajectory:
+        return
 
     # Extract positions and orientations from the trajectory
     poses = [t.tcp_pose for t in trajectory]
@@ -410,3 +406,25 @@ def to_trajectory_samples(self) -> list[models.TrajectorySample]:
         )
         samples.append(sample)
     return samples
+
+
+def continue_after_sync():
+    """Continue timing after a sync operation.
+
+    .. deprecated::
+        continue_after_sync() is deprecated and will be removed in a future version.
+        The new viewer system handles timing automatically per motion group.
+    """
+    import warnings
+
+    warnings.warn(
+        "continue_after_sync() is deprecated and will be removed in a future version. "
+        "Timing is now handled automatically per motion group.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    global _last_end_time, _last_offset
+    effective_offset = _last_end_time + _last_offset
+    _last_offset = 0
+    _last_end_time = effective_offset

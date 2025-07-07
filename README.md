@@ -84,7 +84,7 @@ To get more information about Wandelscript, check out the [Wandelscript document
 
 ## 🚀 Quick Start
 
-See the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) for usage of this library and further [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples) utilizing rerun as a visualizer
+See the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) for usage of this library including 3D visualization.
 
 For more details check out the [technical wiki](https://deepwiki.com/wandelbotsgmbh/wandelbots-nova) (powered by deepwiki), the [official documentation](https://docs.wandelbots.io/) or the [code documentation](https://wandelbotsgmbh.github.io/wandelbots-nova/).
 
@@ -105,7 +105,7 @@ from nova import api
 Checkout the [basic](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/basic.py) and [plan_and_execute](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/plan_and_execute.py) examples to learn how to use the library.
 
 In [this](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) directory are more examples to explain the advanced usage of the SDK.
-If you want to utilize rerun as a visualizer you can find examples in the [nova_rerun_bride examples folder](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples).
+For 3D visualization examples, see the main [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) folder. Advanced rerun integration examples are in the [nova_rerun_bridge examples folder](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples).
 
 ## Examples
 
@@ -214,24 +214,46 @@ actions = [
 ]
 ```
 
-2. **Visualization with Rerun**
+2. **3D Visualization with Rerun**
 
 ```python
-from nova_rerun_bridge import NovaRerunBridge
-import rerun as rr
+# Basic 3D visualization (default)
+@nova.program(
+    viewer=nova.viewers.Rerun()
+)
+async def main():
+    async with Nova() as nova:
+        cell = nova.cell()
+        controller = await cell.controller("robot1")
 
-async with Nova() as nova, NovaRerunBridge(nova) as bridge:
-    await bridge.setup_blueprint()
-    # ... robot setup ...
-    await bridge.log_actions(actions)
-    await bridge.log_trajectory(trajectory, tcp, motion_group)
-
-    # use any rerun functions to e.g. show pointclouds and more
-    # rr.log
+        async with controller[0] as motion_group:
+            actions = [cartesian_ptp(target_pose)]
+            trajectory = await motion_group.plan(actions, tcp)
+            # Trajectory is automatically visualized in Rerun
 ```
 
-<img width="1242" alt="pointcloud" src="https://github.com/user-attachments/assets/8e981f09-81ae-4e71-9851-42611f6b1843" />
+```python
+# Advanced visualization with detailed panels and tool models
+@nova.program(
+    viewer=nova.viewers.Rerun(
+        show_details=True,  # Show detailed analysis panels
+        show_safety_zones=True,  # Show robot safety zones
+        show_collision_link_chain=True,  # Show collision geometry
+        tcp_tools={
+            "vacuum": "assets/vacuum_cup.stl",
+            "gripper": "assets/parallel_gripper.stl"
+        }
+    )
+)
+```
 
+> **Note**: For visualization features, install the rerun extras:
+>
+> ```bash
+> uv add wandelbots-nova --extra nova-rerun-bridge
+> ```
+
+<img width="1242" alt="pointcloud" src="https://github.com/user-attachments/assets/8e981f09-81ae-4e71-9851-42611f6b1843" />
 
 3. **Adding and Using Custom TCP (Tool Center Point)**
 
@@ -286,6 +308,7 @@ async def setup_tcp():
             actions = [cartesian_ptp(current_pose @ Pose((100, 0, 0, 0, 0, 0)))]
             trajectory = await motion_group.plan(actions, "vacuum_gripper")
 ```
+
 <img width="100%" alt="trajectory" src="https://github.com/user-attachments/assets/649de0b7-d90a-4095-ad51-d38d3ac2e716" />
 
 4. **Using Common Coordinate Systems for Multiple Robots**
@@ -377,6 +400,7 @@ async def setup_coordinated_robots():
                 mg2.plan([cartesian_ptp(Pose((0, -100, 0, 0, 0, 0)))], "tcp2")
             )
 ```
+
 <img width="100%" alt="thumbnail" src="https://github.com/user-attachments/assets/6f0c441e-b133-4a3a-bf0e-0e947d3efad4" />
 
 ## Development
@@ -437,22 +461,20 @@ wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/
 
 ### Overview
 
-| Variable     | Description                                                            | Where                                | Example version      |
-|--------------|------------------------------------------------------------------------|--------------------------------------|----------------------|
-| `main`       | Stable releases (normal semver vX.Y.Z)                                 | PyPI (`pip install wandelbots-nova`) | `v1.13.0`            |
-| `release/*`  | The username credential used for authentication with the NOVA service. | PyPI                                 | `v1.8.7-release-1.x` |
-| any branch   | Development builds (not published to PyPI)                             | GitHub Actions                       | `e4c8af0647839...`   |
+| Variable    | Description                                                            | Where                                | Example version      |
+| ----------- | ---------------------------------------------------------------------- | ------------------------------------ | -------------------- |
+| `main`      | Stable releases (normal semver vX.Y.Z)                                 | PyPI (`pip install wandelbots-nova`) | `v1.13.0`            |
+| `release/*` | The username credential used for authentication with the NOVA service. | PyPI                                 | `v1.8.7-release-1.x` |
+| any branch  | Development builds (not published to PyPI)                             | GitHub Actions                       | `e4c8af0647839...`   |
 
 ### Stable releases (main)
 
-Every merge to main triggers the Release package workflow:
-	1.	Semantic-release inspects the commit messages, bumps the version, builds the wheel/sdist.
-	2.	The package is uploaded to PyPI.
-	3.	A GitHub Release is created/updated with the assets.
+Every merge to main triggers the Release package workflow: 1. Semantic-release inspects the commit messages, bumps the version, builds the wheel/sdist. 2. The package is uploaded to PyPI. 3. A GitHub Release is created/updated with the assets.
 
-### Long-term-support lines (release/*)
+### Long-term-support lines (release/\*)
 
 For customers stuck on an older major or for special LTS contracts:
+
 - Open (or keep) a branch named `release/1.x`, `release/customer-foo`, etc.
 - Every commit on that branch triggers the same workflow and publishes stable numbers, but the git tag and PyPI version carry the branch slug so lines never collide.
 

@@ -288,7 +288,7 @@ class TestSendBlueprint:
 
         send_blueprint(motion_group_list)
 
-        mock_get_blueprint.assert_called_once_with(motion_group_list)
+        mock_get_blueprint.assert_called_once_with(motion_group_list, True)
         mock_send.assert_called_once_with(mock_blueprint)
 
 

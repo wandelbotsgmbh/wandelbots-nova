@@ -91,6 +91,7 @@ class Function(BaseModel, Generic[Parameters, Return]):
 
         async with Nova() as nova:
             cell = nova.cell()
+            controller_config = None
             try:
                 for controller_config in self.preconditions.controllers:
                     controller_name = controller_config.name or "unnamed_controller"
@@ -100,8 +101,19 @@ class Function(BaseModel, Generic[Parameters, Return]):
                         "info",
                         f"Created controller '{controller_name}' with ID {controller.controller_id}",
                     )
+
+                # Setup viewers after controllers are created and available
+                try:
+                    from nova.viewers import _setup_active_viewers_after_preconditions
+
+                    await _setup_active_viewers_after_preconditions()
+                except ImportError:
+                    pass
+
             except Exception as e:
-                controller_name = controller_config.name or "unnamed_controller"
+                controller_name = (
+                    controller_config.name if controller_config else "unnamed_controller"
+                )
                 raise ControllerCreationFailed(controller_name, str(e))
 
         return created_controllers
@@ -269,13 +281,18 @@ def input_and_output_types(
     return input, output
 
 
-def program(name: str | None = None, preconditions: ProgramPreconditions | None = None):
+def program(
+    name: str | None = None,
+    preconditions: ProgramPreconditions | None = None,
+    viewer: Any | None = None,
+):
     """
     Decorator factory for creating Nova programs with declarative controller setup.
 
     Args:
         name: Name of the program
         preconditions: ProgramPreconditions containing controller configurations and cleanup settings
+        viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
     """
 
     def decorator(
@@ -300,12 +317,24 @@ def program(name: str | None = None, preconditions: ProgramPreconditions | None 
                 # Create controllers before execution
                 created_controllers = await func_obj._create_controllers()
 
+                # Configure viewers if any are active
+                if viewer is not None:
+                    # Configure the viewer when Nova instance becomes available in the function
+                    # This will be done via a hook in the Nova context manager
+                    pass
+
                 # Execute the wrapped function
                 result = await original_wrapped(*args, **kwargs)
                 return result
             finally:
                 # Clean up controllers after execution
                 await func_obj._cleanup_controllers(created_controllers)
+
+                # Clean up viewers
+                if viewer is not None:
+                    from nova.viewers import _cleanup_active_viewers
+
+                    _cleanup_active_viewers()
 
         # Update the wrapped function to our async wrapper
         func_obj._wrapped = async_wrapper

@@ -11,7 +11,7 @@ Prerequisites:
 import asyncio
 
 import nova
-from nova import Nova, api
+from nova import Nova, api, viewers
 from nova.actions import cartesian_ptp, io_write, joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -20,6 +20,7 @@ from nova.types import Pose
 
 @nova.program(
     name="Plan and Execute",
+    viewer=viewers.Rerun(),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
