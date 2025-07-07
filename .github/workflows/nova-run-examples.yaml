@@ -82,7 +82,7 @@ jobs:
       - name: Set up Python environment
         run: |
           pip install uv
-          uv sync --extra "nova-rerun-bridge" --extra "wandelscript"
+          uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
       - name: Decode output secrets
         uses: cloudposse/github-action-secret-outputs@main
         id: role

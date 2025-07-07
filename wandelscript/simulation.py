@@ -475,7 +475,7 @@ class SimulatedController(ConfigurablePeriphery, AbstractController):
         }
         self._simulated_io = SimulatedIO()
 
-    def get_robots(self) -> dict[str, AbstractRobot]:
+    def get_motion_groups(self) -> dict[str, AbstractRobot]:
         return self._robots
 
     def __getitem__(self, item):

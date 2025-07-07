@@ -82,6 +82,54 @@ for i = 0..3:
 
 To get more information about Wandelscript, check out the [Wandelscript documentation](/wandelscript/README.md).
 
+## Novax
+
+Novax is an app framework for building server applications on top of NOVA. It provides common core concepts like the handling of programs and their execution.
+
+```bash
+uv add wandelbots-nova --extra novax
+```
+
+To use Novax in your application, you need to create a new `Novax` instance as an entrypoint.
+
+```python
+from pathlib import Path
+import uvicorn
+from novax import Novax
+
+
+@nova.program()
+def simple_program():
+    print("Hello World!")
+
+
+def main(host: str = "0.0.0.0", port: int = 8000):
+    # Create a new Novax instance
+    novax = Novax()
+    # Create a new FastAPI app
+    app = novax.create_app()
+    # Include the programs router
+    novax.include_programs_router(app)
+
+    # Register Python programs (existing functionality)
+    novax.register_program(simple_program)
+    # You can also register wandelscript files
+    novax.register_program(Path(__file__).parent / "programs" / "program2.ws")
+
+    # Serve the FastAPI app
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        reload=False,
+        log_level=log_level,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+    )
+```
+
+Now you can inspect the API at `http://localhost:8000/docs`.
+
 ## 🚀 Quick Start
 
 See the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) for usage of this library including 3D visualization.

@@ -88,7 +88,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         motion_group_ids = await self.activated_motion_group_ids()
         return [self.motion_group(motion_group_id) for motion_group_id in motion_group_ids]
 
-    def get_robots(self) -> dict[str, AbstractRobot]:
+    def get_motion_groups(self) -> dict[str, AbstractRobot]:
         """Retrieves a dictionary of motion group IDs to their corresponding robots.
 
         Note:

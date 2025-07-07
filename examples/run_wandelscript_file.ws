@@ -8,7 +8,7 @@
 #   - "1@fanuc" = get_controller("fanuc")[1]
 #
 tcp("Flange")
-robot = get_controller("ur")[0]
+robot = get_controller("ur10e")[0]
 home = read(robot, "pose")
 sync
 

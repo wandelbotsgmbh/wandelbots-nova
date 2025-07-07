@@ -1,18 +1,15 @@
-from pathlib import Path
-
 from loguru import logger
 
 from nova.cell.robot_cell import RobotCell
 from nova.program import ProgramRunner as NovaProgramRunner
-from nova.program.runner import ExecutionContext as NovaExecutionContext
 
 # TODO: this should come from the api package
+from nova.program.runner import ExecutionContext as NovaExecutionContext
 from nova.program.runner import Program, ProgramRun, ProgramType
 from wandelscript.datatypes import ElementType
 from wandelscript.ffi import ForeignFunction
 from wandelscript.metamodel import Program as WandelscriptProgram
 from wandelscript.runtime import ExecutionContext
-from wandelscript.simulation import SimulatedRobotCell
 
 
 # TODO: how to return this in the end?
@@ -25,6 +22,7 @@ class ProgramRunner(NovaProgramRunner):
 
     def __init__(
         self,
+        program_id: str,
         program: Program,
         args: dict[str, ElementType] | None,
         robot_cell_override: RobotCell | None = None,
@@ -32,7 +30,12 @@ class ProgramRunner(NovaProgramRunner):
         default_tcp: str | None = None,
         foreign_functions: dict[str, ForeignFunction] | None = None,
     ):
-        super().__init__(program=program, args=args, robot_cell_override=robot_cell_override)  # type: ignore
+        super().__init__(
+            program_id=program_id,
+            program=program,
+            args=args,  # type: ignore
+            robot_cell_override=robot_cell_override,
+        )
         self._default_robot: str | None = default_robot
         self._default_tcp: str | None = default_tcp
         self._foreign_functions: dict[str, ForeignFunction] = foreign_functions or {}
@@ -40,7 +43,7 @@ class ProgramRunner(NovaProgramRunner):
 
     async def _run(self, execution_context: NovaExecutionContext):
         # Try parsing the program and handle parsing error
-        logger.info(f"Parse program {self.id}...")
+        logger.info(f"Parse program {self.program_id}...")
         logger.debug(self._program.content)
 
         self._ws_execution_context = ws_execution_context = ExecutionContext(
@@ -58,10 +61,11 @@ class ProgramRunner(NovaProgramRunner):
         self.execution_context.motion_group_recordings = (
             ws_execution_context.motion_group_recordings
         )
-        self.execution_context.result = ws_execution_context.store.data_dict
+        self.execution_context.output_data = ws_execution_context.store.data_dict
 
 
 def run(
+    program_id: str,
     program: str,
     args: dict[str, ElementType] | None = None,
     default_robot: str | None = None,
@@ -85,7 +89,8 @@ def run(
 
     """
     runner = ProgramRunner(
-        Program(content=program, program_type=ProgramType.WANDELSCRIPT),
+        program_id=program_id,
+        program=Program(content=program, program_type=ProgramType.WANDELSCRIPT),
         args=args,
         default_robot=default_robot,
         default_tcp=default_tcp,
@@ -94,23 +99,3 @@ def run(
     )
     runner.start(sync=True)
     return runner
-
-
-def run_file(
-    file_path: Path | str,
-    args: dict[str, ElementType] | None = None,
-    default_robot: str | None = None,
-    default_tcp: str | None = None,
-    robot_cell_override: RobotCell | None = SimulatedRobotCell(),
-) -> ProgramRunner:
-    path = Path(file_path)
-    with open(path) as f:
-        program = f.read()
-
-    return run(
-        program,
-        args=args,
-        default_robot=default_robot,
-        default_tcp=default_tcp,
-        robot_cell_override=robot_cell_override,
-    )
