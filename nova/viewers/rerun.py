@@ -114,7 +114,10 @@ class Rerun(Viewer):
             # Don't setup async components immediately - wait for controllers to be ready
         except ImportError:
             # nova_rerun_bridge not available, skip rerun integration
-            pass
+            logger.warning(
+                "Rerun viewer configured but nova_rerun_bridge not available. "
+                "Install with: uv add wandelbots-nova --extra nova-rerun-bridge"
+            )
 
     async def setup_after_preconditions(self) -> None:
         """Setup async components after preconditions (like controllers) are satisfied."""
