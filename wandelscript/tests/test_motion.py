@@ -79,7 +79,7 @@ move via ptp() to (23, 0, 626, 0, 0, 0)
     cell = get_robot_cell()
     runner = wandelscript.run(code, robot_cell_override=cell, default_tcp="Flange")
 
-    record_of_commands = runner.execution_context.robot_cell.get_robot(
+    record_of_commands = runner.execution_context.robot_cell.get_motion_group(
         "0@controller"
     ).record_of_commands
 
@@ -163,7 +163,7 @@ move via joint_p2p() to [31, 0, 626, 0, 0, 0]
     # Execute code:
     runner = wandelscript.run(code, robot_cell_override=cell)
 
-    record_of_commands = runner.execution_context.robot_cell.get_robot(
+    record_of_commands = runner.execution_context.robot_cell.get_motion_group(
         "0@controller"
     ).record_of_commands
 

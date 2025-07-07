@@ -51,7 +51,7 @@ def custom_foreign_function(v: Any) -> str:
 
 
 def other_foreign_function(ctx: ExecutionContext, v: int) -> None:
-    robot = list(ctx.robot_cell.get_robots().values())[0]
+    robot = list(ctx.robot_cell.get_motion_groups().values())[0]
     type_ = robot.configuration.type  # type: ignore
     print(f"For context, we've got a robot of type: {type_}")
 

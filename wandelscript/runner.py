@@ -110,7 +110,7 @@ def run_file(
     default_robot: str | None = None,
     default_tcp: str | None = None,
     foreign_functions: dict[str, ForeignFunction] | None = None,
-    robot_cell_override: RobotCell | None = SimulatedRobotCell(),
+    robot_cell_override: RobotCell | None = None,
 ) -> ProgramRunner:
     path = Path(file_path)
     with open(path) as f:

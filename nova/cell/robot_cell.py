@@ -469,10 +469,10 @@ class AbstractRobot(Device):
 
 class AbstractController(Device):
     @abstractmethod
-    def get_robots(self) -> dict[str, AbstractRobot]:
-        """Return all robots that are connected to the controller
+    def get_motion_groups(self) -> dict[str, AbstractRobot]:
+        """Return all motion groups that are connected to the controller
 
-        Returns: a dict with {robot_name: robot}
+        Returns: a dict with {motion_group_name: motion_group}
         """
 
 
@@ -586,26 +586,26 @@ class RobotCell:
             raise ValueError(f'Found no controller with name "{name}".')
         return controller
 
-    def get_robots(self) -> dict[str, AbstractRobot]:
+    def get_motion_groups(self) -> dict[str, AbstractRobot]:
         controllers = self.get_controllers()
         return reduce(
             lambda a, b: a.update(b) or a,
-            (controller.get_robots() for controller in controllers),
+            (controller.get_motion_groups() for controller in controllers),
             {},
         )
 
-    def get_robot_ids(self) -> list[str]:
+    def get_motion_group_ids(self) -> list[str]:
         # TODO this should return a set
-        return list(self.get_robots().keys())
+        return list(self.get_motion_groups().keys())
 
-    def get_robot(self, robot_id: str) -> AbstractRobot:
-        return self.get_robots()[robot_id]
+    def get_motion_group(self, motion_group_id: str) -> AbstractRobot:
+        return self.get_motion_groups()[motion_group_id]
 
     @asyncstdlib.cached_property
     async def tcps(self) -> dict[str, set[str]]:
         """Return a mapping of all TCPs to the robots that have them configured"""
         result = defaultdict(set)
-        for robot_name, robot in self.get_robots().items():
+        for robot_name, robot in self.get_motion_groups().items():
             tcp_names = await robot.tcp_names()
             for tcp_name in tcp_names:
                 result[tcp_name].add(robot_name)

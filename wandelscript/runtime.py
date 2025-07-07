@@ -140,7 +140,7 @@ class ExecutionContext:
     ):
         self.motion_group_recordings = []
         self.robot_cell: RobotCell = robot_cell
-        self._robot_ids = robot_ids = robot_cell.get_robot_ids()
+        self._robot_ids = robot_ids = robot_cell.get_motion_group_ids()
 
         if default_robot is None:
             # If no default robot is set
@@ -251,23 +251,23 @@ class ExecutionContext:
     def get_device(self, name: str) -> Device:
         return self.robot_cell[name]
 
-    def get_robot(self, name=None) -> AbstractRobot:
+    def get_motion_group(self, name=None) -> AbstractRobot:
         name = name or self.active_robot
         try:
-            return self.robot_cell.get_robot(name)
+            return self.robot_cell.get_motion_group(name)
         except KeyError as exc:
             raise wsexception.WrongRobotError(
                 location=self.location_in_code, text=f"Unknown robot: '{name}'"
             ) from exc
 
     async def read_pose(self, robot_name: str, tcp: str | None = None) -> Pose:
-        tcp = tcp or await self.get_robot(robot_name).active_tcp_name()
-        robot_state = await self.get_robot(robot_name).get_state(tcp)
+        tcp = tcp or await self.get_motion_group(robot_name).active_tcp_name()
+        robot_state = await self.get_motion_group(robot_name).get_state(tcp)
         return robot_state.pose
 
     async def read_joints(self, robot_name: str) -> tuple[float, ...] | None:
-        tcp = await self.get_robot(robot_name).active_tcp_name()
-        robot_state = await self.get_robot(robot_name).get_state(tcp)
+        tcp = await self.get_motion_group(robot_name).active_tcp_name()
+        robot_state = await self.get_motion_group(robot_name).get_state(tcp)
         return robot_state.joints
 
 
@@ -406,7 +406,7 @@ class ActionQueue:
                     # This can raise MotionError
                     self._update_path_history(container)
 
-                motion_group = self._execution_context.get_robot(motion_group_id)
+                motion_group = self._execution_context.get_motion_group(motion_group_id)
                 tcp = self._tcp.get(motion_group_id, None) or await motion_group.active_tcp_name()
 
                 # TODO: not only pass motions, do we need the CombinedActions anymore?

@@ -14,7 +14,7 @@ from nova.types import Pose
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name="ur",
+                name="ur10e",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
                 type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             )
@@ -24,9 +24,6 @@ from nova.types import Pose
 )
 async def main():
     async with Nova() as nova:
-        cell = nova.cell()
-        robot_cell = await cell.get_robot_cell()
-
         run = wandelscript.run_file(
             Path(__file__).parent / "run_wandelscript_file.ws",
             args={
@@ -35,10 +32,9 @@ async def main():
                 "a_list": [1, 2, {"nested": 4}],
             },
             default_tcp=None,
-            default_robot=None,
-            robot_cell_override=robot_cell,
+            default_robot="0@ur10e",
         )
-        print(run.program_run.execution_results)
+        print(run.program_run.output_data)
 
 
 if __name__ == "__main__":

@@ -320,7 +320,7 @@ class ProgramRunner(ABC):
 
         try:
             robot_cell = None
-            # Use robot_cell_override or fetch robot cell when not set
+            # TODO: this should be removed to make it possible running programs without a robot cell
             if self._robot_cell_override:
                 robot_cell = self._robot_cell_override
             else:
