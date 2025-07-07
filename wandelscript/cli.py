@@ -28,10 +28,15 @@ def _validate_url(url: str) -> bool:
     return False
 
 
-async def main(code: str, nova_api: str, foreign_functions: dict[str, any] | None = None):
+async def main(code: str, foreign_functions: dict[str, any] | None = None):
     """Main program logic."""
     runner = wandelscript.run(
-        code, args={}, default_tcp=None, default_robot=None, foreign_functions=foreign_functions
+        program_id="ws_program",
+        program=code,
+        args={},
+        default_tcp=None,
+        default_robot=None,
+        foreign_functions=foreign_functions,
     )
     echo(f"Execution results:\n{runner.program_run.execution_results}")
 
@@ -63,7 +68,7 @@ def run(
     code = script.read()
     script.close()
 
-    asyncio.run(main(code=code, nova_api=nova_api, foreign_functions=foreign_functions))
+    asyncio.run(main(code=code, foreign_functions=foreign_functions))
 
 
 if __name__ == "__main__":
