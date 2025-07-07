@@ -220,7 +220,7 @@ class WandelscriptProgramSource:
 
         # Create a wrapper function
         @nova.program(name=program_id)
-        async def wandelscript_wrapper(**kwargs):
+        async def wandelscript_wrapper():
             async with Nova() as nova:
                 robot_cell = await nova.cell().get_robot_cell()
                 # Read the file content
@@ -230,7 +230,8 @@ class WandelscriptProgramSource:
                 result = await wandelscript.run(
                     program_id=program_id,
                     program=program_content,
-                    args=kwargs,
+                    # TODO: Also pass args
+                    args={},
                     foreign_functions=self.foreign_functions,
                     robot_cell_override=robot_cell,
                 )
