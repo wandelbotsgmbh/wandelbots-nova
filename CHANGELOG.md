@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.0.0 (2025-07-07)
+
+### Features
+
+- Add viewer to decorator for transparent rerun logs (#216)
+  ([#216](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/216),
+  [`4d548ca`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4d548ca8de7784c2f4676073f97e176742b6c85d))
+
+
 ## v1.25.0 (2025-07-04)
 
 ### Features
