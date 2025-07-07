@@ -4,6 +4,7 @@
 import asyncio
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
@@ -28,7 +29,7 @@ def _validate_url(url: str) -> bool:
     return False
 
 
-async def main(code: str, foreign_functions: dict[str, any] | None = None):
+async def main(code: str, foreign_functions: dict[str, Any] | None = None):
     """Main program logic."""
     runner = wandelscript.run(
         program_id="ws_program",
@@ -38,7 +39,7 @@ async def main(code: str, foreign_functions: dict[str, any] | None = None):
         default_robot=None,
         foreign_functions=foreign_functions,
     )
-    echo(f"Execution results:\n{runner.program_run.execution_results}")
+    echo(f"Execution results:\n{runner.program_run.output_data}")
 
 
 @app.command()

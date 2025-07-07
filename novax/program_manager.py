@@ -186,7 +186,9 @@ class WandelscriptProgramSource:
             foreign_functions: Optional dictionary of foreign functions to attach to all programs.
         """
         self.scan_paths = scan_paths
-        self.foreign_functions = load_foreign_functions(foreign_functions_paths)
+        self.foreign_functions = (
+            load_foreign_functions(foreign_functions_paths) if foreign_functions_paths else {}
+        )
 
     async def get_programs(self, program_manager: "ProgramManager") -> AsyncIterator[Program]:
         """Discover and yield programs from filesystem"""
