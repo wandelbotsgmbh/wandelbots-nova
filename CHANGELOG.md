@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.1.2 (2025-07-08)
+
+### Bug Fixes
+
+- Nova-rerun-client-access (#222)
+  ([#222](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/222),
+  [`a05ca61`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a05ca61bce1d74c36bbc2f67f5716956b2194ce7))
+
+
 ## v2.1.1 (2025-07-08)
 
 ### Bug Fixes
