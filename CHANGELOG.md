@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.1.1 (2025-07-08)
+
+### Bug Fixes
+
+- Remove wandelscript await (#221)
+  ([#221](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/221),
+  [`45acf03`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/45acf036d8d3ca3fa1fcf3d4c1cd5bc9a2ec5b29))
+
+
 ## v2.1.0 (2025-07-07)
 
 ### Features
