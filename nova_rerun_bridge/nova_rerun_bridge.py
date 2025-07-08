@@ -97,7 +97,8 @@ class NovaRerunBridge:
 
         Fetches motion groups from Nova and configures visualization layout.
         """
-        cell = self.nova.cell()
+        nova = self._bridge_nova or self.nova
+        cell = nova.cell()
 
         controllers = await cell.controllers()
         motion_groups = []
