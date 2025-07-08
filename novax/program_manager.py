@@ -227,7 +227,7 @@ class WandelscriptProgramSource:
                 with open(path) as f:
                     program_content = f.read()
 
-                result = await wandelscript.run(
+                result = wandelscript.run(
                     program_id=program_id,
                     program=program_content,
                     # TODO: Also pass args
