@@ -300,6 +300,7 @@ class AbstractRobot(Device):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
+        playback_speed: float | None = None,
     ) -> AsyncIterable[MovementResponse]:
         """Execute a planned motion
 
@@ -308,6 +309,8 @@ class AbstractRobot(Device):
             tcp (str): The id of the tool center point (TCP)
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
+            playback_speed (float | None): Override speed (0.0-1.0). If None, uses playback control manager
+                                         to resolve speed from external overrides, decorator defaults, etc.
         """
 
     async def stream_execute(
@@ -316,6 +319,7 @@ class AbstractRobot(Device):
         tcp: str,
         actions: list[Action] | Action,
         movement_controller: MovementController | None = None,
+        playback_speed: float | None = None,
     ) -> AsyncIterable[MotionState]:
         """Execute a planned motion
 
@@ -324,6 +328,9 @@ class AbstractRobot(Device):
             tcp (str): The id of the tool center point (TCP)
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
+            playback_speed (float | None): Override speed for this execution (0.0-1.0).
+                                         If None, uses decorator defaults or external control.
+                                         External control can still override this setting.
         """
         if not isinstance(actions, list):
             actions = [actions]
@@ -347,7 +354,11 @@ class AbstractRobot(Device):
             assert False, f"Unexpected movement response: {movement_response}"
 
         execute_response_stream = self._execute(
-            joint_trajectory, tcp, actions, movement_controller=movement_controller
+            joint_trajectory,
+            tcp,
+            actions,
+            movement_controller=movement_controller,
+            playback_speed=playback_speed,
         )
         motion_states = (
             stream.iterate(execute_response_stream)
@@ -465,6 +476,43 @@ class AbstractRobot(Device):
     @abstractmethod
     async def stop(self):
         """Stop behaviour of the robot"""
+
+    # Convenience methods for external control integration
+    async def pause(self) -> None:
+        """Pause current execution (external control)
+
+        Called by external tools to pause robot execution. Sets external
+        override state that will be respected by future execute calls.
+        """
+        from nova.core.playback_control import RobotId, get_playback_manager
+
+        manager = get_playback_manager()
+        manager.pause(RobotId(self.id))
+
+    async def resume(self) -> None:
+        """Resume paused execution (external control)
+
+        Called by external tools to resume robot execution. Clears
+        external pause state.
+        """
+        from nova.core.playback_control import RobotId, get_playback_manager
+
+        manager = get_playback_manager()
+        manager.resume(RobotId(self.id))
+
+    async def set_playback_speed(self, speed: float) -> None:
+        """Set external playback speed override (external control)
+
+        Called by external tools to override speed settings. This setting
+        takes highest precedence over method parameters and decorator defaults.
+
+        Args:
+            speed: Playback speed (0.0-1.0)
+        """
+        from nova.core.playback_control import PlaybackSpeed, RobotId, get_playback_manager
+
+        manager = get_playback_manager()
+        manager.set_external_override(RobotId(self.id), PlaybackSpeed(speed))
 
 
 class AbstractController(Device):

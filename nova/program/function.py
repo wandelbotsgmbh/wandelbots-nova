@@ -285,6 +285,8 @@ def program(
     name: str | None = None,
     preconditions: ProgramPreconditions | None = None,
     viewer: Any | None = None,
+    playback_speed: float = 1.0,
+    enable_external_control: bool = False,
 ):
     """
     Decorator factory for creating Nova programs with declarative controller setup.
@@ -293,6 +295,10 @@ def program(
         name: Name of the program
         preconditions: ProgramPreconditions containing controller configurations and cleanup settings
         viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
+        playback_speed: Default playback speed for all robot executions in this program (0.0-1.0).
+                       Individual execute() calls can override this with their playback_speed parameter.
+                       External tools (VS Code extensions) can override this globally.
+        enable_external_control: Enable external control function registration (reserved for future use)
     """
 
     def decorator(
@@ -316,6 +322,39 @@ def program(
             try:
                 # Create controllers before execution
                 created_controllers = await func_obj._create_controllers()
+
+                # Set playback speed defaults for all robots if specified
+                if playback_speed != 1.0:
+                    try:
+                        # Try to extract robot_cell from function arguments
+                        # For now, assume first argument is robot_cell if it has expected methods
+                        if args and hasattr(args[0], "get_motion_group_ids"):
+                            robot_cell = args[0]
+                            from nova.core.playback_control import (
+                                PlaybackSpeed,
+                                RobotId,
+                                get_playback_manager,
+                            )
+
+                            manager = get_playback_manager()
+                            # Set decorator defaults for all robots in the cell
+                            robot_ids = robot_cell.get_motion_group_ids()  # type: ignore
+                            for robot_id in robot_ids:
+                                manager.set_decorator_default(
+                                    RobotId(robot_id), PlaybackSpeed(playback_speed)
+                                )
+                    except Exception:
+                        # If we can't extract robot_cell, silently continue
+                        # This maintains backward compatibility
+                        pass
+
+                # Enable external control if requested
+                if enable_external_control:
+                    from nova.external_control.external_integration import (
+                        register_external_control_functions,
+                    )
+
+                    register_external_control_functions()
 
                 # Configure viewers if any are active
                 if viewer is not None:

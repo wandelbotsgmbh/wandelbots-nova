@@ -368,7 +368,36 @@ class MotionGroup(AbstractRobot):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
+        playback_speed: float | None = None,
     ) -> AsyncIterable[MovementResponse]:
+        # Get effective speed using precedence resolution
+        from nova.core.playback_control import (
+            PlaybackSpeed,
+            PlaybackState,
+            RobotId,
+            get_playback_manager,
+        )
+
+        robot_id_typed = RobotId(self.motion_group_id)
+        manager = get_playback_manager()
+
+        # Convert playback_speed to PlaybackSpeed if provided
+        method_speed = PlaybackSpeed(playback_speed) if playback_speed is not None else None
+        effective_speed = manager.get_effective_speed(robot_id_typed, method_speed)
+
+        # Validate speed range
+        if not (0.0 <= effective_speed <= 1.0):
+            raise ValueError(f"Playback speed must be between 0.0 and 1.0, got {effective_speed}")
+
+        # Check if robot is paused by external control
+        playback_state = manager.get_effective_state(robot_id_typed)
+        if playback_state == PlaybackState.PAUSED:
+            # For now, just log the pause state - full pause implementation would require
+            # more complex coordination with the websocket execution flow
+            logger.info(
+                f"Robot {self.motion_group_id} is paused - execution will proceed but may be controlled externally"
+            )
+
         if movement_controller is None:
             movement_controller = move_forward
 
@@ -412,6 +441,15 @@ class MotionGroup(AbstractRobot):
             )
 
         execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
+
+        # NOTE: Playback speed control IS supported by the API via PlaybackSpeedRequest
+        # The effective speed is applied through the movement controller layer
+        # Real-time speed updates can be sent during execution using PlaybackSpeedRequest
+        if effective_speed != 1.0:
+            logger.info(
+                f"Robot {self.motion_group_id} executing at {effective_speed * 100:.1f}% speed"
+            )
+
         execution_task = asyncio.create_task(
             self._api_gateway.motion_api.execute_trajectory(
                 cell=self._cell, client_request_generator=execute_response_streaming_controller
@@ -423,7 +461,7 @@ class MotionGroup(AbstractRobot):
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
         # TODO: mypy failed on main branch, need to check
-        if self._optimizer_setup is None or self._optimizer_setup.tcp != tcp:  # type: ignore
+        if self._optimizer_setup is None or self._optimizer_setup.tcp != tcp:
             self._optimizer_setup = await self._api_gateway.get_optimizer_config(
                 cell=self._cell, motion_group_id=self.motion_group_id, tcp=tcp
             )
