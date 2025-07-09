@@ -142,6 +142,30 @@ class MotionGroup(AbstractRobot):
         self._optimizer_setup: wb.models.OptimizerSetup | None = None
         super().__init__(id=motion_group_id)
 
+        # Set decorator defaults if a decorator playback speed is set in context
+        self._set_decorator_defaults_from_context()
+
+    def _set_decorator_defaults_from_context(self) -> None:
+        """Set decorator defaults from active program playback speed if available."""
+        try:
+            from nova.core.playback_control import (
+                PlaybackSpeed,
+                RobotId,
+                get_active_program_playback_speed,
+                get_playback_manager,
+            )
+
+            active_speed = get_active_program_playback_speed()
+            if active_speed is not None:
+                manager = get_playback_manager()
+                manager.set_decorator_default(
+                    RobotId(self._motion_group_id), PlaybackSpeed(active_speed)
+                )
+        except Exception:
+            # If there's any issue with setting defaults, continue silently
+            # This maintains backward compatibility
+            pass
+
     async def open(self):
         await self._api_gateway.activate_motion_group(
             cell=self._cell, motion_group_id=self._motion_group_id
@@ -429,6 +453,7 @@ class MotionGroup(AbstractRobot):
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
                 motion_id=load_plan_response.motion,
+                effective_speed=int(effective_speed * 100),  # Convert 0.0-1.0 to 0-100
             )
         )
 
@@ -442,7 +467,6 @@ class MotionGroup(AbstractRobot):
 
         execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
 
-        # NOTE: Playback speed control IS supported by the API via PlaybackSpeedRequest
         # The effective speed is applied through the movement controller layer
         # Real-time speed updates can be sent during execution using PlaybackSpeedRequest
         if effective_speed != 1.0:

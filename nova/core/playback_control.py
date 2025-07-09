@@ -91,6 +91,18 @@ class PlaybackControlManager:
         with self._lock:
             self._decorator_defaults[robot_id] = speed
 
+    def get_decorator_default(self, robot_id: RobotId) -> Optional[PlaybackSpeed]:
+        """Get decorator default speed for a robot
+
+        Args:
+            robot_id: Unique robot identifier
+
+        Returns:
+            Decorator default speed if set, None otherwise
+        """
+        with self._lock:
+            return self._decorator_defaults.get(robot_id)
+
     def _get_effective_speed_locked(
         self, robot_id: RobotId, method_speed: Optional[PlaybackSpeed] = None
     ) -> PlaybackSpeed:
@@ -249,6 +261,9 @@ class InvalidSpeedError(PlaybackControlError):
 # Global instance - singleton pattern for system-wide state management
 _playback_manager = PlaybackControlManager()
 
+# Global registry for tracking active program's playback speed
+_active_program_playback_speed: float | None = None
+
 
 def get_playback_manager() -> PlaybackControlManager:
     """Get the global playback control manager instance
@@ -257,3 +272,33 @@ def get_playback_manager() -> PlaybackControlManager:
         Global PlaybackControlManager instance
     """
     return _playback_manager
+
+
+def set_active_program_playback_speed(speed: float) -> None:
+    """Set the active program's default playback speed
+
+    This is called by the program decorator when a program starts.
+
+    Args:
+        speed: Default playback speed for the program (0.0-1.0)
+    """
+    global _active_program_playback_speed
+    _active_program_playback_speed = speed
+
+
+def get_active_program_playback_speed() -> float | None:
+    """Get the active program's default playback speed
+
+    Returns:
+        Active program's default playback speed if set, None otherwise
+    """
+    return _active_program_playback_speed
+
+
+def clear_active_program_playback_speed() -> None:
+    """Clear the active program's playback speed
+
+    Called when a program ends.
+    """
+    global _active_program_playback_speed
+    _active_program_playback_speed = None

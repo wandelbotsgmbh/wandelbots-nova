@@ -166,6 +166,7 @@ class CombinedActions(pydantic.BaseModel):
 class MovementControllerContext(pydantic.BaseModel):
     combined_actions: CombinedActions
     motion_id: str
+    effective_speed: int = 100  # Playback speed as integer percentage (0-100), default is 100%
 
 
 MovementController = Callable[[MovementControllerContext], MovementControllerFunction]
