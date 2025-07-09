@@ -72,18 +72,29 @@ def motion_group_state_to_motion_state(
 
 def move_forward(context: MovementControllerContext) -> MovementControllerFunction:
     """
-    Movement controller that manages robot trajectory execution and runtime speed changes.
+    Movement controller that manages robot trajectory execution, runtime speed changes, pause/resume, and direction control.
 
     This controller handles bidirectional websocket communication with the robot execution system,
-    processing responses while simultaneously monitoring for external speed changes from tools
+    processing responses while simultaneously monitoring for external speed, state, and direction changes from tools
     like VS Code extensions or runtime control interfaces.
 
-    The controller uses a dual approach for speed change detection:
-    1. Response-based: Checks for speed changes on every websocket response
+    The controller uses a dual approach for change detection:
+    1. Response-based: Checks for speed/state/direction changes on every websocket response
     2. Event-driven: Continuous monitoring with minimal latency for responsive UI controls
 
-    For VS Code sliders and other interactive controls, the event-driven approach provides
-    near-instantaneous response times (1ms yields vs 50ms polling).
+    For VS Code sliders, pause/resume buttons, direction controls, and other interactive controls, the event-driven
+    approach provides near-instantaneous response times (1ms yields vs 50ms polling).
+
+    Supported runtime controls:
+    - Speed changes: Updates playback speed dynamically during execution
+    - Pause/Resume: Pauses robot execution and resumes from the same position
+    - Direction changes: Sets forward/backward direction applied on next resume
+
+    Direction Control:
+    - Direction changes take effect immediately when paused
+    - When resumed after a direction change, the robot will execute the trajectory in the new direction
+    - Forward direction: Normal trajectory execution from current position to end
+    - Backward direction: Reverse trajectory execution from current position toward start
 
     Args:
         context: Movement controller context containing trajectory, robot ID, and initial speed
@@ -98,19 +109,30 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         import asyncio
 
         # Set up runtime speed monitoring for external speed changes
-        from nova.core.playback_control import PlaybackSpeedPercent, RobotId, get_playback_manager
+        from nova.core.playback_control import (
+            PlaybackDirection,
+            PlaybackSpeedPercent,
+            PlaybackState,
+            RobotId,
+            get_playback_manager,
+        )
 
         robot_id = RobotId(context.robot_id)
         manager = get_playback_manager()
+
+        # Set execution state to indicate movement is starting
+        manager.set_execution_state(robot_id, PlaybackState.EXECUTING)
 
         # Use a queue to coordinate between request generation and response processing
         request_queue = asyncio.Queue()
         motion_completed = asyncio.Event()
         last_sent_speed = context.effective_speed
+        last_sent_state = PlaybackState.PLAYING  # Track current playback state
+        last_sent_direction = PlaybackDirection.FORWARD  # Track current playback direction
 
         async def response_processor():
             """Process websocket responses and check for external speed changes on each response."""
-            nonlocal last_sent_speed
+            nonlocal last_sent_speed, last_sent_state, last_sent_direction
 
             try:
                 async for response in response_stream:
@@ -127,7 +149,11 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                             f"Playback speed confirmed: requested_value={instance.playback_speed_response.requested_value}%"
                         )
 
-                    # Check for external speed changes on every websocket response for responsive detection
+                    # Handle pause movement responses
+                    elif isinstance(instance, wb.models.PauseMovementResponse):
+                        logger.info("Movement pause acknowledged by robot")
+
+                    # Check for external speed, state, and direction changes on every websocket response for responsive detection
                     method_speed = (
                         PlaybackSpeedPercent(context.method_speed)
                         if context.method_speed is not None
@@ -136,7 +162,10 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                     effective_speed = manager.get_effective_speed(
                         robot_id, method_speed=method_speed
                     )
+                    effective_state = manager.get_effective_state(robot_id)
+                    effective_direction = manager.get_effective_direction(robot_id)
 
+                    # Handle speed changes
                     if effective_speed != last_sent_speed:
                         logger.info(
                             f"Runtime playback speed change: {last_sent_speed}% -> {effective_speed}%"
@@ -151,6 +180,50 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         logger.debug(f"Queuing speed change request: {effective_speed}%")
                         await request_queue.put(speed_request)
 
+                    # Handle state changes (pause/resume)
+                    if effective_state != last_sent_state:
+                        logger.info(
+                            f"Runtime playback state change: {last_sent_state.value} -> {effective_state.value}"
+                        )
+                        last_sent_state = effective_state
+
+                        if effective_state == PlaybackState.PAUSED:
+                            # Queue pause request (wrapped in ExecuteTrajectoryRequest)
+                            pause_request = wb.models.ExecuteTrajectoryRequest(
+                                wb.models.PauseMovementRequest()
+                            )
+                            logger.debug("Queuing pause movement request")
+                            await request_queue.put(pause_request)
+                        else:  # PlaybackState.PLAYING
+                            # Queue resume request (using StartMovementRequest)
+                            # Use the current effective direction for resume
+                            set_io_list = context.combined_actions.to_set_io()
+                            wb_direction = (
+                                wb.models.Direction.DIRECTION_FORWARD
+                                if effective_direction == PlaybackDirection.FORWARD
+                                else wb.models.Direction.DIRECTION_BACKWARD
+                            )
+                            resume_request = wb.models.StartMovementRequest(
+                                set_ios=set_io_list,
+                                start_on_io=None,
+                                pause_on_io=None,
+                                direction=wb_direction,
+                            )
+                            logger.debug(
+                                f"Queuing resume movement request with direction: {effective_direction.value}"
+                            )
+                            await request_queue.put(resume_request)
+                            # Update last sent direction since we're resuming with new direction
+                            last_sent_direction = effective_direction
+
+                    # Handle direction changes (only effective when paused, applied on next resume)
+                    elif effective_direction != last_sent_direction:
+                        logger.info(
+                            f"Runtime playback direction change: {last_sent_direction.value} -> {effective_direction.value} (will apply on next resume)"
+                        )
+                        # Don't update last_sent_direction here - it will be updated when we actually resume
+                        # This just logs the direction change for user awareness
+
                     # Stop when standstill indicates motion ended
                     if isinstance(instance, wb.models.Standstill):
                         if (
@@ -158,6 +231,8 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                             == wb.models.StandstillReason.REASON_MOTION_ENDED
                         ):
                             logger.info("Motion completed")
+                            # Set execution state to indicate movement has ended
+                            manager.set_execution_state(robot_id, PlaybackState.IDLE)
                             motion_completed.set()
                             break
 
@@ -167,12 +242,13 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
         async def speed_monitor():
             """
-            Event-driven speed monitor for immediate response to external speed changes.
+            Event-driven speed, state, and direction monitor for immediate response to external changes.
 
-            This provides near-instantaneous speed change detection for responsive UI controls
-            like VS Code sliders, avoiding polling delays that could make the UI feel sluggish.
+            This provides near-instantaneous speed change, pause/resume, and direction detection for responsive
+            UI controls like VS Code sliders, pause/resume buttons, and direction controls, avoiding polling delays that
+            could make the UI feel sluggish.
             """
-            nonlocal last_sent_speed
+            nonlocal last_sent_speed, last_sent_state, last_sent_direction
 
             try:
                 # Log initialization info for debugging
@@ -190,6 +266,8 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                     effective_speed = manager.get_effective_speed(
                         robot_id, method_speed=method_speed
                     )
+                    effective_state = manager.get_effective_state(robot_id)
+                    effective_direction = manager.get_effective_direction(robot_id)
 
                     # Detect speed changes immediately
                     if effective_speed != last_sent_speed:
@@ -208,6 +286,50 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         )
                         await request_queue.put(speed_request)
 
+                    # Detect state changes immediately
+                    if effective_state != last_sent_state:
+                        logger.info(
+                            f"Speed monitor detected runtime playback state change: {last_sent_state.value} -> {effective_state.value}"
+                        )
+                        last_sent_state = effective_state
+
+                        if effective_state == PlaybackState.PAUSED:
+                            # Queue pause request (wrapped in ExecuteTrajectoryRequest)
+                            pause_request = wb.models.ExecuteTrajectoryRequest(
+                                wb.models.PauseMovementRequest()
+                            )
+                            logger.debug("Speed monitor queuing pause movement request")
+                            await request_queue.put(pause_request)
+                        else:  # PlaybackState.PLAYING
+                            # Queue resume request (using StartMovementRequest)
+                            # Use the current effective direction for resume
+                            set_io_list = context.combined_actions.to_set_io()
+                            wb_direction = (
+                                wb.models.Direction.DIRECTION_FORWARD
+                                if effective_direction == PlaybackDirection.FORWARD
+                                else wb.models.Direction.DIRECTION_BACKWARD
+                            )
+                            resume_request = wb.models.StartMovementRequest(
+                                set_ios=set_io_list,
+                                start_on_io=None,
+                                pause_on_io=None,
+                                direction=wb_direction,
+                            )
+                            logger.debug(
+                                f"Speed monitor queuing resume movement request with direction: {effective_direction.value}"
+                            )
+                            await request_queue.put(resume_request)
+                            # Update last sent direction since we're resuming with new direction
+                            last_sent_direction = effective_direction
+
+                    # Detect direction changes immediately (only effective when paused, applied on next resume)
+                    elif effective_direction != last_sent_direction:
+                        logger.info(
+                            f"Speed monitor detected runtime playback direction change: {last_sent_direction.value} -> {effective_direction.value} (will apply on next resume)"
+                        )
+                        # Don't update last_sent_direction here - it will be updated when we actually resume
+                        # This just logs the direction change for user awareness
+
                     # Brief yield to allow other coroutines to run, much faster than 50ms polling
                     await asyncio.sleep(0.001)  # 1ms yield instead of 50ms polling
 
@@ -218,7 +340,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                             external_override = manager._external_overrides.get(robot_id)
                             decorator_default = manager._decorator_defaults.get(robot_id)
                         logger.debug(
-                            f"Speed monitor check #{check_count}: effective_speed={effective_speed}%, last_sent={last_sent_speed}%, external_override={external_override}, decorator_default={decorator_default}, method_speed={method_speed}"
+                            f"Speed monitor check #{check_count}: effective_speed={effective_speed}%, effective_state={effective_state.value}, effective_direction={effective_direction.value}, last_sent_speed={last_sent_speed}%, last_sent_state={last_sent_state.value}, last_sent_direction={last_sent_direction.value}, external_override={external_override}, decorator_default={decorator_default}, method_speed={method_speed}"
                         )
 
             except Exception as e:
@@ -272,7 +394,8 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             async for request in request_generator():
                 yield request
         finally:
-            # Ensure proper cleanup of all tasks
+            # Ensure proper cleanup of all tasks and execution state
+            manager.set_execution_state(robot_id, PlaybackState.IDLE)
             motion_completed.set()
             response_task.cancel()
             speed_monitor_task.cancel()
