@@ -10,10 +10,11 @@ for Nova robot executions. It implements a clear precedence hierarchy:
 """
 
 import threading
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Literal, NewType, Optional
+
+from pydantic import BaseModel, Field
 
 # Type-safe identifiers
 RobotId = NewType("RobotId", str)
@@ -30,14 +31,15 @@ class PlaybackState(Enum):
     PAUSED = "paused"
 
 
-@dataclass(frozen=True)
-class PlaybackControl:
+class PlaybackControl(BaseModel):
     """Immutable playback control configuration"""
+
+    model_config = {"frozen": True}
 
     speed: PlaybackSpeed = PlaybackSpeed(1.0)
     state: PlaybackState = PlaybackState.PLAYING
     source: PlaybackSourceType = "default"
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class PlaybackControlManager:

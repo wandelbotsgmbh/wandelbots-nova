@@ -273,6 +273,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
+        playback_speed: float | None = None,
     ) -> AsyncIterable[MovementResponse]:
         """
         Executes the given joint_trajectory by simulating the robot's motion.

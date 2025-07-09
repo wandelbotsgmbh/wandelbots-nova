@@ -4,6 +4,7 @@ import threading
 from datetime import datetime
 
 import pytest
+from pydantic import ValidationError
 
 from nova.core.playback_control import (
     InvalidSpeedError,
@@ -175,9 +176,9 @@ class TestPlaybackControlDataClasses:
         """Test that PlaybackControl is immutable"""
         control = PlaybackControl(speed=PlaybackSpeed(0.5), state=PlaybackState.PAUSED)
 
-        # Should not be able to modify
-        with pytest.raises(AttributeError):
-            control.speed = PlaybackSpeed(0.7)  # type: ignore
+        # Should not be able to modify - Pydantic frozen model raises ValidationError
+        with pytest.raises(ValidationError):
+            control.speed = PlaybackSpeed(0.7)
 
     def test_playback_control_defaults(self):
         """Test PlaybackControl default values"""
