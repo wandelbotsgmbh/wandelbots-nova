@@ -5,7 +5,7 @@ for Nova robot executions. It implements a clear precedence hierarchy:
 
 1. External override (VS Code extension, future WebSocket/HTTP)
 2. Method parameter (playback_speed=0.5)
-3. Decorator default (@nova.program(playback_speed=0.3))
+3. Decorator default (@nova.program(playback_speed_percent=30))
 4. System default (1.0 = 100% speed)
 """
 

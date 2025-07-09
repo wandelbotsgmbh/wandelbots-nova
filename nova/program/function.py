@@ -44,7 +44,9 @@ class Program(BaseModel, Generic[Parameters, Return]):
     input: type[BaseModel]
     output: type[BaseModel]
     preconditions: ProgramPreconditions | None = None
-    playback_speed: int = 100  # Default playback speed for all robots in this program (0-100%)
+    playback_speed_percent: int = (
+        100  # Default playback speed for all robots in this program (0-100%)
+    )
 
     @classmethod
     def validate(cls, value: Callable[Parameters, Return]) -> "Program[Parameters, Return]":
@@ -286,7 +288,7 @@ def program(
     name: str | None = None,
     preconditions: ProgramPreconditions | None = None,
     viewer: Any | None = None,
-    playback_speed: int = 100,
+    playback_speed_percent: int = 100,
     enable_external_control: bool = True,
 ):
     """
@@ -296,7 +298,7 @@ def program(
         name: Name of the program
         preconditions: ProgramPreconditions containing controller configurations and cleanup settings
         viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
-        playback_speed: Default playback speed for all robot executions in this program (0-100%).
+        playback_speed_percent: Default playback speed for all robot executions in this program (0-100%).
                        Individual execute() calls can override this with their playback_speed parameter.
                        External tools (VS Code extensions) can override this globally.
         enable_external_control: Enable external control function registration (reserved for future use)
@@ -313,7 +315,9 @@ def program(
         if name:
             func_obj.name = name
         func_obj.preconditions = preconditions
-        func_obj.playback_speed = playback_speed  # Store playback speed in program object
+        func_obj.playback_speed_percent = (
+            playback_speed_percent  # Store playback speed in program object
+        )
 
         # Create a wrapper that handles controller lifecycle
         original_wrapped = func_obj._wrapped
@@ -326,11 +330,11 @@ def program(
                 created_controllers = await func_obj._create_controllers()
 
                 # Set active program playback speed for decorator defaults
-                if func_obj.playback_speed != 100:
+                if func_obj.playback_speed_percent != 100:
                     from nova.core.playback_control import set_active_program_playback_speed
 
                     # Convert to float for the playback control manager (expects 0.0-1.0)
-                    set_active_program_playback_speed(func_obj.playback_speed / 100.0)
+                    set_active_program_playback_speed(func_obj.playback_speed_percent / 100.0)
 
                 # Enable external control if requested
                 if enable_external_control:
@@ -354,7 +358,7 @@ def program(
                 await func_obj._cleanup_controllers(created_controllers)
 
                 # Clear active program playback speed
-                if func_obj.playback_speed != 100:
+                if func_obj.playback_speed_percent != 100:
                     from nova.core.playback_control import clear_active_program_playback_speed
 
                     clear_active_program_playback_speed()
