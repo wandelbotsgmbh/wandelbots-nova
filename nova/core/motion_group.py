@@ -8,7 +8,6 @@ from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
 from nova.cell.robot_cell import AbstractRobot
-from nova.core import logger
 from nova.core.exceptions import InconsistentCollisionScenes
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
@@ -420,11 +419,9 @@ class MotionGroup(AbstractRobot):
         # Check if robot is paused by external control
         playback_state = manager.get_effective_state(robot_id_typed)
         if playback_state == PlaybackState.PAUSED:
-            # For now, just log the pause state - full pause implementation would require
+            # For now, just note the pause state - full pause implementation would require
             # more complex coordination with the websocket execution flow
-            logger.info(
-                f"Robot {self.motion_group_id} is paused - execution will proceed but may be controlled externally"
-            )
+            pass
 
         if movement_controller is None:
             movement_controller = move_forward
@@ -463,6 +460,7 @@ class MotionGroup(AbstractRobot):
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
                 motion_id=load_plan_response.motion,
+                robot_id=self.motion_group_id,  # Pass the motion group ID as robot ID
                 effective_speed=effective_speed,  # Already an integer percent (0-100)
                 method_speed=int(method_speed_to_use) if method_speed_to_use is not None else None,
             )
@@ -480,8 +478,6 @@ class MotionGroup(AbstractRobot):
 
         # The effective speed is applied through the movement controller layer
         # Real-time speed updates can be sent during execution using PlaybackSpeedRequest
-        if effective_speed != 1.0:
-            logger.info(f"Robot {self.motion_group_id} executing at {effective_speed}% speed")
 
         execution_task = asyncio.create_task(
             self._api_gateway.motion_api.execute_trajectory(
@@ -532,14 +528,13 @@ class MotionGroup(AbstractRobot):
         )
 
     async def stop(self):
-        logger.debug(f"Stopping motion of {self}...")
         try:
             if self._current_motion is None:
                 raise ValueError("No motion to stop")
             await self._api_gateway.stop_motion(cell=self._cell, motion_id=self._current_motion)
-            logger.debug(f"Motion {self.current_motion} stopped.")
-        except ValueError as e:
-            logger.debug(f"No motion to stop for {self}: {e}")
+        except ValueError:
+            # No motion to stop
+            pass
 
     async def get_state(self, tcp: str | None = None) -> RobotState:
         """

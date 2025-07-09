@@ -16,6 +16,7 @@ class TestMovementControllerContext:
         return {
             "combined_actions": CombinedActions(items=tuple(actions)),
             "motion_id": "test_motion_123",
+            "robot_id": "0@test_controller",
         }
 
     def test_context_with_explicit_speed(self, base_context_args):
@@ -41,6 +42,7 @@ class TestMovementControllerContext:
         context = MovementControllerContext(
             combined_actions=CombinedActions(items=tuple()),
             motion_id="empty_motion",
+            robot_id="0@test_controller",
             effective_speed=25,
         )
         assert context.effective_speed == 25

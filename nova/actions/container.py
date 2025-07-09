@@ -166,6 +166,7 @@ class CombinedActions(pydantic.BaseModel):
 class MovementControllerContext(pydantic.BaseModel):
     combined_actions: CombinedActions
     motion_id: str
+    robot_id: str  # Motion group ID for playback control (e.g., "0@ur")
     effective_speed: int = 100  # Playback speed as integer percentage (0-100), default is 100%
     method_speed: int | None = None  # Method-level speed setting if provided
 
