@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 # Type-safe identifiers
 RobotId = NewType("RobotId", str)
-PlaybackSpeed = NewType("PlaybackSpeed", float)
+PlaybackSpeedPercent = NewType("PlaybackSpeedPercent", int)
 
 # Control source types with strict validation
 PlaybackSourceType = Literal["external", "method", "decorator", "default"]
@@ -36,7 +36,7 @@ class PlaybackControl(BaseModel):
 
     model_config = {"frozen": True}
 
-    speed: PlaybackSpeed = PlaybackSpeed(1.0)
+    speed: PlaybackSpeedPercent = PlaybackSpeedPercent(100)
     state: PlaybackState = PlaybackState.PLAYING
     source: PlaybackSourceType = "default"
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -53,17 +53,20 @@ class PlaybackControlManager:
     def __init__(self):
         """Initialize with thread-safe data structures"""
         self._external_overrides: dict[RobotId, PlaybackControl] = {}
-        self._decorator_defaults: dict[RobotId, PlaybackSpeed] = {}
+        self._decorator_defaults: dict[RobotId, PlaybackSpeedPercent] = {}
         self._lock = threading.Lock()
 
     def set_external_override(
-        self, robot_id: RobotId, speed: PlaybackSpeed, state: PlaybackState = PlaybackState.PLAYING
+        self,
+        robot_id: RobotId,
+        speed: PlaybackSpeedPercent,
+        state: PlaybackState = PlaybackState.PLAYING,
     ) -> None:
         """Set external override (highest precedence)
 
         Args:
             robot_id: Unique robot identifier
-            speed: Playback speed (0.0-1.0)
+            speed: Playback speed percent (0-100)
             state: Playback state (playing/paused)
 
         Raises:
@@ -76,12 +79,12 @@ class PlaybackControlManager:
                 speed=speed, state=state, source="external", timestamp=datetime.now(timezone.utc)
             )
 
-    def set_decorator_default(self, robot_id: RobotId, speed: PlaybackSpeed) -> None:
+    def set_decorator_default(self, robot_id: RobotId, speed: PlaybackSpeedPercent) -> None:
         """Set decorator default speed (lower precedence)
 
         Args:
             robot_id: Unique robot identifier
-            speed: Default playback speed (0.0-1.0)
+            speed: Default playback speed percent (0-100)
 
         Raises:
             ValueError: If speed is outside valid range
@@ -91,7 +94,7 @@ class PlaybackControlManager:
         with self._lock:
             self._decorator_defaults[robot_id] = speed
 
-    def get_decorator_default(self, robot_id: RobotId) -> Optional[PlaybackSpeed]:
+    def get_decorator_default(self, robot_id: RobotId) -> Optional[PlaybackSpeedPercent]:
         """Get decorator default speed for a robot
 
         Args:
@@ -104,16 +107,16 @@ class PlaybackControlManager:
             return self._decorator_defaults.get(robot_id)
 
     def _get_effective_speed_locked(
-        self, robot_id: RobotId, method_speed: Optional[PlaybackSpeed] = None
-    ) -> PlaybackSpeed:
-        """Get effective playback speed without acquiring lock (internal use only)
+        self, robot_id: RobotId, method_speed: Optional[PlaybackSpeedPercent] = None
+    ) -> PlaybackSpeedPercent:
+        """Get effective playback speed percent without acquiring lock (internal use only)
 
         Args:
             robot_id: Unique robot identifier
-            method_speed: Speed from method parameter
+            method_speed: Speed percent from method parameter
 
         Returns:
-            Effective playback speed (0.0-1.0)
+            Effective playback speed percent (0-100)
         """
         # 1. External override (highest precedence)
         if robot_id in self._external_overrides:
@@ -129,25 +132,25 @@ class PlaybackControlManager:
             return self._decorator_defaults[robot_id]
 
         # 4. System default
-        return PlaybackSpeed(1.0)
+        return PlaybackSpeedPercent(100)
 
     def get_effective_speed(
-        self, robot_id: RobotId, method_speed: Optional[PlaybackSpeed] = None
-    ) -> PlaybackSpeed:
-        """Get effective speed with precedence resolution
+        self, robot_id: RobotId, method_speed: Optional[PlaybackSpeedPercent] = None
+    ) -> PlaybackSpeedPercent:
+        """Get effective speed percent with precedence resolution
 
         Precedence (highest to lowest):
         1. External override
         2. Method parameter
         3. Decorator default
-        4. System default (1.0)
+        4. System default (100)
 
         Args:
             robot_id: Unique robot identifier
-            method_speed: Speed from method parameter
+            method_speed: Speed percent from method parameter
 
         Returns:
-            Effective playback speed (0.0-1.0)
+            Effective playback speed percent (0-100)
         """
         with self._lock:
             return self._get_effective_speed_locked(robot_id, method_speed)
@@ -226,23 +229,23 @@ class PlaybackControlManager:
             all_robots.update(self._decorator_defaults.keys())
             return list(all_robots)
 
-    def _validate_speed(self, speed: PlaybackSpeed) -> None:
-        """Validate speed is in valid range
+    def _validate_speed(self, speed: PlaybackSpeedPercent) -> None:
+        """Validate speed percent is in valid range
 
         Args:
-            speed: Speed value to validate
+            speed: Speed percent value to validate
 
         Raises:
             ValueError: If speed is outside valid range
         """
-        if not (0.0 <= speed <= 1.0):
-            raise ValueError(f"Speed must be between 0.0 and 1.0, got {speed}")
+        if not (0 <= speed <= 100):
+            raise ValueError(f"Speed percent must be between 0 and 100, got {speed}")
 
 
 class PlaybackControlError(Exception):
     """Base exception for playback control errors"""
 
-    def __init__(self, message: str, requested_speed: Optional[float] = None):
+    def __init__(self, message: str, requested_speed: Optional[int] = None):
         super().__init__(message)
         self.timestamp = datetime.now(timezone.utc)
         self.requested_speed = requested_speed
@@ -251,9 +254,9 @@ class PlaybackControlError(Exception):
 class InvalidSpeedError(PlaybackControlError):
     """Raised when an invalid speed value is provided"""
 
-    def __init__(self, speed: float):
+    def __init__(self, speed: int):
         super().__init__(
-            f"Invalid playback speed: {speed}. Speed must be between 0.0 and 1.0",
+            f"Invalid playback speed percent: {speed}. Speed percent must be between 0 and 100",
             requested_speed=speed,
         )
 
@@ -261,8 +264,8 @@ class InvalidSpeedError(PlaybackControlError):
 # Global instance - singleton pattern for system-wide state management
 _playback_manager = PlaybackControlManager()
 
-# Global registry for tracking active program's playback speed
-_active_program_playback_speed: float | None = None
+# Global registry for tracking active program's playback speed percent
+_active_program_playback_speed_percent: int | None = None
 
 
 def get_playback_manager() -> PlaybackControlManager:
@@ -274,31 +277,31 @@ def get_playback_manager() -> PlaybackControlManager:
     return _playback_manager
 
 
-def set_active_program_playback_speed(speed: float) -> None:
-    """Set the active program's default playback speed
+def set_active_program_playback_speed_percent(speed_percent: int) -> None:
+    """Set the active program's default playback speed percent
 
     This is called by the program decorator when a program starts.
 
     Args:
-        speed: Default playback speed for the program (0.0-1.0)
+        speed_percent: Default playback speed percent for the program (0-100)
     """
-    global _active_program_playback_speed
-    _active_program_playback_speed = speed
+    global _active_program_playback_speed_percent
+    _active_program_playback_speed_percent = speed_percent
 
 
-def get_active_program_playback_speed() -> float | None:
-    """Get the active program's default playback speed
+def get_active_program_playback_speed_percent() -> int | None:
+    """Get the active program's default playback speed percent
 
     Returns:
-        Active program's default playback speed if set, None otherwise
+        Active program's default playback speed percent if set, None otherwise
     """
-    return _active_program_playback_speed
+    return _active_program_playback_speed_percent
 
 
-def clear_active_program_playback_speed() -> None:
-    """Clear the active program's playback speed
+def clear_active_program_playback_speed_percent() -> None:
+    """Clear the active program's playback speed percent
 
     Called when a program ends.
     """
-    global _active_program_playback_speed
-    _active_program_playback_speed = None
+    global _active_program_playback_speed_percent
+    _active_program_playback_speed_percent = None

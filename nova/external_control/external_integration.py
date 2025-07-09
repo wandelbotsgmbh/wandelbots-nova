@@ -10,36 +10,38 @@ avoids security concerns and simplifies integration for this initial implementat
 
 import sys
 
-from nova.core.playback_control import PlaybackSpeed, RobotId, get_playback_manager
+from nova.core.playback_control import PlaybackSpeedPercent, RobotId, get_playback_manager
 
 
-def nova_set_playback_speed(robot_id: str, speed: float) -> dict:
+def nova_set_playback_speed(robot_id: str, speed_percent: int) -> dict:
     """Set playback speed for a robot (called from external tools)
 
     Args:
         robot_id: Unique robot identifier
-        speed: Playback speed (0.0-1.0, will be clamped if outside range)
+        speed_percent: Playback speed percent (0-100, will be clamped if outside range)
 
     Returns:
         dict: Success/error response with standardized format
 
     Example:
-        result = nova_set_playback_speed("robot1", 0.5)
+        result = nova_set_playback_speed("robot1", 50)
         if result["success"]:
-            print(f"Speed set to {result['speed']}")
+            print(f"Speed set to {result['speed']}%")
     """
     try:
-        # Clamp speed to valid range
-        clamped_speed = max(0.0, min(1.0, float(speed)))
+        # Clamp speed to valid range (0-100)
+        clamped_speed_percent = max(0, min(100, int(speed_percent)))
 
         manager = get_playback_manager()
-        manager.set_external_override(RobotId(robot_id), PlaybackSpeed(clamped_speed))
+        manager.set_external_override(
+            RobotId(robot_id), PlaybackSpeedPercent(clamped_speed_percent)
+        )
 
         return {
             "success": True,
             "robot_id": robot_id,
-            "speed": clamped_speed,
-            "message": f"Playback speed set to {clamped_speed * 100:.1f}%",
+            "speed": clamped_speed_percent,
+            "message": f"Playback speed set to {clamped_speed_percent}%",
         }
 
     except Exception as e:
@@ -143,9 +145,9 @@ def nova_get_available_robots() -> dict:
             robots.append(
                 {
                     "id": robot_id,
-                    "speed": float(current_speed),
+                    "speed": int(current_speed),  # Now returning integer percent directly
                     "state": current_state.value,
-                    "speed_percent": f"{current_speed * 100:.1f}%",
+                    "speed_percent": f"{int(current_speed)}%",
                 }
             )
 

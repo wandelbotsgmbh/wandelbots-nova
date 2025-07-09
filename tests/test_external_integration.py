@@ -32,12 +32,12 @@ class TestExternalIntegration:
         mock_manager = Mock()
         mock_get_manager.return_value = mock_manager
 
-        result = nova_set_playback_speed("robot1", 0.5)
+        result = nova_set_playback_speed("robot1", 50)
 
         assert result["success"] is True
-        assert result["speed"] == 0.5
+        assert result["speed"] == 50
         assert result["robot_id"] == "robot1"
-        assert "50.0%" in result["message"]
+        assert "50%" in result["message"]
         mock_manager.set_external_override.assert_called_once()
 
     @patch("nova.external_control.external_integration.get_playback_manager")
@@ -47,14 +47,14 @@ class TestExternalIntegration:
         mock_get_manager.return_value = mock_manager
 
         # Test clamping high value
-        result = nova_set_playback_speed("robot1", 1.5)
+        result = nova_set_playback_speed("robot1", 150)
         assert result["success"] is True
-        assert result["speed"] == 1.0
+        assert result["speed"] == 100
 
         # Test clamping low value
-        result = nova_set_playback_speed("robot1", -0.5)
+        result = nova_set_playback_speed("robot1", -50)
         assert result["success"] is True
-        assert result["speed"] == 0.0
+        assert result["speed"] == 0
 
     @patch("nova.external_control.external_integration.get_playback_manager")
     def test_nova_pause_robot_success(self, mock_get_manager):
@@ -89,7 +89,7 @@ class TestExternalIntegration:
         mock_manager.set_external_override.side_effect = Exception("Test error")
         mock_get_manager.return_value = mock_manager
 
-        result = nova_set_playback_speed("robot1", 0.5)
+        result = nova_set_playback_speed("robot1", 50)
 
         assert result["success"] is False
         assert "Test error" in result["error"]
@@ -100,7 +100,7 @@ class TestExternalIntegration:
         """Test robot discovery function"""
         mock_manager = Mock()
         mock_manager.get_all_robots.return_value = ["robot1", "robot2"]
-        mock_manager.get_effective_speed.side_effect = [0.5, 0.8]
+        mock_manager.get_effective_speed.side_effect = [50, 80]
         mock_manager.get_effective_state.side_effect = [Mock(value="playing"), Mock(value="paused")]
         mock_get_manager.return_value = mock_manager
 
@@ -114,8 +114,8 @@ class TestExternalIntegration:
         # Check robot details
         robot1 = result["robots"][0]
         assert robot1["id"] == "robot1"
-        assert robot1["speed"] == 0.5
-        assert robot1["speed_percent"] == "50.0%"
+        assert robot1["speed"] == 50
+        assert robot1["speed_percent"] == "50%"
 
     @patch("nova.external_control.external_integration.get_playback_manager")
     def test_get_available_robots_empty(self, mock_get_manager):
@@ -150,13 +150,13 @@ class TestExternalIntegration:
             mock_manager = Mock()
             mock_get_manager.return_value = mock_manager
 
-            result = nova_set_playback_speed("robot1", 0.0)
+            result = nova_set_playback_speed("robot1", 0)
             assert result["success"] is True
-            assert result["speed"] == 0.0
+            assert result["speed"] == 0
 
-            result = nova_set_playback_speed("robot1", 1.0)
+            result = nova_set_playback_speed("robot1", 100)
             assert result["success"] is True
-            assert result["speed"] == 1.0
+            assert result["speed"] == 100
 
 
 class TestFunctionReturnFormats:
@@ -170,7 +170,7 @@ class TestFunctionReturnFormats:
         mock_get_manager.return_value = mock_manager
 
         functions_and_args = [
-            (nova_set_playback_speed, ("robot1", 0.5)),
+            (nova_set_playback_speed, ("robot1", 50)),
             (nova_pause_robot, ("robot1",)),
             (nova_resume_robot, ("robot1",)),
             (nova_get_available_robots, ()),
@@ -193,7 +193,7 @@ class TestFunctionReturnFormats:
         mock_get_manager.side_effect = Exception("Test error")
 
         functions_and_args = [
-            (nova_set_playback_speed, ("robot1", 0.5)),
+            (nova_set_playback_speed, ("robot1", 50)),
             (nova_pause_robot, ("robot1",)),
             (nova_resume_robot, ("robot1",)),
             (nova_get_available_robots, ()),

@@ -149,17 +149,17 @@ class MotionGroup(AbstractRobot):
         """Set decorator defaults from active program playback speed if available."""
         try:
             from nova.core.playback_control import (
-                PlaybackSpeed,
+                PlaybackSpeedPercent,
                 RobotId,
-                get_active_program_playback_speed,
+                get_active_program_playback_speed_percent,
                 get_playback_manager,
             )
 
-            active_speed = get_active_program_playback_speed()
+            active_speed = get_active_program_playback_speed_percent()
             if active_speed is not None:
                 manager = get_playback_manager()
                 manager.set_decorator_default(
-                    RobotId(self._motion_group_id), PlaybackSpeed(active_speed)
+                    RobotId(self._motion_group_id), PlaybackSpeedPercent(active_speed)
                 )
         except Exception:
             # If there's any issue with setting defaults, continue silently
@@ -396,7 +396,7 @@ class MotionGroup(AbstractRobot):
     ) -> AsyncIterable[MovementResponse]:
         # Get effective speed using precedence resolution
         from nova.core.playback_control import (
-            PlaybackSpeed,
+            PlaybackSpeedPercent,
             PlaybackState,
             RobotId,
             get_playback_manager,
@@ -405,13 +405,17 @@ class MotionGroup(AbstractRobot):
         robot_id_typed = RobotId(self.motion_group_id)
         manager = get_playback_manager()
 
-        # Convert playback_speed to PlaybackSpeed if provided
-        method_speed = PlaybackSpeed(playback_speed) if playback_speed is not None else None
+        # Convert playback_speed to PlaybackSpeedPercent if provided
+        method_speed = (
+            PlaybackSpeedPercent(int(playback_speed)) if playback_speed is not None else None
+        )
         effective_speed = manager.get_effective_speed(robot_id_typed, method_speed)
 
-        # Validate speed range
-        if not (0.0 <= effective_speed <= 1.0):
-            raise ValueError(f"Playback speed must be between 0.0 and 1.0, got {effective_speed}")
+        # Validate speed range (0-100 percent)
+        if not (0 <= effective_speed <= 100):
+            raise ValueError(
+                f"Playback speed must be between 0 and 100 percent, got {effective_speed}"
+            )
 
         # Check if robot is paused by external control
         playback_state = manager.get_effective_state(robot_id_typed)
@@ -449,11 +453,18 @@ class MotionGroup(AbstractRobot):
 
             yield move_to_response
 
+        # If method_speed is None but effective_speed is not the default 100,
+        # use the effective_speed as method_speed to ensure consistency
+        method_speed_to_use = method_speed
+        if method_speed_to_use is None and effective_speed != 100:
+            method_speed_to_use = PlaybackSpeedPercent(effective_speed)
+
         controller = movement_controller(
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
                 motion_id=load_plan_response.motion,
-                effective_speed=int(effective_speed * 100),  # Convert 0.0-1.0 to 0-100
+                effective_speed=effective_speed,  # Already an integer percent (0-100)
+                method_speed=int(method_speed_to_use) if method_speed_to_use is not None else None,
             )
         )
 
@@ -470,9 +481,7 @@ class MotionGroup(AbstractRobot):
         # The effective speed is applied through the movement controller layer
         # Real-time speed updates can be sent during execution using PlaybackSpeedRequest
         if effective_speed != 1.0:
-            logger.info(
-                f"Robot {self.motion_group_id} executing at {effective_speed * 100:.1f}% speed"
-            )
+            logger.info(f"Robot {self.motion_group_id} executing at {effective_speed}% speed")
 
         execution_task = asyncio.create_task(
             self._api_gateway.motion_api.execute_trajectory(

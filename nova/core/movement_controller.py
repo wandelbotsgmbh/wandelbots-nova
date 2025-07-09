@@ -111,12 +111,61 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             set_ios=set_io_list, start_on_io=None, pause_on_io=None
         )
 
+        # --- Responsive runtime playback speed update logic ---
+        from nova.core.playback_control import PlaybackSpeedPercent, RobotId, get_playback_manager
+
+        robot_id = RobotId(
+            context.motion_id.split(":")[0] if ":" in context.motion_id else context.motion_id
+        )
+        manager = get_playback_manager()
+        last_sent_speed = context.effective_speed
+        last_check_time = 0.0
+        check_interval = 0.2  # Check every 200ms
+
+        # Run an initial check before starting execution
+        method_speed = (
+            PlaybackSpeedPercent(context.method_speed) if context.method_speed is not None else None
+        )
+        effective_speed = manager.get_effective_speed(robot_id, method_speed=method_speed)
+        if effective_speed != last_sent_speed:
+            logger.info(f"Initial playback speed update: {last_sent_speed}% -> {effective_speed}%")
+            last_sent_speed = effective_speed
+            yield wb.models.ExecuteTrajectoryRequest(
+                wb.models.PlaybackSpeedRequest(playback_speed_in_percent=effective_speed)
+            )
+
         # then we wait until the movement is finished
+        import time
+
+        last_check_time = time.time()
+        check_interval = 0.2  # Check every 200ms
+
         async for execute_trajectory_response in response_stream:
+            # Check for speed changes periodically
+            current_time = time.time()
+            if current_time - last_check_time > check_interval:
+                last_check_time = current_time
+
+                method_speed = (
+                    PlaybackSpeedPercent(context.method_speed)
+                    if context.method_speed is not None
+                    else None
+                )
+                effective_speed = manager.get_effective_speed(robot_id, method_speed=method_speed)
+
+                if effective_speed != last_sent_speed:
+                    logger.info(
+                        f"Runtime playback speed change detected: {last_sent_speed}% -> {effective_speed}%"
+                    )
+                    last_sent_speed = effective_speed
+                    yield wb.models.ExecuteTrajectoryRequest(
+                        wb.models.PlaybackSpeedRequest(playback_speed_in_percent=effective_speed)
+                    )
+
             instance = execute_trajectory_response.actual_instance
             # Stop when standstill indicates motion ended
             if isinstance(instance, wb.models.Standstill):
                 if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
-                    return
+                    break
 
     return movement_controller
