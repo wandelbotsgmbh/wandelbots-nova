@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.2.0 (2025-07-09)
+
+### Features
+
+- Added register_program_source to novax (#224)
+  ([#224](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/224),
+  [`2bf0da9`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2bf0da96299f04bef0ca5a0a7054313955597242))
+
+
 ## v2.1.2 (2025-07-08)
 
 ### Bug Fixes
