@@ -329,7 +329,11 @@ def program(
                         # Try to extract robot_cell from function arguments
                         # For now, assume first argument is robot_cell if it has expected methods
                         if args and hasattr(args[0], "get_motion_group_ids"):
-                            robot_cell = args[0]
+                            from typing import cast
+
+                            from nova.cell.robot_cell import RobotCell
+
+                            robot_cell = cast(RobotCell, args[0])
                             from nova.core.playback_control import (
                                 PlaybackSpeed,
                                 RobotId,
@@ -338,7 +342,7 @@ def program(
 
                             manager = get_playback_manager()
                             # Set decorator defaults for all robots in the cell
-                            robot_ids = robot_cell.get_motion_group_ids()  # type: ignore
+                            robot_ids = robot_cell.get_motion_group_ids()
                             for robot_id in robot_ids:
                                 manager.set_decorator_default(
                                     RobotId(robot_id), PlaybackSpeed(playback_speed)

@@ -460,11 +460,17 @@ class MotionGroup(AbstractRobot):
         await execution_task
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
-        # TODO: mypy failed on main branch, need to check
-        if self._optimizer_setup is None or self._optimizer_setup.tcp != tcp:
+        # Cache optimizer setup per TCP to avoid redundant API calls
+        # Note: We cache based on TCP string ID since the setup is specific to the TCP
+        if (
+            self._optimizer_setup is None
+            or getattr(self._optimizer_setup, "_cached_tcp_id", None) != tcp
+        ):
             self._optimizer_setup = await self._api_gateway.get_optimizer_config(
                 cell=self._cell, motion_group_id=self.motion_group_id, tcp=tcp
             )
+            # Store the TCP ID for cache validation
+            setattr(self._optimizer_setup, "_cached_tcp_id", tcp)
 
         return self._optimizer_setup
 
