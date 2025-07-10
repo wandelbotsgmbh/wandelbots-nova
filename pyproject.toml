@@ -44,6 +44,7 @@ dev = [
     "freezegun>=1.5.1",
     "pyinstrument>=5.0.2",
     "glom>=24.11.0",
+    "uvicorn>=0.35.0",
 ]
 
 [project.optional-dependencies]

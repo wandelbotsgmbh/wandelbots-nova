@@ -45,6 +45,7 @@ class NovaxProgramRunner(ProgramRunner):
             program_id=program_id,
             program=SimpleProgram(content="", program_type=ProgramType.PYTHON),
             args={},
+            nova=Nova(),
         )
         self.program_functions = program_functions
         self.parameters = parameters
@@ -55,17 +56,21 @@ class NovaxProgramRunner(ProgramRunner):
 
         func = self.program_functions[self.program_id]
 
-        # Execute the function with parameters
-        if self.parameters:
-            result = func(**self.parameters)
-        else:
-            result = func()
+        if not self._nova:
+            raise RuntimeError("No Nova instance available")
 
-        # Check if the function is async and await it if necessary
-        if inspect.iscoroutine(result):
-            result = await result
+        async with self._nova as nova:
+            # Execute the function with parameters
+            if self.parameters:
+                result = func(nova, **self.parameters)
+            else:
+                result = func(nova)
 
-        return result
+            # Check if the function is async and await it if necessary
+            if inspect.iscoroutine(result):
+                result = await result
+
+            return result
 
 
 class ProgramDetails(BaseModel):
@@ -84,11 +89,19 @@ class ProgramManager:
     def __init__(self):
         self._programs: dict[str, ProgramDetails] = {}
         self._program_functions: dict[str, Program] = {}
-        self._runners: dict[str, dict[str, NovaxProgramRunner]] = {}
+        self._runner: NovaxProgramRunner | None = None
         self._program_sources: list[ProgramSource] = []
 
     def has_program(self, program_id: str) -> bool:
         return program_id in self._programs
+
+    @property
+    def is_any_program_running(self) -> bool:
+        return self._runner is not None and self._runner.is_running()
+
+    @property
+    def running_program(self) -> Optional[str]:
+        return self._runner.program_id if self.is_any_program_running else None
 
     def register_program_source(self, program_source: ProgramSource) -> None:
         """
@@ -154,23 +167,28 @@ class ProgramManager:
         return self._runners[program_id][run_id].program_run
 
     async def run_program(
-        self, program_id: str, parameters: Optional[dict[str, Any]] = None
+        self, program_id: str, parameters: dict[str, Any] | None = None
     ) -> ProgramRun:
         """Run a registered program with given parameters"""
-        runner = NovaxProgramRunner(program_id, self._program_functions, parameters)
-        if program_id not in self._runners:
-            self._runners[program_id] = {}
-        self._runners[program_id][runner.run_id] = runner
+        if self.is_any_program_running:
+            raise RuntimeError("A program is already running")
+
+        runner = self._runner = NovaxProgramRunner(program_id, self._program_functions, parameters)
         runner.start(sync=False)
         return runner.program_run
 
-    async def stop_program(self, program_id: str, run_id: str):
+    async def stop_program(self, program_id: str):
         """Stop a running program"""
-        runner = self._runners[program_id][run_id]
-        if not runner:
-            raise ValueError(f"Runner {run_id} not found")
-        runner.stop(sync=True)
-        del self._runners[program_id][run_id]
+        if not self.is_any_program_running:
+            raise RuntimeError("No program is running")
+
+        if self.running_program != program_id:
+            raise RuntimeError(
+                f"Program {program_id} is not running. Currently running: {self.running_program}"
+            )
+
+        self._runner.stop(sync=True)
+        self._runner = None
 
 
 # Example implementations of ProgramSource
@@ -220,21 +238,20 @@ class WandelscriptProgramSource:
 
         # Create a wrapper function
         @nova.program(name=program_id)
-        async def wandelscript_wrapper():
-            async with Nova() as nova:
-                robot_cell = await nova.cell().get_robot_cell()
-                # Read the file content
-                with open(path) as f:
-                    program_content = f.read()
+        async def wandelscript_wrapper(nova: Nova):
+            robot_cell = await nova.cell().get_robot_cell()
+            # Read the file content
+            with open(path) as f:
+                program_content = f.read()
 
-                result = wandelscript.run(
-                    program_id=program_id,
-                    program=program_content,
-                    # TODO: Also pass args
-                    args={},
-                    foreign_functions=self.foreign_functions,
-                    robot_cell_override=robot_cell,
-                )
-                return result
+            result = wandelscript.run(
+                program_id=program_id,
+                program=program_content,
+                # TODO: Also pass args
+                args={},
+                foreign_functions=self.foreign_functions,
+                robot_cell_override=robot_cell,
+            )
+            return result
 
         return wandelscript_wrapper

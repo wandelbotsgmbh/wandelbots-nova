@@ -1,5 +1,3 @@
-import asyncio
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -37,9 +35,6 @@ def test_get_program_success(novax_app):
     assert "created_at" in program
     assert "updated_at" in program
     assert "input_schema" in program
-    assert "_links" in program
-    assert "self" in program["_links"]
-    assert "runs" in program["_links"]
 
 
 def test_get_program_not_found(novax_app):
@@ -51,31 +46,11 @@ def test_get_program_not_found(novax_app):
     assert response.json()["detail"] == "Program not found"
 
 
-def test_list_program_runs_empty(novax_app):
-    """Test GET /programs/{program}/runs - list runs (empty)"""
-    client = TestClient(novax_app)
-    response = client.get("/programs/simple_program/runs")
-
-    assert response.status_code == 200
-    runs = response.json()
-    assert isinstance(runs, list)
-    assert len(runs) == 0
-
-
-def test_list_program_runs_program_not_found(novax_app):
-    """Test GET /programs/{program}/runs - program not found"""
-    client = TestClient(novax_app)
-    response = client.get("/programs/nonexistent_program/runs")
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Program not found"
-
-
-def test_run_program_success(novax_app):
-    """Test POST /programs/{program}/runs - run program"""
+def test_start_program_success(novax_app):
+    """Test POST /programs/{program}/start - start program"""
     client = TestClient(novax_app)
     response = client.post(
-        "/programs/simple_program/runs", json={"parameters": {"number_of_steps": 5}}
+        "/programs/simple_program/start", json={"parameters": {"number_of_steps": 5}}
     )
 
     assert response.status_code == 200
@@ -86,10 +61,10 @@ def test_run_program_success(novax_app):
     assert "state" in run
 
 
-def test_run_program_without_parameters(novax_app):
-    """Test POST /programs/{program}/runs - run program without parameters"""
+def test_start_program_without_parameters(novax_app):
+    """Test POST /programs/{program}/start - start program without parameters"""
     client = TestClient(novax_app)
-    response = client.post("/programs/simple_program/runs", json={})
+    response = client.post("/programs/simple_program/start", json={})
 
     assert response.status_code == 200
     run = response.json()
@@ -99,79 +74,83 @@ def test_run_program_without_parameters(novax_app):
     assert "state" in run
 
 
-def test_run_program_not_found(novax_app):
-    """Test POST /programs/{program}/runs - program not found"""
+def test_start_program_not_found(novax_app):
+    """Test POST /programs/{program}/start - program not found"""
     client = TestClient(novax_app)
-    response = client.post("/programs/nonexistent_program/runs", json={"parameters": {}})
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Program not found"
-
-
-def test_get_program_run_success(novax_app):
-    """Test GET /programs/{program}/runs/{run} - get run details"""
-    client = TestClient(novax_app)
-
-    # First create a run
-    run_response = client.post(
-        "/programs/simple_program/runs", json={"parameters": {"number_of_steps": 1}}
-    )
-    assert run_response.status_code == 200
-    run_id = run_response.json()["run_id"]
-
-    # Then get the run details
-    response = client.get(f"/programs/simple_program/runs/{run_id}")
-
-    assert response.status_code == 200
-    run = response.json()
-
-    assert run["run_id"] == run_id
-    assert run["program_id"] == "simple_program"
-    assert "state" in run
-    assert "_links" in run
-    assert "self" in run["_links"]
-    assert "stop" in run["_links"]
-
-
-def test_get_program_run_program_not_found(novax_app):
-    """Test GET /programs/{program}/runs/{run} - program not found"""
-    client = TestClient(novax_app)
-    response = client.get("/programs/nonexistent_program/runs/some_run_id")
+    response = client.post("/programs/nonexistent_program/start", json={"parameters": {}})
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Program not found"
 
 
 @pytest.mark.integration
-@pytest.mark.asyncio
-async def test_stop_program_run_success(novax_app):
-    """Test POST /programs/{program}/runs/{run}/stop - stop run"""
+def test_start_program_already_running(novax_app):
+    """Test POST /programs/{program}/start - program already running"""
     client = TestClient(novax_app)
 
-    # First create a run
-    run_response = client.post(
-        "/programs/simple_program/runs", json={"parameters": {"number_of_steps": 10}}
+    # Start first program
+    response1 = client.post(
+        "/programs/simple_program/start", json={"parameters": {"number_of_steps": 10}}
     )
-    assert run_response.status_code == 200
-    print(run_response.json())
-    run_id = run_response.json()["run_id"]
-    print(run_id)
+    assert response1.status_code == 200
 
-    await asyncio.sleep(4)
+    # Try to start another program while one is running
+    response2 = client.post(
+        "/programs/simple_program/start", json={"parameters": {"number_of_steps": 5}}
+    )
 
-    r = client.get(f"/programs/simple_program/runs/{run_id}")
-    print(r.json())
+    assert response2.status_code == 400
+    assert response2.json()["detail"] == "A program is already running"
 
-    # Then stop the run
-    response = client.post(f"/programs/simple_program/runs/{run_id}/stop")
+
+@pytest.mark.integration
+def test_stop_program_success(novax_app):
+    """Test POST /programs/{program}/stop - stop program"""
+    client = TestClient(novax_app)
+
+    # First start a program
+    start_response = client.post(
+        "/programs/simple_program/start", json={"parameters": {"number_of_steps": 10}}
+    )
+    assert start_response.status_code == 200
+
+    # Then stop the program
+    response = client.post("/programs/simple_program/stop")
 
     assert response.status_code == 204
 
 
-def test_stop_program_run_program_not_found(novax_app):
-    """Test POST /programs/{program}/runs/{run}/stop - program not found"""
+def test_stop_program_not_found(novax_app):
+    """Test POST /programs/{program}/stop - program not found"""
     client = TestClient(novax_app)
-    response = client.post("/programs/nonexistent_program/runs/some_run_id/stop")
+    response = client.post("/programs/nonexistent_program/stop")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Program not found"
+
+
+def test_stop_program_not_running(novax_app):
+    """Test POST /programs/{program}/stop - no program running"""
+    client = TestClient(novax_app)
+    response = client.post("/programs/simple_program/stop")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "No program is running"
+
+
+@pytest.mark.integration
+def test_stop_program_wrong_program(novax_app):
+    """Test POST /programs/{program}/stop - wrong program running"""
+    client = TestClient(novax_app)
+
+    # Start a program
+    start_response = client.post(
+        "/programs/simple_program/start", json={"parameters": {"number_of_steps": 10}}
+    )
+    assert start_response.status_code == 200
+
+    # Try to stop a different program
+    response = client.post("/programs/different_program/stop")
+
+    assert response.status_code == 400
+    assert "Program is not running" in response.json()["detail"]

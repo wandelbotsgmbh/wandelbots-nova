@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
 
 from novax.api.dependencies import get_program_manager
@@ -6,14 +8,24 @@ from novax.program_manager import ProgramDetails, ProgramManager, ProgramRun, Ru
 router = APIRouter(prefix="/programs", tags=["programs"])
 
 
-@router.get("", operation_id="getPrograms", response_model=list[ProgramDetails])
+class ProgramResponse(ProgramDetails):
+    input_schema: dict[str, Any]
+
+
+@router.get("", operation_id="getPrograms", response_model=list[ProgramResponse])
 async def get_programs(program_manager: ProgramManager = Depends(get_program_manager)):
     """List all programs"""
     programs = await program_manager.get_programs()
-    return list(programs.values())
+    return [
+        ProgramResponse(
+            **program_details.model_dump(),
+            input_schema=program_manager._program_functions[program].json_schema,
+        )
+        for program, program_details in programs.items()
+    ]
 
 
-@router.get("/{program}", operation_id="getProgram")
+@router.get("/{program}", operation_id="getProgram", response_model=ProgramResponse)
 async def get_program(
     program: str = Path(..., description="The ID of the program"),
     program_manager: ProgramManager = Depends(get_program_manager),
@@ -25,30 +37,11 @@ async def get_program(
 
     program_fn = program_manager._program_functions[program]
 
-    return {
-        **program_details.model_dump(),
-        "input_schema": program_fn.json_schema,
-        "_links": {
-            "self": {"href": f"/programs/{program}", "method": "GET"},
-            "runs": {"href": f"/programs/{program}/runs", "method": "POST"},
-        },
-    }
+    return ProgramResponse(**program_details.model_dump(), input_schema=program_fn.json_schema)
 
 
-@router.get("/{program}/runs", operation_id="getProgramRuns", response_model=list[ProgramRun])
-async def get_program_runs(
-    program: str = Path(..., description="The ID of the program"),
-    program_manager: ProgramManager = Depends(get_program_manager),
-):
-    """List all program runs"""
-    if not await program_manager.get_program(program):
-        raise HTTPException(status_code=404, detail="Program not found")
-
-    return await program_manager.get_program_runs(program)
-
-
-@router.post("/{program}/runs", operation_id="runProgram", response_model=ProgramRun)
-async def run_program(
+@router.post("/{program}/start", operation_id="startProgram", response_model=ProgramRun)
+async def start_program(
     program: str = Path(..., description="The ID of the program"),
     request: RunProgramRequest = Body(...),
     program_manager: ProgramManager = Depends(get_program_manager),
@@ -57,38 +50,29 @@ async def run_program(
     if not await program_manager.get_program(program):
         raise HTTPException(status_code=404, detail="Program not found")
 
+    if program_manager.running_program:
+        raise HTTPException(status_code=400, detail="A program is already running")
+
     return await program_manager.run_program(program, request.parameters)
 
 
-@router.get("/{program}/runs/{run}", operation_id="getProgramRun")
-async def get_program_run(
+@router.post("/{program}/stop", operation_id="stopProgram")
+async def stop_program(
     program: str = Path(..., description="The ID of the program"),
-    run: str = Path(..., description="The ID of the run"),
-    program_manager: ProgramManager = Depends(get_program_manager),
-):
-    """Get state of the run"""
-    if not await program_manager.get_program(program):
-        raise HTTPException(status_code=404, detail="Program not found")
-
-    program_run = await program_manager.get_program_run(program, run)
-    return {
-        **program_run.model_dump(),
-        "_links": {
-            "self": {"href": f"/programs/{program}/runs/{run}", "method": "GET"},
-            "stop": {"href": f"/programs/{program}/runs/{run}/stop", "method": "POST"},
-        },
-    }
-
-
-@router.post("/{program}/runs/{run}/stop", operation_id="stopProgramRun", status_code=204)
-async def stop_program_run(
-    program: str = Path(..., description="The ID of the program"),
-    run: str = Path(..., description="The ID of the run"),
     program_manager: ProgramManager = Depends(get_program_manager),
 ):
     """Stop the run"""
     if not await program_manager.get_program(program):
         raise HTTPException(status_code=404, detail="Program not found")
 
-    await program_manager.stop_program(program, run)
+    if not program_manager.running_program:
+        raise HTTPException(status_code=400, detail="No program is running")
+
+    if program_manager.running_program != program:
+        raise HTTPException(
+            status_code=400,
+            detail="Program is not running. Currently running: {program_manager.running_program}",
+        )
+
+    await program_manager.stop_program(program)
     return None

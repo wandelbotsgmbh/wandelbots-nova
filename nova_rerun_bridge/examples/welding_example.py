@@ -191,135 +191,128 @@ async def calculate_seam_poses(mesh_pose: api.models.Pose2) -> tuple[Pose, Pose,
         cleanup_controllers=False,
     ),
 )
-async def test():
-    async with Nova() as nova:
-        # Define position for the welding part
-        mesh_pose = api.models.Pose2(
-            position=[500, 0, -300], orientation=[0, 0, 0]
-        )  # in front of robot, on floor
+async def test(nova: Nova):
+    # Define position for the welding part
+    mesh_pose = api.models.Pose2(
+        position=[500, 0, -300], orientation=[0, 0, 0]
+    )  # in front of robot, on floor
 
-        # Load and transform mesh
-        scene = await load_and_transform_mesh(
-            "nova_rerun_bridge/example_data/Welding_Benchmark_USA_01.stl", mesh_pose
-        )
+    # Load and transform mesh
+    scene = await load_and_transform_mesh(
+        "nova_rerun_bridge/example_data/Welding_Benchmark_USA_01.stl", mesh_pose
+    )
 
-        # Log to rerun
-        await log_mesh_to_rerun(scene)
+    # Log to rerun
+    await log_mesh_to_rerun(scene)
 
-        cell = nova.cell()
-        controller = await cell.controller("ur10")
+    cell = nova.cell()
+    controller = await cell.controller("ur10")
 
-        await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
-            cell="cell",
-            controller=controller.controller_id,
-            id=0,
-            coordinate_system=CoordinateSystem(
-                coordinate_system="world",
-                name="mounting",
-                reference_uid="",
-                position=Vector3d(x=0, y=0, z=0),
-                rotation=RotationAngles(
-                    angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-                ),
+    await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
+        cell="cell",
+        controller=controller.controller_id,
+        id=0,
+        coordinate_system=CoordinateSystem(
+            coordinate_system="world",
+            name="mounting",
+            reference_uid="",
+            position=Vector3d(x=0, y=0, z=0),
+            rotation=RotationAngles(
+                angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
             ),
-        )
+        ),
+    )
 
-        await nova._api_client.virtual_robot_setup_api.add_virtual_robot_tcp(
-            cell="cell",
-            controller="ur10",
-            id=0,
-            robot_tcp=RobotTcp(
-                id="torch",
-                position=Vector3d(x=0, y=0, z=100),
-                rotation=RotationAngles(
-                    angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-                ),
+    await nova._api_client.virtual_robot_setup_api.add_virtual_robot_tcp(
+        cell="cell",
+        controller="ur10",
+        id=0,
+        robot_tcp=RobotTcp(
+            id="torch",
+            position=Vector3d(x=0, y=0, z=100),
+            rotation=RotationAngles(
+                angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
             ),
+        ),
+    )
+
+    await asyncio.sleep(5)
+
+    # Connect to the controller and activate motion groups
+    async with controller[0] as motion_group:
+        tcp = "torch"
+
+        robot_setup: api.models.OptimizerSetup = await motion_group._get_optimizer_setup(tcp=tcp)
+
+        # Add mesh to collision world
+        mesh_collider = await add_mesh_to_collision_world(
+            nova._api_client.store_collision_components_api, "cell", scene
         )
 
-        await asyncio.sleep(5)
+        # Build collision world with welding part included
+        collision_scene_id = await build_collision_world(
+            nova, "cell", robot_setup, additional_colliders={"welding_part": mesh_collider}
+        )
+        scene_api = nova._api_client.store_collision_scenes_api
+        collision_scene = await scene_api.get_stored_collision_scene(
+            cell="cell", scene=collision_scene_id
+        )
+        # Calculate seam positions based on mesh pose
+        seam1_start, seam1_end, seam2_start, seam2_end = await calculate_seam_poses(mesh_pose)
 
-        # Connect to the controller and activate motion groups
-        async with controller[0] as motion_group:
-            tcp = "torch"
+        # Define approach offset in local coordinates
+        approach_offset = Pose((0, 0, -60, 0, 0, 0))
 
-            robot_setup: api.models.OptimizerSetup = await motion_group._get_optimizer_setup(
-                tcp=tcp
-            )
+        # Create approach and departure poses using @ operator
+        seam1_approach = seam1_start @ approach_offset
+        seam1_departure = seam1_end @ approach_offset
+        seam2_approach = seam2_start @ approach_offset
+        seam2_departure = seam2_end @ approach_offset
 
-            # Add mesh to collision world
-            mesh_collider = await add_mesh_to_collision_world(
-                nova._api_client.store_collision_components_api, "cell", scene
-            )
+        welding_actions = [
+            # First seam
+            collision_free(
+                target=seam1_approach,
+                collision_scene=collision_scene,
+                settings=MotionSettings(tcp_velocity_limit=30),
+            ),
+            linear(
+                target=seam1_start, settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10)
+            ),
+            linear(
+                target=seam1_end, settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10)
+            ),
+            linear(
+                target=seam1_departure,
+                settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+            ),
+            # Move to second seam
+            collision_free(
+                target=seam2_approach,
+                collision_scene=collision_scene,
+                settings=MotionSettings(tcp_velocity_limit=30),
+            ),
+            # Second seam with collision checking
+            linear(
+                target=seam2_start, settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10)
+            ),
+            linear(
+                target=seam2_end, settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10)
+            ),
+            linear(
+                target=seam2_departure,
+                settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+            ),
+            collision_free(
+                target=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
+                collision_scene=collision_scene,
+                settings=MotionSettings(tcp_velocity_limit=30),
+            ),
+        ]
 
-            # Build collision world with welding part included
-            collision_scene_id = await build_collision_world(
-                nova, "cell", robot_setup, additional_colliders={"welding_part": mesh_collider}
-            )
-            scene_api = nova._api_client.store_collision_scenes_api
-            collision_scene = await scene_api.get_stored_collision_scene(
-                cell="cell", scene=collision_scene_id
-            )
-            # Calculate seam positions based on mesh pose
-            seam1_start, seam1_end, seam2_start, seam2_end = await calculate_seam_poses(mesh_pose)
-
-            # Define approach offset in local coordinates
-            approach_offset = Pose((0, 0, -60, 0, 0, 0))
-
-            # Create approach and departure poses using @ operator
-            seam1_approach = seam1_start @ approach_offset
-            seam1_departure = seam1_end @ approach_offset
-            seam2_approach = seam2_start @ approach_offset
-            seam2_departure = seam2_end @ approach_offset
-
-            welding_actions = [
-                # First seam
-                collision_free(
-                    target=seam1_approach,
-                    collision_scene=collision_scene,
-                    settings=MotionSettings(tcp_velocity_limit=30),
-                ),
-                linear(
-                    target=seam1_start,
-                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                ),
-                linear(
-                    target=seam1_end,
-                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                ),
-                linear(
-                    target=seam1_departure,
-                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                ),
-                # Move to second seam
-                collision_free(
-                    target=seam2_approach,
-                    collision_scene=collision_scene,
-                    settings=MotionSettings(tcp_velocity_limit=30),
-                ),
-                # Second seam with collision checking
-                linear(
-                    target=seam2_start,
-                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                ),
-                linear(
-                    target=seam2_end,
-                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                ),
-                linear(
-                    target=seam2_departure,
-                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
-                ),
-                collision_free(
-                    target=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
-                    collision_scene=collision_scene,
-                    settings=MotionSettings(tcp_velocity_limit=30),
-                ),
-            ]
-
-            await motion_group.plan(
-                welding_actions, tcp=tcp, start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0)
-            )
+        await motion_group.plan(
+            welding_actions, tcp=tcp, start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0)
+        )
 
 
 if __name__ == "__main__":

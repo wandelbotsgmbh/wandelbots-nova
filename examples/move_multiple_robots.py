@@ -50,12 +50,11 @@ async def move_robot(controller: Controller):
         cleanup_controllers=True,
     ),
 )
-async def main():
-    async with Nova() as nova:
-        cell = nova.cell()
-        ur10 = await cell.controller("ur10")
-        ur5 = await cell.controller("ur5")
-        await asyncio.gather(move_robot(ur5), move_robot(ur10))
+async def main(nova: Nova):
+    cell = nova.cell()
+    ur10 = await cell.controller("ur10")
+    ur5 = await cell.controller("ur5")
+    await asyncio.gather(move_robot(ur5), move_robot(ur10))
 
 
 if __name__ == "__main__":

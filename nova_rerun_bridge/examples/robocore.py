@@ -210,85 +210,84 @@ def calculate_handover_orientation(
         cleanup_controllers=False,
     ),
 )
-async def main():
-    async with Nova() as nova:
-        cell = nova.cell()
+async def main(nova: Nova):
+    cell = nova.cell()
 
-        # Get robot controllers
-        fanuc = await cell.controller("fanuc")
-        kuka = await cell.controller("kuka")
-        abb = await cell.controller("abb")
-        yaskawa = await cell.controller("yaskawa")
+    # Get robot controllers
+    fanuc = await cell.controller("fanuc")
+    kuka = await cell.controller("kuka")
+    abb = await cell.controller("abb")
+    yaskawa = await cell.controller("yaskawa")
 
-        # Set robot mountings
-        for robot, pos in [
-            (fanuc, ROBOT_POSITIONS["FANUC"]),
-            (kuka, ROBOT_POSITIONS["KUKA"]),
-            (abb, ROBOT_POSITIONS["ABB"]),
-            (yaskawa, ROBOT_POSITIONS["YASKAWA"]),
-        ]:
-            await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
-                cell="cell",
-                controller=robot.controller_id,
-                id=pos.motion_group_id,
-                coordinate_system=CoordinateSystem(
-                    coordinate_system="world",
-                    name="mounting",
-                    reference_uid="",
-                    position=pos.mounting,
-                    rotation=pos.rotation,  # Use the robot-specific rotation
-                ),
-            )
+    # Set robot mountings
+    for robot, pos in [
+        (fanuc, ROBOT_POSITIONS["FANUC"]),
+        (kuka, ROBOT_POSITIONS["KUKA"]),
+        (abb, ROBOT_POSITIONS["ABB"]),
+        (yaskawa, ROBOT_POSITIONS["YASKAWA"]),
+    ]:
+        await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
+            cell="cell",
+            controller=robot.controller_id,
+            id=pos.motion_group_id,
+            coordinate_system=CoordinateSystem(
+                coordinate_system="world",
+                name="mounting",
+                reference_uid="",
+                position=pos.mounting,
+                rotation=pos.rotation,  # Use the robot-specific rotation
+            ),
+        )
 
-        await asyncio.sleep(3)  # Wait for setup
+    await asyncio.sleep(3)  # Wait for setup
 
-        robots = {"FANUC": fanuc, "KUKA": kuka, "ABB": abb, "YASKAWA": yaskawa}
-        robot_sequence = ["FANUC", "KUKA", "YASKAWA", "ABB", "FANUC"]  # Complete circle
-        await move_to_initial_positions(robots, ROBOT_POSITIONS)
+    robots = {"FANUC": fanuc, "KUKA": kuka, "ABB": abb, "YASKAWA": yaskawa}
+    robot_sequence = ["FANUC", "KUKA", "YASKAWA", "ABB", "FANUC"]  # Complete circle
+    await move_to_initial_positions(robots, ROBOT_POSITIONS)
 
-        for i in range(len(robot_sequence) - 1):
-            current_robot = robots[robot_sequence[i]]
-            next_robot = robots[robot_sequence[i + 1]]
-            current_pos = ROBOT_POSITIONS[robot_sequence[i]]
-            next_pos = ROBOT_POSITIONS[robot_sequence[i + 1]]
+    for i in range(len(robot_sequence) - 1):
+        current_robot = robots[robot_sequence[i]]
+        next_robot = robots[robot_sequence[i + 1]]
+        current_pos = ROBOT_POSITIONS[robot_sequence[i]]
+        next_pos = ROBOT_POSITIONS[robot_sequence[i + 1]]
 
-            # Step 1: First robot picks up cube and moves to handover
-            await asyncio.gather(
-                pick_and_pass_cube(
-                    current_robot,
-                    current_pos,
-                    "pickup_and_handover",
-                    current_pos.motion_group_id,
-                    sync=True,
-                ),
-                # Step 2: Next robot moves to handover position
-                pick_and_pass_cube(
-                    next_robot,
-                    current_pos,  # Use current robot's handover position
-                    "go_to_handover",
-                    next_pos.motion_group_id,
-                    sync=True,
-                ),
-            )
+        # Step 1: First robot picks up cube and moves to handover
+        await asyncio.gather(
+            pick_and_pass_cube(
+                current_robot,
+                current_pos,
+                "pickup_and_handover",
+                current_pos.motion_group_id,
+                sync=True,
+            ),
+            # Step 2: Next robot moves to handover position
+            pick_and_pass_cube(
+                next_robot,
+                current_pos,  # Use current robot's handover position
+                "go_to_handover",
+                next_pos.motion_group_id,
+                sync=True,
+            ),
+        )
 
-            # Step 3: Both robots move to home (after handover)
-            await asyncio.gather(
-                pick_and_pass_cube(
-                    current_robot,
-                    current_pos,
-                    "go_home_with_cube",
-                    current_pos.motion_group_id,
-                    sync=True,
-                ),
-                pick_and_pass_cube(
-                    next_robot, next_pos, "go_home_with_cube", next_pos.motion_group_id, sync=True
-                ),
-            )
+        # Step 3: Both robots move to home (after handover)
+        await asyncio.gather(
+            pick_and_pass_cube(
+                current_robot,
+                current_pos,
+                "go_home_with_cube",
+                current_pos.motion_group_id,
+                sync=True,
+            ),
+            pick_and_pass_cube(
+                next_robot, next_pos, "go_home_with_cube", next_pos.motion_group_id, sync=True
+            ),
+        )
 
-            # Step 4: Next robot places cube and returns home
-            await pick_and_pass_cube(next_robot, next_pos, "place_cube", next_pos.motion_group_id)
+        # Step 4: Next robot places cube and returns home
+        await pick_and_pass_cube(next_robot, next_pos, "place_cube", next_pos.motion_group_id)
 
-            await asyncio.sleep(1)  # Small delay between transfers
+        await asyncio.sleep(1)  # Small delay between transfers
 
 
 if __name__ == "__main__":

@@ -60,7 +60,24 @@ class Program(BaseModel, Generic[Parameters, Return]):
         input, output = input_and_output_types(value, docstring)
 
         function = cls(name=name, description=description, input=input, output=output)
-        function._wrapped = validate_call(validate_return=True)(value)
+
+        # Create a wrapper that excludes the Nova parameter from validation
+        import inspect
+
+        sig = inspect.signature(value)
+        parameters = list(sig.parameters.items())
+
+        if parameters and parameters[0][1].annotation == Nova:
+            # Create a wrapper that accepts Nova as first arg but doesn't validate it
+            def wrapper(nova: Any, *args, **kwargs):
+                return value(nova, *args, **kwargs)
+
+            # Apply validation only to the non-Nova parameters
+            validated_wrapper = validate_call(validate_return=True)(wrapper)
+            function._wrapped = validated_wrapper
+        else:
+            function._wrapped = validate_call(validate_return=True)(value)
+
         return function
 
     async def __call__(self, *args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:  # pylint: disable=no-member
@@ -232,7 +249,14 @@ def input_and_output_types(
     output_type = input_types.pop("return", None)
 
     input_field_definitions: Mapping[str, Any] = {}
-    for order, (name, parameter) in enumerate(signature.parameters.items()):
+    parameters = list(signature.parameters.items())
+
+    # Skip the first parameter if it's a Nova instance
+    start_index = 0
+    if parameters and parameters[0][1].annotation == Nova:
+        start_index = 1
+
+    for order, (name, parameter) in enumerate(parameters[start_index:], start=start_index):
         default: FieldInfo = (
             Field(...)
             if parameter.default is parameter.empty
@@ -285,6 +309,7 @@ def program(
     name: str | None = None,
     preconditions: ProgramPreconditions | None = None,
     viewer: Any | None = None,
+    test_mode: bool = False,
 ):
     """
     Decorator factory for creating Nova programs with declarative controller setup.
@@ -293,6 +318,7 @@ def program(
         name: Name of the program
         preconditions: ProgramPreconditions containing controller configurations and cleanup settings
         viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
+        test_mode: If True, disables Nova connections and uses mock objects for testing
     """
 
     def decorator(
@@ -302,20 +328,39 @@ def program(
         if not asyncio.iscoroutinefunction(function):
             raise TypeError(f"Program function '{function.__name__}' must be async")
 
+        # Validate that the first parameter is 'nova: Nova'
+        import inspect
+
+        sig = inspect.signature(function)
+        parameters = list(sig.parameters.items())
+
+        if not parameters:
+            raise ValueError(
+                f"Program function '{function.__name__}' must have at least one parameter (nova: Nova)"
+            )
+
+        first_param_name, first_param = parameters[0]
+        if first_param.annotation != Nova:
+            raise ValueError(
+                f"Program function '{function.__name__}' must have 'nova: Nova' as the first parameter. "
+                f"Got '{first_param_name}: {first_param.annotation}' instead."
+            )
+
         func_obj = Program.validate(function)
         if name:
             func_obj.name = name
         func_obj.preconditions = preconditions
 
-        # Create a wrapper that handles controller lifecycle
-        original_wrapped = func_obj._wrapped
+        # Create a wrapper that handles controller lifecycle and injects Nova instance
+        original_function = function
 
         async def async_wrapper(*args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:
-            """Async wrapper that handles controller creation and cleanup."""
+            """Async wrapper that handles controller creation, cleanup, and Nova injection."""
             created_controllers = []
             try:
-                # Create controllers before execution
-                created_controllers = await func_obj._create_controllers()
+                # Create controllers before execution (skipped in test mode)
+                if not test_mode:
+                    created_controllers = await func_obj._create_controllers()
 
                 # Configure viewers if any are active
                 if viewer is not None:
@@ -323,12 +368,24 @@ def program(
                     # This will be done via a hook in the Nova context manager
                     pass
 
-                # Execute the wrapped function
-                result = await original_wrapped(*args, **kwargs)
-                return result
+                if test_mode:
+                    # Inject a mock Nova instance for testing
+                    from unittest.mock import Mock
+
+                    mock_nova = Mock()
+                    mock_nova.cell = Mock()
+                    result = await original_function(mock_nova, *args, **kwargs)
+                    return result
+                else:
+                    # Create Nova instance and inject it as the first argument
+                    async with Nova() as nova:
+                        # Execute the original function with nova as first argument
+                        result = await original_function(nova, *args, **kwargs)
+                        return result
             finally:
-                # Clean up controllers after execution
-                await func_obj._cleanup_controllers(created_controllers)
+                # Clean up controllers after execution (skipped in test mode)
+                if not test_mode:
+                    await func_obj._cleanup_controllers(created_controllers)
 
                 # Clean up viewers
                 if viewer is not None:

@@ -52,37 +52,36 @@ async def move_robot(motion_group: MotionGroup, tcp: str):
         cleanup_controllers=True,
     ),
 )
-async def main():
-    async with Nova() as nova:
-        cell = nova.cell()
-        ur10 = await cell.controller("ur10")
-        ur5 = await cell.controller("ur5")
-        tcp = "Flange"
+async def main(nova: Nova):
+    cell = nova.cell()
+    ur10 = await cell.controller("ur10")
+    ur5 = await cell.controller("ur5")
+    tcp = "Flange"
 
-        flange_state = await ur10[0].get_state(tcp)
-        print(flange_state)
+    flange_state = await ur10[0].get_state(tcp)
+    print(flange_state)
 
-        # activate all motion groups
-        async with ur10:
-            await move_robot(ur10.motion_group("0@ur10"), tcp)
+    # activate all motion groups
+    async with ur10:
+        await move_robot(ur10.motion_group("0@ur10"), tcp)
 
-        # activate motion group 0
-        async with ur10.motion_group("0@ur10") as mg_0:
-            await move_robot(mg_0, tcp)
+    # activate motion group 0
+    async with ur10.motion_group("0@ur10") as mg_0:
+        await move_robot(mg_0, tcp)
 
-        # activate motion group 0
-        async with ur10[0] as mg_0:
-            await move_robot(mg_0, tcp)
+    # activate motion group 0
+    async with ur10[0] as mg_0:
+        await move_robot(mg_0, tcp)
 
-        # activate motion group 0 from two different controllers
-        async with ur10[0] as ur_0_mg, ur5[0] as kuka_0_mg:
-            await asyncio.gather(move_robot(ur_0_mg, tcp), move_robot(kuka_0_mg, tcp))
+    # activate motion group 0 from two different controllers
+    async with ur10[0] as ur_0_mg, ur5[0] as kuka_0_mg:
+        await asyncio.gather(move_robot(ur_0_mg, tcp), move_robot(kuka_0_mg, tcp))
 
-        # activate motion group 0 from two different controllers
-        mg_0 = ur10.motion_group("0@ur10")
-        mg_1 = ur5.motion_group("0@ur5")
-        async with mg_0, mg_1:
-            await asyncio.gather(move_robot(mg_0, tcp), move_robot(mg_1, tcp))
+    # activate motion group 0 from two different controllers
+    mg_0 = ur10.motion_group("0@ur10")
+    mg_1 = ur5.motion_group("0@ur5")
+    async with mg_0, mg_1:
+        await asyncio.gather(move_robot(mg_0, tcp), move_robot(mg_1, tcp))
 
 
 if __name__ == "__main__":

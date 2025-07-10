@@ -100,12 +100,14 @@ class ProgramRunner(ABC):
         program_id: str,
         program: Program,
         args: dict[str, Any],
+        nova: Nova | None = None,
         robot_cell_override: RobotCell | None = None,
     ):
         self._run_id = str(uuid.uuid4())
         self._program_id = program_id
         self._program = program
         self._args = args
+        self._nova = nova
         self._robot_cell_override = robot_cell_override
         self._program_run: ProgramRun = ProgramRun(
             run_id=self._run_id,
@@ -319,17 +321,12 @@ class ProgramRunner(ABC):
         sink_id = logger.add(log_capture)
 
         try:
-            robot_cell = None
-            # TODO: this should be removed to make it possible running programs without a robot cell
-            if self._robot_cell_override:
-                robot_cell = self._robot_cell_override
-            else:
-                async with Nova() as nova:
-                    cell = nova.cell()
-                    robot_cell = await cell.get_robot_cell()
-
+            robot_cell = self._robot_cell_override
             if robot_cell is None:
-                raise RuntimeError("No robot cell available")
+                if self._nova is None:
+                    raise RuntimeError("No Nova instance available")
+                else:
+                    robot_cell = await self._nova.cell().get_robot_cell()
 
             self.execution_context = execution_context = ExecutionContext(
                 robot_cell=robot_cell, stop_event=stop_event

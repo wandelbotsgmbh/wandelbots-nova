@@ -1898,7 +1898,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "2.1.2"
+version = "2.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
@@ -1959,6 +1959,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -2011,6 +2012,7 @@ dev = [
     { name = "pytest", specifier = ">=8.3.4,<9" },
     { name = "pytest-asyncio", specifier = ">=0.24,<0.26" },
     { name = "ruff", specifier = ">=0.8.2,<0.10.0" },
+    { name = "uvicorn", specifier = ">=0.35.0" },
 ]
 
 [[package]]
