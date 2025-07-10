@@ -65,7 +65,7 @@ class TestExternalIntegration:
         result = nova_pause_robot("robot1")
 
         assert result["success"] is True
-        assert result["robot_id"] == "robot1"
+        assert result["motion_group_id"] == "robot1"
         assert result["state"] == "paused"
         mock_manager.pause.assert_called_once()
 
