@@ -96,7 +96,7 @@ class ProgramManager:
 
     @property
     def running_program(self) -> Optional[str]:
-        return self._runner.program_id if self.is_any_program_running else None
+        return self._runner.program_id if self.is_any_program_running and self._runner else None
 
     def register_program_source(self, program_source: ProgramSource) -> None:
         """
@@ -153,14 +153,6 @@ class ProgramManager:
         """Get a specific program by ID"""
         return self._programs.get(program_id)
 
-    async def get_program_runs(self, program_id: str) -> list[ProgramRun]:
-        """Get all runs for a specific program"""
-        return [runner.program_run for runner in self._runners.get(program_id, {}).values()]
-
-    async def get_program_run(self, program_id: str, run_id: str) -> ProgramRun:
-        """Get a specific run for a program"""
-        return self._runners[program_id][run_id].program_run
-
     async def run_program(
         self, program_id: str, parameters: dict[str, Any] | None = None
     ) -> ProgramRun:
@@ -174,7 +166,7 @@ class ProgramManager:
 
     async def stop_program(self, program_id: str):
         """Stop a running program"""
-        if not self.is_any_program_running:
+        if not self.is_any_program_running or self._runner is None:
             raise RuntimeError("No program is running")
 
         if self.running_program != program_id:
