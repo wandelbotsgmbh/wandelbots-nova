@@ -117,11 +117,11 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             get_playback_manager,
         )
 
-        robot_id = MotionGroupId(context.robot_id)
+        motion_group_id = MotionGroupId(context.motion_group_id)
         manager = get_playback_manager()
 
         # Set execution state to indicate movement is starting
-        manager.set_execution_state(robot_id, PlaybackState.EXECUTING)
+        manager.set_execution_state(motion_group_id, PlaybackState.EXECUTING)
 
         # Use a queue to coordinate between request generation and response processing
         request_queue: asyncio.Queue[
@@ -163,10 +163,10 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         else None
                     )
                     effective_speed = manager.get_effective_speed(
-                        robot_id, method_speed=method_speed
+                        motion_group_id, method_speed=method_speed
                     )
-                    effective_state = manager.get_effective_state(robot_id)
-                    effective_direction = manager.get_effective_direction(robot_id)
+                    effective_state = manager.get_effective_state(motion_group_id)
+                    effective_direction = manager.get_effective_direction(motion_group_id)
 
                     # Handle speed changes
                     if effective_speed != last_sent_speed:
@@ -240,7 +240,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         ):
                             logger.info("Motion completed")
                             # Set execution state to indicate movement has ended
-                            manager.set_execution_state(robot_id, PlaybackState.IDLE)
+                            manager.set_execution_state(motion_group_id, PlaybackState.IDLE)
                             motion_completed.set()
                             break
 
@@ -261,7 +261,9 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             try:
                 # Log initialization info for debugging
                 logger.debug(f"Speed monitor using manager: {id(manager)} (type: {type(manager)})")
-                logger.debug(f"Speed monitor using robot_id: {robot_id!r} (type: {type(robot_id)})")
+                logger.debug(
+                    f"Speed monitor using robot_id: {motion_group_id!r} (type: {type(motion_group_id)})"
+                )
 
                 check_count = 0
                 while not motion_completed.is_set():
@@ -272,10 +274,10 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         else None
                     )
                     effective_speed = manager.get_effective_speed(
-                        robot_id, method_speed=method_speed
+                        motion_group_id, method_speed=method_speed
                     )
-                    effective_state = manager.get_effective_state(robot_id)
-                    effective_direction = manager.get_effective_direction(robot_id)
+                    effective_state = manager.get_effective_state(motion_group_id)
+                    effective_direction = manager.get_effective_direction(motion_group_id)
 
                     # Detect speed changes immediately
                     if effective_speed != last_sent_speed:
@@ -350,8 +352,8 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                     # Periodic debug logging to monitor speed state (less frequent now)
                     if check_count % 1000 == 0:  # Every 1000 checks (~1 second) instead of every 20
                         with manager._lock:
-                            external_override = manager._external_overrides.get(robot_id)
-                            decorator_default = manager._decorator_defaults.get(robot_id)
+                            external_override = manager._external_overrides.get(motion_group_id)
+                            decorator_default = manager._decorator_defaults.get(motion_group_id)
                         logger.debug(
                             f"Speed monitor check #{check_count}: effective_speed={effective_speed}%, effective_state={effective_state.value}, effective_direction={effective_direction.value}, last_sent_speed={last_sent_speed}%, last_sent_state={last_sent_state.value}, last_sent_direction={last_sent_direction.value}, external_override={external_override}, decorator_default={decorator_default}, method_speed={method_speed}"
                         )
@@ -408,7 +410,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                 yield request
         finally:
             # Ensure proper cleanup of all tasks and execution state
-            manager.set_execution_state(robot_id, PlaybackState.IDLE)
+            manager.set_execution_state(motion_group_id, PlaybackState.IDLE)
             motion_completed.set()
             response_task.cancel()
             speed_monitor_task.cancel()

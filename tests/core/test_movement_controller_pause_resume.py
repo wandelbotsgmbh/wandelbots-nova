@@ -30,14 +30,14 @@ class TestMovementControllerPauseResume(unittest.TestCase):
         """Set up test fixtures."""
         actions = [cartesian_ptp((100, 200, 300, 0, 0, 0))]
         self.context = MovementControllerContext(
-            robot_id="test_robot",
+            motion_group_id="test_robot",
             motion_id="test_motion",
             effective_speed=50,
             method_speed=None,
             combined_actions=CombinedActions(items=tuple(actions)),
         )
         self.manager = get_playback_manager()
-        self.robot_id = MotionGroupId(self.context.robot_id)
+        self.robot_id = MotionGroupId(self.context.motion_group_id)
 
         # Clear any existing state
         self.manager.clear_external_override(self.robot_id)

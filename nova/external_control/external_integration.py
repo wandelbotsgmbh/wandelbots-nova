@@ -53,11 +53,11 @@ def nova_set_playback_speed(robot_id: str, speed_percent: int) -> dict:
         }
 
 
-def nova_pause_robot(robot_id: str) -> dict:
+def nova_pause_robot(motion_group_id: str) -> dict:
     """Pause robot execution (called from external tools)
 
     Args:
-        robot_id: Unique robot identifier
+        motion_group_id: Unique motion group identifier
 
     Returns:
         dict: Success/error response with standardized format
@@ -69,21 +69,21 @@ def nova_pause_robot(robot_id: str) -> dict:
     """
     try:
         manager = get_playback_manager()
-        manager.pause(MotionGroupId(robot_id))
+        manager.pause(MotionGroupId(motion_group_id))
 
         return {
             "success": True,
-            "robot_id": robot_id,
+            "motion_group_id": motion_group_id,
             "state": "paused",
-            "message": f"Robot {robot_id} paused",
+            "message": f"Motion group {motion_group_id} paused",
         }
 
     except Exception as e:
         return {
             "success": False,
-            "robot_id": robot_id,
+            "motion_group_id": motion_group_id,
             "error": str(e),
-            "message": f"Failed to pause robot: {e}",
+            "message": f"Failed to pause motion group: {e}",
         }
 
 

@@ -42,7 +42,7 @@ class TestMovementControllerContext:
         context = MovementControllerContext(
             combined_actions=CombinedActions(items=tuple()),
             motion_id="empty_motion",
-            robot_id="0@test_controller",
+            motion_group_id="0@test_controller",
             effective_speed=25,
         )
         assert context.effective_speed == 25

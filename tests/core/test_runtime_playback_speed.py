@@ -42,7 +42,7 @@ class TestRuntimePlaybackSpeedChange:
         return MovementControllerContext(
             combined_actions=CombinedActions(items=tuple(actions)),
             motion_id="uuid-12345-motion",  # This is the planned motion UUID
-            robot_id=robot_id,  # This is the motion group ID - critical for speed control
+            motion_group_id=robot_id,  # This is the motion group ID - critical for speed control
             effective_speed=10,
             method_speed=None,
         )
@@ -65,7 +65,7 @@ class TestRuntimePlaybackSpeedChange:
         external_robot_id = robot_id
 
         # Movement controller should use the same robot ID from context
-        controller_robot_id = MotionGroupId(movement_context.robot_id)
+        controller_robot_id = MotionGroupId(movement_context.motion_group_id)
 
         assert external_robot_id == controller_robot_id, (
             f"Robot ID mismatch: external='{external_robot_id}', controller='{controller_robot_id}'"
@@ -181,12 +181,12 @@ class TestRuntimePlaybackSpeedChange:
         This was added to fix the robot ID mismatch - ensures motion group
         passes the correct robot ID to the movement controller.
         """
-        assert hasattr(movement_context, "robot_id"), (
-            "MovementControllerContext must have robot_id field"
+        assert hasattr(movement_context, "motion_group_id"), (
+            "MovementControllerContext must have motion_group_id field"
         )
-        assert movement_context.robot_id == "0@test_controller", (
-            "robot_id should be the motion group ID, not motion UUID"
+        assert movement_context.motion_group_id == "0@test_controller", (
+            "motion_group_id should be the motion group ID, not motion UUID"
         )
-        assert movement_context.robot_id != movement_context.motion_id, (
-            "robot_id should be different from motion_id (UUID)"
+        assert movement_context.motion_group_id != movement_context.motion_id, (
+            "motion_group_id should be different from motion_id (UUID)"
         )

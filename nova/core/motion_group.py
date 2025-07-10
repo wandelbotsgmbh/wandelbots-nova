@@ -460,7 +460,7 @@ class MotionGroup(AbstractRobot):
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
                 motion_id=load_plan_response.motion,
-                robot_id=self.motion_group_id,  # Pass the motion group ID as robot ID
+                motion_group_id=self.motion_group_id,  # Pass the motion group ID
                 effective_speed=effective_speed,  # Already an integer percent (0-100)
                 method_speed=int(method_speed_to_use) if method_speed_to_use is not None else None,
             )

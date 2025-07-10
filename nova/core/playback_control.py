@@ -22,9 +22,6 @@ from nova.core import logger
 MotionGroupId = NewType("MotionGroupId", str)
 PlaybackSpeedPercent = NewType("PlaybackSpeedPercent", int)
 
-# Convenience type alias that accepts both str and MotionGroupId
-RobotId = MotionGroupId
-
 
 def motion_group_id(id_str: str | MotionGroupId) -> MotionGroupId:
     """Convert string or MotionGroupId to MotionGroupId
@@ -482,7 +479,7 @@ class PlaybackControlManager:
         """Register a callback for state changes
 
         Args:
-            callback: Callable that receives robot_id, state, speed, and direction
+            callback: Callable that receives motion_group_id, state, speed, and direction
         """
         with self._lock:
             self._state_callbacks.append(callback)
@@ -577,17 +574,17 @@ def get_all_active_robots() -> list[MotionGroupId]:
     active_robots = []
 
     # Check all known robots for activity
-    for robot_id in manager._external_overrides.keys():
-        if manager.is_movement_active(robot_id):
-            active_robots.append(robot_id)
+    for motion_group_id in manager._external_overrides.keys():
+        if manager.is_movement_active(motion_group_id):
+            active_robots.append(motion_group_id)
 
     # Also check execution states
-    for robot_id in manager._execution_states.keys():
+    for motion_group_id in manager._execution_states.keys():
         if (
-            manager.get_execution_state(robot_id) == PlaybackState.EXECUTING
-            and robot_id not in active_robots
+            manager.get_execution_state(motion_group_id) == PlaybackState.EXECUTING
+            and motion_group_id not in active_robots
         ):
-            active_robots.append(robot_id)
+            active_robots.append(motion_group_id)
 
     return active_robots
 
@@ -626,7 +623,7 @@ def register_global_state_change_callback(callback) -> None:
 
     Args:
         callback: Function to call when any robot state changes
-                 Signature: callback(robot_id, state, speed, direction)
+                 Signature: callback(motion_group_id, state, speed, direction)
     """
     manager = get_playback_manager()
     manager.register_state_change_callback(callback)
@@ -642,84 +639,84 @@ def unregister_global_state_change_callback(callback) -> None:
     manager.unregister_state_change_callback(callback)
 
 
-def pause_robot(robot_id: MotionGroupId) -> bool:
+def pause_robot(motion_group_id: MotionGroupId) -> bool:
     """Pause a specific robot
 
     Args:
-        robot_id: The robot to pause
+        motion_group_id: The motion group to pause
 
     Returns:
         True if pause was successful, False otherwise
     """
     manager = get_playback_manager()
-    if manager.can_pause(robot_id):
-        manager.pause(robot_id)
+    if manager.can_pause(motion_group_id):
+        manager.pause(motion_group_id)
         return True
     return False
 
 
-def resume_robot(robot_id: MotionGroupId) -> bool:
+def resume_robot(motion_group_id: MotionGroupId) -> bool:
     """Resume a specific robot
 
     Args:
-        robot_id: The robot to resume
+        motion_group_id: The motion group to resume
 
     Returns:
         True if resume was successful, False otherwise
     """
     manager = get_playback_manager()
-    if manager.can_resume(robot_id):
-        manager.resume(robot_id)
+    if manager.can_resume(motion_group_id):
+        manager.resume(motion_group_id)
         return True
     return False
 
 
-def set_robot_direction_forward(robot_id: MotionGroupId) -> None:
+def set_robot_direction_forward(motion_group_id: MotionGroupId) -> None:
     """Set robot direction to forward
 
     Args:
-        robot_id: The robot to set direction for
+        motion_group_id: The motion group to set direction for
     """
     manager = get_playback_manager()
-    manager.set_direction_forward(robot_id)
+    manager.set_direction_forward(motion_group_id)
 
 
-def set_robot_direction_backward(robot_id: MotionGroupId) -> None:
+def set_robot_direction_backward(motion_group_id: MotionGroupId) -> None:
     """Set robot direction to backward
 
     Args:
-        robot_id: The robot to set direction for
+        motion_group_id: The motion group to set direction for
     """
     manager = get_playback_manager()
-    manager.set_direction_backward(robot_id)
+    manager.set_direction_backward(motion_group_id)
 
 
-def set_robot_speed(robot_id: MotionGroupId, speed: int) -> None:
+def set_robot_speed(motion_group_id: MotionGroupId, speed: int) -> None:
     """Set robot speed
 
     Args:
-        robot_id: The robot to set speed for
+        motion_group_id: The motion group to set speed for
         speed: Speed percentage (0-100)
     """
     manager = get_playback_manager()
-    current_state = manager.get_effective_state(robot_id)
-    current_direction = manager.get_effective_direction(robot_id)
+    current_state = manager.get_effective_state(motion_group_id)
+    current_direction = manager.get_effective_direction(motion_group_id)
 
     manager.set_external_override(
-        robot_id, PlaybackSpeedPercent(speed), current_state, current_direction
+        motion_group_id, PlaybackSpeedPercent(speed), current_state, current_direction
     )
 
 
-def get_primary_robot_id() -> Optional[MotionGroupId]:
-    """Get the primary/main robot ID if one exists
+def get_primary_motion_group_id() -> Optional[MotionGroupId]:
+    """Get the primary/main motion group ID if one exists
 
     This is a convenience function for VS Code extensions that want to
-    automatically control the "main" robot without manual selection.
+    automatically control the "main" motion group without manual selection.
 
-    Returns the first robot ID that has been active, or None if no robots.
+    Returns the first motion group ID that has been active, or None if no motion groups.
 
     Returns:
-        Primary robot ID if available, None otherwise
+        Primary motion group ID if available, None otherwise
     """
     active_robots = get_all_active_robots()
     if active_robots:
@@ -739,9 +736,9 @@ def get_currently_executing_robots() -> list[MotionGroupId]:
     manager = get_playback_manager()
     executing_robots = []
 
-    for robot_id in get_all_active_robots():
-        if manager.get_execution_state(robot_id) == PlaybackState.EXECUTING:
-            executing_robots.append(robot_id)
+    for motion_group_id in get_all_active_robots():
+        if manager.get_execution_state(motion_group_id) == PlaybackState.EXECUTING:
+            executing_robots.append(motion_group_id)
 
     return executing_robots
 
@@ -784,8 +781,8 @@ def get_robot_status_summary() -> dict:
         "total_robots": len(active_robots),
         "executing_robots": len(executing_robots),
         "idle_robots": len(active_robots) - len(executing_robots),
-        "robot_ids": active_robots,
-        "executing_robot_ids": executing_robots,
+        "motion_group_ids": active_robots,
+        "executing_motion_group_ids": executing_robots,
         "has_robots": len(active_robots) > 0,
-        "primary_robot_id": get_primary_robot_id(),
+        "primary_motion_group_id": get_primary_motion_group_id(),
     }
