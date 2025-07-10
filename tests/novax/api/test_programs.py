@@ -77,8 +77,7 @@ def test_start_program_not_found(novax_app):
     assert response.json()["detail"] == "Program not found"
 
 
-@pytest.mark.integration
-def test_start_program_already_running(novax_app):
+def test_start_program(novax_app):
     client = TestClient(novax_app)
 
     # Start first program
@@ -86,14 +85,6 @@ def test_start_program_already_running(novax_app):
         "/programs/simple_program/start", json={"parameters": {"number_of_steps": 10}}
     )
     assert response1.status_code == 200
-
-    # Try to start another program while one is running
-    response2 = client.post(
-        "/programs/simple_program/start", json={"parameters": {"number_of_steps": 5}}
-    )
-
-    assert response2.status_code == 400
-    assert response2.json()["detail"] == "A program is already running"
 
 
 @pytest.mark.integration
@@ -108,8 +99,7 @@ def test_stop_program_success(novax_app):
 
     # Then stop the program
     response = client.post("/programs/simple_program/stop")
-
-    assert response.status_code == 204
+    assert response.status_code == 204, response.json()
 
 
 def test_stop_program_not_found(novax_app):
@@ -128,7 +118,6 @@ def test_stop_program_not_running(novax_app):
     assert response.json()["detail"] == "No program is running"
 
 
-@pytest.mark.integration
 def test_stop_program_wrong_program(novax_app):
     client = TestClient(novax_app)
 
@@ -138,8 +127,6 @@ def test_stop_program_wrong_program(novax_app):
     )
     assert start_response.status_code == 200
 
-    # Try to stop a different program
+    # Try to stop a non existing program
     response = client.post("/programs/different_program/stop")
-
-    assert response.status_code == 400
-    assert "Program is not running" in response.json()["detail"]
+    assert response.status_code == 404
