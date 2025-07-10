@@ -14,6 +14,11 @@ Usage:
         pass
 """
 
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from nova.external_control.websocket_control import NovaWebSocketServer
+
 from nova.core.logging import logger
 
 
@@ -43,7 +48,7 @@ class WebSocketControl:
         self.port = port
         self.host = host
         self.auto_start = auto_start
-        self._server = None
+        self._server: Optional["NovaWebSocketServer"] = None
 
     async def start(self) -> None:
         """Start the WebSocket control server."""

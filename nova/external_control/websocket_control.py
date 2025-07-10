@@ -53,7 +53,7 @@ class NovaWebSocketServer:
     def __init__(self, host: str = "localhost", port: int = 8765):
         self.host = host
         self.port = port
-        self.clients = set()
+        self.clients: set[Any] = set()
         self.server = None
         self.server_task = None
         self.loop = None
