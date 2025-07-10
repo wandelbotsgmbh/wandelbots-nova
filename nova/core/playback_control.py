@@ -3,10 +3,10 @@
 This module provides centralized playback speed control and pause/resume functionality
 for Nova robot executions. It implements a clear precedence hierarchy:
 
-1. External override (VS Code extension, future WebSocket/HTTP)
+1. External override (e.g., from external integrations)
 2. Method parameter (playback_speed=0.5)
 3. Decorator default (@nova.program(playback_speed_percent=30))
-4. System default (1.0 = 100% speed)
+4. System default (100% speed)
 """
 
 import threading
@@ -60,7 +60,7 @@ class PlaybackDirection(Enum):
     BACKWARD = "backward"
 
 
-# State change callback type (defined after enums to avoid forward reference issues)
+# State change callback type
 StateChangeCallback = Callable[
     [MotionGroupId, PlaybackState, PlaybackSpeedPercent, PlaybackDirection], None
 ]
@@ -84,17 +84,13 @@ class PlaybackControlManager:
     This manager maintains state for all robots and resolves playback speed
     and state based on a clear precedence hierarchy. Thread-safe for
     concurrent access from multiple sources.
-
-    Supports state change callbacks for VS Code extension integration.
     """
 
     def __init__(self):
-        """Initialize with thread-safe data structures and callback support"""
+        """Initialize with thread-safe data structures"""
         self._external_overrides: dict[MotionGroupId, PlaybackControl] = {}
         self._decorator_defaults: dict[MotionGroupId, PlaybackSpeedPercent] = {}
-        self._execution_states: dict[
-            MotionGroupId, PlaybackState
-        ] = {}  # Track actual execution state
+        self._execution_states: dict[MotionGroupId, PlaybackState] = {}
         self._state_callbacks: list[StateChangeCallback] = []
         self._lock = threading.Lock()
 
@@ -166,15 +162,7 @@ class PlaybackControlManager:
     def _get_effective_speed_locked(
         self, motion_group_id: MotionGroupId, method_speed: Optional[PlaybackSpeedPercent] = None
     ) -> PlaybackSpeedPercent:
-        """Get effective playback speed percent without acquiring lock (internal use only)
-
-        Args:
-            motion_group_id: Motion group identifier
-            method_speed: Speed percent from method parameter
-
-        Returns:
-            Effective playback speed percent (0-100)
-        """
+        """Get effective playback speed percent without acquiring lock (internal use only)"""
         # 1. External override (highest precedence)
         if motion_group_id in self._external_overrides:
             return self._external_overrides[motion_group_id].speed
@@ -199,33 +187,14 @@ class PlaybackControlManager:
         """Get effective speed percent with precedence resolution
 
         Precedence (highest to lowest):
-        1. External override
-        2. Method parameter
-        3. Decorator default
-        4. System default (100)
-
-        Args:
-            motion_group_id: Motion group identifier (string or MotionGroupId)
-            method_speed: Speed percent from method parameter
-
-        Returns:
-            Effective playback speed percent (0-100)
+        1. External override  2. Method parameter  3. Decorator default  4. System default (100)
         """
         mgid = MotionGroupId(motion_group_id)
         with self._lock:
             return self._get_effective_speed_locked(mgid, method_speed)
 
     def get_effective_state(self, motion_group_id: str | MotionGroupId) -> PlaybackState:
-        """Get effective playback state (playing/paused)
-
-        Only external overrides can change state from default PLAYING.
-
-        Args:
-            motion_group_id: Motion group identifier (string or MotionGroupId)
-
-        Returns:
-            Current playback state
-        """
+        """Get effective playback state (playing/paused)"""
         mgid = MotionGroupId(motion_group_id)
         with self._lock:
             if mgid in self._external_overrides:
@@ -233,16 +202,7 @@ class PlaybackControlManager:
             return PlaybackState.PLAYING
 
     def get_effective_direction(self, motion_group_id: str | MotionGroupId) -> PlaybackDirection:
-        """Get effective playback direction (forward/backward)
-
-        Only external overrides can change direction from default FORWARD.
-
-        Args:
-            motion_group_id: Motion group identifier (string or MotionGroupId)
-
-        Returns:
-            Current playback direction
-        """
+        """Get effective playback direction (forward/backward)"""
         mgid = MotionGroupId(motion_group_id)
         with self._lock:
             if mgid in self._external_overrides:
@@ -250,14 +210,9 @@ class PlaybackControlManager:
             return PlaybackDirection.FORWARD
 
     def pause(self, motion_group_id: str | MotionGroupId) -> None:
-        """Pause execution (external control only)
-
-        Args:
-            motion_group_id: Motion group identifier (string or MotionGroupId)
-        """
+        """Pause execution (external control only)"""
         mgid = MotionGroupId(motion_group_id)
         with self._lock:
-            # Get current effective speed without recursive lock
             effective_speed = self._get_effective_speed_locked(mgid)
             current_control = self._external_overrides.get(
                 mgid, PlaybackControl(speed=effective_speed)
@@ -269,15 +224,10 @@ class PlaybackControlManager:
                 source="external",
                 timestamp=datetime.now(timezone.utc),
             )
-        # Notify outside of lock to avoid deadlock
         self._notify_state_change(mgid)
 
     def resume(self, motion_group_id: str | MotionGroupId) -> None:
-        """Resume execution (external control only)
-
-        Args:
-            motion_group_id: Motion group identifier (string or MotionGroupId)
-        """
+        """Resume execution (external control only)"""
         mgid = MotionGroupId(motion_group_id)
         with self._lock:
             effective_speed = self._get_effective_speed_locked(mgid)
@@ -291,37 +241,20 @@ class PlaybackControlManager:
                 source="external",
                 timestamp=datetime.now(timezone.utc),
             )
-        # Notify outside of lock to avoid deadlock
         self._notify_state_change(mgid)
 
     def set_direction_forward(self, motion_group_id: str | MotionGroupId) -> None:
-        """Set execution direction to forward (external control only)
-
-        Args:
-            motion_group_id: Motion group identifier (string or MotionGroupId)
-        """
-        mgid = MotionGroupId(motion_group_id)
-        with self._lock:
-            effective_speed = self._get_effective_speed_locked(mgid)
-            current_control = self._external_overrides.get(
-                mgid, PlaybackControl(speed=effective_speed)
-            )
-            self._external_overrides[mgid] = PlaybackControl(
-                speed=current_control.speed,
-                state=current_control.state,
-                direction=PlaybackDirection.FORWARD,
-                source="external",
-                timestamp=datetime.now(timezone.utc),
-            )
-        # Notify outside of lock to avoid deadlock
-        self._notify_state_change(mgid)
+        """Set execution direction to forward"""
+        self._set_direction(motion_group_id, PlaybackDirection.FORWARD)
 
     def set_direction_backward(self, motion_group_id: str | MotionGroupId) -> None:
-        """Set execution direction to backward (external control only)
+        """Set execution direction to backward"""
+        self._set_direction(motion_group_id, PlaybackDirection.BACKWARD)
 
-        Args:
-            motion_group_id: Motion group identifier (string or MotionGroupId)
-        """
+    def _set_direction(
+        self, motion_group_id: str | MotionGroupId, direction: PlaybackDirection
+    ) -> None:
+        """Helper method to set direction"""
         mgid = MotionGroupId(motion_group_id)
         with self._lock:
             effective_speed = self._get_effective_speed_locked(mgid)
@@ -331,29 +264,20 @@ class PlaybackControlManager:
             self._external_overrides[mgid] = PlaybackControl(
                 speed=current_control.speed,
                 state=current_control.state,
-                direction=PlaybackDirection.BACKWARD,
+                direction=direction,
                 source="external",
                 timestamp=datetime.now(timezone.utc),
             )
-        # Notify outside of lock to avoid deadlock
         self._notify_state_change(mgid)
 
     def clear_external_override(self, motion_group_id: str | MotionGroupId) -> None:
-        """Remove external override, falling back to lower-priority settings
-
-        Args:
-            motion_group_id: Motion group identifier (string or MotionGroupId)
-        """
+        """Remove external override, falling back to lower-priority settings"""
         mgid = MotionGroupId(motion_group_id)
         with self._lock:
             self._external_overrides.pop(mgid, None)
 
     def get_all_robots(self) -> list[MotionGroupId]:
-        """Get list of all robots with any playback settings
-
-        Returns:
-            List of robot IDs that have playback settings
-        """
+        """Get list of all robots with any playback settings"""
         with self._lock:
             all_robots: set[MotionGroupId] = set()
             all_robots.update(self._external_overrides.keys())
@@ -361,76 +285,30 @@ class PlaybackControlManager:
             return list(all_robots)
 
     def _validate_speed(self, speed: PlaybackSpeedPercent) -> None:
-        """Validate speed percent is in valid range
-
-        Args:
-            speed: Speed percent value to validate
-
-        Raises:
-            ValueError: If speed is outside valid range
-        """
+        """Validate speed percent is in valid range"""
         if not (0 <= speed <= 100):
             raise ValueError(f"Speed percent must be between 0 and 100, got {speed}")
 
     def set_execution_state(
         self, motion_group_id: str | MotionGroupId, state: PlaybackState
     ) -> None:
-        """Set the execution state for a motion group (used by movement controller)
-
-        This tracks whether a motion group is actually executing movement vs idle.
-        Used to enable/disable pause buttons in VS Code extension.
-
-        Args:
-            motion_group_id: Motion group identifier (string or MotionGroupId)
-            state: Execution state (EXECUTING, IDLE, etc.)
-        """
+        """Set the execution state for a motion group (used by movement controller)"""
         mgid = MotionGroupId(motion_group_id)
         with self._lock:
             self._execution_states[mgid] = state
-            # Note: We don't notify callbacks for execution state changes
-            # since these are internal state changes, not user-initiated playback changes
 
     def get_execution_state(self, motion_group_id: str | MotionGroupId) -> PlaybackState:
-        """Get the execution state for a motion group
-
-        This tells you whether the motion group is actively executing movement.
-        Use this to enable/disable pause buttons in your VS Code extension.
-
-        Args:
-            motion_group_id: Motion group identifier (string or MotionGroupId)
-
-        Returns:
-            Current execution state (EXECUTING/IDLE)
-        """
+        """Get the execution state for a motion group"""
         mgid = MotionGroupId(motion_group_id)
         with self._lock:
             return self._execution_states.get(mgid, PlaybackState.IDLE)
 
     def is_movement_active(self, motion_group_id: str | MotionGroupId) -> bool:
-        """Check if movement is actively executing for a motion group
-
-        Convenience method for VS Code extension UI logic.
-
-        Args:
-            motion_group_id: Motion group identifier (string or MotionGroupId)
-
-        Returns:
-            True if movement is executing and pause button should be enabled
-        """
-        execution_state = self.get_execution_state(motion_group_id)
-        return execution_state == PlaybackState.EXECUTING
+        """Check if movement is actively executing for a motion group"""
+        return self.get_execution_state(motion_group_id) == PlaybackState.EXECUTING
 
     def can_pause(self, motion_group_id: str | MotionGroupId) -> bool:
-        """Check if motion group can be paused (movement is active and not already paused)
-
-        Use this to enable/disable pause button in VS Code extension.
-
-        Args:
-            motion_group_id: Motion group identifier (string or MotionGroupId)
-
-        Returns:
-            True if pause button should be enabled
-        """
+        """Check if motion group can be paused (movement is active and not already paused)"""
         execution_state = self.get_execution_state(motion_group_id)
         playback_state = self.get_effective_state(motion_group_id)
         return (
@@ -438,33 +316,18 @@ class PlaybackControlManager:
         )
 
     def can_resume(self, motion_group_id: str | MotionGroupId) -> bool:
-        """Check if motion group can be resumed (movement is paused)
-
-        Use this to enable/disable play forward/backward buttons in VS Code extension.
-
-        Args:
-            motion_group_id: Motion group identifier (string or MotionGroupId)
-
-        Returns:
-            True if play buttons should be enabled
-        """
-        playback_state = self.get_effective_state(motion_group_id)
-        return playback_state == PlaybackState.PAUSED
+        """Check if motion group can be resumed (movement is paused)"""
+        return self.get_effective_state(motion_group_id) == PlaybackState.PAUSED
 
     def _notify_state_change(self, motion_group_id: MotionGroupId) -> None:
-        """Notify registered callbacks of a state change
-
-        Args:
-            motion_group_id: Motion group identifier
-        """
-        # Get the current state without holding the lock during callback execution
+        """Notify registered callbacks of a state change"""
         control = None
         callbacks = None
 
         with self._lock:
             if motion_group_id in self._external_overrides:
                 control = self._external_overrides[motion_group_id]
-            callbacks = self._state_callbacks.copy()  # Copy to avoid lock during iteration
+            callbacks = self._state_callbacks.copy()
 
         # Call callbacks outside of lock to avoid deadlock
         if control and callbacks:
@@ -472,24 +335,15 @@ class PlaybackControlManager:
                 try:
                     callback(motion_group_id, control.state, control.speed, control.direction)
                 except Exception as e:
-                    # Don't let callback errors break the system
                     logger.warning(f"State change callback error: {e}")
 
     def register_state_change_callback(self, callback: StateChangeCallback) -> None:
-        """Register a callback for state changes
-
-        Args:
-            callback: Callable that receives motion_group_id, state, speed, and direction
-        """
+        """Register a callback for state changes"""
         with self._lock:
             self._state_callbacks.append(callback)
 
     def unregister_state_change_callback(self, callback: StateChangeCallback) -> None:
-        """Unregister a callback for state changes
-
-        Args:
-            callback: Callable to remove from the registry
-        """
+        """Unregister a callback for state changes"""
         with self._lock:
             self._state_callbacks.remove(callback)
 
@@ -521,32 +375,21 @@ _active_program_playback_speed_percent: int | None = None
 
 
 def get_playback_manager() -> PlaybackControlManager:
-    """Get the global playback control manager instance
-
-    Returns:
-        Global PlaybackControlManager instance
-    """
+    """Get the global playback control manager instance"""
     return _playback_manager
 
 
 def set_active_program_playback_speed_percent(speed_percent: int) -> None:
     """Set the active program's default playback speed percent
 
-    This is called by the program decorator when a program starts.
-
-    Args:
-        speed_percent: Default playback speed percent for the program (0-100)
+    Called by the program decorator when a program starts.
     """
     global _active_program_playback_speed_percent
     _active_program_playback_speed_percent = speed_percent
 
 
 def get_active_program_playback_speed_percent() -> int | None:
-    """Get the active program's default playback speed percent
-
-    Returns:
-        Active program's default playback speed percent if set, None otherwise
-    """
+    """Get the active program's default playback speed percent"""
     return _active_program_playback_speed_percent
 
 
@@ -559,230 +402,32 @@ def clear_active_program_playback_speed_percent() -> None:
     _active_program_playback_speed_percent = None
 
 
-# External API functions for VS Code extension integration
-
-
+# External API functions for integrations
 def get_all_active_robots() -> list[MotionGroupId]:
-    """Get list of all currently active robots
-
-    This is for VS Code extensions to discover robots independently.
-
-    Returns:
-        List of robot IDs that are currently active/moving
-    """
+    """Get list of all robots with any settings (active or configured)"""
     manager = get_playback_manager()
-    active_robots = []
-
-    # Check all known robots for activity
-    for motion_group_id in manager._external_overrides.keys():
-        if manager.is_movement_active(motion_group_id):
-            active_robots.append(motion_group_id)
-
-    # Also check execution states
-    for motion_group_id in manager._execution_states.keys():
-        if (
-            manager.get_execution_state(motion_group_id) == PlaybackState.EXECUTING
-            and motion_group_id not in active_robots
-        ):
-            active_robots.append(motion_group_id)
-
-    return active_robots
-
-
-def get_robot_info(motion_group_id: str | MotionGroupId) -> dict:
-    """Get complete information about a motion group's state
-
-    This is for VS Code extensions to get all motion group state data.
-
-    Args:
-        motion_group_id: The motion group to get info for (string or MotionGroupId)
-
-    Returns:
-        Dictionary with complete motion group state information
-    """
-    manager = get_playback_manager()
-    mgid = MotionGroupId(motion_group_id)
-
-    return {
-        "motion_group_id": mgid,
-        "execution_state": manager.get_execution_state(mgid),
-        "playback_state": manager.get_effective_state(mgid),
-        "speed": manager.get_effective_speed(mgid),
-        "direction": manager.get_effective_direction(mgid),
-        "is_moving": manager.is_movement_active(mgid),
-        "can_pause": manager.can_pause(mgid),
-        "can_resume": manager.can_resume(mgid),
-    }
-
-
-def register_global_state_change_callback(callback) -> None:
-    """Register a callback for ALL robot state changes
-
-    This is for VS Code extensions to monitor all robots globally.
-    The callback will be called for any robot state change.
-
-    Args:
-        callback: Function to call when any robot state changes
-                 Signature: callback(motion_group_id, state, speed, direction)
-    """
-    manager = get_playback_manager()
-    manager.register_state_change_callback(callback)
-
-
-def unregister_global_state_change_callback(callback) -> None:
-    """Unregister a global state change callback
-
-    Args:
-        callback: The callback function to unregister
-    """
-    manager = get_playback_manager()
-    manager.unregister_state_change_callback(callback)
-
-
-def pause_robot(motion_group_id: MotionGroupId) -> bool:
-    """Pause a specific robot
-
-    Args:
-        motion_group_id: The motion group to pause
-
-    Returns:
-        True if pause was successful, False otherwise
-    """
-    manager = get_playback_manager()
-    if manager.can_pause(motion_group_id):
-        manager.pause(motion_group_id)
-        return True
-    return False
-
-
-def resume_robot(motion_group_id: MotionGroupId) -> bool:
-    """Resume a specific robot
-
-    Args:
-        motion_group_id: The motion group to resume
-
-    Returns:
-        True if resume was successful, False otherwise
-    """
-    manager = get_playback_manager()
-    if manager.can_resume(motion_group_id):
-        manager.resume(motion_group_id)
-        return True
-    return False
-
-
-def set_robot_direction_forward(motion_group_id: MotionGroupId) -> None:
-    """Set robot direction to forward
-
-    Args:
-        motion_group_id: The motion group to set direction for
-    """
-    manager = get_playback_manager()
-    manager.set_direction_forward(motion_group_id)
-
-
-def set_robot_direction_backward(motion_group_id: MotionGroupId) -> None:
-    """Set robot direction to backward
-
-    Args:
-        motion_group_id: The motion group to set direction for
-    """
-    manager = get_playback_manager()
-    manager.set_direction_backward(motion_group_id)
-
-
-def set_robot_speed(motion_group_id: MotionGroupId, speed: int) -> None:
-    """Set robot speed
-
-    Args:
-        motion_group_id: The motion group to set speed for
-        speed: Speed percentage (0-100)
-    """
-    manager = get_playback_manager()
-    current_state = manager.get_effective_state(motion_group_id)
-    current_direction = manager.get_effective_direction(motion_group_id)
-
-    manager.set_external_override(
-        motion_group_id, PlaybackSpeedPercent(speed), current_state, current_direction
-    )
-
-
-def get_primary_motion_group_id() -> Optional[MotionGroupId]:
-    """Get the primary/main motion group ID if one exists
-
-    This is a convenience function for VS Code extensions that want to
-    automatically control the "main" motion group without manual selection.
-
-    Returns the first motion group ID that has been active, or None if no motion groups.
-
-    Returns:
-        Primary motion group ID if available, None otherwise
-    """
-    active_robots = get_all_active_robots()
-    if active_robots:
-        return active_robots[0]  # Return first robot as primary
-    return None
-
-
-def get_currently_executing_robots() -> list[MotionGroupId]:
-    """Get list of robots that are currently executing movement
-
-    This helps VS Code extensions focus on robots that are actively moving
-    and would benefit from pause/speed control.
-
-    Returns:
-        List of robot IDs that are currently executing movement
-    """
-    manager = get_playback_manager()
-    executing_robots = []
-
-    for motion_group_id in get_all_active_robots():
-        if manager.get_execution_state(motion_group_id) == PlaybackState.EXECUTING:
-            executing_robots.append(motion_group_id)
-
-    return executing_robots
-
-
-def get_robot_count() -> int:
-    """Get total number of active robots
-
-    Useful for VS Code extension UI to show robot count or decide
-    whether to show single-robot vs multi-robot interface.
-
-    Returns:
-        Number of active robots
-    """
-    return len(get_all_active_robots())
-
-
-def has_any_active_robots() -> bool:
-    """Check if there are any active robots
-
-    Quick check for VS Code extensions to enable/disable robot controls.
-
-    Returns:
-        True if any robots are active, False otherwise
-    """
-    return get_robot_count() > 0
+    with manager._lock:
+        all_robots: set[MotionGroupId] = set()
+        all_robots.update(manager._external_overrides.keys())
+        all_robots.update(manager._decorator_defaults.keys())
+        all_robots.update(manager._execution_states.keys())
+        return list(all_robots)
 
 
 def get_robot_status_summary() -> dict:
-    """Get a summary of all robot statuses
-
-    Provides a complete overview for VS Code extension dashboards.
-
-    Returns:
-        Dictionary with robot count, execution summary, and robot details
-    """
+    """Get a summary of all robot statuses for external UIs"""
     active_robots = get_all_active_robots()
-    executing_robots = get_currently_executing_robots()
+    manager = get_playback_manager()
+    executing_robots = [
+        robot
+        for robot in active_robots
+        if manager.get_execution_state(robot) == PlaybackState.EXECUTING
+    ]
 
     return {
         "total_robots": len(active_robots),
         "executing_robots": len(executing_robots),
-        "idle_robots": len(active_robots) - len(executing_robots),
         "motion_group_ids": active_robots,
         "executing_motion_group_ids": executing_robots,
         "has_robots": len(active_robots) > 0,
-        "primary_motion_group_id": get_primary_motion_group_id(),
     }
