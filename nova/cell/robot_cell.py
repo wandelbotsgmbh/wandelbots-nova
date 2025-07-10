@@ -477,49 +477,6 @@ class AbstractRobot(Device):
     async def stop(self):
         """Stop behaviour of the robot"""
 
-    # Convenience methods for external control integration
-    async def pause(self) -> None:
-        """Pause current execution (external control)
-
-        Called by external tools to pause robot execution. Sets external
-        override state that will be respected by future execute calls.
-        """
-        from nova.core.playback_control import MotionGroupId, get_playback_manager
-
-        manager = get_playback_manager()
-        manager.pause(MotionGroupId(self.id))
-
-    async def resume(self) -> None:
-        """Resume paused execution (external control)
-
-        Called by external tools to resume robot execution. Clears
-        external pause state.
-        """
-        from nova.core.playback_control import MotionGroupId, get_playback_manager
-
-        manager = get_playback_manager()
-        manager.resume(MotionGroupId(self.id))
-
-    async def set_playback_speed(self, speed: float) -> None:
-        """Set external playback speed override (external control)
-
-        Called by external tools to override speed settings. This setting
-        takes highest precedence over method parameters and decorator defaults.
-
-        Args:
-            speed: Playback speed (0.0-1.0)
-        """
-        from nova.core.playback_control import (
-            MotionGroupId,
-            PlaybackSpeedPercent,
-            get_playback_manager,
-        )
-
-        manager = get_playback_manager()
-        manager.set_external_override(
-            MotionGroupId(self.id), PlaybackSpeedPercent(int(speed * 100))
-        )
-
 
 class AbstractController(Device):
     @abstractmethod

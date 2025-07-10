@@ -289,7 +289,7 @@ def program(
     preconditions: ProgramPreconditions | None = None,
     viewer: Any | None = None,
     playback_speed_percent: int = 100,
-    enable_external_control: bool = True,
+    external_control: Any | None = None,
 ):
     """
     Decorator factory for creating Nova programs with declarative controller setup.
@@ -300,8 +300,9 @@ def program(
         viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
         playback_speed_percent: Default playback speed for all robot executions in this program (0-100%).
                        Individual execute() calls can override this with their playback_speed parameter.
-                       External tools (VS Code extensions) can override this globally.
-        enable_external_control: Enable external control function registration (reserved for future use)
+                       External tools (VS Code extensions) can override this globally via the playback manager.
+        external_control: Optional external control instance (e.g., nova.external_control.WebSocketControl())
+                         enables VS Code extensions and other tools to control the program in real-time.
     """
 
     def decorator(
@@ -325,6 +326,7 @@ def program(
         async def async_wrapper(*args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:
             """Async wrapper that handles controller creation and cleanup."""
             created_controllers = []
+            external_control_started = False
             try:
                 # Create controllers before execution
                 created_controllers = await func_obj._create_controllers()
@@ -335,13 +337,13 @@ def program(
 
                     set_active_program_playback_speed_percent(func_obj.playback_speed_percent)
 
-                # Enable external control if requested
-                if enable_external_control:
-                    from nova.external_control.external_integration import (
-                        register_external_control_functions,
-                    )
-
-                    register_external_control_functions()
+                # Start external control if configured
+                if external_control is not None:
+                    try:
+                        await external_control.start()
+                        external_control_started = True
+                    except Exception as e:
+                        logger.warning(f"Failed to start external control: {e}")
 
                 # Configure viewers if any are active
                 if viewer is not None:
@@ -363,6 +365,13 @@ def program(
                     )
 
                     clear_active_program_playback_speed_percent()
+
+                # Stop external control if it was started
+                if external_control_started and external_control is not None:
+                    try:
+                        await external_control.stop()
+                    except Exception as e:
+                        logger.warning(f"Error stopping external control: {e}")
 
                 # Clean up viewers
                 if viewer is not None:
