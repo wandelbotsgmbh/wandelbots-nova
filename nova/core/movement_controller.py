@@ -1,5 +1,5 @@
 from functools import singledispatch
-from typing import Any
+from typing import Any, Union
 
 import wandelbots_api_client as wb
 
@@ -124,7 +124,9 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         manager.set_execution_state(robot_id, PlaybackState.EXECUTING)
 
         # Use a queue to coordinate between request generation and response processing
-        request_queue = asyncio.Queue()
+        request_queue: asyncio.Queue[
+            Union[wb.models.ExecuteTrajectoryRequest, wb.models.StartMovementRequest]
+        ] = asyncio.Queue()
         motion_completed = asyncio.Event()
         last_sent_speed = context.effective_speed
         last_sent_state = PlaybackState.PLAYING  # Track current playback state

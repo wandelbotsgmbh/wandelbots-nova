@@ -509,10 +509,16 @@ class AbstractRobot(Device):
         Args:
             speed: Playback speed (0.0-1.0)
         """
-        from nova.core.playback_control import MotionGroupId, PlaybackSpeed, get_playback_manager
+        from nova.core.playback_control import (
+            MotionGroupId,
+            PlaybackSpeedPercent,
+            get_playback_manager,
+        )
 
         manager = get_playback_manager()
-        manager.set_external_override(MotionGroupId(self.id), PlaybackSpeed(speed))
+        manager.set_external_override(
+            MotionGroupId(self.id), PlaybackSpeedPercent(int(speed * 100))
+        )
 
 
 class AbstractController(Device):
