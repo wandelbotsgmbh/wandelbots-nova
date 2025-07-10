@@ -110,14 +110,14 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
         # Set up runtime speed monitoring for external speed changes
         from nova.core.playback_control import (
+            MotionGroupId,
             PlaybackDirection,
             PlaybackSpeedPercent,
             PlaybackState,
-            RobotId,
             get_playback_manager,
         )
 
-        robot_id = RobotId(context.robot_id)
+        robot_id = MotionGroupId(context.robot_id)
         manager = get_playback_manager()
 
         # Set execution state to indicate movement is starting
@@ -129,10 +129,11 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         last_sent_speed = context.effective_speed
         last_sent_state = PlaybackState.PLAYING  # Track current playback state
         last_sent_direction = PlaybackDirection.FORWARD  # Track current playback direction
+        pending_direction_logged = False  # Track if we've already logged a pending direction change
 
         async def response_processor():
             """Process websocket responses and check for external speed changes on each response."""
-            nonlocal last_sent_speed, last_sent_state, last_sent_direction
+            nonlocal last_sent_speed, last_sent_state, last_sent_direction, pending_direction_logged
 
             try:
                 async for response in response_stream:
@@ -215,14 +216,19 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                             await request_queue.put(resume_request)
                             # Update last sent direction since we're resuming with new direction
                             last_sent_direction = effective_direction
+                            # Reset the pending direction logged flag since we've applied the change
+                            pending_direction_logged = False
 
                     # Handle direction changes (only effective when paused, applied on next resume)
-                    elif effective_direction != last_sent_direction:
+                    elif (
+                        effective_direction != last_sent_direction and not pending_direction_logged
+                    ):
                         logger.info(
                             f"Runtime playback direction change: {last_sent_direction.value} -> {effective_direction.value} (will apply on next resume)"
                         )
                         # Don't update last_sent_direction here - it will be updated when we actually resume
                         # This just logs the direction change for user awareness
+                        pending_direction_logged = True  # Mark that we've logged this change
 
                     # Stop when standstill indicates motion ended
                     if isinstance(instance, wb.models.Standstill):
@@ -248,7 +254,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             UI controls like VS Code sliders, pause/resume buttons, and direction controls, avoiding polling delays that
             could make the UI feel sluggish.
             """
-            nonlocal last_sent_speed, last_sent_state, last_sent_direction
+            nonlocal last_sent_speed, last_sent_state, last_sent_direction, pending_direction_logged
 
             try:
                 # Log initialization info for debugging
@@ -321,14 +327,19 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                             await request_queue.put(resume_request)
                             # Update last sent direction since we're resuming with new direction
                             last_sent_direction = effective_direction
+                            # Reset the pending direction logged flag since we've applied the change
+                            pending_direction_logged = False
 
                     # Detect direction changes immediately (only effective when paused, applied on next resume)
-                    elif effective_direction != last_sent_direction:
+                    elif (
+                        effective_direction != last_sent_direction and not pending_direction_logged
+                    ):
                         logger.info(
                             f"Speed monitor detected runtime playback direction change: {last_sent_direction.value} -> {effective_direction.value} (will apply on next resume)"
                         )
                         # Don't update last_sent_direction here - it will be updated when we actually resume
                         # This just logs the direction change for user awareness
+                        pending_direction_logged = True  # Mark that we've logged this change
 
                     # Brief yield to allow other coroutines to run, much faster than 50ms polling
                     await asyncio.sleep(0.001)  # 1ms yield instead of 50ms polling

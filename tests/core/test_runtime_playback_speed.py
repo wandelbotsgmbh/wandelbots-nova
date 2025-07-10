@@ -13,9 +13,9 @@ import pytest
 from nova.actions.container import CombinedActions, MovementControllerContext
 from nova.actions.motions import cartesian_ptp
 from nova.core.playback_control import (
+    MotionGroupId,
     PlaybackControlManager,
     PlaybackSpeedPercent,
-    RobotId,
     get_playback_manager,
 )
 
@@ -31,12 +31,12 @@ class TestRuntimePlaybackSpeedChange:
             playback_manager._decorator_defaults.clear()
 
     @pytest.fixture
-    def robot_id(self) -> RobotId:
+    def robot_id(self) -> MotionGroupId:
         """Robot ID representing a motion group (e.g., '0@ur')."""
-        return RobotId("0@test_controller")
+        return MotionGroupId("0@test_controller")
 
     @pytest.fixture
-    def movement_context(self, robot_id: RobotId) -> MovementControllerContext:
+    def movement_context(self, robot_id: MotionGroupId) -> MovementControllerContext:
         """Movement controller context with proper robot ID."""
         actions = [cartesian_ptp((100, 200, 300, 0, 0, 0))]
         return MovementControllerContext(
@@ -53,7 +53,7 @@ class TestRuntimePlaybackSpeedChange:
         return get_playback_manager()
 
     def test_robot_id_consistency(
-        self, robot_id: RobotId, movement_context: MovementControllerContext
+        self, robot_id: MotionGroupId, movement_context: MovementControllerContext
     ):
         """
         Test that external speed setters and movement controller use the same robot ID.
@@ -65,7 +65,7 @@ class TestRuntimePlaybackSpeedChange:
         external_robot_id = robot_id
 
         # Movement controller should use the same robot ID from context
-        controller_robot_id = RobotId(movement_context.robot_id)
+        controller_robot_id = MotionGroupId(movement_context.robot_id)
 
         assert external_robot_id == controller_robot_id, (
             f"Robot ID mismatch: external='{external_robot_id}', controller='{controller_robot_id}'"
@@ -87,7 +87,7 @@ class TestRuntimePlaybackSpeedChange:
 
     def test_runtime_speed_change_detection(
         self,
-        robot_id: RobotId,
+        robot_id: MotionGroupId,
         movement_context: MovementControllerContext,
         playback_manager: PlaybackControlManager,
     ):
@@ -128,7 +128,7 @@ class TestRuntimePlaybackSpeedChange:
             assert override.speed == new_speed, f"Override speed should be {new_speed}%"
 
     def test_precedence_resolution(
-        self, robot_id: RobotId, playback_manager: PlaybackControlManager
+        self, robot_id: MotionGroupId, playback_manager: PlaybackControlManager
     ):
         """
         Test that speed precedence is correctly resolved: external > method > decorator > default.
@@ -151,7 +151,7 @@ class TestRuntimePlaybackSpeedChange:
         assert effective_speed == external_speed, "External override should have highest precedence"
 
     def test_multiple_speed_changes(
-        self, robot_id: RobotId, playback_manager: PlaybackControlManager
+        self, robot_id: MotionGroupId, playback_manager: PlaybackControlManager
     ):
         """
         Test multiple consecutive speed changes are properly handled.

@@ -484,10 +484,10 @@ class AbstractRobot(Device):
         Called by external tools to pause robot execution. Sets external
         override state that will be respected by future execute calls.
         """
-        from nova.core.playback_control import RobotId, get_playback_manager
+        from nova.core.playback_control import MotionGroupId, get_playback_manager
 
         manager = get_playback_manager()
-        manager.pause(RobotId(self.id))
+        manager.pause(MotionGroupId(self.id))
 
     async def resume(self) -> None:
         """Resume paused execution (external control)
@@ -495,10 +495,10 @@ class AbstractRobot(Device):
         Called by external tools to resume robot execution. Clears
         external pause state.
         """
-        from nova.core.playback_control import RobotId, get_playback_manager
+        from nova.core.playback_control import MotionGroupId, get_playback_manager
 
         manager = get_playback_manager()
-        manager.resume(RobotId(self.id))
+        manager.resume(MotionGroupId(self.id))
 
     async def set_playback_speed(self, speed: float) -> None:
         """Set external playback speed override (external control)
@@ -509,10 +509,10 @@ class AbstractRobot(Device):
         Args:
             speed: Playback speed (0.0-1.0)
         """
-        from nova.core.playback_control import PlaybackSpeed, RobotId, get_playback_manager
+        from nova.core.playback_control import MotionGroupId, PlaybackSpeed, get_playback_manager
 
         manager = get_playback_manager()
-        manager.set_external_override(RobotId(self.id), PlaybackSpeed(speed))
+        manager.set_external_override(MotionGroupId(self.id), PlaybackSpeed(speed))
 
 
 class AbstractController(Device):

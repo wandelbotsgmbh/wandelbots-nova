@@ -148,8 +148,8 @@ class MotionGroup(AbstractRobot):
         """Set decorator defaults from active program playback speed if available."""
         try:
             from nova.core.playback_control import (
+                MotionGroupId,
                 PlaybackSpeedPercent,
-                RobotId,
                 get_active_program_playback_speed_percent,
                 get_playback_manager,
             )
@@ -158,7 +158,7 @@ class MotionGroup(AbstractRobot):
             if active_speed is not None:
                 manager = get_playback_manager()
                 manager.set_decorator_default(
-                    RobotId(self._motion_group_id), PlaybackSpeedPercent(active_speed)
+                    MotionGroupId(self._motion_group_id), PlaybackSpeedPercent(active_speed)
                 )
         except Exception:
             # If there's any issue with setting defaults, continue silently
@@ -395,13 +395,13 @@ class MotionGroup(AbstractRobot):
     ) -> AsyncIterable[MovementResponse]:
         # Get effective speed using precedence resolution
         from nova.core.playback_control import (
+            MotionGroupId,
             PlaybackSpeedPercent,
             PlaybackState,
-            RobotId,
             get_playback_manager,
         )
 
-        robot_id_typed = RobotId(self.motion_group_id)
+        robot_id_typed = MotionGroupId(self.motion_group_id)
         manager = get_playback_manager()
 
         # Convert playback_speed to PlaybackSpeedPercent if provided

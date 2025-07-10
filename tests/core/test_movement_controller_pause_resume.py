@@ -16,9 +16,9 @@ from nova.actions import CombinedActions, MovementControllerContext
 from nova.actions.motions import cartesian_ptp
 from nova.core.movement_controller import move_forward
 from nova.core.playback_control import (
+    MotionGroupId,
     PlaybackSpeedPercent,
     PlaybackState,
-    RobotId,
     get_playback_manager,
 )
 
@@ -37,7 +37,7 @@ class TestMovementControllerPauseResume(unittest.TestCase):
             combined_actions=CombinedActions(items=tuple(actions)),
         )
         self.manager = get_playback_manager()
-        self.robot_id = RobotId(self.context.robot_id)
+        self.robot_id = MotionGroupId(self.context.robot_id)
 
         # Clear any existing state
         self.manager.clear_external_override(self.robot_id)

@@ -10,7 +10,7 @@ avoids security concerns and simplifies integration for this initial implementat
 
 import sys
 
-from nova.core.playback_control import PlaybackSpeedPercent, RobotId, get_playback_manager
+from nova.core.playback_control import MotionGroupId, PlaybackSpeedPercent, get_playback_manager
 
 
 def nova_set_playback_speed(robot_id: str, speed_percent: int) -> dict:
@@ -34,7 +34,7 @@ def nova_set_playback_speed(robot_id: str, speed_percent: int) -> dict:
 
         manager = get_playback_manager()
         manager.set_external_override(
-            RobotId(robot_id), PlaybackSpeedPercent(clamped_speed_percent)
+            MotionGroupId(robot_id), PlaybackSpeedPercent(clamped_speed_percent)
         )
 
         return {
@@ -69,7 +69,7 @@ def nova_pause_robot(robot_id: str) -> dict:
     """
     try:
         manager = get_playback_manager()
-        manager.pause(RobotId(robot_id))
+        manager.pause(MotionGroupId(robot_id))
 
         return {
             "success": True,
@@ -103,7 +103,7 @@ def nova_resume_robot(robot_id: str) -> dict:
     """
     try:
         manager = get_playback_manager()
-        manager.resume(RobotId(robot_id))
+        manager.resume(MotionGroupId(robot_id))
 
         return {
             "success": True,
@@ -139,8 +139,8 @@ def nova_get_available_robots() -> dict:
 
         robots = []
         for robot_id in robot_ids:
-            current_speed = manager.get_effective_speed(RobotId(robot_id))
-            current_state = manager.get_effective_state(RobotId(robot_id))
+            current_speed = manager.get_effective_speed(MotionGroupId(robot_id))
+            current_state = manager.get_effective_state(MotionGroupId(robot_id))
 
             robots.append(
                 {
