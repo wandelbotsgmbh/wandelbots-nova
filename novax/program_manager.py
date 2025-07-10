@@ -45,7 +45,6 @@ class NovaxProgramRunner(ProgramRunner):
             program_id=program_id,
             program=SimpleProgram(content="", program_type=ProgramType.PYTHON),
             args={},
-            nova=Nova(),
         )
         self.program_functions = program_functions
         self.parameters = parameters
@@ -56,21 +55,17 @@ class NovaxProgramRunner(ProgramRunner):
 
         func = self.program_functions[self.program_id]
 
-        if not self._nova:
-            raise RuntimeError("No Nova instance available")
+        # Execute the function with parameters
+        if self.parameters:
+            result = func(**self.parameters)
+        else:
+            result = func()
 
-        async with self._nova as nova:
-            # Execute the function with parameters
-            if self.parameters:
-                result = func(nova, **self.parameters)
-            else:
-                result = func(nova)
+        # Check if the function is async and await it if necessary
+        if inspect.iscoroutine(result):
+            result = await result
 
-            # Check if the function is async and await it if necessary
-            if inspect.iscoroutine(result):
-                result = await result
-
-            return result
+        return result
 
 
 class ProgramDetails(BaseModel):
