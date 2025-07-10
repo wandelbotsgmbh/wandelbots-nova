@@ -29,39 +29,38 @@ from nova.program import ProgramPreconditions
         cleanup_controllers=True,
     ),
 )
-async def main():
-    async with Nova() as nova:
-        cell = nova.cell()
-        controller = await cell.controller("ur10e")
+async def main(nova: Nova):
+    cell = nova.cell()
+    controller = await cell.controller("ur10e")
 
-        async with controller[0] as motion_group:
-            tcp = "test_gripper"
+    async with controller[0] as motion_group:
+        tcp = "test_gripper"
 
-            await motion_group.ensure_virtual_tcp(
-                tcp=api.models.RobotTcp(
-                    id=tcp,
-                    position=api.models.Vector3d(x=0, y=0, z=150),
-                    rotation=api.models.RotationAngles(
-                        angles=[0, 0, 0], type=api.models.RotationAngleTypes.ROTATION_VECTOR
-                    ),
+        await motion_group.ensure_virtual_tcp(
+            tcp=api.models.RobotTcp(
+                id=tcp,
+                position=api.models.Vector3d(x=0, y=0, z=150),
+                rotation=api.models.RotationAngles(
+                    angles=[0, 0, 0], type=api.models.RotationAngleTypes.ROTATION_VECTOR
                 ),
-                timeout=10,
-            )
+            ),
+            timeout=10,
+        )
 
-            tcp_names = await motion_group.tcp_names()
-            print(tcp_names)
+        tcp_names = await motion_group.tcp_names()
+        print(tcp_names)
 
-            # Current motion group state
-            state = await motion_group.get_state(tcp)
-            print(state)
+        # Current motion group state
+        state = await motion_group.get_state(tcp)
+        print(state)
 
-            # Current joints positions
-            joints = await motion_group.joints()
-            print(joints)
+        # Current joints positions
+        joints = await motion_group.joints()
+        print(joints)
 
-            # Current TCP pose
-            tcp_pose = await motion_group.tcp_pose(tcp)
-            print(tcp_pose)
+        # Current TCP pose
+        tcp_pose = await motion_group.tcp_pose(tcp)
+        print(tcp_pose)
 
 
 if __name__ == "__main__":

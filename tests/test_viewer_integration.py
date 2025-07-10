@@ -1,6 +1,6 @@
 """Test the new viewer parameter in program decorator."""
 
-from nova import viewers
+from nova import Nova, viewers
 from nova.program import ProgramPreconditions, program
 
 
@@ -13,8 +13,13 @@ def test_program_with_rerun_viewer():
     assert rerun_viewer.spawn is True
 
     # Test that program decorator accepts viewer
-    @program(name="Test Program", viewer=rerun_viewer, preconditions=ProgramPreconditions())
-    async def test_program():
+    @program(
+        name="Test Program",
+        viewer=rerun_viewer,
+        preconditions=ProgramPreconditions(),
+        test_mode=True,
+    )
+    async def test_program(nova: Nova):
         return "success"
 
     # Check that the function was decorated properly
