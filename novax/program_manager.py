@@ -84,11 +84,19 @@ class ProgramManager:
     def __init__(self):
         self._programs: dict[str, ProgramDetails] = {}
         self._program_functions: dict[str, Program] = {}
-        self._runners: dict[str, dict[str, NovaxProgramRunner]] = {}
+        self._runner: NovaxProgramRunner | None = None
         self._program_sources: list[ProgramSource] = []
 
     def has_program(self, program_id: str) -> bool:
         return program_id in self._programs
+
+    @property
+    def is_any_program_running(self) -> bool:
+        return self._runner is not None and self._runner.is_running()
+
+    @property
+    def running_program(self) -> Optional[str]:
+        return self._runner.program_id if self.is_any_program_running and self._runner else None
 
     def register_program_source(self, program_source: ProgramSource) -> None:
         """
@@ -145,32 +153,29 @@ class ProgramManager:
         """Get a specific program by ID"""
         return self._programs.get(program_id)
 
-    async def get_program_runs(self, program_id: str) -> list[ProgramRun]:
-        """Get all runs for a specific program"""
-        return [runner.program_run for runner in self._runners.get(program_id, {}).values()]
-
-    async def get_program_run(self, program_id: str, run_id: str) -> ProgramRun:
-        """Get a specific run for a program"""
-        return self._runners[program_id][run_id].program_run
-
     async def run_program(
-        self, program_id: str, parameters: Optional[dict[str, Any]] = None
+        self, program_id: str, parameters: dict[str, Any] | None = None
     ) -> ProgramRun:
         """Run a registered program with given parameters"""
-        runner = NovaxProgramRunner(program_id, self._program_functions, parameters)
-        if program_id not in self._runners:
-            self._runners[program_id] = {}
-        self._runners[program_id][runner.run_id] = runner
+        if self.is_any_program_running:
+            raise RuntimeError("A program is already running")
+
+        runner = self._runner = NovaxProgramRunner(program_id, self._program_functions, parameters)
         runner.start(sync=False)
         return runner.program_run
 
-    async def stop_program(self, program_id: str, run_id: str):
+    async def stop_program(self, program_id: str):
         """Stop a running program"""
-        runner = self._runners[program_id][run_id]
-        if not runner:
-            raise ValueError(f"Runner {run_id} not found")
-        runner.stop(sync=True)
-        del self._runners[program_id][run_id]
+        if not self.is_any_program_running or self._runner is None:
+            raise RuntimeError("No program is running")
+
+        if self.running_program != program_id:
+            raise RuntimeError(
+                f"Program {program_id} is not running. Currently running: {self.running_program}"
+            )
+
+        self._runner.stop(sync=True)
+        self._runner = None
 
 
 # Example implementations of ProgramSource
