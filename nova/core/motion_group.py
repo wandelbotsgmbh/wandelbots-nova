@@ -8,7 +8,6 @@ from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
 from nova.cell.robot_cell import AbstractRobot
-from nova.core import logger
 from nova.core.exceptions import InconsistentCollisionScenes
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
@@ -141,6 +140,30 @@ class MotionGroup(AbstractRobot):
         self._current_motion: str | None = None
         self._optimizer_setup: wb.models.OptimizerSetup | None = None
         super().__init__(id=motion_group_id)
+
+        # Set decorator defaults if a decorator playback speed is set in context
+        self._set_decorator_defaults_from_context()
+
+    def _set_decorator_defaults_from_context(self) -> None:
+        """Set decorator defaults from active program playback speed if available."""
+        try:
+            from nova.core.playback_control import (
+                MotionGroupId,
+                PlaybackSpeedPercent,
+                get_active_program_playback_speed_percent,
+                get_playback_manager,
+            )
+
+            active_speed = get_active_program_playback_speed_percent()
+            if active_speed is not None:
+                manager = get_playback_manager()
+                manager.set_decorator_default(
+                    MotionGroupId(self._motion_group_id), PlaybackSpeedPercent(active_speed)
+                )
+        except Exception:
+            # If there's any issue with setting defaults, continue silently
+            # This maintains backward compatibility
+            pass
 
     async def open(self):
         await self._api_gateway.activate_motion_group(
@@ -368,7 +391,38 @@ class MotionGroup(AbstractRobot):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
+        playback_speed: float | None = None,
     ) -> AsyncIterable[MovementResponse]:
+        # Get effective speed using precedence resolution
+        from nova.core.playback_control import (
+            MotionGroupId,
+            PlaybackSpeedPercent,
+            PlaybackState,
+            get_playback_manager,
+        )
+
+        robot_id_typed = MotionGroupId(self.motion_group_id)
+        manager = get_playback_manager()
+
+        # Convert playback_speed to PlaybackSpeedPercent if provided
+        method_speed = (
+            PlaybackSpeedPercent(int(playback_speed)) if playback_speed is not None else None
+        )
+        effective_speed = manager.get_effective_speed(robot_id_typed, method_speed)
+
+        # Validate speed range (0-100 percent)
+        if not (0 <= effective_speed <= 100):
+            raise ValueError(
+                f"Playback speed must be between 0 and 100 percent, got {effective_speed}"
+            )
+
+        # Check if robot is paused by external control
+        playback_state = manager.get_effective_state(robot_id_typed)
+        if playback_state == PlaybackState.PAUSED:
+            # For now, just note the pause state - full pause implementation would require
+            # more complex coordination with the websocket execution flow
+            pass
+
         if movement_controller is None:
             movement_controller = move_forward
 
@@ -396,10 +450,19 @@ class MotionGroup(AbstractRobot):
 
             yield move_to_response
 
+        # If method_speed is None but effective_speed is not the default 100,
+        # use the effective_speed as method_speed to ensure consistency
+        method_speed_to_use = method_speed
+        if method_speed_to_use is None and effective_speed != 100:
+            method_speed_to_use = PlaybackSpeedPercent(effective_speed)
+
         controller = movement_controller(
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
                 motion_id=load_plan_response.motion,
+                motion_group_id=self.motion_group_id,  # Pass the motion group ID
+                effective_speed=effective_speed,  # Already an integer percent (0-100)
+                method_speed=int(method_speed_to_use) if method_speed_to_use is not None else None,
             )
         )
 
@@ -412,6 +475,10 @@ class MotionGroup(AbstractRobot):
             )
 
         execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
+
+        # The effective speed is applied through the movement controller layer
+        # Real-time speed updates can be sent during execution using PlaybackSpeedRequest
+
         execution_task = asyncio.create_task(
             self._api_gateway.motion_api.execute_trajectory(
                 cell=self._cell, client_request_generator=execute_response_streaming_controller
@@ -422,11 +489,17 @@ class MotionGroup(AbstractRobot):
         await execution_task
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
-        # TODO: mypy failed on main branch, need to check
-        if self._optimizer_setup is None or self._optimizer_setup.tcp != tcp:  # type: ignore
+        # Cache optimizer setup per TCP to avoid redundant API calls
+        # Note: We cache based on TCP string ID since the setup is specific to the TCP
+        if (
+            self._optimizer_setup is None
+            or getattr(self._optimizer_setup, "_cached_tcp_id", None) != tcp
+        ):
             self._optimizer_setup = await self._api_gateway.get_optimizer_config(
                 cell=self._cell, motion_group_id=self.motion_group_id, tcp=tcp
             )
+            # Store the TCP ID for cache validation
+            setattr(self._optimizer_setup, "_cached_tcp_id", tcp)
 
         return self._optimizer_setup
 
@@ -455,14 +528,13 @@ class MotionGroup(AbstractRobot):
         )
 
     async def stop(self):
-        logger.debug(f"Stopping motion of {self}...")
         try:
             if self._current_motion is None:
                 raise ValueError("No motion to stop")
             await self._api_gateway.stop_motion(cell=self._cell, motion_id=self._current_motion)
-            logger.debug(f"Motion {self.current_motion} stopped.")
-        except ValueError as e:
-            logger.debug(f"No motion to stop for {self}: {e}")
+        except ValueError:
+            # No motion to stop
+            pass
 
     async def get_state(self, tcp: str | None = None) -> RobotState:
         """

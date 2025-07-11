@@ -44,6 +44,9 @@ class Program(BaseModel, Generic[Parameters, Return]):
     input: type[BaseModel]
     output: type[BaseModel]
     preconditions: ProgramPreconditions | None = None
+    playback_speed_percent: int = (
+        100  # Default playback speed for all robots in this program (0-100%)
+    )
 
     @classmethod
     def validate(cls, value: Callable[Parameters, Return]) -> "Program[Parameters, Return]":
@@ -285,6 +288,8 @@ def program(
     name: str | None = None,
     preconditions: ProgramPreconditions | None = None,
     viewer: Any | None = None,
+    playback_speed_percent: int = 100,
+    external_control: Any | None = None,
 ):
     """
     Decorator factory for creating Nova programs with declarative controller setup.
@@ -293,6 +298,11 @@ def program(
         name: Name of the program
         preconditions: ProgramPreconditions containing controller configurations and cleanup settings
         viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
+        playback_speed_percent: Default playback speed for all robot executions in this program (0-100%).
+                       Individual execute() calls can override this with their playback_speed parameter.
+                       External tools (VS Code extensions) can override this globally via the playback manager.
+        external_control: Optional external control instance (e.g., nova.external_control.WebSocketControl())
+                         enables VS Code extensions and other tools to control the program in real-time.
     """
 
     def decorator(
@@ -306,6 +316,9 @@ def program(
         if name:
             func_obj.name = name
         func_obj.preconditions = preconditions
+        func_obj.playback_speed_percent = (
+            playback_speed_percent  # Store playback speed in program object
+        )
 
         # Create a wrapper that handles controller lifecycle
         original_wrapped = func_obj._wrapped
@@ -313,9 +326,24 @@ def program(
         async def async_wrapper(*args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:
             """Async wrapper that handles controller creation and cleanup."""
             created_controllers = []
+            external_control_started = False
             try:
                 # Create controllers before execution
                 created_controllers = await func_obj._create_controllers()
+
+                # Set active program playback speed for decorator defaults
+                if func_obj.playback_speed_percent != 100:
+                    from nova.core.playback_control import set_active_program_playback_speed_percent
+
+                    set_active_program_playback_speed_percent(func_obj.playback_speed_percent)
+
+                # Start external control if configured
+                if external_control is not None:
+                    try:
+                        await external_control.start()
+                        external_control_started = True
+                    except Exception as e:
+                        logger.warning(f"Failed to start external control: {e}")
 
                 # Configure viewers if any are active
                 if viewer is not None:
@@ -329,6 +357,21 @@ def program(
             finally:
                 # Clean up controllers after execution
                 await func_obj._cleanup_controllers(created_controllers)
+
+                # Clear active program playback speed
+                if func_obj.playback_speed_percent != 100:
+                    from nova.core.playback_control import (
+                        clear_active_program_playback_speed_percent,
+                    )
+
+                    clear_active_program_playback_speed_percent()
+
+                # Stop external control if it was started
+                if external_control_started and external_control is not None:
+                    try:
+                        await external_control.stop()
+                    except Exception as e:
+                        logger.warning(f"Error stopping external control: {e}")
 
                 # Clean up viewers
                 if viewer is not None:
