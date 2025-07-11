@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.2.1 (2025-07-11)
+
+### Bug Fixes
+
+- Add root path (#227) ([#227](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/227),
+  [`c9e5986`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c9e5986ae44f149c95abe6cdf34b19e0eb889d30))
+
+
 ## v2.2.0 (2025-07-09)
 
 ### Features
