@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.2.2 (2025-07-11)
+
+### Bug Fixes
+
+- Novax-docs-at-root (#228) ([#228](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/228),
+  [`fdfb511`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fdfb51153ef6a6a4cd8fff9e675eb6dbf47d643f))
+
+
 ## v2.2.1 (2025-07-11)
 
 ### Bug Fixes
