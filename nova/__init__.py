@@ -8,8 +8,6 @@ from nova.core.nova import Nova
 from nova.program import program
 from nova.version import version
 
-# WebSocket control is now available via @nova.program(external_control=...) decorator
-
 __version__ = version
 
 __all__ = [

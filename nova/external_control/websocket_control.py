@@ -1,22 +1,7 @@
 """Nova WebSocket Control Server
 
-This module provides real-time WebSocket communication for controlling Nova robots
-from VS Code extensions. Unlike subprocess control, this maintains persistent
-connections and shared state across the Nova application.
-
-Architecture:
-1. Nova program starts WebSocket server automatically
-2. VS Code extension connects via WebSocket client
-3. Real-time bidirectional communication for robot control
-4. Server runs in background thread, doesn't block Nova execution
-
-Usage in Nova programs:
-    # WebSocket server starts automatically when Nova is imported
-    # No additional setup required!
-
-Usage in VS Code extension:
-    const ws = new WebSocket('ws://localhost:8765');
-    ws.send(JSON.stringify({type: 'get_robots'}));
+Real-time WebSocket communication for controlling Nova robots from VS Code extensions.
+Maintains persistent connections and shared state across the Nova application.
 """
 
 import asyncio
@@ -27,6 +12,7 @@ import time
 from typing import Any, Optional
 
 import websockets
+import websockets.exceptions
 
 from nova.core.playback_control import (
     MotionGroupId,
@@ -43,189 +29,169 @@ _server_lock = threading.Lock()
 
 
 class NovaWebSocketServer:
-    """WebSocket server for Nova robot control
-
-    Provides real-time communication between Nova programs and external tools
-    like VS Code extensions. Runs in a background thread to avoid blocking
-    Nova execution.
-    """
+    """WebSocket server for Nova robot control"""
 
     def __init__(self, host: str = "localhost", port: int = 8765):
         self.host = host
         self.port = port
         self.clients: set[Any] = set()
+        self.subscribed_clients: set[Any] = set()
         self.server = None
-        self.server_task = None
+        self.running = False
         self.loop = None
         self.thread = None
-        self.running = False
-        self._setup_logging()
+        self.paused_speeds: dict[str, int] = {}
 
-    def _setup_logging(self):
-        """Setup WebSocket logging"""
-        # Reduce websockets library verbosity
         logging.getLogger("websockets").setLevel(logging.WARNING)
+        self._setup_state_monitoring()
 
-    async def register_client(self, websocket):
-        """Register a new WebSocket client"""
-        self.clients.add(websocket)
-        logger.info("Nova WebSocket client connected")
+    def _setup_state_monitoring(self):
+        """Setup automatic state monitoring"""
+        try:
+            manager = get_playback_manager()
+            manager.register_state_change_callback(self._on_state_change)
+            logger.info("State monitoring registered")
+        except Exception as e:
+            logger.error(f"Failed to register state monitoring: {e}")
 
-        # Send initial state to new client
-        await self.send_robot_update(websocket)
-
-    async def unregister_client(self, websocket):
-        """Unregister a WebSocket client"""
-        self.clients.discard(websocket)
-        logger.info("Nova WebSocket client disconnected")
+    def _on_state_change(self, motion_group_id, state, speed, direction):
+        """Handle state changes from playback manager"""
+        if self.loop and self.running:
+            asyncio.run_coroutine_threadsafe(
+                self._broadcast_state_update(
+                    str(motion_group_id), state.value if hasattr(state, "value") else str(state)
+                ),
+                self.loop,
+            )
 
     async def handle_client(self, websocket):
         """Handle WebSocket client connection"""
-        await self.register_client(websocket)
+        self.clients.add(websocket)
+        logger.info("Client connected")
+
         try:
             async for message in websocket:
-                try:
-                    data = json.loads(message)
-                    response = await self.process_command(data)
-                    await websocket.send(json.dumps(response))
-                except json.JSONDecodeError:
-                    await websocket.send(
-                        json.dumps({"success": False, "error": "Invalid JSON message"})
-                    )
-                except Exception as e:
-                    logger.error(f"Error processing WebSocket message: {e}")
-                    await websocket.send(json.dumps({"success": False, "error": str(e)}))
-        except websockets.exceptions.ConnectionClosed:
+                response = await self._process_message(json.loads(message), websocket)
+                await websocket.send(json.dumps(response))
+        except (websockets.exceptions.ConnectionClosed, json.JSONDecodeError):
             pass
         except Exception as e:
-            logger.error(f"WebSocket client error: {e}")
+            logger.error(f"Client error: {e}")
         finally:
-            await self.unregister_client(websocket)
+            self.clients.discard(websocket)
+            self.subscribed_clients.discard(websocket)
+            logger.info("Client disconnected")
 
-    async def process_command(self, command: dict[str, Any]) -> dict[str, Any]:
-        """Process command from WebSocket client"""
+    async def _process_message(self, data: dict, websocket) -> dict:
+        """Process WebSocket message"""
+        cmd_type = data.get("type")
+        robot_id = data.get("robot_id")
         manager = get_playback_manager()
-        cmd_type = command.get("type")
-        robot_id = command.get("robot_id")
 
         try:
-            if cmd_type == "detect_nova":
-                robots = get_all_active_robots()
-                return {
-                    "success": True,
-                    "nova_available": True,
-                    "robots_count": len(robots),
-                    "message": f"Nova detected with {len(robots)} robots",
-                }
+            if cmd_type == "subscribe_events":
+                self.subscribed_clients.add(websocket)
+                return {"success": True, "robots": self._get_robot_list()}
 
             elif cmd_type == "get_robots":
-                robots = get_all_active_robots()
-                robot_list = []
+                return {"success": True, "robots": self._get_robot_list()}
 
-                for robot_mgid in robots:
-                    current_speed = manager.get_effective_speed(robot_mgid)
-                    current_state = manager.get_execution_state(robot_mgid)
+            elif cmd_type == "set_speed" and robot_id:
+                speed = max(0, min(100, int(data.get("speed", 100))))
+                mgid = MotionGroupId(robot_id)
 
-                    robot_list.append(
-                        {
-                            "id": str(robot_mgid),
-                            "speed": int(current_speed),
-                            "state": current_state.value if current_state else "unknown",
-                            "can_pause": manager.can_pause(robot_mgid),
-                            "can_resume": manager.can_resume(robot_mgid),
-                        }
-                    )
+                # Store speed for paused robots, apply immediately for executing ones
+                if self._is_paused(mgid):
+                    self.paused_speeds[robot_id] = speed
+                else:
+                    manager.set_external_override(mgid, PlaybackSpeedPercent(speed))
+                    if robot_id in self.paused_speeds:
+                        del self.paused_speeds[robot_id]
 
-                return {"success": True, "robots": robot_list, "count": len(robot_list)}
-
-            elif cmd_type == "set_speed":
-                if not robot_id:
-                    return {"success": False, "error": "robot_id required for set_speed"}
-                speed = max(0, min(100, int(command.get("speed", 100))))
-                manager.set_external_override(MotionGroupId(robot_id), PlaybackSpeedPercent(speed))
-
-                # Broadcast update to all clients
-                await self.broadcast_robot_update()
-
+                await self._broadcast_to_subscribers(
+                    {"type": "speed_change", "robot_id": robot_id, "speed": speed}
+                )
                 return {"success": True, "robot_id": robot_id, "speed": speed}
 
-            elif cmd_type == "pause":
-                if not robot_id:
-                    return {"success": False, "error": "robot_id required for pause"}
-                manager.pause(MotionGroupId(robot_id))
-
-                # Broadcast update to all clients
-                await self.broadcast_robot_update()
-
-                return {"success": True, "robot_id": robot_id, "state": "paused"}
-
-            elif cmd_type == "resume":
-                if not robot_id:
-                    return {"success": False, "error": "robot_id required for resume"}
-                manager.resume(MotionGroupId(robot_id))
-
-                # Broadcast update to all clients
-                await self.broadcast_robot_update()
-
-                return {"success": True, "robot_id": robot_id, "state": "executing"}
-
-            elif cmd_type == "get_status":
-                if not robot_id:
-                    return {"success": False, "error": "robot_id required for get_status"}
+            elif cmd_type == "pause" and robot_id:
                 mgid = MotionGroupId(robot_id)
-                speed = manager.get_effective_speed(mgid)
-                state = manager.get_execution_state(mgid)
+                self.paused_speeds[robot_id] = int(manager.get_effective_speed(mgid))
+                manager.pause(mgid)
+                return {"success": True, "robot_id": robot_id}
 
+            elif cmd_type == "resume" and robot_id:
+                mgid = MotionGroupId(robot_id)
+                if robot_id in self.paused_speeds:
+                    speed = self.paused_speeds.pop(robot_id)
+                    manager.set_external_override(mgid, PlaybackSpeedPercent(speed))
+                manager.resume(mgid)
+                return {"success": True, "robot_id": robot_id}
+
+            elif cmd_type in ["step_forward", "step_backward"] and robot_id:
+                mgid = MotionGroupId(robot_id)
+                if cmd_type == "step_forward":
+                    manager.set_direction_forward(mgid)
+                else:
+                    manager.set_direction_backward(mgid)
+                manager.resume(mgid)
+                return {"success": True, "robot_id": robot_id}
+
+            else:
                 return {
-                    "success": True,
-                    "robot_id": robot_id,
-                    "speed": int(speed),
-                    "state": state.value if state else "unknown",
+                    "success": False,
+                    "error": f"Unknown command or missing robot_id: {cmd_type}",
+                }
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def _get_robot_list(self) -> list[dict]:
+        """Get current robot list with states"""
+        robots = []
+        manager = get_playback_manager()
+
+        for mgid in get_all_active_robots():
+            state = manager.get_execution_state(mgid)
+            robots.append(
+                {
+                    "id": str(mgid),
+                    "speed": int(manager.get_effective_speed(mgid)),
+                    "state": state.value if state else "idle",
                     "can_pause": manager.can_pause(mgid),
                     "can_resume": manager.can_resume(mgid),
                 }
+            )
+        return robots
 
-            else:
-                return {"success": False, "error": f"Unknown command type: {cmd_type}"}
+    def _is_paused(self, mgid: MotionGroupId) -> bool:
+        """Check if robot is paused"""
+        state = get_playback_manager().get_execution_state(mgid)
+        return state and state.value == "paused"
 
-        except Exception as e:
-            return {"success": False, "error": str(e), "robot_id": robot_id}
+    async def _broadcast_state_update(self, robot_id: str, state: str):
+        """Broadcast state update to subscribed clients"""
+        await self._broadcast_to_subscribers(
+            {"type": "state_change", "robot_id": robot_id, "state": state, "timestamp": time.time()}
+        )
 
-    async def send_robot_update(self, websocket):
-        """Send robot status update to a specific client"""
-        try:
-            update = await self.process_command({"type": "get_robots"})
-            update["type"] = "robot_update"
-            await websocket.send(json.dumps(update))
-        except Exception as e:
-            logger.error(f"Error sending robot update: {e}")
-
-    async def broadcast_robot_update(self):
-        """Broadcast robot status update to all connected clients"""
-        if not self.clients:
+    async def _broadcast_to_subscribers(self, message: dict):
+        """Broadcast message to subscribed clients"""
+        if not self.subscribed_clients:
             return
 
-        try:
-            update = await self.process_command({"type": "get_robots"})
-            update["type"] = "robot_update"
-            message = json.dumps(update)
+        data = json.dumps(message)
+        disconnected = set()
 
-            # Send to all connected clients
-            disconnected = set()
-            for client in self.clients:
-                try:
-                    await client.send(message)
-                except websockets.exceptions.ConnectionClosed:
-                    disconnected.add(client)
-                except Exception as e:
-                    logger.error(f"Error broadcasting to client: {e}")
-                    disconnected.add(client)
+        for client in self.subscribed_clients.copy():
+            try:
+                await client.send(data)
+            except Exception:
+                disconnected.add(client)
 
-            # Remove disconnected clients
-            self.clients -= disconnected
-
-        except Exception as e:
-            logger.error(f"Error broadcasting robot update: {e}")
+        # Clean up disconnected clients
+        for client in disconnected:
+            self.clients.discard(client)
+            self.subscribed_clients.discard(client)
 
     async def start_server(self):
         """Start the WebSocket server"""
@@ -233,12 +199,9 @@ class NovaWebSocketServer:
             self.server = await websockets.serve(
                 self.handle_client, self.host, self.port, ping_interval=20, ping_timeout=10
             )
-            logger.info(f"Nova WebSocket server started on {self.host}:{self.port}")
+            logger.info(f"WebSocket server started on {self.host}:{self.port}")
             self.running = True
-
-            # Keep server running
             await self.server.wait_closed()
-
         except Exception as e:
             logger.error(f"Error starting WebSocket server: {e}")
             self.running = False
@@ -254,63 +217,48 @@ class NovaWebSocketServer:
             try:
                 self.loop.run_until_complete(self.start_server())
             except Exception as e:
-                logger.error(f"WebSocket server thread error: {e}")
+                logger.error(f"WebSocket server error: {e}")
             finally:
                 self.loop.close()
 
         self.thread = threading.Thread(target=run_server, daemon=True)
         self.thread.start()
-
-        # Give server time to start
-        time.sleep(0.1)
-
-    async def stop_server(self):
-        """Stop the WebSocket server"""
-        self.running = False
-        if self.server:
-            self.server.close()
-            await self.server.wait_closed()
-        logger.info("Nova WebSocket server stopped")
+        time.sleep(0.1)  # Give server time to start
 
     def stop_in_thread(self):
-        """Stop WebSocket server from main thread"""
-        if self.loop and self.running:
-            self.loop.call_soon_threadsafe(lambda: asyncio.create_task(self.stop_server()))
+        """Stop WebSocket server"""
+        self.running = False
+        if self.loop:
+            self.loop.call_soon_threadsafe(self._stop_server)
+
+    def _stop_server(self):
+        """Internal stop method"""
+        if self.server:
+            self.server.close()
+
+
+def get_websocket_server() -> Optional[NovaWebSocketServer]:
+    """Get the global WebSocket server instance"""
+    return _websocket_server
 
 
 def start_websocket_server(host: str = "localhost", port: int = 8765) -> NovaWebSocketServer:
-    """Start Nova WebSocket server (called automatically when Nova is imported)
+    """Start the WebSocket server if not already running"""
+    global _websocket_server
 
-    Args:
-        host: Server host (default: localhost)
-        port: Server port (default: 8765)
+    with _server_lock:
+        if _websocket_server is None:
+            _websocket_server = NovaWebSocketServer(host, port)
+        if not _websocket_server.running:
+            _websocket_server.start_in_thread()
+        return _websocket_server
 
-    Returns:
-        NovaWebSocketServer: Server instance
-    """
+
+def stop_websocket_server():
+    """Stop the WebSocket server if running"""
     global _websocket_server
 
     with _server_lock:
         if _websocket_server and _websocket_server.running:
-            return _websocket_server
-
-        _websocket_server = NovaWebSocketServer(host, port)
-        _websocket_server.start_in_thread()
-
-    logger.info(f"Nova WebSocket control available at ws://{host}:{port}")
-    return _websocket_server
-
-
-def stop_websocket_server():
-    """Stop Nova WebSocket server"""
-    global _websocket_server
-
-    with _server_lock:
-        if _websocket_server:
             _websocket_server.stop_in_thread()
             _websocket_server = None
-
-
-def get_websocket_server() -> Optional[NovaWebSocketServer]:
-    """Get current WebSocket server instance"""
-    return _websocket_server

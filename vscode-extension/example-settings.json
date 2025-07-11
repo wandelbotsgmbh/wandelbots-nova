@@ -1,0 +1,6 @@
+{
+  "nova.websocket.host": "localhost",
+  "nova.websocket.port": 8765,
+  "nova.websocket.autoReconnect": true,
+  "nova.websocket.reconnectInterval": 3000
+}

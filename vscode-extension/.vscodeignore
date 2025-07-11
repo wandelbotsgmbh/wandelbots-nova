@@ -1,0 +1,44 @@
+# Build output
+out/
+dist/
+*.vsix
+
+# Dependencies
+node_modules/.bin/
+node_modules/.cache/
+
+# Development files
+.vscode/
+.vscode-test/
+*.map
+*.log
+
+# Testing
+test/
+test-websocket.js
+
+# Documentation (keep README.md)
+CHANGELOG.md
+
+# Git
+.git*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+
+# NPM
+npm-debug.log*
+.npm
+
+# Coverage
+coverage/
+
+# Temporary
+tmp/
+temp/
