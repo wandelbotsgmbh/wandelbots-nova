@@ -75,6 +75,7 @@ class Novax:
             version=version,
             description="Novax API for managing and executing programs",
             root_path=root_path,
+            docs_url="/",
         )
         return self._app
 
