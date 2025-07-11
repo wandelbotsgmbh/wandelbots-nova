@@ -57,7 +57,7 @@ class Novax:
         """Execute a registered program with given parameters"""
         return await self._program_manager.run_program(program_id, parameters)
 
-    def create_app(self, title: str = "Novax API", version: str = "1.0.0", root_path = "") -> FastAPI:
+    def create_app(self, title: str = "Novax API", version: str = "1.0.0", root_path="") -> FastAPI:
         """
         Create a FastAPI application with the programs router included.
 
