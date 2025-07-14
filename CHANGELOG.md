@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.3.1 (2025-07-14)
+
+### Bug Fixes
+
+- Cleanup novax (#229) ([#229](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/229),
+  [`7607c83`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7607c831970b77e6b49ed12fd8de73d56a2ae195))
+
+
 ## v2.3.0 (2025-07-14)
 
 ### Features
