@@ -126,13 +126,13 @@ def virtual_controller(
         position: (list[float] | None): Initial joint position of the first motion group from the virtual robot controller.
         json (str | None): Additional data to save on controller.
     """
-    if position is None:
-        position = str(MANUFACTURER_HOME_POSITIONS.get(manufacturer, [0.0] * 7))
+    if isinstance(position, list) and len(position) != 7:
+        raise ValueError("Position list must contain exactly 7 elements.")
 
-    if isinstance(position, list):
-        position = str(position)
+    if position is None:
+        position = MANUFACTURER_HOME_POSITIONS.get(manufacturer, [0.0] * 7)
 
     virtual_config = api.models.VirtualController(
-        manufacturer=manufacturer, type=type, json=json, position=position
+        manufacturer=manufacturer, type=type, json=json, position=json.dumps(position)
     )
     return _build_controller(name=name, controller=virtual_config)
