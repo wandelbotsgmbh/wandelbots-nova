@@ -17,8 +17,10 @@ import websockets.exceptions
 
 from nova.core.playback_control import (
     MotionGroupId,
+    PlaybackDirection,
     PlaybackEvent,
     PlaybackSpeedPercent,
+    PlaybackState,
     get_all_active_robots,
     get_playback_manager,
     get_robot_status_summary,
@@ -124,6 +126,7 @@ class NovaWebSocketServer:
 
                 # Store speed for paused robots, apply immediately for executing ones
                 if self._is_paused(mgid):
+                    # For paused robots, only store the speed - don't apply it yet
                     self.paused_speeds[robot_id] = speed
                 else:
                     manager.set_external_override(mgid, PlaybackSpeedPercent(speed))
@@ -151,11 +154,22 @@ class NovaWebSocketServer:
 
             elif cmd_type in ["step_forward", "step_backward"] and robot_id:
                 mgid = MotionGroupId(robot_id)
-                if cmd_type == "step_forward":
-                    manager.set_direction_forward(mgid)
+
+                # Get current speed - use paused speed if available, otherwise current effective speed
+                if robot_id in self.paused_speeds:
+                    current_speed = PlaybackSpeedPercent(self.paused_speeds.pop(robot_id))
                 else:
-                    manager.set_direction_backward(mgid)
-                manager.resume(mgid)
+                    current_speed = manager.get_effective_speed(mgid)
+
+                # Set both direction and state in a single external override
+                if cmd_type == "step_forward":
+                    direction = PlaybackDirection.FORWARD
+                else:
+                    direction = PlaybackDirection.BACKWARD
+
+                manager.set_external_override(
+                    mgid, current_speed, state=PlaybackState.PLAYING, direction=direction
+                )
                 return {"success": True, "robot_id": robot_id}
 
             else:
@@ -196,8 +210,8 @@ class NovaWebSocketServer:
 
     def _is_paused(self, mgid: MotionGroupId) -> bool:
         """Check if robot is paused"""
-        state = get_playback_manager().get_execution_state(mgid)
-        return state and state.value == "paused"
+        state = get_playback_manager().get_effective_state(mgid)
+        return state == PlaybackState.PAUSED
 
     async def _broadcast_playback_event(self, event: PlaybackEvent):
         """Broadcast playback events to subscribed clients"""

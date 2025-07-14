@@ -353,10 +353,10 @@ class NovaController {
     ).length;
 
     if (!this.isConnected) {
-      this.statusBarItem.text = "$(robot) Nova: Disconnected";
-      this.statusBarItem.tooltip = "Nova not connected - Click to retry";
+      this.statusBarItem.text = "$(robot) Nova: Not Running";
+      this.statusBarItem.tooltip = "Nova not running - Click to retry";
       this.statusBarItem.backgroundColor = new vscode.ThemeColor(
-        "statusBarItem.errorBackground"
+        "statusBarItem.warningBackground"
       );
     } else if (robotCount === 0) {
       this.statusBarItem.text = "$(robot) Nova: Ready";
@@ -649,6 +649,12 @@ class NovaSidebarProvider {
           case "setSpeed":
             await this.controller.executeAction(robotId, "speed", value);
             break;
+          case "forward":
+            await this.controller.executeAction(robotId, "forward");
+            break;
+          case "backward":
+            await this.controller.executeAction(robotId, "backward");
+            break;
           case "refresh":
             this.controller.sendCommand({ type: "get_robots" });
             break;
@@ -899,16 +905,16 @@ class NovaSidebarProvider {
             <div class="robot-header">
                 <div>
                     <div class="robot-name">${robot.displayName}</div>
-                    ${
-                      robot.id !== robot.displayName
-                        ? `<div class="robot-id">ID: ${robot.id}</div>`
-                        : ""
-                    }
                 </div>
                 <span class="robot-state ${robot.state}">${robot.state}</span>
             </div>
             
             <div class="controls">
+                <button onclick="stepBackward('${robot.id}')" ${
+                robot.state !== "paused" ? "disabled" : ""
+              }>
+                    ⏮ Backward
+                </button>
                 <button onclick="pauseRobot('${robot.id}')" ${
                 robot.state === "paused" || robot.state === "idle"
                   ? "disabled"
@@ -916,35 +922,22 @@ class NovaSidebarProvider {
               }>
                     ⏸ Pause
                 </button>
-                <button onclick="resumeRobot('${robot.id}')" ${
+                <button onclick="stepForward('${robot.id}')" ${
                 robot.state !== "paused" ? "disabled" : ""
               }>
-                    ▶ Resume
-                </button>
-                <button class="secondary" onclick="showDetails('${robot.id}')">
-                    ⚙ Details
+                    ▶ Forward
                 </button>
             </div>
             
             <div class="speed-control">
                 <span>Speed:</span>
-                <input type="range" min="0" max="100" value="${robot.speed}" 
+                <input type="range" min="1" max="100" value="${robot.speed}" 
                        onchange="setSpeed('${robot.id}', this.value)"
                        oninput="updateSpeedDisplay('${robot.id}', this.value)">
                 <span class="speed-value" id="speed-${robot.id}">${
                 robot.speed
               }%</span>
             </div>
-            
-            ${
-              robot.registered_at
-                ? `
-            <div class="robot-meta">
-                Registered: ${new Date(robot.registered_at).toLocaleString()}
-            </div>
-            `
-                : ""
-            }
         </div>
     `
             )
@@ -958,8 +951,6 @@ class NovaSidebarProvider {
     `
     }
 
-    <button class="refresh-btn" onclick="refresh()">🔄 Refresh Robot Status</button>
-
     <script>
         const vscode = acquireVsCodeApi();
         
@@ -969,6 +960,14 @@ class NovaSidebarProvider {
         
         function resumeRobot(robotId) {
             vscode.postMessage({ command: 'resume', robotId });
+        }
+        
+        function stepForward(robotId) {
+            vscode.postMessage({ command: 'forward', robotId });
+        }
+        
+        function stepBackward(robotId) {
+            vscode.postMessage({ command: 'backward', robotId });
         }
         
         function setSpeed(robotId, speed) {

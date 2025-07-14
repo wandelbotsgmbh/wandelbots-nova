@@ -278,7 +278,7 @@ class PlaybackControlManager:
         self,
         motion_group_id: str | MotionGroupId,
         speed: PlaybackSpeedPercent,
-        state: PlaybackState = PlaybackState.PLAYING,
+        state: Optional[PlaybackState] = None,
         direction: PlaybackDirection = PlaybackDirection.FORWARD,
     ) -> None:
         """Set external override (highest precedence)
@@ -286,7 +286,7 @@ class PlaybackControlManager:
         Args:
             motion_group_id: Motion group identifier (string or MotionGroupId)
             speed: Playback speed percent (0-100)
-            state: Playback state (playing/paused)
+            state: Playback state (playing/paused). If None, preserves current state.
             direction: Playback direction (forward/backward)
 
         Raises:
@@ -298,10 +298,16 @@ class PlaybackControlManager:
         # Get old speed for event emission
         old_speed = self.get_effective_speed(mgid)
 
+        # If state is not specified, preserve current state (do this before acquiring lock)
+        if state is None:
+            current_state = self.get_effective_state(mgid)
+        else:
+            current_state = state
+
         with self._lock:
             self._external_overrides[mgid] = PlaybackControl(
                 speed=speed,
-                state=state,
+                state=current_state,
                 direction=direction,
                 source="external",
                 timestamp=datetime.now(timezone.utc),
@@ -405,8 +411,14 @@ class PlaybackControlManager:
         mgid = MotionGroupId(motion_group_id)
         with self._lock:
             effective_speed = self._get_effective_speed_locked(mgid)
+            # Get current effective direction
+            current_direction = (
+                self._external_overrides[mgid].direction
+                if mgid in self._external_overrides
+                else PlaybackDirection.FORWARD
+            )
             current_control = self._external_overrides.get(
-                mgid, PlaybackControl(speed=effective_speed)
+                mgid, PlaybackControl(speed=effective_speed, direction=current_direction)
             )
             self._external_overrides[mgid] = PlaybackControl(
                 speed=current_control.speed,
@@ -422,8 +434,14 @@ class PlaybackControlManager:
         mgid = MotionGroupId(motion_group_id)
         with self._lock:
             effective_speed = self._get_effective_speed_locked(mgid)
+            # Get current effective direction
+            current_direction = (
+                self._external_overrides[mgid].direction
+                if mgid in self._external_overrides
+                else PlaybackDirection.FORWARD
+            )
             current_control = self._external_overrides.get(
-                mgid, PlaybackControl(speed=effective_speed)
+                mgid, PlaybackControl(speed=effective_speed, direction=current_direction)
             )
             self._external_overrides[mgid] = PlaybackControl(
                 speed=current_control.speed,
@@ -449,8 +467,14 @@ class PlaybackControlManager:
         mgid = MotionGroupId(motion_group_id)
         with self._lock:
             effective_speed = self._get_effective_speed_locked(mgid)
+            # Get current effective state
+            current_state = (
+                self._external_overrides[mgid].state
+                if mgid in self._external_overrides
+                else PlaybackState.PLAYING
+            )
             current_control = self._external_overrides.get(
-                mgid, PlaybackControl(speed=effective_speed)
+                mgid, PlaybackControl(speed=effective_speed, state=current_state)
             )
             self._external_overrides[mgid] = PlaybackControl(
                 speed=current_control.speed,
