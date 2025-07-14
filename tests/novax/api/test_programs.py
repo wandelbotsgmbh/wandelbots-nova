@@ -103,7 +103,7 @@ async def test_stop_program_success(novax_app):
 
     # Then stop the program
     response = client.post("/programs/simple_program/stop")
-    assert response.status_code == 204, response.json()
+    assert response.status_code == 200, response.json()
 
 
 def test_stop_program_not_found(novax_app):
