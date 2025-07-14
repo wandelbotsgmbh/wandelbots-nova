@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - release/v2
 concurrency:
   group: run-examples-workflow
   cancel-in-progress: false

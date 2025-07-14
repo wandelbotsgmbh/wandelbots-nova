@@ -130,12 +130,13 @@ class Cell:
         Returns:
             Controller: The added Controller object.
         """
+        # TODO this makes no sense if we already have the controller instance as in the robot_controller parameter
         controller = await self._api_gateway.get_controller_instance(
             cell=self.cell_id, name=robot_controller.name
         )
 
         if controller:
-            return self._create_controller(controller.controller)
+            return self._create_controller(controller.name)
         return await self.add_controller(
             robot_controller, add_timeout=add_timeout, wait_for_ready_timeout=wait_for_ready_timeout
         )
@@ -146,8 +147,10 @@ class Cell:
         Returns:
             list[Controller]: A list of Controller objects associated with this cell.
         """
-        instances = await self._api_gateway.list_controllers(cell=self._cell_id)
-        return [self._create_controller(ci.controller) for ci in instances]
+        controller_names = await self._api_gateway.controller_api.list_robot_controllers(
+            cell=self._cell_id
+        )
+        return [self._create_controller(name) for name in controller_names]
 
     async def controller(self, name: str) -> Controller:
         """

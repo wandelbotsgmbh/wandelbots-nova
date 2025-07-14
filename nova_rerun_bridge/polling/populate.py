@@ -78,8 +78,10 @@ async def process_motions():
                         motion = await nova._api_client.motion_api.get_planned_motion(
                             nova.cell()._cell_id, motion_id
                         )
-                        optimizer_config = await nova._api_client.motion_group_infos_api.get_optimizer_configuration(
-                            nova.cell()._cell_id, motion.motion_group
+                        optimizer_config = (
+                            await nova._api_client.motion_group_api.get_optimizer_configuration(
+                                nova.cell()._cell_id, motion.motion_group
+                            )
                         )
                         motion_groups = await nova._api_client.motion_group_api.list_motion_groups(
                             nova.cell()._cell_id
@@ -118,7 +120,7 @@ async def main():
         cell = nova.cell()
         controllers = await cell.controllers()
         for controller in controllers:
-            for motion_group in await controller.activated_motion_groups():
+            for motion_group in await controller.motion_groups():
                 motion_groups.append(motion_group.motion_group_id)
 
     rr.init(application_id="nova", recording_id="nova_live", spawn=False)

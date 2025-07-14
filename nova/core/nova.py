@@ -23,7 +23,7 @@ class Nova:
         access_token: str | None = None,
         username: str | None = None,
         password: str | None = None,
-        version: str = "v1",
+        version: str = "v2",
         verify_ssl: bool = True,
     ):
         """
