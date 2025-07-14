@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.3.0 (2025-07-14)
+
+### Features
+
+- Removed /runs resource from Nova API (#226)
+  ([#226](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/226),
+  [`6f4d35f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6f4d35fd670d611c3421e950dd210190a01c32f3))
+
+
 ## v2.2.2 (2025-07-11)
 
 ### Bug Fixes
