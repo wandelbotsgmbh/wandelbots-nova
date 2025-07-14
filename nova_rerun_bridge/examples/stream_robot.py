@@ -43,8 +43,8 @@ async def handle_shutdown():
         cleanup_controllers=False,
     ),
 )
-async def test():
-    async with Nova() as nova, NovaRerunBridge(nova) as bridge:
+async def test(nova: Nova):
+    async with NovaRerunBridge(nova) as bridge:
         await bridge.setup_blueprint()
 
         cell = nova.cell()

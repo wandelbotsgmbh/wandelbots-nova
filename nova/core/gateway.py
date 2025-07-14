@@ -175,6 +175,7 @@ class ApiGateway:
         )
         api_client_config.verify_ssl = self._verify_ssl
 
+        logger.info(f"Connecting to Nova instance at {self._host}")
         self._api_client = wb.ApiClient(configuration=api_client_config)
         self._api_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
 

@@ -1,10 +1,16 @@
 import asyncio
 
-import pytest
+import dotenv
 
 import nova
 from nova import Nova
-from novax import Novax
+
+dotenv.load_dotenv()
+
+
+@nova.program(name="test")
+async def test(nova: Nova):
+    print("Hello, world!")
 
 
 @nova.program(name="simple_program")
@@ -18,18 +24,24 @@ async def simple_program(nova: Nova, number_of_steps: int = 30):
     print("Finished Hello World!")
 
 
-@pytest.fixture
-def novax_app():
+if __name__ == "__main__":
+    import uvicorn
+
+    from novax import Novax
+
     novax = Novax()
     app = novax.create_app()
     novax.include_programs_router(app)
 
-    # 1) Register Python programs (existing functionality)
+    novax.register_program(test)
     novax.register_program(simple_program)
 
-    # 2) register programs from path
-    # novax.register_programs(path="./programs")
-
-    # 3) autodiscover programs
-    # novax.autodiscover_programs()
-    return app
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        reload=False,
+        log_level="info",
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+    )
