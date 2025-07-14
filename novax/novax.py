@@ -1,15 +1,9 @@
 from typing import Any, Optional
 
-from decouple import config
 from fastapi import FastAPI
 
 from nova.program.function import Program
 from novax.program_manager import ProgramDetails, ProgramManager, ProgramSource
-
-# TODO: why are these needed? check with Christoph
-CELL_ID = config("CELL_ID", default="cell", cast=str)
-BASE_PATH = config("BASE_PATH", default="", cast=str)
-app = FastAPI(title="schaeffler", root_path=BASE_PATH)
 
 
 class Novax:
