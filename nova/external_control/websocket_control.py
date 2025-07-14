@@ -41,10 +41,10 @@ class NovaWebSocketServer:
         self.port = port
         self.clients: set[Any] = set()
         self.subscribed_clients: set[Any] = set()
-        self.server = None
-        self.running = False
-        self.loop = None
-        self.thread = None
+        self.server: Optional[Any] = None
+        self.running: bool = False
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
+        self.thread: Optional[threading.Thread] = None
         self.paused_speeds: dict[str, int] = {}
 
         logging.getLogger("websockets").setLevel(logging.WARNING)
