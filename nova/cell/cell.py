@@ -1,5 +1,6 @@
-import nova.api as api
 import asyncio
+
+import nova.api as api
 from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
@@ -66,7 +67,9 @@ class Cell:
         Returns:
             Controller: The added Controller object.
         """
-        logger.info(f"🔄 Adding robot controller '{robot_controller.name}' to cell '{self._cell_id}'...")
+        logger.info(
+            f"🔄 Adding robot controller '{robot_controller.name}' to cell '{self._cell_id}'..."
+        )
 
         # Start the add_robot_controller operation
         add_task = asyncio.create_task(
@@ -100,7 +103,9 @@ class Cell:
         start_time = asyncio.get_event_loop().time()
         while not wait_task.done():
             elapsed = int(asyncio.get_event_loop().time() - start_time)
-            logger.info(f"⏳ Waiting for controller '{robot_controller.name}' to be ready... ({elapsed}s elapsed)")
+            logger.info(
+                f"⏳ Waiting for controller '{robot_controller.name}' to be ready... ({elapsed}s elapsed)"
+            )
             await asyncio.sleep(5)  # Update every 5 seconds
 
         # Wait for the wait operation to complete
@@ -134,7 +139,9 @@ class Cell:
         )
 
         if controller:
-            logger.info(f"✅ Controller '{robot_controller.name}' already exists, using existing controller")
+            logger.info(
+                f"✅ Controller '{robot_controller.name}' already exists, using existing controller"
+            )
             return self._create_controller(controller.controller)
 
         logger.info(f"❌ Controller '{robot_controller.name}' not found, will add new controller")
