@@ -1,6 +1,6 @@
 """Nova WebSocket Control Server
 
-Real-time WebSocket communication for controlling Nova robots from VS Code extensions.
+Real-time WebSocket communication for controlling Nova robots from external clients.
 Maintains persistent connections and shared state across the Nova application.
 Provides comprehensive robot lifecycle management and event broadcasting.
 """

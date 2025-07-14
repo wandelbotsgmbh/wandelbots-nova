@@ -110,7 +110,7 @@ class TestRuntimePlaybackSpeedChange:
         current_speed = playback_manager.get_effective_speed(robot_id, method_speed=method_speed)
         assert current_speed == initial_speed
 
-        # External tool changes speed (simulating VS Code extension or demo)
+        # External tool changes speed (simulating external control interface or demo)
         new_speed = PlaybackSpeedPercent(75)
         playback_manager.set_external_override(robot_id, new_speed)
 

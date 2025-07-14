@@ -3,14 +3,14 @@ Execution Speed Control with Enhanced WebSocket Integration
 
 Demonstrates comprehensive robot control with the new integrated WebSocket system:
 - Automatic robot registration and discovery
-- Real-time event broadcasting to VS Code extensions
+- Real-time event broadcasting to external clients
 - Speed changes during execution (10% → 50% → 100% → 25%)
 - Pause/resume functionality
 - Direction control (forward → backward)
 - Support for parallel robot executions with async gather
 - Program lifecycle events (start/stop notifications)
 
-Perfect for VS Code extensions, web UIs, or external control applications.
+Perfect for external control applications, web UIs, or third-party integrations.
 The enhanced system automatically registers robots when motion groups are created
 and provides comprehensive event notifications for external tools.
 """
@@ -30,7 +30,7 @@ from nova.types import Pose
 
 @nova.program(
     name="Enhanced WebSocket Speed Control Demo",
-    playback_speed_percent=5,  # Start very slow for VS Code extension testing
+    playback_speed_percent=5,  # Start very slow for external control testing
     external_control=WebSocketControl(),  # Enable enhanced WebSocket control with events
     preconditions=ProgramPreconditions(
         controllers=[

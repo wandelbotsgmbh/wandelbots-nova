@@ -300,9 +300,9 @@ def program(
         viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
         playback_speed_percent: Default playback speed for all robot executions in this program (0-100%).
                        Individual execute() calls can override this with their playback_speed parameter.
-                       External tools (VS Code extensions) can override this globally via the playback manager.
+                       External tools and applications can override this globally via the playback manager.
         external_control: Optional external control instance (e.g., nova.external_control.WebSocketControl())
-                         enables VS Code extensions and other tools to control the program in real-time.
+                         enables external applications and tools to control the program in real-time.
     """
 
     def decorator(

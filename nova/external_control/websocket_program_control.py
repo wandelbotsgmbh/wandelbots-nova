@@ -1,8 +1,8 @@
 """WebSocket Control for Nova Programs
 
 This module provides WebSocket-based external control for Nova robot programs.
-When enabled via the @nova.program decorator, it allows VS Code extensions and
-other external tools to control robot playback in real-time.
+When enabled via the @nova.program decorator, it allows external tools and
+applications to control robot playback in real-time.
 
 Usage:
     @nova.program(
@@ -40,7 +40,7 @@ class WebSocketControl:
             external_control=nova.external_control.WebSocketControl(port=8765)
         )
         async def robot_demo():
-            # VS Code extension can now control this program
+            # External clients can now control this program
             pass
     """
 
@@ -66,7 +66,7 @@ class WebSocketControl:
             manager = get_playback_manager()
             manager.start_program(getattr(self, "_program_name", None))
 
-            logger.info("✅ WebSocket control server started - VS Code extension can now connect")
+            logger.info("✅ WebSocket control server started - external clients can now connect")
 
         except ImportError:
             logger.warning("WebSocket control not available - websockets library not installed")

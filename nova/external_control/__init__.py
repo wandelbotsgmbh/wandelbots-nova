@@ -1,11 +1,11 @@
 """Nova External Control Module
 
 This module provides external interfaces for controlling Nova robot playback.
-VS Code extensions and other external tools can use WebSocket or direct API access.
+External tools and applications can use WebSocket or direct API access.
 
 WebSocket Control (Recommended):
     Use the @nova.program decorator with external_control=WebSocketControl()
-    VS Code extension connects to ws://localhost:8765
+    External clients connect to ws://localhost:8765
     Real-time bidirectional communication with live updates.
 
 Direct API Control (In-Process):

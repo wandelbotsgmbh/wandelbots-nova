@@ -76,13 +76,13 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
     This controller handles bidirectional websocket communication with the robot execution system,
     processing responses while simultaneously monitoring for external speed, state, and direction changes from tools
-    like VS Code extensions or runtime control interfaces.
+    like external control interfaces or runtime control applications.
 
     The controller uses a dual approach for change detection:
     1. Response-based: Checks for speed/state/direction changes on every websocket response
     2. Event-driven: Continuous monitoring with minimal latency for responsive UI controls
 
-    For VS Code sliders, pause/resume buttons, direction controls, and other interactive controls, the event-driven
+    For external sliders, pause/resume buttons, direction controls, and other interactive controls, the event-driven
     approach provides near-instantaneous response times (1ms yields vs 50ms polling).
 
     Supported runtime controls:
@@ -253,7 +253,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             Event-driven speed, state, and direction monitor for immediate response to external changes.
 
             This provides near-instantaneous speed change, pause/resume, and direction detection for responsive
-            UI controls like VS Code sliders, pause/resume buttons, and direction controls, avoiding polling delays that
+            UI controls like external sliders, pause/resume buttons, and direction controls, avoiding polling delays that
             could make the UI feel sluggish.
             """
             nonlocal last_sent_speed, last_sent_state, last_sent_direction, pending_direction_logged

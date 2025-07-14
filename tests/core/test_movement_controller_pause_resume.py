@@ -2,7 +2,7 @@
 Tests for pause/resume functionality in the movement controller.
 
 These tests verify that the movement controller properly detects and responds to
-runtime pause/resume state changes from external tools like VS Code extensions.
+runtime pause/resume state changes from external tools and applications.
 """
 
 import asyncio
