@@ -340,6 +340,9 @@ def program(
                 # Start external control if configured
                 if external_control is not None:
                     try:
+                        # Set program name if external control supports it
+                        if hasattr(external_control, "set_program_name") and func_obj.name:
+                            external_control.set_program_name(func_obj.name)
                         await external_control.start()
                         external_control_started = True
                     except Exception as e:

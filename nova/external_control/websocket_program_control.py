@@ -56,10 +56,16 @@ class WebSocketControl:
             return
 
         try:
+            from nova.core.playback_control import get_playback_manager
             from nova.external_control.websocket_control import start_websocket_server
 
             logger.info(f"Starting WebSocket control server on {self.host}:{self.port}")
             self._server = start_websocket_server(host=self.host, port=self.port)
+
+            # Notify that a program with external control has started
+            manager = get_playback_manager()
+            manager.start_program(getattr(self, "_program_name", None))
+
             logger.info("✅ WebSocket control server started - VS Code extension can now connect")
 
         except ImportError:
@@ -71,7 +77,12 @@ class WebSocketControl:
         """Stop the WebSocket control server."""
         if self._server:
             try:
+                from nova.core.playback_control import get_playback_manager
                 from nova.external_control.websocket_control import stop_websocket_server
+
+                # Notify that the program has stopped
+                manager = get_playback_manager()
+                manager.stop_program(getattr(self, "_program_name", None))
 
                 stop_websocket_server()
                 logger.info("WebSocket control server stopped")
@@ -79,6 +90,10 @@ class WebSocketControl:
                 logger.error(f"Error stopping WebSocket control server: {e}")
             finally:
                 self._server = None
+
+    def set_program_name(self, name: str) -> None:
+        """Set the program name for event tracking"""
+        self._program_name = name
 
     def __repr__(self) -> str:
         return (

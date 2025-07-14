@@ -60,7 +60,82 @@ class PlaybackDirection(Enum):
     BACKWARD = "backward"
 
 
-# State change callback type
+# Enhanced event system for comprehensive robot control
+class PlaybackEvent(BaseModel):
+    """Base class for playback events"""
+
+    model_config = {"frozen": True}
+
+    event_type: str
+    motion_group_id: MotionGroupId
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class RobotRegisteredEvent(PlaybackEvent):
+    """Event fired when a robot becomes available for control"""
+
+    event_type: str = "robot_registered"
+    robot_name: Optional[str] = None
+    initial_speed: PlaybackSpeedPercent = PlaybackSpeedPercent(100)
+
+
+class RobotUnregisteredEvent(PlaybackEvent):
+    """Event fired when a robot is no longer available"""
+
+    event_type: str = "robot_unregistered"
+
+
+class StateChangeEvent(PlaybackEvent):
+    """Event fired when robot state changes"""
+
+    event_type: str = "state_change"
+    old_state: PlaybackState
+    new_state: PlaybackState
+    speed: PlaybackSpeedPercent
+    direction: PlaybackDirection
+
+
+class SpeedChangeEvent(PlaybackEvent):
+    """Event fired when robot speed changes"""
+
+    event_type: str = "speed_change"
+    old_speed: PlaybackSpeedPercent
+    new_speed: PlaybackSpeedPercent
+    source: PlaybackSourceType
+
+
+class ExecutionStartedEvent(PlaybackEvent):
+    """Event fired when robot execution starts"""
+
+    event_type: str = "execution_started"
+    speed: PlaybackSpeedPercent
+
+
+class ExecutionStoppedEvent(PlaybackEvent):
+    """Event fired when robot execution stops"""
+
+    event_type: str = "execution_stopped"
+
+
+class ProgramStartedEvent(PlaybackEvent):
+    """Event fired when a program with external control starts"""
+
+    event_type: str = "program_started"
+    program_name: Optional[str] = None
+    total_robots: int = 0
+
+
+class ProgramStoppedEvent(PlaybackEvent):
+    """Event fired when a program with external control stops"""
+
+    event_type: str = "program_stopped"
+    program_name: Optional[str] = None
+
+
+# Event callback type
+EventCallback = Callable[[PlaybackEvent], None]
+
+# Legacy callback for backward compatibility
 StateChangeCallback = Callable[
     [MotionGroupId, PlaybackState, PlaybackSpeedPercent, PlaybackDirection], None
 ]
@@ -91,8 +166,113 @@ class PlaybackControlManager:
         self._external_overrides: dict[MotionGroupId, PlaybackControl] = {}
         self._decorator_defaults: dict[MotionGroupId, PlaybackSpeedPercent] = {}
         self._execution_states: dict[MotionGroupId, PlaybackState] = {}
+        self._robot_metadata: dict[MotionGroupId, dict] = {}  # Store robot names and metadata
         self._state_callbacks: list[StateChangeCallback] = []
+        self._event_callbacks: list[EventCallback] = []  # New event-based callbacks
+        self._active_program: Optional[str] = None
         self._lock = threading.Lock()
+
+    def register_robot(
+        self,
+        motion_group_id: str | MotionGroupId,
+        robot_name: Optional[str] = None,
+        initial_speed: PlaybackSpeedPercent = PlaybackSpeedPercent(100),
+    ) -> None:
+        """Register a robot as available for control
+
+        Args:
+            motion_group_id: Motion group identifier
+            robot_name: Human-readable robot name
+            initial_speed: Initial speed setting
+        """
+        mgid = MotionGroupId(motion_group_id)
+
+        with self._lock:
+            self._robot_metadata[mgid] = {
+                "name": robot_name or str(mgid),
+                "registered_at": datetime.now(timezone.utc),
+            }
+            # Set initial decorator default if not already set
+            if mgid not in self._decorator_defaults:
+                self._decorator_defaults[mgid] = initial_speed
+
+        # Emit registration event
+        event = RobotRegisteredEvent(
+            motion_group_id=mgid, robot_name=robot_name, initial_speed=initial_speed
+        )
+        self._emit_event(event)
+
+    def unregister_robot(self, motion_group_id: str | MotionGroupId) -> None:
+        """Unregister a robot from control
+
+        Args:
+            motion_group_id: Motion group identifier
+        """
+        mgid = MotionGroupId(motion_group_id)
+
+        with self._lock:
+            self._robot_metadata.pop(mgid, None)
+            self._external_overrides.pop(mgid, None)
+            self._decorator_defaults.pop(mgid, None)
+            self._execution_states.pop(mgid, None)
+
+        # Emit unregistration event
+        event = RobotUnregisteredEvent(motion_group_id=mgid)
+        self._emit_event(event)
+
+    def get_robot_metadata(self, motion_group_id: str | MotionGroupId) -> Optional[dict]:
+        """Get robot metadata
+
+        Args:
+            motion_group_id: Motion group identifier
+
+        Returns:
+            Robot metadata dictionary or None if not registered
+        """
+        mgid = MotionGroupId(motion_group_id)
+        with self._lock:
+            return self._robot_metadata.get(mgid)
+
+    def start_program(self, program_name: Optional[str] = None) -> None:
+        """Notify that a program with external control has started
+
+        Args:
+            program_name: Name of the started program
+        """
+        with self._lock:
+            self._active_program = program_name
+            total_robots = len(self._robot_metadata)
+
+        # Use a dummy motion group ID for program events
+        dummy_mgid = MotionGroupId("__program__")
+        event = ProgramStartedEvent(
+            motion_group_id=dummy_mgid, program_name=program_name, total_robots=total_robots
+        )
+        self._emit_event(event)
+
+    def stop_program(self, program_name: Optional[str] = None) -> None:
+        """Notify that a program with external control has stopped
+
+        Args:
+            program_name: Name of the stopped program
+        """
+        with self._lock:
+            self._active_program = None
+            # Clear all external overrides when program stops
+            self._external_overrides.clear()
+            # Mark all robots as idle
+            for mgid in self._execution_states:
+                self._execution_states[mgid] = PlaybackState.IDLE
+
+        # Use a dummy motion group ID for program events
+        dummy_mgid = MotionGroupId("__program__")
+        event = ProgramStoppedEvent(motion_group_id=dummy_mgid, program_name=program_name)
+        self._emit_event(event)
+
+    def get_active_program(self) -> Optional[str]:
+        """Get the name of the currently active program with external control"""
+        with self._lock:
+            return self._active_program
 
     def set_external_override(
         self,
@@ -115,6 +295,9 @@ class PlaybackControlManager:
         self._validate_speed(speed)
         mgid = MotionGroupId(motion_group_id)
 
+        # Get old speed for event emission
+        old_speed = self.get_effective_speed(mgid)
+
         with self._lock:
             self._external_overrides[mgid] = PlaybackControl(
                 speed=speed,
@@ -123,7 +306,15 @@ class PlaybackControlManager:
                 source="external",
                 timestamp=datetime.now(timezone.utc),
             )
-        # Notify outside of lock to avoid deadlock
+
+        # Emit speed change event if speed changed
+        if old_speed != speed:
+            speed_event = SpeedChangeEvent(
+                motion_group_id=mgid, old_speed=old_speed, new_speed=speed, source="external"
+            )
+            self._emit_event(speed_event)
+
+        # Notify outside of lock to avoid deadlock (legacy callback)
         self._notify_state_change(mgid)
 
     def set_decorator_default(
@@ -282,6 +473,7 @@ class PlaybackControlManager:
             all_robots: set[MotionGroupId] = set()
             all_robots.update(self._external_overrides.keys())
             all_robots.update(self._decorator_defaults.keys())
+            all_robots.update(self._robot_metadata.keys())  # Include registered robots
             return list(all_robots)
 
     def _validate_speed(self, speed: PlaybackSpeedPercent) -> None:
@@ -294,8 +486,33 @@ class PlaybackControlManager:
     ) -> None:
         """Set the execution state for a motion group (used by movement controller)"""
         mgid = MotionGroupId(motion_group_id)
+
+        # Get old state for event emission
+        old_state = self.get_execution_state(mgid)
+
         with self._lock:
             self._execution_states[mgid] = state
+
+        # Emit execution events
+        if old_state != state:
+            if state == PlaybackState.EXECUTING:
+                start_event = ExecutionStartedEvent(
+                    motion_group_id=mgid, speed=self.get_effective_speed(mgid)
+                )
+                self._emit_event(start_event)
+            elif old_state == PlaybackState.EXECUTING and state == PlaybackState.IDLE:
+                stop_event = ExecutionStoppedEvent(motion_group_id=mgid)
+                self._emit_event(stop_event)
+
+            # General state change event
+            state_event = StateChangeEvent(
+                motion_group_id=mgid,
+                old_state=old_state,
+                new_state=state,
+                speed=self.get_effective_speed(mgid),
+                direction=self.get_effective_direction(mgid),
+            )
+            self._emit_event(state_event)
 
     def get_execution_state(self, motion_group_id: str | MotionGroupId) -> PlaybackState:
         """Get the execution state for a motion group"""
@@ -320,7 +537,7 @@ class PlaybackControlManager:
         return self.get_effective_state(motion_group_id) == PlaybackState.PAUSED
 
     def _notify_state_change(self, motion_group_id: MotionGroupId) -> None:
-        """Notify registered callbacks of a state change"""
+        """Notify registered callbacks of a state change (legacy callback)"""
         control = None
         callbacks = None
 
@@ -337,15 +554,39 @@ class PlaybackControlManager:
                 except Exception as e:
                     logger.warning(f"State change callback error: {e}")
 
+    def _emit_event(self, event: PlaybackEvent) -> None:
+        """Emit an event to all registered event callbacks"""
+        callbacks = None
+        with self._lock:
+            callbacks = self._event_callbacks.copy()
+
+        # Call callbacks outside of lock to avoid deadlock
+        if callbacks:
+            for callback in callbacks:
+                try:
+                    callback(event)
+                except Exception as e:
+                    logger.warning(f"Event callback error: {e}")
+
     def register_state_change_callback(self, callback: StateChangeCallback) -> None:
-        """Register a callback for state changes"""
+        """Register a callback for state changes (legacy)"""
         with self._lock:
             self._state_callbacks.append(callback)
 
     def unregister_state_change_callback(self, callback: StateChangeCallback) -> None:
-        """Unregister a callback for state changes"""
+        """Unregister a callback for state changes (legacy)"""
         with self._lock:
             self._state_callbacks.remove(callback)
+
+    def register_event_callback(self, callback: EventCallback) -> None:
+        """Register a callback for events"""
+        with self._lock:
+            self._event_callbacks.append(callback)
+
+    def unregister_event_callback(self, callback: EventCallback) -> None:
+        """Unregister a callback for events"""
+        with self._lock:
+            self._event_callbacks.remove(callback)
 
 
 class PlaybackControlError(Exception):
@@ -411,6 +652,7 @@ def get_all_active_robots() -> list[MotionGroupId]:
         all_robots.update(manager._external_overrides.keys())
         all_robots.update(manager._decorator_defaults.keys())
         all_robots.update(manager._execution_states.keys())
+        all_robots.update(manager._robot_metadata.keys())
         return list(all_robots)
 
 
@@ -424,10 +666,15 @@ def get_robot_status_summary() -> dict:
         if manager.get_execution_state(robot) == PlaybackState.EXECUTING
     ]
 
+    # Get program information
+    active_program = manager.get_active_program()
+
     return {
         "total_robots": len(active_robots),
         "executing_robots": len(executing_robots),
         "motion_group_ids": active_robots,
         "executing_motion_group_ids": executing_robots,
         "has_robots": len(active_robots) > 0,
+        "active_program": active_program,
+        "external_control_active": active_program is not None,
     }

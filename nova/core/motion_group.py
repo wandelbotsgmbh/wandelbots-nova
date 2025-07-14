@@ -144,6 +144,37 @@ class MotionGroup(AbstractRobot):
         # Set decorator defaults if a decorator playback speed is set in context
         self._set_decorator_defaults_from_context()
 
+        # Register robot for external control
+        self._register_robot_for_control()
+
+    def _register_robot_for_control(self) -> None:
+        """Register this robot with the playback control manager for external control."""
+        try:
+            from nova.core.playback_control import (
+                MotionGroupId,
+                PlaybackSpeedPercent,
+                get_active_program_playback_speed_percent,
+                get_playback_manager,
+            )
+
+            manager = get_playback_manager()
+            # Use active program speed or default to 100%
+            active_speed = get_active_program_playback_speed_percent()
+            initial_speed = PlaybackSpeedPercent(active_speed or 100)
+
+            # Create a more descriptive robot name
+            robot_name = f"{self._cell}:{self._motion_group_id}"
+
+            manager.register_robot(
+                motion_group_id=MotionGroupId(self._motion_group_id),
+                robot_name=robot_name,
+                initial_speed=initial_speed,
+            )
+        except Exception:
+            # If there's any issue with registration, continue silently
+            # This maintains backward compatibility
+            pass
+
     def _set_decorator_defaults_from_context(self) -> None:
         """Set decorator defaults from active program playback speed if available."""
         try:
@@ -172,6 +203,16 @@ class MotionGroup(AbstractRobot):
         return self
 
     async def close(self):
+        # Unregister robot from external control
+        try:
+            from nova.core.playback_control import MotionGroupId, get_playback_manager
+
+            manager = get_playback_manager()
+            manager.unregister_robot(MotionGroupId(self._motion_group_id))
+        except Exception:
+            # Continue silently if unregistration fails
+            pass
+
         # RPS-1174: when a motion group is deactivated, RAE closes all open connections
         #           this behaviour is not desired in some cases,
         #           so for now we will not deactivate for the user

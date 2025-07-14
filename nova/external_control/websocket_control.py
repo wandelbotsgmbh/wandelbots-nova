@@ -2,6 +2,7 @@
 
 Real-time WebSocket communication for controlling Nova robots from VS Code extensions.
 Maintains persistent connections and shared state across the Nova application.
+Provides comprehensive robot lifecycle management and event broadcasting.
 """
 
 import asyncio
@@ -16,9 +17,11 @@ import websockets.exceptions
 
 from nova.core.playback_control import (
     MotionGroupId,
+    PlaybackEvent,
     PlaybackSpeedPercent,
     get_all_active_robots,
     get_playback_manager,
+    get_robot_status_summary,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,7 +32,7 @@ _server_lock = threading.Lock()
 
 
 class NovaWebSocketServer:
-    """WebSocket server for Nova robot control"""
+    """WebSocket server for Nova robot control with comprehensive event broadcasting"""
 
     def __init__(self, host: str = "localhost", port: int = 8765):
         self.host = host
@@ -43,19 +46,27 @@ class NovaWebSocketServer:
         self.paused_speeds: dict[str, int] = {}
 
         logging.getLogger("websockets").setLevel(logging.WARNING)
-        self._setup_state_monitoring()
+        self._setup_event_monitoring()
 
-    def _setup_state_monitoring(self):
-        """Setup automatic state monitoring"""
+    def _setup_event_monitoring(self):
+        """Setup comprehensive event monitoring"""
         try:
             manager = get_playback_manager()
+            # Register for new event system
+            manager.register_event_callback(self._on_playback_event)
+            # Keep legacy callback for backward compatibility
             manager.register_state_change_callback(self._on_state_change)
-            logger.info("State monitoring registered")
+            logger.info("Event monitoring registered")
         except Exception as e:
-            logger.error(f"Failed to register state monitoring: {e}")
+            logger.error(f"Failed to register event monitoring: {e}")
+
+    def _on_playback_event(self, event: PlaybackEvent):
+        """Handle playback events from the new event system"""
+        if self.loop and self.running:
+            asyncio.run_coroutine_threadsafe(self._broadcast_playback_event(event), self.loop)
 
     def _on_state_change(self, motion_group_id, state, speed, direction):
-        """Handle state changes from playback manager"""
+        """Handle state changes from playback manager (legacy callback)"""
         if self.loop and self.running:
             asyncio.run_coroutine_threadsafe(
                 self._broadcast_state_update(
@@ -91,10 +102,21 @@ class NovaWebSocketServer:
         try:
             if cmd_type == "subscribe_events":
                 self.subscribed_clients.add(websocket)
-                return {"success": True, "robots": self._get_robot_list()}
+                return {
+                    "success": True,
+                    "robots": self._get_robot_list(),
+                    "status": get_robot_status_summary(),
+                }
 
             elif cmd_type == "get_robots":
-                return {"success": True, "robots": self._get_robot_list()}
+                return {
+                    "success": True,
+                    "robots": self._get_robot_list(),
+                    "status": get_robot_status_summary(),
+                }
+
+            elif cmd_type == "get_status":
+                return {"success": True, "status": get_robot_status_summary()}
 
             elif cmd_type == "set_speed" and robot_id:
                 speed = max(0, min(100, int(data.get("speed", 100))))
@@ -146,19 +168,28 @@ class NovaWebSocketServer:
             return {"success": False, "error": str(e)}
 
     def _get_robot_list(self) -> list[dict]:
-        """Get current robot list with states"""
+        """Get current robot list with states and metadata"""
         robots = []
         manager = get_playback_manager()
 
         for mgid in get_all_active_robots():
             state = manager.get_execution_state(mgid)
+            metadata = manager.get_robot_metadata(mgid)
             robots.append(
                 {
                     "id": str(mgid),
+                    "name": metadata.get("name", str(mgid)) if metadata else str(mgid),
                     "speed": int(manager.get_effective_speed(mgid)),
                     "state": state.value if state else "idle",
                     "can_pause": manager.can_pause(mgid),
                     "can_resume": manager.can_resume(mgid),
+                    "is_executing": state.value == "executing" if state else False,
+                    "registered_at": metadata["registered_at"].isoformat()
+                    if metadata
+                    and "registered_at" in metadata
+                    and metadata["registered_at"]
+                    and hasattr(metadata["registered_at"], "isoformat")
+                    else None,
                 }
             )
         return robots
@@ -168,8 +199,61 @@ class NovaWebSocketServer:
         state = get_playback_manager().get_execution_state(mgid)
         return state and state.value == "paused"
 
+    async def _broadcast_playback_event(self, event: PlaybackEvent):
+        """Broadcast playback events to subscribed clients"""
+        # Convert event to WebSocket message format
+        message: dict[str, Any] = {
+            "type": "playback_event",
+            "event_type": event.event_type,
+            "robot_id": str(event.motion_group_id),
+            "timestamp": event.timestamp.isoformat(),
+        }
+
+        # Add event-specific data based on event type
+        if event.event_type == "speed_change":
+            message["old_speed"] = int(getattr(event, "old_speed", 0))
+            message["new_speed"] = int(getattr(event, "new_speed", 0))
+            message["source"] = getattr(event, "source", "unknown")
+        elif event.event_type == "state_change":
+            old_state = getattr(event, "old_state", None)
+            new_state = getattr(event, "new_state", None)
+            direction = getattr(event, "direction", None)
+            message["old_state"] = (
+                old_state.value
+                if old_state and hasattr(old_state, "value")
+                else str(old_state)
+                if old_state
+                else ""
+            )
+            message["new_state"] = (
+                new_state.value
+                if new_state and hasattr(new_state, "value")
+                else str(new_state)
+                if new_state
+                else ""
+            )
+            message["speed"] = int(getattr(event, "speed", 0))
+            message["direction"] = (
+                direction.value
+                if direction and hasattr(direction, "value")
+                else str(direction)
+                if direction
+                else ""
+            )
+        elif event.event_type == "execution_started":
+            message["speed"] = int(getattr(event, "speed", 0))
+        elif event.event_type == "robot_registered":
+            message["robot_name"] = getattr(event, "robot_name", None)
+            message["initial_speed"] = int(getattr(event, "initial_speed", 100))
+        elif event.event_type in ["program_started", "program_stopped"]:
+            message["program_name"] = getattr(event, "program_name", None)
+            if hasattr(event, "total_robots"):
+                message["total_robots"] = getattr(event, "total_robots", 0)
+
+        await self._broadcast_to_subscribers(message)
+
     async def _broadcast_state_update(self, robot_id: str, state: str):
-        """Broadcast state update to subscribed clients"""
+        """Broadcast state update to subscribed clients (legacy)"""
         await self._broadcast_to_subscribers(
             {"type": "state_change", "robot_id": robot_id, "state": state, "timestamp": time.time()}
         )
