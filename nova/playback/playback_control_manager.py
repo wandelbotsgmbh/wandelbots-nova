@@ -7,6 +7,8 @@ circular imports and reduce file size.
 from datetime import datetime, timezone
 from typing import Optional
 
+from pydantic import ValidationError
+
 from nova.core import logger
 from nova.playback.playback_control_interface import PlaybackControlManagerInterface
 from nova.playback.playback_events import (
@@ -211,13 +213,17 @@ class PlaybackControlManager(PlaybackControlManagerInterface):
             motion_group_id: Motion group identifier
             speed: Default speed from @nova.program decorator
         """
-        if not (0 <= speed.value <= 100):
-            raise ValueError(f"Speed percent must be between 0 and 100, got {speed.value}")
+        try:
+            if not (1 <= speed.value <= 100):
+                raise ValueError(f"Speed percent must be between 1 and 100, got {speed.value}")
 
-        mgid = motion_group_id
-        control = PlaybackControl(speed=speed, source="decorator")
-        self._state.set_decorator_default(mgid, control)
-        logger.debug(f"Decorator default set: {mgid} -> {speed}%")
+            mgid = motion_group_id
+            control = PlaybackControl(speed=speed, source="decorator")
+            self._state.set_decorator_default(mgid, control)
+            logger.debug(f"Decorator default set: {mgid} -> {speed}%")
+        except ValidationError as e:
+            # Convert ValidationError to ValueError for API consistency
+            raise ValueError(f"Speed percent must be between 1 and 100: {e}") from e
 
     def get_effective_speed(
         self, motion_group_id: str, method_speed: Optional[PlaybackSpeedPercent] = None

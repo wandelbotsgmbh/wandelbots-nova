@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Callable, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 
 # Type-safe identifiers (re-exported from types module to avoid circulars)
@@ -17,6 +17,19 @@ class PlaybackSpeedPercent(BaseModel):
     """Playback speed percentage with validation (1-100)"""
 
     value: int = Field(..., ge=1, le=100, description="Speed percentage between 1 and 100")
+
+    def __init__(self, **data):
+        try:
+            super().__init__(**data)
+        except ValidationError as e:
+            # Convert ValidationError to ValueError for API consistency
+            raise ValueError("Speed percent must be between 1 and 100") from e
+
+    def __eq__(self, other):
+        """Allow comparison with integers"""
+        if isinstance(other, int):
+            return self.value == other
+        return super().__eq__(other)
 
 
 # Control source types with strict validation

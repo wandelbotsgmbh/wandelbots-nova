@@ -41,23 +41,23 @@ class TestPlaybackControlManager:
 
     def test_decorator_default_overrides_system_default(self, manager, robot_id):
         """Test that decorator default takes precedence over system default"""
-        manager.set_decorator_default(robot_id, PlaybackSpeedPercent(70))
+        manager.set_decorator_default(robot_id, PlaybackSpeedPercent(value=70))
         speed = manager.get_effective_speed(robot_id)
         assert speed == 70
 
     def test_method_parameter_overrides_decorator_default(self, manager, robot_id):
         """Test that method parameter overrides decorator default"""
-        manager.set_decorator_default(robot_id, PlaybackSpeedPercent(70))
-        speed = manager.get_effective_speed(robot_id, method_speed=PlaybackSpeedPercent(30))
+        manager.set_decorator_default(robot_id, PlaybackSpeedPercent(value=70))
+        speed = manager.get_effective_speed(robot_id, method_speed=PlaybackSpeedPercent(value=30))
         assert speed == 30
 
     def test_external_override_has_highest_precedence(self, manager, robot_id):
         """Test that external override takes precedence over all other settings"""
-        manager.set_decorator_default(robot_id, PlaybackSpeedPercent(70))
-        manager.set_external_override(robot_id, PlaybackSpeedPercent(20))
+        manager.set_decorator_default(robot_id, PlaybackSpeedPercent(value=70))
+        manager.set_external_override(robot_id, PlaybackSpeedPercent(value=20))
 
         # External override should win even with method parameter
-        speed = manager.get_effective_speed(robot_id, method_speed=PlaybackSpeedPercent(90))
+        speed = manager.get_effective_speed(robot_id, method_speed=PlaybackSpeedPercent(value=90))
         assert speed == 20
 
     def test_pause_resume_functionality(self, manager, robot_id):
@@ -75,8 +75,8 @@ class TestPlaybackControlManager:
 
     def test_clear_external_override(self, manager, robot_id):
         """Test clearing external overrides falls back to lower precedence"""
-        manager.set_decorator_default(robot_id, PlaybackSpeedPercent(60))
-        manager.set_external_override(robot_id, PlaybackSpeedPercent(30))
+        manager.set_decorator_default(robot_id, PlaybackSpeedPercent(value=60))
+        manager.set_external_override(robot_id, PlaybackSpeedPercent(value=30))
         assert manager.get_effective_speed(robot_id) == 30
 
         manager.clear_external_override(robot_id)
@@ -84,11 +84,11 @@ class TestPlaybackControlManager:
 
     def test_speed_validation(self, manager, robot_id):
         """Test that invalid speeds are rejected"""
-        with pytest.raises(ValueError, match="Speed percent must be between 0 and 100"):
-            manager.set_external_override(robot_id, PlaybackSpeedPercent(-10))
+        with pytest.raises(ValueError, match="Speed percent must be between 1 and 100"):
+            manager.set_external_override(robot_id, PlaybackSpeedPercent(value=-10))
 
-        with pytest.raises(ValueError, match="Speed percent must be between 0 and 100"):
-            manager.set_external_override(robot_id, PlaybackSpeedPercent(110))
+        with pytest.raises(ValueError, match="Speed percent must be between 1 and 100"):
+            manager.set_external_override(robot_id, PlaybackSpeedPercent(value=110))
 
     def test_thread_safety(self, manager, robot_id):
         """Test that concurrent access is thread-safe"""
@@ -136,9 +136,9 @@ class TestPlaybackControlManager:
         assert len(manager.get_all_robots()) == 0
 
         # Add some robots
-        manager.set_decorator_default(robot1, PlaybackSpeedPercent(50))
-        manager.set_external_override(robot2, PlaybackSpeedPercent(30))
-        manager.set_decorator_default(robot3, PlaybackSpeedPercent(80))
+        manager.set_decorator_default(robot1, PlaybackSpeedPercent(value=50))
+        manager.set_external_override(robot2, PlaybackSpeedPercent(value=30))
+        manager.set_decorator_default(robot3, PlaybackSpeedPercent(value=80))
 
         robots = manager.get_all_robots()
         assert len(robots) == 3
@@ -161,7 +161,7 @@ class TestPlaybackControlManagerSingleton:
         robot_id = "persistent_robot"
 
         manager1 = get_playback_manager()
-        manager1.set_decorator_default(robot_id, PlaybackSpeedPercent(42))
+        manager1.set_decorator_default(robot_id, PlaybackSpeedPercent(value=42))
 
         manager2 = get_playback_manager()
         speed = manager2.get_effective_speed(robot_id)
@@ -174,16 +174,16 @@ class TestPlaybackControlDataClasses:
     def test_playback_control_immutable(self):
         """Test that PlaybackControl is immutable"""
         control = PlaybackControl(
-            speed=PlaybackSpeedPercent(50), source="external", state=PlaybackState.PAUSED
+            speed=PlaybackSpeedPercent(value=50), source="external", state=PlaybackState.PAUSED
         )
 
         # Should not be able to modify - Pydantic frozen model raises ValidationError
         with pytest.raises(ValidationError):
-            control.speed = PlaybackSpeedPercent(70)
+            control.speed = PlaybackSpeedPercent(value=70)
 
     def test_playback_control_defaults(self):
         """Test PlaybackControl default values"""
-        control = PlaybackControl(speed=PlaybackSpeedPercent(100), source="default")
+        control = PlaybackControl(speed=PlaybackSpeedPercent(value=100), source="default")
         assert control.speed == 100
         assert control.source == "default"
         assert control.state is None  # Default is None, not PLAYING
@@ -195,17 +195,17 @@ class TestPlaybackControlDataClasses:
         assert "150" in str(error)
 
 
-@pytest.mark.parametrize("invalid_speed", [-10, 110, 200, 1000000, -1000000])
+@pytest.mark.parametrize("invalid_speed", [-10, 0, 110, 200, 1000000, -1000000])
 def test_speed_validation_parametrized(invalid_speed):
     """Test that various invalid speeds are rejected"""
     manager = PlaybackControlManager()
     robot_id = "test_robot"
 
-    with pytest.raises(ValueError, match="Speed percent must be between 0 and 100"):
+    with pytest.raises(ValueError, match="Speed percent must be between 1 and 100"):
         manager.set_external_override(robot_id, PlaybackSpeedPercent(value=invalid_speed))
 
 
-@pytest.mark.parametrize("valid_speed", [0, 10, 50, 90, 100])
+@pytest.mark.parametrize("valid_speed", [1, 10, 50, 90, 100])
 def test_speed_validation_valid_speeds(valid_speed):
     """Test that valid speeds are accepted"""
     manager = PlaybackControlManager()
