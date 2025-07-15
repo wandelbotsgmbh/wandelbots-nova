@@ -146,8 +146,17 @@ class NovaWebSocketServer:
                 if not self._robot_exists(motion_group_id):
                     return {"success": False, "error": f"Robot not found: {motion_group_id}"}
 
-                # Apply speed change
-                manager.set_external_override(motion_group_id, PlaybackSpeedPercent(value=speed))
+                # Get current direction and state to preserve them
+                current_direction = manager.get_effective_direction(motion_group_id)
+                current_state = manager.get_effective_state(motion_group_id)
+
+                # Apply speed change while preserving direction and state
+                manager.set_external_override(
+                    motion_group_id,
+                    PlaybackSpeedPercent(value=speed),
+                    direction=current_direction,
+                    state=current_state,
+                )
 
                 # Broadcast state update to all subscribers
                 await self._broadcast_state_update(motion_group_id)
@@ -183,7 +192,7 @@ class NovaWebSocketServer:
                 # Return simple success response
                 return {"success": True}
 
-            elif cmd_type in ["step_forward", "step_backward"] and motion_group_id:
+            elif cmd_type in ["play_forward", "play_backward"] and motion_group_id:
                 # Check if robot exists
                 if not self._robot_exists(motion_group_id):
                     return {"success": False, "error": f"Robot not found: {motion_group_id}"}
@@ -192,7 +201,7 @@ class NovaWebSocketServer:
                 current_speed = manager.get_effective_speed(motion_group_id)
 
                 # Set direction and state
-                if cmd_type == "step_forward":
+                if cmd_type == "play_forward":
                     direction = PlaybackDirection.FORWARD
                 else:
                     direction = PlaybackDirection.BACKWARD

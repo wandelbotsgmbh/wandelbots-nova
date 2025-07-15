@@ -319,18 +319,20 @@ class NovaController {
       });
     }
 
-    // Direction controls
-    actions.push({
-      label: "$(arrow-right) Step Forward",
-      description: "Execute next step forward",
-      action: "step_forward",
-    });
+    // Play Forward/Backward (only when paused)
+    if (robot.state === "paused") {
+      actions.push({
+        label: "$(arrow-right) Play Forward",
+        description: "Play robot forward",
+        action: "play_forward",
+      });
 
-    actions.push({
-      label: "$(arrow-left) Step Backward",
-      description: "Execute next step backward",
-      action: "step_backward",
-    });
+      actions.push({
+        label: "$(arrow-left) Play Backward",
+        description: "Play robot backward",
+        action: "play_backward",
+      });
+    }
 
     const selected = await vscode.window.showQuickPick(actions, {
       placeHolder: `Control ${robot.name}`,
@@ -394,16 +396,16 @@ class NovaController {
           };
           break;
 
-        case "step_forward":
+        case "play_forward":
           command = {
-            type: "step_forward",
+            type: "play_forward",
             robot_id: robotId,
           };
           break;
 
-        case "step_backward":
+        case "play_backward":
           command = {
-            type: "step_backward",
+            type: "play_backward",
             robot_id: robotId,
           };
           break;
@@ -560,6 +562,98 @@ class NovaSidebarProvider {
           
           .robot-controls {
             display: flex;
+            flex-direction: column;
+            gap: 12px;
+          }
+          
+          .velocity-control {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          }
+          
+          .velocity-control label {
+            font-size: 0.9em;
+            font-weight: 500;
+          }
+          
+          .velocity-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--vscode-scrollbarSlider-background);
+            outline: none;
+          }
+          
+          .velocity-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--vscode-button-background);
+            cursor: pointer;
+          }
+          
+          .velocity-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--vscode-button-background);
+            cursor: pointer;
+            border: none;
+          }
+          
+          .playback-controls {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+          }
+          
+          .speed-control {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 8px;
+          }
+          
+          .speed-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--vscode-scrollbarSlider-background);
+            outline: none;
+          }
+          
+          .speed-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--vscode-button-background);
+            cursor: pointer;
+          }
+          
+          .speed-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--vscode-button-background);
+            cursor: pointer;
+            border: none;
+          }
+          
+          .speed-value {
+            font-size: 0.9em;
+            color: var(--vscode-descriptionForeground);
+            text-align: center;
+          }
+          
+          .control-buttons {
+            display: flex;
             flex-wrap: wrap;
             gap: 8px;
           }
@@ -647,29 +741,37 @@ class NovaSidebarProvider {
             </div>
             
             <div class="robot-controls">
-              <button class="control-btn" onclick="setSpeed('${robot.id}', ${
-              robot.speed
-            })">
-                Set Speed
-              </button>
-              <button class="control-btn" ${robot.can_pause ? "" : "disabled"} 
-                onclick="executeAction('${robot.id}', 'pause')">
-                Pause
-              </button>
-              <button class="control-btn" ${robot.can_resume ? "" : "disabled"} 
-                onclick="executeAction('${robot.id}', 'resume')">
-                Resume
-              </button>
-              <button class="control-btn" onclick="executeAction('${
-                robot.id
-              }', 'step_forward')">
-                Step →
-              </button>
-              <button class="control-btn" onclick="executeAction('${
-                robot.id
-              }', 'step_backward')">
-                ← Step
-              </button>
+              <div class="velocity-control">
+                <input type="range" id="velocity-${robot.id}" min="1" max="100" 
+                       value="${robot.speed}" class="velocity-slider"
+                       oninput="updateVelocityDisplay('${
+                         robot.id
+                       }', this.value)"
+                       onchange="executeAction('${
+                         robot.id
+                       }', 'set_speed', this.value)">
+              </div>
+              
+              <div class="playback-controls">
+                <button class="control-btn" ${
+                  robot.state !== "paused" ? "" : "disabled"
+                } 
+                  onclick="executeAction('${robot.id}', 'pause')">
+                  ⏸️ Pause
+                </button>
+                <button class="control-btn" ${
+                  robot.state === "paused" ? "" : "disabled"
+                } 
+                  onclick="executeAction('${robot.id}', 'play_forward')">
+                  ▶️ Play Forward
+                </button>
+                <button class="control-btn" ${
+                  robot.state === "paused" ? "" : "disabled"
+                } 
+                  onclick="executeAction('${robot.id}', 'play_backward')">
+                  ◀️ Play Backward
+                </button>
+              </div>
             </div>
           </div>
         `
@@ -690,6 +792,10 @@ class NovaSidebarProvider {
               action: action,
               value: value
             });
+          }
+          
+          function updateVelocityDisplay(robotId, value) {
+            document.getElementById('velocity-value-' + robotId).textContent = value;
           }
           
           function setSpeed(robotId, currentSpeed) {
