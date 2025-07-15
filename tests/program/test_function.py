@@ -1,7 +1,8 @@
 import pytest
 from pydantic import BaseModel, Field
 
-from nova.program.function import Program, ProgramPreconditions, program
+import nova
+from nova.program.function import Program, ProgramPreconditions
 
 
 class TestInput(BaseModel):
@@ -15,7 +16,7 @@ class TestOutput(BaseModel):
 
 @pytest.mark.asyncio
 async def test_function_wrapping():
-    @program(
+    @nova.program(
         name="greet", preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False)
     )
     async def greet(
@@ -66,7 +67,7 @@ async def test_function_validation():
 
 @pytest.mark.asyncio
 async def test_function_calling():
-    @program(
+    @nova.program(
         name="add", preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False)
     )
     async def add(a: int, b: int) -> int:
@@ -86,7 +87,7 @@ async def test_function_with_complex_types():
         name: str = Field(..., description="Name of the person")
         address: Address = Field(..., description="Address of the person")
 
-    @program(
+    @nova.program(
         name="process_person",
         preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
     )
@@ -108,7 +109,7 @@ async def test_function_with_complex_types():
 
 @pytest.mark.asyncio
 async def test_function_schema_generation():
-    @program(
+    @nova.program(
         name="calculate_area",
         preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
     )
@@ -136,8 +137,8 @@ async def test_function_schema_generation():
 
 @pytest.mark.asyncio
 async def test_function_argument_parser():
-    @program(
-        name="process_data",
+    @nova.program(
+        id="process_data",
         preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
     )
     async def process_data(name: str, count: int = 0) -> str:
@@ -160,7 +161,7 @@ async def test_function_argument_parser():
 
 @pytest.mark.asyncio
 async def test_function_with_optional_parameters():
-    @program(
+    @nova.program(
         name="greet_optional",
         preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
     )
@@ -191,7 +192,7 @@ async def test_function_with_json_complex_types():
         setting1: str
         setting2: int
 
-    @program()
+    @nova.program()
     async def process_config(config: Config) -> str:
         """Process a configuration.
 
@@ -212,7 +213,7 @@ async def test_function_with_json_complex_types():
 
 @pytest.mark.asyncio
 async def test_function_repr():
-    @program(
+    @nova.program(
         name="example_func",
         preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
     )

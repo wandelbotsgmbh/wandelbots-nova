@@ -75,8 +75,8 @@ class ProgramRunState(Enum):
 
 # TODO: import from api.v2.models.ProgramRun
 class ProgramRun(BaseModel):
-    run_id: str = Field(..., description="Id of the program run")
-    program_id: str = Field(..., description="Id of the program")
+    run: str = Field(..., description="Id of the program run")
+    program: str = Field(..., description="Id of the program")
     state: ProgramRunState = Field(..., description="State of the program run")
     logs: str | None = Field(None, description="Logs of the program run")
     stdout: str | None = Field(None, description="Stdout of the program run")
@@ -85,7 +85,6 @@ class ProgramRun(BaseModel):
     start_time: dt.datetime | None = Field(None, description="Start time of the program run")
     end_time: dt.datetime | None = Field(None, description="End time of the program run")
     input_data: dict[str, Any] | None = Field(None, description="Input of the program run")
-    output_data: dict[str, Any] | None = Field(None, description="Output of the program run")
 
 
 class ProgramRunner(ABC):
@@ -98,6 +97,7 @@ class ProgramRunner(ABC):
     def __init__(
         self,
         program_id: str,
+        # TODO: this can be removed soonish
         program: Program,
         args: dict[str, Any],
         robot_cell_override: RobotCell | None = None,
@@ -108,8 +108,8 @@ class ProgramRunner(ABC):
         self._args = args
         self._robot_cell_override = robot_cell_override
         self._program_run: ProgramRun = ProgramRun(
-            run_id=self._run_id,
-            program_id=program_id,
+            run=self._run_id,
+            program=program_id,
             state=ProgramRunState.NOT_STARTED,
             logs=None,
             stdout=None,
@@ -118,7 +118,6 @@ class ProgramRunner(ABC):
             start_time=None,
             end_time=None,
             input_data=args,
-            output_data=None,
         )
         self._thread: threading.Thread | None = None
         self._stop_event: threading.Event | None = None
@@ -382,7 +381,7 @@ class ProgramRunner(ABC):
                 finally:
                     # write path to output
                     # self._program_run.execution_results = execution_context.motion_group_recordings
-                    self._program_run.output_data = execution_context.output_data
+                    # self._program_run.output_data = execution_context.output_data
 
                     logger.info(
                         f"Program {self.program_id} run {self.run_id} finished. Run teardown routine..."

@@ -9,7 +9,7 @@ from novax import Novax
 from novax.program_manager import ProgramManager, WandelscriptProgramSource
 
 
-@nova.program(name="simple_program")
+@nova.program(id="simple_program")
 async def simple_program(number_of_steps: int = 30):
     print("Hello World!")
 

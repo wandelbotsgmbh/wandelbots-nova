@@ -14,14 +14,15 @@ def test_get_programs(novax_app):
     assert len(programs) >= 1
 
     # Check that simple_program is in the list
-    program_ids = [p["program_id"] for p in programs]
+    program_ids = [p["program"] for p in programs]
     assert "simple_program" in program_ids
 
     # Check program structure
-    simple_program = next(p for p in programs if p["program_id"] == "simple_program")
-    assert "program_id" in simple_program
+    simple_program = next(p for p in programs if p["program"] == "simple_program")
+    assert "program" in simple_program
+    assert "name" in simple_program
+    assert "description" in simple_program
     assert "created_at" in simple_program
-    assert "updated_at" in simple_program
 
 
 def test_get_program_success(novax_app):
@@ -31,9 +32,10 @@ def test_get_program_success(novax_app):
     assert response.status_code == 200
     program = response.json()
 
-    assert program["program_id"] == "simple_program"
+    assert program["program"] == "simple_program"
     assert "created_at" in program
-    assert "updated_at" in program
+    assert "name" in program
+    assert "description" in program
     assert "input_schema" in program
 
 
@@ -54,8 +56,8 @@ def test_start_program_success(novax_app):
     assert response.status_code == 200
     run = response.json()
 
-    assert "run_id" in run
-    assert "program_id" in run
+    assert "run" in run
+    assert "program" in run
     assert "state" in run
 
 
@@ -66,8 +68,8 @@ def test_start_program_without_parameters(novax_app):
     assert response.status_code == 200
     run = response.json()
 
-    assert "run_id" in run
-    assert "program_id" in run
+    assert "run" in run
+    assert "program" in run
     assert "state" in run
 
 
