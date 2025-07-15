@@ -1,10 +1,11 @@
 /**
  * Nova Robot Control VS Code Extension - WebSocket Version (Simplified)
  *
- * Simplified extension with event-based robot control:
- * - Real-time event broadcasting from Nova WebSocket server
- * - Simple robot state tracking
- * - Event-driven UI updates
+ * Simplified extension with state-based robot control:
+ * - Commands return simple success/error responses (no confirmations)
+ * - Robot state updates are broadcast to all clients via robot_state_update messages
+ * - Multiple clients can control robots independently
+ * - All clients receive state updates when any client makes changes
  */
 
 const vscode = require("vscode");
@@ -20,8 +21,10 @@ class RobotState {
     this.speed = robotData.speed || 100;
     this.state = robotData.state || "idle";
     this.direction = robotData.direction || "forward";
-    this.can_pause = robotData.can_pause !== undefined ? robotData.can_pause : true;
-    this.can_resume = robotData.can_resume !== undefined ? robotData.can_resume : true;
+    this.can_pause =
+      robotData.can_pause !== undefined ? robotData.can_pause : true;
+    this.can_resume =
+      robotData.can_resume !== undefined ? robotData.can_resume : true;
     this.lastUpdated = new Date();
   }
 
@@ -46,21 +49,12 @@ class NovaController {
     this.statusBarItem = null;
     this.config = { host: "localhost", port: 8765 };
     this.reconnectTimer = null;
-    this.commandCounter = 0;
-    this.connectionId = Date.now();
 
     // Load configuration
     this.loadConfiguration();
 
     this.connect();
     this.createStatusBar();
-  }
-
-  /**
-   * Generate unique command ID
-   */
-  generateCommandId() {
-    return `cmd_${this.connectionId}_${++this.commandCounter}`;
   }
 
   loadConfiguration() {
@@ -146,14 +140,8 @@ class NovaController {
 
   sendCommand(command) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      const commandId = this.generateCommandId();
-      const enhancedCommand = {
-        ...command,
-        command_id: commandId,
-      };
-
-      this.ws.send(JSON.stringify(enhancedCommand));
-      return commandId;
+      this.ws.send(JSON.stringify(command));
+      return true;
     }
     return false;
   }
@@ -168,12 +156,16 @@ class NovaController {
         }
         break;
 
+      case "robot_state_update":
+        this.handleRobotStateUpdate(message);
+        break;
+
       case "playback_event":
         this.handlePlaybackEvent(message);
         break;
 
       default:
-        // Handle command responses (success/error messages)
+        // Handle simple command responses (success/error messages)
         if (message.hasOwnProperty("success")) {
           this.handleCommandResponse(message);
         }
@@ -181,30 +173,38 @@ class NovaController {
     }
   }
 
+  handleRobotStateUpdate(message) {
+    console.log(`[Nova] Robot state update for ${message.robot_id}`);
+
+    if (message.robot_id && message.state) {
+      this.updateSingleRobot(message.state);
+    }
+  }
+
   handlePlaybackEvent(message) {
-    console.log(`[Nova] Playback event: ${message.event_type} for robot ${message.robot_id}`);
-    
+    console.log(
+      `[Nova] Playback event: ${message.event_type} for robot ${message.robot_id}`
+    );
+
     // After any playback event, refresh robot list to get updated state
     this.sendCommand({ type: "get_robots" });
   }
 
   handleCommandResponse(message) {
     if (message.success) {
-      console.log(`[Nova] Command ${message.command_id} successful`);
-      
-      // Update robot state if included in response
-      if (message.robot_id && message.state) {
-        this.updateSingleRobot(message.state);
-      }
+      console.log(`[Nova] Command successful`);
+
+      // No need to handle command_id since we don't use confirmations
+      // State updates come via robot_state_update messages
     } else {
-      console.error(`[Nova] Command ${message.command_id} failed:`, message.error);
+      console.error(`[Nova] Command failed:`, message.error);
       vscode.window.showErrorMessage(`Nova: ${message.error}`);
     }
   }
 
   updateRobotList(robots) {
     console.log(`[Nova] Updating robot list with ${robots.length} robots`);
-    
+
     // Clear existing robots
     this.robots.clear();
 
@@ -251,23 +251,29 @@ class NovaController {
 
     const robotCount = this.robots.size;
     const connectedIcon = this.isConnected ? "$(check)" : "$(x)";
-    
+
     if (robotCount === 0) {
       this.statusBarItem.text = `${connectedIcon} Nova: No robots`;
-      this.statusBarItem.tooltip = this.isConnected ? "Connected - No robots active" : "Disconnected";
+      this.statusBarItem.tooltip = this.isConnected
+        ? "Connected - No robots active"
+        : "Disconnected";
     } else {
-      this.statusBarItem.text = `${connectedIcon} Nova: ${robotCount} robot${robotCount > 1 ? 's' : ''}`;
-      this.statusBarItem.tooltip = this.isConnected ? 
-        `Connected - ${robotCount} robot${robotCount > 1 ? 's' : ''} active` : 
-        "Disconnected";
+      this.statusBarItem.text = `${connectedIcon} Nova: ${robotCount} robot${
+        robotCount > 1 ? "s" : ""
+      }`;
+      this.statusBarItem.tooltip = this.isConnected
+        ? `Connected - ${robotCount} robot${robotCount > 1 ? "s" : ""} active`
+        : "Disconnected";
     }
   }
 
   async showPanel() {
     const robots = Array.from(this.robots.values());
-    
+
     if (robots.length === 0) {
-      vscode.window.showInformationMessage("No robots are currently registered.");
+      vscode.window.showInformationMessage(
+        "No robots are currently registered."
+      );
       return;
     }
 
@@ -408,11 +414,23 @@ class NovaController {
       }
 
       console.log(`[Nova] Sending command:`, command);
-      this.sendCommand(command);
+      const sent = this.sendCommand(command);
 
+      if (sent) {
+        // Show brief success message since we don't get confirmations
+        vscode.window.showInformationMessage(
+          `Nova: ${action.replace("_", " ")} command sent to ${robot.name}`
+        );
+      } else {
+        vscode.window.showErrorMessage(
+          "Failed to send command - not connected"
+        );
+      }
     } catch (error) {
       console.error(`[Nova] Error executing action ${action}:`, error);
-      vscode.window.showErrorMessage(`Failed to execute ${action}: ${error.message}`);
+      vscode.window.showErrorMessage(
+        `Failed to execute ${action}: ${error.message}`
+      );
     }
   }
 
@@ -446,7 +464,11 @@ class NovaSidebarProvider {
     webviewView.webview.onDidReceiveMessage((message) => {
       switch (message.command) {
         case "executeAction":
-          this.controller.executeAction(message.robotId, message.action, message.value);
+          this.controller.executeAction(
+            message.robotId,
+            message.action,
+            message.value
+          );
           break;
         case "refresh":
           this.controller.sendCommand({ type: "get_robots" });
@@ -488,7 +510,11 @@ class NovaSidebarProvider {
             padding: 8px;
             border-radius: 4px;
             background-color: var(--vscode-textBlockQuote-background);
-            border-left: 4px solid ${isConnected ? 'var(--vscode-charts-green)' : 'var(--vscode-charts-red)'};
+            border-left: 4px solid ${
+              isConnected
+                ? "var(--vscode-charts-green)"
+                : "var(--vscode-charts-red)"
+            };
           }
           
           .robot-card {
@@ -519,7 +545,9 @@ class NovaSidebarProvider {
             font-weight: bold;
             text-transform: uppercase;
             color: white;
-            background-color: ${robots.length > 0 ? this.getStateColor(robots[0].state) : '#666'};
+            background-color: ${
+              robots.length > 0 ? this.getStateColor(robots[0].state) : "#666"
+            };
           }
           
           .robot-info {
@@ -586,21 +614,31 @@ class NovaSidebarProvider {
       </head>
       <body>
         <div class="status">
-          <strong>Status:</strong> ${isConnected ? '✅ Connected' : '❌ Disconnected'}
+          <strong>Status:</strong> ${
+            isConnected ? "✅ Connected" : "❌ Disconnected"
+          }
         </div>
         
-        ${robots.length === 0 ? `
+        ${
+          robots.length === 0
+            ? `
           <div class="no-robots">
             <p>No robots are currently registered.</p>
             <p>Start a Nova program with WebSocket control to see robots here.</p>
           </div>
-        ` : ''}
+        `
+            : ""
+        }
         
-        ${robots.map(robot => `
+        ${robots
+          .map(
+            (robot) => `
           <div class="robot-card">
             <div class="robot-header">
               <span class="robot-name">${robot.name}</span>
-              <span class="robot-state" style="background-color: ${this.getStateColor(robot.state)}">${robot.state}</span>
+              <span class="robot-state" style="background-color: ${this.getStateColor(
+                robot.state
+              )}">${robot.state}</span>
             </div>
             
             <div class="robot-info">
@@ -609,26 +647,34 @@ class NovaSidebarProvider {
             </div>
             
             <div class="robot-controls">
-              <button class="control-btn" onclick="setSpeed('${robot.id}', ${robot.speed})">
+              <button class="control-btn" onclick="setSpeed('${robot.id}', ${
+              robot.speed
+            })">
                 Set Speed
               </button>
-              <button class="control-btn" ${robot.can_pause ? '' : 'disabled'} 
+              <button class="control-btn" ${robot.can_pause ? "" : "disabled"} 
                 onclick="executeAction('${robot.id}', 'pause')">
                 Pause
               </button>
-              <button class="control-btn" ${robot.can_resume ? '' : 'disabled'} 
+              <button class="control-btn" ${robot.can_resume ? "" : "disabled"} 
                 onclick="executeAction('${robot.id}', 'resume')">
                 Resume
               </button>
-              <button class="control-btn" onclick="executeAction('${robot.id}', 'step_forward')">
+              <button class="control-btn" onclick="executeAction('${
+                robot.id
+              }', 'step_forward')">
                 Step →
               </button>
-              <button class="control-btn" onclick="executeAction('${robot.id}', 'step_backward')">
+              <button class="control-btn" onclick="executeAction('${
+                robot.id
+              }', 'step_backward')">
                 ← Step
               </button>
             </div>
           </div>
-        `).join('')}
+        `
+          )
+          .join("")}
         
         <button class="refresh-btn" onclick="refresh()">
           🔄 Refresh
@@ -671,15 +717,15 @@ class NovaSidebarProvider {
 
   getStateColor(state) {
     switch (state) {
-      case 'executing':
-      case 'playing':
-        return '#4CAF50';
-      case 'paused':
-        return '#FF9800';
-      case 'idle':
-        return '#2196F3';
+      case "executing":
+      case "playing":
+        return "#4CAF50";
+      case "paused":
+        return "#FF9800";
+      case "idle":
+        return "#2196F3";
       default:
-        return '#666';
+        return "#666";
     }
   }
 }

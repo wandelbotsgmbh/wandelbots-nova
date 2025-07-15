@@ -6,15 +6,15 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from nova.core.playback_control import (
+from nova.playback import (
     InvalidSpeedError,
     MotionGroupId,
-    PlaybackControl,
-    PlaybackControlManager,
     PlaybackSpeedPercent,
     PlaybackState,
     get_playback_manager,
 )
+from nova.playback.playback_control_manager import PlaybackControlManager
+from nova.playback.playback_state import PlaybackControl
 
 
 class TestPlaybackControlManager:
@@ -37,7 +37,7 @@ class TestPlaybackControlManager:
 
     def test_method_parameter_overrides_default(self, manager, robot_id):
         """Test that method parameter takes precedence over default"""
-        speed = manager.get_effective_speed(robot_id, method_speed=PlaybackSpeedPercent(50))
+        speed = manager.get_effective_speed(robot_id, method_speed=PlaybackSpeedPercent(value=50))
         assert speed == 50
 
     def test_decorator_default_overrides_system_default(self, manager, robot_id):
@@ -98,7 +98,7 @@ class TestPlaybackControlManager:
 
         def set_speed(speed):
             try:
-                manager.set_external_override(robot_id, PlaybackSpeedPercent(speed))
+                manager.set_external_override(robot_id, PlaybackSpeedPercent(value=speed))
                 result = manager.get_effective_speed(robot_id)
                 results.append(result)
             except Exception as e:
@@ -174,7 +174,9 @@ class TestPlaybackControlDataClasses:
 
     def test_playback_control_immutable(self):
         """Test that PlaybackControl is immutable"""
-        control = PlaybackControl(speed=PlaybackSpeedPercent(50), state=PlaybackState.PAUSED)
+        control = PlaybackControl(
+            speed=PlaybackSpeedPercent(50), source="external", state=PlaybackState.PAUSED
+        )
 
         # Should not be able to modify - Pydantic frozen model raises ValidationError
         with pytest.raises(ValidationError):
@@ -182,18 +184,16 @@ class TestPlaybackControlDataClasses:
 
     def test_playback_control_defaults(self):
         """Test PlaybackControl default values"""
-        control = PlaybackControl()
+        control = PlaybackControl(speed=PlaybackSpeedPercent(100), source="default")
         assert control.speed == 100
-        assert control.state == PlaybackState.PLAYING
         assert control.source == "default"
-        assert isinstance(control.timestamp, datetime)
+        assert control.state is None  # Default is None, not PLAYING
+        assert isinstance(control.set_at, datetime)
 
     def test_invalid_speed_error(self):
         """Test InvalidSpeedError functionality"""
-        error = InvalidSpeedError(150)
+        error = InvalidSpeedError("Speed must be 0-100%, got 150%")
         assert "150" in str(error)
-        assert error.requested_speed == 150
-        assert isinstance(error.timestamp, datetime)
 
 
 @pytest.mark.parametrize("invalid_speed", [-10, 110, 200, 1000000, -1000000])
@@ -203,7 +203,7 @@ def test_speed_validation_parametrized(invalid_speed):
     robot_id = MotionGroupId("test_robot")
 
     with pytest.raises(ValueError, match="Speed percent must be between 0 and 100"):
-        manager.set_external_override(robot_id, PlaybackSpeedPercent(invalid_speed))
+        manager.set_external_override(robot_id, PlaybackSpeedPercent(value=invalid_speed))
 
 
 @pytest.mark.parametrize("valid_speed", [0, 10, 50, 90, 100])
@@ -213,6 +213,6 @@ def test_speed_validation_valid_speeds(valid_speed):
     robot_id = MotionGroupId("test_robot")
 
     # Should not raise any exception
-    manager.set_external_override(robot_id, PlaybackSpeedPercent(valid_speed))
+    manager.set_external_override(robot_id, PlaybackSpeedPercent(value=valid_speed))
     speed = manager.get_effective_speed(robot_id)
     assert speed == valid_speed

@@ -179,3 +179,4 @@ kubeconfig
 **/kubeconfig
 
 benchmark_results
+vscode-extension/node_modules

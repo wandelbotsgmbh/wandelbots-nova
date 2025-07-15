@@ -5,6 +5,7 @@ This is the updated VS Code extension for Nova robot control, redesigned to work
 ## Key Changes
 
 ### Simplified Architecture
+
 - **Event-driven updates**: All UI updates are now triggered by WebSocket events
 - **Removed complex state tracking**: No more pending command tracking or synchronization logic
 - **Simplified robot state**: Basic robot state object with only essential properties
@@ -15,6 +16,7 @@ This is the updated VS Code extension for Nova robot control, redesigned to work
 The extension now uses the following WebSocket message types:
 
 #### Commands (Client → Server)
+
 - `subscribe_events` - Subscribe to robot events
 - `get_robots` - Get list of all robots
 - `set_speed` - Set robot speed (0-100%)
@@ -24,6 +26,7 @@ The extension now uses the following WebSocket message types:
 - `step_backward` - Step backward in execution
 
 #### Responses (Server → Client)
+
 - `robot_list` - List of robots with current state
 - `playback_event` - Playback events (speed_changed, state_changed, etc.)
 - Command confirmations with `success`, `command_id`, and relevant data
@@ -108,6 +111,7 @@ The extension can be configured via VS Code settings:
 2. The extension will automatically connect and display robots in the sidebar
 3. Use the sidebar buttons or command palette to control robots
 4. All state changes are reflected in real-time via WebSocket events
+
 - **Real-time Status Updates**: Live monitoring of robot states, speeds, and execution status
 - **Enhanced Robot Metadata**: Display robot names, registration times, and detailed status information
 
