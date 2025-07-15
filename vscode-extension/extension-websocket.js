@@ -256,14 +256,14 @@ class NovaController {
       this.statusBarItem.text = `${connectedIcon} Nova: No robots`;
       this.statusBarItem.tooltip = this.isConnected
         ? "Connected - No robots active"
-        : "Disconnected";
+        : "No Program Running";
     } else {
       this.statusBarItem.text = `${connectedIcon} Nova: ${robotCount} robot${
         robotCount > 1 ? "s" : ""
       }`;
       this.statusBarItem.tooltip = this.isConnected
         ? `Connected - ${robotCount} robot${robotCount > 1 ? "s" : ""} active`
-        : "Disconnected";
+        : "No Program Running";
     }
   }
 
@@ -709,7 +709,7 @@ class NovaSidebarProvider {
       <body>
         <div class="status">
           <strong>Status:</strong> ${
-            isConnected ? "✅ Connected" : "❌ Disconnected"
+            isConnected ? "✅ Connected" : "❌ No Program Running"
           }
         </div>
         
