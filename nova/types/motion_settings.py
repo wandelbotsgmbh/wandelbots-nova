@@ -36,6 +36,7 @@ class MotionSettings(pydantic.BaseModel):
     """
 
     min_blending_velocity: int | None = pydantic.Field(default=None)
+    # TODO: rename to blending_radius?
     position_zone_radius: float | None = pydantic.Field(default=None)
     joint_velocity_limits: tuple[float, ...] | None = pydantic.Field(default=None)
     joint_acceleration_limits: tuple[float, ...] | None = pydantic.Field(default=None)

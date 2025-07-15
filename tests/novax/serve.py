@@ -7,13 +7,18 @@ import nova
 dotenv.load_dotenv()
 
 
-@nova.program(name="test")
+@nova.program(id="test")
 async def test():
     print("Hello, world!")
 
 
-@nova.program(name="simple_program")
+@nova.program(
+    id="simple_program",
+    name="Simple Program",
+    description="Simple program that prints 'Hello World!' and then sleeps a bit.",
+)
 async def simple_program(number_of_steps: int = 30):
+    """Simple program that prints "Hello World!" and then sleeps a bit."""
     print("Hello World!")
 
     for i in range(number_of_steps):

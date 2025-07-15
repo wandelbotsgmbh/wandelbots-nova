@@ -69,9 +69,10 @@ class NovaxProgramRunner(ProgramRunner):
 
 
 class ProgramDetails(BaseModel):
-    program_id: str
+    program: str
+    name: str | None
+    description: str | None
     created_at: dt.datetime
-    updated_at: dt.datetime
 
 
 class RunProgramRequest(BaseModel):
@@ -129,12 +130,13 @@ class ProgramManager:
         """
 
         func = program
-        program_id = func.name
-
+        program_id = func.program_id
         now = dt.datetime.now(dt.timezone.utc)
 
         # Create ProgramDetails instance
-        program_details = ProgramDetails(program_id=program_id, created_at=now, updated_at=now)
+        program_details = ProgramDetails(
+            program=program_id, name=program.name, description=program.description, created_at=now
+        )
 
         # Store program details and function separately
         self._programs[program_id] = program_details
@@ -224,7 +226,7 @@ class WandelscriptProgramSource:
         logger.info(f"Creating wandelscript program: {program_id}")
 
         # Create a wrapper function
-        @nova.program(name=program_id)
+        @nova.program(id=program_id)
         async def wandelscript_wrapper():
             async with Nova() as nova:
                 robot_cell = await nova.cell().get_robot_cell()

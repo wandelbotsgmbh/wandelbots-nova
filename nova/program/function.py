@@ -39,7 +39,8 @@ class Program(BaseModel, Generic[Parameters, Return]):
     _wrapped: Callable[Parameters, Any] = PrivateAttr(
         default_factory=lambda: lambda *args, **kwargs: None
     )
-    name: str
+    program_id: str
+    name: str | None
     description: str | None
     input: type[BaseModel]
     output: type[BaseModel]
@@ -52,14 +53,15 @@ class Program(BaseModel, Generic[Parameters, Return]):
         if not callable(value):
             raise TypeError("value must be callable")
 
-        name = value.__name__
-
+        program_id = value.__name__
         docstring = parse_docstring(value.__doc__ or "")
         description = docstring.description
 
         input, output = input_and_output_types(value, docstring)
 
-        function = cls(name=name, description=description, input=input, output=output)
+        function = cls(
+            program_id=program_id, name=None, description=description, input=input, output=output
+        )
         function._wrapped = validate_call(validate_return=True)(value)
         return function
 
@@ -282,7 +284,9 @@ def input_and_output_types(
 
 
 def program(
+    id: str | None = None,
     name: str | None = None,
+    description: str | None = None,
     preconditions: ProgramPreconditions | None = None,
     viewer: Any | None = None,
 ):
@@ -303,8 +307,12 @@ def program(
             raise TypeError(f"Program function '{function.__name__}' must be async")
 
         func_obj = Program.validate(function)
+        if id:
+            func_obj.program_id = id
         if name:
             func_obj.name = name
+        if description:
+            func_obj.description = description
         func_obj.preconditions = preconditions
 
         # Create a wrapper that handles controller lifecycle
