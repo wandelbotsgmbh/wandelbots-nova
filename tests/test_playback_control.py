@@ -8,7 +8,6 @@ from pydantic import ValidationError
 
 from nova.playback import (
     InvalidSpeedError,
-    MotionGroupId,
     PlaybackSpeedPercent,
     PlaybackState,
     get_playback_manager,
@@ -28,7 +27,7 @@ class TestPlaybackControlManager:
     @pytest.fixture
     def robot_id(self):
         """Standard robot ID for testing"""
-        return MotionGroupId("test_robot_1")
+        return "test_robot_1"
 
     def test_default_speed_is_one(self, manager, robot_id):
         """Test that default speed is 1.0 when no overrides are set"""
@@ -129,9 +128,9 @@ class TestPlaybackControlManager:
 
     def test_get_all_robots(self, manager):
         """Test getting list of robots with settings"""
-        robot1 = MotionGroupId("robot1")
-        robot2 = MotionGroupId("robot2")
-        robot3 = MotionGroupId("robot3")
+        robot1 = "robot1"
+        robot2 = "robot2"
+        robot3 = "robot3"
 
         # Initially no robots
         assert len(manager.get_all_robots()) == 0
@@ -159,7 +158,7 @@ class TestPlaybackControlManagerSingleton:
 
     def test_global_manager_persistence(self):
         """Test that settings persist across get_playback_manager calls"""
-        robot_id = MotionGroupId("persistent_robot")
+        robot_id = "persistent_robot"
 
         manager1 = get_playback_manager()
         manager1.set_decorator_default(robot_id, PlaybackSpeedPercent(42))
@@ -200,7 +199,7 @@ class TestPlaybackControlDataClasses:
 def test_speed_validation_parametrized(invalid_speed):
     """Test that various invalid speeds are rejected"""
     manager = PlaybackControlManager()
-    robot_id = MotionGroupId("test_robot")
+    robot_id = "test_robot"
 
     with pytest.raises(ValueError, match="Speed percent must be between 0 and 100"):
         manager.set_external_override(robot_id, PlaybackSpeedPercent(value=invalid_speed))
@@ -210,7 +209,7 @@ def test_speed_validation_parametrized(invalid_speed):
 def test_speed_validation_valid_speeds(valid_speed):
     """Test that valid speeds are accepted"""
     manager = PlaybackControlManager()
-    robot_id = MotionGroupId("test_robot")
+    robot_id = "test_robot"
 
     # Should not raise any exception
     manager.set_external_override(robot_id, PlaybackSpeedPercent(value=valid_speed))
