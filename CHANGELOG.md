@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.4.0 (2025-07-15)
+
+### Features
+
+- Improved program metadata & API description (#232)
+  ([#232](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/232),
+  [`cb435a0`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/cb435a0f95995a708a27e08e39a716d8934b6790))
+
+
 ## v2.3.1 (2025-07-14)
 
 ### Bug Fixes
