@@ -15,12 +15,12 @@ from typing import Any, Optional
 import websockets
 import websockets.exceptions
 
-from nova.core.playback_control import (
-    MotionGroupId,
+from nova.playback import (
     PlaybackDirection,
     PlaybackEvent,
     PlaybackSpeedPercent,
     PlaybackState,
+    StateChangeEvent,
     get_all_active_robots,
     get_playback_manager,
     get_robot_status_summary,
@@ -54,28 +54,48 @@ class NovaWebSocketServer:
         """Setup comprehensive event monitoring"""
         try:
             manager = get_playback_manager()
-            # Register for new event system
+            # Register for event system
             manager.register_event_callback(self._on_playback_event)
-            # Keep legacy callback for backward compatibility
-            manager.register_state_change_callback(self._on_state_change)
             logger.info("Event monitoring registered")
         except Exception as e:
             logger.error(f"Failed to register event monitoring: {e}")
 
     def _on_playback_event(self, event: PlaybackEvent):
-        """Handle playback events from the new event system"""
+        """Handle playback events from the event system"""
         if self.loop and self.running:
+            # Send comprehensive state update for all relevant events
+            robot_id = str(event.motion_group_id)
+
+            # Handle state change events specifically with legacy support
+            if isinstance(event, StateChangeEvent):
+                state_event = event  # Now type checker knows it's a StateChangeEvent
+                asyncio.run_coroutine_threadsafe(
+                    self._broadcast_state_update(
+                        robot_id,
+                        state_event.new_state.value
+                        if hasattr(state_event.new_state, "value")
+                        else str(state_event.new_state),
+                    ),
+                    self.loop,
+                )
+
+            # For all events, send comprehensive state update
+            asyncio.run_coroutine_threadsafe(
+                self._broadcast_comprehensive_state_update(robot_id), self.loop
+            )
+
+            # Handle all events with general broadcast for compatibility
             asyncio.run_coroutine_threadsafe(self._broadcast_playback_event(event), self.loop)
 
-    def _on_state_change(self, motion_group_id, state, speed, direction):
-        """Handle state changes from playback manager (legacy callback)"""
-        if self.loop and self.running:
-            asyncio.run_coroutine_threadsafe(
-                self._broadcast_state_update(
-                    str(motion_group_id), state.value if hasattr(state, "value") else str(state)
-                ),
-                self.loop,
+    async def _broadcast_comprehensive_state_update(self, robot_id: str):
+        """Broadcast comprehensive state update for a robot"""
+        try:
+            robot_state = self._get_robot_state(robot_id)
+            await self._broadcast_to_subscribers(
+                {"type": "robot_state_update", "robot_id": robot_id, "state": robot_state}
             )
+        except Exception as e:
+            logger.error(f"Failed to broadcast comprehensive state update for {robot_id}: {e}")
 
     async def handle_client(self, websocket):
         """Handle WebSocket client connection"""
@@ -98,7 +118,7 @@ class NovaWebSocketServer:
     async def _process_message(self, data: dict, websocket) -> dict:
         """Process WebSocket message"""
         cmd_type = data.get("type")
-        robot_id = data.get("robot_id")
+        motion_group_id = data.get("robot_id")
         manager = get_playback_manager()
 
         try:
@@ -106,12 +126,14 @@ class NovaWebSocketServer:
                 self.subscribed_clients.add(websocket)
                 return {
                     "success": True,
+                    "message": "Subscribed to events",
                     "robots": self._get_robot_list(),
                     "status": get_robot_status_summary(),
                 }
 
             elif cmd_type == "get_robots":
                 return {
+                    "type": "robot_list",
                     "success": True,
                     "robots": self._get_robot_list(),
                     "status": get_robot_status_summary(),
@@ -120,46 +142,158 @@ class NovaWebSocketServer:
             elif cmd_type == "get_status":
                 return {"success": True, "status": get_robot_status_summary()}
 
-            elif cmd_type == "set_speed" and robot_id:
-                speed = max(0, min(100, int(data.get("speed", 100))))
-                mgid = MotionGroupId(robot_id)
+            elif cmd_type == "set_speed" and motion_group_id:
+                speed = int(data.get("speed", 100))
+
+                # Validate speed range
+                if speed < 0 or speed > 100:
+                    response = {
+                        "success": False,
+                        "error": f"Invalid speed value: {speed}. Must be between 0 and 100",
+                        "robot_id": motion_group_id,
+                    }
+                    if "command_id" in data:
+                        response["command_id"] = data["command_id"]
+                    return response
+
+                # Check if robot exists
+                if not self._robot_exists(motion_group_id):
+                    response = {
+                        "success": False,
+                        "error": f"Robot not found: {motion_group_id}",
+                        "robot_id": motion_group_id,
+                    }
+                    if "command_id" in data:
+                        response["command_id"] = data["command_id"]
+                    return response
+
+                mgid = motion_group_id
 
                 # Store speed for paused robots, apply immediately for executing ones
                 if self._is_paused(mgid):
                     # For paused robots, only store the speed - don't apply it yet
-                    self.paused_speeds[robot_id] = speed
+                    self.paused_speeds[motion_group_id] = speed
                 else:
-                    manager.set_external_override(mgid, PlaybackSpeedPercent(speed))
-                    if robot_id in self.paused_speeds:
-                        del self.paused_speeds[robot_id]
+                    manager.set_external_override(mgid, PlaybackSpeedPercent(value=speed))
+                    if motion_group_id in self.paused_speeds:
+                        del self.paused_speeds[motion_group_id]
 
+                # Get complete robot state after speed change
+                robot_state = self._get_robot_state(motion_group_id)
+
+                # Broadcast comprehensive state update
                 await self._broadcast_to_subscribers(
-                    {"type": "speed_change", "robot_id": robot_id, "speed": speed}
+                    {
+                        "type": "robot_state_update",
+                        "robot_id": motion_group_id,
+                        "state": robot_state,
+                    }
                 )
-                return {"success": True, "robot_id": robot_id, "speed": speed}
 
-            elif cmd_type == "pause" and robot_id:
-                mgid = MotionGroupId(robot_id)
-                self.paused_speeds[robot_id] = int(manager.get_effective_speed(mgid))
-                manager.pause(mgid)
-                return {"success": True, "robot_id": robot_id}
+                # Include command_id in response for confirmation tracking
+                response = {
+                    "success": True,
+                    "robot_id": motion_group_id,
+                    "speed": speed,
+                    "state": robot_state,
+                }
+                if "command_id" in data:
+                    response["command_id"] = data["command_id"]
+                return response
 
-            elif cmd_type == "resume" and robot_id:
-                mgid = MotionGroupId(robot_id)
-                if robot_id in self.paused_speeds:
-                    speed = self.paused_speeds.pop(robot_id)
-                    manager.set_external_override(mgid, PlaybackSpeedPercent(speed))
-                manager.resume(mgid)
-                return {"success": True, "robot_id": robot_id}
+            elif cmd_type == "pause" and motion_group_id:
+                # Check if robot exists
+                if not self._robot_exists(motion_group_id):
+                    response = {
+                        "success": False,
+                        "error": f"Robot not found: {motion_group_id}",
+                        "robot_id": motion_group_id,
+                    }
+                    if "command_id" in data:
+                        response["command_id"] = data["command_id"]
+                    return response
 
-            elif cmd_type in ["step_forward", "step_backward"] and robot_id:
-                mgid = MotionGroupId(robot_id)
+                # Store current speed before pausing
+                self.paused_speeds[motion_group_id] = manager.get_effective_speed(
+                    motion_group_id
+                ).value
+
+                manager.pause(motion_group_id)
+
+                # Get complete robot state after pause
+                robot_state = self._get_robot_state(motion_group_id)
+
+                # Broadcast comprehensive state update
+                await self._broadcast_to_subscribers(
+                    {
+                        "type": "robot_state_update",
+                        "robot_id": motion_group_id,
+                        "state": robot_state,
+                    }
+                )
+
+                # Include command_id in response for confirmation tracking
+                response = {"success": True, "robot_id": motion_group_id, "state": robot_state}
+                if "command_id" in data:
+                    response["command_id"] = data["command_id"]
+                return response
+
+            elif cmd_type == "resume" and motion_group_id:
+                # Check if robot exists
+                if not self._robot_exists(motion_group_id):
+                    response = {
+                        "success": False,
+                        "error": f"Robot not found: {motion_group_id}",
+                        "robot_id": motion_group_id,
+                    }
+                    if "command_id" in data:
+                        response["command_id"] = data["command_id"]
+                    return response
+
+                if motion_group_id in self.paused_speeds:
+                    speed = self.paused_speeds.pop(motion_group_id)
+                    manager.set_external_override(
+                        motion_group_id, PlaybackSpeedPercent(value=speed)
+                    )
+                manager.resume(motion_group_id)
+
+                # Get complete robot state after resume
+                robot_state = self._get_robot_state(motion_group_id)
+
+                # Broadcast comprehensive state update
+                await self._broadcast_to_subscribers(
+                    {
+                        "type": "robot_state_update",
+                        "robot_id": motion_group_id,
+                        "state": robot_state,
+                    }
+                )
+
+                # Include command_id in response for confirmation tracking
+                response = {"success": True, "robot_id": motion_group_id, "state": robot_state}
+                if "command_id" in data:
+                    response["command_id"] = data["command_id"]
+                return response
+
+            elif cmd_type in ["step_forward", "step_backward"] and motion_group_id:
+                # Check if robot exists
+                if not self._robot_exists(motion_group_id):
+                    response = {
+                        "success": False,
+                        "error": f"Robot not found: {motion_group_id}",
+                        "robot_id": motion_group_id,
+                    }
+                    if "command_id" in data:
+                        response["command_id"] = data["command_id"]
+                    return response
 
                 # Get current speed - use paused speed if available, otherwise current effective speed
-                if robot_id in self.paused_speeds:
-                    current_speed = PlaybackSpeedPercent(self.paused_speeds.pop(robot_id))
+                if motion_group_id in self.paused_speeds:
+                    current_speed = PlaybackSpeedPercent(
+                        value=self.paused_speeds.pop(motion_group_id)
+                    )
                 else:
-                    current_speed = manager.get_effective_speed(mgid)
+                    current_speed = manager.get_effective_speed(motion_group_id)
 
                 # Set both direction and state in a single external override
                 if cmd_type == "step_forward":
@@ -167,50 +301,124 @@ class NovaWebSocketServer:
                 else:
                     direction = PlaybackDirection.BACKWARD
 
+                # Preserve the current execution state if it's EXECUTING, otherwise set to PLAYING
+                current_execution_state = manager.get_execution_state(motion_group_id)
+                if current_execution_state == PlaybackState.EXECUTING:
+                    target_state = PlaybackState.EXECUTING
+                else:
+                    target_state = PlaybackState.PLAYING
+
                 manager.set_external_override(
-                    mgid, current_speed, state=PlaybackState.PLAYING, direction=direction
+                    motion_group_id, current_speed, state=target_state, direction=direction
                 )
-                return {"success": True, "robot_id": robot_id}
+
+                # Get complete robot state after step command
+                robot_state = self._get_robot_state(motion_group_id)
+
+                # Broadcast comprehensive state update
+                await self._broadcast_to_subscribers(
+                    {
+                        "type": "robot_state_update",
+                        "robot_id": motion_group_id,
+                        "state": robot_state,
+                    }
+                )
+
+                # Include command_id in response for confirmation tracking
+                response = {"success": True, "robot_id": motion_group_id, "state": robot_state}
+                if "command_id" in data:
+                    response["command_id"] = data["command_id"]
+                return response
 
             else:
-                return {
+                response = {
                     "success": False,
                     "error": f"Unknown command or missing robot_id: {cmd_type}",
                 }
+                if "command_id" in data:
+                    response["command_id"] = data["command_id"]
+                if motion_group_id:
+                    response["robot_id"] = motion_group_id
+                return response
 
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            response = {"success": False, "error": str(e)}
+            if "command_id" in data:
+                response["command_id"] = data["command_id"]
+            if motion_group_id:
+                response["robot_id"] = motion_group_id
+            return response
 
     def _get_robot_list(self) -> list[dict]:
-        """Get current robot list with states and metadata"""
+        """Get current robot list with comprehensive states"""
         robots = []
-        manager = get_playback_manager()
 
-        for mgid in get_all_active_robots():
-            state = manager.get_execution_state(mgid)
-            metadata = manager.get_robot_metadata(mgid)
-            robots.append(
-                {
-                    "id": str(mgid),
-                    "name": metadata.get("name", str(mgid)) if metadata else str(mgid),
-                    "speed": int(manager.get_effective_speed(mgid)),
-                    "state": state.value if state else "idle",
-                    "can_pause": manager.can_pause(mgid),
-                    "can_resume": manager.can_resume(mgid),
-                    "is_executing": state.value == "executing" if state else False,
-                    "registered_at": metadata["registered_at"].isoformat()
-                    if metadata
-                    and "registered_at" in metadata
-                    and metadata["registered_at"]
-                    and hasattr(metadata["registered_at"], "isoformat")
-                    else None,
-                }
-            )
+        for motion_group_id in get_all_active_robots():
+            robot_state = self._get_robot_state(motion_group_id)
+            robots.append(robot_state)
+
         return robots
 
-    def _is_paused(self, mgid: MotionGroupId) -> bool:
+    def _get_robot_state(self, motion_group_id: str) -> dict:
+        """Get complete robot state information"""
+        manager = get_playback_manager()
+
+        try:
+            metadata = manager.get_robot_metadata(motion_group_id)
+            effective_speed = manager.get_effective_speed(motion_group_id)
+            effective_state = manager.get_effective_state(motion_group_id)
+            direction = manager.get_effective_direction(motion_group_id)
+
+            return {
+                "id": str(motion_group_id),
+                "name": metadata.get("name", str(motion_group_id))
+                if metadata
+                else str(motion_group_id),
+                "speed": effective_speed.value,
+                "state": effective_state.value if effective_state else "idle",
+                "direction": direction.value if direction else "forward",
+                "can_pause": manager.can_pause(motion_group_id),
+                "can_resume": manager.can_resume(motion_group_id),
+                "is_executing": (effective_state.value == "executing")
+                if effective_state
+                else False,
+                "registered_at": metadata["registered_at"].isoformat()
+                if metadata
+                and "registered_at" in metadata
+                and metadata["registered_at"]
+                and hasattr(metadata["registered_at"], "isoformat")
+                else None,
+                "last_updated": time.time(),
+            }
+        except Exception as e:
+            # Fallback state if robot info can't be retrieved
+            return {
+                "id": str(motion_group_id),
+                "name": str(motion_group_id),
+                "speed": 100,
+                "state": "unknown",
+                "direction": "forward",
+                "can_pause": False,
+                "can_resume": False,
+                "is_executing": False,
+                "registered_at": None,
+                "last_updated": time.time(),
+                "error": str(e),
+            }
+
+    def _robot_exists(self, motion_group_id: str) -> bool:
+        """Check if robot exists in the system"""
+        try:
+            manager = get_playback_manager()
+            # Try to get robot metadata - if it fails, robot doesn't exist
+            metadata = manager.get_robot_metadata(motion_group_id)
+            return metadata is not None
+        except Exception:
+            return False
+
+    def _is_paused(self, motion_group_id: str) -> bool:
         """Check if robot is paused"""
-        state = get_playback_manager().get_effective_state(mgid)
+        state = get_playback_manager().get_effective_state(motion_group_id)
         return state == PlaybackState.PAUSED
 
     async def _broadcast_playback_event(self, event: PlaybackEvent):
@@ -282,7 +490,19 @@ class NovaWebSocketServer:
 
         for client in self.subscribed_clients.copy():
             try:
-                await client.send(data)
+                # For real WebSocket clients, send is async
+                # For mock clients in tests, we just call it
+                if hasattr(client, "send"):
+                    import inspect
+
+                    send_method = client.send
+                    if inspect.iscoroutinefunction(send_method):
+                        await send_method(data)
+                    else:
+                        # Handle sync send method (like in mocks)
+                        send_method(data)
+                else:
+                    disconnected.add(client)
             except Exception:
                 disconnected.add(client)
 

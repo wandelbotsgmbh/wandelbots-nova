@@ -333,7 +333,7 @@ def program(
 
                 # Set active program playback speed for decorator defaults
                 if func_obj.playback_speed_percent != 100:
-                    from nova.core.playback_control import set_active_program_playback_speed_percent
+                    from nova.playback import set_active_program_playback_speed_percent
 
                     set_active_program_playback_speed_percent(func_obj.playback_speed_percent)
 
@@ -363,9 +363,7 @@ def program(
 
                 # Clear active program playback speed
                 if func_obj.playback_speed_percent != 100:
-                    from nova.core.playback_control import (
-                        clear_active_program_playback_speed_percent,
-                    )
+                    from nova.playback import clear_active_program_playback_speed_percent
 
                     clear_active_program_playback_speed_percent()
 

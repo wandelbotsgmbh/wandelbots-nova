@@ -1,13 +1,113 @@
-# Nova Robot Control VS Code Extension
+# Nova Robot Control VS Code Extension - WebSocket Version
 
-A VS Code extension for real-time control of Nova robots through WebSocket connection. This extension provides comprehensive robot control capabilities with support for multiple robots, real-time event broadcasting, and enhanced state management.
+This is the updated VS Code extension for Nova robot control, redesigned to work with the new simplified WebSocket implementation.
 
-## Features
+## Key Changes
 
-### 🤖 Robot Discovery & Management
+### Simplified Architecture
+- **Event-driven updates**: All UI updates are now triggered by WebSocket events
+- **Removed complex state tracking**: No more pending command tracking or synchronization logic
+- **Simplified robot state**: Basic robot state object with only essential properties
+- **Direct command responses**: Commands return immediate success/failure confirmations
 
-- **Automatic Robot Registration**: Robots are automatically discovered when motion groups are created
-- **Multi-Robot Support**: Control multiple robots simultaneously with parallel execution support
+### WebSocket Protocol
+
+The extension now uses the following WebSocket message types:
+
+#### Commands (Client → Server)
+- `subscribe_events` - Subscribe to robot events
+- `get_robots` - Get list of all robots
+- `set_speed` - Set robot speed (0-100%)
+- `pause` - Pause robot execution
+- `resume` - Resume robot execution
+- `step_forward` - Step forward in execution
+- `step_backward` - Step backward in execution
+
+#### Responses (Server → Client)
+- `robot_list` - List of robots with current state
+- `playback_event` - Playback events (speed_changed, state_changed, etc.)
+- Command confirmations with `success`, `command_id`, and relevant data
+
+### Command Format
+
+All commands include a `command_id` for tracking:
+
+```json
+{
+  "type": "set_speed",
+  "robot_id": "robot1",
+  "speed": 75,
+  "command_id": "cmd_123"
+}
+```
+
+Responses include the command_id for correlation:
+
+```json
+{
+  "success": true,
+  "robot_id": "robot1",
+  "command_id": "cmd_123",
+  "speed": 75
+}
+```
+
+### Robot State Format
+
+Robot state objects have the following structure:
+
+```json
+{
+  "id": "robot1",
+  "name": "Test Robot",
+  "speed": 100,
+  "state": "executing",
+  "direction": "forward",
+  "can_pause": true,
+  "can_resume": false
+}
+```
+
+### UI Features
+
+- **Status bar**: Shows connection status and robot count
+- **Sidebar panel**: Real-time robot control with buttons that update based on state
+- **Quick pick**: Command palette integration for robot control
+- **Event-driven UI**: All button states and robot information update automatically via events
+
+## Testing
+
+A test WebSocket server is included (`test-websocket-server.py`) that simulates the Nova WebSocket API:
+
+```bash
+cd vscode-extension
+python test-websocket-server.py
+```
+
+This will start a mock server on `localhost:8765` with two test robots for testing the extension.
+
+## Configuration
+
+The extension can be configured via VS Code settings:
+
+- `nova.websocket.host`: WebSocket server host (default: localhost)
+- `nova.websocket.port`: WebSocket server port (default: 8765)
+- `nova.websocket.autoReconnect`: Auto-reconnect on connection loss (default: true)
+- `nova.websocket.reconnectInterval`: Reconnection interval in milliseconds (default: 3000)
+
+## Installation
+
+1. Open VS Code
+2. Go to the Extensions view (Ctrl+Shift+X)
+3. Install the Nova extension
+4. The extension will automatically connect to the WebSocket server when available
+
+## Usage
+
+1. Start a Nova program with WebSocket control enabled
+2. The extension will automatically connect and display robots in the sidebar
+3. Use the sidebar buttons or command palette to control robots
+4. All state changes are reflected in real-time via WebSocket events
 - **Real-time Status Updates**: Live monitoring of robot states, speeds, and execution status
 - **Enhanced Robot Metadata**: Display robot names, registration times, and detailed status information
 
@@ -15,8 +115,8 @@ A VS Code extension for real-time control of Nova robots through WebSocket conne
 
 - **Speed Control**: Adjust execution speed from 0-100% with quick presets
 - **Pause/Resume**: Fine-grained control over robot execution
-- **Direction Control**: Step forward/backward through robot trajectories
-- **Smart State Management**: Intelligent pause/resume behavior with speed preservation
+- **Direction Control**: Toggle between forward/backward execution and step through robot trajectories
+- **Smart State Management**: Intelligent pause/resume behavior with speed preservation and direction control
 
 ### 📡 Enhanced WebSocket Integration
 

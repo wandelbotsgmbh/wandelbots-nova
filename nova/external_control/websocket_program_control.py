@@ -56,8 +56,8 @@ class WebSocketControl:
             return
 
         try:
-            from nova.core.playback_control import get_playback_manager
             from nova.external_control.websocket_control import start_websocket_server
+            from nova.playback import get_playback_manager
 
             logger.info(f"Starting WebSocket control server on {self.host}:{self.port}")
             self._server = start_websocket_server(host=self.host, port=self.port)
@@ -77,8 +77,8 @@ class WebSocketControl:
         """Stop the WebSocket control server."""
         if self._server:
             try:
-                from nova.core.playback_control import get_playback_manager
                 from nova.external_control.websocket_control import stop_websocket_server
+                from nova.playback import get_playback_manager
 
                 # Notify that the program has stopped
                 manager = get_playback_manager()

@@ -1,9 +1,9 @@
 {
   "name": "nova-robot-control-websocket",
   "displayName": "Nova Robot Control (WebSocket)",
-  "description": "Real-time Nova robot control via WebSocket connection - Enhanced with comprehensive event system, robot registration, and parallel execution support",
-  "version": "3.0.0",
-  "buildTimestamp": "2025-07-14T16:45:00Z",
+  "description": "Real-time Nova robot control via WebSocket connection - Enhanced with comprehensive event system, robot registration, parallel execution support, and direction control",
+  "version": "3.1.0",
+  "buildTimestamp": "2025-07-14T17:30:00Z",
   "publisher": "wandelbots",
   "engines": {
     "vscode": "^1.60.0"

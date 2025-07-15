@@ -22,8 +22,9 @@ from nova import Nova, api
 from nova.actions import cartesian_ptp
 from nova.actions.base import Action
 from nova.cell import virtual_controller
-from nova.core.playback_control import PlaybackSpeedPercent, get_playback_manager
 from nova.external_control import WebSocketControl
+from nova.playback import PlaybackSpeedPercent, get_playback_manager
+from nova.playback.playback_events import PlaybackDirection, PlaybackState
 from nova.program import ProgramPreconditions
 from nova.types import Pose
 
@@ -92,7 +93,7 @@ async def main():
                 # Demonstrate speed control on primary robot
                 print("⚡ Setting primary robot speed to 50%")
                 manager.set_external_override(
-                    motion_group_primary.motion_group_id, PlaybackSpeedPercent(50)
+                    motion_group_primary.motion_group_id, PlaybackSpeedPercent(value=50)
                 )
 
                 await asyncio.sleep(2)
@@ -100,7 +101,7 @@ async def main():
                 # Demonstrate speed control on secondary robot
                 print("⚡ Setting secondary robot speed to 75%")
                 manager.set_external_override(
-                    motion_group_secondary.motion_group_id, PlaybackSpeedPercent(75)
+                    motion_group_secondary.motion_group_id, PlaybackSpeedPercent(value=75)
                 )
 
                 await asyncio.sleep(2)
@@ -114,24 +115,39 @@ async def main():
                 # Resume primary robot with different speed
                 print("▶️  Resuming primary robot at 100% speed")
                 manager.set_external_override(
-                    motion_group_primary.motion_group_id, PlaybackSpeedPercent(100)
+                    motion_group_primary.motion_group_id,
+                    PlaybackSpeedPercent(value=100),
+                    state=PlaybackState.PLAYING,
                 )
-                manager.resume(motion_group_primary.motion_group_id)
 
                 await asyncio.sleep(2)
 
                 # Demonstrate direction control on secondary robot
                 print("⏪ Setting secondary robot to backward direction")
                 manager.pause(motion_group_secondary.motion_group_id)
-                manager.set_direction_backward(motion_group_secondary.motion_group_id)
-                manager.resume(motion_group_secondary.motion_group_id)
+                manager.set_external_override(
+                    motion_group_secondary.motion_group_id,
+                    PlaybackSpeedPercent(value=25),
+                    state=PlaybackState.PLAYING,
+                    direction=PlaybackDirection.BACKWARD,
+                )
 
                 await asyncio.sleep(3)
 
                 # Reset both robots to normal forward motion
                 print("🔄 Resetting both robots to forward motion")
-                manager.set_direction_forward(motion_group_primary.motion_group_id)
-                manager.set_direction_forward(motion_group_secondary.motion_group_id)
+                manager.set_external_override(
+                    motion_group_primary.motion_group_id,
+                    PlaybackSpeedPercent(value=100),
+                    state=PlaybackState.PLAYING,
+                    direction=PlaybackDirection.FORWARD,
+                )
+                manager.set_external_override(
+                    motion_group_secondary.motion_group_id,
+                    PlaybackSpeedPercent(value=100),
+                    state=PlaybackState.PLAYING,
+                    direction=PlaybackDirection.FORWARD,
+                )
 
             control_task = asyncio.create_task(runtime_control())
 

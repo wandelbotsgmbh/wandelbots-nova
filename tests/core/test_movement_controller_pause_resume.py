@@ -15,12 +15,7 @@ import wandelbots_api_client as wb
 from nova.actions import CombinedActions, MovementControllerContext
 from nova.actions.motions import cartesian_ptp
 from nova.core.movement_controller import move_forward
-from nova.core.playback_control import (
-    MotionGroupId,
-    PlaybackSpeedPercent,
-    PlaybackState,
-    get_playback_manager,
-)
+from nova.playback import MotionGroupId, PlaybackSpeedPercent, PlaybackState, get_playback_manager
 
 
 class TestMovementControllerPauseResume(unittest.TestCase):

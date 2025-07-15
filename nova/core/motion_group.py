@@ -149,52 +149,41 @@ class MotionGroup(AbstractRobot):
 
     def _register_robot_for_control(self) -> None:
         """Register this robot with the playback control manager for external control."""
-        try:
-            from nova.core.playback_control import (
-                MotionGroupId,
-                PlaybackSpeedPercent,
-                get_active_program_playback_speed_percent,
-                get_playback_manager,
-            )
+        # Import from interface to avoid circular imports
+        from nova.playback import (
+            PlaybackSpeedPercent,
+            get_active_program_playback_speed_percent,
+            get_playback_manager,
+        )
 
-            manager = get_playback_manager()
-            # Use active program speed or default to 100%
-            active_speed = get_active_program_playback_speed_percent()
-            initial_speed = PlaybackSpeedPercent(active_speed or 100)
+        manager = get_playback_manager()
+        # Use active program speed or default to 100%
+        active_speed = get_active_program_playback_speed_percent()
+        initial_speed = PlaybackSpeedPercent(value=active_speed or 100)
 
-            # Create a more descriptive robot name
-            robot_name = f"{self._cell}:{self._motion_group_id}"
+        # Create a more descriptive robot name
+        robot_name = f"{self._cell}:{self._motion_group_id}"
 
-            manager.register_robot(
-                motion_group_id=MotionGroupId(self._motion_group_id),
-                robot_name=robot_name,
-                initial_speed=initial_speed,
-            )
-        except Exception:
-            # If there's any issue with registration, continue silently
-            # This maintains backward compatibility
-            pass
+        manager.register_robot(
+            motion_group_id=self._motion_group_id,
+            robot_name=robot_name,
+            initial_speed=initial_speed,
+        )
 
     def _set_decorator_defaults_from_context(self) -> None:
         """Set decorator defaults from active program playback speed if available."""
-        try:
-            from nova.core.playback_control import (
-                MotionGroupId,
-                PlaybackSpeedPercent,
-                get_active_program_playback_speed_percent,
-                get_playback_manager,
-            )
+        from nova.playback import (
+            PlaybackSpeedPercent,
+            get_active_program_playback_speed_percent,
+            get_playback_manager,
+        )
 
-            active_speed = get_active_program_playback_speed_percent()
-            if active_speed is not None:
-                manager = get_playback_manager()
-                manager.set_decorator_default(
-                    MotionGroupId(self._motion_group_id), PlaybackSpeedPercent(active_speed)
-                )
-        except Exception:
-            # If there's any issue with setting defaults, continue silently
-            # This maintains backward compatibility
-            pass
+        active_speed = get_active_program_playback_speed_percent()
+        if active_speed is not None:
+            manager = get_playback_manager()
+            manager.set_decorator_default(
+                self._motion_group_id, PlaybackSpeedPercent(value=active_speed)
+            )
 
     async def open(self):
         await self._api_gateway.activate_motion_group(
@@ -204,14 +193,10 @@ class MotionGroup(AbstractRobot):
 
     async def close(self):
         # Unregister robot from external control
-        try:
-            from nova.core.playback_control import MotionGroupId, get_playback_manager
+        from nova.playback import get_playback_manager
 
-            manager = get_playback_manager()
-            manager.unregister_robot(MotionGroupId(self._motion_group_id))
-        except Exception:
-            # Continue silently if unregistration fails
-            pass
+        manager = get_playback_manager()
+        manager.unregister_robot(self._motion_group_id)
 
         # RPS-1174: when a motion group is deactivated, RAE closes all open connections
         #           this behaviour is not desired in some cases,
@@ -435,34 +420,15 @@ class MotionGroup(AbstractRobot):
         playback_speed: float | None = None,
     ) -> AsyncIterable[MovementResponse]:
         # Get effective speed using precedence resolution
-        from nova.core.playback_control import (
-            MotionGroupId,
-            PlaybackSpeedPercent,
-            PlaybackState,
-            get_playback_manager,
-        )
+        from nova.playback import PlaybackSpeedPercent, get_playback_manager
 
-        robot_id_typed = MotionGroupId(self.motion_group_id)
         manager = get_playback_manager()
 
         # Convert playback_speed to PlaybackSpeedPercent if provided
         method_speed = (
-            PlaybackSpeedPercent(int(playback_speed)) if playback_speed is not None else None
+            PlaybackSpeedPercent(value=int(playback_speed)) if playback_speed is not None else None
         )
-        effective_speed = manager.get_effective_speed(robot_id_typed, method_speed)
-
-        # Validate speed range (0-100 percent)
-        if not (0 <= effective_speed <= 100):
-            raise ValueError(
-                f"Playback speed must be between 0 and 100 percent, got {effective_speed}"
-            )
-
-        # Check if robot is paused by external control
-        playback_state = manager.get_effective_state(robot_id_typed)
-        if playback_state == PlaybackState.PAUSED:
-            # For now, just note the pause state - full pause implementation would require
-            # more complex coordination with the websocket execution flow
-            pass
+        effective_speed = manager.get_effective_speed(self.motion_group_id, method_speed)
 
         if movement_controller is None:
             movement_controller = move_forward
@@ -494,16 +460,18 @@ class MotionGroup(AbstractRobot):
         # If method_speed is None but effective_speed is not the default 100,
         # use the effective_speed as method_speed to ensure consistency
         method_speed_to_use = method_speed
-        if method_speed_to_use is None and effective_speed != 100:
-            method_speed_to_use = PlaybackSpeedPercent(effective_speed)
+        if method_speed_to_use is None and effective_speed.value != 100:
+            method_speed_to_use = effective_speed
 
         controller = movement_controller(
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
                 motion_id=load_plan_response.motion,
                 motion_group_id=self.motion_group_id,  # Pass the motion group ID
-                effective_speed=effective_speed,  # Already an integer percent (0-100)
-                method_speed=int(method_speed_to_use) if method_speed_to_use is not None else None,
+                effective_speed=effective_speed.value,  # Already an integer percent (0-100)
+                method_speed=int(method_speed_to_use.value)
+                if method_speed_to_use is not None
+                else None,
             )
         )
 

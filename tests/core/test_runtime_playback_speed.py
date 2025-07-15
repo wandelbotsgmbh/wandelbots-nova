@@ -12,12 +12,8 @@ import pytest
 
 from nova.actions.container import CombinedActions, MovementControllerContext
 from nova.actions.motions import cartesian_ptp
-from nova.core.playback_control import (
-    MotionGroupId,
-    PlaybackControlManager,
-    PlaybackSpeedPercent,
-    get_playback_manager,
-)
+from nova.playback import MotionGroupId, PlaybackSpeedPercent, get_playback_manager
+from nova.playback.playback_control_manager import PlaybackControlManager
 
 
 class TestRuntimePlaybackSpeedChange:
@@ -26,9 +22,10 @@ class TestRuntimePlaybackSpeedChange:
     @pytest.fixture(autouse=True)
     def setup_clean_manager(self, playback_manager: PlaybackControlManager):
         """Clear playback manager state before each test for isolation."""
-        with playback_manager._lock:
-            playback_manager._external_overrides.clear()
-            playback_manager._decorator_defaults.clear()
+        # Access the internal state object to clear state
+        with playback_manager._state._lock:
+            playback_manager._state._external_overrides.clear()
+            playback_manager._state._decorator_defaults.clear()
 
     @pytest.fixture
     def robot_id(self) -> MotionGroupId:
@@ -50,7 +47,10 @@ class TestRuntimePlaybackSpeedChange:
     @pytest.fixture
     def playback_manager(self) -> PlaybackControlManager:
         """Get the global playback manager."""
-        return get_playback_manager()
+        manager = get_playback_manager()
+        # The interface should return our implementation
+        assert isinstance(manager, PlaybackControlManager)
+        return manager
 
     def test_robot_id_consistency(
         self, robot_id: MotionGroupId, movement_context: MovementControllerContext
@@ -98,12 +98,12 @@ class TestRuntimePlaybackSpeedChange:
         movement controller detects and applies the change.
         """
         # Set up initial state - simulate decorator default that created the effective_speed
-        initial_speed = PlaybackSpeedPercent(movement_context.effective_speed)
+        initial_speed = PlaybackSpeedPercent(value=movement_context.effective_speed)
         playback_manager.set_decorator_default(robot_id, initial_speed)
 
         # Verify initial state
         method_speed = (
-            PlaybackSpeedPercent(movement_context.method_speed)
+            PlaybackSpeedPercent(value=movement_context.method_speed)
             if movement_context.method_speed
             else None
         )
@@ -111,7 +111,7 @@ class TestRuntimePlaybackSpeedChange:
         assert current_speed == initial_speed
 
         # External tool changes speed (simulating external control interface or demo)
-        new_speed = PlaybackSpeedPercent(75)
+        new_speed = PlaybackSpeedPercent(value=75)
         playback_manager.set_external_override(robot_id, new_speed)
 
         # Movement controller should detect the change
@@ -122,10 +122,10 @@ class TestRuntimePlaybackSpeedChange:
         )
 
         # Verify external override is properly stored
-        with playback_manager._lock:
-            override = playback_manager._external_overrides.get(robot_id)
-            assert override is not None, "External override should be stored"
-            assert override.speed == new_speed, f"Override speed should be {new_speed}%"
+        # Note: In the new architecture, we trust the public interface
+        # The override should be reflected in the effective speed
+        stored_speed = playback_manager.get_effective_speed(robot_id)
+        assert stored_speed == new_speed, f"Override speed should be {new_speed}%"
 
     def test_precedence_resolution(
         self, robot_id: MotionGroupId, playback_manager: PlaybackControlManager
@@ -136,16 +136,16 @@ class TestRuntimePlaybackSpeedChange:
         This ensures external speed changes properly override other speed settings.
         """
         # Set decorator default
-        decorator_speed = PlaybackSpeedPercent(30)
+        decorator_speed = PlaybackSpeedPercent(value=30)
         playback_manager.set_decorator_default(robot_id, decorator_speed)
 
         # Method speed (higher precedence than decorator)
-        method_speed = PlaybackSpeedPercent(60)
+        method_speed = PlaybackSpeedPercent(value=60)
         effective_speed = playback_manager.get_effective_speed(robot_id, method_speed=method_speed)
         assert effective_speed == method_speed, "Method speed should override decorator default"
 
         # External override (highest precedence)
-        external_speed = PlaybackSpeedPercent(90)
+        external_speed = PlaybackSpeedPercent(value=90)
         playback_manager.set_external_override(robot_id, external_speed)
         effective_speed = playback_manager.get_effective_speed(robot_id, method_speed=method_speed)
         assert effective_speed == external_speed, "External override should have highest precedence"
@@ -159,9 +159,9 @@ class TestRuntimePlaybackSpeedChange:
         This simulates the demo scenario with multiple speed changes during execution.
         """
         speed_sequence = [
-            PlaybackSpeedPercent(25),
-            PlaybackSpeedPercent(100),
-            PlaybackSpeedPercent(50),
+            PlaybackSpeedPercent(value=25),
+            PlaybackSpeedPercent(value=100),
+            PlaybackSpeedPercent(value=50),
         ]
 
         for expected_speed in speed_sequence:

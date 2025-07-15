@@ -109,15 +109,14 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         import asyncio
 
         # Set up runtime speed monitoring for external speed changes
-        from nova.core.playback_control import (
-            MotionGroupId,
+        from nova.playback import (
             PlaybackDirection,
             PlaybackSpeedPercent,
             PlaybackState,
             get_playback_manager,
         )
 
-        motion_group_id = MotionGroupId(context.motion_group_id)
+        motion_group_id = context.motion_group_id
         manager = get_playback_manager()
 
         # Set execution state to indicate movement is starting
@@ -128,8 +127,10 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             Union[wb.models.ExecuteTrajectoryRequest, wb.models.StartMovementRequest]
         ] = asyncio.Queue()
         motion_completed = asyncio.Event()
-        last_sent_speed = context.effective_speed
-        last_sent_state = PlaybackState.PLAYING  # Track current playback state
+        last_sent_speed = PlaybackSpeedPercent(value=context.effective_speed)
+        last_sent_state = (
+            PlaybackState.EXECUTING
+        )  # Track current playback state - start with EXECUTING
         last_sent_direction = PlaybackDirection.FORWARD  # Track current playback direction
         pending_direction_logged = False  # Track if we've already logged a pending direction change
 
@@ -158,7 +159,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
                     # Check for external speed, state, and direction changes on every websocket response for responsive detection
                     method_speed = (
-                        PlaybackSpeedPercent(context.method_speed)
+                        PlaybackSpeedPercent(value=context.method_speed)
                         if context.method_speed is not None
                         else None
                     )
@@ -177,7 +178,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         # Queue the speed change request for transmission
                         speed_request = wb.models.ExecuteTrajectoryRequest(
                             wb.models.PlaybackSpeedRequest(
-                                playback_speed_in_percent=effective_speed
+                                playback_speed_in_percent=effective_speed.value
                             )
                         )
                         logger.debug(f"Queuing speed change request: {effective_speed}%")
@@ -269,7 +270,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                 while not motion_completed.is_set():
                     # Check immediately, then wait briefly to allow other coroutines to run
                     method_speed = (
-                        PlaybackSpeedPercent(context.method_speed)
+                        PlaybackSpeedPercent(value=context.method_speed)
                         if context.method_speed is not None
                         else None
                     )
@@ -288,7 +289,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         # Queue the speed change request for immediate transmission
                         speed_request = wb.models.ExecuteTrajectoryRequest(
                             wb.models.PlaybackSpeedRequest(
-                                playback_speed_in_percent=effective_speed
+                                playback_speed_in_percent=effective_speed.value
                             )
                         )
                         logger.debug(
@@ -351,11 +352,8 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                     check_count += 1
                     # Periodic debug logging to monitor speed state (less frequent now)
                     if check_count % 1000 == 0:  # Every 1000 checks (~1 second) instead of every 20
-                        with manager._lock:
-                            external_override = manager._external_overrides.get(motion_group_id)
-                            decorator_default = manager._decorator_defaults.get(motion_group_id)
                         logger.debug(
-                            f"Speed monitor check #{check_count}: effective_speed={effective_speed}%, effective_state={effective_state.value}, effective_direction={effective_direction.value}, last_sent_speed={last_sent_speed}%, last_sent_state={last_sent_state.value}, last_sent_direction={last_sent_direction.value}, external_override={external_override}, decorator_default={decorator_default}, method_speed={method_speed}"
+                            f"Speed monitor check #{check_count}: effective_speed={effective_speed.value}%, effective_state={effective_state.value}, effective_direction={effective_direction.value}, last_sent_speed={last_sent_speed}%, last_sent_state={last_sent_state.value}, last_sent_direction={last_sent_direction.value}, method_speed={method_speed}"
                         )
 
             except Exception as e:
