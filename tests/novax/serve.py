@@ -5,6 +5,7 @@ import dotenv
 import nova
 
 dotenv.load_dotenv()
+from examples.plan_and_execute import main as plan_and_execute
 
 
 @nova.program(id="test")
@@ -28,7 +29,7 @@ async def simple_program(number_of_steps: int = 30):
     print("Finished Hello World!")
 
 
-async def main():
+if __name__ == "__main__":
     import uvicorn
 
     from novax import Novax
@@ -37,8 +38,9 @@ async def main():
     app = novax.create_app()
     novax.include_programs_router(app)
 
-    await novax.register_program(test)
-    await novax.register_program(simple_program)
+    novax.register_program(test)
+    novax.register_program(simple_program)
+    novax.register_program(plan_and_execute)
 
     uvicorn.run(
         app,
@@ -49,7 +51,3 @@ async def main():
         proxy_headers=True,
         forwarded_allow_ips="*",
     )
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

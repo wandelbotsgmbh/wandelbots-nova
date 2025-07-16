@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 import nova
 from nova import Nova
-from nova.program.function import Program
+from nova.program.function import Program, ProgramPreconditions
 from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner, ProgramType
 from nova.program.runner import Program as SimpleProgram
 from wandelscript.ffi_loader import load_foreign_functions
@@ -73,6 +73,7 @@ class ProgramDetails(BaseModel):
     name: str | None
     description: str | None
     created_at: dt.datetime
+    preconditions: ProgramPreconditions | None = None
 
 
 class RunProgramRequest(BaseModel):
@@ -118,7 +119,7 @@ class ProgramManager:
         if program_source in self._program_sources:
             self._program_sources.remove(program_source)
 
-    async def register_program(self, program: Program) -> str:
+    def register_program(self, program: Program) -> str:
         """
         Register a function as a program.
 
@@ -135,7 +136,11 @@ class ProgramManager:
 
         # Create ProgramDetails instance
         program_details = ProgramDetails(
-            program=program_id, name=program.name, description=program.description, created_at=now
+            program=program_id,
+            name=program.name,
+            description=program.description,
+            created_at=now,
+            preconditions=program.preconditions,
         )
 
         # Store program details and function separately
@@ -144,7 +149,7 @@ class ProgramManager:
 
         return program_id
 
-    async def deregister_program(self, program_id: str):
+    def deregister_program(self, program_id: str):
         """
         Deregister a program from the program manager
 
