@@ -28,7 +28,7 @@ async def simple_program(number_of_steps: int = 30):
     print("Finished Hello World!")
 
 
-if __name__ == "__main__":
+async def main():
     import uvicorn
 
     from novax import Novax
@@ -37,8 +37,8 @@ if __name__ == "__main__":
     app = novax.create_app()
     novax.include_programs_router(app)
 
-    novax.register_program(test)
-    novax.register_program(simple_program)
+    await novax.register_program(test)
+    await novax.register_program(simple_program)
 
     uvicorn.run(
         app,
@@ -49,3 +49,7 @@ if __name__ == "__main__":
         proxy_headers=True,
         forwarded_allow_ips="*",
     )
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

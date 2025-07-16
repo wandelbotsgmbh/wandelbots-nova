@@ -118,7 +118,7 @@ class ProgramManager:
         if program_source in self._program_sources:
             self._program_sources.remove(program_source)
 
-    def register_program(self, program: Program) -> str:
+    async def register_program(self, program: Program) -> str:
         """
         Register a function as a program.
 
@@ -160,7 +160,7 @@ class ProgramManager:
         """Get all registered programs"""
         for program_source in self._program_sources:
             async for program in program_source.get_programs(self):
-                self.register_program(program)
+                await self.register_program(program)
         return self._programs.copy()
 
     async def get_program(self, program_id: str) -> Optional[ProgramDetails]:

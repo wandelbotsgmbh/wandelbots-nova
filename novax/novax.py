@@ -24,7 +24,7 @@ class Novax:
         """Deregister a program source"""
         self._program_manager.deregister_program_source(program_source)
 
-    def register_program(self, program: Program) -> str:
+    async def register_program(self, program: Program) -> str:
         """
         Register a function or wandelscript file as a program.
 
@@ -34,16 +34,16 @@ class Novax:
         Returns:
             str: The program ID
         """
-        return self._program_manager.register_program(program)
+        return await self._program_manager.register_program(program)
 
-    def deregister_program(self, program_id: str):
+    async def deregister_program(self, program_id: str):
         """
         Deregister a program
 
         Args:
             program_id: The ID of the program to deregister
         """
-        self._program_manager.deregister_program(program_id)
+        await self._program_manager.deregister_program(program_id)
 
     async def get_programs(self) -> dict[str, ProgramDetails]:
         """Get all registered programs"""
