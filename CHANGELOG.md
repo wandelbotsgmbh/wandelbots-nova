@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.4.1 (2025-07-16)
+
+### Bug Fixes
+
+- Update example and rerun address for VS Code integration (#233)
+  ([#233](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/233),
+  [`cf4957b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/cf4957bfc8bbb492617e3cec477a7308c7594025))
+
+
 ## v2.4.0 (2025-07-15)
 
 ### Features
