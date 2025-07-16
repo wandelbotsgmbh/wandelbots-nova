@@ -36,6 +36,15 @@ class Novax:
         """
         return self._program_manager.register_program(program)
 
+    def deregister_program(self, program_id: str):
+        """
+        Deregister a program
+
+        Args:
+            program_id: The ID of the program to deregister
+        """
+        self._program_manager.deregister_program(program_id)
+
     async def get_programs(self) -> dict[str, ProgramDetails]:
         """Get all registered programs"""
         return await self._program_manager.get_programs()

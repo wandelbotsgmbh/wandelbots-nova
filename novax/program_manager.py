@@ -144,6 +144,18 @@ class ProgramManager:
 
         return program_id
 
+    async def deregister_program(self, program_id: str):
+        """
+        Deregister a program from the program manager
+
+        Args:
+            program_id: The ID of the program to deregister
+        """
+        if program_id not in self._programs:
+            raise ValueError(f"Program {program_id} not found")
+        del self._programs[program_id]
+        del self._program_functions[program_id]
+
     async def get_programs(self) -> dict[str, ProgramDetails]:
         """Get all registered programs"""
         for program_source in self._program_sources:
