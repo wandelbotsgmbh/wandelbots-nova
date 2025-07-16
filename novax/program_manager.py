@@ -165,7 +165,7 @@ class ProgramManager:
         """Get all registered programs"""
         for program_source in self._program_sources:
             async for program in program_source.get_programs(self):
-                await self.register_program(program)
+                self.register_program(program)
         return self._programs.copy()
 
     async def get_program(self, program_id: str) -> Optional[ProgramDetails]:

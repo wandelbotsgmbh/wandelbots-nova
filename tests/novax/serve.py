@@ -3,9 +3,9 @@ import asyncio
 import dotenv
 
 import nova
+from examples.plan_and_execute import main as plan_and_execute
 
 dotenv.load_dotenv()
-from examples.plan_and_execute import main as plan_and_execute
 
 
 @nova.program(id="test")
