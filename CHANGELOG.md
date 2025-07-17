@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.5.0 (2025-07-17)
+
+### Features
+
+- Added deregister_program to novax (#234)
+  ([#234](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/234),
+  [`0e75f9f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0e75f9f30e005907fb8dc91ce890780623d6bdef))
+
+
 ## v2.4.1 (2025-07-16)
 
 ### Bug Fixes
