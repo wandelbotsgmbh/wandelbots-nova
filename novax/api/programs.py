@@ -53,7 +53,7 @@ async def start_program(
     if program_manager.running_program:
         raise HTTPException(status_code=400, detail="A program is already running")
 
-    return await program_manager.run_program(program, request.parameters)
+    return await program_manager.start_program(program, request.parameters)
 
 
 @router.post("/{program}/stop", operation_id="stopProgram")

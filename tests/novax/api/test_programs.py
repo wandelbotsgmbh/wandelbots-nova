@@ -1,6 +1,3 @@
-import asyncio
-
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -91,9 +88,7 @@ def test_start_program(novax_app):
     assert response1.status_code == 200
 
 
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_stop_program_success(novax_app):
+def test_stop_program_success(novax_app):
     client = TestClient(novax_app)
 
     # First start a program
@@ -101,7 +96,6 @@ async def test_stop_program_success(novax_app):
         "/programs/simple_program/start", json={"parameters": {"number_of_steps": 30}}
     )
     assert start_response.status_code == 200
-    await asyncio.sleep(3)
 
     # Then stop the program
     response = client.post("/programs/simple_program/stop")

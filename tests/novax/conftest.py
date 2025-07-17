@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 import nova
+from nova.cell.simulation import SimulatedRobotCell
 from novax import Novax
 
 
@@ -19,7 +20,7 @@ async def simple_program(number_of_steps: int = 30):
 
 @pytest.fixture
 def novax_app():
-    novax = Novax()
+    novax = Novax(robot_cell_override=SimulatedRobotCell())
     app = novax.create_app()
     novax.include_programs_router(app)
 

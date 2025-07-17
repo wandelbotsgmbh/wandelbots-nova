@@ -52,21 +52,9 @@ class ExecutionContext:
         return self._stop_event
 
 
-# TODO: import from api.v2.models.ProgramType
-class ProgramType(Enum):
-    WANDELSCRIPT = "WANDELSCRIPT"
-    PYTHON = "PYTHON"
-
-
-# TODO: import from api.v2.models.Program
-class Program(BaseModel):
-    content: str = Field(..., title="Program content")
-    program_type: ProgramType = Field(..., description="Type of the program.", title="Program type")
-
-
 # TODO: import from api.v2.models.ProgramRunState
 class ProgramRunState(Enum):
-    NOT_STARTED = "NOT_STARTED"
+    PREPARING = "PREPARING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
@@ -97,20 +85,25 @@ class ProgramRunner(ABC):
     def __init__(
         self,
         program_id: str,
-        # TODO: this can be removed soonish
-        program: Program,
         args: dict[str, Any],
         robot_cell_override: RobotCell | None = None,
+        simulate: bool = False,
     ):
+        """
+        Args:
+            program_id (str): The unique identifier of the program.
+            args (dict[str, Any]): The arguments to pass to the program.
+            robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Defaults to None.
+            simulate (bool, optional): If True, the program will be simulated and not connect to NOVA. Used for testing. Defaults to False.
+        """
         self._run_id = str(uuid.uuid4())
         self._program_id = program_id
-        self._program = program
         self._args = args
         self._robot_cell_override = robot_cell_override
         self._program_run: ProgramRun = ProgramRun(
             run=self._run_id,
             program=program_id,
-            state=ProgramRunState.NOT_STARTED,
+            state=ProgramRunState.PREPARING,
             logs=None,
             stdout=None,
             error=None,
@@ -176,7 +169,10 @@ class ProgramRunner(ABC):
         Returns:
             bool: True if a program is running, False otherwise
         """
-        return self._thread is not None and self.state is ProgramRunState.RUNNING
+        return self._thread is not None and self.state in (
+            ProgramRunState.PREPARING,
+            ProgramRunState.RUNNING,
+        )
 
     def join(self):
         """Wait for the program execution to finish.
@@ -215,7 +211,7 @@ class ProgramRunner(ABC):
             RuntimeError: when the runner is not in IDLE state
         """
         # Check if another program execution is already in progress
-        if self.state is not ProgramRunState.NOT_STARTED:
+        if self.state is not ProgramRunState.PREPARING:
             raise RuntimeError(
                 "The runner is not in the not_started state. Create a new runner to execute again."
             )

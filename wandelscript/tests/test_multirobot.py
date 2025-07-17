@@ -1,8 +1,8 @@
 import pytest
 
+from nova.cell.simulation import SimulatedRobotCell
 from wandelscript.exception import NestedSyncError, WrongRobotError
 from wandelscript.metamodel import run_program
-from wandelscript.simulation import SimulatedRobotCell
 
 
 @pytest.mark.asyncio

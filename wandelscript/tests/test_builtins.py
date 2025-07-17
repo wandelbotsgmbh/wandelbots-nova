@@ -4,8 +4,8 @@ import pytest
 
 import wandelscript
 from nova.cell.robot_cell import AbstractController, RobotCellKeyError
+from nova.cell.simulation import SimulatedRobotCell
 from nova.program.runner import ProgramRunState
-from wandelscript.simulation import SimulatedRobotCell
 
 
 @pytest.mark.parametrize(

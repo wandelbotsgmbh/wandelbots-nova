@@ -3,11 +3,12 @@ import asyncio
 import dotenv
 
 import nova
+from examples.plan_and_execute import main as plan_and_execute
 
 dotenv.load_dotenv()
 
 
-@nova.program(id="test")
+@nova.program(id="test1")
 async def test():
     print("Hello, world!")
 
@@ -39,6 +40,7 @@ if __name__ == "__main__":
 
     novax.register_program(test)
     novax.register_program(simple_program)
+    novax.register_program(plan_and_execute)
 
     uvicorn.run(
         app,
