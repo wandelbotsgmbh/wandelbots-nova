@@ -100,7 +100,7 @@ async def test_start_program_success():
     assert manager.running_program is None
 
     # Start the program
-    program_run = await manager.run_program(program_id, parameters={"number_of_steps": 5})
+    program_run = await manager.start_program(program_id, parameters={"number_of_steps": 5})
 
     # Verify program is running
     assert manager.is_any_program_running
@@ -123,12 +123,11 @@ async def test_start_program_when_another_is_running():
     manager.register_program(simple_program)
 
     # Start the first program
-    # TODO: rename to start_program
-    await manager.run_program("simple_program_test", parameters={"number_of_steps": 5})
+    await manager.start_program("simple_program_test", parameters={"number_of_steps": 5})
 
     # Try to start another program while one is running
     with pytest.raises(RuntimeError):
-        await manager.run_program("simple_program_test")
+        await manager.start_program("simple_program_test")
 
 
 @pytest.mark.asyncio
@@ -139,7 +138,7 @@ async def test_stop_running_program():
     program_id = manager.register_program(simple_program)
 
     # Start the program
-    await manager.run_program(program_id)
+    await manager.start_program(program_id)
 
     # Verify program is running
     assert manager.is_any_program_running
@@ -171,7 +170,7 @@ async def test_stop_wrong_program():
     manager.register_program(simple_program)
 
     # Start the first program
-    await manager.run_program("long_running_program")
+    await manager.start_program("long_running_program")
 
     # Try to stop a different program
     try:
