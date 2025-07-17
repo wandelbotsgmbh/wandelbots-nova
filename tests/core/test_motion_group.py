@@ -4,7 +4,6 @@ import pytest
 import wandelbots_api_client as wb
 from wandelbots_api_client.models import RobotTcp, RotationAngles, RotationAngleTypes, Vector3d
 
-from nova import Nova
 from nova.actions import cartesian_ptp, io_write, linear, wait
 from nova.actions.base import Action
 from nova.actions.motions import CollisionFreeMotion
@@ -16,35 +15,6 @@ from nova.core.motion_group import (
     validate_collision_scenes,
 )
 from nova.types import Pose
-
-
-@pytest.mark.skip
-@pytest.mark.asyncio
-async def test_motion_group(nova_api):
-    nova = Nova(host=nova_api)
-    cell = nova.cell()
-    controller = await cell.controller("ur")
-
-    actions = [
-        # from the default script for ur10
-        cartesian_ptp((-91.4, -662.0, 851.3, 2.14, 2.14, -0.357)),
-        linear((-160.4, -652.0, 851.3, 2.14, 2.14, -0.357)),
-        cartesian_ptp((-91.4, -462.0, 851.3, 2.14, 2.14, -0.357)),
-        linear((-60.4, -652.0, 851.3, 2.14, 2.14, -0.357)),
-        cartesian_ptp((-91.4, -662.0, 851.3, 2.14, 2.14, -0.357)),
-    ] * 5
-
-    async with controller:
-        motion_group = controller[0]
-        tcp = "Flange"
-        state = await motion_group.get_state(tcp)
-        assert state is not None
-
-        active_tcp_name = await motion_group.active_tcp_name()
-        assert active_tcp_name == "Flange"
-
-        await motion_group.plan_and_execute(actions, tcp)
-        assert True
 
 
 @pytest.mark.asyncio

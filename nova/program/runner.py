@@ -66,7 +66,7 @@ class Program(BaseModel):
 
 # TODO: import from api.v2.models.ProgramRunState
 class ProgramRunState(Enum):
-    NOT_STARTED = "NOT_STARTED"
+    PREPARING = "PREPARING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
@@ -110,7 +110,7 @@ class ProgramRunner(ABC):
         self._program_run: ProgramRun = ProgramRun(
             run=self._run_id,
             program=program_id,
-            state=ProgramRunState.NOT_STARTED,
+            state=ProgramRunState.PREPARING,
             logs=None,
             stdout=None,
             error=None,
@@ -176,7 +176,10 @@ class ProgramRunner(ABC):
         Returns:
             bool: True if a program is running, False otherwise
         """
-        return self._thread is not None and self.state is ProgramRunState.RUNNING
+        return self._thread is not None and self.state in (
+            ProgramRunState.PREPARING,
+            ProgramRunState.RUNNING,
+        )
 
     def join(self):
         """Wait for the program execution to finish.
@@ -215,7 +218,7 @@ class ProgramRunner(ABC):
             RuntimeError: when the runner is not in IDLE state
         """
         # Check if another program execution is already in progress
-        if self.state is not ProgramRunState.NOT_STARTED:
+        if self.state is not ProgramRunState.PREPARING:
             raise RuntimeError(
                 "The runner is not in the not_started state. Create a new runner to execute again."
             )

@@ -33,7 +33,7 @@ def test_program_runner_initialization():
     runner = TestProgramRunner(program_id="test", program=program, args={})
 
     assert runner.run_id is not None
-    assert runner.state == ProgramRunState.NOT_STARTED
+    assert runner.state == ProgramRunState.PREPARING
     assert not runner.is_running()
 
 
@@ -43,7 +43,7 @@ def test_program_runner_state_transitions():
     runner = TestProgramRunner(program_id="test", program=program, args={})
 
     # Test state transitions
-    assert runner.state == ProgramRunState.NOT_STARTED
+    assert runner.state == ProgramRunState.PREPARING
     runner.start(sync=True)
     assert runner.state == ProgramRunState.COMPLETED
 

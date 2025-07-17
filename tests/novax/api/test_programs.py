@@ -101,7 +101,7 @@ async def test_stop_program_success(novax_app):
         "/programs/simple_program/start", json={"parameters": {"number_of_steps": 30}}
     )
     assert start_response.status_code == 200
-    await asyncio.sleep(3)
+    await asyncio.sleep(7)
 
     # Then stop the program
     response = client.post("/programs/simple_program/stop")

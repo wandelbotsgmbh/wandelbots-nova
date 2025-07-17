@@ -8,7 +8,7 @@ from examples.plan_and_execute import main as plan_and_execute
 dotenv.load_dotenv()
 
 
-@nova.program(id="test")
+@nova.program(id="test1")
 async def test():
     print("Hello, world!")
 

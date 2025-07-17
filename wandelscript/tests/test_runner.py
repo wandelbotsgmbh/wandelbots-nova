@@ -134,7 +134,7 @@ def test_program_runner():
         args={},
     )
     assert uuid.UUID(str(program_runner.id)) is not None
-    assert program_runner.state is ProgramRunState.NOT_STARTED
+    assert program_runner.state is ProgramRunState.PREPARING
 
 
 # TODO andreasl 2024-08-20: flaky

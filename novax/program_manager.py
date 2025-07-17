@@ -173,14 +173,16 @@ class ProgramManager:
         return self._programs.get(program_id)
 
     async def run_program(
-        self, program_id: str, parameters: dict[str, Any] | None = None
+        self, program_id: str, parameters: dict[str, Any] | None = None, sync: bool = False
     ) -> ProgramRun:
         """Run a registered program with given parameters"""
         if self.is_any_program_running:
             raise RuntimeError("A program is already running")
 
-        runner = self._runner = NovaxProgramRunner(program_id, self._program_functions, parameters)
-        runner.start(sync=False)
+        runner = NovaxProgramRunner(program_id, self._program_functions, parameters)
+        print(runner)
+        self._runner = runner
+        runner.start(sync=sync)
         return runner.program_run
 
     async def stop_program(self, program_id: str):
