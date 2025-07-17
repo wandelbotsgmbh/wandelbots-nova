@@ -26,7 +26,7 @@ def test_get_program_success(novax_app):
     client = TestClient(novax_app)
     response = client.get("/programs/simple_program")
 
-    assert response.status_code == 200
+    assert response.status_code == 20000
     program = response.json()
 
     assert program["program"] == "simple_program"

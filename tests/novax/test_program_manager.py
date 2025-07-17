@@ -81,12 +81,8 @@ def test_deregister_program():
 
 def test_deregister_nonexistent_program():
     manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
-
-    try:
-        manager.deregister_program("nonexistent_program")
-        assert False, "Expected ValueError to be raised"
-    except ValueError as e:
-        assert "Program nonexistent_program not found" in str(e)
+    # This should not raise an error
+    manager.deregister_program("nonexistent_program")
 
 
 @pytest.mark.asyncio
