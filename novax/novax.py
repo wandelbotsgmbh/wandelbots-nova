@@ -2,9 +2,9 @@ from typing import Optional
 
 from fastapi import FastAPI
 
+from nova.cell.robot_cell import RobotCell
 from nova.program.function import Program
 from novax.program_manager import ProgramDetails, ProgramManager, ProgramSource
-from nova.cell.robot_cell import RobotCell
 
 
 class Novax:

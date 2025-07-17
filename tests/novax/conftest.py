@@ -3,8 +3,8 @@ import asyncio
 import pytest
 
 import nova
-from novax import Novax
 from nova.cell.simulation import SimulatedRobotCell
+from novax import Novax
 
 
 @nova.program(name="simple_program")
