@@ -59,7 +59,10 @@ def test_register_program():
 
     program_details = manager._programs[program_id]
     assert program_details.name == "Simple Program"
-    assert program_details.description == "Simple program that prints 'Hello World!' and then sleeps a bit."
+    assert (
+        program_details.description
+        == "Simple program that prints 'Hello World!' and then sleeps a bit."
+    )
     assert isinstance(program_details.created_at, dt.datetime)
 
 
