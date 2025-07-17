@@ -14,7 +14,7 @@ from novax.program_manager import ProgramManager
     description="Simple program that prints 'Hello World!' and then sleeps a bit.",
 )
 async def simple_program(number_of_steps: int = 30):
-    """Simple program that prints "Hello World!" and then sleeps a bit."""
+    """Simple program that prints 'Hello World!' and then sleeps a bit."""
     print("Hello World!")
 
     for i in range(number_of_steps):
@@ -58,8 +58,8 @@ def test_register_program():
     assert program_id in manager._program_functions
 
     program_details = manager._programs[program_id]
-    assert program_details.name == "simple_program_test"
-    assert program_details.description == "A simple test program that returns a success message"
+    assert program_details.name == "Simple Program"
+    assert program_details.description == "Simple program that prints 'Hello World!' and then sleeps a bit."
     assert isinstance(program_details.created_at, dt.datetime)
 
 
