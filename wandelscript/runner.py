@@ -5,7 +5,7 @@ from nova.program import ProgramRunner as NovaProgramRunner
 
 # TODO: this should come from the api package
 from nova.program.runner import ExecutionContext as NovaExecutionContext
-from nova.program.runner import Program, ProgramRun, ProgramType
+from nova.program.runner import ProgramRun
 from wandelscript.datatypes import ElementType
 from wandelscript.ffi import ForeignFunction
 from wandelscript.metamodel import Program as WandelscriptProgram
@@ -23,7 +23,7 @@ class ProgramRunner(NovaProgramRunner):
     def __init__(
         self,
         program_id: str,
-        program: Program,
+        program: str,
         args: dict[str, ElementType] | None,
         robot_cell_override: RobotCell | None = None,
         default_robot: str | None = None,
@@ -32,10 +32,10 @@ class ProgramRunner(NovaProgramRunner):
     ):
         super().__init__(
             program_id=program_id,
-            program=program,
             args=args,  # type: ignore
             robot_cell_override=robot_cell_override,
         )
+        self._program: str = program
         self._default_robot: str | None = default_robot
         self._default_tcp: str | None = default_tcp
         self._foreign_functions: dict[str, ForeignFunction] = foreign_functions or {}
@@ -44,7 +44,7 @@ class ProgramRunner(NovaProgramRunner):
     async def _run(self, execution_context: NovaExecutionContext):
         # Try parsing the program and handle parsing error
         logger.info(f"Parse program {self.program_id}...")
-        logger.debug(self._program.content)
+        logger.debug(self._program)
 
         self._ws_execution_context = ws_execution_context = ExecutionContext(
             robot_cell=execution_context.robot_cell,
@@ -55,7 +55,7 @@ class ProgramRunner(NovaProgramRunner):
             foreign_functions=self._foreign_functions,
         )
 
-        program = WandelscriptProgram.from_code(self._program.content)
+        program = WandelscriptProgram.from_code(self._program)
         # Execute Wandelscript
         await program(ws_execution_context)
         self.execution_context.motion_group_recordings = (
@@ -90,7 +90,7 @@ def run(
     """
     runner = ProgramRunner(
         program_id=program_id,
-        program=Program(content=program, program_type=ProgramType.WANDELSCRIPT),
+        program=program,
         args=args,
         default_robot=default_robot,
         default_tcp=default_tcp,

@@ -10,7 +10,7 @@ import pytest
 from icecream import ic
 
 from nova.cell.robot_cell import RobotCell
-from nova.program.runner import Program, ProgramRun, ProgramRunState, ProgramType
+from nova.program.runner import ProgramRun, ProgramRunState
 from wandelscript import ProgramRunner, run
 from wandelscript.exception import NameError_, ProgramSyntaxError
 from wandelscript.ffi import ForeignFunction
@@ -126,13 +126,7 @@ print(a)
 
 
 def test_program_runner():
-    program_runner = ProgramRunner(
-        Program(
-            content="move via p2p() to [100, 0, 300, 0, pi, 0]",
-            program_type=ProgramType.WANDELSCRIPT,
-        ),
-        args={},
-    )
+    program_runner = ProgramRunner(program="move via p2p() to [100, 0, 300, 0, pi, 0]", args={})
     assert uuid.UUID(str(program_runner.id)) is not None
     assert program_runner.state is ProgramRunState.PREPARING
 
@@ -158,7 +152,7 @@ print(read(controller[0], "pose"))
 move via line() to (0, 100, 300, 0, pi, 0)
 """
     program_runner = ProgramRunner(
-        Program(content=code, program_type=ProgramType.WANDELSCRIPT),
+        program=code,
         args={},
         robot_cell_override=SimulatedRobotCell(),
         default_tcp="Flange",
@@ -216,7 +210,7 @@ move via p2p() to home
 )
 def test_program_runner_stop(code):
     program_runner = ProgramRunner(
-        Program(content=code, program_type=ProgramType.WANDELSCRIPT),
+        program=code,
         args={},
         robot_cell_override=SimulatedRobotCell(),
         default_robot="0@controller",

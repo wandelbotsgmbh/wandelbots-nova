@@ -52,18 +52,6 @@ class ExecutionContext:
         return self._stop_event
 
 
-# TODO: import from api.v2.models.ProgramType
-class ProgramType(Enum):
-    WANDELSCRIPT = "WANDELSCRIPT"
-    PYTHON = "PYTHON"
-
-
-# TODO: import from api.v2.models.Program
-class Program(BaseModel):
-    content: str = Field(..., title="Program content")
-    program_type: ProgramType = Field(..., description="Type of the program.", title="Program type")
-
-
 # TODO: import from api.v2.models.ProgramRunState
 class ProgramRunState(Enum):
     PREPARING = "PREPARING"
@@ -95,16 +83,10 @@ class ProgramRunner(ABC):
     """
 
     def __init__(
-        self,
-        program_id: str,
-        # TODO: this can be removed soonish
-        program: Program,
-        args: dict[str, Any],
-        robot_cell_override: RobotCell | None = None,
+        self, program_id: str, args: dict[str, Any], robot_cell_override: RobotCell | None = None
     ):
         self._run_id = str(uuid.uuid4())
         self._program_id = program_id
-        self._program = program
         self._args = args
         self._robot_cell_override = robot_cell_override
         self._program_run: ProgramRun = ProgramRun(

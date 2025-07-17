@@ -9,8 +9,7 @@ from pydantic import BaseModel
 import nova
 from nova import Nova
 from nova.program.function import Program, ProgramPreconditions
-from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner, ProgramType
-from nova.program.runner import Program as SimpleProgram
+from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner
 from wandelscript.ffi_loader import load_foreign_functions
 
 try:
@@ -41,11 +40,7 @@ class NovaxProgramRunner(ProgramRunner):
         program_functions: dict[str, Program],
         parameters: Optional[dict[str, Any]] = None,
     ):
-        super().__init__(
-            program_id=program_id,
-            program=SimpleProgram(content="", program_type=ProgramType.PYTHON),
-            args={},
-        )
+        super().__init__(program_id=program_id, args={})
         self.program_functions = program_functions
         self.parameters = parameters
 
