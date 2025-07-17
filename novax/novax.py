@@ -4,11 +4,14 @@ from fastapi import FastAPI
 
 from nova.program.function import Program
 from novax.program_manager import ProgramDetails, ProgramManager, ProgramSource
+from nova.cell.robot_cell import RobotCell
 
 
 class Novax:
-    def __init__(self):
-        self._program_manager: ProgramManager = ProgramManager()
+    def __init__(self, robot_cell_override: RobotCell | None = None):
+        self._program_manager: ProgramManager = ProgramManager(
+            robot_cell_override=robot_cell_override
+        )
         self._app: FastAPI | None = None
 
     @property

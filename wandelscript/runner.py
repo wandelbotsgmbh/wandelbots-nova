@@ -2,8 +2,6 @@ from loguru import logger
 
 from nova.cell.robot_cell import RobotCell
 from nova.program import ProgramRunner as NovaProgramRunner
-
-# TODO: this should come from the api package
 from nova.program.runner import ExecutionContext as NovaExecutionContext
 from nova.program.runner import ProgramRun
 from wandelscript.datatypes import ElementType

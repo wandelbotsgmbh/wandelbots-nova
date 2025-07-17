@@ -9,9 +9,9 @@ from loguru import logger
 
 import wandelscript
 from nova.cell.robot_cell import ConfigurablePeriphery, RobotCell
+from nova.cell.simulation import SimulatedRobotCell
 from nova.types import Pose, Vector3d
 from wandelscript.examples import EXAMPLES
-from wandelscript.simulation import SimulatedRobotCell
 
 
 def filter_dict(d, ignore_paths: list[str]):

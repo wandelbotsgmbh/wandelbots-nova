@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 import nova
 from nova import Nova
+from nova.cell.robot_cell import RobotCell
 from nova.program.function import Program, ProgramPreconditions
 from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner
 from wandelscript.ffi_loader import load_foreign_functions
@@ -39,8 +40,9 @@ class NovaxProgramRunner(ProgramRunner):
         program_id: str,
         program_functions: dict[str, Program],
         parameters: Optional[dict[str, Any]] = None,
+        robot_cell_override: RobotCell | None = None,
     ):
-        super().__init__(program_id=program_id, args={})
+        super().__init__(program_id=program_id, args={}, robot_cell_override=robot_cell_override)
         self.program_functions = program_functions
         self.parameters = parameters
 
@@ -78,11 +80,12 @@ class RunProgramRequest(BaseModel):
 class ProgramManager:
     """Manages program registration, storage, and execution"""
 
-    def __init__(self):
+    def __init__(self, robot_cell_override: RobotCell | None = None):
         self._programs: dict[str, ProgramDetails] = {}
         self._program_functions: dict[str, Program] = {}
         self._runner: NovaxProgramRunner | None = None
         self._program_sources: list[ProgramSource] = []
+        self._robot_cell_override: RobotCell | None = robot_cell_override
 
     def has_program(self, program_id: str) -> bool:
         return program_id in self._programs
@@ -152,7 +155,7 @@ class ProgramManager:
             program_id: The ID of the program to deregister
         """
         if program_id not in self._programs:
-            raise ValueError(f"Program {program_id} not found")
+            return
         del self._programs[program_id]
         del self._program_functions[program_id]
 
@@ -168,13 +171,22 @@ class ProgramManager:
         return self._programs.get(program_id)
 
     async def start_program(
-        self, program_id: str, parameters: dict[str, Any] | None = None, sync: bool = False
+        self,
+        program_id: str,
+        parameters: dict[str, Any] | None = None,
+        sync: bool = False,
+        simulate: bool = False,
     ) -> ProgramRun:
         """Start a registered program with given parameters"""
         if self.is_any_program_running:
             raise RuntimeError("A program is already running")
 
-        runner = NovaxProgramRunner(program_id, self._program_functions, parameters)
+        runner = NovaxProgramRunner(
+            program_id,
+            self._program_functions,
+            parameters,
+            robot_cell_override=self._robot_cell_override,
+        )
         self._runner = runner
         runner.start(sync=sync)
         return runner.program_run

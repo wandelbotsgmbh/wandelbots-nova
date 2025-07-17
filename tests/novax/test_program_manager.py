@@ -4,6 +4,7 @@ import datetime as dt
 import pytest
 
 import nova
+from nova.cell.simulation import SimulatedRobotCell
 from novax.program_manager import ProgramManager
 
 
@@ -43,7 +44,7 @@ async def parameterized_program(message: str = "default", count: int = 1):
 
 
 def test_register_program():
-    manager = ProgramManager()
+    manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
 
     # Register a program
     program_id = manager.register_program(simple_program)
@@ -63,7 +64,7 @@ def test_register_program():
 
 
 def test_deregister_program():
-    manager = ProgramManager()
+    manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
 
     # Register a program
     program_id = manager.register_program(simple_program)
@@ -79,7 +80,7 @@ def test_deregister_program():
 
 
 def test_deregister_nonexistent_program():
-    manager = ProgramManager()
+    manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
 
     try:
         manager.deregister_program("nonexistent_program")
@@ -90,7 +91,7 @@ def test_deregister_nonexistent_program():
 
 @pytest.mark.asyncio
 async def test_start_program_success():
-    manager = ProgramManager()
+    manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
 
     # Register a program
     program_id = manager.register_program(simple_program)
@@ -117,7 +118,7 @@ async def test_start_program_success():
 
 @pytest.mark.asyncio
 async def test_start_program_when_another_is_running():
-    manager = ProgramManager()
+    manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
 
     # Register programs
     manager.register_program(simple_program)
@@ -132,7 +133,7 @@ async def test_start_program_when_another_is_running():
 
 @pytest.mark.asyncio
 async def test_stop_running_program():
-    manager = ProgramManager()
+    manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
 
     # Register a long-running program
     program_id = manager.register_program(simple_program)
@@ -154,7 +155,7 @@ async def test_stop_running_program():
 
 @pytest.mark.asyncio
 async def test_stop_program_when_none_running():
-    manager = ProgramManager()
+    manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
 
     # Try to stop a program when none is running
     with pytest.raises(RuntimeError):
@@ -163,7 +164,7 @@ async def test_stop_program_when_none_running():
 
 @pytest.mark.asyncio
 async def test_stop_wrong_program():
-    manager = ProgramManager()
+    manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
 
     # Register programs
     manager.register_program(long_running_program)
@@ -184,7 +185,7 @@ async def test_stop_wrong_program():
 @pytest.mark.asyncio
 async def test_get_programs():
     """Test getting all registered programs"""
-    manager = ProgramManager()
+    manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
 
     # Register multiple programs
     manager.register_program(simple_program)
@@ -210,7 +211,7 @@ async def test_get_programs():
 @pytest.mark.asyncio
 async def test_get_program():
     """Test getting a specific program by ID"""
-    manager = ProgramManager()
+    manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
 
     # Register a program
     program_id = manager.register_program(simple_program)
@@ -234,7 +235,7 @@ async def test_get_program():
 @pytest.mark.asyncio
 async def test_program_source_integration():
     """Test integration with program sources"""
-    manager = ProgramManager()
+    manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
 
     # Create a simple program source
     class SimpleProgramSource:

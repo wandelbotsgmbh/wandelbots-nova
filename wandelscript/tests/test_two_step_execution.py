@@ -2,8 +2,8 @@ import pytest
 
 import wandelscript
 from nova.cell.robot_cell import RobotCell
+from nova.cell.simulation import SimulatedController, SimulatedRobot
 from nova.types import Pose
-from wandelscript.simulation import SimulatedController, SimulatedRobot
 
 
 @pytest.mark.skip(reason="TODO: Configurable robot required")

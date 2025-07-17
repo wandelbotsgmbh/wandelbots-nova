@@ -10,12 +10,12 @@ import pytest
 from icecream import ic
 
 from nova.cell.robot_cell import RobotCell
+from nova.cell.simulation import SimulatedRobotCell, get_robot_controller
 from nova.program.runner import ProgramRun, ProgramRunState
 from wandelscript import ProgramRunner, run
 from wandelscript.exception import NameError_, ProgramSyntaxError
 from wandelscript.ffi import ForeignFunction
 from wandelscript.runtime import ExecutionContext
-from wandelscript.simulation import SimulatedRobotCell, get_robot_controller
 from wandelscript.utils.runtime import Tee
 
 robot_cell = RobotCell(controller=get_robot_controller())

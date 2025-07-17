@@ -3,9 +3,9 @@ from datetime import datetime
 
 from icecream import ic
 
+from nova.cell.simulation import SimulatedRobotCell, get_robot_controller
 from nova.program.runner import ProgramRunState
 from wandelscript import run
-from wandelscript.simulation import SimulatedRobotCell, get_robot_controller
 from wandelscript.utils.runtime import Tee
 
 robot_cell = SimulatedRobotCell(controller=get_robot_controller())

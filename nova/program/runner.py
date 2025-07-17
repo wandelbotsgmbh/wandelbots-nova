@@ -83,8 +83,19 @@ class ProgramRunner(ABC):
     """
 
     def __init__(
-        self, program_id: str, args: dict[str, Any], robot_cell_override: RobotCell | None = None
+        self,
+        program_id: str,
+        args: dict[str, Any],
+        robot_cell_override: RobotCell | None = None,
+        simulate: bool = False,
     ):
+        """
+        Args:
+            program_id (str): The unique identifier of the program.
+            args (dict[str, Any]): The arguments to pass to the program.
+            robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Defaults to None.
+            simulate (bool, optional): If True, the program will be simulated and not connect to NOVA. Used for testing. Defaults to False.
+        """
         self._run_id = str(uuid.uuid4())
         self._program_id = program_id
         self._args = args
