@@ -58,7 +58,7 @@ def test_register_program():
     assert program_id in manager._program_functions
 
     program_details = manager._programs[program_id]
-    assert program_details.name == "test_program"
+    assert program_details.name == "simple_program_test"
     assert program_details.description == "A simple test program that returns a success message"
     assert isinstance(program_details.created_at, dt.datetime)
 
@@ -163,19 +163,19 @@ async def test_stop_wrong_program():
     manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
 
     # Register programs
-    manager.register_program(long_running_program)
-    manager.register_program(simple_program)
+    program_id_1 = manager.register_program(long_running_program)
+    program_id_2 = manager.register_program(simple_program)
 
     # Start the first program
-    await manager.start_program("long_running_program")
+    await manager.start_program(program_id_1)
 
     # Try to stop a different program
     try:
-        await manager.stop_program("test_program")
+        await manager.stop_program(program_id_2)
         assert False, "Expected RuntimeError to be raised"
     except RuntimeError as e:
-        assert "Program test_program is not running" in str(e)
-        assert "Currently running: long_running_program" in str(e)
+        assert f"Program {program_id_2} is not running" in str(e)
+        assert f"Currently running: {program_id_1}" in str(e)
 
 
 @pytest.mark.asyncio
