@@ -94,7 +94,7 @@ class KeyValueStore(Generic[T]):
         self._nats_bucket_name = nats_bucket_name
 
         self._nats_client_config = nats_client_config or {}
-        self._kv_config = nats_kv_config
+        self._nats_kv_config = nats_kv_config
 
         self._nc: NATS | None = None
         self._js: JetStreamContext | None = None
@@ -150,13 +150,13 @@ class KeyValueStore(Generic[T]):
 
         async with self._bucket_lock:
             try:
-                self._kv = await self._js.key_value(self._bucket)
+                self._kv = await self._js.key_value(self._nats_bucket_name)
             except NotFoundError:
-                if not self._kv_config:
+                if not self._nats_kv_config:
                     raise RuntimeError(
                         f"Bucket {self._nats_bucket_name} missing and no kv_config supplied"
                     )
-                self._kv = await self._js.create_key_value(self._kv_cfg)
+                self._kv = await self._js.create_key_value(self._nats_kv_config)
 
         return self._kv
 
