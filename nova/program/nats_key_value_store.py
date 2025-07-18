@@ -71,6 +71,25 @@ class KeyValueStore(Generic[T]):
         nats_client_config: dict | None = None,
         nats_kv_config: KeyValueConfig | None = None,
     ):
+        """Initialize the KeyValueStore.
+
+        Args:
+            model_class: The Pydantic model class that will be stored in the KV store.
+                        All stored objects must be instances of this class.
+            nats_bucket_name: The name of the NATS JetStream bucket to use for storage.
+                             If the bucket doesn't exist, it will be created if nats_kv_config
+                             is provided.
+            nats_client_config: Optional configuration dictionary for the NATS client connection.
+                               If not provided, defaults will be used. Common options include:
+                               - "servers": List of NATS server URLs (if not provided, will be read
+                                 from NATS_SERVERS environment variables)
+            nats_kv_config: Optional KeyValueConfig for creating the bucket if it doesn't exist.
+                           If None and the bucket doesn't exist, an error will be raised.
+                           Only required when creating new buckets.
+
+        Raises:
+            RuntimeError: If the bucket doesn't exist and no nats_kv_config is provided.
+        """
         self._model_class = model_class
         self._nats_bucket_name = nats_bucket_name
 
@@ -111,7 +130,18 @@ class KeyValueStore(Generic[T]):
 
     @property
     async def kv(self) -> KeyValue:
-        """Get the KeyValue store, connecting and creating bucket if necessary"""
+        """Get the KeyValue store, connecting and creating bucket if necessary.
+
+        If the bucket doesn't exist and no nats_kv_config was provided during initialization,
+        a RuntimeError will be raised. If nats_kv_config was provided, the bucket will be
+        created automatically.
+
+        Returns:
+            KeyValue: The NATS JetStream KeyValue store instance.
+
+        Raises:
+            RuntimeError: If the bucket doesn't exist and no nats_kv_config was provided.
+        """
         if not self.is_connected:
             await self.connect()
 
