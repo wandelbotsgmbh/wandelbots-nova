@@ -1,8 +1,11 @@
+import asyncio
+
 import nova.api as api
 from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
+from nova.core.logging import logger
 
 # This is the default value we use to wait for add_controller API call to complete.
 DEFAULT_ADD_CONTROLLER_TIMEOUT = 120
@@ -64,13 +67,50 @@ class Cell:
         Returns:
             Controller: The added Controller object.
         """
-        await self._api_gateway.add_robot_controller(
-            cell=self._cell_id, robot_controller=robot_controller, timeout=add_timeout
+        logger.info(
+            f"🔄 Adding robot controller '{robot_controller.name}' to cell '{self._cell_id}'..."
         )
 
-        await self._api_gateway.wait_for_controller_ready(
-            cell=self._cell_id, name=robot_controller.name, timeout=wait_for_ready_timeout
+        # Start the add_robot_controller operation
+        add_task = asyncio.create_task(
+            self._api_gateway.add_robot_controller(
+                cell=self._cell_id, robot_controller=robot_controller, timeout=add_timeout
+            )
         )
+
+        # Show progress during the add operation
+        start_time = asyncio.get_event_loop().time()
+        while not add_task.done():
+            elapsed = int(asyncio.get_event_loop().time() - start_time)
+            logger.info(f"⏳ Adding controller '{robot_controller.name}'... ({elapsed}s elapsed)")
+            await asyncio.sleep(5)  # Update every 5 seconds
+
+        # Wait for the add operation to complete
+        await add_task
+        logger.info(f"✅ Successfully added controller '{robot_controller.name}' to cell")
+
+        # Now wait for the controller to be ready
+        logger.info(f"🔄 Waiting for controller '{robot_controller.name}' to be ready...")
+
+        # Start the wait_for_controller_ready operation
+        wait_task = asyncio.create_task(
+            self._api_gateway.wait_for_controller_ready(
+                cell=self._cell_id, name=robot_controller.name, timeout=wait_for_ready_timeout
+            )
+        )
+
+        # Show progress during the wait operation
+        start_time = asyncio.get_event_loop().time()
+        while not wait_task.done():
+            elapsed = int(asyncio.get_event_loop().time() - start_time)
+            logger.info(
+                f"⏳ Waiting for controller '{robot_controller.name}' to be ready... ({elapsed}s elapsed)"
+            )
+            await asyncio.sleep(5)  # Update every 5 seconds
+
+        # Wait for the wait operation to complete
+        await wait_task
+        logger.info(f"✅ Controller '{robot_controller.name}' is now ready")
 
         return self._create_controller(robot_controller.name)
 
@@ -93,12 +133,18 @@ class Cell:
         Returns:
             Controller: The added Controller object.
         """
+        logger.info(f"🔍 Checking if controller '{robot_controller.name}' already exists...")
         controller = await self._api_gateway.get_controller_instance(
             cell=self.cell_id, name=robot_controller.name
         )
 
         if controller:
+            logger.info(
+                f"✅ Controller '{robot_controller.name}' already exists, using existing controller"
+            )
             return self._create_controller(controller.controller)
+
+        logger.info(f"❌ Controller '{robot_controller.name}' not found, will add new controller")
         return await self.add_controller(
             robot_controller, add_timeout=add_timeout, wait_for_ready_timeout=wait_for_ready_timeout
         )
@@ -136,9 +182,25 @@ class Cell:
             name (str): The name of the controller to delete.
             timeout (int): The time to wait for the controller deletion to complete (default: 25).
         """
-        await self._api_gateway.delete_robot_controller(
-            cell=self._cell_id, controller=name, completion_timeout=timeout
+        logger.info(f"🗑️ Deleting robot controller '{name}' from cell '{self._cell_id}'...")
+
+        # Start the delete operation
+        delete_task = asyncio.create_task(
+            self._api_gateway.delete_robot_controller(
+                cell=self._cell_id, controller=name, completion_timeout=timeout
+            )
         )
+
+        # Show progress during the delete operation
+        start_time = asyncio.get_event_loop().time()
+        while not delete_task.done():
+            elapsed = int(asyncio.get_event_loop().time() - start_time)
+            logger.info(f"⏳ Deleting controller '{name}'... ({elapsed}s elapsed)")
+            await asyncio.sleep(5)  # Update every 5 seconds
+
+        # Wait for the delete operation to complete
+        await delete_task
+        logger.info(f"✅ Successfully deleted controller '{name}' from cell")
 
     async def get_robot_cell(self) -> RobotCell:
         """
