@@ -1,7 +1,6 @@
-from nova.program.function import ProgramPreconditions, program
-from nova.program.runner import ProgramRunner
+from nova.program.function import Program, ProgramPreconditions, program
 from nova.program.nats_key_value_store import KeyValueStore
-from nova.program.function import Program
+from nova.program.runner import ProgramRunner
 
 # ProgramStore = KeyValueStore[Program] would be better but python doesn't support this
 # when I do store = ProgramStore() the __orig_class__ is not available in the __init__
