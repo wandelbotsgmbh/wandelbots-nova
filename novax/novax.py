@@ -1,14 +1,17 @@
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import FastAPI
 
+from nova.cell.robot_cell import RobotCell
 from nova.program.function import Program
 from novax.program_manager import ProgramDetails, ProgramManager, ProgramSource
 
 
 class Novax:
-    def __init__(self):
-        self._program_manager: ProgramManager = ProgramManager()
+    def __init__(self, robot_cell_override: RobotCell | None = None):
+        self._program_manager: ProgramManager = ProgramManager(
+            robot_cell_override=robot_cell_override
+        )
         self._app: FastAPI | None = None
 
     @property
@@ -36,6 +39,15 @@ class Novax:
         """
         return self._program_manager.register_program(program)
 
+    def deregister_program(self, program_id: str):
+        """
+        Deregister a program
+
+        Args:
+            program_id: The ID of the program to deregister
+        """
+        self._program_manager.deregister_program(program_id)
+
     async def get_programs(self) -> dict[str, ProgramDetails]:
         """Get all registered programs"""
         return await self._program_manager.get_programs()
@@ -43,12 +55,6 @@ class Novax:
     async def get_program(self, program_id: str) -> Optional[ProgramDetails]:
         """Get a specific program by ID"""
         return await self._program_manager.get_program(program_id)
-
-    async def execute_program(
-        self, program_id: str, parameters: Optional[dict[str, Any]] = None
-    ) -> Any:
-        """Execute a registered program with given parameters"""
-        return await self._program_manager.run_program(program_id, parameters)
 
     def create_app(self, title: str = "Novax API", version: str = "1.0.0", root_path="") -> FastAPI:
         """

@@ -10,12 +10,12 @@ import pytest
 from icecream import ic
 
 from nova.cell.robot_cell import RobotCell
-from nova.program.runner import Program, ProgramRun, ProgramRunState, ProgramType
+from nova.cell.simulation import SimulatedRobotCell, get_robot_controller
+from nova.program.runner import ProgramRun, ProgramRunState
 from wandelscript import ProgramRunner, run
 from wandelscript.exception import NameError_, ProgramSyntaxError
 from wandelscript.ffi import ForeignFunction
 from wandelscript.runtime import ExecutionContext
-from wandelscript.simulation import SimulatedRobotCell, get_robot_controller
 from wandelscript.utils.runtime import Tee
 
 robot_cell = RobotCell(controller=get_robot_controller())
@@ -126,15 +126,9 @@ print(a)
 
 
 def test_program_runner():
-    program_runner = ProgramRunner(
-        Program(
-            content="move via p2p() to [100, 0, 300, 0, pi, 0]",
-            program_type=ProgramType.WANDELSCRIPT,
-        ),
-        args={},
-    )
+    program_runner = ProgramRunner(program="move via p2p() to [100, 0, 300, 0, pi, 0]", args={})
     assert uuid.UUID(str(program_runner.id)) is not None
-    assert program_runner.state is ProgramRunState.NOT_STARTED
+    assert program_runner.state is ProgramRunState.PREPARING
 
 
 # TODO andreasl 2024-08-20: flaky
@@ -158,7 +152,7 @@ print(read(controller[0], "pose"))
 move via line() to (0, 100, 300, 0, pi, 0)
 """
     program_runner = ProgramRunner(
-        Program(content=code, program_type=ProgramType.WANDELSCRIPT),
+        program=code,
         args={},
         robot_cell_override=SimulatedRobotCell(),
         default_tcp="Flange",
@@ -216,7 +210,7 @@ move via p2p() to home
 )
 def test_program_runner_stop(code):
     program_runner = ProgramRunner(
-        Program(content=code, program_type=ProgramType.WANDELSCRIPT),
+        program=code,
         args={},
         robot_cell_override=SimulatedRobotCell(),
         default_robot="0@controller",

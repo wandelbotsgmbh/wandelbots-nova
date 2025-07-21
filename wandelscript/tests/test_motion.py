@@ -4,14 +4,14 @@ import pytest
 import wandelscript
 from nova.actions.motions import CartesianPTP, JointPTP, Linear
 from nova.cell.robot_cell import RobotCell
-from nova.types import Pose
-from wandelscript.exception import ProgramRuntimeError
-from wandelscript.simulation import (
+from nova.cell.simulation import (
     SimulatedController,
     SimulatedRobot,
     SimulatedRobotCell,
     get_robot_cell,
 )
+from nova.types import Pose
+from wandelscript.exception import ProgramRuntimeError
 
 
 def test_forbidden_tcp_change_in_one_motion_example():

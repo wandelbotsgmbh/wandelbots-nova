@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v2.5.0 (2025-07-17)
+
+### Features
+
+- Added deregister_program to novax (#234)
+  ([#234](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/234),
+  [`0e75f9f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0e75f9f30e005907fb8dc91ce890780623d6bdef))
+
+
+## v2.4.1 (2025-07-16)
+
+### Bug Fixes
+
+- Update example and rerun address for VS Code integration (#233)
+  ([#233](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/233),
+  [`cf4957b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/cf4957bfc8bbb492617e3cec477a7308c7594025))
+
+
+## v2.4.0 (2025-07-15)
+
+### Features
+
+- Improved program metadata & API description (#232)
+  ([#232](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/232),
+  [`cb435a0`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/cb435a0f95995a708a27e08e39a716d8934b6790))
+
+
 ## v2.3.1 (2025-07-14)
 
 ### Bug Fixes

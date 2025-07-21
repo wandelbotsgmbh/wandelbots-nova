@@ -38,7 +38,7 @@ async def main():
         default_tcp=None,
         default_robot="0@ur10e",
     )
-    print(run.program_run.output_data)
+    print(run.program_run.state)
 
 
 if __name__ == "__main__":
