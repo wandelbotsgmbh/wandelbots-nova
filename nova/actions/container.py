@@ -8,7 +8,7 @@ from nova import api
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
-from nova.types import MovementControllerFunction, Pose, MotionSettings
+from nova.types import MotionSettings, MovementControllerFunction, Pose
 
 
 class ActionLocation(pydantic.BaseModel):
