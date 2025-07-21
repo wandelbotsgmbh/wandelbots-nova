@@ -97,8 +97,8 @@ class KeyValueStore(Generic[T]):
         self._nats_kv_config = nats_kv_config
 
         self._nc: NATS | None = None
-        self._js: JetStreamContext | None = None
-        self._kv: KeyValue | None = None
+        self._js: JetStreamContext
+        self._kv: KeyValue
         self._bucket_lock = asyncio.Lock()
 
     async def connect(self) -> None:
@@ -178,6 +178,9 @@ class KeyValueStore(Generic[T]):
         kv = await self.kv
         try:
             entry = await kv.get(key)
+            if entry.value is None:
+                return None
+
             return self._model_class.model_validate_json(entry.value.decode())
         except (KvKeyError, ValidationError):
             return None
@@ -194,6 +197,9 @@ class KeyValueStore(Generic[T]):
         for key in keys:
             try:
                 entry = await kv.get(key)
+                if entry.value is None:
+                    continue
+
                 model = self._model_class.model_validate_json(entry.value.decode())
                 models.append(model)
             except KvKeyError:
