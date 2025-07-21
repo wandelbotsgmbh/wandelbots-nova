@@ -145,7 +145,7 @@ class _KeyValueStore(Generic[T]):
         if not self.is_connected:
             await self.connect()
 
-        if self._kv:
+        if getattr(self, "_kv", None) is not None:
             return self._kv
 
         async with self._bucket_lock:

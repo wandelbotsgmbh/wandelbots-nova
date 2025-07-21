@@ -10,6 +10,7 @@ from nova.program.function import Program
 from nova.program.store import Program as StoreProgram
 from nova.program.store import ProgramStore
 from novax.program_manager import ProgramDetails, ProgramManager, ProgramSource
+from nats.js.api import KeyValueConfig
 
 # Read BASE_PATH environment variable and extract app name
 BASE_PATH = config("BASE_PATH", default="/default/novax")
@@ -101,7 +102,10 @@ class Novax:
                 except Exception as e:
                     logger.error(f"Failed to convert program {program_id} to store format: {e}")
 
-            async with ProgramStore(nats_bucket_name="programs") as program_store:
+            # TODO: remove the nats_key_value config once discovery service is merged
+            # even at the NATS permission level, an app NATS client should not be able to create this bucket, this is a system bucket managed by the discovery service
+            # novax app should only be able to read/write to this bucket in their namespace
+            async with ProgramStore(nats_bucket_name="programs", nats_kv_config=KeyValueConfig(bucket="programs")) as program_store:
                 for program_id, store_program in store_programs.items():
                     try:
                         await program_store.put(program_id, store_program)
