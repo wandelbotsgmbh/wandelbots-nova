@@ -8,6 +8,11 @@ from nova.types import MotionSettings
 
 class TrajectoryBuilder:
     def __init__(self, settings: Optional[MotionSettings] = None):
+        """A builder for trajectories.
+
+        Args:
+            settings (Optional[MotionSettings], optional): The global settings to use for the trajectory. Defaults to None.
+        """
         self._actions: list[Action] = []
         self._settings_stack: list[MotionSettings] = [] if settings is None else [settings]
 
@@ -19,20 +24,24 @@ class TrajectoryBuilder:
 
     @property
     def actions(self) -> list[Action]:
+        """The built actions in the trajectory."""
         return self._actions
 
     def _current_settings(self) -> MotionSettings:
-        print([s.tcp_velocity_limit for s in self._settings_stack])
+        """The current settings to use for the trajectory."""
         return self._settings_stack[-1]
 
     def move(self, motion: Motion):
+        """Add a motion to the trajectory."""
         motion.settings = motion.settings or self._current_settings()
         self._actions.append(motion)
 
     def trigger(self, action: Action):
+        """Add a action to the trajectory."""
         self._actions.append(action)
 
     def sequence(self, actions: Sequence[Action]):
+        """Add a sequence of actions to the trajectory."""
         for action in actions:
             if isinstance(action, Motion):
                 self.move(action)
@@ -41,6 +50,7 @@ class TrajectoryBuilder:
 
     @contextmanager
     def set(self, settings: MotionSettings):
+        """Set the settings for the trajectory context."""
         self._settings_stack.append(settings)
         try:
             yield self
