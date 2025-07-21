@@ -224,7 +224,7 @@ class _KeyValueStore(Generic[T]):
 # this is data model that we should take from service manager api client
 # for now we are duplicating the model here, will be removed once the other side is ready
 class Program(BaseModel):
-    program: constr(pattern=r"^[a-zA-Z0-9_-]+$", min_length=1, max_length=255) = Field(
+    program: constr(pattern=r"^[a-zA-Z0-9_-]+$", min_length=1, max_length=255) = Field( # type: ignore
         ..., examples=["my_program"], title="Unique program identifier"
     )
     name: str | None = Field(None, title="Program name")
