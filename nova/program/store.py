@@ -19,7 +19,7 @@ if not NATS_SERVERS:
     NATS_SERVERS = config("NATS_BROKER", default="nats://nats.wandelbots.svc:4222", cast=str)
 
 # this is optional, but needed when you connect to NATS server running in a portal instance from your local machine
-NATS_TOKEN = config("NOVA_ACCESS_TOKEN", default=None, cast=str)
+NATS_TOKEN = config("NOVA_ACCESS_TOKEN", default=None)
 
 T = TypeVar("T", bound=BaseModel)
 
