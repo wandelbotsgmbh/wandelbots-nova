@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.6.0 (2025-07-22)
+
+### Features
+
+- Add program store (#235) ([#235](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/235),
+  [`47f3196`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/47f31966759674957687b331020f446a7ee44840))
+
+
 ## v2.5.0 (2025-07-17)
 
 ### Features
