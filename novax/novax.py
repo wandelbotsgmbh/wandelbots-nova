@@ -108,7 +108,7 @@ class Novax:
             ) as program_store:
                 for program_id, store_program in store_programs.items():
                     try:
-                        await program_store.put(program_id, store_program)
+                        await program_store.put(f"{APP_NAME}:{program_id}", store_program)
                         logger.debug(f"Program {program_id} synced to store")
                     except Exception as e:
                         logger.error(f"Failed to sync program {program_id} to store: {e}")
@@ -135,7 +135,7 @@ class Novax:
             async with ProgramStore(nats_bucket_name="programs") as program_store:
                 for program_id in program_ids:
                     try:
-                        await program_store.delete(program_id)
+                        await program_store.delete(f"{APP_NAME}:{program_id}")
                         logger.debug(f"Program {program_id} removed from store")
                     except Exception as e:
                         logger.error(f"Failed to remove program {program_id} from store: {e}")
