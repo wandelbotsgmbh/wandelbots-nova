@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, ValidationError, constr
 from nova.core.logging import logger
 
 # generally people use NATS_SERVERS, app store uses NATS_BROKERS
-NATS_SERVERS = config("NATS_SERVERS", default=None, cast=str)
+NATS_SERVERS = config("NATS_SERVERS", default=None)
 if not NATS_SERVERS:
     NATS_SERVERS = config("NATS_BROKER", default="nats://nats.wandelbots.svc:4222", cast=str)
 
