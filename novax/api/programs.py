@@ -8,7 +8,6 @@ from novax.program_manager import ProgramDetails, ProgramManager, ProgramRun, Ru
 router = APIRouter(prefix="/programs", tags=["programs"])
 
 
-
 class ProgramResponse(ProgramDetails):
     input_schema: dict[str, Any]
 
