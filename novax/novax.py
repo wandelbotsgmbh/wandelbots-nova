@@ -1,10 +1,21 @@
-from typing import Optional
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, Optional
 
-from fastapi import FastAPI
+from decouple import config
+from fastapi import APIRouter, FastAPI
+from nats.js.api import KeyValueConfig
 
 from nova.cell.robot_cell import RobotCell
+from nova.core.logging import logger
 from nova.program.function import Program
+from nova.program.store import Program as StoreProgram
+from nova.program.store import ProgramStore
 from novax.program_manager import ProgramDetails, ProgramManager, ProgramSource
+
+# Read BASE_PATH environment variable and extract app name
+BASE_PATH = config("BASE_PATH", default="/default/novax")
+APP_NAME = BASE_PATH.split("/")[-1] if "/" in BASE_PATH else "novax"
+logger.info(f"Extracted app name '{APP_NAME}' from BASE_PATH '{BASE_PATH}'")
 
 
 class Novax:
@@ -47,6 +58,92 @@ class Novax:
             program_id: The ID of the program to deregister
         """
         self._program_manager.deregister_program(program_id)
+
+    @asynccontextmanager
+    async def program_store_lifespan(self, router: APIRouter) -> AsyncIterator[None]:
+        """
+        Lifespan context manager for FastAPI application lifecycle.
+        Handles startup and shutdown events.
+        """
+        await self._register_programs()
+
+        try:
+            yield
+        finally:
+            await self._deregister_programs()
+
+    async def _register_programs(self):
+        """
+        Handle FastAPI startup - discover and register programs from sources to store
+        """
+        try:
+            logger.info("Novax: Starting program discovery and registration to store")
+            programs = await self._program_manager.get_programs()
+
+            store_programs = {}
+            for program_id, program_details in programs.items():
+                try:
+                    preconditions_dict = None
+                    if program_details.preconditions:
+                        preconditions_dict = program_details.preconditions.model_dump()
+
+                    # TODO: schema is not present in ProgramDetails
+                    store_program = StoreProgram(
+                        program=program_details.program,
+                        name=program_details.name,
+                        description=program_details.description,
+                        app=APP_NAME,
+                        preconditions=preconditions_dict,
+                    )
+
+                    store_programs[program_id] = store_program
+                except Exception as e:
+                    logger.error(f"Failed to convert program {program_id} to store format: {e}")
+
+            # TODO: remove the nats_key_value config once discovery service is merged
+            # even at the NATS permission level, an app NATS client should not be able to create this bucket, this is a system bucket managed by the discovery service
+            # novax app should only be able to read/write to this bucket in their namespace
+            async with ProgramStore(
+                nats_bucket_name="programs", nats_kv_config=KeyValueConfig(bucket="programs")
+            ) as program_store:
+                for program_id, store_program in store_programs.items():
+                    try:
+                        await program_store.put(f"{APP_NAME}:{program_id}", store_program)
+                        logger.debug(f"Program {program_id} synced to store")
+                    except Exception as e:
+                        logger.error(f"Failed to sync program {program_id} to store: {e}")
+
+            logger.info(
+                f"Novax: {len(store_programs)} programs discovered and synced to store on startup"
+            )
+        except Exception as e:
+            logger.error(f"Novax startup error: Failed to register programs to store: {e}")
+            # Don't raise the exception to prevent app startup failure
+
+    async def _deregister_programs(self):
+        """
+        Handle FastAPI shutdown - cleanup programs from store
+        """
+        try:
+            logger.info("Novax: Starting program cleanup from store on shutdown")
+            # Get current programs first
+            programs = self._program_manager._programs
+            program_ids = list(programs.keys())
+            program_count = len(program_ids)
+
+            # Now create ProgramStore with async context and process deletions
+            async with ProgramStore(nats_bucket_name="programs") as program_store:
+                for program_id in program_ids:
+                    try:
+                        await program_store.delete(f"{APP_NAME}:{program_id}")
+                        logger.debug(f"Program {program_id} removed from store")
+                    except Exception as e:
+                        logger.error(f"Failed to remove program {program_id} from store: {e}")
+
+            logger.info(f"Novax: Shutdown complete, removed {program_count} programs from store")
+
+        except Exception as e:
+            logger.error(f"Novax shutdown error: {e}")
 
     async def get_programs(self) -> dict[str, ProgramDetails]:
         """Get all registered programs"""
@@ -98,6 +195,9 @@ class Novax:
 
         # Replace the dependency function on the FastAPI app
         app.dependency_overrides[get_program_manager] = get_program_manager_override
+
+        # Attach lifespan to the router
+        programs_router.lifespan_context = self.program_store_lifespan
 
         # Include the programs router
         app.include_router(programs_router)
