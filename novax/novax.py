@@ -17,6 +17,8 @@ BASE_PATH = config("BASE_PATH", default="/default/novax")
 APP_NAME = BASE_PATH.split("/")[-1] if "/" in BASE_PATH else "novax"
 logger.info(f"Extracted app name '{APP_NAME}' from BASE_PATH '{BASE_PATH}'")
 
+_NATS_CLIENT_CONFIG = {"connect_timeout": 2.0, "allow_reconnect": True, "max_reconnect_attempts": 2}
+
 
 class Novax:
     def __init__(self, robot_cell_override: RobotCell | None = None):
@@ -103,8 +105,11 @@ class Novax:
             # TODO: remove the nats_key_value config once discovery service is merged
             # even at the NATS permission level, an app NATS client should not be able to create this bucket, this is a system bucket managed by the discovery service
             # novax app should only be able to read/write to this bucket in their namespace
+
             async with ProgramStore(
-                nats_bucket_name="programs", nats_kv_config=KeyValueConfig(bucket="programs")
+                nats_bucket_name="programs",
+                nats_kv_config=KeyValueConfig(bucket="programs"),
+                nats_client_config=_NATS_CLIENT_CONFIG,
             ) as program_store:
                 for program_id, store_program in store_programs.items():
                     try:
@@ -131,8 +136,9 @@ class Novax:
             program_ids = list(programs.keys())
             program_count = len(program_ids)
 
-            # Now create ProgramStore with async context and process deletions
-            async with ProgramStore(nats_bucket_name="programs") as program_store:
+            async with ProgramStore(
+                nats_bucket_name="programs", nats_client_config=_NATS_CLIENT_CONFIG
+            ) as program_store:
                 for program_id in program_ids:
                     try:
                         await program_store.delete(f"{APP_NAME}:{program_id}")
