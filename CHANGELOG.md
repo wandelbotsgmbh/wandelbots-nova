@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.6.1 (2025-07-23)
+
+### Bug Fixes
+
+- Update nats connections settings for novax (#237)
+  ([#237](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/237),
+  [`7ce45b8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7ce45b84da8e65391ef1d3814cf161d9a0ab4d1b))
+
+
 ## v2.6.0 (2025-07-22)
 
 ### Features
