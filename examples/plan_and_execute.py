@@ -12,7 +12,7 @@ import asyncio
 
 import nova
 from nova import Nova, api, viewers
-from nova.actions import cartesian_ptp, io_write, joint_ptp, TrajectoryBuilder
+from nova.actions import TrajectoryBuilder, cartesian_ptp, io_write, joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
