@@ -3,7 +3,6 @@ from typing import AsyncIterator, Optional
 
 from decouple import config
 from fastapi import APIRouter, FastAPI
-from nats.js.api import KeyValueConfig
 
 from nova.cell.robot_cell import RobotCell
 from nova.core.logging import logger
@@ -13,10 +12,13 @@ from nova.program.store import ProgramStore
 from novax.program_manager import ProgramDetails, ProgramManager, ProgramSource
 
 # Read BASE_PATH environment variable and extract app name
-BASE_PATH = config("BASE_PATH", default="/default/novax")
-APP_NAME = BASE_PATH.split("/")[-1] if "/" in BASE_PATH else "novax"
-logger.info(f"Extracted app name '{APP_NAME}' from BASE_PATH '{BASE_PATH}'")
+_BASE_PATH = config("BASE_PATH", default="/default/novax")
+_APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else "novax"
+logger.info(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
 
+# Create nats programs bucket name
+_CELL_NAME = config("CELL_NAME", default="")
+_NATS_PROGRAM_BUCKET = f"nova.{_CELL_NAME}:programs"
 _NATS_CLIENT_CONFIG = {"connect_timeout": 2.0, "allow_reconnect": True, "max_reconnect_attempts": 2}
 
 
@@ -94,7 +96,7 @@ class Novax:
                         program=program_details.program,
                         name=program_details.name,
                         description=program_details.description,
-                        app=APP_NAME,
+                        app=_APP_NAME,
                         preconditions=preconditions_dict,
                     )
 
@@ -102,18 +104,12 @@ class Novax:
                 except Exception as e:
                     logger.error(f"Failed to convert program {program_id} to store format: {e}")
 
-            # TODO: remove the nats_key_value config once discovery service is merged
-            # even at the NATS permission level, an app NATS client should not be able to create this bucket, this is a system bucket managed by the discovery service
-            # novax app should only be able to read/write to this bucket in their namespace
-
             async with ProgramStore(
-                nats_bucket_name="programs",
-                nats_kv_config=KeyValueConfig(bucket="programs"),
-                nats_client_config=_NATS_CLIENT_CONFIG,
+                nats_bucket_name=_NATS_PROGRAM_BUCKET, nats_client_config=_NATS_CLIENT_CONFIG
             ) as program_store:
                 for program_id, store_program in store_programs.items():
                     try:
-                        await program_store.put(f"{APP_NAME}:{program_id}", store_program)
+                        await program_store.put(f"{_APP_NAME}:{program_id}", store_program)
                         logger.debug(f"Program {program_id} synced to store")
                     except Exception as e:
                         logger.error(f"Failed to sync program {program_id} to store: {e}")
@@ -137,11 +133,11 @@ class Novax:
             program_count = len(program_ids)
 
             async with ProgramStore(
-                nats_bucket_name="programs", nats_client_config=_NATS_CLIENT_CONFIG
+                nats_bucket_name=_NATS_PROGRAM_BUCKET, nats_client_config=_NATS_CLIENT_CONFIG
             ) as program_store:
                 for program_id in program_ids:
                     try:
-                        await program_store.delete(f"{APP_NAME}:{program_id}")
+                        await program_store.delete(f"{_APP_NAME}:{program_id}")
                         logger.debug(f"Program {program_id} removed from store")
                     except Exception as e:
                         logger.error(f"Failed to remove program {program_id} from store: {e}")
@@ -202,8 +198,12 @@ class Novax:
         # Replace the dependency function on the FastAPI app
         app.dependency_overrides[get_program_manager] = get_program_manager_override
 
-        # Attach lifespan to the router
-        programs_router.lifespan_context = self.program_store_lifespan
+        if not _CELL_NAME:
+            logger.error(
+                "Novax: CELL_NAME environment variable is not set, your programs will not be registered"
+            )
+        else:
+            programs_router.lifespan_context = self.program_store_lifespan
 
         # Include the programs router
         app.include_router(programs_router)
