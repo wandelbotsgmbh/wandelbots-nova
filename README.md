@@ -82,7 +82,7 @@ for i = 0..3:
     move via ptp() to home
 ```
 
-To get started, use the [Quickstart](https://docs.wandelbots.io/latest/pathplanning-maintained/wandelscript).
+To get started, use the [Quickstart](https://docs.wandelbots.io/latest/pathplanning-maintained/wandelscript/quickstart).
 implementation details or contributing to Wandelscript, refer to the [Wandelscript readme](/wandelscript/README.md).
 
 ## NOVAx
