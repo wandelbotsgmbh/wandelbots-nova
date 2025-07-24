@@ -2,23 +2,23 @@
 
 [![PyPI version](https://badge.fury.io/py/wandelbots-nova.svg)](https://badge.fury.io/py/wandelbots-nova)
 [![License](https://img.shields.io/github/license/wandelbotsgmbh/wandelbots-nova.svg)](https://github.com/wandelbotsgmbh/wandelbots-nova/blob/main/LICENSE)
-[![Build Status](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/nova-release.yaml/badge.svg)](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/nova-release.yaml)
+[![Build status](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/nova-release.yaml/badge.svg)](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/nova-release.yaml)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/wandelbotsgmbh/wandelbots-nova)
 
 This library provides an SDK for the Wandelbots NOVA API.
 
-The SDK will help you to build your own apps and services using Python on top of NOVA and makes programming a robot as easy as possible.
+The SDK will help you to build your own apps and services using Python on top of Wandelbots NOVA and makes programming a robot as easy as possible.
 
 https://github.com/user-attachments/assets/f6157e4b-eea8-4b96-b302-1f3864ae44a9
 
-## Background
+## About
 
-[Wandelbots NOVA](https://www.wandelbots.com/) is an agnostic robot operating system that enables developers to virtually plan their industrial six-axis robot fleet, as well as to program, control and operate your robots on the shopfloor - all independent on the robot brand and through a unified API. It combines modern development tools (Python, JavaScript APIs) with an AI-driven approach to robot control and motion planning, enabling developers to build applications like gluing, grinding, welding, and palletizing without worrying about underlying hardware differences. The holistic software offers a variety of tools to create unique automation solutions along the whole automation process.
+[Wandelbots NOVA](https://www.wandelbots.com/) is a robot-agnostic operating system that enables developers to plan, program, control, and operate fleets of six-axis industrial robots through a unified API, across all major robot brands. It integrates modern development tools like Python and JavaScript APIs with AI-based control and motion planning, allowing developers to build automation tasks such as gluing, grinding, welding, and palletizing without needing to account for hardware differences. The software offers a powerful set of tools that support the creation of custom automation solutions throughout the entire automation lifecycle.
 
 ## Prerequisites
 
-- A running Nova instance (apply for access at [wandelbots.com](https://www.wandelbots.com/))
-- Valid Nova API credentials
+- A running NOVA instance (Get a Wandelbots NOVA account on [wandelbots.com](https://www.wandelbots.com/contact))
+- Valid NOVA API credentials
 - Python >=3.10
 
 ## Installation
@@ -31,7 +31,7 @@ pip install wandelbots-nova
 
 ### Recommended: uv project and Rerun Visualization
 
-Firstly you need to install [uv](https://docs.astral.sh/uv/getting-started/installation/) to your system.
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) on your system.
 
 Initialize a new uv project with the following command.
 
@@ -39,14 +39,14 @@ Initialize a new uv project with the following command.
 uv init
 ```
 
-We recommend installing the library with the `nova-rerun-bridge` extra to make usage of the visualization tool [rerun](https://rerun.io/).
-See the [extension README.md](nova_rerun_bridge/README.md) for further details.
+Install the library with the `nova-rerun-bridge` extra to use the visualization tool [rerun](https://rerun.io/).
+See [extension README.md](nova_rerun_bridge/README.md) for further details.
 
 ```bash
 uv add wandelbots-nova --extra nova-rerun-bridge
 ```
 
-You need to download the robot models to visualize the robot models in the rerun viewer.
+Download the robot models to visualize them in the rerun viewer.
 
 ```bash
 uv run download-models
@@ -54,7 +54,9 @@ uv run download-models
 
 ## Wandelscript
 
-Wandelscript is a domain-specific language for programming robots. It is a declarative language that allows you to describe the robot's behavior in a high-level way.
+Wandelscript is a domain-specific language for programming robots.
+It is a declarative language that allows you to describe the robot's behavior in a high-level way.
+Wandelscript is suited to get yourself familiar with robot programming.
 
 ```bash
 uv add wandelbots-nova --extra wandelscript
@@ -80,17 +82,19 @@ for i = 0..3:
     move via ptp() to home
 ```
 
-To get more information about Wandelscript, check out the [Wandelscript documentation](/wandelscript/README.md).
+To get started, use the [Quickstart](https://docs.wandelbots.io/latest/pathplanning-maintained/wandelscript/quickstart).
+implementation details or contributing to Wandelscript, refer to the [Wandelscript readme](/wandelscript/README.md).
 
-## Novax
+## NOVAx
 
-Novax is an app framework for building server applications on top of NOVA. It provides common core concepts like the handling of programs and their execution.
+NOVAx is an app framework for building server applications on top of Wandelbots NOVA.
+It provides common core concepts like the handling of programs and their execution.
 
 ```bash
 uv add wandelbots-nova --extra novax
 ```
 
-To use Novax in your application, you need to create a new `Novax` instance as an entrypoint.
+To use NOVAx in your application, you need to create a new `Novax` instance as an entrypoint.
 
 ```python
 from pathlib import Path
@@ -113,7 +117,7 @@ def main(host: str = "0.0.0.0", port: int = 8000):
 
     # Register Python programs (existing functionality)
     novax.register_program(simple_program)
-    # You can also register wandelscript files
+    # You can also register Wandelscript files
     novax.register_program(Path(__file__).parent / "programs" / "program2.ws")
 
     # Serve the FastAPI app
@@ -128,9 +132,9 @@ def main(host: str = "0.0.0.0", port: int = 8000):
     )
 ```
 
-Now you can inspect the API at `http://localhost:8000/docs`.
+Inspect the API at `http://localhost:8000/docs`.
 
-## 🚀 Quick Start
+## 🚀 Quickstart
 
 See the [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) for usage of this library including 3D visualization.
 
@@ -144,20 +148,23 @@ Import the library in your code to get started.
 from nova import Nova
 ```
 
-The SDK also includes an auto-generated API client for the NOVA API. You can access the API client using the `api` module.
+You can access the automatically generated NOVA API client using the `api` module.
 
 ```python
 from nova import api
 ```
 
-Checkout the [basic](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/basic.py) and [plan_and_execute](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/plan_and_execute.py) examples to learn how to use the library.
-
-In [this](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) directory are more examples to explain the advanced usage of the SDK.
-For 3D visualization examples, see the main [examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) folder. Advanced rerun integration examples are in the [nova_rerun_bridge examples folder](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples).
+Check out the [basic](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/basic.py) and [plan_and_execute](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/plan_and_execute.py) examples to learn how to use the library.
 
 ## Examples
 
-### Basic Usage
+You can find different categories of examples in the repository:
+
+- **[Advanced SDK usage](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples)**
+- **[3D visualization](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples)**
+- **[Advanced Rerun integration](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/nova_rerun_bridge/examples)**
+
+### Basic usage
 
 ```python
 import nova
@@ -193,9 +200,9 @@ async def main():
             current_pose = await motion_group.tcp_pose(tcp)
 ```
 
-### Robot Motion Examples
+### Robot motion examples
 
-1. **Simple Point-to-Point Movement**
+1. **Basic Point-to-Point movement**
 
 ```python
 import nova
@@ -214,7 +221,7 @@ async def main():
         trajectory = await motion_group.plan(actions, tcp)
 ```
 
-2. **Collision-Free Movement**
+2. **Collision-free movement**
 
 ```python
 from nova.actions import collision_free
@@ -232,7 +239,7 @@ actions = [
 
 https://github.com/user-attachments/assets/0416151f-1304-46e2-a4ab-485fcda766fc
 
-3. **Multiple Robot Coordination**
+3. **Multiple robot coordination**
 
 ```python
 import asyncio
@@ -245,11 +252,11 @@ async def move_robots():
         )
 ```
 
-See the [move_multiple_robots](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/move_multiple_robots.py) example for more details.
+More information in [move_multiple_robots](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/move_multiple_robots.py).
 
-### Advanced Features
+### Advanced features
 
-1. **I/O Control**
+1. **Input/Output control**
 
 ```python
 from nova.actions import io_write, joint_ptp, cartesian_ptp
@@ -262,7 +269,7 @@ actions = [
 ]
 ```
 
-2. **3D Visualization with Rerun**
+2. **3D visualization with rerun**
 
 ```python
 # Basic 3D visualization (default)
@@ -295,15 +302,11 @@ async def main():
 )
 ```
 
-> **Note**: For visualization features, install the rerun extras:
->
-> ```bash
-> uv add wandelbots-nova --extra nova-rerun-bridge
-> ```
+> **Note**: Install [rerun extras](#recommended-uv-project-and-rerun-visualization) to enable visualization
 
 <img width="1242" alt="pointcloud" src="https://github.com/user-attachments/assets/8e981f09-81ae-4e71-9851-42611f6b1843" />
 
-3. **Adding and Using Custom TCP (Tool Center Point)**
+3. **Custom TCPs (Tool Center Points)**
 
 ```python
 import json
@@ -359,7 +362,7 @@ async def setup_tcp():
 
 <img width="100%" alt="trajectory" src="https://github.com/user-attachments/assets/649de0b7-d90a-4095-ad51-d38d3ac2e716" />
 
-4. **Using Common Coordinate Systems for Multiple Robots**
+4. **Common coordinate systems for multiple robots**
 
 ```python
 from math import pi
@@ -453,7 +456,7 @@ async def setup_coordinated_robots():
 
 ## Development
 
-To install the development dependencies, run the following command
+To install development dependencies, run
 
 ```bash
 uv sync --extra "nova-rerun-bridge"
@@ -466,68 +469,89 @@ uv run ruff format
 uv run ruff check --select I --fix
 ```
 
-### Yaml Linting
+### Yaml linting
 
 ```bash
 docker run --rm -it -v $(pwd):/data cytopia/yamllint -d .yamllint .
 ```
 
-### Using Branch Versions For Testing
+### Branch versions for testing
 
-When having feature branches or forks, or might be helpful to test the library as dependency in other projects first.
-The pyproject.toml allows to pull the library from different sources.
+When working with feature branches or forks, it can be helpful to test the library as a dependency in other projects before merging.
+You can specify custom sources in your pyproject.toml to pull the library from a specific branch:
+
+Using PEP 621-style table syntax:
 
 ```toml
 wandelbots-nova = { git = "https://github.com/wandelbotsgmbh/wandelbots-nova.git", branch = "fix/http-prefix" }
 ```
 
+Using PEP 508 direct URL syntax:
+
 ```toml
 wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/http-prefix
 ```
 
-### Environment Variables for NOVA Configuration
+### Environment variables for NOVA configuration
 
-1. **Copy the Template:** Make a copy of the provided `.env.template` file and rename it to `.env` with `cp .env.template .env`.
-2. **Fill in the Values:** Open the `.env` file in a text editor and provide the necessary values for each variable. The table below describes each variable and its usage.
+Copy the provided `.env.template` file and rename it to `.env`:
 
-| Variable            | Description                                                               | Required | Default | Example                                          |
-| ------------------- | ------------------------------------------------------------------------- | -------- | ------- | ------------------------------------------------ |
-| `NOVA_API`          | The base URL or hostname of the NOVA server instance.                     | Yes      | None    | `https://nova.example.com` or `http://172.0.0.1` |
-| `NOVA_USERNAME`     | The username credential used for authentication with the NOVA service.    | Yes\*    | None    | `my_username`                                    |
-| `NOVA_PASSWORD`     | The password credential used in conjunction with `NOVA_USERNAME`.         | Yes\*    | None    | `my_password`                                    |
-| `NOVA_ACCESS_TOKEN` | A pre-obtained access token for NOVA if using token-based authentication. | Yes\*    | None    | `eyJhbGciOi...`                                  |
+```bash
+cp .env.template .env
+```
 
-> **Note on Authentication:**
-> You can authenticate with NOVA using either **username/password** credentials or a pre-obtained **access token**, depending on your setup and security model:
+Open the `.env` file in a text editor and fill in the values. Here's what each variable does:
+
+| Variable            | Description                                                                         | Required | Default | Example                                          |
+| ------------------- | ----------------------------------------------------------------------------------- | -------- | ------- | ------------------------------------------------ |
+| `NOVA_API`          | Base URL or hostname of the Wandelbots NOVA server instance                         | Yes      | None    | `https://nova.example.com` or `http://172.0.0.1` |
+| `NOVA_USERNAME`     | Username credential used for authentication with the NOVA service                   | Yes\*    | None    | `my_username`                                    |
+| `NOVA_PASSWORD`     | Password credential used in conjunction with `NOVA_USERNAME`                        | Yes\*    | None    | `my_password`                                    |
+| `NOVA_ACCESS_TOKEN` | Pre-obtained access token for Wandelbots NOVA (if using token-based authentication) | Yes\*    | None    | `eyJhbGciOi...`                                  |
+
+> **Note:**
+> You can authenticate with Wandelbots NOVA using either **username/password credentials** or a **pre-obtained access token**, depending on your setup and security model:
 >
-> - If using **username/password**: Ensure both `NOVA_USERNAME` and `NOVA_PASSWORD` are set, and leave `NOVA_ACCESS_TOKEN` unset.
-> - If using an **access token**: Ensure `NOVA_ACCESS_TOKEN` is set, and leave `NOVA_USERNAME` and `NOVA_PASSWORD` unset.
+> - **Username/password authentication**: Ensure both `NOVA_USERNAME` and `NOVA_PASSWORD` are set, and leave `NOVA_ACCESS_TOKEN` unset.
+> - **Token-based authentication**: Ensure `NOVA_ACCESS_TOKEN` is set, and leave `NOVA_USERNAME` and `NOVA_PASSWORD` unset.
 >
-> **Only one method should be used at a time.** If both methods are set, the token-based authentication (`NOVA_ACCESS_TOKEN`) will typically take precedence.
+> **Use only one method at a time**. If both are set, token-based authentication takes precedence.
 
-## Release Process
+## Release process
 
-### Overview
+### Branch behaviour overview
 
-| Variable    | Description                                                            | Where                                | Example version      |
-| ----------- | ---------------------------------------------------------------------- | ------------------------------------ | -------------------- |
-| `main`      | Stable releases (normal semver vX.Y.Z)                                 | PyPI (`pip install wandelbots-nova`) | `v1.13.0`            |
-| `release/*` | The username credential used for authentication with the NOVA service. | PyPI                                 | `v1.8.7-release-1.x` |
-| any branch  | Development builds (not published to PyPI)                             | GitHub Actions                       | `e4c8af0647839...`   |
+| Branch      | Purpose                                                | Published to                           | Example version      |
+| ----------- | ------------------------------------------------------ | -------------------------------------- | -------------------- |
+| `main`      | Stable releases (semantic versioning vX.Y.Z)           | PyPI (`pip install wandelbots-nova`)   | `v1.13.0`            |
+| `release/*` | LTS-releases, pre-releases or hotfixes for older lines | PyPI (labeled with release suffix)     | `v1.8.7-release-1.x` |
+| any other   | Development builds                                     | GitHub actions (not published to PyPI) | `e4c8af0647839...`   |
 
-### Stable releases (main)
+### Stable releases from `main`
 
-Every merge to main triggers the Release package workflow: 1. Semantic-release inspects the commit messages, bumps the version, builds the wheel/sdist. 2. The package is uploaded to PyPI. 3. A GitHub Release is created/updated with the assets.
+Merging into main triggers the release workflow:
 
-### Long-term-support lines (release/\*)
+1. `semantic-release` analyzes commit messages and bumps the version automatically.
+2. A source distribution and wheel are built and uploaded to PyPI.
+3. A GitHub release is created (or updated) with the release assets.
 
-For customers stuck on an older major or for special LTS contracts:
+### LTS releases from `release/\*`
 
-- Open (or keep) a branch named `release/1.x`, `release/customer-foo`, etc.
-- Every commit on that branch triggers the same workflow and publishes stable numbers, but the git tag and PyPI version carry the branch slug so lines never collide.
+If you're on older major versions or under a special LTS contract:
 
-### Create a dev build
+1. Use (or create) a branch like `release/1.x`, `release/customer-foo`, etc.
+2. Every commit to these branches triggers the same workflow as on `main`.
+3. Versions include the branch name to prevent collisions, e.g. `v1.8.7-release-1.x`
 
-If you only need a throw-away test build, go to the
-[Actions](https://github.com/wandelbotsgmbh/wandelbots-nova/actions) tab → "**Nova SDK: Build dev wheel**" → Run workflow (pick the branch).
-When it finishes, open the Install instructions job for a ready-to-copy `pip install "wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@<commit>"` line.
+### Create a dev build (manual)
+
+Need a temporary test build? Use GitHub actions:
+
+1. Go to the [actions tab](https://github.com/wandelbotsgmbh/wandelbots-nova/actions).
+2. Find **Nova SDK: Build dev wheel** and click `Run workflow`.
+3. Select a branch and trigger the job.
+4. After completion, open the [Installation step](#installation) to copy the ready-to-use `pip install` command:
+
+    ```bash
+        pip install "wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@<commit>"
+    ```
