@@ -19,7 +19,7 @@ class CollisionFreeMotion(Action):
 
     type: Literal["collision_free_ptp"] = "collision_free_ptp"
     target: Pose | tuple[float, ...]
-    settings: MotionSettings = MotionSettings()
+    settings: MotionSettings | None = None
     collision_scene: wb.models.CollisionScene | None = None
 
     def to_api_model(self) -> api.models.PlanCollisionFreePTPRequestTarget:
@@ -33,7 +33,7 @@ class CollisionFreeMotion(Action):
 
 def collision_free(
     target: Pose | tuple[float, ...],
-    settings: MotionSettings = MotionSettings(),
+    settings: MotionSettings | None = None,
     collision_scene: wb.models.CollisionScene | None = None,
 ) -> CollisionFreeMotion:
     return CollisionFreeMotion(target=target, settings=settings, collision_scene=collision_scene)
@@ -50,7 +50,7 @@ class Motion(Action, ABC):
 
     type: Literal["linear", "cartesian_ptp", "circular", "joint_ptp", "spline"]
     target: Pose | tuple[float, ...]
-    settings: MotionSettings = MotionSettings()
+    settings: MotionSettings | None = None
     collision_scene: wb.models.CollisionScene | None = None
 
     @property
@@ -88,7 +88,7 @@ class Linear(Motion):
 
 def linear(
     target: PoseOrVectorTuple,
-    settings: MotionSettings = MotionSettings(),
+    settings: MotionSettings | None = None,
     collision_scene: wb.models.CollisionScene | None = None,
 ) -> Linear:
     """Convenience function to create a linear motion
@@ -146,7 +146,7 @@ class CartesianPTP(Motion):
 
 def cartesian_ptp(
     target: PoseOrVectorTuple,
-    settings: MotionSettings = MotionSettings(),
+    settings: MotionSettings | None = None,
     collision_scene: wb.models.CollisionScene | None = None,
 ) -> CartesianPTP:
     """Convenience function to create a point-to-point motion
@@ -208,7 +208,7 @@ class Circular(Motion):
 def circular(
     target: PoseOrVectorTuple,
     intermediate: PoseOrVectorTuple,
-    settings: MotionSettings = MotionSettings(),
+    settings: MotionSettings | None = None,
     collision_scene: wb.models.CollisionScene | None = None,
 ) -> Circular:
     """Convenience function to create a circular motion
@@ -272,7 +272,7 @@ class JointPTP(Motion):
 
 def joint_ptp(
     target: tuple[float, ...],
-    settings: MotionSettings = MotionSettings(),
+    settings: MotionSettings | None = None,
     collision_scene: wb.models.CollisionScene | None = None,
 ) -> JointPTP:
     """Convenience function to create a joint PTP motion
@@ -315,7 +315,7 @@ class Spline(Motion):
 
 def spline(
     target: PoseOrVectorTuple,
-    settings: MotionSettings = MotionSettings(),
+    settings: MotionSettings | None = None,
     path_parameter: float = 1,
     time=None,
     collision_scene: wb.models.CollisionScene | None = None,

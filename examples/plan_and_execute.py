@@ -12,10 +12,10 @@ import asyncio
 
 import nova
 from nova import Nova, api, viewers
-from nova.actions import cartesian_ptp, io_write, joint_ptp
+from nova.actions import TrajectoryBuilder, cartesian_ptp, io_write, joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
-from nova.types import Pose
+from nova.types import MotionSettings, Pose
 
 
 @nova.program(
@@ -47,21 +47,40 @@ async def main():
             current_pose = await motion_group.tcp_pose(tcp)
             target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))
 
-            actions = [
-                joint_ptp(home_joints),
-                cartesian_ptp(target_pose),
-                joint_ptp(home_joints),
-                cartesian_ptp(target_pose @ Pose((50, 0, 0, 0, 0, 0))),
-                joint_ptp(home_joints),
-                io_write(key="tool_out[0]", value=False),
-                cartesian_ptp(target_pose @ Pose((50, 100, 0, 0, 0, 0))),
-                joint_ptp(home_joints),
-                cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
-                joint_ptp(home_joints),
-            ]
+            slow = MotionSettings(tcp_velocity_limit=50)
+            normal = MotionSettings(tcp_velocity_limit=250)
+            fast = MotionSettings(tcp_velocity_limit=500)
 
-        joint_trajectory = await motion_group.plan(actions, tcp)
-        motion_iter = motion_group.stream_execute(joint_trajectory, tcp, actions=actions)
+            # The trajectory builder is a context manager that can be used to build a trajectory with fine-grained control over the settings
+            t = TrajectoryBuilder(settings=normal)
+
+            # First move to the home position, since we passed "slow" settings to the motion it will override the one from the trajectory builder
+            t.move(joint_ptp(home_joints, settings=slow))
+
+            # It's possible to use the sequence method to add multiple actions to the trajectory. Since no settings are specified it takes
+            #   the settings from the trajectory builder
+            t.sequence(
+                [
+                    cartesian_ptp(target_pose),
+                    joint_ptp(home_joints),
+                    cartesian_ptp(target_pose @ Pose((50, 0, 0, 0, 0, 0))),
+                    joint_ptp(home_joints),
+                    io_write(key="tool_out[0]", value=False),
+                ]
+            )
+
+            # You can use the set(...) context manager to set settings for a block of actions
+            with t.set(settings=fast):
+                t.move(cartesian_ptp(target_pose @ Pose((50, 100, 0, 0, 0, 0))))
+                t.move(
+                    joint_ptp(home_joints, settings=slow)
+                )  # Moving back to home with slow settings
+                t.move(cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))))
+
+            t.move(joint_ptp(home_joints, settings=slow))
+
+        joint_trajectory = await motion_group.plan(t.actions, tcp)
+        motion_iter = motion_group.stream_execute(joint_trajectory, tcp, actions=t.actions)
         async for motion_state in motion_iter:
             print(motion_state)
 

@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## v2.7.0 (2025-07-24)
+
+### Features
+
+- **NDX-174**: Implemented TrajectoryBuilder (#236)
+  ([#236](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/236),
+  [`e34db72`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e34db721c9d6b9e152b862b7ce91a752cfd19ff3))
+
+
+## v2.6.3 (2025-07-24)
+
+### Bug Fixes
+
+- Novax should not create bucket and use cell variable (#239)
+  ([#239](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/239),
+  [`9abb2fb`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9abb2fb17b41729f33489f5e42ad6e1985abda8f))
+
+
 ## v2.6.2 (2025-07-24)
 
 ### Bug Fixes
