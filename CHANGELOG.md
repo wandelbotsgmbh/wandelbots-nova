@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.7.1 (2025-07-24)
+
+### Bug Fixes
+
+- Update the program bucket novax uses (#241)
+  ([#241](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/241),
+  [`b92c954`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b92c9548d75652e2eb7424d3624df30de146de45))
+
+
 ## v2.7.0 (2025-07-24)
 
 ### Features
