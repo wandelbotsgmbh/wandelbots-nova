@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.7.2 (2025-07-24)
+
+### Chores
+
+- **NDX-159**: Align readme with docs.wandelbots.io (#240)
+  ([#240](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/240),
+  [`dd6c594`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/dd6c594a9ea5bbe9a428d2228a2112b7a9e7164a))
+
+
 ## v2.7.1 (2025-07-24)
 
 ### Bug Fixes
