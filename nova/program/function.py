@@ -133,9 +133,16 @@ class Program(BaseModel, Generic[Parameters, Return]):
             async with Nova() as nova:
                 cell = nova.cell()
                 for controller_id in controller_ids:
-                    await cell.delete_robot_controller(controller_id)
-                    self._log("info", f"Cleaned up controller with ID '{controller_id}'")
+                    try:
+                        await cell.delete_robot_controller(controller_id)
+                        self._log("info", f"Cleaned up controller with ID '{controller_id}'")
+                    except Exception as e:
+                        # WORKAROUND: {"code":9, "message":"Failed to 'Connect to Host' due the
+                        #   following reason:\nConnection refused (2)!\nexception::CommunicationException: Configured robot connection is not reachable.", "details":[]}
+                        # Log and suppress errors for individual controller cleanup
+                        self._log("error", f"Error cleaning up controller '{controller_id}': {e}")
         except Exception as e:
+            # Log and suppress errors for the overall cleanup process
             self._log("error", f"Error during controller cleanup: {e}")
 
     @property
