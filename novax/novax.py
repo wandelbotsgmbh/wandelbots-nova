@@ -9,7 +9,7 @@ from nova.core.logging import logger
 from nova.program.function import Program
 from nova.program.store import Program as StoreProgram
 from nova.program.store import ProgramStore
-from novax.program_manager import ProgramDetails, ProgramManager, ProgramSource
+from novax.program_manager import ProgramDetails, ProgramManager
 
 # Read BASE_PATH environment variable and extract app name
 _BASE_PATH = config("BASE_PATH", default="/default/novax")
@@ -33,14 +33,6 @@ class Novax:
     def program_manager(self) -> ProgramManager:
         """Get the program manager instance"""
         return self._program_manager
-
-    def register_program_source(self, program_source: ProgramSource) -> None:
-        """Register a program source"""
-        self._program_manager.register_program_source(program_source)
-
-    def deregister_program_source(self, program_source: ProgramSource) -> None:
-        """Deregister a program source"""
-        self._program_manager.deregister_program_source(program_source)
 
     def register_program(self, program: Program) -> str:
         """
