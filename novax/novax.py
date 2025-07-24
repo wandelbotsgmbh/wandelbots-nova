@@ -3,7 +3,6 @@ from typing import AsyncIterator, Optional
 
 from decouple import config
 from fastapi import APIRouter, FastAPI
-from nats.js.api import KeyValueConfig
 
 from nova.cell.robot_cell import RobotCell
 from nova.core.logging import logger
