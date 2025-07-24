@@ -539,7 +539,7 @@ Merging into main triggers the release workflow:
 
 If you're on older major versions or under a special LTS contract:
 
-1. Use (or create) a brnach like `release/1.x`, `release/customer-foo`, etc.
+1. Use (or create) a branch like `release/1.x`, `release/customer-foo`, etc.
 2. Every commit to these branches triggers the same workflow as on `main`.
 3. Versions include the branch name to prevent collisions, e.g. `v1.8.7-release-1.x`
 
