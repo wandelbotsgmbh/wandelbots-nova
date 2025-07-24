@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.6.3 (2025-07-24)
+
+### Bug Fixes
+
+- Novax should not create bucket and use cell variable (#239)
+  ([#239](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/239),
+  [`9abb2fb`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9abb2fb17b41729f33489f5e42ad6e1985abda8f))
+
+
 ## v2.6.2 (2025-07-24)
 
 ### Bug Fixes
