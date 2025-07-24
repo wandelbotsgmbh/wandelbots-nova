@@ -13,6 +13,9 @@ from nova.actions.motions import (
     linear,
     ptp,
 )
+from nova.actions.trajectory_builder import TrajectoryBuilder
+
+TrajectoryMacher = TrajectoryBuilder
 
 __all__ = [
     "Action",
@@ -30,4 +33,6 @@ __all__ = [
     "wait",
     "MovementController",
     "MovementControllerContext",
+    "TrajectoryBuilder",
+    "TrajectoryMacher",
 ]

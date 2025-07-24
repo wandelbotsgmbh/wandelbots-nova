@@ -8,7 +8,7 @@ from nova import api
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
-from nova.types import MovementControllerFunction, Pose
+from nova.types import MotionSettings, MovementControllerFunction, Pose
 
 
 class ActionLocation(pydantic.BaseModel):
@@ -135,15 +135,10 @@ class CombinedActions(pydantic.BaseModel):
         motion_commands = []
         for motion in self.motions:
             path = api.models.MotionCommandPath.from_dict(motion.to_api_model().model_dump())
-            blending = (
-                motion.settings.as_blending_setting()
-                if motion.settings.has_blending_settings()
-                else None
-            )
+            settings = motion.settings or MotionSettings()
+            blending = settings.as_blending_setting() if settings.has_blending_settings() else None
             limits_override = (
-                motion.settings.as_limits_settings()
-                if motion.settings.has_limits_override()
-                else None
+                settings.as_limits_settings() if settings.has_limits_override() else None
             )
             motion_commands.append(
                 api.models.MotionCommand(
