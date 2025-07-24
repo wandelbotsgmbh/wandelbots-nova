@@ -198,14 +198,12 @@ class Novax:
         # Replace the dependency function on the FastAPI app
         app.dependency_overrides[get_program_manager] = get_program_manager_override
 
-        # Attach lifespan to the router
         if not _CELL_NAME:
             logger.error(
                 "Novax: CELL_NAME environment variable is not set, your programs will not be registered"
             )
-            return
-
-        programs_router.lifespan_context = self.program_store_lifespan
+        else:
+            programs_router.lifespan_context = self.program_store_lifespan
 
         # Include the programs router
         app.include_router(programs_router)
