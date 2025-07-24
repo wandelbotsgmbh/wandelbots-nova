@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.6.2 (2025-07-24)
+
+### Bug Fixes
+
+- Pin to nats 2.10 (#238) ([#238](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/238),
+  [`893fc25`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/893fc25a9c6d120434daa8051e3a6e1b7eb4dcd2))
+
+
 ## v2.6.1 (2025-07-23)
 
 ### Bug Fixes
