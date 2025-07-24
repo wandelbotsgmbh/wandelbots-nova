@@ -17,7 +17,7 @@ _APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else "novax"
 logger.info(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
 
 # Create nats programs bucket name
-_CELL_NAME = config("CELL_NAME")
+_CELL_NAME = config("CELL_NAME", default="")
 _NATS_PROGRAM_BUCKET = f"nova.{_CELL_NAME}:programs"
 _NATS_CLIENT_CONFIG = {"connect_timeout": 2.0, "allow_reconnect": True, "max_reconnect_attempts": 2}
 
