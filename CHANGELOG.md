@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.7.3 (2025-07-25)
+
+### Bug Fixes
+
+- Removed program source & introduced wandelscript program creation (#242)
+  ([#242](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/242),
+  [`5289423`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/528942351fe8d6861998e42d4abaf279e22aa2aa))
+
+
 ## v2.7.2 (2025-07-24)
 
 ### Chores
