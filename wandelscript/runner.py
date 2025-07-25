@@ -1,11 +1,17 @@
+from pathlib import Path
+
 from loguru import logger
 
+import nova
+from nova import Nova
 from nova.cell.robot_cell import RobotCell
+from nova.program import Program
 from nova.program import ProgramRunner as NovaProgramRunner
 from nova.program.runner import ExecutionContext as NovaExecutionContext
 from nova.program.runner import ProgramRun
 from wandelscript.datatypes import ElementType
 from wandelscript.ffi import ForeignFunction
+from wandelscript.ffi_loader import load_foreign_functions
 from wandelscript.metamodel import Program as WandelscriptProgram
 from wandelscript.runtime import ExecutionContext
 
@@ -97,3 +103,36 @@ def run(
     )
     runner.start(sync=True)
     return runner
+
+
+def create_wandelscript_program(
+    program_id: str,
+    code: str,
+    args: dict[str, ElementType] = {},
+    foreign_functions_paths: list[Path] | None = None,
+    default_robot: str | None = None,
+    default_tcp: str | None = None,
+) -> Program:
+    logger.info(f"Creating wandelscript program: {program_id}")
+    foreign_functions = (
+        load_foreign_functions(foreign_functions_paths) if foreign_functions_paths else {}
+    )
+
+    @nova.program(id=program_id)
+    async def wandelscript_wrapper():
+        async with Nova() as nova:
+            robot_cell = await nova.cell().get_robot_cell()
+
+            # TODO: Don't create another runner here, just execute the program
+            result = run(
+                program_id=program_id,
+                program=code,
+                args=args,
+                foreign_functions=foreign_functions,
+                robot_cell_override=robot_cell,
+                default_robot=default_robot,
+                default_tcp=default_tcp,
+            )
+            return result
+
+    return wandelscript_wrapper

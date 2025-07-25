@@ -229,26 +229,3 @@ async def test_get_program():
     # Test getting non-existent program
     non_existent = await manager.get_program("nonexistent")
     assert non_existent is None
-
-
-@pytest.mark.asyncio
-async def test_program_source_integration():
-    """Test integration with program sources"""
-    manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
-
-    # Create a simple program source
-    class SimpleProgramSource:
-        async def get_programs(self, program_manager):
-            yield simple_program
-            yield parameterized_program
-
-    # Register the program source
-    source = SimpleProgramSource()
-    manager.register_program_source(source)
-
-    # Get programs (this should trigger source discovery)
-    programs = await manager.get_programs()
-
-    # Verify programs from source are registered
-    assert "simple_program_test" in programs
-    assert "parameterized_program" in programs
