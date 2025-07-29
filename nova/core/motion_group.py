@@ -411,12 +411,20 @@ class MotionGroup(AbstractRobot):
                 and instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED
             )
 
+        def on_done(task: asyncio.Task) -> None:
+            if task.exception():
+                logger.error(f"Execution task for {self} failed with exception: {task.exception()}")
+                raise task.exception()
+
         execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
         execution_task = asyncio.create_task(
             self._api_gateway.motion_api.execute_trajectory(
                 cell=self._cell, client_request_generator=execute_response_streaming_controller
             )
         )
+
+        execution_task.add_done_callback(on_done)
+
         async for execute_response in execute_response_streaming_controller:
             yield execute_response
         await execution_task
