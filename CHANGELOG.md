@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.7.4 (2025-07-30)
+
+### Bug Fixes
+
+- Update nats client version (#245)
+  ([#245](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/245),
+  [`4484d98`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4484d987af03d8b6fe7895c83dc7625402524f06))
+
+
 ## v2.7.3 (2025-07-25)
 
 ### Bug Fixes
