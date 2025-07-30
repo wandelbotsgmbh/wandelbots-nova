@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.8.0 (2025-07-30)
+
+### Features
+
+- Read nats_broker env for cycle related nats client (#246)
+  ([#246](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/246),
+  [`e2861f4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e2861f41b8cab74d5c6f30b81be3427cb4c83eb9))
+
+
 ## v2.7.4 (2025-07-30)
 
 ### Bug Fixes
