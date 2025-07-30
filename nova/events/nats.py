@@ -1,11 +1,14 @@
 import nats
-from decouple import Csv, config
+from decouple import config
 
 from nova.core.logging import logger
 
 from . import BaseCycleEvent, cycle_failed, cycle_finished, cycle_started
 
-NATS_SERVERS = config("NATS_SERVERS", cast=Csv(), default="")
+NATS_SERVERS = config("NATS_SERVERS", default=None)
+if not NATS_SERVERS:
+    NATS_SERVERS = config("NATS_BROKER", default="nats://nats.wandelbots.svc:4222", cast=str)
+
 NATS_SUBJECT_CYCLE = config("NATS_SUBJECT_CYCLE", default="cell.process.cycle")
 
 _nats_client: nats.NATS | None = None
