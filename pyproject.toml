@@ -58,7 +58,7 @@ wandelscript = [
     "antlr4-python3-runtime==4.13.1",
     "dotenv",
     "geometricalgebra>=0.1.3,<0.2",
-    "typer[all]>=0.12,<0.16",
+    "typer[all]>=0.12,<0.17",
 ]
 novax = [
     "fastapi>=0.115.6",
