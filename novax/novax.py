@@ -129,7 +129,7 @@ class Novax:
             ) as program_store:
                 for program_id in program_ids:
                     try:
-                        await program_store.delete(f"{_APP_NAME}:{program_id}")
+                        await program_store.delete(f"{_APP_NAME}.{program_id}")
                         logger.debug(f"Program {program_id} removed from store")
                     except Exception as e:
                         logger.error(f"Failed to remove program {program_id} from store: {e}")
