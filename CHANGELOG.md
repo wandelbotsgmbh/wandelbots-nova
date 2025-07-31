@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.8.1 (2025-07-31)
+
+### Bug Fixes
+
+- Use . instead of : for novax programs (#247)
+  ([#247](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/247),
+  [`ff78f77`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ff78f7764c72202641edbe0c25ae76811e811985))
+
+
 ## v2.8.0 (2025-07-30)
 
 ### Features
