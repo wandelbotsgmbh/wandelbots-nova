@@ -54,7 +54,7 @@ nova-rerun-bridge = [
     "trimesh>=4.5.3",
 ]
 wandelscript = [
-    "aiostream>=0.6.1,<0.7",
+    "aiostream>=0.6.1,<0.8",
     "antlr4-python3-runtime==4.13.1",
     "dotenv",
     "geometricalgebra>=0.1.3,<0.2",
