@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.8.2 (2025-07-31)
+
+### Bug Fixes
+
+- Use . instead of : (#248) ([#248](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/248),
+  [`4c2bcae`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4c2bcae2035ac352afaff5276f801bbe4663b25b))
+
+
 ## v2.8.1 (2025-07-31)
 
 ### Bug Fixes
