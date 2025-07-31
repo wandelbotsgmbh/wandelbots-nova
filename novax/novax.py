@@ -101,7 +101,7 @@ class Novax:
             ) as program_store:
                 for program_id, store_program in store_programs.items():
                     try:
-                        await program_store.put(f"{_APP_NAME}:{program_id}", store_program)
+                        await program_store.put(f"{_APP_NAME}.{program_id}", store_program)
                         logger.debug(f"Program {program_id} synced to store")
                     except Exception as e:
                         logger.error(f"Failed to sync program {program_id} to store: {e}")
