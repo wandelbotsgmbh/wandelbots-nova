@@ -1,4 +1,9 @@
+import asyncio
+import bisect
+from typing import AsyncIterator
+
 import wandelbots_api_client.v2 as wb
+from icecream import ic
 
 from nova.actions import MovementControllerContext
 from nova.core.exceptions import InitMovementFailed
@@ -10,6 +15,9 @@ from nova.types import (
     Pose,
     RobotState,
 )
+
+ExecuteJoggingRequestStream = AsyncIterator[wb.models.ExecuteJoggingRequest]
+ExecuteJoggingResponseStream = AsyncIterator[wb.models.ExecuteJoggingResponse]
 
 
 def motion_group_state_to_motion_state(

@@ -345,6 +345,39 @@ class MotionGroup(AbstractRobot):
             yield execute_response
         await execution_task
 
+    async def _stream_jogging(self, tcp, movement_controller):
+        controller = movement_controller(
+            MovementControllerContext(
+                combined_actions=CombinedActions(),  # type: ignore
+                motion_id="DUMMY_MOTION_ID",  # TODO This is a dummy ID, not used in jogging
+            )
+        )
+
+        def stop_condition(_response):
+            return True
+
+        execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
+        execution_task = asyncio.create_task(
+            self._api_gateway.motion_group_jogging_api.execute_jogging(
+                cell=self._cell, controller=self._controller_id, client_request_generator=controller
+            )
+        )
+        # TODO refactor
+        MOTION_STATE_STREAM_RATE_MS = 100
+        motion_state_stream = self._api_gateway.motion_group_api.stream_motion_group_state(
+            cell=self._cell,
+            controller=self._controller_id,
+            motion_group=self.motion_group_id,
+            response_rate=MOTION_STATE_STREAM_RATE_MS,
+        )
+        execute_response_stream = stream.merge(
+            execute_response_streaming_controller, motion_state_stream
+        )
+        async for execute_response in execute_response_stream.stream():
+            # async for execute_response in execute_response_streaming_controller:
+            yield execute_response
+        await execution_task
+
     async def _get_robot_setup(self, tcp: str) -> wb.models.MotionGroupSetup:
         # TODO: mypy failed on main branch, need to check
         if self._robot_setup is None or self._robot_setup.tcp != tcp:  # type: ignore

@@ -4,9 +4,11 @@ from math import pi
 
 from icecream import ic
 
-from nova import Nova
-from nova.api import models
+import nova
+from nova import Nova, api
+from nova.cell.controllers import virtual_controller
 from nova.core.movement_controller import Jogger
+from nova.program.function import ProgramPreconditions
 
 """
 Example: Perform jogging movements with a robot using the Jogger movement controller.
@@ -21,14 +23,23 @@ Prerequisites:
 ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
 
 
+@nova.program(
+    name="Basic Program",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur10e",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
+        ],
+        cleanup_controllers=False,
+    ),
+)
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "ur",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
-        )
+        controller = await cell.controller("ur10e")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
