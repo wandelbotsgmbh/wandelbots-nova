@@ -1,3 +1,4 @@
+import json
 from math import pi
 
 from wandelbots_api_client.models.abb_controller import AbbController
@@ -114,7 +115,7 @@ def virtual_controller(
     name: str,
     manufacturer: api.models.Manufacturer,
     type: api.models.VirtualControllerTypes | None = None,
-    json: str | None = None,
+    controller_config_json: str | None = None,
     position: list[float] | str | None = None,
 ) -> api.models.RobotController:
     """
@@ -124,8 +125,9 @@ def virtual_controller(
         manufacturer (api.models.Manufacturer): The manufacturer of the robot.
         type (api.models.VirtualControllerTypes | None): One of the available virtual controller types for this manufacturer.
         position: (list[float] | None): Initial joint position of the first motion group from the virtual robot controller.
-        json (str | None): Additional data to save on controller.
+        controller_config_json (str | None): Complete JSON configuration of the virtual robot controller.
     """
+    # TODO remove if the underlying API has a decent error message
     if isinstance(position, list) and len(position) != 7:
         raise ValueError("Position list must contain exactly 7 elements.")
 
@@ -133,6 +135,9 @@ def virtual_controller(
         position = MANUFACTURER_HOME_POSITIONS.get(manufacturer, [0.0] * 7)
 
     virtual_config = api.models.VirtualController(
-        manufacturer=manufacturer, type=type, json=json, position=json.dumps(position)
+        manufacturer=manufacturer,
+        type=type,
+        json=controller_config_json,
+        position=json.dumps(position),
     )
     return _build_controller(name=name, controller=virtual_config)

@@ -9,7 +9,7 @@ from nova_rerun_bridge import NovaRerunBridge
 
 async def build_collision_world(nova: Nova, cell_name: str, robot_setup: models.RobotSetup) -> str:
     collision_api = nova._api_client.store_collision_components_api
-    scene_api = nova._api_client.store_collision_scenes_api
+    scene_api = nova._api_client.store_collision_setups_api
 
     # Load all colliders from the JSON data
     colliders = {}

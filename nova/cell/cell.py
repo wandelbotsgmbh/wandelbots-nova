@@ -1,8 +1,13 @@
+import asyncio
+import json
+
 import nova.api as api
 from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
+from nova.core.logging import logger
+from nova.events import nats
 
 # This is the default value we use to wait for add_controller API call to complete.
 DEFAULT_ADD_CONTROLLER_TIMEOUT = 120
@@ -49,8 +54,8 @@ class Cell:
     async def add_controller(
         self,
         robot_controller: api.models.RobotController,
-        add_timeout: int = DEFAULT_ADD_CONTROLLER_TIMEOUT,
-        wait_for_ready_timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT,
+        add_timeout_secs: int = DEFAULT_ADD_CONTROLLER_TIMEOUT,
+        wait_for_ready_timeout_secs: int = DEFAULT_WAIT_FOR_READY_TIMEOUT,
     ) -> Controller:
         """
         Add a robot controller to the cell and wait for it to get ready.
@@ -64,19 +69,34 @@ class Cell:
         Returns:
             Controller: The added Controller object.
         """
-        await self._api_gateway.add_robot_controller(
-            cell=self._cell_id, robot_controller=robot_controller, timeout=add_timeout
-        )
 
-        await self._api_gateway.wait_for_controller_ready(
-            cell=self._cell_id, name=robot_controller.name, timeout=wait_for_ready_timeout
-        )
+        try:
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(
+                    self._api_gateway.add_robot_controller(
+                        cell=self._cell_id, robot_controller=robot_controller, timeout=None
+                    )
+                )
+                tg.create_task(
+                    self._wait_for_controller_ready(
+                        cell=self._cell_id,
+                        name=robot_controller.name,
+                        timeout=wait_for_ready_timeout_secs,
+                    )
+                )
+        except* asyncio.TimeoutError:
+            logger.error(
+                f"Timeout while adding controller {robot_controller.name} to cell {self._cell_id}"
+            )
+            raise TimeoutError(
+                f"Timeout while adding controller {robot_controller.name} to cell {self._cell_id}"
+            )
 
         return self._create_controller(robot_controller.name)
 
     async def ensure_controller(
         self,
-        robot_controller: api.models.RobotController,
+        controller_config: api.models.RobotController,
         add_timeout: int = DEFAULT_ADD_CONTROLLER_TIMEOUT,
         wait_for_ready_timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT,
     ) -> Controller:
@@ -95,13 +115,15 @@ class Cell:
         """
         # TODO this makes no sense if we already have the controller instance as in the robot_controller parameter
         controller = await self._api_gateway.get_controller_instance(
-            cell=self.cell_id, name=robot_controller.name
+            cell=self.cell_id, name=controller_config.name
         )
-
         if controller:
             return self._create_controller(controller.name)
+
         return await self.add_controller(
-            robot_controller, add_timeout=add_timeout, wait_for_ready_timeout=wait_for_ready_timeout
+            controller_config,
+            add_timeout_secs=add_timeout,
+            wait_for_ready_timeout_secs=wait_for_ready_timeout,
         )
 
     async def controllers(self) -> list[Controller]:
@@ -130,7 +152,7 @@ class Cell:
         )
         if not controller_instance:
             raise ControllerNotFound(controller=name)
-        return self._create_controller(controller_instance.controller)
+        return self._create_controller(controller_instance.name)
 
     async def delete_robot_controller(self, name: str, timeout: int = 25):
         """
@@ -151,3 +173,44 @@ class Cell:
         """
         controllers = await self.controllers()
         return RobotCell(timer=None, **{controller.id: controller for controller in controllers})
+
+    async def _wait_for_controller_ready(self, cell: str, name: str, timeout: int = 25) -> None:
+        """
+        Wait until the given controller has finished initializing or until timeout.
+        Args:
+            cell: The cell to check.
+            name: The name of the controller.
+            timeout: The timeout in seconds.
+        """
+        nc = await nats.get_client()
+        nats_subject = f"nova.v2.cells.{cell}.status"
+        sub = await nc.subscribe(subject=nats_subject)
+
+        async def cell_status_consumer():
+            async for msg in sub.messages:
+                logger.debug(f"Received message on {msg.subject}: {msg.data}")
+                data = json.loads(msg.data)
+                # filter RobotControllers
+                assert data[-1]["group"] == "RobotController" and data[-1]["service"] == name
+                for status in data:
+                    logger.debug(f"Controller status: {status}")
+                    if status["service"] == name:
+                        if status["status"]["code"] == "Running":
+                            await (
+                                sub.unsubscribe()
+                            )  # TODO is this the right place to unsubscribe? is it sufficient?
+                            return
+                        else:
+                            logger.info(f"Controller {name} status: {status['status']['code']}")
+
+        try:
+            await asyncio.wait_for(cell_status_consumer(), timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout waiting for {cell}/{name} controller to be ready")
+            # Check if the controller exists, if not, log it
+            raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")
+        finally:
+            logger.debug("Cleaning up NATS subscription")
+            pass
+            # await sub.unsubscribe()
+            # await nc.drain()  # Ensure we clean up the subscription and connection

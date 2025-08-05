@@ -26,7 +26,7 @@ from nova.program import ProgramPreconditions
                 type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             )
         ],
-        cleanup_controllers=True,
+        cleanup_controllers=False,
     ),
 )
 async def main():
@@ -40,10 +40,10 @@ async def main():
             await motion_group.ensure_virtual_tcp(
                 tcp=api.models.RobotTcp(
                     id=tcp,
-                    position=api.models.Vector3d(x=0, y=0, z=150),
-                    rotation=api.models.RotationAngles(
-                        angles=[0, 0, 0], type=api.models.RotationAngleTypes.ROTATION_VECTOR
-                    ),
+                    name=f"{tcp} Name",
+                    position=[0, 0, 150],
+                    orientation=[0, 0, 0],
+                    orientation_type=api.models.orientation_type.OrientationType.ROTATION_VECTOR,
                 ),
                 timeout=10,
             )

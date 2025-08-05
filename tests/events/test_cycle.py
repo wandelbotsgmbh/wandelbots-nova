@@ -1,10 +1,9 @@
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import pytest
 
-from nova import Cell
 from nova.events import (
     Cycle,
     CycleFailedEvent,
@@ -18,9 +17,7 @@ from nova.events import (
 
 @pytest.fixture
 def mock_cell():
-    cell = MagicMock(spec=Cell)
-    cell.cell_id = "test-cell-1"
-    return cell
+    return "test-cell-1"
 
 
 class TestCycle:
@@ -29,7 +26,7 @@ class TestCycle:
         """Test initialization of the Cycle class."""
         cycle = Cycle(mock_cell)
         assert cycle.cycle_id is None
-        assert cycle._cell_id == "test-cell-1"
+        assert cycle._cell_id == mock_cell
 
     @pytest.mark.asyncio
     async def test_start(self, mock_cell):

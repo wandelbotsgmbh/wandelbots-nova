@@ -13,14 +13,14 @@ from nova.core import logger
 from nova.core.exceptions import InconsistentCollisionScenes
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
-from nova.types import MovementResponse, Pose, RobotState
+from nova.types import MovementResponse, Pose, RobotState, RobotTcp
 from nova.utils import StreamExtractor
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
 
 
-def compare_collision_scenes(scene1: wb.models.CollisionScene, scene2: wb.models.CollisionScene):
+def compare_collision_scenes(scene1: wb.models.CollisionSetup, scene2: wb.models.CollisionSetup):
     if scene1.colliders != scene2.colliders:
         return False
 
@@ -80,7 +80,7 @@ def combine_trajectories(
     return final_trajectory
 
 
-def validate_collision_scenes(actions: list[Action]) -> list[models.CollisionScene]:
+def validate_collision_scenes(actions: list[Action]) -> list[models.CollisionSetup]:
     """
     RAE V1 APIs provide two ways of planning actions.
     Collition free planning and collision checked planning.
@@ -141,7 +141,7 @@ class MotionGroup(AbstractRobot):
         self._controller_id = controller_id
         self._motion_group_id = motion_group_id
         self._current_motion: str | None = None
-        self._robot_setup: wb.models.RobotSetup | None = None
+        self._robot_setup: wb.models.MotionGroupSetup | None = None
         super().__init__(id=motion_group_id)
 
     async def open(self):
@@ -174,7 +174,7 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        robot_setup: wb.models.RobotSetup | None = None,
+        robot_setup: wb.models.MotionGroupSetup | None = None,
     ) -> wb.models.JointTrajectory:
         """
         This method plans a trajectory and checks for collisions.
@@ -241,7 +241,7 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        robot_setup: wb.models.RobotSetup | None = None,
+        robot_setup: wb.models.MotionGroupSetup | None = None,
     ) -> wb.models.JointTrajectory:
         if not actions:
             raise ValueError("No actions provided")
@@ -345,7 +345,7 @@ class MotionGroup(AbstractRobot):
             yield execute_response
         await execution_task
 
-    async def _get_robot_setup(self, tcp: str) -> wb.models.RobotSetup:
+    async def _get_robot_setup(self, tcp: str) -> wb.models.MotionGroupSetup:
         # TODO: mypy failed on main branch, need to check
         if self._robot_setup is None or self._robot_setup.tcp != tcp:  # type: ignore
             self._robot_setup = await self._api_gateway.get_robot_setup(
@@ -377,6 +377,16 @@ class MotionGroup(AbstractRobot):
         except ValueError as e:
             logger.debug(f"No motion to stop for {self}: {e}")
 
+    async def _fetch_motion_group_description(self) -> wb.models.MotionGroupDescription:
+        return await self._api_gateway.motion_group_api.get_motion_group_description(
+            cell=self._cell, controller=self._controller_id, motion_group=self.motion_group_id
+        )
+
+    async def _fetch_motion_group_state(self) -> wb.models.MotionGroupState:
+        return await self._api_gateway.motion_group_api.get_current_motion_group_state(
+            cell=self._cell, controller=self._controller_id, motion_group=self.motion_group_id
+        )
+
     async def get_state(self, tcp: str | None = None) -> RobotState:
         """
         Returns the motion group state.
@@ -384,56 +394,47 @@ class MotionGroup(AbstractRobot):
             tcp (str | None): The reference TCP for the cartesian pose part of the robot state. Defaults to None.
                                         If None, the current active/selected TCP of the motion group is used.
         """
-        response = await self._api_gateway.get_motion_group_state(
-            cell_id=self._cell,
-            controller_id=self._controller_id,
-            motion_group_id=self.motion_group_id,
-            tcp=tcp,
-        )
-        pose = Pose(response.tcp_pose or response.tcp_pose)
-        return RobotState(pose=pose, joints=tuple(response.joint_position.joints))
+        motion_group_state = await self._fetch_motion_group_state()
+        if tcp is None or tcp == motion_group_state.tcp:
+            tcp = motion_group_state.tcp
+            pose = Pose(motion_group_state.tcp_pose)
+        else:
+            tcp_offset = (await self.tcps())[tcp].pose
+            pose = Pose(motion_group_state.flange_pose) @ tcp_offset
+        return RobotState(pose=pose, tcp=tcp, joints=tuple(motion_group_state.joint_position))
 
-    async def joints(self) -> tuple:
+    async def joints(self) -> tuple[float, ...]:
         """Returns the current joint positions of the motion group."""
-        state = await self.get_state()
-        if state.joints is None:
-            raise ValueError(
-                f"No joint positions available for motion group {self._motion_group_id}"
-            )
-        return state.joints
+        return (await self.get_state()).joints
 
     async def tcp_pose(self, tcp: str | None = None) -> Pose:
         """
         Returns the current TCP pose of the motion group.
         Args:
             tcp (str | None): The reference TCP for the returned pose. Defaults to None.
-                                        If None, the current active/selected TCP of the motion group is used.
+                                If None, the current active/selected TCP of the motion group is used.
         """
-        state = await self.get_state(tcp=tcp)
-        return state.pose
+        return (await self.get_state(tcp=tcp)).pose
 
-    async def tcps(self) -> list[wb.models.RobotTcp]:
-        response = await self._api_gateway.list_tcps(
-            cell_id=self._cell,
-            controller_id=self._controller_id,
-            motion_group_id=self.motion_group_id,
-        )
-        return response.tcps if response.tcps else []
+    async def tcps(self) -> dict[str, RobotTcp]:
+        return {
+            tcp: RobotTcp(id=tcp, name=tcp_offset.name, pose=Pose(tcp_offset.pose))
+            for tcp, tcp_offset in (await self._fetch_motion_group_description()).tcps.items()
+        }
 
+    # TODO names?, ids?, both?, whatever? (probably ids atm)
     async def tcp_names(self) -> list[str]:
-        return [tcp.id for tcp in await self.tcps()]
+        return list((await self.tcps()).keys())
 
-    async def active_tcp(self) -> wb.models.RobotTcp:
-        active_tcp = await self._api_gateway.get_active_tcp(
-            cell=self._cell, motion_group_id=self.motion_group_id
-        )
-        return active_tcp
+    async def active_tcp(self) -> RobotTcp:
+        return (await self._fetch_motion_group_state()).tcp
 
     async def active_tcp_name(self) -> str:
-        active_tcp = await self.active_tcp()
-        return active_tcp.id
+        return (await self.active_tcp()).name
 
-    async def ensure_virtual_tcp(self, tcp: models.RobotTcp, timeout: int = 12) -> models.RobotTcp:
+    async def ensure_virtual_tcp(
+        self, tcp: wb.models.RobotTcp, timeout: int = 12
+    ) -> wb.models.RobotTcp:
         """
         Ensure that a virtual TCP with the expected configuration exists on this motion group.
         If it doesn't exist, it will be created. If it exists but has different configuration,
@@ -447,25 +448,43 @@ class MotionGroup(AbstractRobot):
         """
         existing_tcps = await self.tcps()
 
-        existing_tcp = next((tcp_ for tcp_ in existing_tcps if tcp_.id == tcp.id), None)
-        if existing_tcp and existing_tcp == tcp:
+        from icecream import ic
+
+        existing_tcp = existing_tcps.get(tcp.id)
+        ic(existing_tcp, tcp)
+        if (
+            existing_tcp
+            and wb.models.RobotTcp(
+                id=existing_tcp.id,
+                name=existing_tcp.name,
+                position=existing_tcp.pose.position,
+                orientation=existing_tcp.pose.orientation,
+            )
+            == tcp
+        ):
+            # if existing_tcp and existing_tcp.pose == Pose(tcp.orientation, tcp.position):
             return existing_tcp
 
-        controller_name = self._motion_group_id.split("@")[1]
-        motion_group_index = int(self._motion_group_id.split("@")[0])
-
-        await self._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp(
-            cell=self._cell, controller=controller_name, id=motion_group_index, robot_tcp=tcp
+        await self._api_gateway.virtual_controller_api.add_virtual_controller_tcp(
+            cell=self._cell,
+            controller=self._controller_id,
+            motion_group=self._motion_group_id,
+            tcp=tcp.id,
+            robot_tcp_data=wb.models.RobotTcpData(
+                name=tcp.name,
+                position=tcp.position,
+                orientation=tcp.orientation,
+                orientation_type=tcp.orientation_type,
+            ),
         )
 
         # TODO: this is a workaround to wait for the TCP to be created
         t = timeout
         while t > 0:
-            existing_tcps = await self.tcps()
-            tcp_names = [tcp_.id for tcp_ in existing_tcps]
-            if tcp.id in tcp_names:
-                return tcp
-            await asyncio.sleep(1)
-            t -= 1
+            try:
+                return (await self.tcps())[tcp.id]
+            except KeyError:
+                await asyncio.sleep(1)
+                t -= 1
 
         raise TimeoutError(f"Failed to create TCP '{tcp.id}' within {timeout} seconds")

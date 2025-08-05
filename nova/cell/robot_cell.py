@@ -206,7 +206,7 @@ class AbstractRobot(Device):
         actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        robot_setup: api.models.RobotSetup | None = None,
+        robot_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -225,20 +225,21 @@ class AbstractRobot(Device):
         actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        robot_setup: api.models.RobotSetup | None = None,
+        robot_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
-        Args:
-            actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
-                Only motion actions are considered for planning.
-            tcp (str): The id of the tool center point (TCP)
-            start_joint_position: the initial position of the robot
-            start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
-            robot_setup (api.models.RobotSetup | None): The robot setup to be used for planning
+               Args:
+                   actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
+                       Only motion actions are considered for planning.
+                   tcp (str): The id of the tool center point (TCP)
+                   start_joint_position: the initial position of the robot
+                   start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
+                   robot_setup (api.models.MotionGroupSetup
+        | None): The robot setup to be used for planning
 
-        Returns:
-            api.models.JointTrajectory: The planned joint trajectory
+               Returns:
+                   api.models.JointTrajectory: The planned joint trajectory
         """
         if not isinstance(actions, list):
             actions = [actions]
@@ -246,12 +247,13 @@ class AbstractRobot(Device):
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        return await self._plan(
-            actions=actions,
-            tcp=tcp,
-            start_joint_position=start_joint_position,
-            robot_setup=robot_setup,
-        )
+        try:
+            trajectory = await self._plan(
+                actions=actions,
+                tcp=tcp,
+                start_joint_position=start_joint_position,
+                robot_setup=robot_setup,
+            )
 
             # Automatic viewer integration - log planning results if viewers are active
             await self._log_planning_results(actions, trajectory, tcp)

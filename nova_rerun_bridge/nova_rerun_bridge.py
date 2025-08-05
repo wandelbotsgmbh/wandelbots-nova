@@ -155,7 +155,7 @@ class NovaRerunBridge:
         """Fetch and log all collision scenes from Nova to Rerun."""
         bridge_nova = self._bridge_nova or self.nova
         collision_scenes = (
-            await bridge_nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
+            await bridge_nova._api_client.store_collision_setups_api.list_stored_collision_scenes(
                 cell=bridge_nova.cell()._cell_id
             )
         )
@@ -173,7 +173,7 @@ class NovaRerunBridge:
         """
         bridge_nova = self._bridge_nova or self.nova
         collision_scenes = (
-            await bridge_nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
+            await bridge_nova._api_client.store_collision_setups_api.list_stored_collision_scenes(
                 cell=bridge_nova.cell()._cell_id
             )
         )
@@ -264,7 +264,7 @@ class NovaRerunBridge:
             )
 
             logger.debug("Fetching collision scenes...")
-            collision_scenes = await bridge_nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
+            collision_scenes = await bridge_nova._api_client.store_collision_setups_api.list_stored_collision_scenes(
                 cell=bridge_nova.cell()._cell_id
             )
 

@@ -23,7 +23,7 @@ async def build_collision_world(
     nova: Nova, cell_name: str, robot_setup: api.models.OptimizerSetup
 ) -> str:
     collision_api = nova._api_client.store_collision_components_api
-    scene_api = nova._api_client.store_collision_scenes_api
+    scene_api = nova._api_client.store_collision_setups_api
 
     # define annoying obstacle
     sphere_collider = api.models.Collider(
@@ -152,7 +152,7 @@ async def test() -> None:
             )
 
             # Plan collision free PTP motion around the sphere
-            scene_api = nova._api_client.store_collision_scenes_api
+            scene_api = nova._api_client.store_collision_setups_api
             collision_scene = await scene_api.get_stored_collision_scene(
                 cell="cell", scene=collision_scene_id
             )

@@ -6,8 +6,6 @@ from uuid import UUID, uuid4
 from blinker import signal
 from pydantic import BaseModel, Field
 
-from nova.cell.cell import Cell
-
 cycle_started = signal("cycle_started")
 cycle_finished = signal("cycle_finished")
 cycle_failed = signal("cycle_failed")
@@ -58,7 +56,7 @@ class Cycle:
 
     Example usage:
         ```python
-        async with Cycle(cell) as cycle:
+        async with Cycle(cell_id) as cycle:
             # Your automation logic here
             await perform_task()
             # On successful completion, finish() is called automatically
@@ -67,7 +65,7 @@ class Cycle:
 
     Alternative manual usage:
         ```python
-        cycle = Cycle(cell)
+        cycle = Cycle(cell_id)
         try:
             await cycle.start()
             # Your automation logic here
@@ -81,9 +79,9 @@ class Cycle:
         cycle_id (UUID | None): Unique identifier for the cycle, set after start()
     """
 
-    def __init__(self, cell: Cell):
+    def __init__(self, cell_id: str):
         self.cycle_id: UUID | None = None
-        self._cell_id = cell.cell_id
+        self._cell_id = cell_id
         self._timer = Timer()
 
     async def start(self) -> datetime:

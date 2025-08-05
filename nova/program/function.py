@@ -85,36 +85,47 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
     async def _create_controllers(self) -> list[str]:
         """Create controllers based on controller_configs and return their IDs."""
-        created_controllers: list[str] = []
         if not self.preconditions or not self.preconditions.controllers:
-            return created_controllers
+            return []
 
+        created_controllers: list[str] = []
         async with Nova() as nova:
             cell = nova.cell()
             controller_config = None
-            try:
-                for controller_config in self.preconditions.controllers:
-                    controller_name = controller_config.name or "unnamed_controller"
-                    controller = await cell.ensure_controller(robot_controller=controller_config)
+
+            async def ensure_controller(controller_config: api.models.RobotController):
+                """Ensure a controller is created and return its ID."""
+                controller_name = controller_config.name or "unnamed_controller"
+                self._log("info", f"Creating controller '{controller_name}'")
+                try:
+                    controller = await cell.ensure_controller(controller_config=controller_config)
                     created_controllers.append(controller.controller_id)
                     self._log(
                         "info",
                         f"Created controller '{controller_name}' with ID {controller.controller_id}",
                     )
+                    return controller.controller_id
+                except Exception as e:
+                    raise ControllerCreationFailed(controller_name, str(e))
 
-                # Setup viewers after controllers are created and available
-                try:
-                    from nova.viewers import _setup_active_viewers_after_preconditions
-
-                    await _setup_active_viewers_after_preconditions()
-                except ImportError:
-                    pass
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    for controller_config in self.preconditions.controllers:
+                        tg.create_task(ensure_controller(controller_config))
 
             except Exception as e:
                 controller_name = (
                     controller_config.name if controller_config else "unnamed_controller"
                 )
                 raise ControllerCreationFailed(controller_name, str(e))
+
+            # Setup viewers after controllers are created and available
+            try:
+                from nova.viewers import _setup_active_viewers_after_preconditions
+
+                await _setup_active_viewers_after_preconditions()
+            except ImportError:
+                pass
 
         return created_controllers
 

@@ -181,12 +181,8 @@ class ApiGateway:
         # Use the intercept function to wrap each API client
         self.system_api = intercept(wb.SystemApi(api_client=self._api_client), self)
         self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client), self)
-        self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client), self)
-        self.store_collision_components_api = intercept(
-            wb.StoreCollisionComponentsApi(api_client=self._api_client), self
-        )
-        self.store_collision_scenes_api = intercept(
-            wb.StoreCollisionScenesApi(api_client=self._api_client), self
+        self.controller_ios_api = intercept(
+            wb.ControllerInputsOutputsApi(api_client=self._api_client), self
         )
         self.virtual_controller_api = intercept(
             wb.VirtualControllerApi(api_client=self._api_client), self
@@ -196,18 +192,21 @@ class ApiGateway:
         )
         # TODO migrate stuff in rerun bridge and then remove this
         self.virtual_robot_setup_api = self.virtual_controller_api
+        self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client), self)
         self.motion_group_jogging_api = intercept(wb.JoggingApi(api_client=self._api_client), self)
+        self.store_collision_components_api = intercept(
+            wb.StoreCollisionComponentsApi(api_client=self._api_client), self
+        )
+        self.store_collision_setups_api = intercept(
+            wb.StoreCollisionSetupsApi(api_client=self._api_client), self
+        )
         self.trajectory_planning_api: wb.TrajectoryPlanningApi = intercept(
             wb.TrajectoryPlanningApi(api_client=self._api_client), self
         )
         self.trajectory_execution_api: wb.TrajectoryExecutionApi = intercept(
             wb.TrajectoryExecutionApi(api_client=self._api_client), self
         )
-        self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client), self)
         self.kinematics_api = intercept(wb.KinematicsApi(api_client=self._api_client), self)
-        self.controller_ios_api = intercept(
-            wb.ControllerInputsOutputsApi(api_client=self._api_client), self
-        )
 
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
@@ -364,7 +363,7 @@ class ApiGateway:
         )
 
     async def list_controllers(self, *, cell: str) -> list[wb.models.RobotController]:
-        # TODO The API returns a list of controller names as of v2, should we rally offer
+        # TODO The API returns a list of controller names as of v2, should we really offer
         # the instance listing at all?
         controller_names = await self.controller_api.list_robot_controllers(cell=cell)
         # Create tasks to get all controller instances concurrently
@@ -377,9 +376,11 @@ class ApiGateway:
         # Filter out None results and return the list of controller instances
         return [result for result in [task.result() for task in tasks]]
 
-    async def get_controller_instance(self, *, cell: str, name: str) -> wb.models.Controller | None:
+    async def get_controller_instance(
+        self, *, cell: str, name: str
+    ) -> wb.models.RobotController | None:
         controllers = await self.list_controllers(cell=cell)
-        return next((c for c in controllers if c.controller == name), None)
+        return next((c for c in controllers if c.name == name), None)
 
     async def get_current_robot_controller_state(
         self, *, cell: str, controller_id: str
@@ -389,7 +390,7 @@ class ApiGateway:
         )
 
     async def add_robot_controller(
-        self, cell: str, robot_controller: wb.models.RobotController, timeout: int = 25
+        self, cell: str, robot_controller: wb.models.RobotController, timeout: int | None = None
     ):
         """
         Add a robot controller to the specified cell.
@@ -408,30 +409,6 @@ class ApiGateway:
         await self.controller_api.delete_robot_controller(
             cell=cell, controller=controller, completion_timeout=completion_timeout
         )
-
-    async def wait_for_controller_ready(self, cell: str, name: str, timeout: int = 25) -> None:
-        """
-        Wait until the given controller has finished initializing or until timeout.
-        Args:
-            cell: The cell to check.
-            name: The name of the controller.
-            timeout: The timeout in seconds.
-        """
-        iteration = 0
-        while iteration < timeout:
-            controller = await self.get_controller_instance(cell=cell, name=name)
-            if controller is None:
-                logger.info(f"Controller not found: {cell}/{name}")
-            elif controller.has_error:
-                logger.error(f"Controller {cell}/{name} has error: {controller.error_details}")
-            else:
-                logger.info(f"Controller {cell}/{name} is ready")
-                return
-
-            await asyncio.sleep(1)
-            iteration += 1
-
-        raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")
 
     async def plan_trajectory(
         self, cell: str, motion_group_id: str, request: wb.models.PlanTrajectoryRequest
@@ -487,29 +464,12 @@ class ApiGateway:
     async def stop_motion(self, cell: str, motion_id: str):
         await self.motion_api.stop_execution(cell=cell, motion=motion_id)
 
-    async def get_motion_group_state(
-        self, cell_id: str, controller_id: str, motion_group_id: str, tcp: str | None = None
-    ) -> wb.models.MotionGroupState:
-        return await self.motion_group_api.get_current_motion_group_state(
-            cell=cell_id, controller=controller_id, motion_group=motion_group_id
-        )
-
-    async def list_tcps(
-        self, cell_id: str, controller_id: str, motion_group_id: str
-    ) -> wb.models.ListTcpsResponse:
-        return await self.motion_group_api.get_motion_group_description(
-            cell=cell_id, controller=controller_id, motion_group=motion_group_id
-        )
-
-    async def get_active_tcp(self, cell: str, motion_group_id: str) -> wb.models.RobotTcp:
-        return await self.motion_group_api.get_active_tcp(cell=cell, motion_group=motion_group_id)
-
     def robot_setup_from_motion_group_description(
         self,
         motion_group_description: wb.models.MotionGroupDescription,
         tcp_name: str,
         payload: wb.models.Payload | None = None,
-    ) -> wb.models.RobotSetup:
+    ) -> wb.models.MotionGroupSetup:
         # TODO the function does multiple things not separated very well
         collision_scene = wb.models.SingleMotionGroupCollisionScene(
             static_colliders=motion_group_description.safety_zones,
@@ -517,8 +477,8 @@ class ApiGateway:
             tool=motion_group_description.safety_tool_colliders,
             motion_group_self_collision_detection=True,  # explicitly set here until we have a better understanding
         )
-        # TODO maybe we also wast to give the user more control over the collision scene
-        return wb.models.RobotSetup(
+        # TODO maybe we also want to give the user more control over the collision scene
+        return wb.models.MotionGroupSetup(
             motion_group_model=motion_group_description.motion_group_type,
             cycle_time=motion_group_description.cycle_time,
             mounting=motion_group_description.mounting,
@@ -530,7 +490,7 @@ class ApiGateway:
 
     async def get_robot_setup(
         self, cell_id: str, controller_id: str, motion_group_id: str, tcp: str
-    ) -> wb.models.RobotSetup:
+    ) -> wb.models.MotionGroupSetup:
         # TODO allow to specify payload
         motion_group_description = await self.motion_group_api.get_motion_group_description(
             cell=cell_id, controller=controller_id, motion_group=motion_group_id, tcp=tcp

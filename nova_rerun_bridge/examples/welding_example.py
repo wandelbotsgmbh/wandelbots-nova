@@ -89,7 +89,7 @@ async def build_collision_world(
         additional_colliders: Optional dictionary of additional colliders to add
     """
     collision_api = nova._api_client.store_collision_components_api
-    scene_api = nova._api_client.store_collision_scenes_api
+    scene_api = nova._api_client.store_collision_setups_api
 
     # define robot base
     base_collider = api.models.Collider(
@@ -254,7 +254,7 @@ async def test():
             collision_scene_id = await build_collision_world(
                 nova, "cell", robot_setup, additional_colliders={"welding_part": mesh_collider}
             )
-            scene_api = nova._api_client.store_collision_scenes_api
+            scene_api = nova._api_client.store_collision_setups_api
             collision_scene = await scene_api.get_stored_collision_scene(
                 cell="cell", scene=collision_scene_id
             )

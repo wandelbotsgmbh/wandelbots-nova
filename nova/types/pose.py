@@ -198,17 +198,6 @@ class Pose(pydantic.BaseModel, Sized):
             orientation=[self.orientation.x, self.orientation.y, self.orientation.z],
         )
 
-    def _to_wb_pose2(self) -> wb.models.Pose2:
-        """Convert to wandelbots_api_client Pose
-
-        Examples:
-        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3))._to_wb_pose2()
-        Pose2(position=[10, 20, 30], orientation=[1, 2, 3])
-        """
-        return wb.models.Pose2(
-            position=list(self.position.to_tuple()), orientation=list(self.orientation.to_tuple())
-        )
-
     @pydantic.model_serializer
     def serialize_model(self):
         """

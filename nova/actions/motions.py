@@ -26,7 +26,7 @@ class Motion(Action, ABC):
     type: Literal["linear", "cartesian_ptp", "circular", "joint_ptp", "spline"]
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
-    collision_scene: wb.models.CollisionScene | None = None
+    collision_scene: wb.models.CollisionSetup | None = None
 
     @property
     def is_cartesian(self):
@@ -64,7 +64,7 @@ class Linear(Motion):
 def linear(
     target: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
-    collision_scene: wb.models.CollisionScene | None = None,
+    collision_scene: wb.models.CollisionSetup | None = None,
 ) -> Linear:
     """Convenience function to create a linear motion
 
@@ -122,7 +122,7 @@ class CartesianPTP(Motion):
 def cartesian_ptp(
     target: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
-    collision_scene: wb.models.CollisionScene | None = None,
+    collision_scene: wb.models.CollisionSetup | None = None,
 ) -> CartesianPTP:
     """Convenience function to create a point-to-point motion
 
@@ -184,7 +184,7 @@ def circular(
     target: PoseOrVectorTuple,
     intermediate: PoseOrVectorTuple,
     settings: MotionSettings = MotionSettings(),
-    collision_scene: wb.models.CollisionScene | None = None,
+    collision_scene: wb.models.CollisionSetup | None = None,
 ) -> Circular:
     """Convenience function to create a circular motion
 
@@ -248,7 +248,7 @@ class JointPTP(Motion):
 def joint_ptp(
     target: tuple[float, ...],
     settings: MotionSettings = MotionSettings(),
-    collision_scene: wb.models.CollisionScene | None = None,
+    collision_scene: wb.models.CollisionSetup | None = None,
 ) -> JointPTP:
     """Convenience function to create a joint PTP motion
 
@@ -293,7 +293,7 @@ def spline(
     settings: MotionSettings = MotionSettings(),
     path_parameter: float = 1,
     time=None,
-    collision_scene: wb.models.CollisionScene | None = None,
+    collision_scene: wb.models.CollisionSetup | None = None,
 ) -> Spline:
     """Convenience function to create a spline motion
 

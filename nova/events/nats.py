@@ -6,7 +6,7 @@ from nova.core.logging import logger
 from . import BaseCycleEvent, cycle_failed, cycle_finished, cycle_started
 
 NATS_SERVERS = config("NATS_SERVERS", cast=Csv(), default="")
-NATS_SUBJECT_CYCLE = config("NATS_SUBJECT_CYCLE", default="cell.process.cycle")
+NATS_SUBJECT_CYCLE = config("NATS_SUBJECT_CYCLE", default="nova.v2.cells.cell.programs.cycles")
 
 _nats_client: nats.NATS | None = None
 
