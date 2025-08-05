@@ -436,6 +436,26 @@ class MotionGroup(AbstractRobot):
             pose = Pose(motion_group_state.flange_pose) @ tcp_offset
         return RobotState(pose=pose, tcp=tcp, joints=tuple(motion_group_state.joint_position))
 
+    async def stream_state(
+        self, tcp: str | None = None, response_rate_msecs=100
+    ) -> AsyncIterable[RobotState]:
+        """
+        Streams the motion group state.
+        Args:
+            tcp (str | None): The reference TCP for the cartesian pose part of the robot state. Defaults to None.
+                                        If None, the current active/selected TCP of the motion group is used.
+        """
+        response_stream = self._api_gateway.motion_group_api.stream_motion_group_state(
+            cell=self._cell,
+            controller=self._controller_id,
+            motion_group=self.motion_group_id,
+            response_rate=response_rate_msecs,
+        )
+        async for response in response_stream:
+            yield response
+            # pose = Pose(response.tcp_pose)
+            # yield RobotState(pose=pose, joints=tuple(response.joint_position.joints))
+
     async def joints(self) -> tuple[float, ...]:
         """Returns the current joint positions of the motion group."""
         return (await self.get_state()).joints
