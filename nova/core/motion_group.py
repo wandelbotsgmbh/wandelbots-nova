@@ -225,7 +225,7 @@ class MotionGroup(AbstractRobot):
                 collision_motion_group = collision_scenes[0].motion_groups[motion_group_type]
 
         request = wb.models.PlanTrajectoryRequest(
-            robot_setup=robot_setup,
+            motion_group_setup=robot_setup,
             start_joint_position=list(start_joint_position),
             motion_commands=motion_commands,
             static_colliders=static_colliders,
@@ -288,7 +288,7 @@ class MotionGroup(AbstractRobot):
                 )
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
-                current_joints = tuple(trajectory.joint_positions[-1].joints)
+                current_joints = tuple(trajectory.joint_positions[-1])
 
         return combine_trajectories(all_trajectories)
 
@@ -315,18 +315,9 @@ class MotionGroup(AbstractRobot):
             )
         )
 
-        def stop_condition(response: wb.models.ExecuteTrajectoryResponse) -> bool:
-            instance = response.actual_instance
-            # Stop when standstill indicates motion ended
-            return (
-                isinstance(instance, wb.models.Standstill)
-                and instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED
-            )
-
-        execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
         execution_task = asyncio.create_task(
             self._api_gateway.trajectory_execution_api.execute_trajectory(
-                cell=self._cell, client_request_generator=execute_response_streaming_controller
+                cell=self._cell, controller=self._controller_id, client_request_generator=controller
             )
         )
         # TODO refactor
@@ -337,12 +328,15 @@ class MotionGroup(AbstractRobot):
             motion_group=self.motion_group_id,
             response_rate=MOTION_STATE_STREAM_RATE_MS,
         )
-        execute_response_stream = stream.merge(
-            execute_response_streaming_controller, motion_state_stream
-        )
-        async for execute_response in execute_response_stream.stream():
-            # async for execute_response in execute_response_streaming_controller:
-            yield execute_response
+        from icecream import ic
+
+        async for motion_state in motion_state_stream:
+            ic(motion_state)
+            if motion_state.execute is None:
+                # If there is no execute field, it means the motion group is not executing anything
+                # This can happen if the motion group is not activated or if there is no planned motion
+                break
+            yield motion_state
         await execution_task
 
     async def _stream_jogging(self, tcp, movement_controller):
@@ -395,6 +389,7 @@ class MotionGroup(AbstractRobot):
     ) -> str:
         return await self._api_gateway.load_planned_motion(
             cell=self._cell,
+            controller_id=self._controller_id,
             motion_group_id=self.motion_group_id,
             joint_trajectory=joint_trajectory,
             tcp=tcp,

@@ -340,9 +340,8 @@ class AbstractRobot(Device):
             joint_trajectory, tcp, actions, movement_controller=movement_controller
         )
         motion_states = (
-            stream.iterate(execute_response_stream)
-            | pipe.filter(is_motion_state)
-            | pipe.map(movement_response_to_motion_state)
+            stream.iterate(execute_response_stream) | pipe.filter(is_motion_state)
+            # | pipe.map(movement_response_to_motion_state)
         )
 
         async with motion_states.stream() as motion_states_stream:
@@ -387,6 +386,29 @@ class AbstractRobot(Device):
     ) -> None:
         joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
         await self.execute(joint_trajectory, tcp, actions, movement_controller=None)
+
+    def stream_jogging(
+        self, tcp: str, movement_controller: MovementController
+    ) -> AsyncIterable[MotionState]:
+        """Stream the jogging motion of the robot
+
+        Args:
+            tcp (str): The id of the tool center point (TCP)
+            movement_controller (MovementController): The movement controller to be used for jogging
+        """
+        return self._stream_jogging(tcp=tcp, movement_controller=movement_controller)
+
+    @abstractmethod
+    def _stream_jogging(
+        self, tcp: str, movement_controller: MovementController
+    ) -> AsyncIterable[MovementResponse]:
+        """Stream the jogging motion of the robot
+
+        Args:
+            tcp (str): The id of the tool center point (TCP)
+            movement_controller (MovementController): The movement controller to be used for jogging
+        """
+        raise NotImplementedError("This method should be implemented in a subclass")
 
     @abstractmethod
     async def get_state(self, tcp: str | None = None) -> RobotState:

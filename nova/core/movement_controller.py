@@ -20,6 +20,8 @@ ExecuteJoggingRequestStream = AsyncIterator[wb.models.ExecuteJoggingRequest]
 ExecuteJoggingResponseStream = AsyncIterator[wb.models.ExecuteJoggingResponse]
 
 
+# TODO find a better place for this
+# TODO this should return different types of MotionState depending on the fields set in the MotionGroupState
 def motion_group_state_to_motion_state(
     motion_group_state: wb.models.MotionGroupState,
 ) -> MotionState:
@@ -28,6 +30,8 @@ def motion_group_state_to_motion_state(
     )
     joints = tuple(motion_group_state.joint_position) if motion_group_state.joint_position else None
     # TODO not very clean
+    ic(motion_group_state, motion_group_state.execute)
+    ic(motion_group_state.execute.details)
     path_parameter = (
         motion_group_state.execute.details.actual_instance.location
         if motion_group_state.execute
@@ -64,10 +68,16 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         )
 
         # then we get the response
-        initialize_movement_response = await anext(response_stream)
+        execute_trajectory_response = await anext(response_stream)
+        ic(execute_trajectory_response)
+        initialize_movement_response = execute_trajectory_response.actual_instance
         assert isinstance(initialize_movement_response, wb.models.InitializeMovementResponse)
-        if initialize_movement_response.message is not None:
-            raise InitMovementFailed(initialize_movement_response.message)
+        # TODO this should actually check for None but currently the API seems to return an empty string instead
+        if (
+            initialize_movement_response.message
+            or initialize_movement_response.add_trajectory_error
+        ):
+            raise InitMovementFailed(initialize_movement_response)
 
         # The second request is to start the movement
         set_io_list = context.combined_actions.to_set_io()
@@ -82,9 +92,9 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         async for execute_trajectory_response in response_stream:
             instance = execute_trajectory_response.actual_instance
             # Stop when standstill indicates motion ended
-            if isinstance(instance, wb.models.Standstill):
-                if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
-                    return
+            # if isinstance(instance, wb.models.Standstill):
+            #     if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
+            #         return
 
     return movement_controller
 
@@ -124,8 +134,8 @@ class Jogger:
         self._command_queue.put_nowait(wb.models.PauseJoggingRequest())
 
     async def cntrl(
-        self, response_stream: ExecuteTrajectoryResponseStream
-    ) -> ExecuteTrajectoryRequestStream:
+        self, response_stream: AsyncIterator[wb.models.ExecuteJoggingResponse]
+    ) -> AsyncIterator[wb.models.ExecuteJoggingRequest]:
         self._response_stream = response_stream
         async for request in init_jogging_gen(
             self._motion_group_id, self._tcp_name, response_stream
@@ -177,7 +187,8 @@ class Jogger:
         ic()
 
     def _handle_motion_state(self, motion_group_state: wb.models.MotionGroupState):
-        ic(motion_group_state)
+        pass
+        # ic(motion_group_state)
 
 
 class TrajectoryCursor:
@@ -189,10 +200,6 @@ class TrajectoryCursor:
     def __call__(self, context: MovementControllerContext):
         self.context = context
         return self.cntrl
-
-    def pause_at(self, location: float):
-        # How to pause at an exact location?
-        bisect.insort(self._breakpoints, location)
 
     def forward(self):
         self._command_queue.put_nowait(
@@ -217,6 +224,10 @@ class TrajectoryCursor:
     def pause(self):
         self._command_queue.put_nowait(wb.models.PauseMovementRequest())
 
+    def pause_at(self, location: float):
+        # How to pause at an exact location?
+        bisect.insort(self._breakpoints, location)
+
     async def cntrl(
         self, response_stream: ExecuteTrajectoryResponseStream
     ) -> ExecuteTrajectoryRequestStream:
@@ -224,13 +235,13 @@ class TrajectoryCursor:
         async for request in init_movement_gen(self.context.motion_id, response_stream):
             yield request
 
-        self._response_consumer_task: asyncio.Task[None] = asyncio.create_task(
-            self._response_consumer(), name="response_consumer"
-        )
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(self._effect_consumer(), name="effect_consumer")
+            tg.create_task(self._response_consumer(), name="request_consumer")
+            tg.create_task(self._combined_response_consumer(), name="combined_response_consumer")
 
-        async for request in self._request_loop():
-            yield request
-        await self._response_consumer_task  # Where to put?
+            async for request in self._request_loop():
+                yield request
 
     async def _request_loop(self):
         while True:

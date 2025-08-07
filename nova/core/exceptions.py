@@ -1,5 +1,3 @@
-import json
-
 import wandelbots_api_client.v2 as wb
 
 
@@ -20,16 +18,12 @@ class PlanTrajectoryFailed(Exception):
         self._error = error
         self._motion_group_id = motion_group_id
         super().__init__(
-            f"Plan trajectory on {motion_group_id} failed: {json.dumps(error.to_dict(), indent=2)}"
+            f"Plan trajectory on {motion_group_id} failed: {error.model_dump_json(indent=2)}"
         )
 
     def to_pretty_string(self) -> str:
         """Give a more lightweight representation of the error, omitting some gritty details."""
-        error_dict = self._error.to_dict()
-        del error_dict["joint_trajectory"]
-        return (
-            f"Plan trajectory on {self._motion_group_id} failed: {json.dumps(error_dict, indent=2)}"
-        )
+        return f"Plan trajectory on {self._motion_group_id} failed: {self._error.model_dump_json(indent=2, exclude={'joint_trajectory'})}"
 
     @property
     def error(self) -> wb.models.PlanTrajectoryFailedResponse:
@@ -40,7 +34,7 @@ class PlanTrajectoryFailed(Exception):
 class InitMovementFailed(Exception):
     def __init__(self, error: wb.models.InitializeMovementResponse):
         self._error = error
-        super().__init__(f"Initial movement failed: {json.dumps(error.to_dict(), indent=2)}")
+        super().__init__(f"Initial movement failed: {error.model_dump_json(indent=2)}")
 
     @property
     def error(self) -> wb.models.InitializeMovementResponse:
@@ -51,7 +45,7 @@ class InitMovementFailed(Exception):
 class LoadPlanFailed(Exception):
     def __init__(self, error: wb.models.AddTrajectoryError):
         self._error = error
-        super().__init__(f"Load plan failed: {json.dumps(error.to_dict(), indent=2)}")
+        super().__init__(f"Load plan failed: {error.model_dump_json(indent=2)}")
 
     @property
     def error(self) -> wb.models.AddTrajectoryError:

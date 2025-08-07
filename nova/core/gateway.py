@@ -1,3 +1,5 @@
+# TODO parameter naming convention (controller -> controller_id)
+
 from __future__ import annotations
 
 import asyncio
@@ -205,6 +207,9 @@ class ApiGateway:
         )
         self.trajectory_execution_api: wb.TrajectoryExecutionApi = intercept(
             wb.TrajectoryExecutionApi(api_client=self._api_client), self
+        )
+        self.trajectory_caching_api: wb.TrajectoryCachingApi = intercept(
+            wb.TrajectoryCachingApi(api_client=self._api_client), self
         )
         self.kinematics_api = intercept(wb.KinematicsApi(api_client=self._api_client), self)
 
@@ -431,11 +436,17 @@ class ApiGateway:
         return plan_trajectory_response.response.actual_instance
 
     async def load_planned_motion(
-        self, cell: str, motion_group_id: str, joint_trajectory: wb.models.JointTrajectory, tcp: str
+        self,
+        cell: str,
+        controller_id: str,
+        motion_group_id: str,
+        joint_trajectory: wb.models.JointTrajectory,
+        tcp: str,
     ) -> wb.models.PlanSuccessfulResponse:
         load_plan_response: wb.models.AddTrajectoryResponse = (
-            await self.trajectory_execution_api.add_trajectory(
+            await self.trajectory_caching_api.add_trajectory(
                 cell=cell,
+                controller=controller_id,
                 add_trajectory_request=wb.models.AddTrajectoryRequest(
                     motion_group=motion_group_id, trajectory=joint_trajectory, tcp=tcp
                 ),
@@ -464,6 +475,7 @@ class ApiGateway:
     async def stop_motion(self, cell: str, motion_id: str):
         await self.motion_api.stop_execution(cell=cell, motion=motion_id)
 
+    # TODO move to MotionGroup and refactor
     def robot_setup_from_motion_group_description(
         self,
         motion_group_description: wb.models.MotionGroupDescription,
@@ -471,29 +483,30 @@ class ApiGateway:
         payload: wb.models.Payload | None = None,
     ) -> wb.models.MotionGroupSetup:
         # TODO the function does multiple things not separated very well
-        collision_scene = wb.models.SingleMotionGroupCollisionScene(
-            static_colliders=motion_group_description.safety_zones,
+        collision_scene = wb.models.CollisionSetup(
+            colliders=motion_group_description.safety_zones,
             link_chain=motion_group_description.safety_link_colliders,
             tool=motion_group_description.safety_tool_colliders,
-            motion_group_self_collision_detection=True,  # explicitly set here until we have a better understanding
+            self_collision_detection=True,  # explicitly set here until we have a better understanding
         )
         # TODO maybe we also want to give the user more control over the collision scene
         return wb.models.MotionGroupSetup(
-            motion_group_model=motion_group_description.motion_group_type,
+            motion_group_model=motion_group_description.motion_group_model,
             cycle_time=motion_group_description.cycle_time,
             mounting=motion_group_description.mounting,
-            global_limits=motion_group_description.global_limits,
-            tcp_offset=motion_group_description.tcps[tcp_name],
+            global_limits=motion_group_description.global_limits.physical_limits,
+            tcp_offset=motion_group_description.tcps[tcp_name].pose,
             payload=payload,
             collision_scene=collision_scene,
         )
 
+    # TODO move to MotionGroup
     async def get_robot_setup(
         self, cell_id: str, controller_id: str, motion_group_id: str, tcp: str
     ) -> wb.models.MotionGroupSetup:
         # TODO allow to specify payload
         motion_group_description = await self.motion_group_api.get_motion_group_description(
-            cell=cell_id, controller=controller_id, motion_group=motion_group_id, tcp=tcp
+            cell=cell_id, controller=controller_id, motion_group=motion_group_id
         )
         return self.robot_setup_from_motion_group_description(
             motion_group_description=motion_group_description, tcp_name=tcp
