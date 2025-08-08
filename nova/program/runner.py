@@ -198,7 +198,9 @@ class ProgramRunner(ABC):
             self.join()
 
     def start(
-        self, sync: bool = False, on_state_change: Callable[[Any], Awaitable[None]] | None = None
+        self,
+        sync: bool = False,
+        on_state_change: Callable[[ProgramRun], Awaitable[None]] | None = None,
     ):
         """Creates another thread and starts the program execution. If the program was executed already, is currently
         running, failed or was stopped a new program runner needs to be created.
@@ -218,7 +220,7 @@ class ProgramRunner(ABC):
 
         async def _on_state_change():
             if on_state_change is not None:
-                await on_state_change(self._program_run)
+                await on_state_change(self._program_run.model_copy())
 
         def stopper(sync_stop_event, async_stop_event):
             while not sync_stop_event.wait(0.2):
@@ -340,6 +342,7 @@ class ProgramRunner(ABC):
                     logger.info(f"Program {self.program_id} run {self.run_id} started")
                     self._program_run.state = ProgramRunState.RUNNING
                     self._program_run.start_time = dt.datetime.now(dt.timezone.utc)
+                    await on_state_change()
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped

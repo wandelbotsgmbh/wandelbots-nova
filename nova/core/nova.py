@@ -53,8 +53,7 @@ class Nova:
 
     async def close(self):
         """Closes the underlying API client session."""
-        # hardcoded for now, later stuff like NATS might become devices
-        await nats.close()
+        await nats.flush()
         return await self._api_client.close()
 
     async def __aenter__(self):

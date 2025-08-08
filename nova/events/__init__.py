@@ -1,6 +1,7 @@
+import datetime as dt
 from abc import ABC
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from blinker import signal
@@ -11,6 +12,7 @@ from nova.cell.cell import Cell
 cycle_started = signal("cycle_started")
 cycle_finished = signal("cycle_finished")
 cycle_failed = signal("cycle_failed")
+program_state_changed = signal("program_state_changed")
 
 
 class Timer:
@@ -224,3 +226,26 @@ class CycleFinishedEvent(BaseCycleEvent):
 class CycleFailedEvent(BaseCycleEvent):
     event_type: Literal["cycle_failed"] = "cycle_failed"
     reason: str = Field(..., description="Human-readable explanation of failure")
+
+
+# TODO extend with the API model or even better the new async model
+# TODO: import from api.v2.models.ProgramRun
+class ProgramStateChangeEvent(BaseModel):
+    """
+    Event representing a change in the program state.
+
+    This event is used to notify about changes in the program's execution state,
+    such as starting, stopping, or any other significant state change.
+    """
+
+    run: str = Field(..., description="Id of the program run")
+    program: str = Field(..., description="Id of the program")
+    state: str = Field(..., description="State of the program run")
+    logs: str | None = Field(None, description="Logs of the program run")
+    stdout: str | None = Field(None, description="Stdout of the program run")
+    error: str | None = Field(None, description="Error message of the program run, if any")
+    traceback: str | None = Field(None, description="Traceback of the program run, if any")
+    start_time: dt.datetime | None = Field(None, description="Start time of the program run")
+    end_time: dt.datetime | None = Field(None, description="End time of the program run")
+    input_data: dict[str, Any] | None = Field(None, description="Input of the program run")
+    timestamp: dt.datetime = Field(description="The time at which the state change occurred")
