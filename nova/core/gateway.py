@@ -158,16 +158,25 @@ class ApiGateway:
         if hasattr(self, "_nats_client") and self._nats_client is not None:
             return self._nats_client
 
+        # Determine protocol and port based on original host
+        is_https = self._host.startswith("https://")
+        
         # Clean host by removing protocol prefix and trailing slashes
         clean_host = self._host.replace("https://", "").replace("http://", "").rstrip("/")
 
-        if self._access_token:
-            connection_string = f"wss://{self._access_token}@{clean_host}:443/api/nats"
-            client = await nats.connect(connection_string)
+        if is_https:
+            protocol = "wss"
+            port = 443
         else:
-            connection_string = f"ws://{clean_host}/api/nats"
-            client = await nats.connect(connection_string)
+            protocol = "ws"
+            port = 80
 
+        if self._access_token:
+            connection_string = f"{protocol}://{self._access_token}@{clean_host}:{port}/api/nats"
+        else:
+            connection_string = f"{protocol}://{clean_host}:{port}/api/nats"
+
+        client = await nats.connect(connection_string)
         self._nats_client = client
         return self._nats_client
 

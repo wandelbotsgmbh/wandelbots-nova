@@ -61,9 +61,11 @@ def program_state_change_handler(event: ProgramStateChangeEvent):
     try:
         if _program_state_consumer_task is None:
             logger.warning("Program state change is queued but consumer task is not running")
+            return
 
         if _program_state_consumer_task.done():
             logger.warning("Program state change is queued but consumer task is done")
+            return
 
         data = event.model_dump_json()
         _program_state_queue.put_nowait(data)
