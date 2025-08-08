@@ -1,12 +1,38 @@
+import asyncio
 import datetime as dt
 import inspect
-from typing import Any, Optional
+from concurrent.futures import Future
+from typing import Any, Awaitable, Callable, Optional
 
 from pydantic import BaseModel
 
 from nova.cell.robot_cell import RobotCell
+from nova.core.logging import logger
 from nova.program.function import Program, ProgramPreconditions
 from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner
+
+
+def _log_future_result(future: asyncio.Future):
+    try:
+        result = future.result()
+        logger.debug(f"Program state change callback completed with result: {result}")
+    except Exception as e:
+        logger.error(f"Program state change callback failed with exception: {e}")
+
+
+def _report_state_change_to_event_loop(
+    loop: asyncio.AbstractEventLoop, state_listener: Callable[[ProgramRun], Awaitable[None]] | None
+) -> Callable[[ProgramRun], Awaitable[None]] | None:
+    if not state_listener:
+        return None
+
+    async def _state_listener(program_run: ProgramRun):
+        logger.debug(f"Reporting state change to event loop for program run: {program_run.program}")
+        coroutine = state_listener(program_run)
+        future: Future = asyncio.run_coroutine_threadsafe(coroutine, loop)  # type: ignore
+        future.add_done_callback(_log_future_result)  # type: ignore
+
+    return _state_listener
 
 
 class NovaxProgramRunner(ProgramRunner):
@@ -55,11 +81,23 @@ class RunProgramRequest(BaseModel):
 class ProgramManager:
     """Manages program registration, storage, and execution"""
 
-    def __init__(self, robot_cell_override: RobotCell | None = None):
+    def __init__(
+        self,
+        robot_cell_override: RobotCell | None = None,
+        state_listener: Callable[[ProgramRun], Awaitable[None]] | None = None,
+    ):
+        """
+        Initialize the ProgramManager.
+        Args:
+            robot_cell_override: Optional override for the robot cell the program runs against
+            state_listener: Optional listener for program state changes
+        """
+
         self._programs: dict[str, ProgramDetails] = {}
         self._program_functions: dict[str, Program] = {}
         self._runner: NovaxProgramRunner | None = None
         self._robot_cell_override: RobotCell | None = robot_cell_override
+        self._state_listener = state_listener
 
     def has_program(self, program_id: str) -> bool:
         return program_id in self._programs
@@ -123,9 +161,21 @@ class ProgramManager:
         return self._programs.get(program_id)
 
     async def start_program(
-        self, program_id: str, parameters: dict[str, Any] | None = None, sync: bool = False
+        self,
+        program_id: str,
+        parameters: dict[str, Any] | None = None,
+        sync: bool = False,
+        on_state_change: Callable[[ProgramRun], Awaitable[None]] | None = None,
     ) -> ProgramRun:
-        """Start a registered program with given parameters"""
+        """
+        Start a registered program with given parameters.
+
+        Args:
+            program_id: The ID of the program to start
+            parameters: Optional parameters to pass to the program function
+            sync: If True, run the program synchronously
+            on_state_change: Optional callback to handle program state changes
+        """
         if self.is_any_program_running:
             raise RuntimeError("A program is already running")
 
@@ -136,7 +186,14 @@ class ProgramManager:
             robot_cell_override=self._robot_cell_override,
         )
         self._runner = runner
-        runner.start(sync=sync)
+
+        # report the state change to the event loop requesting program start
+        loop = asyncio.get_running_loop()
+        state_change_listener = on_state_change or self._state_listener
+        runner.start(
+            sync=sync,
+            on_state_change=_report_state_change_to_event_loop(loop, state_change_listener),
+        )
         return runner.program_run
 
     async def stop_program(self, program_id: str):

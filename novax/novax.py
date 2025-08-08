@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import AsyncIterator, Optional
 
 from decouple import config
@@ -6,7 +7,9 @@ from fastapi import APIRouter, FastAPI
 
 from nova.cell.robot_cell import RobotCell
 from nova.core.logging import logger
+from nova.events import nats
 from nova.program.function import Program
+from nova.program.runner import ProgramRun
 from nova.program.store import Program as StoreProgram
 from nova.program.store import ProgramStore
 from novax.program_manager import ProgramDetails, ProgramManager
@@ -22,10 +25,15 @@ _NATS_PROGRAM_BUCKET = f"nova_{_CELL_NAME}_programs"
 _NATS_CLIENT_CONFIG = {"connect_timeout": 2.0, "allow_reconnect": True, "max_reconnect_attempts": 2}
 
 
+async def _state_listener(program_run: ProgramRun):
+    event = nats.ProgramStateChangeEvent(timestamp=datetime.now(), **program_run.model_dump())
+    nats.program_state_change_handler(event)
+
+
 class Novax:
     def __init__(self, robot_cell_override: RobotCell | None = None):
         self._program_manager: ProgramManager = ProgramManager(
-            robot_cell_override=robot_cell_override
+            robot_cell_override=robot_cell_override, state_listener=_state_listener
         )
         self._app: FastAPI | None = None
 
@@ -61,12 +69,14 @@ class Novax:
         Lifespan context manager for FastAPI application lifecycle.
         Handles startup and shutdown events.
         """
+        await nats.start_program_state_consumer()
         await self._register_programs()
 
         try:
             yield
         finally:
             await self._deregister_programs()
+            await nats.stop_program_state_consumer()
 
     async def _register_programs(self):
         """
@@ -119,7 +129,6 @@ class Novax:
         """
         try:
             logger.info("Novax: Starting program cleanup from store on shutdown")
-            # Get current programs first
             programs = self._program_manager._programs
             program_ids = list(programs.keys())
             program_count = len(program_ids)

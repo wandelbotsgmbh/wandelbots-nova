@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import nats
 from decouple import config
 
 from nova.cell.cell import Cell
 from nova.core.gateway import ApiGateway
-from nova.events import nats
+from nova.events import nats as nova_nats
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 CELL_NAME = config("CELL_NAME", default="cell", cast=str)
@@ -47,14 +48,17 @@ class Nova:
             verify_ssl=verify_ssl,
         )
 
+    # maybe user program can use this and the one in nova.events.nats is used by us?
+    async def get_nats_client(self) -> nats.NATS:
+        return await self._api_client.get_nats_client()
+
     def cell(self, cell_id: str = CELL_NAME) -> Cell:
         """Returns the cell object with the given ID."""
         return Cell(self._api_client, cell_id)
 
     async def close(self):
         """Closes the underlying API client session."""
-        # hardcoded for now, later stuff like NATS might become devices
-        await nats.close()
+        await nova_nats.flush()
         return await self._api_client.close()
 
     async def __aenter__(self):
