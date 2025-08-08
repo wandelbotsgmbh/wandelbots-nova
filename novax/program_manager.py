@@ -1,6 +1,7 @@
 import asyncio
 import datetime as dt
 import inspect
+from concurrent.futures import Future
 from typing import Any, Awaitable, Callable, Optional
 
 from pydantic import BaseModel
@@ -20,16 +21,16 @@ def _log_future_result(future: asyncio.Future):
 
 
 def _report_state_change_to_event_loop(
-    loop: asyncio.AbstractEventLoop, state_listener: Callable[[ProgramRun], Awaitable[None]]
+    loop: asyncio.AbstractEventLoop, state_listener: Callable[[ProgramRun], Awaitable[None]] | None
 ) -> Callable[[ProgramRun], Awaitable[None]] | None:
     if not state_listener:
         return None
 
     async def _state_listener(program_run: ProgramRun):
-        logger.debug(f"Reporting state change to event loop for program run: {program_run.id}")
-        corutine = state_listener(program_run)
-        future = asyncio.run_coroutine_threadsafe(corutine, loop)
-        future.add_done_callback(_log_future_result)
+        logger.debug(f"Reporting state change to event loop for program run: {program_run.program}")
+        coroutine = state_listener(program_run)
+        future: Future = asyncio.run_coroutine_threadsafe(coroutine, loop)  # type: ignore
+        future.add_done_callback(_log_future_result)  # type: ignore
 
     return _state_listener
 
@@ -80,7 +81,11 @@ class RunProgramRequest(BaseModel):
 class ProgramManager:
     """Manages program registration, storage, and execution"""
 
-    def __init__(self, robot_cell_override: RobotCell | None = None):
+    def __init__(
+        self,
+        robot_cell_override: RobotCell | None = None,
+        state_listener: Callable[[ProgramRun], Awaitable[None]] | None = None,
+    ):
         """
         Initialize the ProgramManager.
         Args:
@@ -92,6 +97,7 @@ class ProgramManager:
         self._program_functions: dict[str, Program] = {}
         self._runner: NovaxProgramRunner | None = None
         self._robot_cell_override: RobotCell | None = robot_cell_override
+        self._state_listener = state_listener
 
     def has_program(self, program_id: str) -> bool:
         return program_id in self._programs
@@ -183,8 +189,10 @@ class ProgramManager:
 
         # report the state change to the event loop requesting program start
         loop = asyncio.get_running_loop()
+        state_change_listener = on_state_change or self._state_listener
         runner.start(
-            sync=sync, on_state_change=_report_state_change_to_event_loop(on_state_change, loop)
+            sync=sync,
+            on_state_change=_report_state_change_to_event_loop(loop, state_change_listener),
         )
         return runner.program_run
 

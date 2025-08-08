@@ -148,3 +148,10 @@ class Cell:
         """
         controllers = await self.controllers()
         return RobotCell(timer=None, **{controller.id: controller for controller in controllers})
+
+    # TODO: can we create a cycle object which read the nats client from the Nova object?
+    # can this be the user program's entry point to NATS?
+    # when the user program runs in a pod, it needs to get connection string from env var, because it has a specific user
+    # there are too many different use cases
+    # async def _cycle() -> Cycle:
+    #    pass

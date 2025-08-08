@@ -33,7 +33,7 @@ async def _state_listener(program_run: ProgramRun):
 class Novax:
     def __init__(self, robot_cell_override: RobotCell | None = None):
         self._program_manager: ProgramManager = ProgramManager(
-            robot_cell_override=robot_cell_override, state_listener=_state_listener
+            robot_cell_override=robot_cell_override
         )
         self._app: FastAPI | None = None
 

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import nats
 from decouple import config
 
 from nova.cell.cell import Cell
 from nova.core.gateway import ApiGateway
-from nova.events import nats
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 CELL_NAME = config("CELL_NAME", default="cell", cast=str)
@@ -46,6 +46,10 @@ class Nova:
             version=version,
             verify_ssl=verify_ssl,
         )
+
+    # maybe user program can use this and the one in nova.events.nats is used by us?
+    async def get_nats_client(self) -> nats.NATS:
+        return await self._api_client.get_nats_client()
 
     def cell(self, cell_id: str = CELL_NAME) -> Cell:
         """Returns the cell object with the given ID."""

@@ -8,6 +8,7 @@ from enum import Enum
 from typing import AsyncGenerator, TypeVar
 from urllib.parse import quote as original_quote
 
+import nats
 import wandelbots_api_client as wb
 from decouple import config
 
@@ -150,6 +151,25 @@ class ApiGateway:
         self._password = password
 
         self._init_api_client()
+
+    # when the user program runs in a pod, it needs to get connection string from env var, because it has a specific user
+    # there are too many different use cases
+    async def get_nats_client(self) -> nats.NATS:
+        if hasattr(self, "_nats_client") and self._nats_client is not None:
+            return self._nats_client
+
+        # Clean host by removing protocol prefix and trailing slashes
+        clean_host = self._host.replace("https://", "").replace("http://", "").rstrip("/")
+
+        if self._access_token:
+            connection_string = f"wss://{self._access_token}@{clean_host}:443/api/nats"
+            client = await nats.connect(connection_string)
+        else:
+            connection_string = f"ws://{clean_host}/api/nats"
+            client = await nats.connect(connection_string)
+
+        self._nats_client = client
+        return self._nats_client
 
     def _init_api_client(self):
         """Initialize or reinitialize the API client with current credentials"""
