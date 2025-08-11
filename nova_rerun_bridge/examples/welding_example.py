@@ -77,7 +77,7 @@ async def add_mesh_to_collision_world(
 async def build_collision_world(
     nova: Nova,
     cell_name: str,
-    robot_setup: api.models.OptimizerSetup,
+    motion_group_description: api.models.MotionGroupDescription,
     additional_colliders: dict = {},
 ) -> str:
     """Build collision world with robot, environment and optional additional colliders.
@@ -85,7 +85,7 @@ async def build_collision_world(
     Args:
         nova: Nova instance
         cell_name: Name of the cell
-        robot_setup: Robot optimizer setup
+        motion_group_description: Motion group description
         additional_colliders: Optional dictionary of additional colliders to add
     """
     collision_api = nova._api_client.store_collision_components_api
@@ -122,7 +122,7 @@ async def build_collision_world(
 
     # define robot link geometries
     robot_link_colliders = await collision_api.get_default_link_chain(
-        cell=cell_name, motion_group_model=robot_setup.motion_group_type
+        cell=cell_name, motion_group_model=motion_group_description.motion_group_model
     )
     await collision_api.store_collision_link_chain(
         cell=cell_name, link_chain="robot_links", collider=robot_link_colliders
@@ -139,7 +139,7 @@ async def build_collision_world(
     scene = api.models.CollisionScene(
         colliders=colliders,
         motion_groups={
-            robot_setup.motion_group_type: api.models.CollisionMotionGroup(
+            motion_group_description.motion_group_model: api.models.CollisionMotionGroup(
                 tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
             )
         },
@@ -243,7 +243,9 @@ async def test():
         async with controller[0] as motion_group:
             tcp = "torch"
 
-            robot_setup: models.OptimizerSetup = await motion_group._get_motion_group_setup(tcp=tcp)
+            motion_group_description: api.models.MotionGroupDescription = (
+                await motion_group.get_description(tcp=tcp)
+            )
 
             # Add mesh to collision world
             mesh_collider = await add_mesh_to_collision_world(
@@ -252,7 +254,10 @@ async def test():
 
             # Build collision world with welding part included
             collision_scene_id = await build_collision_world(
-                nova, "cell", robot_setup, additional_colliders={"welding_part": mesh_collider}
+                nova,
+                "cell",
+                motion_group_description,
+                additional_colliders={"welding_part": mesh_collider},
             )
             scene_api = nova._api_client.store_collision_setups_api
             collision_scene = await scene_api.get_stored_collision_scene(

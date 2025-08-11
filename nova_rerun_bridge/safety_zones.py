@@ -6,20 +6,22 @@ from nova_rerun_bridge.dh_robot import DHRobot
 from nova_rerun_bridge.hull_visualizer import HullVisualizer
 
 
-def log_safety_zones(motion_group: str, optimizer_config: models.OptimizerSetup):
+def log_safety_zones(
+    motion_group: str, motion_group_description: models.MotionGroupDescription
+) -> None:
     """
     Log hull outlines for the safety zones defined in the optimizer configuration.
     """
-    if optimizer_config.safety_setup.safety_zones is None:
+    if motion_group_description.safety_zones is None:
         return
 
-    if optimizer_config.dh_parameters is None:
+    if motion_group_description.dh_parameters is None:
         raise ValueError("DH parameters cannot be None")
 
-    mounting_transform = optimizer_config.mounting
-    robot = DHRobot(optimizer_config.dh_parameters, optimizer_config.mounting)
+    mounting_transform = motion_group_description.mounting
+    robot = DHRobot(motion_group_description.dh_parameters, motion_group_description.mounting)
 
-    for zone in optimizer_config.safety_setup.safety_zones:
+    for zone in motion_group_description.safety_zones:
         geom = zone.geometry
         zone_id = zone.id
         entity_path = f"{motion_group}/zones/zone_{zone_id}"

@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import numpy as np
-from wandelbots_api_client import models
-from wandelbots_api_client.models import (
+from wandelbots_api_client.v2 import models
+from wandelbots_api_client.v2.models import (
     CoordinateSystem,
     RotationAngles,
     RotationAngleTypes,
@@ -14,7 +14,7 @@ from wandelbots_api_client.models import (
 
 import nova
 from nova.cell import virtual_controller
-from nova.core.motion_group import MotionGroup
+from nova.core.motion_group import MotionGroup, motion_group_setup_from_motion_group_description
 from nova.core.nova import Nova
 from nova.program import ProgramPreconditions
 from nova.types import Pose
@@ -52,7 +52,7 @@ class BenchmarkStrategy(Protocol):
         target: Pose,
         collision_scene: models.CollisionScene,
         tcp: str,
-        optimizer_setup: models.OptimizerSetup,
+        motion_group_setup: models.OptimizerSetup,
         nova: Nova,
         start_joint_position: tuple[float, ...],
     ) -> Any: ...
@@ -63,7 +63,7 @@ async def setup_collision_scene(
     obstacles: dict[str, Any],
     cell_name: str,
     motion_group_type: str,
-    robot_setup: models.OptimizerSetup,
+    motion_group_description: models.OptimizerSetup,
     scene_key: str,
 ) -> str:
     """Convert robometrics obstacles to Nova collision world format."""
@@ -102,7 +102,7 @@ async def setup_collision_scene(
 
     # Define robot link geometries
     robot_link_colliders = await collision_api.get_default_link_chain(
-        cell=cell_name, motion_group_model=robot_setup.motion_group_type
+        cell=cell_name, motion_group_model=motion_group_description.motion_group_type
     )
     await collision_api.store_collision_link_chain(
         cell=cell_name, link_chain="robot_links", collider=robot_link_colliders
@@ -250,8 +250,8 @@ async def run_single_benchmark(strategy: BenchmarkStrategy):
                         tcp = "Flange"
 
                         # Get robot setup for collision scene
-                        robot_setup: models.OptimizerSetup = (
-                            await motion_group._get_motion_group_setup(tcp=tcp)
+                        motion_group_description: models.MotionGroupDescription = (
+                            await motion_group.get_description(tcp=tcp)
                         )
 
                         # Add collision objects from benchmark
@@ -259,8 +259,8 @@ async def run_single_benchmark(strategy: BenchmarkStrategy):
                             nova,
                             problem["obstacles"],
                             "cell",
-                            robot_setup.motion_group_type,
-                            robot_setup,
+                            motion_group_description.motion_group_model,
+                            motion_group_description,
                             key,
                         )
 
@@ -290,7 +290,9 @@ async def run_single_benchmark(strategy: BenchmarkStrategy):
                             target=start_pose,
                             collision_scene=collision_scene,
                             tcp=tcp,
-                            optimizer_setup=robot_setup,
+                            motion_group_setup=motion_group_setup_from_motion_group_description(
+                                motion_group_description
+                            ),
                             nova=nova,
                             start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
                         )

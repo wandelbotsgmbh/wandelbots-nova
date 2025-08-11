@@ -475,43 +475,6 @@ class ApiGateway:
     async def stop_motion(self, cell: str, motion_id: str):
         await self.motion_api.stop_execution(cell=cell, motion=motion_id)
 
-    # TODO move to MotionGroup and refactor
-    def robot_setup_from_motion_group_description(
-        self,
-        motion_group_description: wb.models.MotionGroupDescription,
-        tcp_name: str,
-        payload: wb.models.Payload | None = None,
-    ) -> wb.models.MotionGroupSetup:
-        # TODO the function does multiple things not separated very well
-        collision_scene = wb.models.CollisionSetup(
-            colliders=motion_group_description.safety_zones,
-            link_chain=motion_group_description.safety_link_colliders,
-            tool=motion_group_description.safety_tool_colliders,
-            self_collision_detection=True,  # explicitly set here until we have a better understanding
-        )
-        # TODO maybe we also want to give the user more control over the collision scene
-        return wb.models.MotionGroupSetup(
-            motion_group_model=motion_group_description.motion_group_model,
-            cycle_time=motion_group_description.cycle_time,
-            mounting=motion_group_description.mounting,
-            global_limits=motion_group_description.global_limits.physical_limits,
-            tcp_offset=motion_group_description.tcps[tcp_name].pose,
-            payload=payload,
-            collision_scene=collision_scene,
-        )
-
-    # TODO move to MotionGroup
-    async def get_robot_setup(
-        self, cell_id: str, controller_id: str, motion_group_id: str, tcp: str
-    ) -> wb.models.MotionGroupSetup:
-        # TODO allow to specify payload
-        motion_group_description = await self.motion_group_api.get_motion_group_description(
-            cell=cell_id, controller=controller_id, motion_group=motion_group_id
-        )
-        return self.robot_setup_from_motion_group_description(
-            motion_group_description=motion_group_description, tcp_name=tcp
-        )
-
     async def get_joint_number(self, cell: str, motion_group_id: str) -> int:
         spec = await self.motion_group_api.get_motion_group_specification(
             cell=cell, motion_group=motion_group_id

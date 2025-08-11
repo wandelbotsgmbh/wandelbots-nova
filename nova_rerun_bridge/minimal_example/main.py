@@ -24,7 +24,7 @@ from wandelbots_api_client.models import (
 
 
 async def build_collision_world(
-    nova: Nova, cell_name: str, robot_setup: api.models.OptimizerSetup
+    nova: Nova, cell_name: str, motion_group_description: api.models.MotionGroupDescription
 ) -> str:
     collision_api = nova._api_client.store_collision_components_api
     scene_api = nova._api_client.store_collision_setups_api
@@ -50,7 +50,7 @@ async def build_collision_world(
 
     # define robot link geometries
     robot_link_colliders = await collision_api.get_default_link_chain(
-        cell=cell_name, motion_group_model=robot_setup.motion_group_type
+        cell=cell_name, motion_group_model=motion_group_description.motion_group_model
     )
     await collision_api.store_collision_link_chain(
         cell=cell_name, link_chain="robot_links", collider=robot_link_colliders
@@ -60,7 +60,7 @@ async def build_collision_world(
     scene = api.models.CollisionScene(
         colliders={"annoying_obstacle": sphere_collider},
         motion_groups={
-            robot_setup.motion_group_type: api.models.CollisionMotionGroup(
+            motion_group_description.motion_group_model: api.models.CollisionMotionGroup(
                 tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
             )
         },
@@ -113,10 +113,10 @@ async def test():
 
             tcp = "Flange"
 
-            robot_setup: models.OptimizerSetup = await motion_group._get_motion_group_setup(tcp=tcp)
-            robot_setup.safety_setup.global_limits.tcp_velocity_limit = 200
-
-            collision_scene_id = await build_collision_world(nova, "cell", robot_setup)
+            motion_group_description: api.models.MotionGroupDescription = (
+                await motion_group.get_description()
+            )
+            collision_scene_id = await build_collision_world(nova, "cell", motion_group_description)
 
             await bridge.log_collision_scenes()
 

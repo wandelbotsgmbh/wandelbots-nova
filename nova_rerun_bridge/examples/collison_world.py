@@ -7,7 +7,9 @@ from nova.program import ProgramPreconditions
 from nova_rerun_bridge import NovaRerunBridge
 
 
-async def build_collision_world(nova: Nova, cell_name: str, robot_setup: models.RobotSetup) -> str:
+async def build_collision_world(
+    nova: Nova, cell_name: str, motion_group_description: api.models.MotionGroupDescription
+) -> str:
     collision_api = nova._api_client.store_collision_components_api
     scene_api = nova._api_client.store_collision_setups_api
 
@@ -122,7 +124,7 @@ async def build_collision_world(nova: Nova, cell_name: str, robot_setup: models.
 
     # Define robot link geometries
     robot_link_colliders = await collision_api.get_default_link_chain(
-        cell=cell_name, motion_group_model=robot_setup.motion_group_type
+        cell=cell_name, motion_group_model=motion_group_description.motion_group_model
     )
     await collision_api.store_collision_link_chain(
         cell=cell_name, link_chain="robot_links", collider=robot_link_colliders
@@ -132,7 +134,7 @@ async def build_collision_world(nova: Nova, cell_name: str, robot_setup: models.
     scene = api.models.CollisionScene(
         colliders=colliders,
         motion_groups={
-            robot_setup.motion_group_type: api.models.CollisionMotionGroup(
+            motion_group_description.motion_group_model: api.models.CollisionMotionGroup(
                 tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
             )
         },
@@ -167,11 +169,11 @@ async def test():
         async with controller[0] as motion_group:
             await bridge.log_saftey_zones(motion_group)
 
-            tcp = "Flange"
+            motion_group_description: api.models.MotionGroupDescription = (
+                await motion_group.get_description()
+            )
 
-            robot_setup: models.RobotSetup = await motion_group._get_motion_group_setup(tcp=tcp)
-
-            await build_collision_world(nova, "cell", robot_setup)
+            await build_collision_world(nova, "cell", motion_group_description)
 
             await bridge.log_collision_scenes()
 
