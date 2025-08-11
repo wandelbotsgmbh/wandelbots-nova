@@ -90,11 +90,13 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
         # then we wait until the movement is finished
         async for execute_trajectory_response in response_stream:
+            ic(execute_trajectory_response)
             instance = execute_trajectory_response.actual_instance
             # Stop when standstill indicates motion ended
             # if isinstance(instance, wb.models.Standstill):
             #     if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
             #         return
+        ic()
 
     return movement_controller
 
@@ -192,9 +194,15 @@ class Jogger:
 
 
 class TrajectoryCursor:
-    def __init__(self, joint_trajectory: wb.models.JointTrajectory):
+    def __init__(
+        self,
+        effect_stream: AsyncIterator[wb.models.MotionGroupState],
+        joint_trajectory: wb.models.JointTrajectory,
+    ):
         self.joint_trajectory = joint_trajectory
         self._command_queue = asyncio.Queue()
+        self._response_queue = asyncio.Queue()
+        self._effect_stream: AsyncIterator[wb.models.MotionGroupState] = effect_stream
         self._breakpoints = []
 
     def __call__(self, context: MovementControllerContext):
@@ -248,23 +256,42 @@ class TrajectoryCursor:
             yield await self._command_queue.get()
             self._command_queue.task_done()
 
+    async def _effect_consumer(self):
+        async for effect in self._effect_stream:
+            # ic(effect)
+            self._response_queue.put_nowait(effect)
+
     async def _response_consumer(self):
-        last_movement = None
+        async for response in self._response_stream:
+            ic(response)
+            self._response_queue.put_nowait(response)
+
+    async def _combined_response_consumer(self):
+        last_motion_state = None
 
         try:
-            async for response in self._response_stream:
-                instance = response.actual_instance
-                if isinstance(instance, wb.models.MotionGroupState):
-                    if last_movement is None:
-                        last_movement = instance.movement
-                    self._handle_movement(instance.movement, last_movement)
-                    last_movement = instance.movement
-
-                if isinstance(instance, wb.models.Standstill):
-                    if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
-                        # self.context.movement_consumer(None)
+            while True:
+                response = await self._response_queue.get()
+                # ic(response)
+                if isinstance(response, wb.models.MotionGroupState):
+                    if response.standstill:
+                        # TODO this is not always the intended end of the movement, but how do we know?
                         ic()
                         break
+
+                    motion_state = motion_group_state_to_motion_state(response)
+                    if last_motion_state is None:
+                        last_motion_state = motion_state
+                    self._handle_motion_state(motion_state, last_motion_state)
+                    last_motion_state = motion_state
+                    self._response_queue.task_done()
+                elif isinstance(response, wb.models.ExecuteTrajectoryResponse):
+                    if isinstance(response.actual_instance, wb.models.MovementErrorResponse):
+                        ic()
+                        self._response_queue.task_done()
+                        # TODO propagate the error
+                        break
+                self._response_queue.task_done()
         except asyncio.CancelledError:
             ic()
             raise
@@ -273,7 +300,7 @@ class TrajectoryCursor:
             raise
         ic()
 
-    def _handle_movement(
+    def _handle_motion_state(
         self, curr_movement: wb.models.MotionGroupState, last_movement: wb.models.MotionGroupState
     ):
         if not self._breakpoints:
@@ -320,15 +347,28 @@ async def init_movement_gen(motion_id, response_stream) -> ExecuteTrajectoryRequ
     yield wb.models.InitializeMovementRequest(trajectory=motion_id, initial_location=0)  # type: ignore
 
     # then we get the response
-    initialize_movement_response = await anext(response_stream)
-    if isinstance(
-        initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
-    ):
-        r1 = initialize_movement_response.actual_instance
-        if not r1.init_response.succeeded:
-            raise InitMovementFailed(r1.init_response)
+    execute_trajectory_response = await anext(response_stream)
+    initialize_movement_response = execute_trajectory_response.actual_instance
+    assert isinstance(initialize_movement_response, wb.models.InitializeMovementResponse)
+    ic()
+    # TODO this should actually check for None but currently the API seems to return an empty string instead
+    if initialize_movement_response.message or initialize_movement_response.add_trajectory_error:
+        raise InitMovementFailed(initialize_movement_response)
+
+    # assert isinstance(
+    #     initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
+    # ), "Expected InitializeMovementResponse, got: " + str(
+    #     initialize_movement_response.actual_instance
+    # )
+    # if isinstance(
+    #     initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
+    # ):
+    #     r1 = initialize_movement_response.actual_instance
+    #     if not r1.init_response.succeeded:
+    #         raise InitMovementFailed(r1.init_response)
 
 
+# TODO do we need this?
 def trajectory_cursor(context: MovementControllerContext) -> MovementControllerFunction:
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,

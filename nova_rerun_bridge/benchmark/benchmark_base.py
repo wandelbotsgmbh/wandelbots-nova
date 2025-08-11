@@ -250,8 +250,8 @@ async def run_single_benchmark(strategy: BenchmarkStrategy):
                         tcp = "Flange"
 
                         # Get robot setup for collision scene
-                        robot_setup: models.OptimizerSetup = await motion_group._get_robot_setup(
-                            tcp=tcp
+                        robot_setup: models.OptimizerSetup = (
+                            await motion_group._get_motion_group_setup(tcp=tcp)
                         )
 
                         # Add collision objects from benchmark

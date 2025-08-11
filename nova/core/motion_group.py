@@ -20,6 +20,30 @@ MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
 
 
+def motion_group_setup_from_motion_group_description(
+    motion_group_description: wb.models.MotionGroupDescription,
+    tcp_name: str,
+    payload: wb.models.Payload | None = None,
+) -> wb.models.MotionGroupSetup:
+    # TODO the function does multiple things not separated very well
+    collision_scene = wb.models.CollisionSetup(
+        colliders=motion_group_description.safety_zones,
+        link_chain=motion_group_description.safety_link_colliders,
+        tool=motion_group_description.safety_tool_colliders,
+        self_collision_detection=True,  # explicitly set here until we have a better understanding
+    )
+    # TODO maybe we also want to give the user more control over the collision scene
+    return wb.models.MotionGroupSetup(
+        motion_group_model=motion_group_description.motion_group_model,
+        cycle_time=motion_group_description.cycle_time,
+        mounting=motion_group_description.mounting,
+        global_limits=motion_group_description.global_limits.physical_limits,
+        tcp_offset=motion_group_description.tcps[tcp_name].pose,
+        payload=payload,
+        collision_scene=collision_scene,
+    )
+
+
 def compare_collision_scenes(scene1: wb.models.CollisionSetup, scene2: wb.models.CollisionSetup):
     if scene1.colliders != scene2.colliders:
         return False
@@ -141,7 +165,7 @@ class MotionGroup(AbstractRobot):
         self._controller_id = controller_id
         self._motion_group_id = motion_group_id
         self._current_motion: str | None = None
-        self._robot_setup: wb.models.MotionGroupSetup | None = None
+        self._motion_group_setup: wb.models.MotionGroupSetup | None = None
         super().__init__(id=motion_group_id)
 
     async def open(self):
@@ -208,7 +232,7 @@ class MotionGroup(AbstractRobot):
         # PREPARE THE REQUEST
         collision_scenes = validate_collision_scenes(actions)
         start_joint_position = start_joint_position or await self.joints()
-        robot_setup = robot_setup or await self._get_robot_setup(tcp=tcp)
+        robot_setup = robot_setup or await self._get_motion_group_setup(tcp=tcp)
 
         motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
 
@@ -247,7 +271,7 @@ class MotionGroup(AbstractRobot):
             raise ValueError("No actions provided")
 
         current_joints = start_joint_position or await self.joints()
-        robot_setup = robot_setup or await self._get_robot_setup(tcp=tcp)
+        robot_setup = robot_setup or await self._get_motion_group_setup(tcp=tcp)
 
         all_trajectories = []
         for batch in split_actions_into_batches(actions):
@@ -322,7 +346,7 @@ class MotionGroup(AbstractRobot):
         )
         # TODO refactor
         MOTION_STATE_STREAM_RATE_MS = 100
-        motion_state_stream = self._api_gateway.motion_group_api.stream_motion_group_state(
+        motion_group_state_stream = self._api_gateway.motion_group_api.stream_motion_group_state(
             cell=self._cell,
             controller=self._controller_id,
             motion_group=self.motion_group_id,
@@ -330,14 +354,21 @@ class MotionGroup(AbstractRobot):
         )
         from icecream import ic
 
-        async for motion_state in motion_state_stream:
-            ic(motion_state)
-            if motion_state.execute is None:
-                # If there is no execute field, it means the motion group is not executing anything
-                # This can happen if the motion group is not activated or if there is no planned motion
+        async for motion_group_state in motion_group_state_stream:
+            ic(motion_group_state)
+            if motion_group_state.standstill:
+                logger.debug(f"Motion {self.motion_group_id} finished.")
+                self._current_motion = None
+                execution_task.cancel()
                 break
-            yield motion_state
-        await execution_task
+            # if motion_state.execute is None:
+            #     # If there is no execute field, it means the motion group is not executing anything
+            #     # This can happen if the motion group is not activated or if there is no planned motion
+            #     break
+            yield motion_group_state
+        ic()
+        # TODO
+        # await execution_task
 
     async def _stream_jogging(self, tcp, movement_controller):
         controller = movement_controller(
@@ -372,17 +403,17 @@ class MotionGroup(AbstractRobot):
             yield execute_response
         await execution_task
 
-    async def _get_robot_setup(self, tcp: str) -> wb.models.MotionGroupSetup:
+    async def _get_motion_group_setup(self, tcp: str) -> wb.models.MotionGroupSetup:
         # TODO: mypy failed on main branch, need to check
-        if self._robot_setup is None or self._robot_setup.tcp != tcp:  # type: ignore
-            self._robot_setup = await self._api_gateway.get_robot_setup(
+        if self._motion_group_setup is None or self._motion_group_setup.tcp != tcp:  # type: ignore
+            self._motion_group_setup = await self._api_gateway.get_robot_setup(
                 cell_id=self._cell,
                 controller_id=self._controller_id,
                 motion_group_id=self.motion_group_id,
                 tcp=tcp,
             )
 
-        return self._robot_setup
+        return self._motion_group_setup
 
     async def _load_planned_motion(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str
@@ -408,6 +439,13 @@ class MotionGroup(AbstractRobot):
     async def _fetch_motion_group_description(self) -> wb.models.MotionGroupDescription:
         return await self._api_gateway.motion_group_api.get_motion_group_description(
             cell=self._cell, controller=self._controller_id, motion_group=self.motion_group_id
+        )
+
+    async def _fetch_motion_group_setup(self, tcp: str) -> wb.models.MotionGroupSetup:
+        # TODO allow to specify payload
+        motion_group_description = await self._fetch_motion_group_description()
+        return motion_group_setup_from_motion_group_description(
+            motion_group_description=motion_group_description, tcp_name=tcp
         )
 
     async def _fetch_motion_group_state(self) -> wb.models.MotionGroupState:

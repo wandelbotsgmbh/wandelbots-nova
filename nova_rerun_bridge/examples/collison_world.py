@@ -169,7 +169,7 @@ async def test():
 
             tcp = "Flange"
 
-            robot_setup: models.RobotSetup = await motion_group._get_robot_setup(tcp=tcp)
+            robot_setup: models.RobotSetup = await motion_group._get_motion_group_setup(tcp=tcp)
 
             await build_collision_world(nova, "cell", robot_setup)
 
