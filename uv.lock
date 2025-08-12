@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10, <3.13"
 resolution-markers = [
     "python_full_version >= '3.11'",
@@ -916,9 +916,9 @@ wheels = [
 
 [[package]]
 name = "nats-py"
-version = "2.10.0"
+version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/83/2f/0f1b94844760a894659388059bc618b59fd794a3ef2f5113d710864d3fa7/nats_py-2.10.0.tar.gz", hash = "sha256:9d44265a097edb30d40e214c1dd1a7405c1451d33480ce714c041fb73bb66a10", size = 113637, upload-time = "2025-03-25T05:11:22.102Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/65/be/757c8af63596453daaa42cc21be51aa42fc6b23cc9d4347784f99c8357b5/nats_py-2.11.0.tar.gz", hash = "sha256:fb1097db8b520bb4c8f5ad51340ca54d9fa54dbfc4ecc81c3625ef80994b6100", size = 114186, upload-time = "2025-07-22T08:41:08.589Z" }
 
 [[package]]
 name = "nodeenv"
@@ -1898,7 +1898,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "2.6.3"
+version = "2.8.3"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
@@ -1944,6 +1944,8 @@ wandelscript = [
     { name = "antlr4-python3-runtime" },
     { name = "dotenv" },
     { name = "geometricalgebra" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "typer" },
 ]
 
@@ -1979,8 +1981,9 @@ requires-dist = [
     { name = "geometricalgebra", marker = "extra == 'wandelscript'", specifier = ">=0.1.3,<0.2" },
     { name = "httpx", specifier = ">=0.28.0,<0.29" },
     { name = "loguru", specifier = ">=0.7.2,<0.8" },
-    { name = "nats-py", extras = ["jetstream"], specifier = "==2.10.0" },
+    { name = "nats-py", extras = ["jetstream"], specifier = ">=2.11.0" },
     { name = "numpy", specifier = ">1.1.19" },
+    { name = "numpy", marker = "extra == 'wandelscript'", specifier = ">=1.1.19" },
     { name = "pydantic", specifier = ">=2.11.4,<3" },
     { name = "python-decouple", specifier = "~=3.8" },
     { name = "python-decouple", marker = "extra == 'novax'", specifier = ">=3.8" },
@@ -1992,7 +1995,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.14.1,<2" },
     { name = "trimesh", marker = "extra == 'benchmark'", specifier = ">=4.5.3" },
     { name = "trimesh", marker = "extra == 'nova-rerun-bridge'", specifier = ">=4.5.3" },
-    { name = "typer", extras = ["all"], marker = "extra == 'wandelscript'", specifier = ">=0.12,<0.16" },
+    { name = "typer", extras = ["all"], marker = "extra == 'wandelscript'", specifier = ">=0.12,<0.17" },
     { name = "uvicorn", marker = "extra == 'novax'", specifier = ">=0.34.0" },
     { name = "wandelbots-api-client", specifier = "==25.6.0" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
