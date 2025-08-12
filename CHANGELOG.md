@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.8.3 (2025-08-12)
+
+### Chores
+
+- **deps**: Update typer[all] requirement from <0.16,>=0.12 to >=0.12,<0.17 (#204)
+  ([#204](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/204),
+  [`100354d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/100354de31079b68b1b2fde307033b5caa8cf8ed))
+
+
 ## v2.8.2 (2025-07-31)
 
 ### Bug Fixes
