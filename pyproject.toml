@@ -34,15 +34,15 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.8.2,<0.10.0",
-    "pytest>=8.3.4,<9",
-    "pytest-asyncio>=0.24,<0.26",
-    "mypy>=1.13.0,<2",
-    "pre-commit>=4.0.1,<5",
-    "icecream>=2.1.4,<3",
+    "ruff>=0.12.8",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "mypy>=1.17.1",
+    "pre-commit>=4.3.0",
+    "icecream>=2.1.5",
     "ipython<9",
-    "freezegun>=1.5.1",
-    "pyinstrument>=5.0.2",
+    "freezegun>=1.5.5",
+    "pyinstrument>=5.1.1",
     "glom>=24.11.0",
 ]
 
