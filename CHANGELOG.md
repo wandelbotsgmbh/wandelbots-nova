@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.8.4 (2025-08-12)
+
+### Bug Fixes
+
+- Re-enabled Wandelscript unit tests & fixed them (#257)
+  ([#257](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/257),
+  [`9e7bd5a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9e7bd5a7aab7a28f00c340e755426fdd88d236f5))
+
+
 ## v2.8.3 (2025-08-12)
 
 ### Chores
