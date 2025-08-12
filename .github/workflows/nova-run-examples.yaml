@@ -12,7 +12,7 @@ jobs:
   setup-instance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
@@ -74,7 +74,7 @@ jobs:
             run_cmd: "python nova_rerun_bridge/examples/welding_example.py"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -147,7 +147,7 @@ jobs:
     needs: [setup-instance, test-integration]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Decode output secrets
         uses: cloudposse/github-action-secret-outputs@main
         id: role
