@@ -28,11 +28,11 @@ print(a)
 """
     robot_cell = SimulatedRobotCell()
     if exception is None:
-        runner = wandelscript.run(code, robot_cell_override=robot_cell)
+        runner = wandelscript.run(program_id="test", program=code, robot_cell_override=robot_cell)
         assert runner.state is ProgramRunState.COMPLETED
     else:
         with pytest.raises(exception):
-            wandelscript.run(code, robot_cell_override=robot_cell)
+            wandelscript.run(program_id="test", program=code, robot_cell_override=robot_cell)
 
 
 @pytest.mark.parametrize(
@@ -53,7 +53,7 @@ new_pose = assoc(pose, {index}, 42)
 """
     robot_cell = SimulatedRobotCell()
     with pytest.raises(exception):
-        runner = wandelscript.run(code, robot_cell_override=robot_cell)
+        runner = wandelscript.run(program_id="test", program=code, robot_cell_override=robot_cell)
         assert runner.state is ProgramRunState.FAILED
 
 

@@ -13,6 +13,7 @@ def pose_to_versor(pose: Pose) -> cga3d.Vector:
         The versor
 
     Examples:
+    >>> import numpy as np
     >>> p = Pose((0, 0, 5, 0, 0, 1))
     >>> assert np.allclose(pose_to_versor(p).to_pos_and_rot_vector(), [0, 0, 5, 0, 0, 1])
     """

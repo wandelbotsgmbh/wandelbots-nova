@@ -35,13 +35,13 @@ class ExecutionContext:
     # Maps the motion group id to the list of recorded motion lists
     # Each motion list is a path the was planned separately
     motion_group_recordings: list[list[MotionState]]
-    output: dict
+    output_data: dict[str, Any]
 
     def __init__(self, robot_cell: RobotCell, stop_event: anyio.Event):
         self._robot_cell = robot_cell
         self._stop_event = stop_event
         self.motion_group_recordings = []
-        self.output_data: dict[str, Any] = {}
+        self.output_data = {}
 
     @property
     def robot_cell(self) -> RobotCell:
@@ -73,6 +73,7 @@ class ProgramRun(BaseModel):
     start_time: dt.datetime | None = Field(None, description="Start time of the program run")
     end_time: dt.datetime | None = Field(None, description="End time of the program run")
     input_data: dict[str, Any] | None = Field(None, description="Input of the program run")
+    output_data: dict[str, Any] | None = Field(None, description="Output of the program run")
 
 
 class ProgramRunner(ABC):
@@ -83,11 +84,7 @@ class ProgramRunner(ABC):
     """
 
     def __init__(
-        self,
-        program_id: str,
-        args: dict[str, Any],
-        robot_cell_override: RobotCell | None = None,
-        simulate: bool = False,
+        self, program_id: str, args: dict[str, Any], robot_cell_override: RobotCell | None = None
     ):
         """
         Args:
@@ -375,9 +372,8 @@ class ProgramRunner(ABC):
                             f"Program {self.program_id} run {self.run_id} completed successfully"
                         )
                 finally:
-                    # write path to output
-                    # self._program_run.execution_results = execution_context.motion_group_recordings
-                    # self._program_run.output_data = execution_context.output_data
+                    # program output data
+                    self._program_run.output_data = execution_context.output_data
 
                     logger.info(
                         f"Program {self.program_id} run {self.run_id} finished. Run teardown routine..."
