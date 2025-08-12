@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.8.6 (2025-08-12)
+
+### Chores
+
+- Upgraded dev dependencies (#258)
+  ([#258](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/258),
+  [`d8b09fa`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d8b09fad1628e7d60e6f6c069cc75b7287f97ddc))
+
+
 ## v2.8.5 (2025-08-12)
 
 ### Chores
