@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.8.5 (2025-08-12)
+
+### Chores
+
+- **deps**: Bump actions/checkout from 4 to 5 (#253)
+  ([#253](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/253),
+  [`9fe9029`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9fe9029d6ab9ff375bc55168c1b8d05150a6e57c))
+
+
 ## v2.8.4 (2025-08-12)
 
 ### Bug Fixes
