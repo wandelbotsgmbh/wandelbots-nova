@@ -30,7 +30,7 @@ jobs:
       - name: Semantic Version Release
         id: semrel
         if: github.ref_name == 'main'
-        uses: python-semantic-release/python-semantic-release@v10.2.0
+        uses: python-semantic-release/python-semantic-release@v10.3.1
         with:
           build: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
