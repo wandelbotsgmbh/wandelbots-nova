@@ -108,6 +108,7 @@ class ProgramRunner(ABC):
             start_time=None,
             end_time=None,
             input_data=args,
+            output_data={},
         )
         self._thread: threading.Thread | None = None
         self._stop_event: threading.Event | None = None
