@@ -344,8 +344,8 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
                                     controller="Simulated",
                                     tcp_pose=api.models.TcpPose(
                                         tcp="Flange",
-                                        position=motion_state.state.pose.position.to_wb_vector3d(),
-                                        orientation=motion_state.state.pose.orientation.to_wb_vector3d(),
+                                        position=motion_state.state.pose.position.to_api_vector3d(),
+                                        orientation=motion_state.state.pose.orientation.to_api_vector3d(),
                                     ),
                                     joint_velocity=api.models.Joints(joints=[0.0] * 6),
                                     velocity=api.models.MotionVector(
