@@ -142,7 +142,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             orientation=api.models.Quaternion(x=0, y=0, z=0, w=1),
         )
         motion_group_type = "FANUC_CRX25iA"
-        payload = api.models.Payload(payload=0.0)
+        payload = api.models.Payload(name="example", payload=0.0)
         return api.models.OptimizerSetup(
             motion_group_type=motion_group_type,
             mounting=mounting,
@@ -154,6 +154,8 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
 
     async def get_mounting(self) -> Pose:
         mounting = (await self.get_optimizer_setup((await self.tcp_names())[0])).mounting
+        if mounting is None or mounting.position is None or mounting.orientation is None:
+            raise ValueError("Mounting is None")
 
         return Pose.from_position_and_quaternion(  # type: ignore
             [mounting.position.x, mounting.position.y, mounting.position.z],
@@ -187,7 +189,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             else np.array(start_joint_position, dtype=float)
         )
 
-        joint_positions = []
+        joint_positions: list[tuple[float, ...]] = []
         times = []
         locations = []
 
@@ -262,9 +264,10 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             # The final position of this action is the start of the next
             current_joints = final_joints
 
-        joint_positions = [api.models.Joints(joints=list(j)) for j in joint_positions]
         return api.models.JointTrajectory(
-            joint_positions=joint_positions, times=times, locations=locations
+            joint_positions=[api.models.Joints(joints=list(j)) for j in joint_positions],
+            times=times,
+            locations=locations,
         )
 
     async def _execute(
@@ -341,8 +344,8 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
                                     controller="Simulated",
                                     tcp_pose=api.models.TcpPose(
                                         tcp="Flange",
-                                        position=motion_state.state.pose.position.model_dump(),
-                                        orientation=motion_state.state.pose.orientation.model_dump(),
+                                        position=motion_state.state.pose.position.to_api_vector3d(),
+                                        orientation=motion_state.state.pose.orientation.to_api_vector3d(),
                                     ),
                                     joint_velocity=api.models.Joints(joints=[0.0] * 6),
                                     velocity=api.models.MotionVector(
