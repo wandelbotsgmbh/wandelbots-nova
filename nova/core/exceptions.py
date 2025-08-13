@@ -42,6 +42,19 @@ class InitMovementFailed(Exception):
         return self._error
 
 
+class ErrorDuringMovement(Exception):
+    """Raised when an error occurs during movement execution."""
+
+    def __init__(self, message: str):
+        self._message = message
+        super().__init__(f"Error during movement: {message}")
+
+    @property
+    def message(self) -> str:
+        """Return the error message."""
+        return self._message
+
+
 class LoadPlanFailed(Exception):
     def __init__(self, error: wb.models.AddTrajectoryError):
         self._error = error

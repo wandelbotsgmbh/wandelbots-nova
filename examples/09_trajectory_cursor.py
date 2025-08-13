@@ -5,7 +5,7 @@ import nova
 from nova import Nova, api
 from nova.actions import jnt, lin
 from nova.cell.controllers import virtual_controller
-from nova.core.movement_controller import TrajectoryCursor
+from nova.core.movement_controller import TrajectoryCursor, motion_group_state_to_motion_state
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 
@@ -52,7 +52,7 @@ async def main():
             ic(tcp_names)
             tcp = tcp_names[0]
             motion_iter = await motion_group.plan_and_execute([jnt(home_joints)], tcp)
-
+            ic()
             # Get current TCP pose and offset it slightly along the x-axis
             current_pose = await motion_group.tcp_pose(tcp)
             dist = 300
@@ -72,7 +72,9 @@ async def main():
             action.settings = MotionSettings(tcp_velocity_limit=100)
 
         joint_trajectory = await motion_group.plan(actions, tcp)
-        trajectory_cursor = TrajectoryCursor(joint_trajectory)
+        # TODO this probaly not consumes the state stream immediately and thus might cause issues
+        # only start consuming the state stream when the trajectory is actually executed
+        trajectory_cursor = TrajectoryCursor(motion_group.stream_state(), joint_trajectory)
         motion_iter = motion_group.stream_execute(
             joint_trajectory, tcp, actions=actions, movement_controller=trajectory_cursor
         )
@@ -97,7 +99,7 @@ async def main():
 
         driver_task = asyncio.create_task(driver())
         async for motion_state in motion_iter:
-            ic(motion_state.path_parameter)
+            ic(motion_group_state_to_motion_state(motion_state).path_parameter)
         await driver_task
         # await cell.delete_robot_controller(controller.controller_id)
 

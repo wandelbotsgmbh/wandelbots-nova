@@ -7,7 +7,6 @@ from nova.types.state import MotionState, RobotState
 from nova.types.tcp import RobotTcp
 from nova.types.vector3d import Vector3d
 
-LoadPlanResponse: TypeAlias = api.models.AddTrajectoryResponse
 MovementResponse: TypeAlias = api.models.ExecuteTrajectoryResponse
 ExecuteTrajectoryRequestStream: TypeAlias = AsyncIterator[api.models.ExecuteTrajectoryRequest]
 ExecuteTrajectoryResponseStream: TypeAlias = AsyncIterator[api.models.ExecuteTrajectoryResponse]
@@ -19,7 +18,6 @@ __all__ = [
     "Vector3d",
     "Pose",
     "CollisionScene",
-    "LoadPlanResponse",
     "MovementResponse",
     "MotionState",
     "RobotState",

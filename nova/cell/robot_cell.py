@@ -21,12 +21,11 @@ from typing import (
 import anyio
 import asyncstdlib
 import pydantic
-from aiostream import pipe, stream
+from aiostream import stream
 
 from nova import api
 from nova.actions import Action, MovementController
 from nova.core import logger
-from nova.core.movement_controller import motion_group_state_to_motion_state
 from nova.types import MotionState, MovementResponse, Pose, RobotState
 
 
@@ -328,25 +327,12 @@ class AbstractRobot(Device):
         if not isinstance(actions, list):
             actions = [actions]
 
-        def is_motion_state(movement_response: MovementResponse) -> bool:
-            return isinstance(movement_response, api.models.MotionGroupState)
-
-        def movement_response_to_motion_state(
-            movement_response: MovementResponse, *_
-        ) -> MotionState:
-            return motion_group_state_to_motion_state(movement_response)
-
-        execute_response_stream = self._execute(
+        motion_state_stream = self._execute(
             joint_trajectory, tcp, actions, movement_controller=movement_controller
         )
-        motion_states = (
-            stream.iterate(execute_response_stream) | pipe.filter(is_motion_state)
-            # | pipe.map(movement_response_to_motion_state)
-        )
-
-        async with motion_states.stream() as motion_states_stream:
-            async for motion_state in motion_states_stream:
-                yield motion_state
+        async for motion_state in motion_state_stream:
+            # ic()
+            yield motion_state
 
     async def execute(
         self,

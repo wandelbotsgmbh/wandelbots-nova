@@ -17,7 +17,31 @@
       "name": "Basic Example",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/examples/01_basic.py",
+      "program": "${workspaceFolder}/examples/basic.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+   {
+      "name": "Plan and Execute Example",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/plan_and_execute.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Trajectory Cursor Example",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/09_trajectory_cursor.py",
       "console": "integratedTerminal",
       "justMyCode": false,
       "envFile": "${workspaceFolder}/.env",

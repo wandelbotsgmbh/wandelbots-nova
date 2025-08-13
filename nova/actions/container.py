@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Callable
+from typing import Annotated, AsyncIterator, Callable
 
 import pydantic
 
@@ -164,6 +164,7 @@ class CombinedActions(pydantic.BaseModel):
 class MovementControllerContext(pydantic.BaseModel):
     combined_actions: CombinedActions
     motion_id: str
+    motion_group_state_stream_gen: Callable[[], AsyncIterator[api.models.MotionGroupState]]
 
 
 MovementController = Callable[[MovementControllerContext], MovementControllerFunction]

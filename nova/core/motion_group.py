@@ -13,7 +13,8 @@ from nova.core import logger
 from nova.core.exceptions import InconsistentCollisionScenes
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
-from nova.types import MovementResponse, Pose, RobotState, RobotTcp
+from nova.types import Pose, RobotState, RobotTcp
+from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.utils import StreamExtractor
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
@@ -222,13 +223,16 @@ class MotionGroup(AbstractRobot):
         return RobotState(pose=pose, tcp=tcp, joints=tuple(motion_group_state.joint_position))
 
     async def stream_state(
-        self, tcp: str | None = None, response_rate_msecs=100
-    ) -> AsyncIterable[RobotState]:
+        self, response_rate_msecs: int | None = None
+    ) -> AsyncIterable[wb.models.MotionGroupState]:
         """
-        Streams the motion group state.
+        Streams the motion group state continuously.
+
+        This method provides a real-time stream of robot state information including
+        joint positions and TCP pose data for the motion group.
         Args:
-            tcp (str | None): The reference TCP for the cartesian pose part of the robot state. Defaults to None.
-                                        If None, the current active/selected TCP of the motion group is used.
+            response_rate_msecs (int | None): The rate at which state updates are streamed
+                                             in milliseconds. Defaults to None for maximum rate.
         """
         response_stream = self._api_gateway.motion_group_api.stream_motion_group_state(
             cell=self._cell,
@@ -238,8 +242,6 @@ class MotionGroup(AbstractRobot):
         )
         async for response in response_stream:
             yield response
-            # pose = Pose(response.tcp_pose)
-            # yield RobotState(pose=pose, joints=tuple(response.joint_position.joints))
 
     async def joints(self) -> tuple[float, ...]:
         """Returns the current joint positions of the motion group."""
@@ -316,7 +318,7 @@ class MotionGroup(AbstractRobot):
             ),
         )
 
-        # TODO: this is a workaround to wait for the TCP to be created
+        # TODO: this is a workaround to wait for the TCP to be created (restart of the virtual controller?)
         t = timeout
         while t > 0:
             try:
@@ -487,50 +489,34 @@ class MotionGroup(AbstractRobot):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
-    ) -> AsyncIterable[MovementResponse]:
+    ) -> AsyncIterable[MotionState]:
         if movement_controller is None:
             movement_controller = move_forward
 
         # Load planned trajectory
-        trajecory_id = await self._load_planned_motion(joint_trajectory, tcp)
+        trajectory_id = await self._load_planned_motion(joint_trajectory, tcp)
 
         controller = movement_controller(
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
-                motion_id=trajecory_id,
+                motion_id=trajectory_id,
+                motion_group_state_stream_gen=self.stream_state,
             )
         )
 
         execution_task = asyncio.create_task(
             self._api_gateway.trajectory_execution_api.execute_trajectory(
                 cell=self._cell, controller=self._controller_id, client_request_generator=controller
-            )
+            ),
+            name=f"execute_trajectory-{trajectory_id}-{self.motion_group_id}",
         )
-        # TODO refactor
-        MOTION_STATE_STREAM_RATE_MS = 100
-        motion_group_state_stream = self._api_gateway.motion_group_api.stream_motion_group_state(
-            cell=self._cell,
-            controller=self._controller_id,
-            motion_group=self.motion_group_id,
-            response_rate=MOTION_STATE_STREAM_RATE_MS,
-        )
+        async for motion_group_state in self.stream_state():
+            if motion_group_state.execute:
+                yield motion_group_state_to_motion_state(motion_group_state)
         from icecream import ic
 
-        async for motion_group_state in motion_group_state_stream:
-            ic(motion_group_state)
-            if motion_group_state.standstill:
-                logger.debug(f"Motion {self.motion_group_id} finished.")
-                self._current_motion = None
-                execution_task.cancel()
-                break
-            # if motion_state.execute is None:
-            #     # If there is no execute field, it means the motion group is not executing anything
-            #     # This can happen if the motion group is not activated or if there is no planned motion
-            #     break
-            yield motion_group_state
         ic()
-        # TODO
-        # await execution_task
+        await execution_task
 
     async def _stream_jogging(self, tcp, movement_controller):
         controller = movement_controller(
