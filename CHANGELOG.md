@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.8.7 (2025-08-13)
+
+### Bug Fixes
+
+- **NDX-172**: Fixed missing api autocompletion in IDE (#259)
+  ([#259](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/259),
+  [`d3c837e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d3c837ee936870f8640a8ca6c938ed5e27a71f1b))
+
+
 ## v2.8.6 (2025-08-12)
 
 ### Chores
