@@ -2,8 +2,6 @@
 
 A visualization extension for [wandelbots-nova](https://github.com/wandelbotsgmbh/wandelbots-nova) that enables real-time 3D visualization of robot trajectories using [rerun.io](https://rerun.io).
 
-https://github.com/user-attachments/assets/ab527bc4-720a-41f2-9499-54d6ed027163
-
 [402951223-ab527bc4-720a-41f2-9499-54d6ed027163.webm](https://github.com/user-attachments/assets/b75f54d5-ce39-42ad-96b5-2fdefc780fa1)
 
 ## Prerequisites
