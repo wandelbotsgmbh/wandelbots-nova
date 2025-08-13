@@ -9,7 +9,7 @@ This library provides an SDK for the Wandelbots NOVA API.
 
 The SDK will help you to build your own apps and services using Python on top of Wandelbots NOVA and makes programming a robot as easy as possible.
 
-https://github.com/user-attachments/assets/f6157e4b-eea8-4b96-b302-1f3864ae44a9
+[417768496-f6157e4b-eea8-4b96-b302-1f3864ae44a9.webm](https://github.com/user-attachments/assets/ca7de6ba-c78d-414f-ae8f-f76d0890caf3)
 
 ## About
 
