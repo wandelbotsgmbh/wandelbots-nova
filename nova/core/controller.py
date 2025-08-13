@@ -3,7 +3,7 @@ from typing import AsyncGenerator, Literal, Sized
 from nova.api import models
 from nova.cell.robot_cell import AbstractController, AbstractRobot, IODevice, ValueType
 from nova.core import logger
-from nova.core.gateway import NovaDevice
+from nova.core.gateway import ApiGateway, NovaDevice
 from nova.core.io import IOAccess
 from nova.core.motion_group import MotionGroup
 
@@ -19,11 +19,11 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         cell_id: str
         controller_id: str
 
-    def __init__(self, configuration: Configuration):
+    def __init__(self, configuration: Configuration, api_gateway: ApiGateway):
         super().__init__(configuration)
         self._activated_motion_group_ids: list[str] = []
         self._io_access = IOAccess(
-            api_gateway=self._nova_api,
+            api_gateway=api_gateway,
             cell=self.configuration.cell_id,
             controller_id=self.configuration.controller_id,
         )

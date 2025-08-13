@@ -1,3 +1,4 @@
+import json
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import AsyncIterator, Optional
@@ -7,11 +8,11 @@ from fastapi import APIRouter, FastAPI
 
 from nova.cell.robot_cell import RobotCell
 from nova.core.logging import logger
-from nova.events import nats
+from nova.core.nova import Nova
+from nova.events.nats import Message, ProgramStore
+from nova.events.nats import Program as StoreProgram
 from nova.program.function import Program
 from nova.program.runner import ProgramRun
-from nova.program.store import Program as StoreProgram
-from nova.program.store import ProgramStore
 from novax.program_manager import ProgramDetails, ProgramManager
 
 # Read BASE_PATH environment variable and extract app name
@@ -21,21 +22,27 @@ logger.info(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
 
 # Create nats programs bucket name
 _CELL_NAME = config("CELL_NAME", default="")
-_NATS_PROGRAM_BUCKET = f"nova_{_CELL_NAME}_programs"
-_NATS_CLIENT_CONFIG = {"connect_timeout": 2.0, "allow_reconnect": True, "max_reconnect_attempts": 2}
-
-
-async def _state_listener(program_run: ProgramRun):
-    event = nats.ProgramStateChangeEvent(timestamp=datetime.now(), **program_run.model_dump())
-    nats.program_state_change_handler(event)
 
 
 class Novax:
     def __init__(self, robot_cell_override: RobotCell | None = None):
+        self._nova = Nova()
+        self._cell = self._nova.cell(cell_id=_CELL_NAME)
         self._program_manager: ProgramManager = ProgramManager(
-            robot_cell_override=robot_cell_override, state_listener=_state_listener
+            robot_cell_override=robot_cell_override, state_listener=self._state_listener
         )
         self._app: FastAPI | None = None
+
+    def _state_listener(self, program_run: ProgramRun):
+        cell = self._nova.cell(_CELL_NAME)
+
+        data = program_run.model_dump()
+        data["timestamp"] = datetime.now().isoformat()
+        message = Message(
+            subject=f"nova.cells.{_CELL_NAME}.programs.{program_run.id}",
+            data=json.dumps(data).encode(),
+        )
+        cell.publish_message(message)
 
     @property
     def program_manager(self) -> ProgramManager:
@@ -69,16 +76,16 @@ class Novax:
         Lifespan context manager for FastAPI application lifecycle.
         Handles startup and shutdown events.
         """
-        await nats.start_program_state_consumer()
-        await self._register_programs()
-
         try:
+            self._nova.connect()
+            store = self._cell.program_store()
+            await self._register_programs(store)
+
             yield
         finally:
-            await self._deregister_programs()
-            await nats.stop_program_state_consumer()
+            await self._deregister_programs(store)
 
-    async def _register_programs(self):
+    async def _register_programs(self, program_store: ProgramStore):
         """
         Handle FastAPI startup - discover and register programs from sources to store
         """
@@ -106,15 +113,13 @@ class Novax:
                 except Exception as e:
                     logger.error(f"Failed to convert program {program_id} to store format: {e}")
 
-            async with ProgramStore(
-                nats_bucket_name=_NATS_PROGRAM_BUCKET, nats_client_config=_NATS_CLIENT_CONFIG
-            ) as program_store:
-                for program_id, store_program in store_programs.items():
-                    try:
-                        await program_store.put(f"{_APP_NAME}.{program_id}", store_program)
-                        logger.debug(f"Program {program_id} synced to store")
-                    except Exception as e:
-                        logger.error(f"Failed to sync program {program_id} to store: {e}")
+            program_store = self._cell.program_store()
+            for program_id, store_program in store_programs.items():
+                try:
+                    await program_store.put(f"{_APP_NAME}.{program_id}", store_program)
+                    logger.debug(f"Program {program_id} synced to store")
+                except Exception as e:
+                    logger.error(f"Failed to sync program {program_id} to store: {e}")
 
             logger.info(
                 f"Novax: {len(store_programs)} programs discovered and synced to store on startup"
@@ -133,15 +138,13 @@ class Novax:
             program_ids = list(programs.keys())
             program_count = len(program_ids)
 
-            async with ProgramStore(
-                nats_bucket_name=_NATS_PROGRAM_BUCKET, nats_client_config=_NATS_CLIENT_CONFIG
-            ) as program_store:
-                for program_id in program_ids:
-                    try:
-                        await program_store.delete(f"{_APP_NAME}.{program_id}")
-                        logger.debug(f"Program {program_id} removed from store")
-                    except Exception as e:
-                        logger.error(f"Failed to remove program {program_id} from store: {e}")
+            program_store = self._cell.program_store()
+            for program_id in program_ids:
+                try:
+                    await program_store.delete(f"{_APP_NAME}.{program_id}")
+                    logger.debug(f"Program {program_id} removed from store")
+                except Exception as e:
+                    logger.error(f"Failed to remove program {program_id} from store: {e}")
 
             logger.info(f"Novax: Shutdown complete, removed {program_count} programs from store")
 

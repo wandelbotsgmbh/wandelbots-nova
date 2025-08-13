@@ -18,6 +18,8 @@ from nova.cell.robot_cell import ConfigurablePeriphery, Device
 from nova.core import logger
 from nova.core.env_handler import set_key
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
+from nova.events.nats import Message as NatsMessage
+from nova.events.nats import Publisher as NatsPublisher
 from nova.version import version as pkg_version
 
 
@@ -151,34 +153,35 @@ class ApiGateway:
         self._password = password
 
         self._init_api_client()
+        self._init_nats_client()
 
-    # when the user program runs in a pod, it needs to get connection string from env var, because it has a specific user
-    # there are too many different use cases
-    async def get_nats_client(self) -> nats.NATS:
-        if hasattr(self, "_nats_client") and self._nats_client is not None:
-            return self._nats_client
+    def _init_nats_client(self):
+        if self.host is not None:
+            is_https = self._host.startswith("https://")
 
-        # Determine protocol and port based on original host
-        is_https = self._host.startswith("https://")
-        
-        # Clean host by removing protocol prefix and trailing slashes
-        clean_host = self._host.replace("https://", "").replace("http://", "").rstrip("/")
+            # Clean host by removing protocol prefix and trailing slashes
+            clean_host = self._host.replace("https://", "").replace("http://", "").rstrip("/")
 
-        if is_https:
-            protocol = "wss"
-            port = 443
-        else:
-            protocol = "ws"
-            port = 80
+            if is_https:
+                protocol = "wss"
+                port = 443
+            else:
+                protocol = "ws"
+                port = 80
 
-        if self._access_token:
-            connection_string = f"{protocol}://{self._access_token}@{clean_host}:{port}/api/nats"
-        else:
-            connection_string = f"{protocol}://{clean_host}:{port}/api/nats"
+            if self._access_token:
+                self._nats_connection_string = (
+                    f"{protocol}://{self._access_token}@{clean_host}:{port}/api/nats"
+                )
+            else:
+                self._nats_connection_string = f"{protocol}://{clean_host}:{port}/api/nats"
+            return
 
-        client = await nats.connect(connection_string)
-        self._nats_client = client
-        return self._nats_client
+        logger.debug("host is not set, reading NATS connection from env var")
+        self._nats_connection_string = config("NATS_BROKER", default=None)
+
+        if self._nats_connection_string is None:
+            raise ValueError("NATS connection string is not set.")
 
     def _init_api_client(self):
         """Initialize or reinitialize the API client with current credentials"""
@@ -241,13 +244,49 @@ class ApiGateway:
 
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
+    async def connect(self):
+        nova_version = await self.system_api.get_system_version()
+        logger.debug("Connected to nova API version %s", nova_version)
+
+        self._nats_client = await nats.connect(self._nats_connection_string)
+        self._nats_publisher = NatsPublisher(self._nats_client)
+        logger.debug("Connected to NATS broker at %s", self._nats_client.connected_url)
+        logger.info(
+            f"Api gateway connection is established. You are using Nova version: {nova_version}"
+        )
+
     async def close(self):
         # Restore the original quote function
         if hasattr(self, "_original_quote_func"):
             import wandelbots_api_client.api.controller_ios_api as ios_api_module
 
             ios_api_module.quote = self._original_quote_func
-        return await self._api_client.close()
+        await self._api_client.close()
+        await self._nats_publisher.close()
+        await self._nats_client.drain()
+
+    async def __aenter__(self):
+        await self.connect()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
+    def publish_message(self, message: NatsMessage):
+        """
+        Publish a message to a NATS subject.
+        Args:
+            subject (str): The NATS subject to publish to.
+            message (NatsMessage): The message to publish.
+        """
+        if getattr(self, "_nats_publisher", None) is None:
+            logger.warning("your message is ignored")
+            logger.warning(
+                "You can't publish message when you didn't create a connection. First call connect() or use contextmanager."
+            )
+            return
+
+        self._nats_publisher.publish(message)
 
     async def _ensure_valid_token(self):
         """Ensure we have a valid access token, requesting a new one if needed"""
@@ -558,20 +597,10 @@ class ApiGateway:
         return plan_result.response.actual_instance
 
 
+# NovaDecide is coming from Nova instance, we should stick to the same api client and nats client for every other object created
 class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
-    class Configuration(ConfigurablePeriphery.Configuration):
-        nova_api: str
-        nova_access_token: str | None = None
-        nova_username: str | None = None
-        nova_password: str | None = None
-
     _nova_api: ApiGateway
 
-    def __init__(self, configuration: Configuration, **kwargs):
-        self._nova_api = ApiGateway(
-            host=configuration.nova_api,
-            access_token=configuration.nova_access_token,
-            username=configuration.nova_username,
-            password=configuration.nova_password,
-        )
-        super().__init__(configuration, **kwargs)
+    def __init__(self, api_gateway: ApiGateway, **kwargs):
+        self._nova_api = api_gateway
+        super().__init__({}, **kwargs)

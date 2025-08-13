@@ -1,8 +1,11 @@
 import nova.api as api
+from nova.cell.cycle import Cycle
 from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
+from nova.events.nats import Message as NatsMessage
+from nova.events.nats import ProgramStore
 
 # This is the default value we use to wait for add_controller API call to complete.
 DEFAULT_ADD_CONTROLLER_TIMEOUT = 120
@@ -36,14 +39,9 @@ class Cell:
     def _create_controller(self, controller_id: str) -> Controller:
         return Controller(
             configuration=Controller.Configuration(
-                nova_api=self._api_gateway.host,
-                nova_access_token=self._api_gateway.access_token,
-                nova_username=self._api_gateway.username,
-                nova_password=self._api_gateway.password,
-                cell_id=self._cell_id,
-                controller_id=controller_id,
-                id=controller_id,
-            )
+                cell_id=self._cell_id, controller_id=controller_id, id=controller_id
+            ),
+            api_gateway=self._api_gateway,
         )
 
     async def add_controller(
@@ -149,9 +147,17 @@ class Cell:
         controllers = await self.controllers()
         return RobotCell(timer=None, **{controller.id: controller for controller in controllers})
 
-    # TODO: can we create a cycle object which read the nats client from the Nova object?
-    # can this be the user program's entry point to NATS?
-    # when the user program runs in a pod, it needs to get connection string from env var, because it has a specific user
-    # there are too many different use cases
-    # async def _cycle() -> Cycle:
-    #    pass
+    def cycle(self) -> Cycle:
+        """
+        Publish cycle data to the cell's NATS topic.
+        Args:
+            event (str | bytes): The event data to publish.
+        """
+        return Cycle(cell_id=self.cell_id, api_gateway=self._api_gateway)
+
+    def program_store(self) -> ProgramStore:
+        bucket_name = f"nova.cells.{self.cell_id}.programs"
+        return ProgramStore(bucket_name=bucket_name, nats_client=self._api_gateway.nats_client)
+
+    def publish_message(self, message: NatsMessage):
+        self._api_gateway.publish_message(message)

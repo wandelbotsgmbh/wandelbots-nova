@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import nats
 from decouple import config
 
 from nova.cell.cell import Cell
 from nova.core.gateway import ApiGateway
-from nova.events import nats as nova_nats
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 CELL_NAME = config("CELL_NAME", default="cell", cast=str)
@@ -14,8 +12,6 @@ CELL_NAME = config("CELL_NAME", default="cell", cast=str)
 # TODO: could also extend NovaDevice
 class Nova:
     """A high-level Nova client for interacting with robot cells and controllers."""
-
-    _api_client: ApiGateway
 
     def __init__(
         self,
@@ -48,17 +44,15 @@ class Nova:
             verify_ssl=verify_ssl,
         )
 
-    # maybe user program can use this and the one in nova.events.nats is used by us?
-    async def get_nats_client(self) -> nats.NATS:
-        return await self._api_client.get_nats_client()
-
     def cell(self, cell_id: str = CELL_NAME) -> Cell:
         """Returns the cell object with the given ID."""
         return Cell(self._api_client, cell_id)
 
+    async def connect(self):
+        await self._api_client.connect()
+
     async def close(self):
         """Closes the underlying API client session."""
-        await nova_nats.flush()
         return await self._api_client.close()
 
     async def __aenter__(self):
@@ -69,6 +63,8 @@ class Nova:
             _configure_active_viewers(self)
         except ImportError:
             pass
+
+        await self.connect()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
