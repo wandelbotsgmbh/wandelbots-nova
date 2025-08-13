@@ -53,7 +53,7 @@ class ExecutionContext:
 
 
 # TODO: import from api.v2.models.ProgramRunState
-class ProgramRunState(Enum):
+class ProgramRunState(str, Enum):
     PREPARING = "PREPARING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"

@@ -39,7 +39,7 @@ class Novax:
         data = program_run.model_dump()
         data["timestamp"] = datetime.now().isoformat()
         message = Message(
-            subject=f"nova.cells.{_CELL_NAME}.programs.{program_run.id}",
+            subject=f"nova.cells.{_CELL_NAME}.programs.{program_run.run}",
             data=json.dumps(data).encode(),
         )
         cell.publish_message(message)
@@ -77,7 +77,7 @@ class Novax:
         Handles startup and shutdown events.
         """
         try:
-            self._nova.connect()
+            await self._nova.connect()
             store = self._cell.program_store()
             await self._register_programs(store)
 

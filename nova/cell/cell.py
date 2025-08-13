@@ -156,8 +156,10 @@ class Cell:
         return Cycle(cell_id=self.cell_id, api_gateway=self._api_gateway)
 
     def program_store(self) -> ProgramStore:
-        bucket_name = f"nova.cells.{self.cell_id}.programs"
-        return ProgramStore(bucket_name=bucket_name, nats_client=self._api_gateway.nats_client)
+        bucket_name = f"nova_cells_{self.cell_id}_programs"
+        return ProgramStore(
+            nats_bucket_name=bucket_name, nats_client=self._api_gateway._nats_client
+        )
 
     def publish_message(self, message: NatsMessage):
         self._api_gateway.publish_message(message)

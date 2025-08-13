@@ -1,21 +1,19 @@
-import asyncio
+import threading
+import time
 
 import pytest
+import uvicorn
+from fastapi.testclient import TestClient
 
-import nova
 from nova.cell.simulation import SimulatedRobotCell
 from novax import Novax
 
-
-@nova.program(name="simple_program")
-async def simple_program(number_of_steps: int = 30):
-    print("Hello World!")
-
-    for i in range(number_of_steps):
-        print(f"Step: {i}")
-        await asyncio.sleep(1)
-
-    print("Finished Hello World!")
+from .programs.test_programs import (
+    test_cycle,
+    test_cycle_failed,
+    test_program_run_failed,
+    test_program_run_succeded,
+)
 
 
 @pytest.fixture
@@ -24,12 +22,41 @@ def novax_app():
     app = novax.create_app()
     novax.include_programs_router(app)
 
-    # 1) Register Python programs (existing functionality)
-    novax.register_program(simple_program)
+    # Register test programs
+    novax.register_program(test_program_run_succeded)
+    novax.register_program(test_program_run_failed)
+    novax.register_program(test_cycle)
+    novax.register_program(test_cycle_failed)
 
-    # 2) register programs from path
-    # novax.register_programs(path="./programs")
+    yield app
 
-    # 3) autodiscover programs
-    # novax.autodiscover_programs()
-    return app
+
+@pytest.fixture
+def novax_server(novax_app):
+    """Fixture that starts a Novax server in a separate thread and returns the test client."""
+
+    # Start server in a separate thread
+    def run_server():
+        uvicorn.run(novax_app, host="0.0.0.0", port=8000, log_level="error")
+
+    server_thread = threading.Thread(target=run_server, daemon=True)
+    server_thread.start()
+
+    # Wait for server to start
+    test_client = TestClient(novax_app)
+    max_retries = 30
+    for _ in range(max_retries):
+        try:
+            response = test_client.get("/programs", timeout=1)
+            if response.status_code == 200:
+                break
+        except Exception:
+            time.sleep(1)
+    else:
+        raise RuntimeError("Novax server did not start correctly")
+
+    yield test_client
+
+    server_thread.join(timeout=30)
+    # Note: uvicorn.run() doesn't provide a clean shutdown mechanism
+    # The daemon thread will be automatically cleaned up when the process exits

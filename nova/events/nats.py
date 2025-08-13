@@ -47,12 +47,13 @@ class Client:
 
     def __init__(self, nats_servers: str):
         self._nats_servers = nats_servers
-        self._nats_client = None
+        self._nats_client: NATS = None
 
     async def connect(self):
         """Connect method for consistency with context manager pattern."""
         # Client is already initialized with the NATS client, so nothing to do here
-        self._nats_client = await NATS.connect(self._nats_servers)
+        self._nats_client = NATS()
+        await self._nats_client.connect(self._nats_servers)
         logger.debug("NATS client is ready")
         return self
 
@@ -128,9 +129,10 @@ class Publisher:
         try:
             while True:
                 nats_message = await self._publish_queue.get()
+                logger.info("publishing")
 
                 try:
-                    await self._nats_client.publish(nats_message)
+                    await self._nats_client._nats_client.publish(nats_message)
                 except asyncio.CancelledError:
                     # allow cancellation
                     raise
