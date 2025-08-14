@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.9.0 (2025-08-14)
+
+### Features
+
+- **NDX-232**: TrajectoryBuilder .sequence should handle *args (#260)
+  ([#260](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/260),
+  [`bce1239`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bce1239f03ff2b3a0cfba520f8bcf856446d9a0d))
+
+
 ## v2.8.7 (2025-08-13)
 
 ### Bug Fixes
