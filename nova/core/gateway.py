@@ -5,7 +5,7 @@ import functools
 import time
 from abc import ABC
 from enum import Enum
-from typing import AsyncGenerator, TypeVar
+from typing import Any, AsyncGenerator, Awaitable, Callable, TypeVar
 from urllib.parse import quote as original_quote
 
 import wandelbots_api_client as wb
@@ -263,7 +263,7 @@ class ApiGateway:
             ios_api_module.quote = self._original_quote_func
         await self._api_client.close()
         await self._nats_publisher.close()
-        await self._nats_client.drain()
+        await self._nats_client.close()
 
     async def __aenter__(self):
         await self.connect()
@@ -287,6 +287,9 @@ class ApiGateway:
             return
 
         self._nats_publisher.publish(message)
+
+    async def subscribe(self, subject: str, cb: Callable[[Any], Awaitable[None]]):
+        await self._nats_client.subscribe(subject, cb=cb)
 
     async def _ensure_valid_token(self):
         """Ensure we have a valid access token, requesting a new one if needed"""

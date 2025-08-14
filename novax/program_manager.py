@@ -2,7 +2,7 @@ import asyncio
 import datetime as dt
 import inspect
 from concurrent.futures import Future
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Coroutine, Optional
 
 from pydantic import BaseModel
 
@@ -21,7 +21,8 @@ def _log_future_result(future: asyncio.Future):
 
 
 def _report_state_change_to_event_loop(
-    loop: asyncio.AbstractEventLoop, state_listener: Callable[[ProgramRun], Awaitable[None]] | None
+    loop: asyncio.AbstractEventLoop,
+    state_listener: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None,
 ) -> Callable[[ProgramRun], Awaitable[None]] | None:
     if not state_listener:
         return None
@@ -29,8 +30,8 @@ def _report_state_change_to_event_loop(
     async def _state_listener(program_run: ProgramRun):
         logger.debug(f"Reporting state change to event loop for program run: {program_run.program}")
         coroutine = state_listener(program_run)
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, loop)  # type: ignore
-        future.add_done_callback(_log_future_result)  # type: ignore
+        future: Future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+        future.add_done_callback(_log_future_result)
 
     return _state_listener
 
@@ -84,7 +85,7 @@ class ProgramManager:
     def __init__(
         self,
         robot_cell_override: RobotCell | None = None,
-        state_listener: Callable[[ProgramRun], Awaitable[None]] | None = None,
+        state_listener: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
     ):
         """
         Initialize the ProgramManager.
@@ -165,7 +166,7 @@ class ProgramManager:
         program_id: str,
         parameters: dict[str, Any] | None = None,
         sync: bool = False,
-        on_state_change: Callable[[ProgramRun], Awaitable[None]] | None = None,
+        on_state_change: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
     ) -> ProgramRun:
         """
         Start a registered program with given parameters.

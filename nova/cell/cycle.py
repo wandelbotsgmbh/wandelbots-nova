@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field
 
 from nova.cell.robot_cell import OutputDevice
+from nova.core import logger
 from nova.core.gateway import ApiGateway
 from nova.events.nats import Message as NatsMessage
 
@@ -112,11 +113,10 @@ class Cycle(OutputDevice):
             raise RuntimeError("Cycle already started") from e
 
         self.cycle_id = uuid4()
-        event = CycleStartedEvent(
-            cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell.cell_id
-        )
+        event = CycleStartedEvent(cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id)
         message = NatsMessage(subject=self._cycle_subject, data=event.model_dump_json().encode())
-        await self._api_gateway.publish_message(message)
+        logger.info(f"Cycle started with ID: {self.cycle_id}")
+        self._api_gateway.publish_message(message)
         return start_time
 
     async def finish(self) -> timedelta:
@@ -146,7 +146,8 @@ class Cycle(OutputDevice):
         )
 
         message = NatsMessage(subject=self._cycle_subject, data=event.model_dump_json().encode())
-        await self._api_gateway.publish_message(message)
+        logger.info(f"Cycle finished with ID: {self.cycle_id}")
+        self._api_gateway.publish_message(message)
         cycle_time = self._timer.elapsed()
         self._timer.reset()
         return cycle_time
@@ -182,6 +183,7 @@ class Cycle(OutputDevice):
             cycle_id=self.cycle_id, timestamp=failure_time, cell=self._cell_id, reason=reason
         )
         message = NatsMessage(subject=self._cycle_subject, data=event.model_dump_json().encode())
+        logger.info(f"Cycle failed with ID: {self.cycle_id}, reason: {reason}")
         await self._api_gateway.publish_message(message)
 
         self._timer.reset()

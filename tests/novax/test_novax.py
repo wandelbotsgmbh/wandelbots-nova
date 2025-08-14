@@ -1,30 +1,34 @@
 import asyncio
 
 import pytest
-from nats import NATS
 
 from nova.core.nova import Nova
-from nova.program.runner import ProgramRun
+from nova.events.nats import Message
 
 
 @pytest.mark.asyncio
-async def test_novax_starts(novax_server):
+async def test_nats_pub_sub():
     nova = Nova()
     await nova.connect()
-    nats_client: NATS = nova._api_client._nats_client._nats_client
 
-    program_run_message = []
+    collected_message = None
 
     async def cb(msg):
-        program_run_message.append(msg)
+        print("received message")
+        nonlocal collected_message
+        collected_message = msg
 
-    sub = await nats_client.subscribe("nova.cells.cell.programs.*", cb=cb)
+    await nova.api_gateway.subscribe("nova.test.subject", cb=cb)
+    nova.api_gateway.publish_message(Message(subject="nova.test.subject", data=b"test message"))
 
-    start_program = novax_server.post("/programs/test_simple/start", json={"arguments": {}})
-    assert start_program.status_code == 200, "Failed to start test program"
+    # todo, wait for message, this makes the test flaky
+    # but since this is integration test, it is okay for now
+    await asyncio.sleep(2)
 
-    program_run = ProgramRun.model_validate(start_program.json())
-
-    await asyncio.sleep(10)
-    # Assert that we received a message
-    assert len(program_run_message) > 0, "No program run messages received"
+    assert collected_message is not None, "No message received"
+    assert collected_message.data == b"test message", (
+        "Received message does not match published message"
+    )
+    assert collected_message.subject == "nova.test.subject", (
+        "Received message subject does not match"
+    )

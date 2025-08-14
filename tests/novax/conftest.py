@@ -1,18 +1,18 @@
 import threading
 import time
 
+import httpx
 import pytest
 import uvicorn
-from fastapi.testclient import TestClient
 
 from nova.cell.simulation import SimulatedRobotCell
 from novax import Novax
 
 from .programs.test_programs import (
-    test_cycle,
-    test_cycle_failed,
-    test_program_run_failed,
-    test_program_run_succeded,
+    failing_program,
+    program_with_cycle_data,
+    program_with_cycle_failure,
+    sucessful_program,
 )
 
 
@@ -23,10 +23,10 @@ def novax_app():
     novax.include_programs_router(app)
 
     # Register test programs
-    novax.register_program(test_program_run_succeded)
-    novax.register_program(test_program_run_failed)
-    novax.register_program(test_cycle)
-    novax.register_program(test_cycle_failed)
+    novax.register_program(sucessful_program)
+    novax.register_program(failing_program)
+    novax.register_program(program_with_cycle_data)
+    novax.register_program(program_with_cycle_failure)
 
     yield app
 
@@ -42,21 +42,23 @@ def novax_server(novax_app):
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
 
-    # Wait for server to start
-    test_client = TestClient(novax_app)
-    max_retries = 30
-    for _ in range(max_retries):
+    counter = 0
+    while counter < 10:
         try:
-            response = test_client.get("/programs", timeout=1)
+            response = httpx.get("http://localhost:8000/programs")
             if response.status_code == 200:
                 break
         except Exception:
+            pass
+        finally:
+            counter += 1
             time.sleep(1)
-    else:
-        raise RuntimeError("Novax server did not start correctly")
 
-    yield test_client
+    if counter == 10:
+        raise TimeoutError("Failed to start Novax server")
 
-    server_thread.join(timeout=30)
+    yield "http://localhost:8000"
+
+    server_thread.join(timeout=5)
     # Note: uvicorn.run() doesn't provide a clean shutdown mechanism
     # The daemon thread will be automatically cleaned up when the process exits

@@ -1,8 +1,7 @@
 {
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
   "python.testing.pytestArgs": [
-    "tests",
-    "-v"
+    "tests"
   ],
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
@@ -30,5 +29,6 @@
     "statusBar.debuggingBackground": "#7C21D7",
     "statusBar.noFolderBackground": "#7C21D7",
     "statussBar.prominentBackground": "#7C21D7"
-  }
+  },
+  "testing.automaticallyOpenTestResults": "neverOpen"
 }

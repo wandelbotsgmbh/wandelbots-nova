@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import sys
-from typing import Any, Generic, TypeVar
+from typing import Any, Awaitable, Callable, Generic, TypeVar
 
 from decouple import config
 from nats import NATS
@@ -74,6 +74,10 @@ class Client:
     async def publish(self, message: Message):
         await self._nats_client.publish(message.subject, message.data)
 
+    async def subscribe(self, subject: str, cb: Callable[[Any], Awaitable[None]]):
+        """Subscribe to a NATS subject with a callback function."""
+        return await self._nats_client.subscribe(subject, cb=cb)
+
 
 class Publisher:
     def __init__(self, nats_client: Client):
@@ -132,7 +136,7 @@ class Publisher:
                 logger.info("publishing")
 
                 try:
-                    await self._nats_client._nats_client.publish(nats_message)
+                    await self._nats_client.publish(nats_message)
                 except asyncio.CancelledError:
                     # allow cancellation
                     raise
@@ -225,15 +229,19 @@ class _KeyValueStore(Generic[T]):
 
         self._nats_kv_config = nats_kv_config
 
-        self._nc: NATS = nats_client
-        self._js: JetStreamContext = self._nc.jetstream()
-        self._kv: KeyValue
+        self._nats_client = nats_client
+        self._nc: NATS = None
+        self._js: JetStreamContext = None
+        self._kv: KeyValue = None
         self._bucket_lock = asyncio.Lock()
 
     @property
     def is_connected(self) -> bool:
         """Check if client is connected"""
-        return self._nc is not None and self._nc.is_connected
+        return (
+            self._nats_client._nats_client is not None
+            and self._nats_client._nats_client.is_connected
+        )
 
     @property
     async def _key_value(self) -> KeyValue:
@@ -250,12 +258,18 @@ class _KeyValueStore(Generic[T]):
             RuntimeError: If the bucket doesn't exist and no nats_kv_config was provided.
         """
         if not self.is_connected:
-            await self.connect()
+            raise RuntimeError("NATS client is not connected. Call connect() first.")
 
-        if getattr(self, "_kv", None) is not None:
+        if self._kv is not None:
             return self._kv
 
         async with self._bucket_lock:
+            # Initialize NATS and JetStream if not already done
+            if self._nc is None:
+                self._nc = self._nats_client._nats_client
+            if self._js is None:
+                self._js = self._nc.jetstream()
+
             try:
                 self._kv = await self._js.key_value(self._nats_bucket_name)
             except NotFoundError:

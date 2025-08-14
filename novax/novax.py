@@ -33,14 +33,18 @@ class Novax:
         )
         self._app: FastAPI | None = None
 
-    def _state_listener(self, program_run: ProgramRun):
+    async def _state_listener(self, program_run: ProgramRun):
         cell = self._nova.cell(_CELL_NAME)
 
         data = program_run.model_dump()
         data["timestamp"] = datetime.now().isoformat()
+        # TODO: all valid program names are not valid subject names
+        # if we want to have subjects for each program, than we need to introduce checkt to the nova.program annotation
         message = Message(
-            subject=f"nova.cells.{_CELL_NAME}.programs.{program_run.run}",
-            data=json.dumps(data).encode(),
+            subject=f"nova.cells.{_CELL_NAME}.programs", data=json.dumps(data, default=str).encode()
+        )
+        logger.info(
+            f"publishing program run message for program: {program_run.program} run: {program_run.run}"
         )
         cell.publish_message(message)
 
@@ -76,14 +80,14 @@ class Novax:
         Lifespan context manager for FastAPI application lifecycle.
         Handles startup and shutdown events.
         """
-        try:
-            await self._nova.connect()
-            store = self._cell.program_store()
-            await self._register_programs(store)
+        await self._nova.connect()
+        logger.info("Novax: Connected to Nova API")
+        store = self._cell.program_store()
+        await self._register_programs(store)
+        logger.info("Novax: Programs registered to store on startup")
 
-            yield
-        finally:
-            await self._deregister_programs(store)
+        yield
+        await self._deregister_programs(store)
 
     async def _register_programs(self, program_store: ProgramStore):
         """
