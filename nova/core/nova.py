@@ -35,6 +35,7 @@ class Nova:
             verify_ssl (bool): Whether or not to verify SSL certificates (default: True).
         """
 
+        # TODO: this is internal variable but vince uses it, need to rename this to _api_gateway
         self._api_client = ApiGateway(
             host=host,
             access_token=access_token,
@@ -44,19 +45,16 @@ class Nova:
             verify_ssl=verify_ssl,
         )
 
-        # TODO: expose api_gateway, but don't remove _api_client for now, Vincent uses it
-        self.api_gateway = self._api_client
-
     def cell(self, cell_id: str = CELL_NAME) -> Cell:
         """Returns the cell object with the given ID."""
         return Cell(self._api_client, cell_id)
 
     async def connect(self):
-        await self.api_gateway.connect()
+        await self._api_client.connect()
 
     async def close(self):
         """Closes the underlying API client session."""
-        return await self.api_gateway.close()
+        return await self._api_client.close()
 
     async def __aenter__(self):
         # Configure any active viewers

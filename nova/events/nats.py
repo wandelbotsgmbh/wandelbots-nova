@@ -79,6 +79,7 @@ class Client:
         return await self._nats_client.subscribe(subject, cb=cb)
 
 
+# TODO: this class requires some work
 class Publisher:
     def __init__(self, nats_client: Client):
         """
@@ -350,8 +351,6 @@ class Program(BaseModel):
 # ProgramStore = KeyValueStore[Program] would be better but python doesn't support this
 # when I do store = ProgramStore() the __orig_class__ is not available in the __init__
 # my reseach say's python doesn't capture the type argument when I do this
-
-
 # TODO: change the Program with wandelbots_api_client.v2.models.Program
 class ProgramStore(_KeyValueStore[Program]):
     def __init__(

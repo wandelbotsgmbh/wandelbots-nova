@@ -41,7 +41,21 @@ class Timer:
         return self.start_time is not None and self.stop_time is None
 
 
-class Cycle(OutputDevice):
+class CycleDevice(OutputDevice):
+    def __init__(self, cell_id: str, api_gateway: ApiGateway):
+        super().__init__()
+        self._cycle = Cycle(cell_id=cell_id, api_gateway=api_gateway)
+
+    async def write(self, key, _):
+        if key == "start":
+            await self._cycle.start()
+        if key == "finish":
+            await self._cycle.finish()
+        if key == "fail":
+            await self._cycle.fail()
+
+
+class Cycle:
     """
     Context manager for tracking a process cycle in a robotic cell.
 
@@ -85,14 +99,6 @@ class Cycle(OutputDevice):
         self._cell_id = cell_id
         self._cycle_subject = f"nova.cells.{self._cell_id}.cycle"
         self._api_gateway = api_gateway
-
-    async def write(self, key, _):
-        if key == "start":
-            await self.start()
-        if key == "finish":
-            await self.finish()
-        if key == "fail":
-            await self.fail()
 
     async def start(self) -> datetime:
         """

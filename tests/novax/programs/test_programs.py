@@ -27,7 +27,7 @@ async def sucessful_program():
 async def test_novax_program_successful_run(novax_server):
     nova = Nova()
     await nova.connect()
-    nats_client = nova.api_gateway._nats_client
+    nats_client = nova._api_client._nats_client
 
     program_run_message = []
 

@@ -288,6 +288,7 @@ class ApiGateway:
 
         self._nats_publisher.publish(message)
 
+    # TODO: maybe not part of the public api yet?
     async def subscribe(self, subject: str, cb: Callable[[Any], Awaitable[None]]):
         await self._nats_client.subscribe(subject, cb=cb)
 
