@@ -60,13 +60,11 @@ async def main():
             # It's possible to use the sequence method to add multiple actions to the trajectory. Since no settings are specified it takes
             #   the settings from the trajectory builder
             t.sequence(
-                [
-                    cartesian_ptp(target_pose),
-                    joint_ptp(home_joints),
-                    cartesian_ptp(target_pose @ Pose((50, 0, 0, 0, 0, 0))),
-                    joint_ptp(home_joints),
-                    io_write(key="tool_out[0]", value=False),
-                ]
+                cartesian_ptp(target_pose),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ Pose((50, 0, 0, 0, 0, 0))),
+                joint_ptp(home_joints),
+                io_write(key="tool_out[0]", value=False),
             )
 
             # You can use the set(...) context manager to set settings for a block of actions
