@@ -1,4 +1,4 @@
-const path = require('path');
+const path = require('path')
 
 /** @type {import('webpack').Configuration} */
 module.exports = {
@@ -8,12 +8,12 @@ module.exports = {
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'extension.js',
-    libraryTarget: 'commonjs2'
+    libraryTarget: 'commonjs2',
   },
   externals: { vscode: 'commonjs vscode' }, // don't bundle the vscode module
   resolve: { extensions: ['.ts', '.js'] },
   module: {
-    rules: [{ test: /\.ts$/, use: 'ts-loader', exclude: /node_modules/ }]
+    rules: [{ test: /\.ts$/, use: 'ts-loader', exclude: /node_modules/ }],
   },
-  devtool: 'source-map'
-};
+  devtool: 'source-map',
+}

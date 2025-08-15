@@ -8,8 +8,8 @@ set -e
 echo "Installing Wandelbots Viewer extension directly..."
 
 # Extension paths
-EXTENSION_VSIX="./wandelbots-viewer-0.1.0.vsix"
-EXTENSION_NAME="wandelbots.wandelbots-viewer-0.1.0"
+EXTENSION_VSIX="./wandelbots-nova-0.0.1.vsix"
+EXTENSION_NAME="wandelbots.wandelbots-nova-0.0.1"
 EXTENSIONS_DIR="/config/.local/share/code-server/extensions"
 INSTALL_DIR="${EXTENSIONS_DIR}/${EXTENSION_NAME}"
 

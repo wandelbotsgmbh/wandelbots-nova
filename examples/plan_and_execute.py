@@ -18,12 +18,6 @@ from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 
 
-@nova.program
-def pick():
-    actions = [
-
-    ]
-
 @nova.program(
     name="Plan and Execute",
     viewer=viewers.Rerun(),
