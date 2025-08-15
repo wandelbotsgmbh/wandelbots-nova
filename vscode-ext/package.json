@@ -21,9 +21,19 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "wandelbots-explorer",
-          "title": "Wandelbots",
+          "id": "wandelbots-nova-explorer",
+          "title": "Wandelbots NOVA",
           "icon": "media/logo.svg"
+        }
+      ]
+    },
+    "views": {
+      "wandelbots-explorer": [
+        {
+          "type": "webview",
+          "id": "wandelbots-nova-viewer",
+          "name": "Wandelbots NOVA Viewer",
+          "when": "true"
         }
       ]
     },
@@ -71,12 +81,12 @@
           "default": "rerunAddress",
           "enum": [
             "rerunAddress",
-            "hostAddress",
+            "novaApi",
             "default"
           ],
           "enumDescriptions": [
             "Use the Rerun address from the environment",
-            "Use the host address from the environment",
+            "Use the NOVA API address from the environment",
             "Use the default Wandelbots website"
           ],
           "description": "The type of URL to use for the Wandelbots NOVA viewer"

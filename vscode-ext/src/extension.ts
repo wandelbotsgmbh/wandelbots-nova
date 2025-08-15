@@ -1,178 +1,78 @@
+import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
 import * as vscode from 'vscode'
 
 import { NovaCodeLensProvider } from './codeLens'
 import {
   COMMAND_DEBUG_NOVA_PROGRAM,
+  COMMAND_OPEN_NOVA_VIEWER,
   COMMAND_REFRESH_CODE_LENS,
+  COMMAND_REFRESH_NOVA_VIEWER,
   COMMAND_RUN_NOVA_PROGRAM,
+  VIEWER_ID,
 } from './consts'
 import { runNovaProgram } from './novaProgram'
+import {
+  WandelbotsNovaViewerProvider,
+  setupPythonScriptMonitoring,
+} from './viewer'
 
 let decorationType: vscode.TextEditorDecorationType | undefined
 let disposables: vscode.Disposable[] = []
 
-// Simple per-document state for manual toggles:
-const manualMarks = new Map<string, Set<number>>() // key: doc.uri.toString(), value: set of 0-based line numbers
-
-function createDecorationType(context: vscode.ExtensionContext) {
-  const showInOverview = vscode.workspace
-    .getConfiguration('lineMarker')
-    .get<boolean>('showInOverviewRuler', true)
-
-  const darkIcon = vscode.Uri.joinPath(
-    context.extensionUri,
-    'media',
-    'marker-dark.svg',
-  )
-  const lightIcon = vscode.Uri.joinPath(
-    context.extensionUri,
-    'media',
-    'marker-light.svg',
-  )
-
-  decorationType?.dispose()
-  decorationType = vscode.window.createTextEditorDecorationType({
-    gutterIconPath: darkIcon,
-    light: { gutterIconPath: lightIcon },
-    // Optional, but can help sizing inconsistencies:
-    gutterIconSize: 'contain',
-    overviewRulerColor: showInOverview
-      ? new vscode.ThemeColor('editorMarkerNavigation.background')
-      : undefined,
-    overviewRulerLane: showInOverview
-      ? vscode.OverviewRulerLane.Full
-      : undefined,
-  })
-}
-
-function getRegex(): RegExp | null {
-  const enable = vscode.workspace
-    .getConfiguration('lineMarker')
-    .get<boolean>('enable', true)
-  if (!enable) return null
-
-  const raw = vscode.workspace
-    .getConfiguration('lineMarker')
-    .get<string>('triggerRegex', '')
-  if (!raw) return null
-
-  try {
-    return new RegExp(raw, 'i')
-  } catch {
-    vscode.window.showWarningMessage(
-      '[Line Marker] Invalid triggerRegex; ignoring.',
-    )
-    return null
-  }
-}
-
-function collectDecorations(
-  editor: vscode.TextEditor,
-): vscode.DecorationOptions[] {
-  const doc = editor.document
-  const opts: vscode.DecorationOptions[] = []
-  const re = getRegex()
-
-  for (let line = 0; line < doc.lineCount; line++) {
-    const text = doc.lineAt(line).text
-
-    // Regex-based markers
-    if (re && re.test(text)) {
-      opts.push({
-        range: new vscode.Range(line, 0, line, 0),
-        hoverMessage: new vscode.MarkdownString(
-          '**Line Marker** — regex match',
-        ),
-      })
-    }
-
-    // Manual markers
-    const manual = manualMarks.get(doc.uri.toString())
-    if (manual?.has(line)) {
-      opts.push({
-        range: new vscode.Range(line, 0, line, 0),
-        hoverMessage: new vscode.MarkdownString('**Line Marker** — manual'),
-      })
-    }
-  }
-
-  return opts
-}
-
-let updateTimer: NodeJS.Timeout | undefined
-
-function triggerUpdate(editor?: vscode.TextEditor) {
-  const debounce = vscode.workspace
-    .getConfiguration('lineMarker')
-    .get<number>('debounceMs', 200)
-  if (updateTimer) clearTimeout(updateTimer)
-  updateTimer = setTimeout(
-    () => {
-      const ed = editor ?? vscode.window.activeTextEditor
-      if (!ed || !decorationType) return
-      const decorations = collectDecorations(ed)
-      ed.setDecorations(decorationType, decorations)
-    },
-    Math.max(0, debounce),
-  )
-}
-
 export function activate(context: vscode.ExtensionContext) {
-  createDecorationType(context)
+  // ------------------------------
+  // Wandelbots NOVA Viewer
+  // ------------------------------
 
-  // Toggle a marker on the current line
+  const provider = new WandelbotsNovaViewerProvider(context.extensionUri)
+
+  // Register the custom view provider
   context.subscriptions.push(
-    vscode.commands.registerCommand('lineMarker.toggleHere', () => {
-      const ed = vscode.window.activeTextEditor
-      if (!ed) return
-      const key = ed.document.uri.toString()
-      const line = ed.selection.active.line
+    vscode.window.registerWebviewViewProvider(VIEWER_ID, provider),
+  )
 
-      const set = manualMarks.get(key) ?? new Set<number>()
-      set.has(line) ? set.delete(line) : set.add(line)
-      manualMarks.set(key, set)
+  setupPythonScriptMonitoring(context, provider)
 
-      triggerUpdate(ed)
+  // Register command to open the webview
+  context.subscriptions.push(
+    vscode.commands.registerCommand(COMMAND_OPEN_NOVA_VIEWER, () => {
+      provider.forceReveal()
     }),
   )
 
-  // Force refresh
+  // Register command to refresh the webview
   context.subscriptions.push(
-    vscode.commands.registerCommand('lineMarker.refresh', () =>
-      triggerUpdate(),
-    ),
+    vscode.commands.registerCommand(COMMAND_REFRESH_NOVA_VIEWER, async () => {
+      // Use the new hard refresh method for manual refreshes
+      await provider.hardRefresh()
+      vscode.window.showInformationMessage('Wandelbots NOVA Viewer refreshed')
+    }),
   )
 
-  // React to editor/document/config changes
-  disposables.push(
-    vscode.window.onDidChangeActiveTextEditor(() => triggerUpdate()),
-    vscode.workspace.onDidChangeTextDocument((e) => {
-      const ed = vscode.window.activeTextEditor
-      if (ed && e.document.uri.toString() === ed.document.uri.toString())
-        triggerUpdate(ed)
-    }),
+  // Listen for configuration changes
+  context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('lineMarker')) {
-        createDecorationType(context)
-        triggerUpdate()
+      if (e.affectsConfiguration(VIEWER_ID)) {
+        vscode.commands.executeCommand(COMMAND_REFRESH_NOVA_VIEWER)
       }
     }),
   )
 
   // ------------------------------
-  // Nova CodeLens
+  // Wandelbots NOVA CodeLens
   // ------------------------------
 
-  // Register Nova CodeLens provider
   const novaCodeLensProvider = new NovaCodeLensProvider()
-  console.log('Registering Nova CodeLens provider for Python files')
+
+  // Register Nova CodeLens provider
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider(
       { language: 'python' },
       novaCodeLensProvider,
     ),
   )
-  console.log('Nova CodeLens provider registered successfully')
 
   // Register command to run Nova program
   context.subscriptions.push(
@@ -213,12 +113,19 @@ export function activate(context: vscode.ExtensionContext) {
   )
 
   context.subscriptions.push(...disposables)
-
-  // Initial render
-  triggerUpdate()
 }
 
 export function deactivate() {
   decorationType?.dispose()
   disposables.forEach((d) => d.dispose())
+
+  // Clean up temp files if needed
+  const tempDir = path.join(__dirname, os.tmpdir())
+  if (fs.existsSync(tempDir)) {
+    try {
+      fs.rmdirSync(tempDir, { recursive: true })
+    } catch (error) {
+      console.error('Failed to clean up temp directory:', error)
+    }
+  }
 }
