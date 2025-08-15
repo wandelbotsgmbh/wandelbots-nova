@@ -28,7 +28,7 @@
       ]
     },
     "views": {
-      "wandelbots-explorer": [
+      "wandelbots-nova-explorer": [
         {
           "type": "webview",
           "id": "wandelbots-nova-viewer",
@@ -63,6 +63,10 @@
       {
         "command": "wandelbots-nova.refreshCodeLens",
         "title": "Wandelbots NOVA: Refresh CodeLens"
+      },
+      {
+        "command": "wandelbots-nova.showApp",
+        "title": "Wandelbots NOVA: Show app"
       }
     ],
     "languages": [

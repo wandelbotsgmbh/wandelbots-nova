@@ -165,6 +165,10 @@ export async function getConfiguredUrl(): Promise<string> {
       const hostUrl = `${novaApiAddress}/visual-studio-code`;
       console.log("Using host address:", hostUrl);
       return hostUrl;
+    } else if (urlType === URL_TYPE_RERUN && novaApiAddress.includes("localhost")) {
+      // For localhost, provide a local rerun server URL
+      console.log("Using local rerun address");
+      return "http://localhost:9090";
     } else {
       console.log("Using default address: https://wandelbots.com");
       return "https://wandelbots.com";

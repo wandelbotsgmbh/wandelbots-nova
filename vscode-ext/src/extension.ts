@@ -10,6 +10,7 @@ import {
   COMMAND_REFRESH_CODE_LENS,
   COMMAND_REFRESH_NOVA_VIEWER,
   COMMAND_RUN_NOVA_PROGRAM,
+  COMMAND_SHOW_APP,
   VIEWER_ID,
 } from './consts'
 import { runNovaProgram } from './novaProgram'
@@ -17,11 +18,14 @@ import {
   WandelbotsNovaViewerProvider,
   setupPythonScriptMonitoring,
 } from './viewer'
+import { getConfiguredUrl } from './urlResolver'
 
 let decorationType: vscode.TextEditorDecorationType | undefined
 let disposables: vscode.Disposable[] = []
 
 export function activate(context: vscode.ExtensionContext) {
+  console.log('Wandelbots NOVA extension activating...')
+
   // ------------------------------
   // Wandelbots NOVA Viewer
   // ------------------------------
@@ -102,6 +106,33 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.showInformationMessage('Nova CodeLens refreshed')
     }),
   )
+
+
+  // ------------------------------
+  // Wandelbots NOVA App
+  // ------------------------------
+
+  context.subscriptions.push(vscode.commands.registerCommand(COMMAND_SHOW_APP, () => {
+    const panel = vscode.window.createWebviewPanel("webview", "React", vscode.ViewColumn.One, {
+        enableScripts: true
+    })
+
+    const scriptSrc = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "app", "build", "index.js"))
+    const cssSrc = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "app", "build", "index.css"))
+
+    panel.webview.html = `<!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <link rel="stylesheet" href="${cssSrc}" />
+      </head>
+      <body>
+        <noscript>You need to enable JavaScript to run this app.</noscript>
+        <div id="root"></div>
+        <script src="${scriptSrc}"></script>
+      </body>
+    </html>
+    `
+  }))
 
   // Refresh CodeLens when documents change
   context.subscriptions.push(

@@ -1,9 +1,9 @@
 import * as vscode from 'vscode'
-import { EXPLORER_ID } from './consts'
+import { EXPLORER_ID, VIEWER_ID } from './consts'
 import { getConfiguredUrl } from './urlResolver'
 
-// These are provided elsewhere in your extension. Declare them for typing.
-declare const isInitialActivation: boolean
+// Track if this is the initial activation
+let isInitialActivation = true
 
 export class WandelbotsNovaViewerProvider
   implements vscode.WebviewViewProvider
@@ -119,7 +119,7 @@ export class WandelbotsNovaViewerProvider
     }
 
     // Check if auto-open is enabled
-    const config = vscode.workspace.getConfiguration('wandelbots-viewer')
+    const config = vscode.workspace.getConfiguration(VIEWER_ID)
     const autoOpen = config.get<boolean>('autoOpenOnPythonExecution', true)
 
     if (!autoOpen) {
@@ -179,6 +179,11 @@ export class WandelbotsNovaViewerProvider
     token: vscode.CancellationToken,
   ): Promise<void> {
     this._view = webviewView
+
+    // Reset initial activation flag after first view resolution
+    if (isInitialActivation) {
+      isInitialActivation = false
+    }
 
     webviewView.webview.options = {
       // Enable JavaScript in the webview
@@ -320,18 +325,13 @@ export class WandelbotsNovaViewerProvider
     const url = this._url
 
     // Get custom URL from settings if specified
-    const config = vscode.workspace.getConfiguration('wandelbots-viewer')
+    const config = vscode.workspace.getConfiguration(VIEWER_ID)
     const customUrl = config.get<string | undefined>('customUrl')
-    const showDebugInfo = config.get<boolean>('showDebugInfo', false)
+    const showDebugInfo = config.get<boolean>('showDebugInfo', true)
 
     // If custom URL is provided, use it instead
     const finalUrl = customUrl || url
     console.log(`Final URL: ${finalUrl}`)
-
-    // If URL is missing or invalid, show an error
-    if (!finalUrl || finalUrl === 'localhost' || finalUrl === 'undefined') {
-      return this._getErrorHtml(new Error('Failed to resolve a valid URL'))
-    }
 
     // Return HTML with an iframe that loads the website
     return `
@@ -351,7 +351,7 @@ export class WandelbotsNovaViewerProvider
           }
           iframe {
             width: 100%;
-            height: ${showDebugInfo ? 'calc(100% - 80px)' : '100%'};
+            height: ${showDebugInfo ? 'calc(100% - 120px)' : 'calc(100% - 60px)'};
             border: none;
           }
           .loader {
@@ -381,6 +381,30 @@ export class WandelbotsNovaViewerProvider
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
           }
+          .nova-info {
+            background: #e8f4fd;
+            padding: 10px;
+            font-size: 12px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            border-bottom: 1px solid #3498db;
+            margin-bottom: 10px;
+          }
+          .nova-info strong {
+            color: #2c3e50;
+          }
+          .nova-info button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-top: 5px;
+          }
+          .nova-info button:hover {
+            background-color: #2980b9;
+          }
           .debug-info {
             background: #f3f3f3;
             padding: 10px;
@@ -396,16 +420,16 @@ export class WandelbotsNovaViewerProvider
           <span class="loading">Loading Wandelbots...</span>
           <div class="spinner"></div>
         </div>
-        ${
-          showDebugInfo
-            ? `<div class="debug-info">
-          <strong>URL:</strong> ${finalUrl}<br>
-          <strong>ENV:</strong> ${String(process.env.VSCODE_PROXY_URI ?? 'Not available')}<br>
+        <div class="nova-info">
+          <strong>Wandelbots NOVA</strong><br>
+          <strong>API URL:</strong> ${finalUrl}<br>
+          <strong>URL Type:</strong> ${config.get<string>('urlType', 'rerunAddress')}<br>
+          ${config.get<string>('instanceDomain') ? `<strong>Instance:</strong> ${config.get<string>('instanceDomain')}<br>` : ''}
+          <strong>Loaded:</strong> ${new Date().toLocaleTimeString()}<br>
+          ${showDebugInfo ? `<strong>ENV:</strong> ${String(process.env.VSCODE_PROXY_URI ?? 'Not available')}<br>` : ''}
           <button onclick="refreshPage()">Refresh</button>
-        </div>`
-            : ''
-        }
-        <iframe src="${finalUrl}" id="mainFrame" onload="handleFrameLoad()" onerror="handleFrameError()"></iframe>
+        </div>
+        <iframe src="${finalUrl}" id="mainFrame" onload="handleFrameLoad()" onerror="handleFrameError()" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
         <script>
           const vscode = acquireVsCodeApi();
           const loader = document.getElementById('loader');

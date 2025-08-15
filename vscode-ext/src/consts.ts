@@ -6,6 +6,7 @@ export const COMMAND_DEBUG_NOVA_PROGRAM = `${COMMAND_PREFIX}.debugNovaProgram`
 export const COMMAND_REFRESH_CODE_LENS = `${COMMAND_PREFIX}.refreshCodeLens`
 export const COMMAND_OPEN_NOVA_VIEWER = `${COMMAND_PREFIX}.open`
 export const COMMAND_REFRESH_NOVA_VIEWER = `${COMMAND_PREFIX}.refresh`
+export const COMMAND_SHOW_APP = `${COMMAND_PREFIX}.showApp`
 
 export const URL_TYPE_NOVA_API = 'novaApi' as const
 export const URL_TYPE_RERUN = 'rerunAddress' as const
