@@ -1,4 +1,5 @@
 import * as vscode from 'vscode'
+
 import { EXPLORER_ID, VIEWER_ID } from './consts'
 import { getConfiguredUrl } from './urlResolver'
 
@@ -151,22 +152,26 @@ export class WandelbotsNovaViewerProvider
    */
   async forceReveal(): Promise<void> {
     try {
-      await vscode.commands.executeCommand(`workbench.view.extension.${EXPLORER_ID}`);
+      await vscode.commands.executeCommand(
+        `workbench.view.extension.${EXPLORER_ID}`,
+      )
 
       if (this._view) {
-        this._view.show?.(true);
+        this._view.show?.(true)
       }
 
       setTimeout(() => {
-        void vscode.commands.executeCommand('workbench.action.focusSideBar');
-      }, 300);
+        void vscode.commands.executeCommand('workbench.action.focusSideBar')
+      }, 300)
     } catch (error) {
-      console.error('Failed to reveal Wandelbots Viewer:', error);
+      console.error('Failed to reveal Wandelbots Viewer:', error)
 
       // Fallback: try to open the view again
       setTimeout(() => {
-        void vscode.commands.executeCommand(`workbench.view.extension.${EXPLORER_ID}`);
-      }, 1000);
+        void vscode.commands.executeCommand(
+          `workbench.view.extension.${EXPLORER_ID}`,
+        )
+      }, 1000)
     }
   }
 

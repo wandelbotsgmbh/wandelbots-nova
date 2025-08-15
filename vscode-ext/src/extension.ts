@@ -14,11 +14,11 @@ import {
   VIEWER_ID,
 } from './consts'
 import { runNovaProgram } from './novaProgram'
+import { getConfiguredUrl } from './urlResolver'
 import {
   WandelbotsNovaViewerProvider,
   setupPythonScriptMonitoring,
 } from './viewer'
-import { getConfiguredUrl } from './urlResolver'
 
 let decorationType: vscode.TextEditorDecorationType | undefined
 let disposables: vscode.Disposable[] = []
@@ -107,32 +107,27 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   )
 
-
   // ------------------------------
   // Wandelbots NOVA App
   // ------------------------------
 
-  context.subscriptions.push(vscode.commands.registerCommand(COMMAND_SHOW_APP, () => {
-    const panel = vscode.window.createWebviewPanel("webview", "React", vscode.ViewColumn.One, {
-        enableScripts: true
-    })
+  context.subscriptions.push(
+    vscode.commands.registerCommand(COMMAND_SHOW_APP, () => {
+      const panel = vscode.window.createWebviewPanel(
+        'webview',
+        'React',
+        vscode.ViewColumn.One,
+        {
+          enableScripts: true,
+        },
+      )
 
-    const scriptSrc = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "app", "build", "index.js"))
-    const cssSrc = panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "app", "build", "index.css"))
-
-    panel.webview.html = `<!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <link rel="stylesheet" href="${cssSrc}" />
-      </head>
-      <body>
-        <noscript>You need to enable JavaScript to run this app.</noscript>
-        <div id="root"></div>
-        <script src="${scriptSrc}"></script>
-      </body>
-    </html>
-    `
-  }))
+      const indexHtml = panel.webview.asWebviewUri(
+        vscode.Uri.joinPath(context.extensionUri, 'app', 'build', 'index.html'),
+      )
+      panel.webview.html = indexHtml.toString()
+    }),
+  )
 
   // Refresh CodeLens when documents change
   context.subscriptions.push(

@@ -135,9 +135,10 @@
   },
   "scripts": {
     "build": "webpack --mode production",
+    "build:app": "cd ./app && pnpm run build && cd ..",
     "watch": "webpack --watch",
     "vscode:prepublish": "webpack --mode production",
-    "package": "vsce package",
+    "package": "pnpm run build:app && vsce package",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
