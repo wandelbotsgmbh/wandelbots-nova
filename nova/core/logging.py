@@ -1,19 +1,11 @@
-import logging
-import sys
+import nova.logger as nova_logger
 
-from decouple import config
+# for backward compatibility, remove them in a appropriate release
+LOG_LEVEL = nova_logger.LOG_LEVEL
+LOG_FORMAT = nova_logger.LOG_FORMAT
+LOG_DATETIME_FORMAT = nova_logger.LOG_DATETIME_FORMAT
+LOGGER_NAME = nova_logger.LOGGER_NAME
 
-LOG_LEVEL: str = config("LOG_LEVEL", default="INFO").upper()
-LOG_FORMAT: str = config("LOG_FORMAT", default="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-LOG_DATETIME_FORMAT: str = config("LOG_DATETIME_FORMAT", default="%Y-%m-%d %H:%M:%S")
-LOGGER_NAME: str = config("LOGGER_NAME", default="wandelbots-nova")
-
-# Setting up the underlying logger
-formatter: logging.Formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT)
-handler: logging.StreamHandler = logging.StreamHandler(sys.stdout)
-handler.setLevel(LOG_LEVEL)
-handler.setFormatter(formatter)
-
-logger: logging.Logger = logging.getLogger(LOGGER_NAME)
-logger.setLevel(LOG_LEVEL)
-logger.addHandler(handler)
+formatter = nova_logger.formatter
+handler = nova_logger.handler
+logger = nova_logger.logger
