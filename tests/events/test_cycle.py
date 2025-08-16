@@ -5,15 +5,7 @@ from uuid import UUID
 import pytest
 
 from nova import Cell
-from nova.events import (
-    Cycle,
-    CycleFailedEvent,
-    CycleFinishedEvent,
-    CycleStartedEvent,
-    cycle_failed,
-    cycle_finished,
-    cycle_started,
-)
+from nova.cell.cycle import Cycle, CycleFailedEvent, CycleFinishedEvent, CycleStartedEvent
 
 
 @pytest.fixture

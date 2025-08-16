@@ -2,9 +2,9 @@
 from nova import actions, api, types, viewers
 from nova.cell.cell import Cell
 from nova.core.controller import Controller
-from nova.core.logging import logger
 from nova.core.motion_group import MotionGroup, combine_trajectories
 from nova.core.nova import Nova
+from nova.logger import logger
 from nova.program import program
 from nova.version import version
 

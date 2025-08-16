@@ -3,14 +3,14 @@ from datetime import datetime, timedelta
 from typing import Literal
 from uuid import UUID, uuid4
 
-from blinker import signal
 from pydantic import BaseModel, Field
 
 from nova.cell.cell import Cell
+from nova.cell.robot_cell import OutputDevice
+from nova.core.nats import Message as NatsMessage
+from nova.logger import logger
 
-cycle_started = signal("cycle_started")
-cycle_finished = signal("cycle_finished")
-cycle_failed = signal("cycle_failed")
+_NATS_CYCLE_SUBJECT = "nova.cells.{cell}.cycle"
 
 
 class Timer:
@@ -41,6 +41,20 @@ class Timer:
 
     def is_running(self) -> bool:
         return self.start_time is not None and self.stop_time is None
+
+
+class CycleDevice(OutputDevice):
+    def __init__(self, cell: Cell):
+        super().__init__()
+        self._cycle = Cycle(cell=cell)
+
+    async def write(self, key, _):
+        if key == "start":
+            await self._cycle.start()
+        if key == "finish":
+            await self._cycle.finish()
+        if key == "fail":
+            await self._cycle.fail()
 
 
 class Cycle:
@@ -83,8 +97,10 @@ class Cycle:
 
     def __init__(self, cell: Cell):
         self.cycle_id: UUID | None = None
-        self._cell_id = cell.cell_id
         self._timer = Timer()
+        self._cell_id = cell.cell_id
+        self._cycle_subject = _NATS_CYCLE_SUBJECT.format(cell=self._cell_id)
+        self._api_gateway = cell._api_gateway
 
     async def start(self) -> datetime:
         """
@@ -106,7 +122,9 @@ class Cycle:
 
         self.cycle_id = uuid4()
         event = CycleStartedEvent(cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id)
-        await cycle_started.send_async(self, message=event)
+        message = NatsMessage(subject=self._cycle_subject, data=event.model_dump_json().encode())
+        logger.info(f"Cycle started with ID: {self.cycle_id}")
+        self._api_gateway.publish_message(message)
         return start_time
 
     async def finish(self) -> timedelta:
@@ -134,7 +152,10 @@ class Cycle:
         event = CycleFinishedEvent(
             cycle_id=self.cycle_id, timestamp=end_time, duration_ms=duration_ms, cell=self._cell_id
         )
-        await cycle_finished.send_async(self, message=event)
+
+        message = NatsMessage(subject=self._cycle_subject, data=event.model_dump_json().encode())
+        logger.info(f"Cycle finished with ID: {self.cycle_id}")
+        self._api_gateway.publish_message(message)
         cycle_time = self._timer.elapsed()
         self._timer.reset()
         return cycle_time
@@ -169,7 +190,10 @@ class Cycle:
         event = CycleFailedEvent(
             cycle_id=self.cycle_id, timestamp=failure_time, cell=self._cell_id, reason=reason
         )
-        await cycle_failed.send_async(self, message=event)
+        message = NatsMessage(subject=self._cycle_subject, data=event.model_dump_json().encode())
+        logger.info(f"Cycle failed with ID: {self.cycle_id}, reason: {reason}")
+        await self._api_gateway.publish_message(message)
+
         self._timer.reset()
 
     async def __aenter__(self):

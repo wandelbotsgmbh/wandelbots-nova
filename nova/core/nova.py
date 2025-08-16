@@ -4,7 +4,6 @@ from decouple import config
 
 from nova.cell.cell import Cell
 from nova.core.gateway import ApiGateway
-from nova.events import nats
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 CELL_NAME = config("CELL_NAME", default="cell", cast=str)
@@ -13,8 +12,6 @@ CELL_NAME = config("CELL_NAME", default="cell", cast=str)
 # TODO: could also extend NovaDevice
 class Nova:
     """A high-level Nova client for interacting with robot cells and controllers."""
-
-    _api_client: ApiGateway
 
     def __init__(
         self,
@@ -38,6 +35,7 @@ class Nova:
             verify_ssl (bool): Whether or not to verify SSL certificates (default: True).
         """
 
+        # TODO: this is internal variable but vince uses it, remove this and use ApiGateway after informing Vincent
         self._api_client = ApiGateway(
             host=host,
             access_token=access_token,
@@ -47,14 +45,17 @@ class Nova:
             verify_ssl=verify_ssl,
         )
 
+        self.api_gateway = self._api_client
+
     def cell(self, cell_id: str = CELL_NAME) -> Cell:
         """Returns the cell object with the given ID."""
         return Cell(self._api_client, cell_id)
 
+    async def connect(self):
+        await self._api_client.connect()
+
     async def close(self):
         """Closes the underlying API client session."""
-        # hardcoded for now, later stuff like NATS might become devices
-        await nats.close()
         return await self._api_client.close()
 
     async def __aenter__(self):
@@ -65,6 +66,8 @@ class Nova:
             _configure_active_viewers(self)
         except ImportError:
             pass
+
+        await self.connect()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

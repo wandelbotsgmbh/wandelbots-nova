@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import pytest
 from freezegun import freeze_time
 
-from nova.events import Timer
+from nova.cell.cycle import Timer
 
 
 class TestTimer:
