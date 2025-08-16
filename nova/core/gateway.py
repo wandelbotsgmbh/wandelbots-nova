@@ -249,6 +249,8 @@ class ApiGateway:
         nova_version = await self.system_api.get_system_version()
         logger.debug("Connected to nova API version %s", nova_version)
 
+        # TODO: queue size 1 makes the program events to be reported as fast as possible which is probably what we desire
+        # but this might cause too much friction in the event loop, so might be a good parameter to expose to the user in the future
         self._nats_client = await nats.connect(self._nats_connection_string, flusher_queue_size=1)
         self._nats_publisher = NatsPublisher(self._nats_client)
         logger.info(
