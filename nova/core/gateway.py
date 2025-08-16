@@ -156,32 +156,32 @@ class ApiGateway:
         self._init_api_client()
         self._init_nats_client()
 
-    def _init_nats_client(self):
-        if self.host is not None:
-            is_https = self._host.startswith("https://")
+    def _init_nats_client(self) -> None:
+        """
+        Initialize the NATS WebSocket connection string.
 
-            # Clean host by removing protocol prefix and trailing slashes
-            clean_host = self._host.replace("https://", "").replace("http://", "").rstrip("/")
+        Order of precedence:
+        1) Use self._host / self.host if present (derive ws/wss + default port).
+        2) Otherwise, read from NATS_BROKER env var.
+        """
+        host = self.host
+        if host:
+            host = host.strip()
+            is_https = host.startswith("https://")
+            # Remove protocol and trailing slashes
+            clean_host = host.replace("https://", "").replace("http://", "").rstrip("/")
 
-            if is_https:
-                protocol = "wss"
-                port = 443
-            else:
-                protocol = "ws"
-                port = 80
+            scheme, port = ("wss", 443) if is_https else ("ws", 80)
+            token = getattr(self, "_access_token", None)
+            auth = f"{token}@" if token else ""
 
-            if self._access_token:
-                self._nats_connection_string = (
-                    f"{protocol}://{self._access_token}@{clean_host}:{port}/api/nats"
-                )
-            else:
-                self._nats_connection_string = f"{protocol}://{clean_host}:{port}/api/nats"
+            self._nats_connection_string = f"{scheme}://{auth}{clean_host}:{port}/api/nats"
             return
 
-        logger.debug("host is not set, reading NATS connection from env var")
+        logger.debug("Host not set; reading NATS connection from env var")
         self._nats_connection_string = config("NATS_BROKER", default=None)
 
-        if self._nats_connection_string is None:
+        if not self._nats_connection_string:
             raise ValueError("NATS connection string is not set.")
 
     def _init_api_client(self):
