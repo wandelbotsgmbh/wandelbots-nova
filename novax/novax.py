@@ -9,10 +9,11 @@ from fastapi import APIRouter, FastAPI
 from nova.cell.robot_cell import RobotCell
 from nova.core.logging import logger
 from nova.core.nova import Nova
-from nova.events.nats import Message, ProgramStore
-from nova.events.nats import Program as StoreProgram
+from nova.events.nats import Message
 from nova.program.function import Program
 from nova.program.runner import ProgramRun
+from nova.program.store import Program as StoreProgram
+from nova.program.store import ProgramStore
 from novax.program_manager import ProgramDetails, ProgramManager
 
 # Read BASE_PATH environment variable and extract app name

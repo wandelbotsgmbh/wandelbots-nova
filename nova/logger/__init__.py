@@ -1,6 +1,5 @@
 import logging
 import sys
-from xml.sax import handler
 
 from decouple import config
 

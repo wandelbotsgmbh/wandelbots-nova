@@ -1,5 +1,4 @@
 import nova.api as api
-from nova.cell.cycle import Cycle, CycleDevice
 from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
@@ -143,14 +142,7 @@ class Cell:
             RobotCell: A RobotCell initialized with the available controllers.
         """
         controllers = await self.controllers()
-        cycle = CycleDevice(cell=self)
+        # This causes cyclic import, don't know how to solve
+        # cycle = CycleDevice(cell=self)
         controllers = {controller.id: controller for controller in controllers}
-        return RobotCell(timer=None, cycle=cycle, **controllers)
-
-    def cycle(self) -> Cycle:
-        """
-        Publish cycle data to the cell's NATS topic.
-        Args:
-            event (str | bytes): The event data to publish.
-        """
-        return Cycle(cell_id=self.cell_id, api_gateway=self._api_gateway)
+        return RobotCell(timer=None, cycle=None, **controllers)

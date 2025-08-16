@@ -9,7 +9,6 @@ from nats.js.errors import NoKeysError, NotFoundError
 from pydantic import BaseModel, Field, ValidationError, constr
 
 from nova.cell import Cell
-from nova.events.nats import Client
 from nova.logger import logger as nova_logger
 
 _T = TypeVar("T", bound=BaseModel)
@@ -63,7 +62,7 @@ class _KeyValueStore(Generic[_T]):
         self,
         model_class: type[_T],
         nats_bucket_name: str,
-        nats_client: Client,
+        nats_client: nats.NATS,
         nats_kv_config: KeyValueConfig | None = None,
     ):
         """Initialize the KeyValueStore.
@@ -97,10 +96,7 @@ class _KeyValueStore(Generic[_T]):
     @property
     def is_connected(self) -> bool:
         """Check if client is connected"""
-        return (
-            self._nats_client._nats_client is not None
-            and self._nats_client._nats_client.is_connected
-        )
+        return self._nats_client is not None and self._nats_client.is_connected
 
     @property
     async def _key_value(self) -> KeyValue:
@@ -125,7 +121,7 @@ class _KeyValueStore(Generic[_T]):
         async with self._bucket_lock:
             # Initialize NATS and JetStream if not already done
             if self._nc is None:
-                self._nc = self._nats_client._nats_client
+                self._nc = self._nats_client
             if self._js is None:
                 self._js = self._nc.jetstream()
 
@@ -223,6 +219,6 @@ class ProgramStore(_KeyValueStore[Program]):
             Program,
             nats_bucket_name=self._nats_bucket_name,
             # TODO: remove the NATS client wrapper
-            nats_client=self._cell._api_gateway._nats_client._nats_client,
+            nats_client=self._cell._api_gateway._nats_client,
             nats_kv_config=self._kv_config if create_bucket else None,
         )
