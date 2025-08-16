@@ -209,7 +209,7 @@ class ProgramStore(_KeyValueStore[Program]):
 
     def __init__(self, cell: Cell, create_bucket: bool = False):
         self._cell = cell
-        self._nats_bucket_name = _NATS_PROGRAMS_BUCKET_TEMPLATE.format(cell=cell.id)
+        self._nats_bucket_name = _NATS_PROGRAMS_BUCKET_TEMPLATE.format(cell=cell.cell_id)
         self._kv_config = KeyValueConfig(
             bucket=self._nats_bucket_name,
             max_value_size=_NATS_PROGRAMS_MESSAGE_SIZE,

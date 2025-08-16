@@ -69,7 +69,12 @@ class _Publisher:
                 self._logger.info("publishing")
 
                 try:
-                    await self._nats_client.publish(nats_message)
+                    self._logger.info(
+                        f"publishing message to {nats_message.subject}, message size: {len(nats_message.data)}"
+                    )
+                    await self._nats_client.publish(
+                        subject=nats_message.subject, payload=nats_message.data
+                    )
                 except asyncio.CancelledError:
                     # allow cancellation
                     raise

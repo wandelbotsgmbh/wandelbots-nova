@@ -30,6 +30,7 @@ dependencies = [
     "exceptiongroup>=1.2.2",
     "nats-py[jetstream]>=2.11.0",
     "blinker>=1.9.0",
+    "pytest-xdist>=3.8.0",
 ]
 
 [dependency-groups]
@@ -116,6 +117,7 @@ testpaths = """
 """
 markers = """
     integration: mark a test as requiring a running Nova instance
+    xdist_group(name): group tests that needs to run sequentially
 """
 
 [tool.mypy]

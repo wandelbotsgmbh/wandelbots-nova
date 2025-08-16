@@ -8,12 +8,8 @@ import uvicorn
 from nova.cell.simulation import SimulatedRobotCell
 from novax import Novax
 
-from .programs.test_programs import (
-    failing_program,
-    program_with_cycle_data,
-    program_with_cycle_failure,
-    sucessful_program,
-)
+from .api.test_program_cycle import program_with_cycle_data, program_with_cycle_failure
+from .api.test_program_run import failing_program, sucessful_program
 
 
 @pytest.fixture

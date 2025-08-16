@@ -8,8 +8,8 @@ from fastapi import APIRouter, FastAPI
 
 from nova.cell.robot_cell import RobotCell
 from nova.core.logging import logger
+from nova.core.nats import Message
 from nova.core.nova import Nova
-from nova.events.nats import Message
 from nova.program.function import Program
 from nova.program.runner import ProgramRun
 from nova.program.store import Program as StoreProgram
@@ -35,8 +35,6 @@ class Novax:
         self._app: FastAPI | None = None
 
     async def _state_listener(self, program_run: ProgramRun):
-        cell = self._nova.cell(_CELL_NAME)
-
         data = program_run.model_dump()
         data["timestamp"] = datetime.now().isoformat()
         # TODO: all valid program names are not valid subject names
@@ -47,7 +45,7 @@ class Novax:
         logger.info(
             f"publishing program run message for program: {program_run.program} run: {program_run.run}"
         )
-        cell.publish_message(message)
+        self._nova.api_gateway.publish_message(message)
 
     @property
     def program_manager(self) -> ProgramManager:
@@ -83,7 +81,7 @@ class Novax:
         """
         await self._nova.connect()
         logger.info("Novax: Connected to Nova API")
-        store = self._cell.program_store()
+        store = ProgramStore(cell=self._cell)
         await self._register_programs(store)
         logger.info("Novax: Programs registered to store on startup")
 
@@ -118,7 +116,6 @@ class Novax:
                 except Exception as e:
                     logger.error(f"Failed to convert program {program_id} to store format: {e}")
 
-            program_store = self._cell.program_store()
             for program_id, store_program in store_programs.items():
                 try:
                     await program_store.put(f"{_APP_NAME}.{program_id}", store_program)
@@ -133,7 +130,7 @@ class Novax:
             logger.error(f"Novax startup error: Failed to register programs to store: {e}")
             # Don't raise the exception to prevent app startup failure
 
-    async def _deregister_programs(self):
+    async def _deregister_programs(self, program_store: ProgramStore):
         """
         Handle FastAPI shutdown - cleanup programs from store
         """
@@ -143,7 +140,6 @@ class Novax:
             program_ids = list(programs.keys())
             program_count = len(program_ids)
 
-            program_store = self._cell.program_store()
             for program_id in program_ids:
                 try:
                     await program_store.delete(f"{_APP_NAME}.{program_id}")

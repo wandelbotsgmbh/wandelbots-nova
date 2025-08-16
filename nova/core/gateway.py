@@ -19,8 +19,8 @@ from nova.cell.robot_cell import ConfigurablePeriphery, Device
 from nova.core import logger
 from nova.core.env_handler import set_key
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
-from nova.events.nats import Message as NatsMessage
-from nova.events.nats import _Publisher as NatsPublisher
+from nova.core.nats import Message as NatsMessage
+from nova.core.nats import _Publisher as NatsPublisher
 from nova.version import version as pkg_version
 
 
@@ -249,7 +249,7 @@ class ApiGateway:
         nova_version = await self.system_api.get_system_version()
         logger.debug("Connected to nova API version %s", nova_version)
 
-        self._nats_client = await nats.connect(self._nats_connection_string)
+        self._nats_client = await nats.connect(self._nats_connection_string, flusher_queue_size=1)
         self._nats_publisher = NatsPublisher(self._nats_client)
         logger.info(
             f"Api gateway connection is established. You are using Nova version: {nova_version}"
@@ -301,6 +301,8 @@ class ApiGateway:
             await on_message(message)
 
         await self._nats_client.subscribe(subject, cb=data_mapper)
+        # ensure subscription is sent to server
+        await self._nats_client.flush()
 
     async def _ensure_valid_token(self):
         """Ensure we have a valid access token, requesting a new one if needed"""
