@@ -20,10 +20,10 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         controller_id: str
 
     def __init__(self, configuration: Configuration, api_gateway: ApiGateway):
-        super().__init__(configuration)
+        super().__init__(configuration, api_gateway)
         self._activated_motion_group_ids: list[str] = []
         self._io_access = IOAccess(
-            api_gateway=api_gateway,
+            api_gateway=self._nova_api,
             cell=self.configuration.cell_id,
             controller_id=self.configuration.controller_id,
         )

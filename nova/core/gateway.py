@@ -5,12 +5,13 @@ import functools
 import time
 from abc import ABC
 from enum import Enum
-from typing import Any, AsyncGenerator, Awaitable, Callable, TypeVar
+from typing import AsyncGenerator, Awaitable, Callable, TypeVar
 from urllib.parse import quote as original_quote
 
 import nats
 import wandelbots_api_client as wb
 from decouple import config
+from nats.aio.msg import Msg as NatsLibMessage
 
 from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
@@ -248,8 +249,7 @@ class ApiGateway:
         nova_version = await self.system_api.get_system_version()
         logger.debug("Connected to nova API version %s", nova_version)
 
-        self._nats_client = nats.NATS()
-        self._nats_client = self._nats_client.connect(self._nats_connection_string)
+        self._nats_client = nats.connect(self._nats_connection_string)
         self._nats_publisher = NatsPublisher(self._nats_client)
         logger.info(
             f"Api gateway connection is established. You are using Nova version: {nova_version}"
@@ -288,9 +288,19 @@ class ApiGateway:
 
         self._nats_publisher.publish(message)
 
-    # TODO: maybe not part of the public api yet?
-    async def subscribe(self, subject: str, cb: Callable[[Any], Awaitable[None]]):
-        await self._nats_client.subscribe(subject, cb=cb)
+    async def subscribe(self, subject: str, on_message: Callable[[NatsMessage], Awaitable[None]]):
+        """
+        Subscribe to a NATS subject and inform the callback when a message is received.
+        Args:
+            subject (str): The NATS subject to subscribe to.
+            on_message (Callable[[NatsMessage], Awaitable[None]]): The callback to call when a message is received.
+        """
+
+        async def data_mapper(msg: NatsLibMessage):
+            message = NatsMessage(subject=msg.subject, data=msg.data)
+            await on_message(message)
+
+        await self._nats_client.subscribe(subject, cb=data_mapper)
 
     async def _ensure_valid_token(self):
         """Ensure we have a valid access token, requesting a new one if needed"""
@@ -601,10 +611,12 @@ class ApiGateway:
         return plan_result.response.actual_instance
 
 
-# NovaDecide is coming from Nova instance, we should stick to the same api client and nats client for every other object created
 class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
+    class Configuration(ConfigurablePeriphery.Configuration):
+        pass
+
     _nova_api: ApiGateway
 
-    def __init__(self, api_gateway: ApiGateway, **kwargs):
+    def __init__(self, configuration: Configuration, api_gateway: ApiGateway, **kwargs):
         self._nova_api = api_gateway
-        super().__init__({}, **kwargs)
+        super().__init__(configuration, **kwargs)
