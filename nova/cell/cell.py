@@ -143,8 +143,9 @@ class Cell:
             RobotCell: A RobotCell initialized with the available controllers.
         """
         controllers = await self.controllers()
-        cycle_device = CycleDevice()
-        return RobotCell(timer=None, **{controller.id: controller for controller in controllers})
+        cycle = CycleDevice(cell=self)
+        controllers = {controller.id: controller for controller in controllers}
+        return RobotCell(timer=None, cycle=cycle, **controllers)
 
     def cycle(self) -> Cycle:
         """
