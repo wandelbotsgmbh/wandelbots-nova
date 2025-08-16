@@ -12,11 +12,14 @@ from nova.cell import Cell
 from nova.events.nats import Client
 from nova.logger import logger as nova_logger
 
-T = TypeVar("T", bound=BaseModel)
+_T = TypeVar("T", bound=BaseModel)
+_NATS_PROGRAMS_BUCKET_TEMPLATE = "nova_cells_{cell}_programs"
+_NATS_PROGRAMS_MESSAGE_SIZE = 128 * 1024
+_NATS_PROGRAMS_BUCKET_SIZE = _NATS_PROGRAMS_MESSAGE_SIZE * 100
 
 
 # We don't want to expose this to public usage until the jetstream concept gets more mature
-class _KeyValueStore(Generic[T]):
+class _KeyValueStore(Generic[_T]):
     """Generic NATS-backed key-value store for Pydantic models
 
     This class provides a convenient interface for storing and retrieving Pydantic models
@@ -58,7 +61,7 @@ class _KeyValueStore(Generic[T]):
 
     def __init__(
         self,
-        model_class: type[T],
+        model_class: type[_T],
         nats_bucket_name: str,
         nats_client: Client,
         nats_kv_config: KeyValueConfig | None = None,
@@ -137,7 +140,7 @@ class _KeyValueStore(Generic[T]):
 
         return self._kv
 
-    async def put(self, key: str, model: T) -> None:
+    async def put(self, key: str, model: _T) -> None:
         """Store a Pydantic model in NATS KV store"""
         kv = await self._key_value
         await kv.put(key, model.model_dump_json().encode())
@@ -150,7 +153,7 @@ class _KeyValueStore(Generic[T]):
         except KvKeyError:
             pass
 
-    async def get(self, key: str) -> T | None:
+    async def get(self, key: str) -> _T | None:
         """Get a specific model from NATS KV store"""
         kv = await self._key_value
         try:
@@ -162,7 +165,7 @@ class _KeyValueStore(Generic[T]):
         except (KvKeyError, ValidationError):
             return None
 
-    async def get_all(self) -> list[T]:
+    async def get_all(self) -> list[_T]:
         """Get all models from NATS KV store"""
         kv = await self._key_value
         try:
@@ -170,7 +173,7 @@ class _KeyValueStore(Generic[T]):
         except NoKeysError:
             return []
 
-        models: list[T] = []
+        models: list[_T] = []
         for key in keys:
             try:
                 entry = await kv.get(key)
@@ -210,11 +213,11 @@ class ProgramStore(_KeyValueStore[Program]):
 
     def __init__(self, cell: Cell, create_bucket: bool = False):
         self._cell = cell
-        self._nats_bucket_name = f"nova_cells_{cell.id}_programs"
+        self._nats_bucket_name = _NATS_PROGRAMS_BUCKET_TEMPLATE.format(cell=cell.id)
         self._kv_config = KeyValueConfig(
             bucket=self._nats_bucket_name,
-            max_value_size=131072,  # 128 KB
-            max_bytes=13107200,  # 12.8 MB
+            max_value_size=_NATS_PROGRAMS_MESSAGE_SIZE,
+            max_bytes=_NATS_PROGRAMS_BUCKET_SIZE,
         )
         super().__init__(
             Program,

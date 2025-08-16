@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Any, AsyncGenerator, Awaitable, Callable, TypeVar
 from urllib.parse import quote as original_quote
 
+import nats
 import wandelbots_api_client as wb
 from decouple import config
 
@@ -17,9 +18,8 @@ from nova.cell.robot_cell import ConfigurablePeriphery, Device
 from nova.core import logger
 from nova.core.env_handler import set_key
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
-from nova.events.nats import Client as NatsClient
 from nova.events.nats import Message as NatsMessage
-from nova.events.nats import Publisher as NatsPublisher
+from nova.events.nats import _Publisher as NatsPublisher
 from nova.version import version as pkg_version
 
 
@@ -248,8 +248,8 @@ class ApiGateway:
         nova_version = await self.system_api.get_system_version()
         logger.debug("Connected to nova API version %s", nova_version)
 
-        self._nats_client = NatsClient(self._nats_connection_string)
-        await self._nats_client.connect()
+        self._nats_client = nats.NATS()
+        self._nats_client = self._nats_client.connect(self._nats_connection_string)
         self._nats_publisher = NatsPublisher(self._nats_client)
         logger.info(
             f"Api gateway connection is established. You are using Nova version: {nova_version}"

@@ -35,7 +35,7 @@ class Nova:
             verify_ssl (bool): Whether or not to verify SSL certificates (default: True).
         """
 
-        # TODO: this is internal variable but vince uses it, need to rename this to _api_gateway
+        # TODO: this is internal variable but vince uses it, remove this and use ApiGateway after informing Vincent
         self._api_client = ApiGateway(
             host=host,
             access_token=access_token,
@@ -44,6 +44,8 @@ class Nova:
             version=version,
             verify_ssl=verify_ssl,
         )
+
+        self.api_gateway = self._api_client
 
     def cell(self, cell_id: str = CELL_NAME) -> Cell:
         """Returns the cell object with the given ID."""

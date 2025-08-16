@@ -4,8 +4,6 @@ from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
-from nova.events.nats import Message as NatsMessage
-from nova.events.nats import ProgramStore
 
 # This is the default value we use to wait for add_controller API call to complete.
 DEFAULT_ADD_CONTROLLER_TIMEOUT = 120
@@ -154,12 +152,3 @@ class Cell:
             event (str | bytes): The event data to publish.
         """
         return Cycle(cell_id=self.cell_id, api_gateway=self._api_gateway)
-
-    def program_store(self) -> ProgramStore:
-        bucket_name = f"nova_cells_{self.cell_id}_programs"
-        return ProgramStore(
-            nats_bucket_name=bucket_name, nats_client=self._api_gateway._nats_client
-        )
-
-    def publish_message(self, message: NatsMessage):
-        self._api_gateway.publish_message(message)
