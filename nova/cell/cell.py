@@ -1,5 +1,5 @@
 import nova.api as api
-from nova.cell.cycle import Cycle
+from nova.cell.cycle import Cycle, CycleDevice
 from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
@@ -143,6 +143,7 @@ class Cell:
             RobotCell: A RobotCell initialized with the available controllers.
         """
         controllers = await self.controllers()
+        cycle_device = CycleDevice()
         return RobotCell(timer=None, **{controller.id: controller for controller in controllers})
 
     def cycle(self) -> Cycle:

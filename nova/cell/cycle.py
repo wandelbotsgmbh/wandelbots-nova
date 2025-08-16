@@ -5,10 +5,12 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+from nova.cell.cell import Cell
 from nova.cell.robot_cell import OutputDevice
-from nova.core import logger
-from nova.core.gateway import ApiGateway
 from nova.events.nats import Message as NatsMessage
+from nova.logger import logger
+
+_NATS_CYCLE_SUBJECT = "nova.cells.{cell}.cycle"
 
 
 class Timer:
@@ -42,9 +44,9 @@ class Timer:
 
 
 class CycleDevice(OutputDevice):
-    def __init__(self, cell_id: str, api_gateway: ApiGateway):
+    def __init__(self, cell: Cell):
         super().__init__()
-        self._cycle = Cycle(cell_id=cell_id, api_gateway=api_gateway)
+        self._cycle = Cycle(cell=cell)
 
     async def write(self, key, _):
         if key == "start":
@@ -93,12 +95,12 @@ class Cycle:
         cycle_id (UUID | None): Unique identifier for the cycle, set after start()
     """
 
-    def __init__(self, cell_id: str, api_gateway: ApiGateway):
+    def __init__(self, cell: Cell):
         self.cycle_id: UUID | None = None
         self._timer = Timer()
-        self._cell_id = cell_id
-        self._cycle_subject = f"nova.cells.{self._cell_id}.cycle"
-        self._api_gateway = api_gateway
+        self._cell_id = cell.cell_id
+        self._cycle_subject = _NATS_CYCLE_SUBJECT.format(cell=self._cell_id)
+        self._api_gateway = cell._api_gateway
 
     async def start(self) -> datetime:
         """
