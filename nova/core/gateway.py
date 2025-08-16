@@ -249,7 +249,7 @@ class ApiGateway:
         nova_version = await self.system_api.get_system_version()
         logger.debug("Connected to nova API version %s", nova_version)
 
-        self._nats_client = nats.connect(self._nats_connection_string)
+        self._nats_client = await nats.connect(self._nats_connection_string)
         self._nats_publisher = NatsPublisher(self._nats_client)
         logger.info(
             f"Api gateway connection is established. You are using Nova version: {nova_version}"
