@@ -129,12 +129,11 @@
     "watch": "webpack --watch",
     "vscode:prepublish": "webpack --mode production",
     "package": "vsce package",
-    "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
     "lint": "eslint src",
     "test": "vscode-test",
-    "format": "prettier --write .",
+    "test:watch": "tsc -p . -w --outDir out",
+    "test:compile": "tsc -p . --outDir out",
+    "format": "prettier --check .",
     "format:fix": "prettier --write . --fix"
   },
   "devDependencies": {
