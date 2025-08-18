@@ -1,7 +1,10 @@
+import asyncio
+import bisect
 from functools import singledispatch
 from typing import Any, Callable
 
 import wandelbots_api_client as wb
+from icecream import ic
 
 from nova.actions import MovementControllerContext
 from nova.core import logger
@@ -165,3 +168,124 @@ def speed_up(
                     latest_speed = 100
 
     return movement_controller
+
+
+class TrajectoryCursor:
+    def __init__(self, joint_trajectory: wb.models.JointTrajectory):
+        self.joint_trajectory = joint_trajectory
+        self._command_queue = asyncio.Queue()
+        self._breakpoints = []
+
+    def __call__(self, context: MovementControllerContext):
+        self.context = context
+        return self.cntrl
+
+    def pause_at(self, location: float):
+        # How to pause at an exact location?
+        bisect.insort(self._breakpoints, location)
+
+    def forward(self):
+        self._command_queue.put_nowait(
+            wb.models.StartMovementRequest(
+                direction=wb.models.Direction.DIRECTION_FORWARD,
+                # set_ios=self.context.combined_actions.to_set_io(),  # somehow gets called before self.context is set
+                start_on_io=None,
+                pause_on_io=None,
+            )
+        )
+
+    def backward(self):
+        self._command_queue.put_nowait(
+            wb.models.StartMovementRequest(
+                direction=wb.models.Direction.DIRECTION_BACKWARD,
+                # set_ios=self.context.combined_actions.to_set_io(),
+                start_on_io=None,
+                pause_on_io=None,
+            )
+        )
+
+    def pause(self):
+        self._command_queue.put_nowait(wb.models.PauseMovementRequest())
+
+    async def cntrl(
+        self, response_stream: ExecuteTrajectoryResponseStream
+    ) -> ExecuteTrajectoryRequestStream:
+        self._response_stream = response_stream
+        async for request in init_movement_gen(self.context.motion_id, response_stream):
+            yield request
+
+        self._response_consumer_task: asyncio.Task[None] = asyncio.create_task(
+            self._response_consumer(), name="response_consumer"
+        )
+
+        async for request in self._request_loop():
+            yield request
+        await self._response_consumer_task  # Where to put?
+
+    async def _request_loop(self):
+        while True:
+            yield await self._command_queue.get()
+            self._command_queue.task_done()
+
+    async def _response_consumer(self):
+        last_movement = None
+
+        try:
+            async for response in self._response_stream:
+                instance = response.actual_instance
+                if isinstance(instance, wb.models.MotionGroupState):
+                    if last_movement is None:
+                        last_movement = instance.movement
+                    self._handle_movement(instance.movement, last_movement)
+                    last_movement = instance.movement
+
+                if isinstance(instance, wb.models.Standstill):
+                    if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
+                        # self.context.movement_consumer(None)
+                        ic()
+                        break
+        except asyncio.CancelledError:
+            ic()
+            raise
+        except Exception as e:
+            ic(e)
+            raise
+        ic()
+
+    def _handle_movement(
+        self, curr_movement: wb.models.MotionGroupState, last_movement: wb.models.MotionGroupState
+    ):
+        if not self._breakpoints:
+            return
+        curr_location = curr_movement.current_location
+        last_location = last_movement.current_location
+        if curr_location == last_location:
+            return
+        if curr_location > last_location:
+            # moving forwards
+            for breakpoint in self._breakpoints:
+                if last_location <= breakpoint < curr_location:
+                    ic(last_location, breakpoint, curr_location)
+                    self.pause()
+                    # disable the breakpoint so it doesn't trigger again for the location window
+        else:
+            # moving backwards
+            for breakpoint in self._breakpoints:
+                if last_location > breakpoint >= curr_location:
+                    ic()
+                    self.pause()
+                    # disable the breakpoint so it doesn't trigger again for the location window
+
+
+async def init_movement_gen(motion_id, response_stream) -> ExecuteTrajectoryRequestStream:
+    # The first request is to initialize the movement
+    yield wb.models.InitializeMovementRequest(trajectory=motion_id, initial_location=0)  # type: ignore
+
+    # then we get the response
+    initialize_movement_response = await anext(response_stream)
+    if isinstance(
+        initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
+    ):
+        r1 = initialize_movement_response.actual_instance
+        if not r1.init_response.succeeded:
+            raise InitMovementFailed(r1.init_response)
