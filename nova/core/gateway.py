@@ -281,6 +281,10 @@ class ApiGateway:
             subject (str): The NATS subject to publish to.
             message (NatsMessage): The message to publish.
         """
+        logger.warning(
+            "Wandelbots Nova NATS integration is in BETA, You might experience issues and the API can change."
+        )
+
         if getattr(self, "_nats_publisher", None) is None:
             logger.warning("your message is ignored")
             logger.warning(
@@ -297,6 +301,9 @@ class ApiGateway:
             subject (str): The NATS subject to subscribe to.
             on_message (Callable[[NatsMessage], Awaitable[None]]): The callback to call when a message is received.
         """
+        logger.warning(
+            "Wandelbots Nova NATS integration is in BETA, You might experience issues and the API can change."
+        )
 
         async def data_mapper(msg: NatsLibMessage):
             message = NatsMessage(subject=msg.subject, data=msg.data)
