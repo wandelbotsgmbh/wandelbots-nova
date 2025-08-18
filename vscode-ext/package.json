@@ -3,6 +3,7 @@
   "displayName": "Wandelbots NOVA",
   "description": "Wandelbots NOVA VSCode Extension",
   "version": "0.0.1",
+  "packageManager": "pnpm@10.12.2",
   "engines": {
     "vscode": "^1.99.0"
   },
