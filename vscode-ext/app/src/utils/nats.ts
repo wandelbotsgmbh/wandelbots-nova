@@ -2,7 +2,6 @@ import { type NatsConnection, wsconnect } from '@nats-io/nats-core'
 
 let nc: NatsConnection | undefined
 
-type Message = {}
 export async function connectToNats(): Promise<NatsConnection> {
   if (nc) return nc
 
@@ -56,4 +55,36 @@ export async function disconnectFromNats(): Promise<void> {
 
 export function getNatsConnection(): NatsConnection | undefined {
   return nc
+}
+
+export async function subscribeToNatsMessage(
+  subject: string,
+  callback: (message: any) => void,
+): Promise<() => void> {
+  if (!nc) {
+    await connectToNats()
+  }
+
+  if (!nc) {
+    throw new Error('NATS connection not available')
+  }
+
+  const subscription = nc.subscribe(subject)
+
+  // Start listening for messages
+  ;(async () => {
+    for await (const msg of subscription) {
+      try {
+        const messageData = JSON.parse(new TextDecoder().decode(msg.data))
+        callback(messageData)
+      } catch (err) {
+        console.error('Error parsing NATS message:', err)
+      }
+    }
+  })().catch((err) => console.error('NATS subscription error:', err))
+
+  // Return unsubscribe function
+  return () => {
+    subscription.unsubscribe()
+  }
 }

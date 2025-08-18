@@ -3,6 +3,7 @@ import * as vscode from 'vscode'
 import {
   SETTINGS_ACCESS_TOKEN,
   SETTINGS_CELL_ID,
+  SETTINGS_NATS_BROKER,
   SETTINGS_NOVA_API,
   SETTINGS_RERUN_ADDRESS,
   VIEWER_ID,
@@ -134,6 +135,12 @@ export function getCellId(): string {
   const config = vscode.workspace.getConfiguration(VIEWER_ID)
   const cellId = config.get<string>(SETTINGS_CELL_ID, '')
   return cellId
+}
+
+export function getNatsBroker(): string {
+  const config = vscode.workspace.getConfiguration(VIEWER_ID)
+  const natsBroker = config.get<string>(SETTINGS_NATS_BROKER, '')
+  return natsBroker
 }
 
 /**

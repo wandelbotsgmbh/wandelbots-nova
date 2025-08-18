@@ -173,14 +173,14 @@ export class NovaCodeLensProvider implements vscode.CodeLensProvider {
 
         // Add "Run" button
         const runCommand: vscode.Command = {
-          title: '▶️ Run Program',
+          title: '▶️ Run',
           command: COMMAND_RUN_NOVA_PROGRAM,
           arguments: [document.uri, functionName, startLine],
         }
 
         // Add "Debug" button
         const debugCommand: vscode.Command = {
-          title: '🐛 Debug Program',
+          title: '🐛 Debug',
           command: COMMAND_DEBUG_NOVA_PROGRAM,
           arguments: [document.uri, functionName, startLine],
         }

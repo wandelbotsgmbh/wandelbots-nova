@@ -4,6 +4,8 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - 'vscode-ext/**'
 jobs:
   test:
     runs-on: ubuntu-latest

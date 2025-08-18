@@ -12,11 +12,15 @@ import {
   COMMAND_REFRESH_CODE_LENS,
   COMMAND_REFRESH_NOVA_VIEWER,
   COMMAND_RUN_NOVA_PROGRAM,
+  COMMAND_SELECT_VIEWER_TAB,
   COMMAND_SHOW_APP,
   VIEWER_ID,
 } from './consts'
+import {
+  startNatsLineSubscriber,
+  stopNatsLineSubscriber,
+} from './lineHighlighter'
 import { logger } from './logging'
-import { connectToNats } from './nova/nats'
 import { readRobotPose } from './nova/readRobotPose'
 import { NovaApi } from './novaApi'
 import { runNovaProgram } from './novaProgram'
@@ -29,7 +33,7 @@ import {
 let decorationType: vscode.TextEditorDecorationType | undefined
 let disposables: vscode.Disposable[] = []
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   logger.info('Wandelbots NOVA extension activating...')
 
   // ------------------------------
@@ -47,8 +51,10 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register command to open the webview
   context.subscriptions.push(
-    vscode.commands.registerCommand(COMMAND_OPEN_NOVA_VIEWER, () => {
-      provider.forceReveal()
+    vscode.commands.registerCommand(COMMAND_OPEN_NOVA_VIEWER, async () => {
+      // Set desired tab before revealing so initialTab is injected on first load
+      provider.selectTab(1)
+      await provider.forceReveal()
     }),
   )
 
@@ -59,6 +65,18 @@ export function activate(context: vscode.ExtensionContext) {
       await provider.hardRefresh()
       vscode.window.showInformationMessage('Wandelbots NOVA Viewer refreshed')
     }),
+  )
+
+  // Register command to select a specific tab in the viewer
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      COMMAND_SELECT_VIEWER_TAB,
+      async (tabIndex: number) => {
+        // Select the tab BEFORE reveal so first-time open uses initialTab
+        provider.selectTab(typeof tabIndex === 'number' ? tabIndex : 0)
+        await provider.forceReveal()
+      },
+    ),
   )
 
   // Listen for configuration changes
@@ -120,14 +138,6 @@ export function activate(context: vscode.ExtensionContext) {
       logger.info('Refreshing Nova CodeLens')
       novaCodeLensProvider.refresh()
       vscode.window.showInformationMessage('Nova CodeLens refreshed')
-    }),
-  )
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('wandelbots-nova.connectToNats', () => {
-      logger.info('Connecting to NATS')
-      connectToNats()
-      vscode.window.showInformationMessage('Connected to NATS')
     }),
   )
 
@@ -224,10 +234,16 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   )
 
+  await startNatsLineSubscriber(context, {
+    servers: 'nats://localhost:4222',
+    subject: 'editor.motion-event',
+    name: 'vscode-line-highlighter',
+  })
+
   context.subscriptions.push(...disposables)
 }
 
-export function deactivate() {
+export async function deactivate() {
   decorationType?.dispose()
   disposables.forEach((d) => d.dispose())
 
@@ -240,4 +256,6 @@ export function deactivate() {
       console.error('Failed to clean up temp directory:', error)
     }
   }
+
+  await stopNatsLineSubscriber()
 }
