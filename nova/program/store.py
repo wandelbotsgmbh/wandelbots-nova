@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, ValidationError, constr
 from nova.cell import Cell
 from nova.logger import logger as nova_logger
 
-_T = TypeVar("T", bound=BaseModel)
+_T = TypeVar("_T", bound=BaseModel)
 _NATS_PROGRAMS_BUCKET_TEMPLATE = "nova_cells_{cell}_programs"
 _NATS_PROGRAMS_MESSAGE_SIZE = 128 * 1024
 _NATS_PROGRAMS_BUCKET_SIZE = _NATS_PROGRAMS_MESSAGE_SIZE * 100
@@ -87,9 +87,9 @@ class _KeyValueStore(Generic[_T]):
         self._nats_kv_config = nats_kv_config
 
         self._nats_client = nats_client
-        self._nc: nats.NATS = None
-        self._js: JetStreamContext = None
-        self._kv: KeyValue = None
+        self._nc: nats.NATS | None = None
+        self._js: JetStreamContext | None = None
+        self._kv: KeyValue | None = None
         self._bucket_lock = asyncio.Lock()
         self._logger = nova_logger.getChild("ProgramStore")
 

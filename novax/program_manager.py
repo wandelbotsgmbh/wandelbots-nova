@@ -12,7 +12,7 @@ from nova.program.function import Program, ProgramPreconditions
 from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner
 
 
-def _log_future_result(future: asyncio.Future):
+def _log_future_result(future: Future):
     try:
         result = future.result()
         logger.debug(f"Program state change callback completed with result: {result}")
@@ -67,6 +67,7 @@ class NovaxProgramRunner(ProgramRunner):
         return result
 
 
+# can we remove this and use program model from wandelbots_api_client?
 class ProgramDetails(BaseModel):
     program: str
     name: str | None

@@ -142,5 +142,6 @@ class Cell:
             RobotCell: A RobotCell initialized with the available controllers.
         """
         controllers = await self.controllers()
-        controllers = {controller.id: controller for controller in controllers}
-        return RobotCell(timer=None, cycle=None, **controllers)
+        return RobotCell(
+            timer=None, cycle=None, **{controller.id: controller for controller in controllers}
+        )

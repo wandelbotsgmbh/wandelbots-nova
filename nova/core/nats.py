@@ -18,7 +18,7 @@ class _Publisher:
         Uses a queue to manage publishing tasks.
         """
         self._nats_client = nats_client
-        self._publish_queue = asyncio.Queue()
+        self._publish_queue: asyncio.Queue[Message] = asyncio.Queue()
         self._publish_queue_consumer = asyncio.create_task(self._publish_queue_task())
         self._logger = logger.getChild("NatsPublisher")
 
