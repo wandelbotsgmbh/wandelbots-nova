@@ -2,7 +2,6 @@ import asyncio
 import bisect
 from typing import AsyncIterator
 
-import aiostream
 import wandelbots_api_client.v2 as wb
 from icecream import ic
 
@@ -31,15 +30,49 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
-        # The first request is to initialize the movement
+        # TODO task error handling
+
+        async def motion_group_state_monitor(
+            motion_group_state_stream: AsyncIterator[wb.models.MotionGroupState],
+            ready: asyncio.Event,
+        ) -> AsyncIterator[MotionState]:
+            ready.set()
+            async for motion_group_state in motion_group_state_stream:
+                if motion_group_state.execute and isinstance(
+                    motion_group_state.execute.details.actual_instance.state.actual_instance,
+                    wb.models.TrajectoryEnded,
+                ):
+                    await error_monitor_task_created.wait()
+                    error_monitor_task.cancel()
+                    break
+
+        async def error_monitor(
+            responses: ExecuteTrajectoryResponseStream, to_cancel: list[asyncio.Task]
+        ):
+            async for execute_trajectory_response in responses:
+                instance = execute_trajectory_response.actual_instance
+                if isinstance(instance, wb.models.MovementErrorResponse):
+                    for task in to_cancel:
+                        task.cancel()
+                    # TODO how does this propagate?
+                    # TODO what happens to the state consumer?
+                    raise ErrorDuringMovement(instance.message)
+
+        motion_group_state_stream = context.motion_group_state_stream_gen()
+        motion_group_state_monitor_ready = asyncio.Event()
+        error_monitor_task_created = asyncio.Event()
+        motion_group_state_monitor_task = asyncio.create_task(
+            motion_group_state_monitor(motion_group_state_stream, motion_group_state_monitor_ready),
+            name="state_consumer",
+        )
+
+        await motion_group_state_monitor_ready.wait()
         yield wb.models.InitializeMovementRequest(
             trajectory=wb.models.InitializeMovementRequestTrajectory(
                 wb.models.TrajectoryId(id=context.motion_id)
             ),
             initial_location=0,
         )
-
-        # then we get the response
         execute_trajectory_response = await anext(response_stream)
         initialize_movement_response = execute_trajectory_response.actual_instance
         assert isinstance(initialize_movement_response, wb.models.InitializeMovementResponse)
@@ -51,42 +84,26 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         ):
             raise InitMovementFailed(initialize_movement_response)
 
-        # The second request is to start the movement
         set_io_list = context.combined_actions.to_set_io()
         yield wb.models.StartMovementRequest(
             direction=wb.models.Direction.DIRECTION_FORWARD,
             set_ios=set_io_list,
             start_on_io=None,
             pause_on_io=None,
-        )  # type: ignore
+        )
+        execute_trajectory_response = await anext(response_stream)
+        start_movement_response = execute_trajectory_response.actual_instance
+        assert isinstance(start_movement_response, wb.models.StartMovementResponse)
 
-        # get the motion group state stream from the context
-        motion_group_state_stream = context.motion_group_state_stream_gen()
-
-        # merge with the response stream using aiostream
-        merged_stream = aiostream.stream.merge(motion_group_state_stream, response_stream)
-
-        # iterate over merged stream and check for stop condition
-        async with merged_stream.stream() as streamer:
-            async for item in streamer:
-                if isinstance(item, wb.models.MotionGroupState):
-                    # Check for stop condition like in motion_group.py _execute
-                    ic()
-                    if item.execute and isinstance(
-                        item.execute.details.actual_instance.state.actual_instance,
-                        wb.models.TrajectoryEnded,
-                    ):
-                        ic()
-                        break
-                elif isinstance(item, wb.models.ExecuteTrajectoryResponse):
-                    # Handle trajectory response
-                    ic(item)
-                    instance = item.actual_instance
-                    if isinstance(instance, wb.models.MovementErrorResponse):
-                        # Stop on error
-                        raise ErrorDuringMovement(instance.message)
-                else:
-                    assert False, f"Unexpected item type: {type(item)}"
+        error_monitor_task = asyncio.create_task(
+            error_monitor(response_stream, [motion_group_state_monitor_task]), name="error_monitor"
+        )
+        error_monitor_task_created.set()
+        try:
+            await error_monitor_task
+        except asyncio.CancelledError:
+            ic()
+        await motion_group_state_monitor_task
 
     return movement_controller
 

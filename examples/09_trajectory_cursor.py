@@ -53,6 +53,7 @@ async def main():
             tcp = tcp_names[0]
             motion_iter = await motion_group.plan_and_execute([jnt(home_joints)], tcp)
             ic()
+            return
             # Get current TCP pose and offset it slightly along the x-axis
             current_pose = await motion_group.tcp_pose(tcp)
             dist = 300

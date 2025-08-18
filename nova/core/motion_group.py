@@ -503,20 +503,44 @@ class MotionGroup(AbstractRobot):
                 motion_group_state_stream_gen=self.stream_state,
             )
         )
+        states = asyncio.Queue[wb.models.MotionGroupState]()
+        SENTINEL = None
 
-        execution_task = asyncio.create_task(
-            self._api_gateway.trajectory_execution_api.execute_trajectory(
+        async def monitor_motion_group_state():
+            async for motion_group_state in self.stream_state():
+                ic()
+                # ic(motion_group_state)
+                if motion_group_state.execute:
+                    states.put_nowait(motion_group_state)
+
+        async def execution():
+            await self._api_gateway.trajectory_execution_api.execute_trajectory(
                 cell=self._cell, controller=self._controller_id, client_request_generator=controller
-            ),
-            name=f"execute_trajectory-{trajectory_id}-{self.motion_group_id}",
+            )
+            states.put_nowait(SENTINEL)
+
+        monitor_task = asyncio.create_task(monitor_motion_group_state())
+        execution_task = asyncio.create_task(
+            execution(), name=f"execute_trajectory-{trajectory_id}-{self.motion_group_id}"
         )
-        async for motion_group_state in self.stream_state():
-            if motion_group_state.execute:
-                yield motion_group_state_to_motion_state(motion_group_state)
+
         from icecream import ic
 
+        while (motion_group_state := await states.get()) is not SENTINEL:
+            # ic()
+            # ic(motion_group_state)
+            yield motion_group_state_to_motion_state(motion_group_state)
         ic()
-        await execution_task
+        monitor_task.cancel()
+        # async for motion_group_state in self.stream_state():
+        #     if motion_group_state.execute:
+        #         yield motion_group_state_to_motion_state(motion_group_state)
+
+        try:
+            await execution_task
+            await monitor_task
+        except asyncio.CancelledError:
+            ic()
 
     async def _stream_jogging(self, tcp, movement_controller):
         controller = movement_controller(
