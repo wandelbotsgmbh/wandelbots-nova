@@ -1,3 +1,4 @@
+import asyncio
 import threading
 import time
 
@@ -5,11 +6,20 @@ import httpx
 import pytest
 import uvicorn
 
+import nova
 from nova.cell.simulation import SimulatedRobotCell
 from novax import Novax
 
-from .api.test_program_cycle import program_with_cycle_data, program_with_cycle_failure
-from .api.test_program_run import failing_program, sucessful_program
+
+@nova.program(name="simple_program")
+async def simple_program(number_of_steps: int = 30):
+    print("Hello World!")
+
+    for i in range(number_of_steps):
+        print(f"Step: {i}")
+        await asyncio.sleep(1)
+
+    print("Finished Hello World!")
 
 
 @pytest.fixture
@@ -18,11 +28,13 @@ def novax_app():
     app = novax.create_app()
     novax.include_programs_router(app)
 
-    # Register test programs
-    novax.register_program(sucessful_program)
-    novax.register_program(failing_program)
-    novax.register_program(program_with_cycle_data)
-    novax.register_program(program_with_cycle_failure)
+    novax.register_program(simple_program)
+
+    # programs for integration tests
+    # novax.register_program(sucessful_program)
+    # novax.register_program(failing_program)
+    # novax.register_program(program_with_cycle_data)
+    # novax.register_program(program_with_cycle_failure)
 
     yield app
 
