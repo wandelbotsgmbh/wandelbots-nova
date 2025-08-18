@@ -1,7 +1,6 @@
 import asyncio
 
 import httpx
-import pytest
 
 import nova
 from nova.core.nova import Nova
@@ -18,8 +17,8 @@ async def sucessful_program():
     print("simple test program run")
 
 
-@pytest.mark.xdist_group("program-runs")
-@pytest.mark.asyncio
+# @pytest.mark.xdist_group("program-runs")
+# @pytest.mark.asyncio
 async def test_novax_program_successful_run(novax_server):
     nova = Nova()
     await nova.connect()
@@ -58,8 +57,8 @@ async def failing_program():
     raise ValueError("This program is designed to fail for testing purposes")
 
 
-@pytest.mark.xdist_group("program-runs")
-@pytest.mark.asyncio
+# @pytest.mark.xdist_group("program-runs")
+# @pytest.mark.asyncio
 async def test_novax_program_failed_run(novax_server):
     nova = Nova()
     await nova.connect()

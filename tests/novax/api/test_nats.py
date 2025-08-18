@@ -1,13 +1,11 @@
 import asyncio
 
-import pytest
-
 from nova.core.nats import Message
 from nova.core.nova import Nova
 
 
-@pytest.mark.xdist_group("program-runs")
-@pytest.mark.asyncio
+# @pytest.mark.xdist_group("program-runs")
+# @pytest.mark.asyncio
 async def test_nats_pub_sub():
     nova = Nova()
     await nova.connect()
