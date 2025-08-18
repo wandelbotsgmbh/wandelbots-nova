@@ -142,7 +142,5 @@ class Cell:
             RobotCell: A RobotCell initialized with the available controllers.
         """
         controllers = await self.controllers()
-        # This causes cyclic import, don't know how to solve
-        # cycle = CycleDevice(cell=self)
         controllers = {controller.id: controller for controller in controllers}
         return RobotCell(timer=None, cycle=None, **controllers)

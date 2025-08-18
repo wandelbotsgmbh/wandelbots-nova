@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from nova import Nova, api
 from nova.cell.robot_cell import RobotCell
 from nova.core.exceptions import PlanTrajectoryFailed
+from nova.events import CycleDevice
 from nova.program.exceptions import NotPlannableError
 from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
@@ -324,6 +325,9 @@ class ProgramRunner(ABC):
                 async with Nova() as nova:
                     cell = nova.cell()
                     robot_cell = await cell.get_robot_cell()
+                    # This causes cyclic import, can't add to cell
+                    cycle_device = CycleDevice(cell=nova.cell())
+                    robot_cell.devices["cycle"] = cycle_device
 
             if robot_cell is None:
                 raise RuntimeError("No robot cell available")
