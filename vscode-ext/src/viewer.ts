@@ -62,11 +62,9 @@ export class WandelbotsNovaViewerProvider
       console.log('Performing hard refresh of Wandelbots view')
 
       try {
-        // Get fresh URL
         this._url = await getConfiguredUrl()
         console.log(`Refreshed URL: ${this._url}`)
 
-        // Update the webview with the resolved URL
         this._view.webview.html = this._getHtmlForWebview(this._view.webview)
       } catch (error) {
         console.error('Error during hard refresh:', error)
@@ -218,16 +216,189 @@ export class WandelbotsNovaViewerProvider
     webviewView.webview.html = this._getLoadingHtml()
 
     try {
-      // Dynamically determine the URL to use
       this._url = await getConfiguredUrl()
       console.log(`Using URL: ${this._url}`)
 
-      // Update the webview with the resolved URL
       webviewView.webview.html = this._getHtmlForWebview(webviewView.webview)
     } catch (error) {
       console.error('Error resolving URL:', error)
       webviewView.webview.html = this._getErrorHtml(error)
     }
+  }
+
+  /**
+   * Returns the HTML content for the webview with debug info
+   */
+  private _getHtmlForWebview(webview: vscode.Webview): string {
+    // Use the dynamically resolved URL
+    const url = this._url
+
+    // Get custom URL from settings if specified
+    const config = vscode.workspace.getConfiguration('wandelbots-viewer')
+    const customUrl = config.get('customUrl')
+    const showDebugInfo = config.get('showDebugInfo', false)
+
+    // If custom URL is provided, use it instead
+    const finalUrl = customUrl || url
+    console.log(`Final URL: ${finalUrl}`)
+
+    // If URL is missing or invalid, show an error
+    if (!finalUrl || finalUrl === 'localhost' || finalUrl === 'undefined') {
+      return this._getErrorHtml(new Error('Failed to resolve a valid URL'))
+    }
+
+    // Return HTML with an iframe that loads the website
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Wandelbots Viewer</title>
+        <style>
+          body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+          }
+          iframe {
+            width: 100%;
+            height: ${showDebugInfo ? 'calc(100% - 80px)' : '100%'};
+            border: none;
+          }
+          .loader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 4px;
+          }
+          .loading {
+            display: block;
+            margin-bottom: 10px;
+          }
+          .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 2s linear infinite;
+            margin: 0 auto;
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          .debug-info {
+            background: #f3f3f3;
+            padding: 10px;
+            font-size: 12px;
+            font-family: monospace;
+            overflow: auto;
+            max-height: 80px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="loader" id="loader">
+          <span class="loading">Loading Wandelbots...</span>
+          <div class="spinner"></div>
+        </div>
+        ${
+          showDebugInfo
+            ? `<div class="debug-info">
+          <strong>URL:</strong> ${finalUrl}<br>
+          <strong>ENV:</strong> ${
+            process.env.VSCODE_PROXY_URI || 'Not available'
+          }<br>
+          <button onclick="refreshPage()">Refresh</button>
+        </div>`
+            : ''
+        }
+        <iframe src="${finalUrl}" id="mainFrame" onload="handleFrameLoad()" onerror="handleFrameError()"></iframe>
+        <script>
+          const vscode = acquireVsCodeApi();
+          const loader = document.getElementById('loader');
+          const mainFrame = document.getElementById('mainFrame');
+          let loadTimeoutId;
+
+          function handleFrameLoad() {
+            // Clear any timeout
+            if (loadTimeoutId) {
+              clearTimeout(loadTimeoutId);
+            }
+
+            // Hide the loader
+            loader.style.display = 'none';
+            console.log('Frame loaded successfully');
+          }
+
+          function handleFrameError() {
+            console.error('Frame failed to load');
+            loader.innerHTML = '<span class="loading">Error loading content. <button onclick="refreshPage()">Try Again</button></span>';
+          }
+
+          // Set a timeout to detect if the page doesn't load
+          loadTimeoutId = setTimeout(() => {
+            if (loader.style.display !== 'none') {
+              console.log('Frame load timeout');
+              loader.innerHTML = '<span class="loading">Loading timed out. <button onclick="refreshPage()">Try Again</button></span>';
+            }
+          }, 15000);
+
+          function refreshPage() {
+            // Show loading state
+            if (loader) {
+              loader.style.display = 'block';
+              loader.innerHTML = '<span class="loading">Refreshing...</span><div class="spinner"></div>';
+            }
+
+            // Reload the iframe content
+            if (mainFrame) {
+              mainFrame.src = mainFrame.src;
+            }
+          }
+
+          function refreshIframe() {
+            console.log('Refreshing iframe content');
+            if (mainFrame) {
+              const currentSrc = mainFrame.src;
+              // Add timestamp to force refresh
+              const separator = currentSrc.includes('?') ? '&' : '?';
+              mainFrame.src = currentSrc + separator + '_refresh=' + Date.now();
+            }
+          }
+
+          // Listen for messages from the extension
+          window.addEventListener('message', event => {
+            const message = event.data;
+            switch (message.command) {
+              case 'refresh':
+                console.log('Received refresh command from extension');
+                refreshIframe();
+                break;
+              case 'hardRefresh':
+                console.log('Received hard refresh command from extension');
+                window.location.reload();
+                break;
+              case 'updateUrl':
+                console.log('Received URL update command:', message.url);
+                if (message.url && mainFrame) {
+                  mainFrame.src = message.url;
+                }
+                break;
+            }
+          });
+        </script>
+      </body>
+      </html>
+    `
   }
 
   /**
@@ -323,195 +494,43 @@ export class WandelbotsNovaViewerProvider
   }
 
   /**
-   * Returns the HTML content for the webview with debug info
+   * Returns the HTML content for the React app
    */
-  private _getHtmlForWebview(webview: vscode.Webview): string {
-    // Use the dynamically resolved URL
-    const url = this._url
+  private _getReactAppHtml(webview: vscode.Webview): string {
+    try {
+      // Get path to index.html in build directory
+      const indexPath = vscode.Uri.joinPath(
+        this._extensionUri,
+        'app',
+        'build',
+        'index.html',
+      )
 
-    // Get custom URL from settings if specified
-    const config = vscode.workspace.getConfiguration(VIEWER_ID)
-    const customUrl = config.get<string | undefined>('customUrl')
-    const showDebugInfo = config.get<boolean>('showDebugInfo', true)
+      // Read the HTML file content
+      const fs = require('fs')
+      const htmlContent = fs.readFileSync(indexPath.fsPath, 'utf8')
 
-    // If custom URL is provided, use it instead
-    const finalUrl = customUrl || url
-    console.log(`Final URL: ${finalUrl}`)
+      // Convert any resource URIs to webview URIs
+      const buildUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(this._extensionUri, 'app', 'build'),
+      )
 
-    // Return HTML with an iframe that loads the website
-    return `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Wandelbots Viewer</title>
-        <style>
-          body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            overflow: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      // Replace paths to be webview-friendly
+      const updatedHtml = htmlContent.replace(
+        /(href|src)="([^"]*)"/g,
+        (match: string, attr: string, path: string) => {
+          if (path.startsWith('/')) {
+            path = path.slice(1)
           }
-          iframe {
-            width: 100%;
-            height: ${showDebugInfo ? 'calc(100% - 120px)' : 'calc(100% - 60px)'};
-            border: none;
-          }
-          .loader {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            background: rgba(255, 255, 255, 0.8);
-            padding: 20px;
-            border-radius: 4px;
-          }
-          .loading {
-            display: block;
-            margin-bottom: 10px;
-          }
-          .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 2s linear infinite;
-            margin: 0 auto;
-          }
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          .nova-info {
-            background: #e8f4fd;
-            padding: 10px;
-            font-size: 12px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            border-bottom: 1px solid #3498db;
-            margin-bottom: 10px;
-          }
-          .nova-info strong {
-            color: #2c3e50;
-          }
-          .nova-info button {
-            background-color: #3498db;
-            color: white;
-            border: none;
-            padding: 4px 8px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 11px;
-            margin-top: 5px;
-          }
-          .nova-info button:hover {
-            background-color: #2980b9;
-          }
-          .debug-info {
-            background: #f3f3f3;
-            padding: 10px;
-            font-size: 12px;
-            font-family: monospace;
-            overflow: auto;
-            max-height: 80px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="loader" id="loader">
-          <span class="loading">Loading Wandelbots...</span>
-          <div class="spinner"></div>
-        </div>
-        <div class="nova-info">
-          <strong>Wandelbots NOVA</strong><br>
-          <strong>API URL:</strong> ${finalUrl}<br>
-          <strong>URL Type:</strong> ${config.get<string>('urlType', 'rerunAddress')}<br>
-          ${config.get<string>('instanceDomain') ? `<strong>Instance:</strong> ${config.get<string>('instanceDomain')}<br>` : ''}
-          <strong>Loaded:</strong> ${new Date().toLocaleTimeString()}<br>
-          ${showDebugInfo ? `<strong>ENV:</strong> ${String(process.env.VSCODE_PROXY_URI ?? 'Not available')}<br>` : ''}
-          <button onclick="refreshPage()">Refresh</button>
-        </div>
-        <iframe src="${finalUrl}" id="mainFrame" onload="handleFrameLoad()" onerror="handleFrameError()" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
-        <script>
-          const vscode = acquireVsCodeApi();
-          const loader = document.getElementById('loader');
-          const mainFrame = document.getElementById('mainFrame');
-          let loadTimeoutId;
+          return `${attr}="${buildUri}/${path}"`
+        },
+      )
 
-          function handleFrameLoad() {
-            // Clear any timeout
-            if (loadTimeoutId) {
-              clearTimeout(loadTimeoutId);
-            }
-
-            // Hide the loader
-            loader.style.display = 'none';
-            console.log('Frame loaded successfully');
-          }
-
-          function handleFrameError() {
-            console.error('Frame failed to load');
-            loader.innerHTML = '<span class="loading">Error loading content. <button onclick="refreshPage()">Try Again</button></span>';
-          }
-
-          // Set a timeout to detect if the page doesn't load
-          loadTimeoutId = setTimeout(() => {
-            if (loader.style.display !== 'none') {
-              console.log('Frame load timeout');
-              loader.innerHTML = '<span class="loading">Loading timed out. <button onclick="refreshPage()">Try Again</button></span>';
-            }
-          }, 15000);
-
-          function refreshPage() {
-            // Show loading state
-            if (loader) {
-              loader.style.display = 'block';
-              loader.innerHTML = '<span class="loading">Refreshing...</span><div class="spinner"></div>';
-            }
-
-            // Reload the iframe content
-            if (mainFrame) {
-              mainFrame.src = mainFrame.src;
-            }
-          }
-
-          function refreshIframe() {
-            console.log('Refreshing iframe content');
-            if (mainFrame) {
-              const currentSrc = mainFrame.src;
-              // Add timestamp to force refresh
-              const separator = currentSrc.includes('?') ? '&' : '?';
-              mainFrame.src = currentSrc + separator + '_refresh=' + Date.now();
-            }
-          }
-
-          // Listen for messages from the extension
-          window.addEventListener('message', event => {
-            const message = event.data;
-            switch (message.command) {
-              case 'refresh':
-                console.log('Received refresh command from extension');
-                refreshIframe();
-                break;
-              case 'hardRefresh':
-                console.log('Received hard refresh command from extension');
-                window.location.reload();
-                break;
-              case 'updateUrl':
-                console.log('Received URL update command:', message.url);
-                if (message.url && mainFrame) {
-                  mainFrame.src = message.url;
-                }
-                break;
-            }
-          });
-        </script>
-      </body>
-      </html>
-    `
+      return updatedHtml
+    } catch (error) {
+      console.error('Error loading React app:', error)
+      return this._getErrorHtml(error)
+    }
   }
 }
 

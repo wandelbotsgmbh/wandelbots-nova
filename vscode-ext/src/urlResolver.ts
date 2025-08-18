@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 
-import { URL_TYPE_NOVA_API, URL_TYPE_RERUN, VIEWER_ID } from './consts'
+import { SETTINGS_NOVA_API, SETTINGS_RERUN_ADDRESS, VIEWER_ID } from './consts'
 
 /**
  * Gets the protocol from the environment
@@ -35,22 +35,19 @@ export function getProtocolFromEnvironment(): 'http://' | 'https://' {
 }
 
 /**
- * Gets the host address using JavaScript implementation of Python logic
+ * Gets the host address using TypeScript implementation of Python logic
  * @returns The host address (e.g., "https://example.instance.wandelbots.io" or "http://localhost")
  */
 export function getNovaApiAddress(): string {
   try {
     // Configured instance?
     const config = vscode.workspace.getConfiguration(VIEWER_ID)
-    const instanceDomain = config.get<string>('instanceDomain', '')
+    const novaApi = config.get<string>(SETTINGS_NOVA_API, '')
 
-    if (instanceDomain) {
+    if (novaApi) {
       const protocol = getProtocolFromEnvironment()
-      const fullDomain = instanceDomain.includes('.instance.wandelbots.io')
-        ? instanceDomain
-        : `${instanceDomain}.instance.wandelbots.io`
-      console.log(`Using configured instance domain: ${instanceDomain}`)
-      return `${protocol}${fullDomain}`
+      console.log(`Using configured Wandelbots NOVA API address: ${novaApi}`)
+      return `${protocol}${novaApi}`
     }
 
     // VS Code proxy env (e.g., remote/server scenarios)
@@ -138,26 +135,18 @@ export async function getConfiguredUrl(): Promise<string> {
 
     const config = vscode.workspace.getConfiguration(VIEWER_ID)
     const urlType = config.get<
-      typeof URL_TYPE_NOVA_API | typeof URL_TYPE_RERUN
-    >('urlType', URL_TYPE_RERUN)
-    const customUrl = config.get<string>('customUrl', '')
+      typeof SETTINGS_NOVA_API | typeof SETTINGS_RERUN_ADDRESS
+    >('urlType', SETTINGS_RERUN_ADDRESS)
 
     console.log('Configuration:')
     console.log('- URL Type:', urlType)
-    console.log('- Custom URL:', customUrl)
-
-    // Use custom URL if specified
-    if (customUrl) {
-      console.log('Using custom URL')
-      return customUrl
-    }
 
     // Use rerunAddress or hostAddress depending on settings
-    if (urlType === URL_TYPE_RERUN && rerunAddress) {
+    if (urlType === SETTINGS_RERUN_ADDRESS && rerunAddress) {
       console.log('Using rerun address:', rerunAddress)
       return rerunAddress
     } else if (
-      urlType === URL_TYPE_NOVA_API &&
+      urlType === SETTINGS_NOVA_API &&
       novaApiAddress &&
       !novaApiAddress.includes('localhost')
     ) {
@@ -165,7 +154,7 @@ export async function getConfiguredUrl(): Promise<string> {
       console.log('Using host address:', hostUrl)
       return hostUrl
     } else if (
-      urlType === URL_TYPE_RERUN &&
+      urlType === SETTINGS_RERUN_ADDRESS &&
       novaApiAddress.includes('localhost')
     ) {
       // For localhost, provide a local rerun server URL

@@ -47,10 +47,6 @@
         "title": "Wandelbots NOVA: Refresh viewer"
       },
       {
-        "command": "wandelbots-nova.moveToSecondarySidebar",
-        "title": "Wandelbots NOVA: Move viewer to secondary sidebar"
-      },
-      {
         "command": "wandelbots-nova.runNovaProgram",
         "title": "Wandelbots NOVA: Run program",
         "icon": "$(play)"
@@ -95,15 +91,10 @@
           ],
           "description": "The type of URL to use for the Wandelbots NOVA viewer"
         },
-        "wandelbots-nova-viewer.customUrl": {
+        "wandelbots-nova-viewer.novaApi": {
           "type": "string",
           "default": "",
-          "description": "Custom URL to use (if specified, overrides the urlType setting)"
-        },
-        "wandelbots-nova-viewer.instanceDomain": {
-          "type": "string",
-          "default": "",
-          "description": "Your Wandelbots instance domain (e.g. 'uqserrrn' for 'uqserrrn.instance.wandelbots.io')"
+          "description": "Your Wandelbots NOVA API URL (e.g. 'uqserrrn.instance.wandelbots.io')"
         },
         "wandelbots-nova-viewer.showDebugInfo": {
           "type": "boolean",

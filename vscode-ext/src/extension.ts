@@ -14,7 +14,6 @@ import {
   VIEWER_ID,
 } from './consts'
 import { runNovaProgram } from './novaProgram'
-import { getConfiguredUrl } from './urlResolver'
 import {
   WandelbotsNovaViewerProvider,
   setupPythonScriptMonitoring,
@@ -122,10 +121,34 @@ export function activate(context: vscode.ExtensionContext) {
         },
       )
 
-      const indexHtml = panel.webview.asWebviewUri(
-        vscode.Uri.joinPath(context.extensionUri, 'app', 'build', 'index.html'),
+      // Get path to index.html in build directory
+      const indexPath = vscode.Uri.joinPath(
+        context.extensionUri,
+        'app',
+        'build',
+        'index.html',
       )
-      panel.webview.html = indexHtml.toString()
+
+      // Read the HTML file content
+      const htmlContent = fs.readFileSync(indexPath.fsPath, 'utf8')
+
+      // Convert any resource URIs to webview URIs
+      const buildUri = panel.webview.asWebviewUri(
+        vscode.Uri.joinPath(context.extensionUri, 'app', 'build'),
+      )
+
+      // Replace paths to be webview-friendly
+      const updatedHtml = htmlContent.replace(
+        /(href|src)="([^"]*)"/g,
+        (match, attr, path) => {
+          if (path.startsWith('/')) {
+            path = path.slice(1)
+          }
+          return `${attr}="${buildUri}/${path}"`
+        },
+      )
+
+      panel.webview.html = updatedHtml
     }),
   )
 

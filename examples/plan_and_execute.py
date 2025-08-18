@@ -24,18 +24,18 @@ from nova.types import MotionSettings, Pose
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name="ur",
+                name="ur10",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
                 type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             )
         ],
-        cleanup_controllers=True,
+        cleanup_controllers=False,
     ),
 )
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.controller("ur")
+        controller = await cell.controller("ur10")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
