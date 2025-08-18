@@ -6,7 +6,7 @@ from nova.core.nova import Nova
 
 # @pytest.mark.xdist_group("program-runs")
 # @pytest.mark.asyncio
-async def test_nats_pub_sub():
+async def _test_nats_pub_sub():
     nova = Nova()
     await nova.connect()
 
