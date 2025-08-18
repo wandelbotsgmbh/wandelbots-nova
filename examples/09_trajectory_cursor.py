@@ -1,11 +1,13 @@
 import asyncio
 from math import pi
 
-from nova import MotionSettings, Nova
+import nova
+from nova import Nova, api
 from nova.actions import jnt, lin
-from nova.api import models
-from nova.core.movement_controller import TrajectoryCursor
-from nova.types import Pose
+from nova.cell.controllers import virtual_controller
+from nova.core.movement_controller import TrajectoryCursor, motion_group_state_to_motion_state
+from nova.program import ProgramPreconditions
+from nova.types import MotionSettings, Pose
 
 """
 Example: Perform relative movements with a robot.
@@ -24,22 +26,33 @@ from icecream import ic
 ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
 
 
+@nova.program(
+    name="Basic Program",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur10e",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            )
+        ],
+        cleanup_controllers=False,
+    ),
+)
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "ur",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
-        )
+        controller = await cell.controller("ur10e")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
             # home_joints = await motion_group.joints()
-            home_joints = [-pi, -pi / 2, pi / 2, -pi / 2, -pi / 2, 0]
+            home_joints = [0, -pi / 2, -pi / 2, -pi / 2, pi / 2, -pi / 2]
             tcp_names = await motion_group.tcp_names()
+            ic(tcp_names)
             tcp = tcp_names[0]
             motion_iter = await motion_group.plan_and_execute([jnt(home_joints)], tcp)
+            ic()
 
             # Get current TCP pose and offset it slightly along the x-axis
             current_pose = await motion_group.tcp_pose(tcp)
@@ -60,6 +73,8 @@ async def main():
             action.settings = MotionSettings(tcp_velocity_limit=100)
 
         joint_trajectory = await motion_group.plan(actions, tcp)
+        # TODO this probaly not consumes the state stream immediately and thus might cause issues
+        # only start consuming the state stream when the trajectory is actually executed
         trajectory_cursor = TrajectoryCursor(joint_trajectory)
         motion_iter = motion_group.stream_execute(
             joint_trajectory, tcp, actions=actions, movement_controller=trajectory_cursor
@@ -85,7 +100,7 @@ async def main():
 
         driver_task = asyncio.create_task(driver())
         async for motion_state in motion_iter:
-            ic(motion_state.path_parameter)
+            ic(motion_group_state_to_motion_state(motion_state).path_parameter)
         await driver_task
         # await cell.delete_robot_controller(controller.controller_id)
 
