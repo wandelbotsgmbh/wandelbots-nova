@@ -78,11 +78,14 @@ async def main():
         # TODO this probaly not consumes the state stream immediately and thus might cause issues
         # only start consuming the state stream when the trajectory is actually executed
         trajectory_cursor = TrajectoryCursor(joint_trajectory)
+        for i, _ in enumerate(actions):
+            trajectory_cursor.pause_at(i)
         motion_iter = motion_group.stream_execute(
             joint_trajectory, tcp, actions=actions, movement_controller=trajectory_cursor
         )
+        trajectory_cursor.forward()
 
-        async def driver():
+        async def test_driver():
             trajectory_cursor.pause_at(0.7)
             ic("FORWARD")
             trajectory_cursor.forward()
@@ -104,6 +107,15 @@ async def main():
             trajectory_cursor.detach()
             ic("DRIVER DONE")
 
+        async def breakpoint_driver():
+            ic("BREAKPOINT DRIVER STARTED")
+            for i, _ in enumerate(actions):
+                trajectory_cursor.pause_at(i)
+
+            for _ in range(len(actions)):
+                await asyncio.sleep(1)
+            ic("BREAKPOINT DRIVER DONE")
+
         async def runtime_monitor(interval=0.5):
             start_time = asyncio.get_event_loop().time()
             while True:
@@ -111,14 +123,14 @@ async def main():
                 logger.warning(f"{elapsed:.2f}s")
                 await asyncio.sleep(interval)
 
-        driver_task = asyncio.create_task(driver())
+        # driver_task = asyncio.create_task(test_driver())
         runtime_task = asyncio.create_task(runtime_monitor(0.5))  # Output every 0.5 seconds
 
         try:
             async for motion_state in motion_iter:
                 pass
                 # ic(motion_state.path_parameter)
-            await driver_task
+            # await driver_task
         finally:
             runtime_task.cancel()
             try:

@@ -1,5 +1,6 @@
 import asyncio
 import bisect
+import pdb
 from functools import singledispatch
 from typing import Any, Callable
 
@@ -182,7 +183,7 @@ class TrajectoryCursor:
         self.context = context
         return self.cntrl
 
-    def pause_at(self, location: float):
+    def pause_at(self, location: float, debug_break: bool = True):
         # How to pause at an exact location?
         bisect.insort(self._breakpoints, location)
 
@@ -278,11 +279,14 @@ class TrajectoryCursor:
                     self._handle_movement(instance.movement, last_movement)
                     last_movement = instance.movement
                 elif isinstance(instance, wb.models.Standstill):
-                    ic()
-                    if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
-                        # self.context.movement_consumer(None)
-                        ic()
-                        break
+                    match instance.standstill.reason:
+                        case wb.models.StandstillReason.REASON_USER_PAUSED_MOTION:
+                            ic()
+                            pdb.set_trace()
+                        case wb.models.StandstillReason.REASON_MOTION_ENDED:
+                            # self.context.movement_consumer(None)
+                            ic()
+                            break
                 else:
                     ic(instance)
                     # Handle other types of instances if needed
