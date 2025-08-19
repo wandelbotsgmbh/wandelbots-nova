@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.10, <3.13"
 resolution-markers = [
     "python_full_version >= '3.11'",
@@ -1563,7 +1563,7 @@ wheels = [
 
 [[package]]
 name = "rerun-sdk"
-version = "0.23.3"
+version = "0.24.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
@@ -1574,11 +1574,11 @@ dependencies = [
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/00/54/710685ea836d91f14422de515262a9db5c2a17777e59ae4c1c19b46c1fa0/rerun_sdk-0.23.3-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:8a048ace69443aeb4040046d4bc28ba17be2c6862df7c2161e21b0608d5d6e0f", size = 59486089, upload-time = "2025-05-26T16:08:08.395Z" },
-    { url = "https://files.pythonhosted.org/packages/26/81/b94c23cde1b9ed54900f47e337f8e156d9fdec7494eaa11bbb592c26a5d9/rerun_sdk-0.23.3-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:a3ef05acfa9315d956c69eb680a50e46c802ba27eb8025bab71e14a989299383", size = 55128863, upload-time = "2025-05-26T16:08:13.328Z" },
-    { url = "https://files.pythonhosted.org/packages/02/bc/c32f71969a5d981087fded194012ef162391e49dba71ba5115a17c642065/rerun_sdk-0.23.3-cp39-abi3-manylinux_2_31_aarch64.whl", hash = "sha256:0cc9c60f1180edca1a4d70dbe591eb108e4dbe599c31136949b8d4106410cd14", size = 61603766, upload-time = "2025-05-26T16:08:17.476Z" },
-    { url = "https://files.pythonhosted.org/packages/fa/ef/93b6a8932747842e5f7c27f3ce7ef82bbc046aad3b7d5b2e905ffc5614a7/rerun_sdk-0.23.3-cp39-abi3-manylinux_2_31_x86_64.whl", hash = "sha256:49833bf3a4854eaf287a8bfe7dfa4cd8f67b0fd7917a469c8bb7061895fb1cf8", size = 64875203, upload-time = "2025-05-26T16:08:21.95Z" },
-    { url = "https://files.pythonhosted.org/packages/c5/36/759287d69301a3ada86ee102369a9521dfef0bb91b215e98a6a7b262a311/rerun_sdk-0.23.3-cp39-abi3-win_amd64.whl", hash = "sha256:88639632116b3761e2a45f4e5ac39eaf3406b615f516baccb508d93c6b42cc4e", size = 50862558, upload-time = "2025-05-26T16:08:26.98Z" },
+    { url = "https://files.pythonhosted.org/packages/96/48/6fa2fb45e816cf6cf1c60049d9475e87eb45bde87bb7d2347891c775ac8a/rerun_sdk-0.24.1-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:6569df783ea24531e7a6960dfac142805b5b2230ef0b05bafa35981d653ded89", size = 84095723, upload-time = "2025-08-07T15:10:33.62Z" },
+    { url = "https://files.pythonhosted.org/packages/76/d7/830b5f520956c1041a059f29eb26d7a0fe3b5c8aac85ad09ea5b0d06434e/rerun_sdk-0.24.1-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:542a0e245a15311cca5083273900248c95341b64e3051148f638efee03d64e96", size = 78384367, upload-time = "2025-08-07T15:10:40.044Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/37/c47e432bbd7c452d715f8e1b71363d9bda50c5d659dd213aa5dcb04d6b7b/rerun_sdk-0.24.1-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:3dcae9bcb5d1f94f96f975179c5152f82feebff187924825e1b9c450bd5a0008", size = 86345646, upload-time = "2025-08-07T15:10:44.922Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/2a/1bfdf86646bac8290a18f2997ec1afb316841f181f39e46686d0eb6f0012/rerun_sdk-0.24.1-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:bff6772bb0219798dfb40fd95858db2942ad5c68ec278a6ac73cacab6436cea4", size = 90738031, upload-time = "2025-08-07T15:10:50.934Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/5e/b3113b5aee90e4a3b6daa2a216b3866ca651432061b4f2ebd17279bbe7d1/rerun_sdk-0.24.1-cp39-abi3-win_amd64.whl", hash = "sha256:3f6a0229eab4367333bf93106fbd8ec0d0e62ae4fe5cfdb368a69dc9665b7d4f", size = 72890802, upload-time = "2025-08-07T15:10:55.797Z" },
 ]
 
 [[package]]
@@ -1896,7 +1896,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "2.8.7"
+version = "2.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
@@ -1988,8 +1988,8 @@ requires-dist = [
     { name = "pyyaml", marker = "extra == 'benchmark'", specifier = ">5.3" },
     { name = "requests", marker = "extra == 'benchmark'", specifier = ">=2.32.3" },
     { name = "requests", marker = "extra == 'nova-rerun-bridge'", specifier = ">=2.32.3" },
-    { name = "rerun-sdk", marker = "extra == 'benchmark'", specifier = "==0.23.3" },
-    { name = "rerun-sdk", marker = "extra == 'nova-rerun-bridge'", specifier = "==0.23.3" },
+    { name = "rerun-sdk", marker = "extra == 'benchmark'", specifier = "==0.24.1" },
+    { name = "rerun-sdk", marker = "extra == 'nova-rerun-bridge'", specifier = "==0.24.1" },
     { name = "scipy", specifier = ">=1.14.1,<2" },
     { name = "trimesh", marker = "extra == 'benchmark'", specifier = ">=4.5.3" },
     { name = "trimesh", marker = "extra == 'nova-rerun-bridge'", specifier = ">=4.5.3" },
