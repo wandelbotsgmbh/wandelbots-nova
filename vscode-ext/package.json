@@ -1,0 +1,158 @@
+{
+  "name": "wandelbots-nova",
+  "displayName": "Wandelbots NOVA",
+  "description": "Wandelbots NOVA VSCode Extension",
+  "version": "0.0.1",
+  "packageManager": "pnpm@10.12.2",
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wandelbotsgmbh/wandelbots-nova"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "wandelbots-nova-explorer",
+          "title": "Wandelbots NOVA",
+          "icon": "media/logo.svg"
+        }
+      ]
+    },
+    "views": {
+      "wandelbots-nova-explorer": [
+        {
+          "type": "webview",
+          "id": "wandelbots-nova-viewer",
+          "name": "Wandelbots NOVA Viewer",
+          "when": "true"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "wandelbots-nova.open",
+        "title": "Wandelbots NOVA: Open viewer"
+      },
+      {
+        "command": "wandelbots-nova.refresh",
+        "title": "Wandelbots NOVA: Refresh viewer"
+      },
+      {
+        "command": "wandelbots-nova.runNovaProgram",
+        "title": "Wandelbots NOVA: Run program",
+        "icon": "$(play)"
+      },
+      {
+        "command": "wandelbots-nova.debugNovaProgram",
+        "title": "Wandelbots NOVA: Debug program",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "wandelbots-nova.refreshCodeLens",
+        "title": "Wandelbots NOVA: Refresh CodeLens"
+      },
+      {
+        "command": "wandelbots-nova.showApp",
+        "title": "Wandelbots NOVA: Show app"
+      }
+    ],
+    "languages": [
+      {
+        "id": "python",
+        "extensions": [
+          ".py"
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "Wandelbots NOVA Viewer",
+      "properties": {
+        "wandelbots-nova-viewer.urlType": {
+          "type": "string",
+          "default": "rerunAddress",
+          "enum": [
+            "rerunAddress",
+            "novaApi",
+            "default"
+          ],
+          "enumDescriptions": [
+            "Use the Rerun address from the environment",
+            "Use the NOVA API address from the environment",
+            "Use the default Wandelbots website"
+          ],
+          "description": "The type of URL to use for the Wandelbots NOVA viewer"
+        },
+        "wandelbots-nova-viewer.novaApi": {
+          "type": "string",
+          "default": "",
+          "description": "Your Wandelbots NOVA API URL (e.g. 'uqserrrn.instance.wandelbots.io')"
+        },
+        "wandelbots-nova-viewer.showDebugInfo": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show debug information in the view (useful for troubleshooting)"
+        },
+        "wandelbots-nova-viewer.autoRefreshOnPythonExecution": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically refresh the view when Python scripts are executed"
+        },
+        "wandelbots-nova-viewer.autoOpenOnPythonExecution": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open the view when Python scripts finish executing"
+        },
+        "wandelbots-nova-viewer.requireNovaRrdFile": {
+          "type": "boolean",
+          "default": true,
+          "description": "Only auto-open the view if a nova.rrd file exists in the workspace"
+        },
+        "wandelbots-nova-viewer.enableNovaCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable CodeLens for Nova programs (show Run/Debug buttons)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "webpack --mode production",
+    "watch": "webpack --watch",
+    "vscode:prepublish": "webpack --mode production",
+    "package": "vsce package",
+    "lint": "eslint src",
+    "test": "vscode-test",
+    "test:watch": "tsc -p . -w --outDir out",
+    "test:compile": "tsc -p . --outDir out",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write . --fix"
+  },
+  "devDependencies": {
+    "@trivago/prettier-plugin-sort-imports": "^5.2.2",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.99.0",
+    "@typescript-eslint/eslint-plugin": "^8.39.0",
+    "@typescript-eslint/parser": "^8.39.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.0.0",
+    "eslint": "^9.32.0",
+    "mocha": "^11.7.1",
+    "prettier": "^3.6.2",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.9.2",
+    "webpack": "^5.101.0",
+    "webpack-cli": "^6.0.1"
+  }
+}
