@@ -3,6 +3,7 @@ import bisect
 import pdb
 from functools import singledispatch
 from typing import Any, Callable
+import sys
 
 import wandelbots_api_client as wb
 from icecream import ic
@@ -18,6 +19,7 @@ from nova.types import (
     Pose,
     RobotState,
 )
+from .debug_cursor import CursorPdb
 
 
 @singledispatch
@@ -279,14 +281,15 @@ class TrajectoryCursor:
                     self._handle_movement(instance.movement, last_movement)
                     last_movement = instance.movement
                 elif isinstance(instance, wb.models.Standstill):
-                    match instance.standstill.reason:
-                        case wb.models.StandstillReason.REASON_USER_PAUSED_MOTION:
-                            ic()
-                            pdb.set_trace()
-                        case wb.models.StandstillReason.REASON_MOTION_ENDED:
-                            # self.context.movement_consumer(None)
-                            ic()
-                            break
+                    ic()
+                    if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
+                        # self.context.movement_consumer(None)
+                        ic()
+                        break
+                    elif instance.standstill.reason == wb.models.StandstillReason.REASON_USER_PAUSED_MOTION:
+                        ic()
+                        CursorPdb(self).set_trace(sys._getframe())
+                        break
                 else:
                     ic(instance)
                     # Handle other types of instances if needed
