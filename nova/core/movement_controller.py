@@ -176,6 +176,7 @@ class TrajectoryCursor:
         self._command_queue = asyncio.Queue()
         self._breakpoints = []
         self._COMMAND_QUEUE_SENTINAL = object()
+        self._current_location = 0.0
 
     def __call__(self, context: MovementControllerContext):
         self.context = context
@@ -194,6 +195,27 @@ class TrajectoryCursor:
                 pause_on_io=None,
             )
         )
+
+    def forward_to(self, location: float):
+        # TODO gererated unchecked code
+        if not self._breakpoints:
+            raise ValueError("No breakpoints set. Use pause_at() to set a breakpoint.")
+        if location not in self._breakpoints:
+            raise ValueError(f"Location {location} is not a valid breakpoint.")
+        index = bisect.bisect_left(self._breakpoints, location)
+        if index < len(self._breakpoints) and self._breakpoints[index] == location:
+            self.pause_at(location)
+        else:
+            raise ValueError(f"Location {location} is not a valid breakpoint.")
+
+    def forward_to_next(self):
+        # use self._current_location to find the next breakpoint
+        index = bisect.bisect_right(self._breakpoints, self._current_location)
+        if index < len(self._breakpoints):
+            next_breakpoint = self._breakpoints[index]
+            self.forward_to(next_breakpoint)
+        else:
+            raise ValueError("No next breakpoint found after current location.")
 
     def backward(self):
         self._command_queue.put_nowait(
@@ -236,6 +258,7 @@ class TrajectoryCursor:
             command = await self._command_queue.get()
             if command is self._COMMAND_QUEUE_SENTINAL:
                 ic("Detaching movement controller (TrajectoryCursor)")
+                self._command_queue.task_done()
                 break
             ic(command)
             yield command
@@ -251,6 +274,7 @@ class TrajectoryCursor:
                 if isinstance(instance, wb.models.Movement):
                     if last_movement is None:
                         last_movement = instance.movement
+                    self._current_location = instance.movement.current_location
                     self._handle_movement(instance.movement, last_movement)
                     last_movement = instance.movement
                 elif isinstance(instance, wb.models.Standstill):
