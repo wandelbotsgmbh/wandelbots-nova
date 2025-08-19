@@ -175,6 +175,7 @@ class TrajectoryCursor:
         self.joint_trajectory = joint_trajectory
         self._command_queue = asyncio.Queue()
         self._breakpoints = []
+        self._COMMAND_QUEUE_SENTINAL = object()
 
     def __call__(self, context: MovementControllerContext):
         self.context = context
@@ -207,6 +208,12 @@ class TrajectoryCursor:
     def pause(self):
         self._command_queue.put_nowait(wb.models.PauseMovementRequest())
 
+    def detach(self):
+        # TODO this does not stop the movement atm, it just stops controlling movement
+        # this is especially open for testing what happens when the movement is backwards
+        # and no end is reached
+        self._command_queue.put_nowait(self._COMMAND_QUEUE_SENTINAL)
+
     async def cntrl(
         self, response_stream: ExecuteTrajectoryResponseStream
     ) -> ExecuteTrajectoryRequestStream:
@@ -219,12 +226,20 @@ class TrajectoryCursor:
         )
 
         async for request in self._request_loop():
+            ic()
             yield request
+        ic()
         await self._response_consumer_task  # Where to put?
 
     async def _request_loop(self):
         while True:
-            yield await self._command_queue.get()
+            command = await self._command_queue.get()
+            if command is self._COMMAND_QUEUE_SENTINAL:
+                ic("Detaching movement controller (TrajectoryCursor)")
+                break
+            ic(command)
+            yield command
+            # yield await self._command_queue.get()
             self._command_queue.task_done()
 
     async def _response_consumer(self):
@@ -233,17 +248,20 @@ class TrajectoryCursor:
         try:
             async for response in self._response_stream:
                 instance = response.actual_instance
-                if isinstance(instance, wb.models.MotionGroupState):
+                if isinstance(instance, wb.models.Movement):
                     if last_movement is None:
                         last_movement = instance.movement
                     self._handle_movement(instance.movement, last_movement)
                     last_movement = instance.movement
-
-                if isinstance(instance, wb.models.Standstill):
+                elif isinstance(instance, wb.models.Standstill):
+                    ic()
                     if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
                         # self.context.movement_consumer(None)
                         ic()
                         break
+                else:
+                    ic(instance)
+                    # Handle other types of instances if needed
         except asyncio.CancelledError:
             ic()
             raise
@@ -253,7 +271,7 @@ class TrajectoryCursor:
         ic()
 
     def _handle_movement(
-        self, curr_movement: wb.models.MotionGroupState, last_movement: wb.models.MotionGroupState
+        self, curr_movement: wb.models.MovementMovement, last_movement: wb.models.MovementMovement
     ):
         if not self._breakpoints:
             return
