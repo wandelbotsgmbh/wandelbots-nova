@@ -66,7 +66,7 @@ async def main():
                 lin(current_pose @ Pose((0, dist, 0, 0, 0, 0))),
                 lin(current_pose @ Pose((0, dist, dist, 0, 0, 0))),
                 lin(current_pose @ Pose((0, 0, dist, 0, 0, 0))),
-                lin(current_pose @ Pose((0, 0, 0, 0, 0, 0))),
+                lin(current_pose @ Pose((0, 0, 0, 0, 0, 0)), id="3"), # -> lin(Pose((21, 12, 2, 3)), id=3)
                 jnt(home_joints),
             ]
 
@@ -78,9 +78,15 @@ async def main():
         # TODO this probaly not consumes the state stream immediately and thus might cause issues
         # only start consuming the state stream when the trajectory is actually executed
         trajectory_cursor = TrajectoryCursor(joint_trajectory)
+
+        for i in range(len(actions)):
+            trajectory_cursor.pause_at(i)
+
         motion_iter = motion_group.stream_execute(
             joint_trajectory, tcp, actions=actions, movement_controller=trajectory_cursor
         )
+
+        trajectory_cursor.forward()
 
         async def driver():
             trajectory_cursor.pause_at(0.7)
@@ -104,6 +110,8 @@ async def main():
             trajectory_cursor.detach()
             ic("DRIVER DONE")
 
+        # TODO: debug_driver
+
         async def runtime_monitor(interval=0.5):
             start_time = asyncio.get_event_loop().time()
             while True:
@@ -111,14 +119,14 @@ async def main():
                 logger.warning(f"{elapsed:.2f}s")
                 await asyncio.sleep(interval)
 
-        driver_task = asyncio.create_task(driver())
+        # driver_task = asyncio.create_task(driver())
         runtime_task = asyncio.create_task(runtime_monitor(0.5))  # Output every 0.5 seconds
 
         try:
             async for motion_state in motion_iter:
                 pass
                 # ic(motion_state.path_parameter)
-            await driver_task
+            # await driver_task
         finally:
             runtime_task.cancel()
             try:
