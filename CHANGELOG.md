@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.11.0 (2025-08-19)
+
+### Features
+
+- **NDX-227**: Added vscode extension with basic setup to wandelbots-nova (#261)
+  ([#261](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/261),
+  [`f1f38a1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f1f38a192b5f69a3bd4f5cefc869795137b17aa5))
+
+
 ## v2.10.0 (2025-08-19)
 
 ### Features
