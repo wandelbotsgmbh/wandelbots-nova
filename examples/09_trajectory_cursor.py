@@ -1,11 +1,13 @@
 import asyncio
 from math import pi
 
+from loguru import logger
+
 import nova
 from nova import Nova, api
 from nova.actions import jnt, lin
 from nova.cell.controllers import virtual_controller
-from nova.core.movement_controller import TrajectoryCursor, motion_group_state_to_motion_state
+from nova.core.movement_controller import TrajectoryCursor
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 
@@ -81,27 +83,50 @@ async def main():
         )
 
         async def driver():
-            trajectory_cursor.pause_at(1.5)
-            ic()
+            trajectory_cursor.pause_at(0.7)
+            ic("FORWARD")
             trajectory_cursor.forward()
             await asyncio.sleep(5.5)
-            ic()
+            ic("FORWARD")
             trajectory_cursor.forward()
             await asyncio.sleep(2)
-            ic()
+            ic("PAUSE")
             trajectory_cursor.pause()
-            ic()
-            trajectory_cursor.backward()
-            await asyncio.sleep(4)
-            ic()
-            trajectory_cursor.pause()
+            # await asyncio.sleep(1)
+            # ic("BACKWARD")
+            # trajectory_cursor.backward()
+            # await asyncio.sleep(4)
+            # ic("PAUSE")
+            # trajectory_cursor.pause()
+            ic("FORWARD")
             trajectory_cursor.forward()
             await asyncio.sleep(4)
+            trajectory_cursor.detach()
+            ic("DRIVER DONE")
+
+        async def runtime_monitor(interval=0.5):
+            start_time = asyncio.get_event_loop().time()
+            while True:
+                elapsed = asyncio.get_event_loop().time() - start_time
+                logger.warning(f"{elapsed:.2f}s")
+                await asyncio.sleep(interval)
 
         driver_task = asyncio.create_task(driver())
-        async for motion_state in motion_iter:
-            ic(motion_group_state_to_motion_state(motion_state).path_parameter)
-        await driver_task
+        runtime_task = asyncio.create_task(runtime_monitor(0.5))  # Output every 0.5 seconds
+
+        try:
+            async for motion_state in motion_iter:
+                pass
+                # ic(motion_state.path_parameter)
+            await driver_task
+        finally:
+            runtime_task.cancel()
+            try:
+                await runtime_task
+            except asyncio.CancelledError:
+                pass
+
+        ic("Program finished")
         # await cell.delete_robot_controller(controller.controller_id)
 
 
