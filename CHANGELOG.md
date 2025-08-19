@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.10.0 (2025-08-19)
+
+### Features
+
+- Update rerun-sdk version to 0.24.1 in optional dependencies (#262)
+  ([#262](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/262),
+  [`bce59ca`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bce59caf66d172c025deee7a246e427628420c48))
+
+
 ## v2.9.0 (2025-08-14)
 
 ### Features
