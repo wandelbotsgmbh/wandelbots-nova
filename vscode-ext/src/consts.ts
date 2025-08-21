@@ -8,6 +8,8 @@ export const COMMAND_OPEN_NOVA_VIEWER = `${COMMAND_PREFIX}.open`
 export const COMMAND_REFRESH_NOVA_VIEWER = `${COMMAND_PREFIX}.refresh`
 export const COMMAND_SHOW_APP = `${COMMAND_PREFIX}.showApp`
 export const COMMAND_SHOW_PANEL = `${COMMAND_PREFIX}.showPanel`
+export const COMMAND_READ_ROBOT_POSE = `${COMMAND_PREFIX}.readRobotPose`
 
 export const SETTINGS_NOVA_API = 'novaApi' as const
 export const SETTINGS_RERUN_ADDRESS = 'rerunAddress' as const
+export const SETTINGS_ACCESS_TOKEN = 'accessToken' as const

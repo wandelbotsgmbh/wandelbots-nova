@@ -64,6 +64,11 @@
       {
         "command": "wandelbots-nova.showApp",
         "title": "Wandelbots NOVA: Show app"
+      },
+      {
+        "command": "wandelbots-nova.readRobotPose",
+        "title": "Wandelbots NOVA: Read robot pose",
+        "icon": "$(location)"
       }
     ],
     "languages": [
@@ -96,6 +101,11 @@
           "type": "string",
           "default": "",
           "description": "Your Wandelbots NOVA API URL (e.g. 'uqserrrn.instance.wandelbots.io')"
+        },
+        "wandelbots-nova-viewer.accessToken": {
+          "type": "string",
+          "default": "",
+          "description": "Your Wandelbots NOVA access token for API authentication"
         },
         "wandelbots-nova-viewer.showDebugInfo": {
           "type": "boolean",
@@ -154,5 +164,8 @@
     "typescript": "^5.9.2",
     "webpack": "^5.101.0",
     "webpack-cli": "^6.0.1"
+  },
+  "dependencies": {
+    "@wandelbots/nova-js": "^2.1.4"
   }
 }

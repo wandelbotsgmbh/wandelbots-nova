@@ -7,12 +7,14 @@ import { NovaCodeLensProvider } from './codeLens'
 import {
   COMMAND_DEBUG_NOVA_PROGRAM,
   COMMAND_OPEN_NOVA_VIEWER,
+  COMMAND_READ_ROBOT_POSE,
   COMMAND_REFRESH_CODE_LENS,
   COMMAND_REFRESH_NOVA_VIEWER,
   COMMAND_RUN_NOVA_PROGRAM,
   COMMAND_SHOW_APP,
   VIEWER_ID,
 } from './consts'
+import { readRobotPose } from './novaApi'
 import { runNovaProgram } from './novaProgram'
 import {
   WandelbotsNovaViewerProvider,
@@ -103,6 +105,16 @@ export function activate(context: vscode.ExtensionContext) {
       console.log('Refreshing Nova CodeLens')
       novaCodeLensProvider.refresh()
       vscode.window.showInformationMessage('Nova CodeLens refreshed')
+    }),
+  )
+
+  // ------------------------------
+  // Wandelbots NOVA Robot Pose
+  // ------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(COMMAND_READ_ROBOT_POSE, () => {
+      readRobotPose()
     }),
   )
 
