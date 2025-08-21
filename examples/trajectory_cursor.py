@@ -66,7 +66,7 @@ async def main():
                 lin(current_pose @ Pose((0, dist, 0, 0, 0, 0))),
                 lin(current_pose @ Pose((0, dist, dist, 0, 0, 0))),
                 lin(current_pose @ Pose((0, 0, dist, 0, 0, 0))),
-                lin(current_pose @ Pose((0, 0, 0, 0, 0, 0)), id="3"), # -> lin(Pose((21, 12, 2, 3)), id=3)
+                lin(current_pose @ Pose((0, 0, 0, 0, 0, 0))),  # -> lin(Pose((21, 12, 2, 3)), id=3)
                 jnt(home_joints),
             ]
 
