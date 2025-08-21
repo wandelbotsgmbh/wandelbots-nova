@@ -123,7 +123,7 @@ export function activate(context: vscode.ExtensionContext) {
   // ------------------------------
 
   context.subscriptions.push(
-    vscode.commands.registerCommand(COMMAND_SHOW_APP, () => {
+    vscode.commands.registerCommand('wandelbots-nova.showApp', () => {
       const panel = vscode.window.createWebviewPanel(
         'webview',
         'React',

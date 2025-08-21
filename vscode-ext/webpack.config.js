@@ -11,6 +11,7 @@ module.exports = {
     libraryTarget: 'commonjs2',
   },
   externals: { vscode: 'commonjs vscode' }, // don't bundle the vscode module
+  externalsPresets: { node: true },
   resolve: { extensions: ['.ts', '.js'] },
   module: {
     rules: [{ test: /\.ts$/, use: 'ts-loader', exclude: /node_modules/ }],

@@ -4,8 +4,9 @@
   "description": "Wandelbots NOVA VSCode Extension",
   "version": "0.0.1",
   "packageManager": "pnpm@10.12.2",
+  "publisher": "wandelbots",
   "engines": {
-    "vscode": "^1.99.0"
+    "vscode": "^1.85.0"
   },
   "repository": {
     "type": "git",
@@ -15,7 +16,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onLanguage:python"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -151,7 +153,7 @@
     "@trivago/prettier-plugin-sort-imports": "^5.2.2",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "@types/vscode": "^1.99.0",
+    "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
     "@vscode/test-cli": "^0.0.11",
@@ -163,9 +165,7 @@
     "ts-loader": "^9.5.2",
     "typescript": "^5.9.2",
     "webpack": "^5.101.0",
-    "webpack-cli": "^6.0.1"
-  },
-  "dependencies": {
+    "webpack-cli": "^6.0.1",
     "@wandelbots/nova-js": "^2.1.4"
   }
 }
