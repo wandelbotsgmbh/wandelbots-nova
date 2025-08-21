@@ -1,10 +1,9 @@
 import asyncio
 import bisect
-import pdb
 from functools import singledispatch
 from typing import Any, Callable
-import sys
 
+import debugpy
 import wandelbots_api_client as wb
 from icecream import ic
 
@@ -19,7 +18,6 @@ from nova.types import (
     Pose,
     RobotState,
 )
-from .debug_cursor import CursorPdb
 
 
 @singledispatch
@@ -274,22 +272,26 @@ class TrajectoryCursor:
         try:
             async for response in self._response_stream:
                 instance = response.actual_instance
+                # ic(instance)
                 if isinstance(instance, wb.models.Movement):
+                    ic(instance.movement.state.timestamp)
                     if last_movement is None:
                         last_movement = instance.movement
                     self._current_location = instance.movement.current_location
                     self._handle_movement(instance.movement, last_movement)
                     last_movement = instance.movement
                 elif isinstance(instance, wb.models.Standstill):
-                    ic()
-                    if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
-                        # self.context.movement_consumer(None)
-                        ic()
-                        break
-                    elif instance.standstill.reason == wb.models.StandstillReason.REASON_USER_PAUSED_MOTION:
-                        ic()
-                        CursorPdb(self).set_trace(sys._getframe())
-                        break
+                    match instance.standstill.reason:
+                        case wb.models.StandstillReason.REASON_USER_PAUSED_MOTION:
+                            debugpy.breakpoint()
+                            # pdb.set_trace()
+                            # CursorPdb(self).set_trace(sys._getframe())
+                            ic()
+                            self.forward()
+                        case wb.models.StandstillReason.REASON_MOTION_ENDED:
+                            # self.context.movement_consumer(None)
+                            ic()
+                            break
                 else:
                     ic(instance)
                     # Handle other types of instances if needed
@@ -299,7 +301,10 @@ class TrajectoryCursor:
         except Exception as e:
             ic(e)
             raise
-        ic()
+        finally:
+            ic()
+            # stop the request loop
+            self.detach()
 
     def _handle_movement(
         self, curr_movement: wb.models.MovementMovement, last_movement: wb.models.MovementMovement
