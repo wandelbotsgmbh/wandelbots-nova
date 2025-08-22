@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.12.0 (2025-08-22)
+
+### Features
+
+- **NDX-216**: Upgrade generated Wandelbots NOVA API client to 25.7 (#263)
+  ([#263](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/263),
+  [`f571aa9`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f571aa98f4182aada61c77fae5407c6d09607c83))
+
+
 ## v2.11.0 (2025-08-19)
 
 ### Features
