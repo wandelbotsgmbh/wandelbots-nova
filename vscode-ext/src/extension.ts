@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import * as vscode from 'vscode'
+import { logger } from './logging'
 
 import { NovaCodeLensProvider } from './codeLens'
 import {
@@ -26,7 +27,7 @@ let decorationType: vscode.TextEditorDecorationType | undefined
 let disposables: vscode.Disposable[] = []
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log('Wandelbots NOVA extension activating...')
+  logger.info('Wandelbots NOVA extension activating...')
 
   // ------------------------------
   // Wandelbots NOVA Viewer
@@ -103,7 +104,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Register command to refresh CodeLens
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_REFRESH_CODE_LENS, () => {
-      console.log('Refreshing Nova CodeLens')
+      logger.info('Refreshing Nova CodeLens')
       novaCodeLensProvider.refresh()
       vscode.window.showInformationMessage('Nova CodeLens refreshed')
     }),
@@ -140,13 +141,16 @@ export function activate(context: vscode.ExtensionContext) {
           placeHolder: 'e.g., cell',
         })
 
+        logger.info('cellId', cellId)
+
         if (!cellId) {
           return
         }
 
         const novaApi = new NovaApi()
+        logger.info('novaApi', novaApi)
 
-        try {
+        /*try {
           await novaApi.connect({
             apiUrl: novaApiUrl,
             accessToken: 'test-token',
@@ -273,7 +277,7 @@ export function activate(context: vscode.ExtensionContext) {
           }
         } finally {
           novaApi.dispose()
-        }
+        }*/
       } catch (error) {
         vscode.window.showErrorMessage(`Failed to read robot pose: ${error}`)
         console.error('Error reading robot pose:', error)
