@@ -2,8 +2,8 @@
   "name": "wandelbots-nova",
   "displayName": "Wandelbots NOVA",
   "description": "Wandelbots NOVA VSCode Extension",
-  "version": "0.0.1",
-  "packageManager": "pnpm@10.12.2",
+  "version": "0.0.2",
+  "packageManager": "pnpm@10.15.0",
   "publisher": "wandelbots",
   "engines": {
     "vscode": "^1.99.0"
@@ -167,5 +167,8 @@
     "webpack": "^5.101.0",
     "webpack-cli": "^6.0.1",
     "@wandelbots/nova-js": "^2.1.4"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
   }
 }

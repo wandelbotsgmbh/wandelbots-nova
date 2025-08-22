@@ -1,5 +1,3 @@
-import { NovaClient } from '@wandelbots/nova-js'
-
 export interface NovaConfig {
   apiUrl: string
   accessToken: string
@@ -16,20 +14,17 @@ export interface RobotPose {
 }
 
 export class NovaApi {
-  private client: NovaClient | null = null
+  private client: any | null = null
   private config: NovaConfig | null = null
 
   async connect(config: NovaConfig): Promise<void> {
-    try {
-      this.config = config
-      this.client = new NovaClient({
-        instanceUrl: config.apiUrl,
-        cellId: config.cellId,
-        accessToken: config.accessToken,
-      })
-    } catch (error) {
-      throw new Error(`Failed to connect to Nova API: ${error}`)
-    }
+    const { NovaClient } = await import('@wandelbots/nova-js');
+    this.config = config;
+    this.client = new NovaClient({
+      instanceUrl: config.apiUrl,
+      cellId: config.cellId,
+      accessToken: config.accessToken,
+    });
   }
 
   async getControllers(): Promise<any[]> {

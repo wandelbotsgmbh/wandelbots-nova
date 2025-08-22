@@ -7,10 +7,13 @@ src/**
 .yarnrc
 webpack.config.js
 vsc-extension-quickstart.md
-**/tsconfig.json
+**/tsconfig.jsonce
 **/eslint.config.mjs
 **/*.map
 **/*.ts
 **/.vscode-test.*
 app/**
 !app/build/**
+
+!node_modules/ws/**
+!node_modules/.pnpm/**/node_modules/ws/**

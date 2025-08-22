@@ -12,14 +12,13 @@ export default {
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'extension.js',
-    libraryTarget: 'module',
-    module: true,
+    libraryTarget: 'commonjs2',
+    clean: true,
   },
-  experiments: { outputModule: true },
+  externalsPresets: { node: true },
   externals: {
     vscode: 'commonjs vscode',
-    '@wandelbots/nova-js': 'commonjs @wandelbots/nova-js',
-    ws: 'module ws',
+    ws: 'commonjs ws',
   },
   resolve: { extensions: ['.ts', '.js'] },
   module: {
