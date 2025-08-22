@@ -6,7 +6,7 @@ export const COMMAND_DEBUG_NOVA_PROGRAM = `${COMMAND_PREFIX}.debugNovaProgram`
 export const COMMAND_REFRESH_CODE_LENS = `${COMMAND_PREFIX}.refreshCodeLens`
 export const COMMAND_OPEN_NOVA_VIEWER = `${COMMAND_PREFIX}.open`
 export const COMMAND_REFRESH_NOVA_VIEWER = `${COMMAND_PREFIX}.refresh`
-export const COMMAND_SHOW_APP = `wandelbots-nova.showApp`
+export const COMMAND_SHOW_APP = `${COMMAND_PREFIX}.showApp`
 export const COMMAND_SHOW_PANEL = `${COMMAND_PREFIX}.showPanel`
 export const COMMAND_READ_ROBOT_POSE = `${COMMAND_PREFIX}.readRobotPose`
 
