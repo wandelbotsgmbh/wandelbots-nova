@@ -1,6 +1,7 @@
 import asyncio
 import bisect
 from functools import singledispatch
+from math import ceil, floor
 from typing import Any, Callable
 
 import wandelbots_api_client as wb
@@ -174,21 +175,29 @@ def speed_up(
 class TrajectoryCursor:
     def __init__(self, joint_trajectory: wb.models.JointTrajectory):
         self.joint_trajectory = joint_trajectory
-        self.combined_actions = CombinedActions()
         self._command_queue = asyncio.Queue()
         self._breakpoints = []
         self._COMMAND_QUEUE_SENTINAL = object()
         self._current_location = 0.0
+        self._target_location = self.end_location
 
     def __call__(self, context: MovementControllerContext):
         self.context = context
+        self.combined_actions: CombinedActions = context.combined_actions
         return self.cntrl
 
+    @property
+    def end_location(self) -> float:
+        # The assert ensures that we not accidentally use it in __init__ before it is set.
+        assert getattr(self, "joint_trajectory", None) is not None
+        return self.joint_trajectory.locations[-1]
+
     def pause_at(self, location: float, debug_break: bool = True):
-        # How to pause at an exact location?
+        # How to pause at an exact location? (will be implemented by Motion Control)
         bisect.insort(self._breakpoints, location)
 
     def forward(self, playback_speed_in_percent: int | None = None):
+        # should idempotently move forward
         if playback_speed_in_percent is not None:
             self._command_queue.put_nowait(
                 wb.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
@@ -202,36 +211,26 @@ class TrajectoryCursor:
             )
         )
 
-    def forward_to(self, location: float):
-        # TODO gererated unchecked code
-        if not self._breakpoints:
-            raise ValueError("No breakpoints set. Use pause_at() to set a breakpoint.")
-        if location not in self._breakpoints:
-            raise ValueError(f"Location {location} is not a valid breakpoint.")
-        index = bisect.bisect_left(self._breakpoints, location)
-        if index < len(self._breakpoints) and self._breakpoints[index] == location:
-            self.pause_at(location)
-        else:
-            raise ValueError(f"Location {location} is not a valid breakpoint.")
+    def forward_to(self, location: float, playback_speed_in_percent: int | None = None):
+        # currently we don't complain about invalid locations as long as they are not before the current location
+        if location < self._current_location:
+            raise ValueError("Cannot move forward to a location before the current location")
+        self._target_location = location
+        self.forward(playback_speed_in_percent=playback_speed_in_percent)
 
-    def forward_to_next(self):
-        # use self._current_location to find the next breakpoint
-        index = bisect.bisect_right(self._breakpoints, self._current_location)
-        if index < len(self._breakpoints):
-            next_breakpoint = self._breakpoints[index]
-            self.forward_to(next_breakpoint)
-        else:
-            raise ValueError("No next breakpoint found after current location.")
-
-    def forward_to_next_action(self):
-        # use self._current_location to find the next action
-        index = bisect.bisect_right(self.combined_actions, self._current_location)
+    def forward_to_next_action(self, playback_speed_in_percent: int | None = None):
+        index = floor(self._current_location) + 1
+        ic(self._current_location, index, len(self.combined_actions))
         if index < len(self.combined_actions):
-            self.forward_to(index)
+            self.forward_to(index, playback_speed_in_percent=playback_speed_in_percent)
         else:
             raise ValueError("No next action found after current location.")
 
-    def backward(self):
+    def backward(self, playback_speed_in_percent: int | None = None):
+        if playback_speed_in_percent is not None:
+            self._command_queue.put_nowait(
+                wb.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
+            )
         self._command_queue.put_nowait(
             wb.models.StartMovementRequest(
                 direction=wb.models.Direction.DIRECTION_BACKWARD,
@@ -240,6 +239,21 @@ class TrajectoryCursor:
                 pause_on_io=None,
             )
         )
+
+    def backward_to(self, location: float, playback_speed_in_percent: int | None = None):
+        # currently we don't complain about invalid locations as long as they are not after the current location
+        if location > self._current_location:
+            raise ValueError("Cannot move backward to a location after the current location")
+        self._target_location = location
+        self.backward(playback_speed_in_percent=playback_speed_in_percent)
+
+    def backward_to_previous_action(self, playback_speed_in_percent: int | None = None):
+        index = ceil(self._current_location) - 1
+        ic(self._current_location, index, len(self.combined_actions))
+        if index >= 0:
+            self.backward_to(index, playback_speed_in_percent=playback_speed_in_percent)
+        else:
+            raise ValueError("No previous action found before current location.")
 
     def pause(self):
         self._command_queue.put_nowait(wb.models.PauseMovementRequest())
@@ -287,7 +301,7 @@ class TrajectoryCursor:
                 instance = response.actual_instance
                 # ic(instance)
                 if isinstance(instance, wb.models.Movement):
-                    ic(instance.movement.state.timestamp)
+                    # ic(instance.movement.state.timestamp)
                     if last_movement is None:
                         last_movement = instance.movement
                     self._current_location = instance.movement.current_location
@@ -322,7 +336,7 @@ class TrajectoryCursor:
     def _handle_movement(
         self, curr_movement: wb.models.MovementMovement, last_movement: wb.models.MovementMovement
     ):
-        if not self._breakpoints:
+        if not 0.0 < self._target_location < self.end_location:
             return
         curr_location = curr_movement.current_location
         last_location = last_movement.current_location
@@ -330,18 +344,15 @@ class TrajectoryCursor:
             return
         if curr_location > last_location:
             # moving forwards
-            for breakpoint in self._breakpoints:
-                if last_location <= breakpoint < curr_location:
-                    ic(last_location, breakpoint, curr_location)
-                    self.pause()
-                    # disable the breakpoint so it doesn't trigger again for the location window
+            if last_location <= self._target_location < curr_location:
+                ic(last_location, self._target_location, curr_location)
+                self.pause()
+                self._target_location = self.end_location  # reset target location
         else:
             # moving backwards
-            for breakpoint in self._breakpoints:
-                if last_location > breakpoint >= curr_location:
-                    ic()
-                    self.pause()
-                    # disable the breakpoint so it doesn't trigger again for the location window
+            if last_location > self._target_location >= curr_location:
+                ic(last_location, self._target_location, curr_location)
+                self.pause()
 
 
 async def init_movement_gen(motion_id, response_stream) -> ExecuteTrajectoryRequestStream:
