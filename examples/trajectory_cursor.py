@@ -81,10 +81,8 @@ async def main():
         # TODO this probaly not consumes the state stream immediately and thus might cause issues
         # only start consuming the state stream when the trajectory is actually executed
         trajectory_cursor = TrajectoryCursor(joint_trajectory)
-
-        for i in range(len(actions)):
-            trajectory_cursor.pause_at(i)
-
+        # for i, _ in enumerate(actions):
+        #     trajectory_cursor.pause_at(i)
         motion_iter = motion_group.stream_execute(
             joint_trajectory, tcp, actions=actions, movement_controller=trajectory_cursor
         )
@@ -96,9 +94,13 @@ async def main():
             match json.loads(msg.data.decode()):
                 case {"command": "forward", **rest}:
                     ic()
-                    trajectory_cursor.forward()
+                    trajectory_cursor.forward_to_next_action(
+                        playback_speed_in_percent=rest.get("speed", None)
+                    )
                 case {"command": "backward", **rest}:
-                    trajectory_cursor.backward()
+                    trajectory_cursor.backward_to_previous_action(
+                        playback_speed_in_percent=rest.get("speed", None)
+                    )
                 case {"command": "pause", **rest}:
                     trajectory_cursor.pause()
                 case {"command": "finish", **rest}:
@@ -132,8 +134,6 @@ async def main():
             trajectory_cursor.detach()
             ic("DRIVER DONE")
 
-        # TODO: debug_driver
-
         async def runtime_monitor(interval=0.5):
             start_time = asyncio.get_event_loop().time()
             while True:
@@ -149,7 +149,8 @@ async def main():
                 pass
                 # ic(motion_state.path_parameter)
             # await driver_task
-            await nats_client.unsubscribe(sub)
+            ic()
+            await sub.unsubscribe()
             await nats.close()
         finally:
             runtime_task.cancel()
