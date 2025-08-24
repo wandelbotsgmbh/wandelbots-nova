@@ -3,11 +3,11 @@ import bisect
 from functools import singledispatch
 from typing import Any, Callable
 
-import debugpy
 import wandelbots_api_client as wb
 from icecream import ic
 
 from nova.actions import MovementControllerContext
+from nova.actions.container import CombinedActions
 from nova.core import logger
 from nova.core.exceptions import InitMovementFailed
 from nova.types import (
@@ -174,6 +174,7 @@ def speed_up(
 class TrajectoryCursor:
     def __init__(self, joint_trajectory: wb.models.JointTrajectory):
         self.joint_trajectory = joint_trajectory
+        self.combined_actions = CombinedActions()
         self._command_queue = asyncio.Queue()
         self._breakpoints = []
         self._COMMAND_QUEUE_SENTINAL = object()
@@ -187,7 +188,11 @@ class TrajectoryCursor:
         # How to pause at an exact location?
         bisect.insort(self._breakpoints, location)
 
-    def forward(self):
+    def forward(self, playback_speed_in_percent: int | None = None):
+        if playback_speed_in_percent is not None:
+            self._command_queue.put_nowait(
+                wb.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
+            )
         self._command_queue.put_nowait(
             wb.models.StartMovementRequest(
                 direction=wb.models.Direction.DIRECTION_FORWARD,
@@ -217,6 +222,14 @@ class TrajectoryCursor:
             self.forward_to(next_breakpoint)
         else:
             raise ValueError("No next breakpoint found after current location.")
+
+    def forward_to_next_action(self):
+        # use self._current_location to find the next action
+        index = bisect.bisect_right(self.combined_actions, self._current_location)
+        if index < len(self.combined_actions):
+            self.forward_to(index)
+        else:
+            raise ValueError("No next action found after current location.")
 
     def backward(self):
         self._command_queue.put_nowait(
@@ -283,11 +296,11 @@ class TrajectoryCursor:
                 elif isinstance(instance, wb.models.Standstill):
                     match instance.standstill.reason:
                         case wb.models.StandstillReason.REASON_USER_PAUSED_MOTION:
-                            debugpy.breakpoint()
+                            # debugpy.breakpoint()
                             # pdb.set_trace()
                             # CursorPdb(self).set_trace(sys._getframe())
                             ic()
-                            self.forward()
+                            # self.forward()
                         case wb.models.StandstillReason.REASON_MOTION_ENDED:
                             # self.context.movement_consumer(None)
                             ic()

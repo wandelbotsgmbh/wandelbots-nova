@@ -1,4 +1,5 @@
 import asyncio
+import json
 from math import pi
 
 from loguru import logger
@@ -24,6 +25,8 @@ Prerequisites:
 from datetime import datetime
 
 from icecream import ic
+
+from nova.events import nats
 
 ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
 
@@ -85,7 +88,25 @@ async def main():
         motion_iter = motion_group.stream_execute(
             joint_trajectory, tcp, actions=actions, movement_controller=trajectory_cursor
         )
-        trajectory_cursor.forward()
+        # trajectory_cursor.forward()
+        nats_client = await nats.get_client()
+
+        async def cmd_sub_handler(msg):
+            ic(msg.data)
+            match json.loads(msg.data.decode()):
+                case {"command": "forward", **rest}:
+                    ic()
+                    trajectory_cursor.forward()
+                case {"command": "backward", **rest}:
+                    trajectory_cursor.backward()
+                case {"command": "pause", **rest}:
+                    trajectory_cursor.pause()
+                case {"command": "finish", **rest}:
+                    trajectory_cursor.detach()
+                case _:
+                    ic("Unknown command")
+
+        sub = await nats_client.subscribe("trajectory-cursor", cb=cmd_sub_handler)
 
         trajectory_cursor.forward()
 
@@ -93,18 +114,18 @@ async def main():
             trajectory_cursor.pause_at(0.7)
             ic("FORWARD")
             trajectory_cursor.forward()
-            await asyncio.sleep(5.5)
+            await asyncio.sleep(2.5)
             ic("FORWARD")
             trajectory_cursor.forward()
             await asyncio.sleep(2)
             ic("PAUSE")
             trajectory_cursor.pause()
-            # await asyncio.sleep(1)
-            # ic("BACKWARD")
-            # trajectory_cursor.backward()
-            # await asyncio.sleep(4)
-            # ic("PAUSE")
-            # trajectory_cursor.pause()
+            await asyncio.sleep(1)
+            ic("BACKWARD")
+            trajectory_cursor.backward()
+            await asyncio.sleep(4)
+            ic("PAUSE")
+            trajectory_cursor.pause()
             ic("FORWARD")
             trajectory_cursor.forward()
             await asyncio.sleep(4)
@@ -128,6 +149,8 @@ async def main():
                 pass
                 # ic(motion_state.path_parameter)
             # await driver_task
+            await nats_client.unsubscribe(sub)
+            await nats.close()
         finally:
             runtime_task.cancel()
             try:
