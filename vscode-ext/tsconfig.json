@@ -1,16 +1,17 @@
 {
   "compilerOptions": {
-    "module": "CommonJS",
-    "moduleResolution": "node",
-    "target": "ES2021",
-    "lib": ["ES2021", "DOM"],
+    "target": "ES2022",
+    "lib": ["ES2022", "dom"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "types": ["vscode", "node", "mocha"],
     "sourceMap": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "rootDir": "src",
     "outDir": "out",
-    "strict": true
+    "strict": true,
+    "verbatimModuleSyntax": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "out"]

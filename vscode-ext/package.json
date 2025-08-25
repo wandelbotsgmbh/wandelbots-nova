@@ -5,6 +5,7 @@
   "version": "0.0.2",
   "packageManager": "pnpm@10.15.0",
   "publisher": "wandelbots",
+  "type": "module",
   "engines": {
     "vscode": "^1.99.0"
   },

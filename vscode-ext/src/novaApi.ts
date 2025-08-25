@@ -1,4 +1,4 @@
-import { NovaClient } from '@wandelbots/nova-js'
+import { NovaClient } from '@wandelbots/nova-js/v1'
 
 import { logger } from './logging'
 
