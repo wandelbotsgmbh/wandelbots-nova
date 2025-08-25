@@ -97,10 +97,9 @@ def test_trajectory_builder(trajectory):
 def test_trajectory_builder_without_settings():
     """Test that TrajectoryBuilder works when initialized without settings."""
     from nova.actions.motions import joint_ptp
-    from nova.actions.trajectory_builder import TrajectoryBuilder
     from nova.types import Pose
 
-    tb = TrajectoryBuilder()
+    tb = TrajectoryMacher()
 
     tb.move(joint_ptp(Pose((0, 0, 0, 0, 0, 0))))
 
