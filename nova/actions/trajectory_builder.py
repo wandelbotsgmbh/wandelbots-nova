@@ -14,7 +14,7 @@ class TrajectoryBuilder:
             settings (Optional[MotionSettings], optional): The global settings to use for the trajectory. Defaults to None.
         """
         self._actions: list[Action] = []
-        self._settings_stack: list[MotionSettings] = [] if settings is None else [settings]
+        self._settings_stack: list[MotionSettings] = [settings or MotionSettings()]
 
     def __enter__(self):
         return self
