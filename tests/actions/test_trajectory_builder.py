@@ -99,13 +99,13 @@ def test_trajectory_builder_without_settings():
     from nova.actions.trajectory_builder import TrajectoryBuilder
     from nova.actions.motions import joint_ptp
     from nova.types import Pose
-    
+
     tb = TrajectoryBuilder()
-    
+
     tb.move(joint_ptp(Pose((0, 0, 0, 0, 0, 0))))
-    
+
     assert len(tb.actions) == 1
-    
+
     motion = tb.actions[0]
     assert motion.settings is not None
     assert motion.settings.tcp_velocity_limit == 50
