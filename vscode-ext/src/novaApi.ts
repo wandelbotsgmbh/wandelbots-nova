@@ -1,3 +1,7 @@
+import { NovaClient } from '@wandelbots/nova-js'
+
+import { logger } from './logging'
+
 export interface NovaConfig {
   apiUrl: string
   accessToken: string
@@ -18,13 +22,17 @@ export class NovaApi {
   private config: NovaConfig | null = null
 
   async connect(config: NovaConfig): Promise<void> {
-    const { NovaClient } = await import('@wandelbots/nova-js');
-    this.config = config;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const WS = require('ws')
+    ;(globalThis as any).WebSocket ??= WS.WebSocket || WS
+
+    logger.info('NovaClient', NovaClient)
+    this.config = config
     this.client = new NovaClient({
       instanceUrl: config.apiUrl,
       cellId: config.cellId,
       accessToken: config.accessToken,
-    });
+    })
   }
 
   async getControllers(): Promise<any[]> {

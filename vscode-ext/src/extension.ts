@@ -2,7 +2,6 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import * as vscode from 'vscode'
-import { logger } from './logging'
 
 import { NovaCodeLensProvider } from './codeLens'
 import {
@@ -15,6 +14,7 @@ import {
   COMMAND_SHOW_APP,
   VIEWER_ID,
 } from './consts'
+import { logger } from './logging'
 import { NovaApi } from './novaApi'
 import { runNovaProgram } from './novaProgram'
 import { getNovaApiAddress } from './urlResolver'
@@ -28,10 +28,10 @@ let disposables: vscode.Disposable[] = []
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const WS = require('ws');
-  (globalThis as any).WebSocket ??= (WS.WebSocket || WS);
+  const WS = require('ws')
+  ;(globalThis as any).WebSocket ??= WS.WebSocket || WS
 } catch (e) {
-  logger.error('ws not found at runtime', e);
+  logger.error('ws not found at runtime', e)
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -248,9 +248,12 @@ export function activate(context: vscode.ExtensionContext) {
           } else {
             // Show selection list for multiple TCPs
             const tcpNames = tcps.map((tcp) => tcp.id)
-            const selectedTcpName = await vscode.window.showQuickPick(tcpNames, {
-              placeHolder: 'Select a TCP',
-            })
+            const selectedTcpName = await vscode.window.showQuickPick(
+              tcpNames,
+              {
+                placeHolder: 'Select a TCP',
+              },
+            )
 
             if (!selectedTcpName) {
               return

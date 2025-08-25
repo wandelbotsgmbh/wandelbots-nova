@@ -19,7 +19,7 @@
     "onStartupFinished",
     "onLanguage:python"
   ],
-  "main": "./dist/extension.js",
+  "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -138,9 +138,8 @@
     }
   },
   "scripts": {
-    "build": "webpack --mode production",
-    "watch": "webpack --watch",
-    "vscode:prepublish": "webpack --mode production",
+    "build": "tsc -p .",
+    "vscode:prepublish": "tsc -p .",
     "package": "vsce package",
     "lint": "eslint src",
     "test": "vscode-test",
@@ -151,6 +150,7 @@
   },
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "^5.2.2",
+    "@types/lodash-es": "^4.17.12",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "@types/vscode": "^1.99.0",
@@ -162,13 +162,10 @@
     "eslint": "^9.32.0",
     "mocha": "^11.7.1",
     "prettier": "^3.6.2",
-    "ts-loader": "^9.5.2",
-    "typescript": "^5.9.2",
-    "webpack": "^5.101.0",
-    "webpack-cli": "^6.0.1",
-    "@wandelbots/nova-js": "^2.1.4"
+    "typescript": "^5.9.2"
   },
   "dependencies": {
+    "@wandelbots/nova-js": "3.0.0-pr.bugfix-compatible-with-non-dom-envs.115.75370e7",
     "ws": "^8.18.3"
   }
 }
