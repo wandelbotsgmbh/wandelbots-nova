@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.12.1 (2025-08-25)
+
+### Bug Fixes
+
+- **NDX-250**: Prevent index error when TrajectoryBuilder initialized without settings (#265)
+  ([#265](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/265),
+  [`8dbe7c6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8dbe7c649ec75a8e4803ac2d2d62ecb4cec6ac55))
+
+
 ## v2.12.0 (2025-08-22)
 
 ### Features
