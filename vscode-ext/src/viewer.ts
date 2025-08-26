@@ -1,7 +1,7 @@
 import * as vscode from 'vscode'
 
-import { EXPLORER_ID, VIEWER_ID } from './consts'
-import { getConfiguredUrl } from './urlResolver'
+import { EXPLORER_ID, VIEWER_ID } from './consts.js'
+import { getConfiguredUrl } from './urlResolver.js'
 
 // Track if this is the initial activation
 let isInitialActivation = true

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 
-import { COMMAND_DEBUG_NOVA_PROGRAM, COMMAND_RUN_NOVA_PROGRAM } from './consts'
+import { COMMAND_DEBUG_NOVA_PROGRAM, COMMAND_RUN_NOVA_PROGRAM } from './consts.js'
 
 /**
  * CodeLens provider for Nova programs

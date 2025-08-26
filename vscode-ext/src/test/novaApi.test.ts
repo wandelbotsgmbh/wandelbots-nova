@@ -1,6 +1,6 @@
 import * as assert from 'assert'
 
-import { NovaApi, NovaConfig, RobotPose } from '../novaApi'
+import { NovaApi, NovaConfig, RobotPose } from '../novaApi.js'
 
 suite('NovaApi Tests', () => {
   let novaApi: NovaApi

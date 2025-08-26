@@ -26,14 +26,6 @@ import {
 let decorationType: vscode.TextEditorDecorationType | undefined
 let disposables: vscode.Disposable[] = []
 
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const WS = require('ws')
-  ;(globalThis as any).WebSocket ??= WS.WebSocket || WS
-} catch (e) {
-  logger.error('ws not found at runtime', e)
-}
-
 export function activate(context: vscode.ExtensionContext) {
   logger.info('Wandelbots NOVA extension activating...')
 
@@ -214,9 +206,8 @@ export function activate(context: vscode.ExtensionContext) {
             selectedMotionGroup = motionGroups[0]
           } else {
             // Show selection list for multiple motion groups
-            const motionGroupNames = motionGroups.map((mg) => mg.id)
             const selectedMotionGroupName = await vscode.window.showQuickPick(
-              motionGroupNames,
+              motionGroups,
               {
                 placeHolder: 'Select a motion group',
               },
@@ -227,7 +218,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             selectedMotionGroup = motionGroups.find(
-              (mg) => mg.id === selectedMotionGroupName,
+              (mg) => mg === selectedMotionGroupName,
             )
           }
 

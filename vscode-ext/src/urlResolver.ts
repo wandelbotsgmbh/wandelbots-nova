@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 
-import { SETTINGS_NOVA_API, SETTINGS_RERUN_ADDRESS, VIEWER_ID } from './consts'
+import { SETTINGS_NOVA_API, SETTINGS_RERUN_ADDRESS, VIEWER_ID } from './consts.js'
 
 /**
  * Gets the protocol from the environment

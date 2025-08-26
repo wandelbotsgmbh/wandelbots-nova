@@ -1,5 +1,16 @@
-import { NovaClient } from '@wandelbots/nova-js/v1'
-
+import {
+  CellApi,
+  ControllerApi,
+  ControllerInputsOutputsApi,
+  MotionGroupApi,
+  MotionGroupModelsApi,
+  SystemApi,
+  TrajectoryCachingApi,
+  TrajectoryExecutionApi,
+  TrajectoryPlanningApi,
+} from '@wandelbots/nova-api/v2/index.js'
+import type { AxiosInstance } from 'axios'
+import axios from 'axios'
 import { logger } from './logging'
 
 export interface NovaConfig {
@@ -17,60 +28,124 @@ export interface RobotPose {
   rz: number
 }
 
+/**
+ * API client providing type-safe access to all the Nova API REST endpoints
+ * associated with a specific cell id.
+ */
+export class NovaCellAPIClient {
+  readonly system: any
+  readonly cell: any
+  readonly motionGroup: any
+  readonly motionGroupModels: any
+  readonly controller: any
+  readonly controllerIOs: any
+  readonly trajectoryPlanning: any
+  readonly trajectoryExecution: any
+  readonly trajectoryCaching: any
+
+  constructor(
+    readonly cellId: string,
+    readonly opts: any & {
+      axiosInstance?: AxiosInstance
+      mock?: boolean
+    },
+  ) {
+    const config = {
+      ...this.opts,
+      isJsonMime: (mime: string) => {
+        return mime === 'application/json'
+      },
+    }
+    const basePath = this.opts.basePath ?? ''
+    const axiosInstance = this.opts.axiosInstance ?? axios.create()
+
+    this.system = new SystemApi(config, basePath, axiosInstance)
+    this.cell = new CellApi(config, basePath, axiosInstance)
+    this.motionGroup = new MotionGroupApi(config, basePath, axiosInstance)
+    this.motionGroupModels = new MotionGroupModelsApi(config, basePath, axiosInstance)
+    this.controller = new ControllerApi(config, basePath, axiosInstance)
+    this.controllerIOs = new ControllerInputsOutputsApi(config, basePath, axiosInstance)
+    this.trajectoryPlanning = new TrajectoryPlanningApi(config, basePath, axiosInstance)
+    this.trajectoryExecution = new TrajectoryExecutionApi(config, basePath, axiosInstance)
+    this.trajectoryCaching = new TrajectoryCachingApi(config, basePath, axiosInstance)
+  }
+}
+
 export class NovaApi {
   private client: any | null = null
   private config: NovaConfig | null = null
+  api: NovaCellAPIClient | null = null
 
   async connect(config: NovaConfig): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const WS = require('ws')
-    ;(globalThis as any).WebSocket ??= WS.WebSocket || WS
-
-    logger.info('NovaClient', NovaClient)
     this.config = config
-    this.client = new NovaClient({
-      instanceUrl: config.apiUrl,
-      cellId: config.cellId,
-      accessToken: config.accessToken,
+    const basePath = this.config.apiUrl + '/api/v2'
+
+    const axiosInstance = axios.create({
+      baseURL: basePath,
+      headers: {
+        'X-Wandelbots-Client': 'Wandelbots-Nova-VSCode-Extension',
+      },
+    })
+
+    logger.info('Connecting to Nova API', basePath)
+
+    axiosInstance.interceptors.request.use(async (request) => {
+      if (!request.headers.Authorization) {
+        if (this.config?.accessToken) {
+          request.headers.Authorization = `Bearer ${this.config.accessToken}`
+        }
+      }
+      return request
+    })
+
+    this.api = new NovaCellAPIClient(this.config.cellId, {
+      ...config,
+      basePath: this.config.apiUrl + '/api/v2',
+      isJsonMime: (mime: string) => {
+        return mime === 'application/json'
+      },
+      axiosInstance,
     })
   }
 
+  async renewAuthentication(): Promise<void> {
+    console.log('Renewing authentication')
+    console.log('Not implemented')
+  }
+
   async getControllers(): Promise<any[]> {
-    if (!this.client) {
+    if (!this.api) {
       throw new Error('Not connected to Nova API')
     }
 
     try {
-      const { instances } = await this.client.api.controller.listControllers()
-      return instances || []
+      const response = await this.api.controller.listRobotControllers(
+        this.config!.cellId
+      )
+      return response.data || []
     } catch (error) {
       throw new Error(`Failed to get controllers: ${error}`)
     }
   }
 
-  async getMotionGroups(controllerName: string): Promise<any[]> {
-    if (!this.client) {
+  async getMotionGroups(controllerName: string): Promise<string[]> {
+    if (!this.api) {
       throw new Error('Not connected to Nova API')
     }
 
     try {
       // Get the controller instance to access motion groups
-      const controller = await this.client.api.controller.getControllerInstance(
+      const controllerResponse = await this.api.controller.getControllerDescription(
         this.config!.cellId,
         controllerName,
       )
-
+      const controller = controllerResponse.data
       if (!controller) {
         throw new Error(`Controller ${controllerName} not found`)
       }
 
-      // Get motion groups for this controller
-      const motionGroups = await this.client.api.motionGroup.listMotionGroups(
-        this.config!.cellId,
-        controller.controller,
-      )
-
-      return motionGroups.motion_groups || []
+      const motionGroups = controller.connected_motion_groups || []
+      return motionGroups
     } catch (error) {
       throw new Error(`Failed to get motion groups: ${error}`)
     }

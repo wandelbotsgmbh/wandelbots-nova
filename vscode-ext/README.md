@@ -1,4 +1,4 @@
-# wandelbots-nova README
+# wandelbots-nova
 
 The Wandelbots NOVA extension for VSCode.
 
