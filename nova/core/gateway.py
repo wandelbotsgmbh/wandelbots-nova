@@ -22,10 +22,10 @@ from nova.version import version as pkg_version
 
 def _custom_quote_for_ios(param, safe=""):
     """
-    Custom quote function that preserves square brackets for I/O names.
-    This prevents double encoding of I/O names like "tool_out[0]".
+    Custom quote function that preserves square brackets and hash characters for I/O names.
+    This prevents double encoding of I/O names like "tool_out[0]" and KUKA names like "OUT#2".
     """
-    return original_quote(param, safe="[]")
+    return original_quote(param, safe="[]#")
 
 
 T = TypeVar("T")
