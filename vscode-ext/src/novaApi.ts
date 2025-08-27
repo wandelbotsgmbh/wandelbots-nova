@@ -1,6 +1,7 @@
 import {
   CellApi,
   ControllerApi,
+  type ControllerDescription,
   ControllerInputsOutputsApi,
   MotionGroupApi,
   type MotionGroupDescription,
@@ -134,7 +135,7 @@ export class NovaApi {
     console.log('Not implemented')
   }
 
-  async getControllers(): Promise<any[]> {
+  async getControllersNames(): Promise<string[]> {
     if (!this.api) {
       throw new Error('Not connected to Nova API')
     }
@@ -143,7 +144,7 @@ export class NovaApi {
       const response = await this.api.controller.listRobotControllers(
         this.config!.cellId,
       )
-      return response.data || []
+      return response.data
     } catch (error) {
       throw new Error(`Failed to get controllers: ${error}`)
     }

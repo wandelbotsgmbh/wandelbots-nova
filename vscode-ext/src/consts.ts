@@ -13,4 +13,4 @@ export const COMMAND_READ_ROBOT_POSE = `${COMMAND_PREFIX}.readRobotPose`
 export const SETTINGS_NOVA_API = 'novaApi' as const
 export const SETTINGS_RERUN_ADDRESS = 'rerunAddress' as const
 export const SETTINGS_ACCESS_TOKEN = 'accessToken' as const
-export const SETTINGS_CELL = 'cell' as const
+export const SETTINGS_CELL_ID = 'cellId' as const

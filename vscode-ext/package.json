@@ -107,7 +107,7 @@
           "default": "",
           "description": "Your Wandelbots NOVA access token for API authentication"
         },
-        "wandelbots-nova-viewer.cell": {
+        "wandelbots-nova-viewer.cellId": {
           "type": "string",
           "default": "cell",
           "description": "The Wandelbots NOVA cell to use"

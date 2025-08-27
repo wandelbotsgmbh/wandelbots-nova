@@ -29,9 +29,9 @@ suite('NovaApi Tests', () => {
         'connect method should exist',
       )
       assert.strictEqual(
-        typeof api.getControllers,
+        typeof api.getControllersNames,
         'function',
-        'getControllers method should exist',
+        'getControllersNames method should exist',
       )
       assert.strictEqual(
         typeof api.getMotionGroups,
@@ -68,7 +68,7 @@ suite('NovaApi Tests', () => {
   suite('NovaApi connection state', () => {
     test('should throw error when trying to use methods without connecting', async () => {
       await assert.rejects(
-        async () => await novaApi.getControllers(),
+        async () => await novaApi.getControllersNames(),
         /Not connected to Nova API/,
       )
     })
@@ -178,14 +178,14 @@ suite('NovaApi Tests', () => {
 
     test('should have correct getControllers method signature', () => {
       assert.strictEqual(
-        typeof novaApi.getControllers,
+        typeof novaApi.getControllersNames,
         'function',
-        'getControllers method should exist',
+        'getControllersNames method should exist',
       )
       assert.strictEqual(
-        novaApi.getControllers.length,
+        novaApi.getControllersNames.length,
         0,
-        'getControllers method should take 0 parameters',
+        'getControllersNames method should take 0 parameters',
       )
     })
 
@@ -221,7 +221,7 @@ suite('NovaApi Tests', () => {
       const expectedError = 'Not connected to Nova API'
 
       try {
-        await novaApi.getControllers()
+        await novaApi.getControllersNames()
         assert.fail('Should have thrown an error')
       } catch (error) {
         assert.strictEqual(

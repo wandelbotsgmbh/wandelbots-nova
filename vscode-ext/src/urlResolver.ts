@@ -1,6 +1,7 @@
 import * as vscode from 'vscode'
 
 import {
+  SETTINGS_CELL_ID,
   SETTINGS_NOVA_API,
   SETTINGS_RERUN_ADDRESS,
   VIEWER_ID,
@@ -121,6 +122,12 @@ export function getNovaApiAddress(): string {
     const protocol = getProtocolFromEnvironment()
     return `${protocol}localhost`
   }
+}
+
+export function getCellId(): string {
+  const config = vscode.workspace.getConfiguration(VIEWER_ID)
+  const cellId = config.get<string>(SETTINGS_CELL_ID, '')
+  return cellId
 }
 
 /**

@@ -18,7 +18,7 @@ import { logger } from './logging'
 import { readRobotPose } from './nova/readRobotPose'
 import { NovaApi } from './novaApi'
 import { runNovaProgram } from './novaProgram'
-import { getNovaApiAddress } from './urlResolver'
+import { getCellId, getNovaApiAddress } from './urlResolver'
 import {
   WandelbotsNovaViewerProvider,
   setupPythonScriptMonitoring,
@@ -134,14 +134,8 @@ export function activate(context: vscode.ExtensionContext) {
           return
         }*/
 
-        // Prompt for cell ID
-        const cellId = await vscode.window.showInputBox({
-          prompt: 'Enter the cell ID',
-          placeHolder: 'e.g., cell',
-        })
-
+        const cellId = getCellId()
         logger.info('cellId', cellId)
-
         if (!cellId) return
 
         const novaApi = new NovaApi()

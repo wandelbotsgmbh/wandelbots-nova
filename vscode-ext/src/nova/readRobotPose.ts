@@ -2,138 +2,80 @@ import * as vscode from 'vscode'
 
 import { logger } from '../logging'
 import { NovaApi } from '../novaApi'
+import type { Pose } from '../types/pose'
+import { formatPoseString } from '../utils/pose'
+import { insertOrShow } from '../utils/vscode'
+import { chooseController, chooseMotionGroup, chooseTcp } from './selection'
+
+export const ERRORS = {
+  NO_CONTROLLERS: 'No controllers found in the cell',
+  NO_CONTROLLER_SELECTED: 'No controller selected',
+  NO_MOTION_GROUPS: 'No motion groups found for the selected controller',
+  NO_MOTION_GROUP_SELECTED: 'No motion group selected',
+  NO_TCS: 'No TCPs found for the selected motion group',
+  NO_TCP_SELECTED: 'No TCP selected',
+} as const
+
+/**
+ * Wrapper around vscode.window.showQuickPick that displays a dropdown selection menu.
+ * Extracted to enable mocking the UI interaction in tests.
+ */
+export const askQuickPick = (items: string[], placeHolder: string) =>
+  vscode.window.showQuickPick(items, { placeHolder })
+
+export async function fetchPose(
+  novaApi: NovaApi,
+  controller: string,
+  motionGroup: string,
+  tcp: string | undefined,
+): Promise<Pose> {
+  const pose = await novaApi.getRobotPose(controller, motionGroup, tcp)
+  logger.debug('pose', pose)
+  return pose
+}
 
 export async function readRobotPose(novaApi: NovaApi) {
-  const controllers = await novaApi.getControllers()
-
-  if (controllers.length === 0) {
-    vscode.window.showErrorMessage('No controllers found in the cell')
+  // Controller
+  const controller = await chooseController(novaApi, askQuickPick)
+  if (controller === undefined) {
+    vscode.window.showErrorMessage(ERRORS.NO_CONTROLLERS) // either none existed or user cancelled
     return
   }
 
-  logger.debug('controllers', controllers)
-
-  let selectedController: string
-
-  if (controllers.length === 1) {
-    selectedController = controllers[0]
-  } else {
-    // Show selection list for multiple controllers
-    const controllerNames = controllers.map((c) => c.controller)
-    const selectedControllerName = await vscode.window.showQuickPick(
-      controllerNames,
-      {
-        placeHolder: 'Select a controller',
-      },
-    )
-
-    if (!selectedControllerName) {
-      return
+  // Motion group
+  const motionGroup = await chooseMotionGroup(novaApi, controller, askQuickPick)
+  if (motionGroup === undefined) {
+    // Distinguish "no groups" vs "cancel"
+    const groups = await novaApi.getMotionGroups(controller)
+    if (groups.length === 0) {
+      vscode.window.showErrorMessage(ERRORS.NO_MOTION_GROUPS)
+    } else {
+      vscode.window.showErrorMessage(ERRORS.NO_MOTION_GROUP_SELECTED)
     }
-
-    selectedController = controllers.find(
-      (c) => c.controller === selectedControllerName,
-    )
-  }
-
-  logger.info('selectedController', selectedController)
-
-  // Get motion groups for the selected controller
-  const motionGroups = await novaApi.getMotionGroups(selectedController)
-
-  logger.info('motionGroups', motionGroups)
-
-  if (motionGroups.length === 0) {
-    vscode.window.showErrorMessage(
-      'No motion groups found for the selected controller',
-    )
     return
   }
 
-  let selectedMotionGroup: string
-
-  if (motionGroups.length === 1) {
-    selectedMotionGroup = motionGroups[0]
-  } else {
-    // Show selection list for multiple motion groups
-    const selectedMotionGroupName = await vscode.window.showQuickPick(
-      motionGroups,
-      {
-        placeHolder: 'Select a motion group',
-      },
+  // TCP
+  const tcp = await chooseTcp(novaApi, controller, motionGroup, askQuickPick)
+  if (tcp === undefined) {
+    // Distinguish "no tcps" vs "cancel"
+    const desc = await novaApi.getMotionGroupDescription(
+      controller,
+      motionGroup,
     )
-
-    if (!selectedMotionGroupName) {
-      return
+    const names = Object.keys(desc.tcps ?? {})
+    if (names.length === 0) {
+      vscode.window.showErrorMessage(ERRORS.NO_TCS)
+    } else {
+      vscode.window.showErrorMessage(ERRORS.NO_TCP_SELECTED)
     }
-
-    selectedMotionGroup = selectedMotionGroupName
-  }
-
-  logger.info('selectedMotionGroup', selectedMotionGroup)
-
-  const motionGroupDescription = await novaApi.getMotionGroupDescription(
-    selectedController,
-    selectedMotionGroup,
-  )
-
-  logger.info('motionGroupDescription', motionGroupDescription)
-
-  // Get TCPs for the selected motion group
-  const tcps = motionGroupDescription.tcps
-  const tcpNames = Object.keys(tcps)
-
-  logger.info('tcps', tcps)
-
-  if (tcpNames.length === 0) {
-    vscode.window.showErrorMessage(
-      'No TCPs found for the selected motion group',
-    )
     return
   }
 
-  let selectedTcp: string | undefined
+  // Pose → string
+  const pose = await fetchPose(novaApi, controller, motionGroup, tcp)
+  const poseString = formatPoseString(pose)
 
-  if (tcpNames.length === 1) {
-    selectedTcp = Object.keys(tcps)[0]
-  } else {
-    // Show selection list for multiple TCPs
-    const selectedTcpName = await vscode.window.showQuickPick(tcpNames, {
-      placeHolder: 'Select a TCP',
-    })
-
-    if (!selectedTcpName) {
-      return
-    }
-
-    selectedTcp = tcpNames.find((tcp) => tcp === selectedTcpName)
-  }
-
-  logger.info('selectedTcp', selectedTcp)
-
-  // Get the robot pose
-  const pose = await novaApi.getRobotPose(
-    selectedController,
-    selectedMotionGroup,
-    selectedTcp,
-  )
-
-  console.log('pose', pose)
-
-  // Format the pose string
-  const poseString = `Pose((${pose.x.toFixed(3)}, ${pose.y.toFixed(3)}, ${pose.z.toFixed(3)}, ${pose.rx.toFixed(3)}, ${pose.ry.toFixed(3)}, ${pose.rz.toFixed(3)}))`
-
-  // Get the active text editor
-  const editor = vscode.window.activeTextEditor
-  if (editor) {
-    // Insert the pose at the current cursor position
-    await editor.edit((editBuilder) => {
-      editBuilder.insert(editor.selection.active, poseString)
-    })
-
-    vscode.window.showInformationMessage(`Robot pose inserted: ${poseString}`)
-  } else {
-    // If no active editor, show the pose in a message
-    vscode.window.showInformationMessage(`Robot pose: ${poseString}`)
-  }
+  // Output
+  await insertOrShow(poseString)
 }
