@@ -15,17 +15,13 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          package_json_file: vscode-ext/package.json
       - name: Install dependencies
-        run: pnpm install
+        run: npm install
       - name: Format
-        run: pnpm run format
+        run: npm run format
       - name: Lint
-        run: pnpm run lint
-      - name: Compile tests
-        run: pnpm run test:compile
+        run: npm run lint
+      - name: Unit tests
+        run: npm run test:unit
       - name: Build
-        run: pnpm run build
+        run: npm run package
