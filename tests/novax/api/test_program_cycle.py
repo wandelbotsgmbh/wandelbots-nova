@@ -5,6 +5,7 @@ Simple test programs for integration testing.
 import asyncio
 
 import httpx
+import pytest
 
 import nova
 from nova.core.nova import Nova
@@ -24,9 +25,9 @@ async def program_with_cycle_data():
         await cycle.finish()
 
 
-# @pytest.mark.xdist_group("program-runs")
-# @pytest.mark.asyncio
-async def _test_novax_program_cycle_data(novax_server):
+@pytest.mark.xdist_group("program-runs")
+@pytest.mark.asyncio
+async def test_novax_program_cycle_data(novax_server):
     nova = Nova()
     await nova.connect()
 
@@ -67,9 +68,9 @@ async def program_with_cycle_failure():
         await cycle.fail("This cycle failed for testing purposes")
 
 
-# @pytest.mark.xdist_group("program-runs")
-# @pytest.mark.asyncio
-async def _test_novax_program_cycle_failure(novax_server):
+@pytest.mark.xdist_group("program-runs")
+@pytest.mark.asyncio
+async def test_novax_program_cycle_failure(novax_server):
     nova = Nova()
     await nova.connect()
 
