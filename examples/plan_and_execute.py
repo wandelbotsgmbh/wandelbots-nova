@@ -43,6 +43,8 @@ async def main():
             tcp_names = await motion_group.tcp_names()
             tcp = tcp_names[0]
 
+            pose = Pose((691.454, -174.126, 676.544, -3.141, -0.000, 0.001))
+
             # Get current TCP pose and offset it slightly along the x-axis
             current_pose = await motion_group.tcp_pose(tcp)
             target_pose = current_pose @ Pose((1, 0, 0, 0, 0, 0))

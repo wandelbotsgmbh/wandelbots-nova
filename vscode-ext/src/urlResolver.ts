@@ -1,6 +1,10 @@
 import * as vscode from 'vscode'
 
-import { SETTINGS_NOVA_API, SETTINGS_RERUN_ADDRESS, VIEWER_ID } from './consts.js'
+import {
+  SETTINGS_NOVA_API,
+  SETTINGS_RERUN_ADDRESS,
+  VIEWER_ID,
+} from './consts.js'
 
 /**
  * Gets the protocol from the environment
@@ -45,8 +49,30 @@ export function getNovaApiAddress(): string {
     const novaApi = config.get<string>(SETTINGS_NOVA_API, '')
 
     if (novaApi) {
-      const protocol = getProtocolFromEnvironment()
       console.log(`Using configured Wandelbots NOVA API address: ${novaApi}`)
+
+      // If user provided a full URL, respect it as-is
+      if (/^https?:\/\//i.test(novaApi)) {
+        return novaApi
+      }
+
+      // Heuristics: If it's an IP/localhost or contains an explicit port, default to http
+      const isIpLike = /^(\d{1,3}\.){3}\d{1,3}$/u.test(novaApi)
+      const isLocalhost = /^localhost(:\d+)?$/u.test(novaApi)
+      const hasPort = /:\d+$/u.test(novaApi) || /:\d+\//u.test(novaApi)
+      const isWandelbotsInstance = /\.instance\.wandelbots\.io$/u.test(novaApi)
+
+      if (isIpLike || isLocalhost || hasPort) {
+        return `http://${novaApi}`
+      }
+
+      // Known hosted instances should default to https
+      if (isWandelbotsInstance) {
+        return `https://${novaApi}`
+      }
+
+      // Fallback to environment-derived protocol
+      const protocol = getProtocolFromEnvironment()
       return `${protocol}${novaApi}`
     }
 

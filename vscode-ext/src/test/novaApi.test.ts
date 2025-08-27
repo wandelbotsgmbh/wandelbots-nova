@@ -39,19 +39,9 @@ suite('NovaApi Tests', () => {
         'getMotionGroups method should exist',
       )
       assert.strictEqual(
-        typeof api.getTcps,
-        'function',
-        'getTcps method should exist',
-      )
-      assert.strictEqual(
         typeof api.getRobotPose,
         'function',
         'getRobotPose method should exist',
-      )
-      assert.strictEqual(
-        typeof api.getActiveTcp,
-        'function',
-        'getActiveTcp method should exist',
       )
       assert.strictEqual(
         typeof api.dispose,
@@ -90,23 +80,9 @@ suite('NovaApi Tests', () => {
       )
     })
 
-    test('should throw error when trying to get TCPs without connecting', async () => {
-      await assert.rejects(
-        async () => await novaApi.getTcps('test-motion-group'),
-        /Not connected to Nova API/,
-      )
-    })
-
     test('should throw error when trying to get robot pose without connecting', async () => {
       await assert.rejects(
-        async () => await novaApi.getRobotPose('test-motion-group'),
-        /Not connected to Nova API/,
-      )
-    })
-
-    test('should throw error when trying to get active TCP without connecting', async () => {
-      await assert.rejects(
-        async () => await novaApi.getActiveTcp('test-motion-group'),
+        async () => await novaApi.getRobotPose('test', 'test'),
         /Not connected to Nova API/,
       )
     })
@@ -226,19 +202,6 @@ suite('NovaApi Tests', () => {
       )
     })
 
-    test('should have correct getTcps method signature', () => {
-      assert.strictEqual(
-        typeof novaApi.getTcps,
-        'function',
-        'getTcps method should exist',
-      )
-      assert.strictEqual(
-        novaApi.getTcps.length,
-        1,
-        'getTcps method should take 1 parameter',
-      )
-    })
-
     test('should have correct getRobotPose method signature', () => {
       assert.strictEqual(
         typeof novaApi.getRobotPose,
@@ -249,19 +212,6 @@ suite('NovaApi Tests', () => {
         novaApi.getRobotPose.length,
         2,
         'getRobotPose method should take 2 parameters',
-      )
-    })
-
-    test('should have correct getActiveTcp method signature', () => {
-      assert.strictEqual(
-        typeof novaApi.getActiveTcp,
-        'function',
-        'getActiveTcp method should exist',
-      )
-      assert.strictEqual(
-        novaApi.getActiveTcp.length,
-        1,
-        'getActiveTcp method should take 1 parameter',
       )
     })
   })
@@ -293,29 +243,7 @@ suite('NovaApi Tests', () => {
       }
 
       try {
-        await novaApi.getTcps('test')
-        assert.fail('Should have thrown an error')
-      } catch (error) {
-        assert.strictEqual(
-          (error as Error).message,
-          expectedError,
-          'Error message should match expected',
-        )
-      }
-
-      try {
-        await novaApi.getRobotPose('test')
-        assert.fail('Should have thrown an error')
-      } catch (error) {
-        assert.strictEqual(
-          (error as Error).message,
-          expectedError,
-          'Error message should match expected',
-        )
-      }
-
-      try {
-        await novaApi.getActiveTcp('test')
+        await novaApi.getRobotPose('test', 'test')
         assert.fail('Should have thrown an error')
       } catch (error) {
         assert.strictEqual(

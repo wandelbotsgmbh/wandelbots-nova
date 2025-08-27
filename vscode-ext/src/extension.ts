@@ -15,6 +15,7 @@ import {
   VIEWER_ID,
 } from './consts'
 import { logger } from './logging'
+import { readRobotPose } from './nova/readRobotPose'
 import { NovaApi } from './novaApi'
 import { runNovaProgram } from './novaProgram'
 import { getNovaApiAddress } from './urlResolver'
@@ -119,8 +120,6 @@ export function activate(context: vscode.ExtensionContext) {
       try {
         // Get configuration from VSCode settings
         const novaApiUrl = getNovaApiAddress()
-
-        // Note: novaApiUrl is still required for validation, even though getNovaApiAddress() is used for the actual connection
         if (!novaApiUrl) {
           vscode.window.showErrorMessage(
             'Nova API URL not configured. Please set "wandelbots-nova-viewer.novaApi" in your VSCode settings.',
@@ -143,146 +142,23 @@ export function activate(context: vscode.ExtensionContext) {
 
         logger.info('cellId', cellId)
 
-        if (!cellId) {
-          return
-        }
+        if (!cellId) return
 
         const novaApi = new NovaApi()
         logger.info('novaApi', novaApi)
 
-        try {
-          await novaApi.connect({
-            apiUrl: novaApiUrl,
-            accessToken: 'test-token',
-            cellId,
-          })
+        await novaApi.connect({
+          apiUrl: novaApiUrl,
+          accessToken: 'test-token',
+          cellId,
+        })
 
-          // Get controllers
-          const controllers = await novaApi.getControllers()
-
-          if (controllers.length === 0) {
-            vscode.window.showErrorMessage('No controllers found in the cell')
-            return
-          }
-
-          let selectedController: any
-
-          if (controllers.length === 1) {
-            selectedController = controllers[0]
-          } else {
-            // Show selection list for multiple controllers
-            const controllerNames = controllers.map((c) => c.controller)
-            const selectedControllerName = await vscode.window.showQuickPick(
-              controllerNames,
-              {
-                placeHolder: 'Select a controller',
-              },
-            )
-
-            if (!selectedControllerName) {
-              return
-            }
-
-            selectedController = controllers.find(
-              (c) => c.controller === selectedControllerName,
-            )
-          }
-
-          // Get motion groups for the selected controller
-          const motionGroups = await novaApi.getMotionGroups(
-            selectedController.controller,
-          )
-
-          if (motionGroups.length === 0) {
-            vscode.window.showErrorMessage(
-              'No motion groups found for the selected controller',
-            )
-            return
-          }
-
-          let selectedMotionGroup: any
-
-          if (motionGroups.length === 1) {
-            selectedMotionGroup = motionGroups[0]
-          } else {
-            // Show selection list for multiple motion groups
-            const selectedMotionGroupName = await vscode.window.showQuickPick(
-              motionGroups,
-              {
-                placeHolder: 'Select a motion group',
-              },
-            )
-
-            if (!selectedMotionGroupName) {
-              return
-            }
-
-            selectedMotionGroup = motionGroups.find(
-              (mg) => mg === selectedMotionGroupName,
-            )
-          }
-
-          // Get TCPs for the selected motion group
-          const tcps = await novaApi.getTcps(selectedMotionGroup.id)
-
-          if (tcps.length === 0) {
-            vscode.window.showErrorMessage(
-              'No TCPs found for the selected motion group',
-            )
-            return
-          }
-
-          let selectedTcp: any
-
-          if (tcps.length === 1) {
-            selectedTcp = tcps[0]
-          } else {
-            // Show selection list for multiple TCPs
-            const tcpNames = tcps.map((tcp) => tcp.id)
-            const selectedTcpName = await vscode.window.showQuickPick(
-              tcpNames,
-              {
-                placeHolder: 'Select a TCP',
-              },
-            )
-
-            if (!selectedTcpName) {
-              return
-            }
-
-            selectedTcp = tcps.find((tcp) => tcp.id === selectedTcpName)
-          }
-
-          // Get the robot pose
-          const pose = await novaApi.getRobotPose(
-            selectedMotionGroup.id,
-            selectedTcp.id,
-          )
-
-          // Format the pose string
-          const poseString = `Pose((${pose.x.toFixed(3)}, ${pose.y.toFixed(3)}, ${pose.z.toFixed(3)}, ${pose.rx.toFixed(3)}, ${pose.ry.toFixed(3)}, ${pose.rz.toFixed(3)}))`
-
-          // Get the active text editor
-          const editor = vscode.window.activeTextEditor
-          if (editor) {
-            // Insert the pose at the current cursor position
-            await editor.edit((editBuilder) => {
-              editBuilder.insert(editor.selection.active, poseString)
-            })
-
-            vscode.window.showInformationMessage(
-              `Robot pose inserted: ${poseString}`,
-            )
-          } else {
-            // If no active editor, show the pose in a message
-            vscode.window.showInformationMessage(`Robot pose: ${poseString}`)
-          }
-        } finally {
-          novaApi.dispose()
-        }
+        await readRobotPose(novaApi)
       } catch (error) {
+        logger.error('Error reading robot pose:', error)
         vscode.window.showErrorMessage(`Failed to read robot pose: ${error}`)
-        console.error('Error reading robot pose:', error)
+      } finally {
+        // novaApi.dispose()
       }
     }),
   )

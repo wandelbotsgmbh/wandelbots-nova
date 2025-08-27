@@ -3,6 +3,7 @@ import {
   ControllerApi,
   ControllerInputsOutputsApi,
   MotionGroupApi,
+  type MotionGroupDescription,
   MotionGroupModelsApi,
   SystemApi,
   TrajectoryCachingApi,
@@ -11,6 +12,7 @@ import {
 } from '@wandelbots/nova-api/v2/index.js'
 import type { AxiosInstance } from 'axios'
 import axios from 'axios'
+
 import { logger } from './logging'
 
 export interface NovaConfig {
@@ -33,15 +35,15 @@ export interface RobotPose {
  * associated with a specific cell id.
  */
 export class NovaCellAPIClient {
-  readonly system: any
-  readonly cell: any
-  readonly motionGroup: any
-  readonly motionGroupModels: any
-  readonly controller: any
-  readonly controllerIOs: any
-  readonly trajectoryPlanning: any
-  readonly trajectoryExecution: any
-  readonly trajectoryCaching: any
+  readonly system: SystemApi
+  readonly cell: CellApi
+  readonly motionGroup: MotionGroupApi
+  readonly motionGroupModels: MotionGroupModelsApi
+  readonly controller: ControllerApi
+  readonly controllerIOs: ControllerInputsOutputsApi
+  readonly trajectoryPlanning: TrajectoryPlanningApi
+  readonly trajectoryExecution: TrajectoryExecutionApi
+  readonly trajectoryCaching: TrajectoryCachingApi
 
   constructor(
     readonly cellId: string,
@@ -62,17 +64,36 @@ export class NovaCellAPIClient {
     this.system = new SystemApi(config, basePath, axiosInstance)
     this.cell = new CellApi(config, basePath, axiosInstance)
     this.motionGroup = new MotionGroupApi(config, basePath, axiosInstance)
-    this.motionGroupModels = new MotionGroupModelsApi(config, basePath, axiosInstance)
+    this.motionGroupModels = new MotionGroupModelsApi(
+      config,
+      basePath,
+      axiosInstance,
+    )
     this.controller = new ControllerApi(config, basePath, axiosInstance)
-    this.controllerIOs = new ControllerInputsOutputsApi(config, basePath, axiosInstance)
-    this.trajectoryPlanning = new TrajectoryPlanningApi(config, basePath, axiosInstance)
-    this.trajectoryExecution = new TrajectoryExecutionApi(config, basePath, axiosInstance)
-    this.trajectoryCaching = new TrajectoryCachingApi(config, basePath, axiosInstance)
+    this.controllerIOs = new ControllerInputsOutputsApi(
+      config,
+      basePath,
+      axiosInstance,
+    )
+    this.trajectoryPlanning = new TrajectoryPlanningApi(
+      config,
+      basePath,
+      axiosInstance,
+    )
+    this.trajectoryExecution = new TrajectoryExecutionApi(
+      config,
+      basePath,
+      axiosInstance,
+    )
+    this.trajectoryCaching = new TrajectoryCachingApi(
+      config,
+      basePath,
+      axiosInstance,
+    )
   }
 }
 
 export class NovaApi {
-  private client: any | null = null
   private config: NovaConfig | null = null
   api: NovaCellAPIClient | null = null
 
@@ -120,7 +141,7 @@ export class NovaApi {
 
     try {
       const response = await this.api.controller.listRobotControllers(
-        this.config!.cellId
+        this.config!.cellId,
       )
       return response.data || []
     } catch (error) {
@@ -133,12 +154,15 @@ export class NovaApi {
       throw new Error('Not connected to Nova API')
     }
 
+    logger.info('Getting motion groups for controller', controllerName)
+
     try {
       // Get the controller instance to access motion groups
-      const controllerResponse = await this.api.controller.getControllerDescription(
-        this.config!.cellId,
-        controllerName,
-      )
+      const controllerResponse =
+        await this.api.controller.getControllerDescription(
+          this.config!.cellId,
+          controllerName,
+        )
       const controller = controllerResponse.data
       if (!controller) {
         throw new Error(`Controller ${controllerName} not found`)
@@ -151,73 +175,71 @@ export class NovaApi {
     }
   }
 
-  async getTcps(motionGroupId: string): Promise<any[]> {
-    if (!this.client) {
+  async getMotionGroupDescription(
+    controllerName: string,
+    motionGroupId: string,
+  ): Promise<MotionGroupDescription> {
+    if (!this.api) {
       throw new Error('Not connected to Nova API')
     }
 
     try {
-      const response = await this.client.api.motionGroup.listTcps(
+      const response = await this.api.motionGroup.getMotionGroupDescription(
         this.config!.cellId,
+        controllerName,
         motionGroupId,
       )
-      return response.tcps || []
+      return response.data
     } catch (error) {
-      throw new Error(`Failed to get TCPs: ${error}`)
+      throw new Error(`Failed to get motion group description: ${error}`)
     }
   }
 
   async getRobotPose(
+    controllerName: string,
     motionGroupId: string,
     tcpId?: string,
   ): Promise<RobotPose> {
-    if (!this.client) {
+    if (!this.api) {
       throw new Error('Not connected to Nova API')
     }
 
+    logger.info(
+      'Getting robot pose for controller',
+      controllerName,
+      'motion group',
+      motionGroupId,
+      'tcp',
+      tcpId,
+    )
+
     try {
-      const state = await this.client.api.motionGroup.getMotionGroupState(
+      const state = await this.api.motionGroup.getCurrentMotionGroupState(
         this.config!.cellId,
+        controllerName,
         motionGroupId,
-        tcpId,
       )
 
-      const pose = state.tcp_pose || state.state.tcp_pose
-      if (!pose) {
+      const pose = state.data.tcp_pose
+      if (!pose || !pose?.position || !pose?.orientation) {
         throw new Error('No TCP pose available')
       }
 
       return {
-        x: pose.position.x,
-        y: pose.position.y,
-        z: pose.position.z,
-        rx: pose.orientation.x,
-        ry: pose.orientation.y,
-        rz: pose.orientation.z,
+        x: pose.position[0],
+        y: pose.position[1],
+        z: pose.position[2],
+        rx: pose.orientation[0],
+        ry: pose.orientation[1],
+        rz: pose.orientation[2],
       }
     } catch (error) {
       throw new Error(`Failed to get robot pose: ${error}`)
     }
   }
 
-  async getActiveTcp(motionGroupId: string): Promise<any> {
-    if (!this.client) {
-      throw new Error('Not connected to Nova API')
-    }
-
-    try {
-      const activeTcp = await this.client.api.motionGroup.getActiveTcp(
-        this.config!.cellId,
-        motionGroupId,
-      )
-      return activeTcp
-    } catch (error) {
-      throw new Error(`Failed to get active TCP: ${error}`)
-    }
-  }
-
   dispose(): void {
-    this.client = null
+    this.api = null
     this.config = null
   }
 }
