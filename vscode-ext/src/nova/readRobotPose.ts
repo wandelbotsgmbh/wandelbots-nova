@@ -42,14 +42,12 @@ export async function fetchPose(
 }
 
 export async function readRobotPose(novaApi: NovaApi) {
-  // Controller
   const controller = await chooseController(novaApi, askQuickPick)
   if (controller === undefined) {
     vscode.window.showErrorMessage(ERRORS.NO_CONTROLLERS)
     return
   }
 
-  // Motion group
   const motionGroup = await chooseMotionGroup(novaApi, controller, askQuickPick)
   if (motionGroup === undefined) {
     // Distinguish "no groups" vs "cancel"
