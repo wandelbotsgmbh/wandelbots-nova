@@ -2,7 +2,7 @@ import asyncio
 
 import nats
 
-from nova.logger import logger
+from nova.logging import logger
 
 
 class Message:

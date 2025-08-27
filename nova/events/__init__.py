@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from nova.cell.cell import Cell
 from nova.cell.robot_cell import OutputDevice
 from nova.core.nats import Message as NatsMessage
-from nova.logger import logger
+from nova.logging import logger
 
 _NATS_CYCLE_SUBJECT = "nova.cells.{cell}.cycle"
 

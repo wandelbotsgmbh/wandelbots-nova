@@ -7,9 +7,9 @@ from decouple import config
 from fastapi import APIRouter, FastAPI
 
 from nova.cell.robot_cell import RobotCell
-from nova.core.logging import logger
 from nova.core.nats import Message
 from nova.core.nova import Nova
+from nova.logging import logger
 from nova.program.function import Program
 from nova.program.runner import ProgramRun
 from nova.program.store import Program as StoreProgram

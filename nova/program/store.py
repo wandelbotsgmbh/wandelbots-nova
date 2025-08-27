@@ -9,7 +9,7 @@ from nats.js.errors import NoKeysError, NotFoundError
 from pydantic import BaseModel, Field, ValidationError, constr
 
 from nova.cell import Cell
-from nova.logger import logger as nova_logger
+from nova.logging import logger as nova_logger
 
 _T = TypeVar("_T", bound=BaseModel)
 _NATS_PROGRAMS_BUCKET_TEMPLATE = "nova_cells_{cell}_programs"

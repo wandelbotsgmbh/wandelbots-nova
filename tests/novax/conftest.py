@@ -4,6 +4,8 @@ import time
 
 import httpx
 import pytest
+from tests.novax.api.test_program_cycle import program_with_cycle_data, program_with_cycle_failure
+from tests.novax.api.test_program_run import failing_program, sucessful_program
 import uvicorn
 
 import nova
@@ -31,10 +33,10 @@ def novax_app():
     novax.register_program(simple_program)
 
     # programs for integration tests
-    # novax.register_program(sucessful_program)
-    # novax.register_program(failing_program)
-    # novax.register_program(program_with_cycle_data)
-    # novax.register_program(program_with_cycle_failure)
+    novax.register_program(sucessful_program)
+    novax.register_program(failing_program)
+    novax.register_program(program_with_cycle_data)
+    novax.register_program(program_with_cycle_failure)
 
     yield app
 

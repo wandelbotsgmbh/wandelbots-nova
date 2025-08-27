@@ -1,11 +1,34 @@
-import nova.logger as nova_logger
+"""Deprecated: use `nova.logging` instead of `nova.core.logging`.
 
-# for backward compatibility, remove them in a appropriate release
-LOG_LEVEL = nova_logger._LOG_LEVEL
-LOG_FORMAT = nova_logger._LOG_FORMAT
-LOG_DATETIME_FORMAT = nova_logger._LOG_DATETIME_FORMAT
-LOGGER_NAME = nova_logger._LOGGER_NAME
+This module re-exports the new logging definitions and issues a warning to help
+users migrate. It will be removed in a future release.
+"""
 
-formatter = nova_logger._formatter
-handler = nova_logger._handler
-logger = nova_logger.logger
+from warnings import warn
+
+import nova.logging as _new_logging_module
+
+# Track if deprecation warning has been logged to avoid spam
+_deprecation_warning_logged = False
+
+LOG_LEVEL = _new_logging_module._LOG_LEVEL
+LOG_FORMAT = _new_logging_module._LOG_FORMAT
+LOG_DATETIME_FORMAT = _new_logging_module._LOG_DATETIME_FORMAT
+LOGGER_NAME = _new_logging_module._LOGGER_NAME
+formatter = _new_logging_module._formatter
+handler = _new_logging_module._handler
+logger = _new_logging_module.logger
+
+
+def __getattr__(name):
+    """Issue deprecation warning when accessing attributes."""
+    global _deprecation_warning_logged
+
+    if not _deprecation_warning_logged:
+        warn(
+            "`nova.core.logging` is deprecated and will be removed in a future release; import from `nova.logging` instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        _deprecation_warning_logged = True
+    return globals()[name]

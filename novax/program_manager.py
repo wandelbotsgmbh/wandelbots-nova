@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Callable, Coroutine, Optional
 from pydantic import BaseModel
 
 from nova.cell.robot_cell import RobotCell
-from nova.core.logging import logger
+from nova.logging import logger
 from nova.program.function import Program, ProgramPreconditions
 from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner
 
