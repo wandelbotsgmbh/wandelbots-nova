@@ -4,6 +4,7 @@ from decouple import config
 
 from nova.cell.cell import Cell
 from nova.core.gateway import ApiGateway
+from nova.core.nats_client import NatsClient
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 CELL_NAME = config("CELL_NAME", default="cell", cast=str)
@@ -22,6 +23,7 @@ class Nova:
         password: str | None = None,
         version: str = "v1",
         verify_ssl: bool = True,
+        nats_client_config: dict | None = None,
     ):
         """
         Initialize the Nova client.
@@ -33,6 +35,7 @@ class Nova:
             password (str | None): Password to authenticate with the Nova API.
             version (str): The API version to use (default: "v1").
             verify_ssl (bool): Whether or not to verify SSL certificates (default: True).
+            nats_client_config (dict | None): Configuration dictionary for NATS client.
         """
 
         # TODO: this is internal variable but vince uses it, remove this and use ApiGateway after informing Vincent
@@ -45,7 +48,9 @@ class Nova:
             verify_ssl=verify_ssl,
         )
 
-        self.api_gateway = self._api_client
+        self.nats = NatsClient(
+            host=host, access_token=access_token, nats_client_config=nats_client_config
+        )
 
     def cell(self, cell_id: str = CELL_NAME) -> Cell:
         """Returns the cell object with the given ID."""
@@ -53,9 +58,11 @@ class Nova:
 
     async def connect(self):
         await self._api_client.connect()
+        await self.nats.connect()
 
     async def close(self):
-        """Closes the underlying API client session."""
+        """Closes the underlying API client session and NATS client."""
+        await self.nats.close()
         return await self._api_client.close()
 
     async def __aenter__(self):

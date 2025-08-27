@@ -5,13 +5,11 @@ import functools
 import time
 from abc import ABC
 from enum import Enum
-from typing import AsyncGenerator, Awaitable, Callable, TypeVar
+from typing import AsyncGenerator, TypeVar
 from urllib.parse import quote as original_quote
 
-import nats
 import wandelbots_api_client as wb
 from decouple import config
-from nats.aio.msg import Msg as NatsLibMessage
 
 from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
@@ -19,8 +17,6 @@ from nova.cell.robot_cell import ConfigurablePeriphery, Device
 from nova.core import logger
 from nova.core.env_handler import set_key
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
-from nova.core.nats import Message as NatsMessage
-from nova.core.nats import _Publisher as NatsPublisher
 from nova.version import version as pkg_version
 
 
@@ -154,35 +150,6 @@ class ApiGateway:
         self._password = password
 
         self._init_api_client()
-        self._init_nats_client()
-
-    def _init_nats_client(self) -> None:
-        """
-        Initialize the NATS WebSocket connection string.
-
-        Order of precedence:
-        1) Use self._host / self.host if present (derive ws/wss + default port).
-        2) Otherwise, read from NATS_BROKER env var.
-        """
-        host = self.host
-        if host:
-            host = host.strip()
-            is_https = host.startswith("https://")
-            # Remove protocol and trailing slashes
-            clean_host = host.replace("https://", "").replace("http://", "").rstrip("/")
-
-            scheme, port = ("wss", 443) if is_https else ("ws", 80)
-            token = getattr(self, "_access_token", None)
-            auth = f"{token}@" if token else ""
-
-            self._nats_connection_string = f"{scheme}://{auth}{clean_host}:{port}/api/nats"
-            return
-
-        logger.debug("Host not set; reading NATS connection from env var")
-        self._nats_connection_string = config("NATS_BROKER", default=None)
-
-        if not self._nats_connection_string:
-            raise ValueError("NATS connection string is not set.")
 
     def _init_api_client(self):
         """Initialize or reinitialize the API client with current credentials"""
@@ -245,18 +212,6 @@ class ApiGateway:
 
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
-    async def connect(self):
-        nova_version = await self.system_api.get_system_version()
-        logger.debug("Connected to nova API version %s", nova_version)
-
-        # TODO: queue size 1 makes the program events to be reported as fast as possible which is probably what we desire
-        # but this might cause too much friction in the event loop, so might be a good parameter to expose to the user in the future
-        self._nats_client = await nats.connect(self._nats_connection_string, flusher_queue_size=1)
-        self._nats_publisher = NatsPublisher(self._nats_client)
-        logger.info(
-            f"Api gateway connection is established. You are using Nova version: {nova_version}"
-        )
-
     async def close(self):
         # Restore the original quote function
         if hasattr(self, "_original_quote_func"):
@@ -264,54 +219,12 @@ class ApiGateway:
 
             ios_api_module.quote = self._original_quote_func
         await self._api_client.close()
-        await self._nats_publisher.close()
-        await self._nats_client.close()
 
     async def __aenter__(self):
-        await self.connect()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
-
-    def publish_message(self, message: NatsMessage):
-        """
-        Publish a message to a NATS subject.
-        Args:
-            subject (str): The NATS subject to publish to.
-            message (NatsMessage): The message to publish.
-        """
-        logger.warning(
-            "Wandelbots Nova NATS integration is in BETA, You might experience issues and the API can change."
-        )
-
-        if getattr(self, "_nats_publisher", None) is None:
-            logger.warning("your message is ignored")
-            logger.warning(
-                "You can't publish message when you didn't create a connection. First call connect() or use contextmanager."
-            )
-            return
-
-        self._nats_publisher.publish(message)
-
-    async def subscribe(self, subject: str, on_message: Callable[[NatsMessage], Awaitable[None]]):
-        """
-        Subscribe to a NATS subject and inform the callback when a message is received.
-        Args:
-            subject (str): The NATS subject to subscribe to.
-            on_message (Callable[[NatsMessage], Awaitable[None]]): The callback to call when a message is received.
-        """
-        logger.warning(
-            "Wandelbots Nova NATS integration is in BETA, You might experience issues and the API can change."
-        )
-
-        async def data_mapper(msg: NatsLibMessage):
-            message = NatsMessage(subject=msg.subject, data=msg.data)
-            await on_message(message)
-
-        await self._nats_client.subscribe(subject, cb=data_mapper)
-        # ensure subscription is sent to server
-        await self._nats_client.flush()
 
     async def _ensure_valid_token(self):
         """Ensure we have a valid access token, requesting a new one if needed"""
