@@ -59,8 +59,7 @@ export const logger = {
   warn: (...a: unknown[]) => write('warn', undefined, a),
   error: (...a: unknown[]) => write('error', undefined, a),
   show: (preserveFocus = true) => channel.show(preserveFocus),
-  channel, // exposed in case you want channel.show()/clear() etc.
-  // optional scoping without extra classes:
+  channel,
   child(scope: string) {
     return {
       trace: (...a: unknown[]) => write('trace', scope, a),
