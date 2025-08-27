@@ -72,7 +72,12 @@ export async function readRobotPose(novaApi: NovaApi) {
     return
   }
 
-  const pose = await fetchPose(novaApi, controller, motionGroup, undefined)
+  const pose = await fetchPose(
+    novaApi,
+    controller,
+    motionGroup,
+    coordinateSystem,
+  )
   const poseString = formatPoseString(pose)
 
   await insertOrShow(poseString)
