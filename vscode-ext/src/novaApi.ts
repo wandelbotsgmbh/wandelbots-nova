@@ -14,20 +14,12 @@ import type { AxiosInstance } from 'axios'
 import axios from 'axios'
 
 import { logger } from './logging'
+import type { Pose } from './types/pose'
 
 export interface NovaConfig {
   apiUrl: string
   accessToken: string
   cellId: string
-}
-
-export interface RobotPose {
-  x: number
-  y: number
-  z: number
-  rx: number
-  ry: number
-  rz: number
 }
 
 /**
@@ -215,7 +207,7 @@ export class NovaApi {
     controller: string,
     motionGroup: string,
     coordinateSystem?: string,
-  ): Promise<RobotPose> {
+  ): Promise<Pose> {
     if (!this.api) {
       throw new Error('Not connected to Nova API')
     }

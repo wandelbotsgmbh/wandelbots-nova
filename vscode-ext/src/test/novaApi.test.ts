@@ -1,6 +1,7 @@
 import * as assert from 'assert'
 
-import { NovaApi, NovaConfig, RobotPose } from '../novaApi.js'
+import { NovaApi, NovaConfig } from '../novaApi'
+import type { Pose } from '../types/pose'
 
 suite('NovaApi Tests', () => {
   let novaApi: NovaApi
@@ -125,7 +126,7 @@ suite('NovaApi Tests', () => {
 
   suite('NovaApi RobotPose interface', () => {
     test('should accept valid RobotPose structure', () => {
-      const pose: RobotPose = {
+      const pose: Pose = {
         x: 100.0,
         y: 200.0,
         z: 300.0,
@@ -143,7 +144,7 @@ suite('NovaApi Tests', () => {
     })
 
     test('should validate RobotPose required properties', () => {
-      const pose: RobotPose = {
+      const pose: Pose = {
         x: 0,
         y: 0,
         z: 0,

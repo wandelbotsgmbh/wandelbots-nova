@@ -30,7 +30,7 @@ export async function chooseMotionGroup(
   ) => Thenable<string | undefined>,
 ): Promise<string | undefined> {
   const motionGroups = await novaApi.getMotionGroups(controller)
-  logger.info('motionGroups', motionGroups)
+  logger.debug('motionGroups', motionGroups)
 
   const selected = await singleOrPick(
     motionGroups,

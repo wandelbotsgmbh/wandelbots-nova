@@ -5,7 +5,7 @@ import {
   SETTINGS_NOVA_API,
   SETTINGS_RERUN_ADDRESS,
   VIEWER_ID,
-} from './consts.js'
+} from './consts'
 
 /**
  * Gets the protocol from the environment

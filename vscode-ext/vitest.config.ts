@@ -25,7 +25,7 @@ export default defineConfig({
           benchmark: { include: [] },
           environment: 'node',
           root: resolve(__dirname, '.'),
-          include: ['./src/**/*.test.ts'],
+          include: ['./src/**/*.unit.test.ts'],
           exclude: [...defaultExclude, 'src/test/**'],
           alias,
         },
