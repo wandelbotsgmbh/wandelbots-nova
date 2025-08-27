@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.12.2 (2025-08-27)
+
+### Bug Fixes
+
+- Preserve hash characters in KUKA IO names (#266)
+  ([#266](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/266),
+  [`f606baf`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f606baf6c9fc9192e1a5a58b2d2994b23f221c53))
+
+
 ## v2.12.1 (2025-08-25)
 
 ### Bug Fixes
