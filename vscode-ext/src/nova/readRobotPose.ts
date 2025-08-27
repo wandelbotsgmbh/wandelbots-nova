@@ -5,15 +5,18 @@ import { NovaApi } from '../novaApi'
 import type { Pose } from '../types/pose'
 import { formatPoseString } from '../utils/pose'
 import { insertOrShow } from '../utils/vscode'
-import { chooseController, chooseMotionGroup, chooseTcp } from './selection'
+import {
+  chooseController,
+  chooseCoordinateSystem,
+  chooseMotionGroup,
+} from './selection'
 
 export const ERRORS = {
   NO_CONTROLLERS: 'No controllers found in the cell',
   NO_CONTROLLER_SELECTED: 'No controller selected',
   NO_MOTION_GROUPS: 'No motion groups found for the selected controller',
   NO_MOTION_GROUP_SELECTED: 'No motion group selected',
-  NO_TCS: 'No TCPs found for the selected motion group',
-  NO_TCP_SELECTED: 'No TCP selected',
+  NO_COORDINATE_SYSTEM_SELECTED: 'No coordinate system selected',
 } as const
 
 /**
@@ -27,9 +30,13 @@ export async function fetchPose(
   novaApi: NovaApi,
   controller: string,
   motionGroup: string,
-  tcp: string | undefined,
+  coordinateSystem?: string,
 ): Promise<Pose> {
-  const pose = await novaApi.getRobotPose(controller, motionGroup, tcp)
+  const pose = await novaApi.getRobotPose(
+    controller,
+    motionGroup,
+    coordinateSystem,
+  )
   logger.debug('pose', pose)
   return pose
 }
@@ -38,7 +45,7 @@ export async function readRobotPose(novaApi: NovaApi) {
   // Controller
   const controller = await chooseController(novaApi, askQuickPick)
   if (controller === undefined) {
-    vscode.window.showErrorMessage(ERRORS.NO_CONTROLLERS) // either none existed or user cancelled
+    vscode.window.showErrorMessage(ERRORS.NO_CONTROLLERS)
     return
   }
 
@@ -55,27 +62,18 @@ export async function readRobotPose(novaApi: NovaApi) {
     return
   }
 
-  // TCP
-  const tcp = await chooseTcp(novaApi, controller, motionGroup, askQuickPick)
-  if (tcp === undefined) {
-    // Distinguish "no tcps" vs "cancel"
-    const desc = await novaApi.getMotionGroupDescription(
-      controller,
-      motionGroup,
-    )
-    const names = Object.keys(desc.tcps ?? {})
-    if (names.length === 0) {
-      vscode.window.showErrorMessage(ERRORS.NO_TCS)
-    } else {
-      vscode.window.showErrorMessage(ERRORS.NO_TCP_SELECTED)
-    }
+  const coordinateSystem = await chooseCoordinateSystem(
+    novaApi,
+    controller,
+    askQuickPick,
+  )
+  if (coordinateSystem === undefined) {
+    vscode.window.showErrorMessage(ERRORS.NO_COORDINATE_SYSTEM_SELECTED)
     return
   }
 
-  // Pose → string
-  const pose = await fetchPose(novaApi, controller, motionGroup, tcp)
+  const pose = await fetchPose(novaApi, controller, motionGroup, undefined)
   const poseString = formatPoseString(pose)
 
-  // Output
   await insertOrShow(poseString)
 }

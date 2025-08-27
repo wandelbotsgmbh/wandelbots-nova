@@ -1,7 +1,6 @@
 import {
   CellApi,
   ControllerApi,
-  type ControllerDescription,
   ControllerInputsOutputsApi,
   MotionGroupApi,
   type MotionGroupDescription,
@@ -196,29 +195,46 @@ export class NovaApi {
     }
   }
 
+  async listCoordinateSystems(controller: string): Promise<string[]> {
+    if (!this.api) {
+      throw new Error('Not connected to Nova API')
+    }
+
+    try {
+      const response = await this.api.controller.listCoordinateSystems(
+        this.config!.cellId,
+        controller,
+      )
+      return response.data.map((cs) => cs.coordinate_system)
+    } catch (error) {
+      throw new Error(`Failed to list coordinate systems: ${error}`)
+    }
+  }
+
   async getRobotPose(
-    controllerName: string,
-    motionGroupId: string,
-    tcpId?: string,
+    controller: string,
+    motionGroup: string,
+    coordinateSystem?: string,
   ): Promise<RobotPose> {
     if (!this.api) {
       throw new Error('Not connected to Nova API')
     }
 
-    logger.info(
+    logger.debug(
       'Getting robot pose for controller',
-      controllerName,
+      controller,
       'motion group',
-      motionGroupId,
-      'tcp',
-      tcpId,
+      motionGroup,
+      'coordinate system',
+      coordinateSystem,
     )
 
     try {
       const state = await this.api.motionGroup.getCurrentMotionGroupState(
         this.config!.cellId,
-        controllerName,
-        motionGroupId,
+        controller,
+        motionGroup,
+        coordinateSystem,
       )
 
       const pose = state.data.tcp_pose

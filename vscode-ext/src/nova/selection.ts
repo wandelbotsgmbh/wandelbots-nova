@@ -41,27 +41,25 @@ export async function chooseMotionGroup(
   return selected
 }
 
-export async function chooseTcp(
+export async function chooseCoordinateSystem(
   novaApi: NovaApi,
   controller: string,
-  motionGroup: string,
   askToPick: (
     items: string[],
     placeHolder: string,
   ) => Thenable<string | undefined>,
 ): Promise<string | undefined> {
-  const motionGroupDescription = await novaApi.getMotionGroupDescription(
-    controller,
-    motionGroup,
+  const worldCoordinateSystem = 'World'
+  const coordinateSystems = await novaApi.listCoordinateSystems(controller)
+  const formattedCoordinateSystems = coordinateSystems.map((d) =>
+    d === '' ? worldCoordinateSystem : d,
   )
-  logger.debug('motionGroupDescription', motionGroupDescription)
-
-  const tcps = motionGroupDescription.tcps ?? {}
-  logger.debug('tcps', tcps)
-
-  const tcpNames = Object.keys(tcps)
-  const selectedName = await singleOrPick(tcpNames, askToPick, 'Select a TCP')
-  if (selectedName) logger.debug('selectedTcp', selectedName)
-
-  return selectedName
+  logger.debug('coordinateSystems', formattedCoordinateSystems)
+  const pick = await singleOrPick(
+    formattedCoordinateSystems,
+    askToPick,
+    'Select a coordinate system',
+  )
+  if (pick === worldCoordinateSystem) return ''
+  return pick
 }
