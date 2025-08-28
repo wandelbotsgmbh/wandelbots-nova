@@ -1,7 +1,7 @@
 import asyncio
 
-from nova.core.nats import Message
 from nova.core.nova import Nova
+from nova.nats import Message
 
 
 # @pytest.mark.xdist_group("program-runs")

@@ -8,8 +8,8 @@ from nats.js.errors import KeyNotFoundError as KvKeyError
 from nats.js.errors import NoKeysError, NotFoundError
 from pydantic import BaseModel, Field, ValidationError, constr
 
-from nova.cell import Cell
 from nova.logging import logger as nova_logger
+from nova.nats import NatsClient
 
 _T = TypeVar("_T", bound=BaseModel)
 _NATS_PROGRAMS_BUCKET_TEMPLATE = "nova_cells_{cell}_programs"
@@ -207,18 +207,17 @@ class ProgramStore(_KeyValueStore[Program]):
     Program store manages all the programs registered in a cell.
     """
 
-    def __init__(self, cell: Cell, create_bucket: bool = False):
-        self._cell = cell
-        self._nats_bucket_name = _NATS_PROGRAMS_BUCKET_TEMPLATE.format(cell=cell.cell_id)
+    def __init__(self, cell_id: str, nats_client: NatsClient, create_bucket: bool = False):
+        self._nats_bucket_name = _NATS_PROGRAMS_BUCKET_TEMPLATE.format(cell=cell_id)
         self._kv_config = KeyValueConfig(
             bucket=self._nats_bucket_name,
             max_value_size=_NATS_PROGRAMS_MESSAGE_SIZE,
             max_bytes=_NATS_PROGRAMS_BUCKET_SIZE,
         )
+
         super().__init__(
             Program,
             nats_bucket_name=self._nats_bucket_name,
-            # TODO: remove the NATS client wrapper
-            nats_client=self._cell._api_gateway._nats_client,
+            nats_client=nats_client.nats_client,
             nats_kv_config=self._kv_config if create_bucket else None,
         )

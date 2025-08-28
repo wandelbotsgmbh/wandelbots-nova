@@ -5,8 +5,8 @@ from uuid import UUID
 import pytest
 
 from nova import Cell
-from nova.core.nats import Message
 from nova.events import Cycle, CycleFailedEvent, CycleFinishedEvent, CycleStartedEvent
+from nova.nats import Message
 
 
 @pytest.fixture

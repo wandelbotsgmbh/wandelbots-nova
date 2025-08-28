@@ -7,9 +7,9 @@ from decouple import config
 from fastapi import APIRouter, FastAPI
 
 from nova.cell.robot_cell import RobotCell
-from nova.core.nats import Message
 from nova.core.nova import Nova
 from nova.logging import logger
+from nova.nats import Message
 from nova.program.function import Program
 from nova.program.runner import ProgramRun
 from nova.program.store import Program as StoreProgram
@@ -45,7 +45,7 @@ class Novax:
         logger.info(
             f"publishing program run message for program: {program_run.program} run: {program_run.run}"
         )
-        self._nova.api_gateway.publish_message(message)
+        self._nova.nats.publish_message(message)
 
     @property
     def program_manager(self) -> ProgramManager:
@@ -81,7 +81,7 @@ class Novax:
         """
         await self._nova.connect()
         logger.info("Novax: Connected to Nova API")
-        store = ProgramStore(cell=self._cell)
+        store = ProgramStore(cell_id=self._cell.cell_id, nats_client=self._nova.nats)
         await self._register_programs(store)
         logger.info("Novax: Programs registered to store on startup")
 

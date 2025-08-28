@@ -4,13 +4,13 @@ import time
 
 import httpx
 import pytest
-from tests.novax.api.test_program_cycle import program_with_cycle_data, program_with_cycle_failure
-from tests.novax.api.test_program_run import failing_program, sucessful_program
 import uvicorn
 
 import nova
 from nova.cell.simulation import SimulatedRobotCell
 from novax import Novax
+from tests.novax.api.test_program_cycle import program_with_cycle_data, program_with_cycle_failure
+from tests.novax.api.test_program_run import failing_program, sucessful_program
 
 
 @nova.program(name="simple_program")
