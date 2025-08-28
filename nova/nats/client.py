@@ -56,11 +56,11 @@ class NatsClient:
         host = self._host
         if host:
             host = host.strip()
-            is_https = host.startswith("https://")
+            is_http = host.startswith("http://")
             # Remove protocol and trailing slashes
             clean_host = host.replace("https://", "").replace("http://", "").rstrip("/")
 
-            scheme, port = ("wss", 443) if is_https else ("ws", 80)
+            scheme, port = ("ws", 80) if is_http else ("wss", 443)
             token = self._access_token
             auth = f"{token}@" if token else ""
 
