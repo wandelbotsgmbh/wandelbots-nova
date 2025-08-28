@@ -424,6 +424,7 @@ async def _report_state_change_to_nats(program_run: ProgramRun) -> None:
             logger.info(
                 f"Publishing program run state: program={program_run.program} run={program_run.run} state={program_run.state}"
             )
-            await nova.nats.publish_message(message)
+            if nova.nats.is_connected():
+                await nova.nats.publish_message(message)
     except Exception as e:  # noqa: BLE001
         logger.error(f"Failed to publish program run to NATS: {e}")
