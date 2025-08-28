@@ -29,7 +29,7 @@ async def test_novax_program_successful_run(novax_server):
     async def cb(msg):
         program_run_message.append(msg)
 
-    await nova.nats.subscribe("nova.cells.cell.programs", on_message=cb)
+    await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
 
     start_program = httpx.post(
         f"{novax_server}/programs/sucessful_program/start", json={"arguments": {}}
@@ -69,7 +69,7 @@ async def test_novax_program_failed_run(novax_server):
     async def cb(msg):
         program_run_message.append(msg)
 
-    await nova.nats.subscribe("nova.cells.cell.programs", on_message=cb)
+    await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
 
     start_program = httpx.post(
         f"{novax_server}/programs/failing_program/start", json={"arguments": {}}

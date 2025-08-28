@@ -36,7 +36,7 @@ async def test_novax_program_cycle_data(novax_server):
     async def cb(msg):
         cycle_messages.append(msg)
 
-    await nova.nats.subscribe("nova.cells.cell.cycle", on_message=cb)
+    await nova.nats.subscribe("nova.v2.cells.cell.cycle", on_message=cb)
 
     start_program = httpx.post(
         f"{novax_server}/programs/program_with_cycle_data/start", json={"arguments": {}}
@@ -79,7 +79,7 @@ async def test_novax_program_cycle_failure(novax_server):
     async def cb(msg):
         cycle_messages.append(msg)
 
-    await nova.nats.subscribe("nova.cells.cell.cycle", on_message=cb)
+    await nova.nats.subscribe("nova.v2.cells.cell.cycle", on_message=cb)
 
     start_program = httpx.post(
         f"{novax_server}/programs/program_with_cycle_failure/start", json={"arguments": {}}

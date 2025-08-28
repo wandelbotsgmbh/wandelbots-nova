@@ -18,7 +18,7 @@ cycle_started = signal("cycle_started")
 cycle_finished = signal("cycle_finished")
 cycle_failed = signal("cycle_failed")
 
-_NATS_CYCLE_SUBJECT = "nova.cells.{cell}.cycle"
+_NATS_CYCLE_SUBJECT = "nova.v2.cells.{cell}.cycle"
 
 
 class Timer:
@@ -296,7 +296,7 @@ def cycle_event_handler(sender: Any, message: BaseCycleEvent, nats_client: NatsC
             logger.warning("No nats client provided, skipping NATS publish")
             return
 
-        subject = f"nova.cells.{message.cell}.cycle"
+        subject = f"nova.v2.cells.{message.cell}.cycle"
         nats_message = NatsMessage(subject=subject, data=message.model_dump_json().encode())
 
         nats_client.publish_message(nats_message)

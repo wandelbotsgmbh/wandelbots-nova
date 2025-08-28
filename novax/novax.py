@@ -40,7 +40,8 @@ class Novax:
         # TODO: all valid program names are not valid subject names
         # if we want to have subjects for each program, than we need to introduce checkt to the nova.program annotation
         message = Message(
-            subject=f"nova.cells.{_CELL_NAME}.programs", data=json.dumps(data, default=str).encode()
+            subject=f"nova.v2.cells.{_CELL_NAME}.programs",
+            data=json.dumps(data, default=str).encode(),
         )
         logger.info(
             f"publishing program run message for program: {program_run.program} run: {program_run.run}"
