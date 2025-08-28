@@ -15,82 +15,7 @@ from nova.logging import logger
 from nova.nats.message import Message
 
 
-class _Publisher:
-    """Minimal async publisher with a single background worker and graceful shutdown."""
-
-    def __init__(self, nats_client: nats.NATS):
-        self._nats_client = nats_client
-        self._logger = logger.getChild("NatsPublisher")
-        self._queue: asyncio.Queue[Message | None] = asyncio.Queue()
-        self._worker_task: asyncio.Task | None = asyncio.create_task(self._worker())
-        self._closed = False
-
-    def publish(self, message: Message) -> None:
-        """Enqueue a message for publishing."""
-        if self._closed:
-            self._logger.warning(f"Publisher is closed; ignoring message for {message.subject}")
-            return
-        try:
-            self._queue.put_nowait(message)
-        except Exception as e:
-            self._logger.error(f"Failed to enqueue message for {message.subject}: {e}")
-
-    async def close(self) -> None:
-        """Signal worker to stop, flush remaining messages, and wait for completion."""
-        if self._closed:
-            return
-        self._closed = True
-
-        # Wake up the worker with a sentinel
-        try:
-            self._queue.put_nowait(None)
-        except Exception:
-            pass
-
-        if self._worker_task is not None:
-            try:
-                await self._worker_task
-            except asyncio.CancelledError:
-                pass
-            finally:
-                self._worker_task = None
-        self._logger.debug("NATS publisher closed")
-
-    async def _worker(self) -> None:
-        """Consume messages from the queue and publish them to NATS.
-
-        On shutdown sentinel (None), flush any remaining messages and exit.
-        """
-        try:
-            while True:
-                item = await self._queue.get()
-                if item is None:  # shutdown signal
-                    break
-                try:
-                    await self._nats_client.publish(subject=item.subject, payload=item.data)
-                except Exception as e:
-                    self._logger.error(f"Failed to publish message to {item.subject}: {e}")
-                    # Avoid tight loop in case of repeated failure
-                    await asyncio.sleep(1)
-
-            # Flush any remaining messages before exit
-            flushed = 0
-            while not self._queue.empty():
-                m = self._queue.get_nowait()
-                if m is None:
-                    continue
-                try:
-                    await self._nats_client.publish(subject=m.subject, payload=m.data)
-                    flushed += 1
-                except Exception as e:
-                    self._logger.error(f"Failed to publish remaining message to {m.subject}: {e}")
-            if flushed:
-                self._logger.info(f"Flushed {flushed} remaining messages before shutdown")
-        except asyncio.CancelledError:
-            # If cancelled unexpectedly, just exit
-            self._logger.debug("NATS publisher worker cancelled")
-        finally:
-            self._logger.info("NATS publisher worker stopped")
+# Internal publisher removed; we publish directly to NATS
 
 
 class NatsClient:
@@ -116,7 +41,6 @@ class NatsClient:
         self._access_token = access_token
         self._nats_config = nats_client_config or {}
         self._nats_client = None
-        self._nats_publisher = None
         self._nats_connection_string = None
         self._connect_lock = asyncio.Lock()
         self._init_nats_client()
@@ -152,28 +76,23 @@ class NatsClient:
     async def connect(self):
         """Connect to NATS server.
 
-        Creates the publisher on first successful connection and reuses it thereafter.
         Subsequent calls are no-ops while connected.
         """
         async with self._connect_lock:
             if self._nats_client is not None:
                 return
 
-            self._nats_client = await nats.connect(self._nats_connection_string)
-            self._nats_publisher = _Publisher(self._nats_client)
+            self._nats_client = await nats.connect(
+                self._nats_connection_string, **self._nats_config
+            )
             logger.debug("NATS client connected successfully")
 
     async def close(self):
         """Close NATS connection. Safe to call multiple times."""
         async with self._connect_lock:
-            if self._nats_publisher:
-                try:
-                    await self._nats_publisher.close()
-                finally:
-                    self._nats_publisher = None
             if self._nats_client:
                 try:
-                    await self._nats_client.close()
+                    await self._nats_client.drain()
                 finally:
                     self._nats_client = None
             logger.debug("NATS client closed")
@@ -193,7 +112,7 @@ class NatsClient:
         """
         return self._nats_client is not None and self._nats_client.is_connected
 
-    def publish_message(self, message: Message):
+    async def publish_message(self, message: Message) -> None:
         """
         Publish a message to a NATS subject.
         Args:
@@ -203,14 +122,16 @@ class NatsClient:
             "Wandelbots Nova NATS integration is in BETA, You might experience issues and the API can change."
         )
 
-        if self._nats_publisher is None:
+        if self._nats_client is None:
             logger.warning("your message is ignored")
             logger.warning(
                 "You can't publish message when you didn't create a connection. First call connect() or use contextmanager."
             )
             return
-
-        self._nats_publisher.publish(message)
+        try:
+            await self._nats_client.publish(subject=message.subject, payload=message.data)
+        except Exception as e:
+            logger.error(f"Failed to publish message to {message.subject}: {e}")
 
     async def subscribe(self, subject: str, on_message: Callable[[Message], Awaitable[None]]):
         """

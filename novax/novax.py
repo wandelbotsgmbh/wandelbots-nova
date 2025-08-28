@@ -46,7 +46,7 @@ class Novax:
         logger.info(
             f"publishing program run message for program: {program_run.program} run: {program_run.run}"
         )
-        self._nova.nats.publish_message(message)
+        await self._nova.nats.publish_message(message)
 
     @property
     def program_manager(self) -> ProgramManager:

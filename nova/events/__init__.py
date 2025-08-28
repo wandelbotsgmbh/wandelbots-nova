@@ -271,7 +271,7 @@ class CycleFailedEvent(BaseCycleEvent):
     reason: str = Field(..., description="Human-readable explanation of failure")
 
 
-def cycle_event_handler(sender: Any, message: BaseCycleEvent, nats_client: NatsClient) -> None:
+async def cycle_event_handler(sender: Any, message: BaseCycleEvent, nats_client: NatsClient) -> None:
     """
     Event handler that publishes cycle events to NATS using the nats client.
 
@@ -299,7 +299,7 @@ def cycle_event_handler(sender: Any, message: BaseCycleEvent, nats_client: NatsC
         subject = f"nova.v2.cells.{message.cell}.cycle"
         nats_message = NatsMessage(subject=subject, data=message.model_dump_json().encode())
 
-        nats_client.publish_message(nats_message)
+        await nats_client.publish_message(nats_message)
         logger.info(f"Published {event_type} event to NATS subject: {subject}")
 
     except Exception as e:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Callable
 
 from decouple import config
@@ -79,7 +80,7 @@ class Nova:
         # Store handlers for this instance so we can disconnect them later
         self._signal_handlers = {}
 
-        def create_handler(nats_client_ref: NatsClient) -> Callable[..., None]:
+        def create_handler(nats_client: NatsClient) -> Callable[..., None]:
             """Create a handler function that captures the nats client"""
 
             def handler(sender: Any, **kwargs: Any) -> None:
@@ -90,8 +91,10 @@ class Nova:
                     logger.warning("No message provided to cycle event handler")
                     return
                 logger.info(f"Calling cycle_event_handler with message: {message}")
-
-                cycle_event_handler(sender, message=message, nats_client=nats_client_ref)
+                # blinker needs sync functions but sending nats message is async, so we need to do this
+                asyncio.get_running_loop().create_task(
+                    cycle_event_handler(sender, message=message, nats_client=nats_client)
+                )
 
             return handler
 
@@ -152,7 +155,7 @@ class Nova:
 
         await self.connect()
 
-        # Connect cycle event signals to NATS
+        # Connect cycle event signals to NATS (only for context-managed usage)
         self.connect_cycle_signals()
 
         return self
