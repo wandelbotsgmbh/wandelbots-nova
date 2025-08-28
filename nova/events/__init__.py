@@ -108,7 +108,6 @@ class Cycle:
         self._timer = Timer()
         self._cell_id = cell.cell_id
         self._cycle_subject = _NATS_CYCLE_SUBJECT.format(cell=self._cell_id)
-        self._api_gateway = cell._api_gateway
 
     async def start(self) -> datetime:
         """
