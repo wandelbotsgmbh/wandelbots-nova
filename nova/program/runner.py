@@ -387,7 +387,7 @@ class ProgramRunner(ABC):
                     # program output data
                     self._program_run.output_data = execution_context.output_data
 
-                    logger.info(
+                    logger.debug(
                         f"Program {self.program_id} run {self.run_id} finished. Run teardown routine..."
                     )
                     self._program_run.end_time = dt.datetime.now(dt.timezone.utc)
@@ -421,7 +421,7 @@ async def _report_state_change_to_nats(program_run: ProgramRun) -> None:
     try:
         async with Nova() as nova:
             message = Message(subject=subject, data=program_run.model_dump_json().encode())
-            logger.info(
+            logger.debug(
                 f"Publishing program run state: program={program_run.program} run={program_run.run} state={program_run.state}"
             )
             if nova.nats.is_connected():

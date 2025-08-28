@@ -126,11 +126,11 @@ class Cycle:
 
         self.cycle_id = uuid4()
         event = CycleStartedEvent(cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id)
-        logger.info(f"Cycle started with ID: {self.cycle_id}")
+        logger.debug(f"Cycle started with ID: {self.cycle_id}")
 
         # Emit blinker signal if available
         if cycle_started is not None:
-            logger.info(
+            logger.debug(
                 f"Emitting cycle_started signal with {len(cycle_started.receivers)} connected receivers"
             )
             cycle_started.send(self, message=event)
@@ -163,7 +163,7 @@ class Cycle:
             cycle_id=self.cycle_id, timestamp=end_time, duration_ms=duration_ms, cell=self._cell_id
         )
 
-        logger.info(f"Cycle finished with ID: {self.cycle_id}")
+        logger.debug(f"Cycle finished with ID: {self.cycle_id}")
 
         # Emit blinker signal if available
         if cycle_finished is not None:
@@ -283,7 +283,7 @@ async def cycle_event_handler(
     logger.debug(f"NATS event handler called with message: {message}, sender: {sender}")
 
     event_type = message.event_type
-    logger.info(f"NATS event handler received {event_type} event")
+    logger.debug(f"NATS event handler received {event_type} event")
 
     try:
         # Use the provided nats client
@@ -292,7 +292,7 @@ async def cycle_event_handler(
         nats_message = NatsMessage(subject=subject, data=message.model_dump_json().encode())
 
         await nats_client.publish_message(nats_message)
-        logger.info(f"Published {event_type} event to NATS subject: {subject}")
+        logger.debug(f"Published {event_type} event to NATS subject: {subject}")
 
     except Exception as e:
         logger.error(f"Failed to publish {event_type} event to NATS: {e}")

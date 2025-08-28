@@ -83,7 +83,7 @@ class NatsClient:
         Subsequent calls are no-ops while connected.
         """
         if not self._is_configured:
-            logger.warning("NATS client is not configured. Skipping connection.")
+            logger.info("NATS client is not configured. Skipping connection.")
             return
 
         async with self._connect_lock:
@@ -128,12 +128,12 @@ class NatsClient:
         Args:
             message (Message): The message to publish.
         """
-        logger.warning(
+        logger.debug(
             "Wandelbots Nova NATS integration is in BETA, You might experience issues and the API can change."
         )
 
         if not self.is_connected():
-            logger.warning("NATS client is not connected. Skipping message publishing.")
+            logger.debug("NATS client is not connected. Skipping message publishing.")
             return
         try:
             await self._nats_client.publish(subject=message.subject, payload=message.data)  # type: ignore
@@ -147,12 +147,12 @@ class NatsClient:
             subject (str): The NATS subject to subscribe to.
             on_message (Callable[[Message], Awaitable[None]]): The callback to call when a message is received.
         """
-        logger.warning(
+        logger.debug(
             "Wandelbots Nova NATS integration is in BETA, You might experience issues and the API can change."
         )
 
         if not self.is_connected():
-            logger.warning("NATS client is not connected. Skipping subscription.")
+            logger.debug("NATS client is not connected. Skipping subscription.")
             return
 
         async def data_mapper(msg: NatsLibMessage):

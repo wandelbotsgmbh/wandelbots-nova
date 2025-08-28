@@ -15,7 +15,7 @@ from novax.program_manager import ProgramDetails, ProgramManager
 # Read BASE_PATH environment variable and extract app name
 _BASE_PATH = config("BASE_PATH", default="/default/novax")
 _APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else "novax"
-logger.info(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
+logger.debug(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
 
 # Create nats programs bucket name
 _CELL_NAME = config("CELL_NAME", default="")
@@ -76,7 +76,7 @@ class Novax:
         Handle FastAPI startup - discover and register programs from sources to store
         """
         try:
-            logger.info("Novax: Starting program discovery and registration to store")
+            logger.debug("Novax: Starting program discovery and registration to store")
             programs = await self._program_manager.get_programs()
 
             store_programs = {}
@@ -120,7 +120,7 @@ class Novax:
         Handle FastAPI shutdown - cleanup programs from store
         """
         try:
-            logger.info("Novax: Starting program cleanup from store on shutdown")
+            logger.debug("Novax: Starting program cleanup from store on shutdown")
             programs = self._program_manager._programs
             program_ids = list(programs.keys())
             program_count = len(program_ids)

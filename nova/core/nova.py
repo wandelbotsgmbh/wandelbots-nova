@@ -85,12 +85,12 @@ class Nova:
 
             def handler(sender: Any, **kwargs: Any) -> None:
                 """Synchronous handler that schedules async work"""
-                logger.info(f"Cycle event handler called with sender: {sender}, kwargs: {kwargs}")
+                logger.debug(f"Cycle event handler called with sender: {sender}, kwargs: {kwargs}")
                 message = kwargs.get("message")
                 if message is None:
-                    logger.warning("No message provided to cycle event handler")
+                    logger.debug("No message provided to cycle event handler")
                     return
-                logger.info(f"Calling cycle_event_handler with message: {message}")
+                logger.debug(f"Calling cycle_event_handler with message: {message}")
                 # blinker needs sync functions but sending nats message is async, so we need to do this
                 asyncio.get_running_loop().create_task(
                     cycle_event_handler(sender, message=message, nats_client=nats_client)
@@ -100,12 +100,12 @@ class Nova:
 
         for signal_obj in [cycle_started, cycle_finished, cycle_failed]:
             event_type = signal_obj.name
-            logger.info(f"Connecting NATS event handler for {event_type} event")
+            logger.debug(f"Connecting NATS event handler for {event_type} event")
             handler = create_handler(self.nats)
             signal_obj.connect(handler)
             # Store the handler so we can disconnect it later
             self._signal_handlers[signal_obj] = handler
-            logger.info(
+            logger.debug(
                 f"After connecting: {event_type} signal has {len(signal_obj.receivers)} receivers"
             )
 
