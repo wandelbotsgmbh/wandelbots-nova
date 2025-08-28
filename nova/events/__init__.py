@@ -7,7 +7,7 @@ from blinker import signal
 from pydantic import BaseModel, Field
 
 from nova.cell.cell import Cell
-from nova.cell.robot_cell import OutputDevice
+from nova.cell.robot_cell import Device, OutputDevice
 from nova.logging import logger
 from nova.nats import Message as NatsMessage
 from nova.nats import NatsClient
@@ -51,7 +51,7 @@ class Timer:
         return self.start_time is not None and self.stop_time is None
 
 
-class CycleDevice(OutputDevice):
+class CycleDevice(OutputDevice, Device):
     def __init__(self, cell: Cell):
         super().__init__()
         self._cycle = Cycle(cell=cell)

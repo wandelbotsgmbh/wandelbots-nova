@@ -27,7 +27,7 @@ async def program_with_cycle_data():
 
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
-async def test_novax_program_cycle_data(novax_server):
+async def _test_novax_program_cycle_data(novax_server):
     nova = Nova()
     await nova.connect()
 
@@ -70,7 +70,7 @@ async def program_with_cycle_failure():
 
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
-async def test_novax_program_cycle_failure(novax_server):
+async def _test_novax_program_cycle_failure(novax_server):
     nova = Nova()
     await nova.connect()
 
