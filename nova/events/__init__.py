@@ -57,12 +57,9 @@ class CycleDevice(OutputDevice):
         self._cycle = Cycle(cell=cell)
 
     async def write(self, key, _):
-        if key == "start":
-            await self._cycle.start()
-        if key == "finish":
-            await self._cycle.finish()
-        if key == "fail":
-            await self._cycle.fail()
+        if hasattr(self._cycle, key):
+            method = getattr(self._cycle, key)
+            await method()
 
 
 class Cycle:
@@ -271,7 +268,9 @@ class CycleFailedEvent(BaseCycleEvent):
     reason: str = Field(..., description="Human-readable explanation of failure")
 
 
-async def cycle_event_handler(sender: Any, message: BaseCycleEvent, nats_client: NatsClient) -> None:
+async def cycle_event_handler(
+    sender: Any, message: BaseCycleEvent, nats_client: NatsClient
+) -> None:
     """
     Event handler that publishes cycle events to NATS using the nats client.
 
