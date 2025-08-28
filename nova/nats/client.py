@@ -28,9 +28,7 @@ class _Publisher:
     def publish(self, message: Message) -> None:
         """Enqueue a message for publishing."""
         if self._closed:
-            self._logger.warning(
-                f"Publisher is closed; ignoring message for {message.subject}"
-            )
+            self._logger.warning(f"Publisher is closed; ignoring message for {message.subject}")
             return
         try:
             self._queue.put_nowait(message)
@@ -71,9 +69,7 @@ class _Publisher:
                 try:
                     await self._nats_client.publish(subject=item.subject, payload=item.data)
                 except Exception as e:
-                    self._logger.error(
-                        f"Failed to publish message to {item.subject}: {e}"
-                    )
+                    self._logger.error(f"Failed to publish message to {item.subject}: {e}")
                     # Avoid tight loop in case of repeated failure
                     await asyncio.sleep(1)
 
@@ -87,9 +83,7 @@ class _Publisher:
                     await self._nats_client.publish(subject=m.subject, payload=m.data)
                     flushed += 1
                 except Exception as e:
-                    self._logger.error(
-                        f"Failed to publish remaining message to {m.subject}: {e}"
-                    )
+                    self._logger.error(f"Failed to publish remaining message to {m.subject}: {e}")
             if flushed:
                 self._logger.info(f"Flushed {flushed} remaining messages before shutdown")
         except asyncio.CancelledError:
@@ -106,6 +100,8 @@ class NatsClient:
         self,
         host: str | None = None,
         access_token: str | None = None,
+        # TODO: check with Dirk, this allows all the config to pass from nova class to nats library
+        # is this really what we want
         nats_client_config: dict | None = None,
     ):
         """
@@ -189,12 +185,13 @@ class NatsClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
 
-    @property
-    def nats_client(self) -> nats.NATS:
-        """Access to the underlying NATS client for advanced operations."""
-        if self._nats_client is None:
-            raise RuntimeError("NATS client is not connected. Call connect() first.")
-        return self._nats_client
+    def is_connected(self) -> bool:
+        """Check if the NATS client is connected.
+
+        Returns:
+            bool: True if the NATS client is connected, False otherwise.
+        """
+        return self._nats_client is not None and self._nats_client.is_connected
 
     def publish_message(self, message: Message):
         """
