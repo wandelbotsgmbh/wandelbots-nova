@@ -1,6 +1,4 @@
-import json
 from contextlib import asynccontextmanager
-from datetime import datetime
 from typing import AsyncIterator, Optional
 
 from decouple import config
@@ -9,9 +7,7 @@ from fastapi import APIRouter, FastAPI
 from nova.cell.robot_cell import RobotCell
 from nova.core.nova import Nova
 from nova.logging import logger
-from nova.nats import Message
 from nova.program.function import Program
-from nova.program.runner import ProgramRun
 from nova.program.store import Program as StoreProgram
 from nova.program.store import ProgramStore
 from novax.program_manager import ProgramDetails, ProgramManager
@@ -30,23 +26,9 @@ class Novax:
         self._nova = Nova()
         self._cell = self._nova.cell(cell_id=_CELL_NAME)
         self._program_manager: ProgramManager = ProgramManager(
-            robot_cell_override=robot_cell_override, state_listener=self._state_listener
+            robot_cell_override=robot_cell_override
         )
         self._app: FastAPI | None = None
-
-    async def _state_listener(self, program_run: ProgramRun):
-        data = program_run.model_dump()
-        data["timestamp"] = datetime.now().isoformat()
-        # TODO: all valid program names are not valid subject names
-        # if we want to have subjects for each program, than we need to introduce checkt to the nova.program annotation
-        message = Message(
-            subject=f"nova.v2.cells.{_CELL_NAME}.programs",
-            data=json.dumps(data, default=str).encode(),
-        )
-        logger.info(
-            f"publishing program run message for program: {program_run.program} run: {program_run.run}"
-        )
-        await self._nova.nats.publish_message(message)
 
     @property
     def program_manager(self) -> ProgramManager:

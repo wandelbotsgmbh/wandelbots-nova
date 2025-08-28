@@ -14,6 +14,7 @@ from typing import Any
 import anyio
 from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
+from decouple import config
 from exceptiongroup import ExceptionGroup
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -22,6 +23,7 @@ from nova import Nova, api
 from nova.cell.robot_cell import RobotCell
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.events import CycleDevice
+from nova.nats.message import Message
 from nova.program.exceptions import NotPlannableError
 from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
@@ -220,6 +222,9 @@ class ProgramRunner(ABC):
             )
 
         async def _on_state_change():
+            # Always report state changes to NATS
+            await _report_state_change_to_nats(self._program_run.model_copy())
+            # Also call the user's custom callback if provided
             if on_state_change is not None:
                 await on_state_change(self._program_run.model_copy())
 
@@ -407,3 +412,22 @@ class ProgramRunner(ABC):
         The main function that runs the program. This method should be overridden by subclasses to implement the
         runner logic.
         """
+
+
+async def _report_state_change_to_nats(program_run: ProgramRun) -> None:
+    """Private function that publishes ProgramRun changes to NATS.
+
+    Creates a short-lived Nova client (context-managed) to publish the current
+    ProgramRun snapshot on the subject `nova.v2.cells.{CELL_NAME}.programs`.
+    """
+    cell_name = config("CELL_NAME", default="cell")
+    subject = f"nova.v2.cells.{cell_name}.programs"
+    try:
+        async with Nova() as nova:
+            message = Message(subject=subject, data=program_run.model_dump_json().encode())
+            logger.info(
+                f"Publishing program run state: program={program_run.program} run={program_run.run} state={program_run.state}"
+            )
+            await nova.nats.publish_message(message)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Failed to publish program run to NATS: {e}")
