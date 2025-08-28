@@ -7,13 +7,18 @@ import { NovaCodeLensProvider } from './codeLens'
 import {
   COMMAND_DEBUG_NOVA_PROGRAM,
   COMMAND_OPEN_NOVA_VIEWER,
+  COMMAND_READ_ROBOT_POSE,
   COMMAND_REFRESH_CODE_LENS,
   COMMAND_REFRESH_NOVA_VIEWER,
   COMMAND_RUN_NOVA_PROGRAM,
   COMMAND_SHOW_APP,
   VIEWER_ID,
 } from './consts'
+import { logger } from './logging'
+import { readRobotPose } from './nova/readRobotPose'
+import { NovaApi } from './novaApi'
 import { runNovaProgram } from './novaProgram'
+import { getAccessToken, getCellId, getNovaApiAddress } from './urlResolver'
 import {
   WandelbotsNovaViewerProvider,
   setupPythonScriptMonitoring,
@@ -23,7 +28,7 @@ let decorationType: vscode.TextEditorDecorationType | undefined
 let disposables: vscode.Disposable[] = []
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log('Wandelbots NOVA extension activating...')
+  logger.info('Wandelbots NOVA extension activating...')
 
   // ------------------------------
   // Wandelbots NOVA Viewer
@@ -100,9 +105,47 @@ export function activate(context: vscode.ExtensionContext) {
   // Register command to refresh CodeLens
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_REFRESH_CODE_LENS, () => {
-      console.log('Refreshing Nova CodeLens')
+      logger.info('Refreshing Nova CodeLens')
       novaCodeLensProvider.refresh()
       vscode.window.showInformationMessage('Nova CodeLens refreshed')
+    }),
+  )
+
+  // ------------------------------
+  // Wandelbots NOVA Robot Pose
+  // ------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(COMMAND_READ_ROBOT_POSE, async () => {
+      try {
+        const novaApiUrl = getNovaApiAddress()
+        if (!novaApiUrl) {
+          vscode.window.showErrorMessage(
+            'Nova API URL not configured. Please set "wandelbots-nova-viewer.novaApi" in your VSCode settings.',
+          )
+          return
+        }
+
+        const accessToken = getAccessToken()
+
+        const cellId = getCellId()
+        logger.info('cellId', cellId)
+        if (!cellId) return
+
+        const novaApi = new NovaApi()
+        logger.info('novaApi', novaApi)
+
+        await novaApi.connect({
+          apiUrl: novaApiUrl,
+          accessToken,
+          cellId,
+        })
+
+        await readRobotPose(novaApi)
+      } catch (error) {
+        logger.error('Error reading robot pose:', error)
+        vscode.window.showErrorMessage(`Failed to read robot pose: ${error}`)
+      }
     }),
   )
 

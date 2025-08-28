@@ -5,12 +5,12 @@ node_modules/**
 src/**
 .gitignore
 .yarnrc
-webpack.config.js
+esbuild.js
 vsc-extension-quickstart.md
 **/tsconfig.json
 **/eslint.config.mjs
 **/*.map
 **/*.ts
 **/.vscode-test.*
-app/**
-!app/build/**
+vitest.config.ts
+**/*.test.ts
