@@ -38,13 +38,13 @@ class ExecutionContext:
     # Maps the motion group id to the list of recorded motion lists
     # Each motion list is a path the was planned separately
     motion_group_recordings: list[list[MotionState]]
-    output: dict
+    output_data: dict[str, Any]
 
     def __init__(self, robot_cell: RobotCell, stop_event: anyio.Event):
         self._robot_cell = robot_cell
         self._stop_event = stop_event
         self.motion_group_recordings = []
-        self.output_data: dict[str, Any] = {}
+        self.output_data = {}
 
     @property
     def robot_cell(self) -> RobotCell:
@@ -76,6 +76,7 @@ class ProgramRun(BaseModel):
     start_time: dt.datetime | None = Field(None, description="Start time of the program run")
     end_time: dt.datetime | None = Field(None, description="End time of the program run")
     input_data: dict[str, Any] | None = Field(None, description="Input of the program run")
+    output_data: dict[str, Any] | None = Field(None, description="Output of the program run")
 
 
 class ProgramRunner(ABC):
@@ -86,18 +87,13 @@ class ProgramRunner(ABC):
     """
 
     def __init__(
-        self,
-        program_id: str,
-        args: dict[str, Any],
-        robot_cell_override: RobotCell | None = None,
-        simulate: bool = False,
+        self, program_id: str, args: dict[str, Any], robot_cell_override: RobotCell | None = None
     ):
         """
         Args:
             program_id (str): The unique identifier of the program.
             args (dict[str, Any]): The arguments to pass to the program.
             robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Defaults to None.
-            simulate (bool, optional): If True, the program will be simulated and not connect to NOVA. Used for testing. Defaults to False.
         """
         self._run_id = str(uuid.uuid4())
         self._program_id = program_id
@@ -114,6 +110,7 @@ class ProgramRunner(ABC):
             start_time=None,
             end_time=None,
             input_data=args,
+            output_data={},
         )
         self._thread: threading.Thread | None = None
         self._stop_event: threading.Event | None = None
@@ -387,9 +384,8 @@ class ProgramRunner(ABC):
                             f"Program {self.program_id} run {self.run_id} completed successfully"
                         )
                 finally:
-                    # write path to output
-                    # self._program_run.execution_results = execution_context.motion_group_recordings
-                    # self._program_run.output_data = execution_context.output_data
+                    # program output data
+                    self._program_run.output_data = execution_context.output_data
 
                     logger.info(
                         f"Program {self.program_id} run {self.run_id} finished. Run teardown routine..."

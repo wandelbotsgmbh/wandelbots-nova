@@ -24,18 +24,18 @@ from nova.types import MotionSettings, Pose
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name="ur",
+                name="ur10",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
                 type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             )
         ],
-        cleanup_controllers=True,
+        cleanup_controllers=False,
     ),
 )
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.controller("ur")
+        controller = await cell.controller("ur10")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
@@ -60,13 +60,11 @@ async def main():
             # It's possible to use the sequence method to add multiple actions to the trajectory. Since no settings are specified it takes
             #   the settings from the trajectory builder
             t.sequence(
-                [
-                    cartesian_ptp(target_pose),
-                    joint_ptp(home_joints),
-                    cartesian_ptp(target_pose @ Pose((50, 0, 0, 0, 0, 0))),
-                    joint_ptp(home_joints),
-                    io_write(key="tool_out[0]", value=False),
-                ]
+                cartesian_ptp(target_pose),
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ Pose((50, 0, 0, 0, 0, 0))),
+                joint_ptp(home_joints),
+                io_write(key="tool_out[0]", value=False),
             )
 
             # You can use the set(...) context manager to set settings for a block of actions

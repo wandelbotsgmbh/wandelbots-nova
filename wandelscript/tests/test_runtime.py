@@ -47,7 +47,13 @@ debug()
 """
 
     robot_cell = SimulatedRobotCell()
-    run(code, robot_cell_override=robot_cell, default_robot="0@controller", default_tcp="Flange")
+    run(
+        program_id="test",
+        program=code,
+        robot_cell_override=robot_cell,
+        default_robot="0@controller",
+        default_tcp="Flange",
+    )
     assert test_a == 1
 
 
@@ -104,9 +110,16 @@ def test_robot_code_execution(code, num_robots, expected_exception):
     )
     if expected_exception:
         with pytest.raises(expected_exception):
-            run(code, robot_cell_override=robot_cell, default_tcp="Flange")
+            run(
+                program_id="test",
+                program=code,
+                robot_cell_override=robot_cell,
+                default_tcp="Flange",
+            )
     else:
-        result = run(code, robot_cell_override=robot_cell, default_tcp="Flange")
+        result = run(
+            program_id="test", program=code, robot_cell_override=robot_cell, default_tcp="Flange"
+        )
         assert result is not None
 
 

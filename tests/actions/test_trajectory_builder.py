@@ -92,3 +92,19 @@ def test_trajectory_builder(trajectory):
     for idx, (action, expected) in enumerate(zip(actions, expected_settings)):
         actual = get_settings(action)
         assert actual == expected, f"Action {idx} has wrong settings: {actual} != {expected}"
+
+
+def test_trajectory_builder_without_settings():
+    """Test that TrajectoryBuilder works when initialized without settings."""
+    from nova.actions.motions import joint_ptp
+    from nova.types import Pose
+
+    tb = TrajectoryMacher()
+
+    tb.move(joint_ptp(Pose((0, 0, 0, 0, 0, 0))))
+
+    assert len(tb.actions) == 1
+
+    motion = tb.actions[0]
+    assert motion.settings is not None
+    assert motion.settings.tcp_velocity_limit == 50

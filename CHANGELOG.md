@@ -1,6 +1,114 @@
 # CHANGELOG
 
 
+## v2.13.0 (2025-08-28)
+
+### Features
+
+- **NDX-242**: Vscode extension to read the current robot pose and insert at cursor (#264)
+  ([#264](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/264),
+  [`bb05a81`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bb05a81c9b2335051aaf16723e3b4bf14c22c8db))
+
+
+## v2.12.2 (2025-08-27)
+
+### Bug Fixes
+
+- Preserve hash characters in KUKA IO names (#266)
+  ([#266](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/266),
+  [`f606baf`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f606baf6c9fc9192e1a5a58b2d2994b23f221c53))
+
+
+## v2.12.1 (2025-08-25)
+
+### Bug Fixes
+
+- **NDX-250**: Prevent index error when TrajectoryBuilder initialized without settings (#265)
+  ([#265](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/265),
+  [`8dbe7c6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8dbe7c649ec75a8e4803ac2d2d62ecb4cec6ac55))
+
+
+## v2.12.0 (2025-08-22)
+
+### Features
+
+- **NDX-216**: Upgrade generated Wandelbots NOVA API client to 25.7 (#263)
+  ([#263](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/263),
+  [`f571aa9`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f571aa98f4182aada61c77fae5407c6d09607c83))
+
+
+## v2.11.0 (2025-08-19)
+
+### Features
+
+- **NDX-227**: Added vscode extension with basic setup to wandelbots-nova (#261)
+  ([#261](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/261),
+  [`f1f38a1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f1f38a192b5f69a3bd4f5cefc869795137b17aa5))
+
+
+## v2.10.0 (2025-08-19)
+
+### Features
+
+- Update rerun-sdk version to 0.24.1 in optional dependencies (#262)
+  ([#262](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/262),
+  [`bce59ca`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bce59caf66d172c025deee7a246e427628420c48))
+
+
+## v2.9.0 (2025-08-14)
+
+### Features
+
+- **NDX-232**: TrajectoryBuilder .sequence should handle *args (#260)
+  ([#260](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/260),
+  [`bce1239`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bce1239f03ff2b3a0cfba520f8bcf856446d9a0d))
+
+
+## v2.8.7 (2025-08-13)
+
+### Bug Fixes
+
+- **NDX-172**: Fixed missing api autocompletion in IDE (#259)
+  ([#259](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/259),
+  [`d3c837e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d3c837ee936870f8640a8ca6c938ed5e27a71f1b))
+
+
+## v2.8.6 (2025-08-12)
+
+### Chores
+
+- Upgraded dev dependencies (#258)
+  ([#258](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/258),
+  [`d8b09fa`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d8b09fad1628e7d60e6f6c069cc75b7287f97ddc))
+
+
+## v2.8.5 (2025-08-12)
+
+### Chores
+
+- **deps**: Bump actions/checkout from 4 to 5 (#253)
+  ([#253](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/253),
+  [`9fe9029`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9fe9029d6ab9ff375bc55168c1b8d05150a6e57c))
+
+
+## v2.8.4 (2025-08-12)
+
+### Bug Fixes
+
+- Re-enabled Wandelscript unit tests & fixed them (#257)
+  ([#257](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/257),
+  [`9e7bd5a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9e7bd5a7aab7a28f00c340e755426fdd88d236f5))
+
+
+## v2.8.3 (2025-08-12)
+
+### Chores
+
+- **deps**: Update typer[all] requirement from <0.16,>=0.12 to >=0.12,<0.17 (#204)
+  ([#204](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/204),
+  [`100354d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/100354de31079b68b1b2fde307033b5caa8cf8ed))
+
+
 ## v2.8.2 (2025-07-31)
 
 ### Bug Fixes

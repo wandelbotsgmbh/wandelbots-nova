@@ -9,17 +9,11 @@ from nova.events import CycleDevice
 from nova.program import Program
 from nova.program import ProgramRunner as NovaProgramRunner
 from nova.program.runner import ExecutionContext as NovaExecutionContext
-from nova.program.runner import ProgramRun
 from wandelscript.datatypes import ElementType
 from wandelscript.ffi import ForeignFunction
 from wandelscript.ffi_loader import load_foreign_functions
 from wandelscript.metamodel import Program as WandelscriptProgram
 from wandelscript.runtime import ExecutionContext
-
-
-# TODO: how to return this in the end?
-class WandelscriptProgramRun(ProgramRun):
-    store: dict
 
 
 class ProgramRunner(NovaProgramRunner):

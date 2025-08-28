@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import Optional, Sequence
+from typing import Optional
 
 from nova.actions import Action
 from nova.actions.motions import Motion
@@ -14,7 +14,7 @@ class TrajectoryBuilder:
             settings (Optional[MotionSettings], optional): The global settings to use for the trajectory. Defaults to None.
         """
         self._actions: list[Action] = []
-        self._settings_stack: list[MotionSettings] = [] if settings is None else [settings]
+        self._settings_stack: list[MotionSettings] = [settings or MotionSettings()]
 
     def __enter__(self):
         return self
@@ -40,13 +40,27 @@ class TrajectoryBuilder:
         """Add a action to the trajectory."""
         self._actions.append(action)
 
-    def sequence(self, actions: Sequence[Action]):
-        """Add a sequence of actions to the trajectory."""
-        for action in actions:
-            if isinstance(action, Motion):
-                self.move(action)
+    def sequence(self, *args: Action | list[Action] | tuple[Action, ...]):
+        """Add a sequence of actions to the trajectory.
+
+        Args:
+            *args: Actions can be passed as individual Action objects, or as lists/tuples of Actions.
+                  For example: sequence(action1, action2) or sequence([action1, action2])
+        """
+        for arg in args:
+            if isinstance(arg, (list, tuple)):
+                # Handle list/tuple of actions
+                for action in arg:
+                    if isinstance(action, Motion):
+                        self.move(action)
+                    else:
+                        self.trigger(action)
             else:
-                self.trigger(action)
+                # Handle individual action
+                if isinstance(arg, Motion):
+                    self.move(arg)
+                else:
+                    self.trigger(arg)
 
     @contextmanager
     def set(self, settings: MotionSettings):

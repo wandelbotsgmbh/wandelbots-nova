@@ -9,7 +9,7 @@ This library provides an SDK for the Wandelbots NOVA API.
 
 The SDK will help you to build your own apps and services using Python on top of Wandelbots NOVA and makes programming a robot as easy as possible.
 
-https://github.com/user-attachments/assets/f6157e4b-eea8-4b96-b302-1f3864ae44a9
+[417768496-f6157e4b-eea8-4b96-b302-1f3864ae44a9.webm](https://github.com/user-attachments/assets/ca7de6ba-c78d-414f-ae8f-f76d0890caf3)
 
 ## About
 
@@ -51,6 +51,31 @@ Download the robot models to visualize them in the rerun viewer.
 ```bash
 uv run download-models
 ```
+
+### Environment variables for NOVA configuration
+
+Copy the provided `.env.template` file and rename it to `.env`:
+
+```bash
+cp .env.template .env
+```
+
+Open the `.env` file in a text editor and fill in the values. Here's what each variable does:
+
+| Variable            | Description                                                                         | Required | Default | Example                                          |
+| ------------------- | ----------------------------------------------------------------------------------- | -------- | ------- | ------------------------------------------------ |
+| `NOVA_API`          | Base URL or hostname of the Wandelbots NOVA server instance                         | Yes      | None    | `https://nova.example.com` or `http://172.0.0.1` |
+| `NOVA_USERNAME`     | Username credential used for authentication with the NOVA service                   | Yes\*    | None    | `my_username`                                    |
+| `NOVA_PASSWORD`     | Password credential used in conjunction with `NOVA_USERNAME`                        | Yes\*    | None    | `my_password`                                    |
+| `NOVA_ACCESS_TOKEN` | Pre-obtained access token for Wandelbots NOVA (if using token-based authentication) | Yes\*    | None    | `eyJhbGciOi...`                                  |
+
+> **Note:**
+> You can authenticate with Wandelbots NOVA using either **username/password credentials** or a **pre-obtained access token**, depending on your setup and security model:
+>
+> - **Username/password authentication**: Ensure both `NOVA_USERNAME` and `NOVA_PASSWORD` are set, and leave `NOVA_ACCESS_TOKEN` unset.
+> - **Token-based authentication**: Ensure `NOVA_ACCESS_TOKEN` is set, and leave `NOVA_USERNAME` and `NOVA_PASSWORD` unset.
+>
+> **Use only one method at a time**. If both are set, token-based authentication takes precedence.
 
 ## Wandelscript
 
@@ -491,31 +516,6 @@ Using PEP 508 direct URL syntax:
 ```toml
 wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/http-prefix
 ```
-
-### Environment variables for NOVA configuration
-
-Copy the provided `.env.template` file and rename it to `.env`:
-
-```bash
-cp .env.template .env
-```
-
-Open the `.env` file in a text editor and fill in the values. Here's what each variable does:
-
-| Variable            | Description                                                                         | Required | Default | Example                                          |
-| ------------------- | ----------------------------------------------------------------------------------- | -------- | ------- | ------------------------------------------------ |
-| `NOVA_API`          | Base URL or hostname of the Wandelbots NOVA server instance                         | Yes      | None    | `https://nova.example.com` or `http://172.0.0.1` |
-| `NOVA_USERNAME`     | Username credential used for authentication with the NOVA service                   | Yes\*    | None    | `my_username`                                    |
-| `NOVA_PASSWORD`     | Password credential used in conjunction with `NOVA_USERNAME`                        | Yes\*    | None    | `my_password`                                    |
-| `NOVA_ACCESS_TOKEN` | Pre-obtained access token for Wandelbots NOVA (if using token-based authentication) | Yes\*    | None    | `eyJhbGciOi...`                                  |
-
-> **Note:**
-> You can authenticate with Wandelbots NOVA using either **username/password credentials** or a **pre-obtained access token**, depending on your setup and security model:
->
-> - **Username/password authentication**: Ensure both `NOVA_USERNAME` and `NOVA_PASSWORD` are set, and leave `NOVA_ACCESS_TOKEN` unset.
-> - **Token-based authentication**: Ensure `NOVA_ACCESS_TOKEN` is set, and leave `NOVA_USERNAME` and `NOVA_PASSWORD` unset.
->
-> **Use only one method at a time**. If both are set, token-based authentication takes precedence.
 
 ## Release process
 
