@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.13.0 (2025-08-28)
+
+### Features
+
+- **NDX-242**: Vscode extension to read the current robot pose and insert at cursor (#264)
+  ([#264](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/264),
+  [`bb05a81`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bb05a81c9b2335051aaf16723e3b4bf14c22c8db))
+
+
 ## v2.12.2 (2025-08-27)
 
 ### Bug Fixes
