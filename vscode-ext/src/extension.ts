@@ -18,7 +18,7 @@ import { logger } from './logging'
 import { readRobotPose } from './nova/readRobotPose'
 import { NovaApi } from './novaApi'
 import { runNovaProgram } from './novaProgram'
-import { getCellId, getNovaApiAddress } from './urlResolver'
+import { getAccessToken, getCellId, getNovaApiAddress } from './urlResolver'
 import {
   WandelbotsNovaViewerProvider,
   setupPythonScriptMonitoring,
@@ -118,7 +118,6 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_READ_ROBOT_POSE, async () => {
       try {
-        // Get configuration from VSCode settings
         const novaApiUrl = getNovaApiAddress()
         if (!novaApiUrl) {
           vscode.window.showErrorMessage(
@@ -127,12 +126,7 @@ export function activate(context: vscode.ExtensionContext) {
           return
         }
 
-        /*if (!accessToken) {
-          vscode.window.showErrorMessage(
-            'Nova access token not configured. Please set "wandelbots-nova-viewer.accessToken" in your VSCode settings.',
-          )
-          return
-        }*/
+        const accessToken = getAccessToken()
 
         const cellId = getCellId()
         logger.info('cellId', cellId)
@@ -143,7 +137,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         await novaApi.connect({
           apiUrl: novaApiUrl,
-          accessToken: 'test-token',
+          accessToken,
           cellId,
         })
 
@@ -151,8 +145,6 @@ export function activate(context: vscode.ExtensionContext) {
       } catch (error) {
         logger.error('Error reading robot pose:', error)
         vscode.window.showErrorMessage(`Failed to read robot pose: ${error}`)
-      } finally {
-        // novaApi.dispose()
       }
     }),
   )

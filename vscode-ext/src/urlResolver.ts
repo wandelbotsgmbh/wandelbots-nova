@@ -1,6 +1,7 @@
 import * as vscode from 'vscode'
 
 import {
+  SETTINGS_ACCESS_TOKEN,
   SETTINGS_CELL_ID,
   SETTINGS_NOVA_API,
   SETTINGS_RERUN_ADDRESS,
@@ -45,7 +46,6 @@ export function getProtocolFromEnvironment(): 'http://' | 'https://' {
  */
 export function getNovaApiAddress(): string {
   try {
-    // Configured instance?
     const config = vscode.workspace.getConfiguration(VIEWER_ID)
     const novaApi = config.get<string>(SETTINGS_NOVA_API, '')
 
@@ -122,6 +122,12 @@ export function getNovaApiAddress(): string {
     const protocol = getProtocolFromEnvironment()
     return `${protocol}localhost`
   }
+}
+
+export function getAccessToken(): string {
+  const config = vscode.workspace.getConfiguration(VIEWER_ID)
+  const accessToken = config.get<string>(SETTINGS_ACCESS_TOKEN, '')
+  return accessToken
 }
 
 export function getCellId(): string {
