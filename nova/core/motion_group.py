@@ -380,21 +380,21 @@ class MotionGroup(AbstractRobot):
             cell=self._cell, motion_group_id=self.motion_group_id
         )
         joints_velocities = [MAX_JOINT_VELOCITY_PREPARE_MOVE] * number_of_joints
-        movement_stream = await self.move_to_start_position(joints_velocities, load_plan_response)
+        # movement_stream = await self.move_to_start_position(joints_velocities, load_plan_response)
 
-        # If there's an initial consumer, feed it the data
-        async for move_to_response in movement_stream:
-            # TODO: refactor
-            if (
-                move_to_response.state is None
-                or move_to_response.state.motion_groups is None
-                or len(move_to_response.state.motion_groups) == 0
-                or move_to_response.move_response is None
-                or move_to_response.move_response.current_location_on_trajectory is None
-            ):
-                continue
+        # # If there's an initial consumer, feed it the data
+        # async for move_to_response in movement_stream:
+        #     # TODO: refactor
+        #     if (
+        #         move_to_response.state is None
+        #         or move_to_response.state.motion_groups is None
+        #         or len(move_to_response.state.motion_groups) == 0
+        #         or move_to_response.move_response is None
+        #         or move_to_response.move_response.current_location_on_trajectory is None
+        #     ):
+        #         continue
 
-            yield move_to_response
+        #     yield move_to_response
 
         controller = movement_controller(
             MovementControllerContext(
@@ -406,9 +406,10 @@ class MotionGroup(AbstractRobot):
         def stop_condition(response: wb.models.ExecuteTrajectoryResponse) -> bool:
             instance = response.actual_instance
             # Stop when standstill indicates motion ended
-            return (
-                isinstance(instance, wb.models.Standstill)
-                and instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED
+            return isinstance(instance, wb.models.Standstill) and (
+                instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED
+                or instance.standstill.reason
+                == wb.models.StandstillReason.REASON_USER_PAUSED_MOTION
             )
 
         execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
@@ -419,6 +420,9 @@ class MotionGroup(AbstractRobot):
         )
         async for execute_response in execute_response_streaming_controller:
             yield execute_response
+        from icecream import ic
+
+        ic()
         await execution_task
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:

@@ -72,6 +72,7 @@ async def main():
                 lin(current_pose @ Pose((0, 0, 0, 0, 0, 0))),
                 # jnt(home_joints),
             ]
+            ic(actions)
 
         # you can update the settings of the action
         for action in actions:
@@ -114,28 +115,6 @@ async def main():
                     ic("Unknown command")
 
         sub = await nats_client.subscribe("trajectory-cursor", cb=cmd_sub_handler)
-
-        async def test_driver():
-            trajectory_cursor.pause_at(0.7)
-            ic("FORWARD")
-            trajectory_cursor.forward()
-            await asyncio.sleep(2.5)
-            ic("FORWARD")
-            trajectory_cursor.forward()
-            await asyncio.sleep(2)
-            ic("PAUSE")
-            trajectory_cursor.pause()
-            await asyncio.sleep(1)
-            ic("BACKWARD")
-            trajectory_cursor.backward()
-            await asyncio.sleep(4)
-            ic("PAUSE")
-            trajectory_cursor.pause()
-            ic("FORWARD")
-            trajectory_cursor.forward()
-            await asyncio.sleep(4)
-            trajectory_cursor.detach()
-            ic("DRIVER DONE")
 
         async def runtime_monitor(interval=0.5):
             start_time = asyncio.get_event_loop().time()

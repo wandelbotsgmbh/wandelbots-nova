@@ -1,10 +1,12 @@
 import asyncio
 import bisect
+from enum import Enum, auto
 from functools import singledispatch
 from math import ceil, floor
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import wandelbots_api_client as wb
+from aiohttp_retry import dataclass
 from icecream import ic
 
 from nova.actions import MovementControllerContext
@@ -172,18 +174,46 @@ def speed_up(
     return movement_controller
 
 
+class OperationType(Enum):
+    FORWARD = auto()
+    BACKWARD = auto()
+    FORWARD_TO = auto()
+    BACKWARD_TO = auto()
+    FORWARD_TO_NEXT_ACTION = auto()
+    BACKWARD_TO_PREVIOUS_ACTION = auto()
+    PAUSE = auto()
+
+
+@dataclass
+class OperationResult:
+    operation_type: OperationType
+    # status: OperationStatus
+    target_location: Optional[float] = None
+    start_location: Optional[float] = None
+    final_location: Optional[float] = None
+    overshoot: Optional[float] = None
+    error: Optional[Exception] = None
+
+
 class TrajectoryCursor:
-    def __init__(self, joint_trajectory: wb.models.JointTrajectory):
+    def __init__(self, joint_trajectory: wb.models.JointTrajectory, initial_location: float):
         self.joint_trajectory = joint_trajectory
         self._command_queue = asyncio.Queue()
         self._breakpoints = []
         self._COMMAND_QUEUE_SENTINAL = object()
-        self._current_location = 0.0
+        self._current_location = initial_location
+        self._overshoot = 0.0
         self._target_location = self.end_location
+
+        self._current_operation_future: Optional[asyncio.Future[OperationResult]] = None
+        self._current_operation_type: Optional[OperationType] = None
+        self._current_target_location: Optional[float] = None
+        self._current_start_location: Optional[float] = None
 
     def __call__(self, context: MovementControllerContext):
         self.context = context
         self.combined_actions: CombinedActions = context.combined_actions
+        # self.forward_to_next_action()
         return self.cntrl
 
     @property
@@ -196,8 +226,10 @@ class TrajectoryCursor:
         # How to pause at an exact location? (will be implemented by Motion Control)
         bisect.insort(self._breakpoints, location)
 
-    def forward(self, playback_speed_in_percent: int | None = None):
+    async def forward(self, playback_speed_in_percent: int | None = None):
         # should idempotently move forward
+        future = self._start_operation(OperationType.FORWARD)
+
         if playback_speed_in_percent is not None:
             self._command_queue.put_nowait(
                 wb.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
@@ -210,19 +242,20 @@ class TrajectoryCursor:
                 pause_on_io=None,
             )
         )
+        await future  # TODO will this raise?
 
-    def forward_to(self, location: float, playback_speed_in_percent: int | None = None):
+    async def forward_to(self, location: float, playback_speed_in_percent: int | None = None):
         # currently we don't complain about invalid locations as long as they are not before the current location
         if location < self._current_location:
             raise ValueError("Cannot move forward to a location before the current location")
         self._target_location = location
-        self.forward(playback_speed_in_percent=playback_speed_in_percent)
+        await self.forward(playback_speed_in_percent=playback_speed_in_percent)
 
-    def forward_to_next_action(self, playback_speed_in_percent: int | None = None):
-        index = floor(self._current_location) + 1
-        ic(self._current_location, index, len(self.combined_actions))
+    async def forward_to_next_action(self, playback_speed_in_percent: int | None = None):
+        index = floor(self._current_location - self._overshoot) + 1
+        ic(self._current_location, self._overshoot, index, len(self.combined_actions))
         if index < len(self.combined_actions):
-            self.forward_to(index, playback_speed_in_percent=playback_speed_in_percent)
+            await self.forward_to(index, playback_speed_in_percent=playback_speed_in_percent)
         else:
             raise ValueError("No next action found after current location.")
 
@@ -248,8 +281,8 @@ class TrajectoryCursor:
         self.backward(playback_speed_in_percent=playback_speed_in_percent)
 
     def backward_to_previous_action(self, playback_speed_in_percent: int | None = None):
-        index = ceil(self._current_location) - 1
-        ic(self._current_location, index, len(self.combined_actions))
+        index = ceil(self._current_location - self._overshoot) - 1
+        ic(self._current_location, self._overshoot, index, len(self.combined_actions))
         if index >= 0:
             self.backward_to(index, playback_speed_in_percent=playback_speed_in_percent)
         else:
@@ -268,7 +301,9 @@ class TrajectoryCursor:
         self, response_stream: ExecuteTrajectoryResponseStream
     ) -> ExecuteTrajectoryRequestStream:
         self._response_stream = response_stream
-        async for request in init_movement_gen(self.context.motion_id, response_stream):
+        async for request in init_movement_gen(
+            self.context.motion_id, response_stream, self._current_location
+        ):
             yield request
 
         self._response_consumer_task: asyncio.Task[None] = asyncio.create_task(
@@ -279,7 +314,48 @@ class TrajectoryCursor:
             ic()
             yield request
         ic()
-        await self._response_consumer_task  # Where to put?
+        self._response_consumer_task.cancel()
+        ic()
+        try:
+            await self._response_consumer_task  # Where to put?
+        except asyncio.CancelledError:
+            pass
+        ic()
+
+    def _start_operation(
+        self, operation_type: OperationType, target_location: Optional[float] = None
+    ) -> asyncio.Future[OperationResult]:
+        """Start a new operation, returning a Future that will be resolved when the operation completes."""
+        if self._current_operation_future and not self._current_operation_future.done():
+            # Cancel the current operation
+            self._current_operation_future.cancel()
+
+        self._current_operation_future = asyncio.Future()
+        self._current_operation_type = operation_type
+        self._current_target_location = target_location
+        self._current_start_location = self._current_location
+        self._interrupt_requested = False
+        return self._current_operation_future
+
+    def _complete_operation(self, error: Optional[Exception] = None):
+        """Complete the current operation with the given status."""
+        if not self._current_operation_future or self._current_operation_future.done():
+            return
+
+        result = OperationResult(
+            operation_type=self._current_operation_type,
+            # status=status,
+            target_location=self._current_target_location,
+            start_location=self._current_start_location,
+            final_location=self._current_location,
+            overshoot=self._overshoot,
+            error=error,
+        )
+
+        if error:
+            self._current_operation_future.set_exception(error)
+        else:
+            self._current_operation_future.set_result(result)
 
     async def _request_loop(self):
         while True:
@@ -292,6 +368,7 @@ class TrajectoryCursor:
             yield command
             # yield await self._command_queue.get()
             self._command_queue.task_done()
+        ic()
 
     async def _response_consumer(self):
         last_movement = None
@@ -310,15 +387,13 @@ class TrajectoryCursor:
                 elif isinstance(instance, wb.models.Standstill):
                     match instance.standstill.reason:
                         case wb.models.StandstillReason.REASON_USER_PAUSED_MOTION:
-                            # debugpy.breakpoint()
-                            # pdb.set_trace()
-                            # CursorPdb(self).set_trace(sys._getframe())
-                            ic()
-                            # self.forward()
+                            ic(self._current_location, self._target_location, self._overshoot)
+                            self._overshoot = self._current_location - self._target_location
+                            self._complete_operation()
                         case wb.models.StandstillReason.REASON_MOTION_ENDED:
                             # self.context.movement_consumer(None)
                             ic()
-                            break
+                            # break
                 else:
                     ic(instance)
                     # Handle other types of instances if needed
@@ -347,7 +422,6 @@ class TrajectoryCursor:
             if last_location <= self._target_location < curr_location:
                 ic(last_location, self._target_location, curr_location)
                 self.pause()
-                self._target_location = self.end_location  # reset target location
         else:
             # moving backwards
             if last_location > self._target_location >= curr_location:
@@ -355,9 +429,13 @@ class TrajectoryCursor:
                 self.pause()
 
 
-async def init_movement_gen(motion_id, response_stream) -> ExecuteTrajectoryRequestStream:
+async def init_movement_gen(
+    motion_id, response_stream, initial_location
+) -> ExecuteTrajectoryRequestStream:
     # The first request is to initialize the movement
-    yield wb.models.InitializeMovementRequest(trajectory=motion_id, initial_location=0)  # type: ignore
+    yield wb.models.InitializeMovementRequest(
+        trajectory=motion_id, initial_location=initial_location
+    )  # type: ignore
 
     # then we get the response
     initialize_movement_response = await anext(response_stream)
