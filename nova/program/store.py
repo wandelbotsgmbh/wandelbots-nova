@@ -99,10 +99,9 @@ class _KeyValueStore(Generic[_T]):
         """Check if client is connected"""
         return self._nats_client.is_connected()
 
-    @property
     async def _key_value(self) -> KeyValue:
         """Get the KeyValue store.
-        if nats_client is not connected, connect will be called.
+        If NATS client is not connected, connect will be called.
 
         Returns:
             KeyValue: The NATS JetStream KeyValue store instance.
@@ -110,9 +109,6 @@ class _KeyValueStore(Generic[_T]):
         Raises:
             RuntimeError: If the bucket doesn't exist and no nats_kv_config was provided.
         """
-        if self._kv_bucket is not None:
-            return self._kv_bucket
-
         async with self._bucket_lock:
             if self._kv_bucket is not None:
                 return self._kv_bucket
@@ -140,12 +136,12 @@ class _KeyValueStore(Generic[_T]):
 
     async def put(self, key: str, model: _T) -> None:
         """Store a Pydantic model in NATS KV store"""
-        kv = await self._key_value
+        kv = await self._key_value()
         await kv.put(key, model.model_dump_json().encode())
 
     async def delete(self, key: str) -> None:
         """Delete a key from NATS KV store"""
-        kv = await self._key_value
+        kv = await self._key_value()
         try:
             await kv.delete(key)
         except KvKeyError:
@@ -153,7 +149,7 @@ class _KeyValueStore(Generic[_T]):
 
     async def get(self, key: str) -> _T | None:
         """Get a specific model from NATS KV store"""
-        kv = await self._key_value
+        kv = await self._key_value()
         try:
             entry = await kv.get(key)
             if entry.value is None:
@@ -165,7 +161,7 @@ class _KeyValueStore(Generic[_T]):
 
     async def get_all(self) -> list[_T]:
         """Get all models from NATS KV store"""
-        kv = await self._key_value
+        kv = await self._key_value()
         try:
             keys = await kv.keys()
         except NoKeysError:

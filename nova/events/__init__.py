@@ -282,18 +282,11 @@ async def cycle_event_handler(
     """
     logger.debug(f"NATS event handler called with message: {message}, sender: {sender}")
 
-    if nats_client is None:
-        logger.warning("No nats client provided to cycle_event_handler, skipping NATS publish")
-        return
-
     event_type = message.event_type
     logger.info(f"NATS event handler received {event_type} event")
 
     try:
         # Use the provided nats client
-        if nats_client is None:
-            logger.warning("No nats client provided, skipping NATS publish")
-            return
 
         subject = f"nova.v2.cells.{message.cell}.cycle"
         nats_message = NatsMessage(subject=subject, data=message.model_dump_json().encode())

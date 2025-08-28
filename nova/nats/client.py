@@ -9,11 +9,11 @@ from typing import Awaitable, Callable
 
 import nats
 from decouple import config
+from nats.aio.client import Client as NatsClient
 from nats.aio.msg import Msg as NatsLibMessage
 
 from nova.logging import logger
 from nova.nats.message import Message
-
 
 # Internal publisher removed; we publish directly to NATS
 
@@ -40,8 +40,8 @@ class NatsClient:
         self._host = host
         self._access_token = access_token
         self._nats_config = nats_client_config or {}
-        self._nats_client = None
-        self._nats_connection_string = None
+        self._nats_client: NatsClient | None = None
+        self._nats_connection_string: str = ""
         self._connect_lock = asyncio.Lock()
         self._init_nats_client()
 

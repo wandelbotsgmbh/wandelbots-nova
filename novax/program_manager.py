@@ -164,7 +164,6 @@ class ProgramManager:
         # Start the runner - state changes are handled internally by ProgramRunner
         runner.start(sync=sync, on_state_change=on_state_change)
         return runner.program_run
-        return runner.program_run
 
     async def stop_program(self, program_id: str):
         """Stop a running program"""
