@@ -537,10 +537,18 @@ class ApiGateway:
 
 class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
     class Configuration(ConfigurablePeriphery.Configuration):
-        pass
+        nova_api: str
+        nova_access_token: str | None = None
+        nova_username: str | None = None
+        nova_password: str | None = None
 
     _nova_api: ApiGateway
 
-    def __init__(self, configuration: Configuration, api_gateway: ApiGateway, **kwargs):
-        self._nova_api = api_gateway
+    def __init__(self, configuration: Configuration, **kwargs):
+        self._nova_api = ApiGateway(
+            host=configuration.nova_api,
+            access_token=configuration.nova_access_token,
+            username=configuration.nova_username,
+            password=configuration.nova_password,
+        )
         super().__init__(configuration, **kwargs)

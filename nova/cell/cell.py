@@ -36,9 +36,14 @@ class Cell:
     def _create_controller(self, controller_id: str) -> Controller:
         return Controller(
             configuration=Controller.Configuration(
-                cell_id=self._cell_id, controller_id=controller_id, id=controller_id
-            ),
-            api_gateway=self._api_gateway,
+                cell_id=self._cell_id,
+                controller_id=controller_id,
+                id=controller_id,
+                nova_api=self._api_gateway._host,
+                nova_access_token=self._api_gateway._access_token,
+                nova_username=self._api_gateway._username,
+                nova_password=self._api_gateway._password,
+            )
         )
 
     async def add_controller(
