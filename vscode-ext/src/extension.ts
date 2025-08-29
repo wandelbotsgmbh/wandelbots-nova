@@ -6,6 +6,7 @@ import * as vscode from 'vscode'
 import { NovaCodeLensProvider } from './codeLens'
 import {
   COMMAND_DEBUG_NOVA_PROGRAM,
+  COMMAND_FINE_TUNE_NOVA_PROGRAM,
   COMMAND_OPEN_NOVA_VIEWER,
   COMMAND_READ_ROBOT_POSE,
   COMMAND_REFRESH_CODE_LENS,
@@ -99,6 +100,16 @@ export function activate(context: vscode.ExtensionContext) {
       COMMAND_DEBUG_NOVA_PROGRAM,
       async (uri, functionName, line) => {
         await runNovaProgram(uri, functionName, true)
+      },
+    ),
+  )
+
+  // Register command to fine-tune Nova program
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      COMMAND_FINE_TUNE_NOVA_PROGRAM,
+      async (uri, functionName, line) => {
+        await runNovaProgram(uri, functionName, false, true)
       },
     ),
   )

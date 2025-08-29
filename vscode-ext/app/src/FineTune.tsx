@@ -11,16 +11,7 @@ import {
   Cpu,
 } from "lucide-react";
 
-/**
- * Single-file React + Tailwind UI inspired by the screenshot.
- * - Dark theme with purple accents
- * - All components live in this file for now (can be split later)
- * - Filled with mock data and light interactivity
- */
 
-/****************************
- * Utility UI Primitives
- ****************************/
 const Card = ({ className = "", children }) => (
   <div
     className={
