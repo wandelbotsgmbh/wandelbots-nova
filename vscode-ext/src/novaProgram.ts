@@ -18,11 +18,13 @@ interface PythonExtensionAPI {
  * @param uri - File URI
  * @param functionName - Name of the function to run
  * @param debug - Whether to run in debug mode
+ * @param fineTune - Whether to run with trajectory tuning enabled
  */
 export async function runNovaProgram(
   uri: vscode.Uri,
   functionName: string,
   debug: boolean,
+  fineTune: boolean = false,
 ): Promise<void> {
   try {
     const filePath = uri.fsPath
@@ -83,6 +85,9 @@ export async function runNovaProgram(
         program: filePath,
         console: 'integratedTerminal',
         cwd: workspaceFolder.uri.fsPath,
+        env: {
+          ENABLE_TRAJECTORY_TUNER: '1'
+        }
       }
 
       await vscode.debug.startDebugging(workspaceFolder, debugConfig)
@@ -124,10 +129,25 @@ if inspect.iscoroutine(result):
     )
     fs.writeFileSync(tempFilePath, tempFileContent, { encoding: 'utf8' })
 
-    const command = `"${pythonPath}" "${tempFilePath}"`
-    vscode.window.showInformationMessage(
-      `Running Nova program: ${functionName}`,
-    )
+    let command = `"${pythonPath}" "${tempFilePath}"`
+
+    if (fineTune) {
+      // Set environment variable for trajectory tuning
+      if (process.platform === 'win32') {
+        // Windows: use set command
+        command = `set ENABLE_TRAJECTORY_TUNER=1 && ${command}`
+      } else {
+        // Unix-like systems (macOS, Linux): use export
+        command = `ENABLE_TRAJECTORY_TUNER=1 ${command}`
+      }
+      vscode.window.showInformationMessage(
+        `Running Nova program with trajectory tuning: ${functionName}`,
+      )
+    } else {
+      vscode.window.showInformationMessage(
+        `Running Nova program: ${functionName}`,
+      )
+    }
 
     // Clean up temp file after a delay
     setTimeout((): void => {

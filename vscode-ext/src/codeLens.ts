@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 
-import { COMMAND_DEBUG_NOVA_PROGRAM, COMMAND_RUN_NOVA_PROGRAM } from './consts'
+import { COMMAND_DEBUG_NOVA_PROGRAM, COMMAND_FINE_TUNE_NOVA_PROGRAM, COMMAND_RUN_NOVA_PROGRAM } from './consts'
 
 /**
  * CodeLens provider for Nova programs
@@ -181,9 +181,17 @@ export class NovaCodeLensProvider implements vscode.CodeLensProvider {
           arguments: [document.uri, functionName, startLine],
         }
 
+        // Add "Fine-Tune" button
+        const fineTuneCommand: vscode.Command = {
+          title: '🎯 Fine-Tune Trajectory',
+          command: COMMAND_FINE_TUNE_NOVA_PROGRAM,
+          arguments: [document.uri, functionName, startLine],
+        }
+
         codeLenses.push(
           new vscode.CodeLens(range, runCommand),
           new vscode.CodeLens(range, debugCommand),
+          new vscode.CodeLens(range, fineTuneCommand),
         )
 
         console.log(`Added CodeLens for function: ${functionName}`)
