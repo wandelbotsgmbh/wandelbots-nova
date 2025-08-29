@@ -1,16 +1,24 @@
 from abc import ABC
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from blinker import signal
 from pydantic import BaseModel, Field
 
 from nova.cell.cell import Cell
+from nova.cell.robot_cell import Device, OutputDevice
+from nova.logging import logger
+from nova.nats import Message as NatsMessage
+from nova.nats import NatsClient
 
+# TODO: when connect is called on multiple nova instances, every cycle.start triggers multiple cycle events
+# TODO: check with Dirk
 cycle_started = signal("cycle_started")
 cycle_finished = signal("cycle_finished")
 cycle_failed = signal("cycle_failed")
+
+_NATS_CYCLE_SUBJECT = "nova.v2.cells.{cell}.cycle"
 
 
 class Timer:
@@ -41,6 +49,17 @@ class Timer:
 
     def is_running(self) -> bool:
         return self.start_time is not None and self.stop_time is None
+
+
+class CycleDevice(OutputDevice, Device):
+    def __init__(self, cell: Cell):
+        super().__init__()
+        self._cycle = Cycle(cell=cell)
+
+    async def write(self, key, _):
+        if hasattr(self._cycle, key):
+            method = getattr(self._cycle, key)
+            await method()
 
 
 class Cycle:
@@ -83,8 +102,9 @@ class Cycle:
 
     def __init__(self, cell: Cell):
         self.cycle_id: UUID | None = None
-        self._cell_id = cell.cell_id
         self._timer = Timer()
+        self._cell_id = cell.cell_id
+        self._cycle_subject = _NATS_CYCLE_SUBJECT.format(cell=self._cell_id)
 
     async def start(self) -> datetime:
         """
@@ -106,7 +126,15 @@ class Cycle:
 
         self.cycle_id = uuid4()
         event = CycleStartedEvent(cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id)
-        await cycle_started.send_async(self, message=event)
+        logger.debug(f"Cycle started with ID: {self.cycle_id}")
+
+        # Emit blinker signal if available
+        if cycle_started is not None:
+            logger.debug(
+                f"Emitting cycle_started signal with {len(cycle_started.receivers)} connected receivers"
+            )
+            cycle_started.send(self, message=event)
+
         return start_time
 
     async def finish(self) -> timedelta:
@@ -134,7 +162,16 @@ class Cycle:
         event = CycleFinishedEvent(
             cycle_id=self.cycle_id, timestamp=end_time, duration_ms=duration_ms, cell=self._cell_id
         )
-        await cycle_finished.send_async(self, message=event)
+
+        logger.debug(f"Cycle finished with ID: {self.cycle_id}")
+
+        # Emit blinker signal if available
+        if cycle_finished is not None:
+            logger.debug(
+                f"Emitting cycle_finished signal with {len(cycle_finished.receivers)} connected receivers"
+            )
+            cycle_finished.send(self, message=event)
+
         cycle_time = self._timer.elapsed()
         self._timer.reset()
         return cycle_time
@@ -169,7 +206,12 @@ class Cycle:
         event = CycleFailedEvent(
             cycle_id=self.cycle_id, timestamp=failure_time, cell=self._cell_id, reason=reason
         )
-        await cycle_failed.send_async(self, message=event)
+        logger.info(f"Cycle failed with ID: {self.cycle_id}, reason: {reason}")
+
+        # Emit blinker signal if available
+        if cycle_failed is not None:
+            cycle_failed.send(self, message=event)
+
         self._timer.reset()
 
     async def __aenter__(self):
@@ -224,3 +266,49 @@ class CycleFinishedEvent(BaseCycleEvent):
 class CycleFailedEvent(BaseCycleEvent):
     event_type: Literal["cycle_failed"] = "cycle_failed"
     reason: str = Field(..., description="Human-readable explanation of failure")
+
+
+async def cycle_event_handler(
+    sender: Any, message: BaseCycleEvent, nats_client: NatsClient
+) -> None:
+    """
+    Event handler that publishes cycle events to NATS using the nats client.
+
+    Args:
+        sender: The signal sender (blinker signal)
+        message: The cycle event message (BaseCycleEvent)
+        nats_client: The NATS client for publishing events
+        **kwargs: Additional keyword arguments
+    """
+    logger.debug(f"NATS event handler called with message: {message}, sender: {sender}")
+
+    event_type = message.event_type
+    logger.debug(f"NATS event handler received {event_type} event")
+
+    try:
+        # Use the provided nats client
+
+        subject = f"nova.v2.cells.{message.cell}.cycle"
+        nats_message = NatsMessage(subject=subject, data=message.model_dump_json().encode())
+
+        await nats_client.publish_message(nats_message)
+        logger.debug(f"Published {event_type} event to NATS subject: {subject}")
+
+    except Exception as e:
+        logger.error(f"Failed to publish {event_type} event to NATS: {e}")
+
+
+# Export key classes and signals for easy import
+__all__ = [
+    "Timer",
+    "CycleDevice",
+    "Cycle",
+    "BaseCycleEvent",
+    "CycleStartedEvent",
+    "CycleFinishedEvent",
+    "CycleFailedEvent",
+    "cycle_started",
+    "cycle_finished",
+    "cycle_failed",
+    "cycle_event_handler",
+]

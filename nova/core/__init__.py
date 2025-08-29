@@ -1,3 +1,3 @@
-from nova.core.logging import logger
+from nova.logging import logger
 
 __all__ = ["logger"]

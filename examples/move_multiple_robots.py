@@ -47,7 +47,7 @@ async def move_robot(controller: Controller):
                 type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
             ),
         ],
-        cleanup_controllers=True,
+        cleanup_controllers=False,
     ),
 )
 async def main():

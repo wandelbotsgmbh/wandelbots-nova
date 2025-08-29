@@ -14,6 +14,7 @@ from typing import Any
 import anyio
 from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
+from decouple import config
 from exceptiongroup import ExceptionGroup
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -21,6 +22,7 @@ from pydantic import BaseModel, Field
 from nova import Nova, api
 from nova.cell.robot_cell import RobotCell
 from nova.core.exceptions import PlanTrajectoryFailed
+from nova.nats.message import Message
 from nova.program.exceptions import NotPlannableError
 from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
@@ -53,7 +55,7 @@ class ExecutionContext:
 
 
 # TODO: import from api.v2.models.ProgramRunState
-class ProgramRunState(Enum):
+class ProgramRunState(str, Enum):
     PREPARING = "PREPARING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
@@ -195,7 +197,9 @@ class ProgramRunner(ABC):
             self.join()
 
     def start(
-        self, sync: bool = False, on_state_change: Callable[[Any], Awaitable[None]] | None = None
+        self,
+        sync: bool = False,
+        on_state_change: Callable[[ProgramRun], Awaitable[None]] | None = None,
     ):
         """Creates another thread and starts the program execution. If the program was executed already, is currently
         running, failed or was stopped a new program runner needs to be created.
@@ -214,8 +218,11 @@ class ProgramRunner(ABC):
             )
 
         async def _on_state_change():
+            # Always report state changes to NATS
+            await _report_state_change_to_nats(self._program_run.model_copy())
+            # Also call the user's custom callback if provided
             if on_state_change is not None:
-                await on_state_change(self._program_run)
+                await on_state_change(self._program_run.model_copy())
 
         def stopper(sync_stop_event, async_stop_event):
             while not sync_stop_event.wait(0.2):
@@ -337,6 +344,7 @@ class ProgramRunner(ABC):
                     logger.info(f"Program {self.program_id} run {self.run_id} started")
                     self._program_run.state = ProgramRunState.RUNNING
                     self._program_run.start_time = dt.datetime.now(dt.timezone.utc)
+                    await on_state_change()
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped
@@ -375,7 +383,7 @@ class ProgramRunner(ABC):
                     # program output data
                     self._program_run.output_data = execution_context.output_data
 
-                    logger.info(
+                    logger.debug(
                         f"Program {self.program_id} run {self.run_id} finished. Run teardown routine..."
                     )
                     self._program_run.end_time = dt.datetime.now(dt.timezone.utc)
@@ -396,3 +404,23 @@ class ProgramRunner(ABC):
         The main function that runs the program. This method should be overridden by subclasses to implement the
         runner logic.
         """
+
+
+async def _report_state_change_to_nats(program_run: ProgramRun) -> None:
+    """Private function that publishes ProgramRun changes to NATS.
+
+    Creates a short-lived Nova client (context-managed) to publish the current
+    ProgramRun snapshot on the subject `nova.v2.cells.{CELL_NAME}.programs`.
+    """
+    cell_name = config("CELL_NAME", default="cell")
+    subject = f"nova.v2.cells.{cell_name}.programs"
+    try:
+        async with Nova() as nova:
+            message = Message(subject=subject, data=program_run.model_dump_json().encode())
+            logger.debug(
+                f"Publishing program run state: program={program_run.program} run={program_run.run} state={program_run.state}"
+            )
+            if nova.nats.is_connected():
+                await nova.nats.publish_message(message)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Failed to publish program run to NATS: {e}")

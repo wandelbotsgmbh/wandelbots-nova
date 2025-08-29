@@ -218,7 +218,7 @@ class ApiGateway:
             import wandelbots_api_client.api.controller_ios_api as ios_api_module
 
             ios_api_module.quote = self._original_quote_func
-        return await self._api_client.close()
+        await self._api_client.close()
 
     async def _ensure_valid_token(self):
         """Ensure we have a valid access token, requesting a new one if needed"""

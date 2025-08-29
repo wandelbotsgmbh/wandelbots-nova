@@ -5,6 +5,7 @@ from loguru import logger
 import nova
 from nova import Nova
 from nova.cell.robot_cell import RobotCell
+from nova.events import CycleDevice
 from nova.program import Program
 from nova.program import ProgramRunner as NovaProgramRunner
 from nova.program.runner import ExecutionContext as NovaExecutionContext
@@ -116,6 +117,9 @@ def create_wandelscript_program(
     async def wandelscript_wrapper():
         async with Nova() as nova:
             robot_cell = await nova.cell().get_robot_cell()
+            # This causes cyclic import, can't add to cell
+            cycle_device = CycleDevice(cell=nova.cell())
+            robot_cell.devices["cycle"] = cycle_device
 
             # TODO: Don't create another runner here, just execute the program
             result = run(

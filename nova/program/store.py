@@ -2,29 +2,23 @@ import asyncio
 from typing import Any, Generic, TypeVar
 
 import nats
-from decouple import config
-from nats import NATS
-from nats.js import JetStreamContext
 from nats.js.api import KeyValueConfig
 from nats.js.client import KeyValue
 from nats.js.errors import KeyNotFoundError as KvKeyError
 from nats.js.errors import NoKeysError, NotFoundError
 from pydantic import BaseModel, Field, ValidationError, constr
 
-from nova.core.logging import logger
+from nova.logging import logger as nova_logger
+from nova.nats import NatsClient
 
-# generally people use NATS_SERVERS, app store uses NATS_BROKERS
-NATS_SERVERS = config("NATS_SERVERS", default=None)
-if not NATS_SERVERS:
-    NATS_SERVERS = config("NATS_BROKER", default="nats://nats.wandelbots.svc:4222", cast=str)
-
-# this is optional, but needed when you connect to NATS server running in a portal instance from your local machine
-NATS_TOKEN = config("NOVA_ACCESS_TOKEN", default=None)
-
-T = TypeVar("T", bound=BaseModel)
+_T = TypeVar("_T", bound=BaseModel)
+_NATS_PROGRAMS_BUCKET_TEMPLATE = "nova_cells_{cell}_programs"
+_NATS_PROGRAMS_MESSAGE_SIZE = 128 * 1024
+_NATS_PROGRAMS_BUCKET_SIZE = _NATS_PROGRAMS_MESSAGE_SIZE * 100
 
 
-class _KeyValueStore(Generic[T]):
+# We don't want to expose this to public usage until the jetstream concept gets more mature
+class _KeyValueStore(Generic[_T]):
     """Generic NATS-backed key-value store for Pydantic models
 
     This class provides a convenient interface for storing and retrieving Pydantic models
@@ -66,9 +60,9 @@ class _KeyValueStore(Generic[T]):
 
     def __init__(
         self,
-        model_class: type[T],
+        model_class: type[_T],
         nats_bucket_name: str,
-        nats_client_config: dict | None = None,
+        nats_client: NatsClient,
         nats_kv_config: KeyValueConfig | None = None,
     ):
         """Initialize the KeyValueStore.
@@ -79,10 +73,7 @@ class _KeyValueStore(Generic[T]):
             nats_bucket_name: The name of the NATS JetStream bucket to use for storage.
                              If the bucket doesn't exist, it will be created if nats_kv_config
                              is provided.
-            nats_client_config: Optional configuration dictionary for the NATS client connection.
-                               If not provided, defaults will be used. Common options include:
-                               - "servers": List of NATS server URLs (if not provided, will be read
-                                 from NATS_SERVERS environment variables)
+            nats_client: The NatsClient instance to use for communication with the NATS server.
             nats_kv_config: Optional KeyValueConfig for creating the bucket if it doesn't exist.
                            If None and the bucket doesn't exist, an error will be raised.
                            Only required when creating new buckets.
@@ -93,48 +84,24 @@ class _KeyValueStore(Generic[T]):
         self._model_class = model_class
         self._nats_bucket_name = nats_bucket_name
 
-        self._nats_client_config = nats_client_config or {}
         self._nats_kv_config = nats_kv_config
 
-        self._nc: NATS | None = None
-        self._js: JetStreamContext
-        self._kv: KeyValue
+        self._nats_client = nats_client
         self._bucket_lock = asyncio.Lock()
+        self._logger = nova_logger.getChild("ProgramStore")
+        self._kv_bucket: KeyValue | None = None
 
-    async def connect(self) -> None:
-        """Connect to NATS and initialize JetStream Bucket"""
-        if self._nc and self._nc.is_connected:
-            return
-
-        config = self._nats_client_config.copy()
-        if "servers" not in config and NATS_SERVERS:
-            config["servers"] = NATS_SERVERS
-
-        if "token" not in config and NATS_TOKEN:
-            config["token"] = NATS_TOKEN
-
-        logger.info(f"Connecting to nats server: {config.get('servers')}")
-        self._nc = await nats.connect(**config)
-        self._js = self._nc.jetstream()
-        logger.info("Connected to NATS")
-
-    async def shutdown(self) -> None:
-        """Disconnect from NATS"""
-        if self._nc and self._nc.is_connected:
-            await self._nc.drain()
+    def _get_nats_client(self) -> "nats.NATS | None":
+        return getattr(self._nats_client, "_nats_client", None)
 
     @property
     def is_connected(self) -> bool:
         """Check if client is connected"""
-        return self._nc is not None and self._nc.is_connected
+        return self._nats_client.is_connected()
 
-    @property
-    async def kv(self) -> KeyValue:
-        """Get the KeyValue store, connecting and creating bucket if necessary.
-
-        If the bucket doesn't exist and no nats_kv_config was provided during initialization,
-        a RuntimeError will be raised. If nats_kv_config was provided, the bucket will be
-        created automatically.
+    async def _key_value(self) -> KeyValue:
+        """Get the KeyValue store.
+        If NATS client is not connected, connect will be called.
 
         Returns:
             KeyValue: The NATS JetStream KeyValue store instance.
@@ -142,40 +109,47 @@ class _KeyValueStore(Generic[T]):
         Raises:
             RuntimeError: If the bucket doesn't exist and no nats_kv_config was provided.
         """
-        if not self.is_connected:
-            await self.connect()
-
-        if getattr(self, "_kv", None) is not None:
-            return self._kv
-
         async with self._bucket_lock:
+            if self._kv_bucket is not None:
+                return self._kv_bucket
+
+            if not self._nats_client.is_connected():
+                await self._nats_client.connect()
+
+            # create jetstream client
+            nats_client = self._get_nats_client()
+            if nats_client is None:
+                raise RuntimeError("Failed to get NATS client after connection attempt")
+
+            js = nats_client.jetstream()
+
             try:
-                self._kv = await self._js.key_value(self._nats_bucket_name)
+                self._kv_bucket = await js.key_value(self._nats_bucket_name)
             except NotFoundError:
                 if not self._nats_kv_config:
                     raise RuntimeError(
                         f"Bucket {self._nats_bucket_name} missing and no kv_config supplied"
                     )
-                self._kv = await self._js.create_key_value(self._nats_kv_config)
+                self._kv_bucket = await js.create_key_value(self._nats_kv_config)
 
-        return self._kv
+            return self._kv_bucket
 
-    async def put(self, key: str, model: T) -> None:
+    async def put(self, key: str, model: _T) -> None:
         """Store a Pydantic model in NATS KV store"""
-        kv = await self.kv
+        kv = await self._key_value()
         await kv.put(key, model.model_dump_json().encode())
 
     async def delete(self, key: str) -> None:
         """Delete a key from NATS KV store"""
-        kv = await self.kv
+        kv = await self._key_value()
         try:
             await kv.delete(key)
         except KvKeyError:
             pass
 
-    async def get(self, key: str) -> T | None:
+    async def get(self, key: str) -> _T | None:
         """Get a specific model from NATS KV store"""
-        kv = await self.kv
+        kv = await self._key_value()
         try:
             entry = await kv.get(key)
             if entry.value is None:
@@ -185,15 +159,15 @@ class _KeyValueStore(Generic[T]):
         except (KvKeyError, ValidationError):
             return None
 
-    async def get_all(self) -> list[T]:
+    async def get_all(self) -> list[_T]:
         """Get all models from NATS KV store"""
-        kv = await self.kv
+        kv = await self._key_value()
         try:
             keys = await kv.keys()
         except NoKeysError:
             return []
 
-        models: list[T] = []
+        models: list[_T] = []
         for key in keys:
             try:
                 entry = await kv.get(key)
@@ -203,22 +177,12 @@ class _KeyValueStore(Generic[T]):
                 model = self._model_class.model_validate_json(entry.value.decode())
                 models.append(model)
             except KvKeyError:
-                logger.error(f"Key {key} not found in KV store")
+                self._logger.error(f"Key {key} not found in KV store")
             except ValidationError:
-                logger.error(f"Validation error for key {key}, skipping")
+                self._logger.error(f"Validation error for key {key}, skipping")
                 continue
 
         return models
-
-    async def __aenter__(self):
-        """Async context manager entry - connects to NATS"""
-        await self.connect()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit - disconnects from NATS"""
-        await self.shutdown()
-        return False
 
 
 # this is data model that we should take from service manager api client
@@ -236,12 +200,22 @@ class Program(BaseModel):
     )
 
 
-# ProgramStore = KeyValueStore[Program] would be better but python doesn't support this
-# when I do store = ProgramStore() the __orig_class__ is not available in the __init__
-# my reseach say's python doesn't capture the type argument when I do this
-
-
-# TODO: change the Program with wandelbots_api_client.v2.models.Program
 class ProgramStore(_KeyValueStore[Program]):
-    def __init__(self, nats_bucket_name, nats_client_config=None, nats_kv_config=None):
-        super().__init__(Program, nats_bucket_name, nats_client_config, nats_kv_config)
+    """
+    Program store manages all the programs registered in a cell.
+    """
+
+    def __init__(self, cell_id: str, nats_client: NatsClient, create_bucket: bool = False):
+        self._nats_bucket_name = _NATS_PROGRAMS_BUCKET_TEMPLATE.format(cell=cell_id)
+        self._kv_config = KeyValueConfig(
+            bucket=self._nats_bucket_name,
+            max_value_size=_NATS_PROGRAMS_MESSAGE_SIZE,
+            max_bytes=_NATS_PROGRAMS_BUCKET_SIZE,
+        )
+
+        super().__init__(
+            Program,
+            nats_bucket_name=self._nats_bucket_name,
+            nats_client=nats_client,
+            nats_kv_config=self._kv_config if create_bucket else None,
+        )
