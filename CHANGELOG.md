@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.14.1 (2025-08-29)
+
+### Bug Fixes
+
+- Add none check for the robot cell (#268)
+  ([#268](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/268),
+  [`9772589`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/97725895160aa295b32c3fbeeba18ea5144017a9))
+
+
 ## v2.14.0 (2025-08-29)
 
 ### Features
