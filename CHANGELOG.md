@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.14.0 (2025-08-29)
+
+### Features
+
+- Publish program run to nats (#249)
+  ([#249](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/249),
+  [`39df504`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/39df504156e224f5f40ed5b98daa5e2cda7167d6))
+
+
 ## v2.13.0 (2025-08-28)
 
 ### Features
