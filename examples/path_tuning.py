@@ -81,7 +81,7 @@ async def main():
         joint_trajectory = await motion_group.plan(actions, tcp)
         # TODO this probaly not consumes the state stream immediately and thus might cause issues
         # only start consuming the state stream when the trajectory is actually executed
-        trajectory_cursor = TrajectoryCursor(joint_trajectory)
+        trajectory_cursor = TrajectoryCursor(joint_trajectory, initial_location=0)
         # for i, _ in enumerate(actions):
         #     trajectory_cursor.pause_at(i)
         motion_iter = motion_group.stream_execute(
@@ -95,20 +95,24 @@ async def main():
             match json.loads(msg.data.decode()):
                 case {"command": "forward", **rest}:
                     ic()
-                    trajectory_cursor.forward(playback_speed_in_percent=rest.get("speed", None))
+                    await trajectory_cursor.forward(
+                        playback_speed_in_percent=rest.get("speed", None)
+                    )
                 case {"command": "step-forward", **rest}:
                     ic()
-                    trajectory_cursor.forward_to_next_action(
+                    await trajectory_cursor.forward_to_next_action(
                         playback_speed_in_percent=rest.get("speed", None)
                     )
                 case {"command": "backward", **rest}:
-                    trajectory_cursor.backward(playback_speed_in_percent=rest.get("speed", None))
+                    await trajectory_cursor.backward(
+                        playback_speed_in_percent=rest.get("speed", None)
+                    )
                 case {"command": "step-backward", **rest}:
-                    trajectory_cursor.backward_to_previous_action(
+                    await trajectory_cursor.backward_to_previous_action(
                         playback_speed_in_percent=rest.get("speed", None)
                     )
                 case {"command": "pause", **rest}:
-                    trajectory_cursor.pause()
+                    await trajectory_cursor.pause()
                 case {"command": "finish", **rest}:
                     trajectory_cursor.detach()
                 case _:

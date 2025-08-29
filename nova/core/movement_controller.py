@@ -242,6 +242,7 @@ class TrajectoryCursor:
                 pause_on_io=None,
             )
         )
+
         await future  # TODO will this raise?
 
     async def forward_to(self, location: float, playback_speed_in_percent: int | None = None):
@@ -259,7 +260,9 @@ class TrajectoryCursor:
         else:
             raise ValueError("No next action found after current location.")
 
-    def backward(self, playback_speed_in_percent: int | None = None):
+    async def backward(self, playback_speed_in_percent: int | None = None):
+        future = self._start_operation(OperationType.BACKWARD)
+
         if playback_speed_in_percent is not None:
             self._command_queue.put_nowait(
                 wb.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
@@ -273,23 +276,32 @@ class TrajectoryCursor:
             )
         )
 
-    def backward_to(self, location: float, playback_speed_in_percent: int | None = None):
+        await future  # TODO will this raise?
+
+    async def backward_to(self, location: float, playback_speed_in_percent: int | None = None):
         # currently we don't complain about invalid locations as long as they are not after the current location
         if location > self._current_location:
             raise ValueError("Cannot move backward to a location after the current location")
         self._target_location = location
-        self.backward(playback_speed_in_percent=playback_speed_in_percent)
+        await self.backward(playback_speed_in_percent=playback_speed_in_percent)
 
-    def backward_to_previous_action(self, playback_speed_in_percent: int | None = None):
+    async def backward_to_previous_action(self, playback_speed_in_percent: int | None = None):
         index = ceil(self._current_location - self._overshoot) - 1
         ic(self._current_location, self._overshoot, index, len(self.combined_actions))
         if index >= 0:
-            self.backward_to(index, playback_speed_in_percent=playback_speed_in_percent)
+            await self.backward_to(index, playback_speed_in_percent=playback_speed_in_percent)
         else:
             raise ValueError("No previous action found before current location.")
 
-    def pause(self):
+    def _pause(self):
         self._command_queue.put_nowait(wb.models.PauseMovementRequest())
+
+    async def pause(self):
+        future = await self._start_operation(OperationType.PAUSE)
+
+        self._pause()
+
+        await future
 
     def detach(self):
         # TODO this does not stop the movement atm, it just stops controlling movement
@@ -393,7 +405,7 @@ class TrajectoryCursor:
                         case wb.models.StandstillReason.REASON_MOTION_ENDED:
                             # self.context.movement_consumer(None)
                             ic()
-                            # break
+                            break
                 else:
                     ic(instance)
                     # Handle other types of instances if needed
@@ -421,12 +433,12 @@ class TrajectoryCursor:
             # moving forwards
             if last_location <= self._target_location < curr_location:
                 ic(last_location, self._target_location, curr_location)
-                self.pause()
+                self._pause()
         else:
             # moving backwards
             if last_location > self._target_location >= curr_location:
                 ic(last_location, self._target_location, curr_location)
-                self.pause()
+                self._pause()
 
 
 async def init_movement_gen(
