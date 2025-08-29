@@ -52,7 +52,6 @@ class Nova:
         if password is None:
             password = config("NOVA_PASSWORD", default=None)
 
-        # TODO: this is internal variable but vince uses it, remove this and use ApiGateway after informing Vincent
         self._api_client = ApiGateway(
             host=host,
             access_token=access_token,

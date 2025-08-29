@@ -220,12 +220,6 @@ class ApiGateway:
             ios_api_module.quote = self._original_quote_func
         await self._api_client.close()
 
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
-
     async def _ensure_valid_token(self):
         """Ensure we have a valid access token, requesting a new one if needed"""
         if not self._auth0 or self._validating_token or self._has_valid_token:
