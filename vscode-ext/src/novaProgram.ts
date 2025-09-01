@@ -86,7 +86,7 @@ export async function runNovaProgram(
         console: 'integratedTerminal',
         cwd: workspaceFolder.uri.fsPath,
         env: {
-          ENABLE_TRAJECTORY_TUNER: '1',
+          ENABLE_TRAJECTORY_TUNING: '1',
         },
       }
 
@@ -135,10 +135,10 @@ if inspect.iscoroutine(result):
       // Set environment variable for trajectory tuning
       if (process.platform === 'win32') {
         // Windows: use set command
-        command = `set ENABLE_TRAJECTORY_TUNER=1 && ${command}`
+        command = `set ENABLE_TRAJECTORY_TUNING=1 && ${command}`
       } else {
         // Unix-like systems (macOS, Linux): use export
-        command = `ENABLE_TRAJECTORY_TUNER=1 ${command}`
+        command = `ENABLE_TRAJECTORY_TUNING=1 ${command}`
       }
       vscode.window.showInformationMessage(
         `Running Nova program with trajectory tuning: ${functionName}`,
