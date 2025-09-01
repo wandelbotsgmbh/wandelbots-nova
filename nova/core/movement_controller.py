@@ -3,13 +3,14 @@ import bisect
 from enum import Enum, auto
 from functools import singledispatch
 from math import ceil, floor
-from typing import Any, Callable, Optional
+from typing import Any, AsyncIterator, Callable, Optional
 
 import wandelbots_api_client as wb
 from aiohttp_retry import dataclass
 from icecream import ic
 
 from nova.actions import MovementControllerContext
+from nova.actions.base import Action
 from nova.actions.container import CombinedActions
 from nova.core import logger
 from nova.core.exceptions import InitMovementFailed
@@ -196,11 +197,20 @@ class OperationResult:
 
 
 class TrajectoryCursor:
-    def __init__(self, joint_trajectory: wb.models.JointTrajectory, initial_location: float):
+    def __init__(
+        self,
+        motion_id: str,
+        joint_trajectory: wb.models.JointTrajectory,
+        actions: list[Action],
+        initial_location: float,
+    ):
+        self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
+        self.actions = CombinedActions(items=actions)
         self._command_queue = asyncio.Queue()
-        self._breakpoints = []
         self._COMMAND_QUEUE_SENTINAL = object()
+        self._in_queue: asyncio.Queue[wb.models.ExecuteTrajectoryResponse | None] = asyncio.Queue()
+        self._breakpoints = []
         self._current_location = initial_location
         self._overshoot = 0.0
         self._target_location = self.end_location
@@ -314,7 +324,7 @@ class TrajectoryCursor:
     ) -> ExecuteTrajectoryRequestStream:
         self._response_stream = response_stream
         async for request in init_movement_gen(
-            self.context.motion_id, response_stream, self._current_location
+            self.motion_id, response_stream, self._current_location
         ):
             yield request
 
@@ -387,6 +397,7 @@ class TrajectoryCursor:
 
         try:
             async for response in self._response_stream:
+                self._in_queue.put_nowait(response)
                 instance = response.actual_instance
                 # ic(instance)
                 if isinstance(instance, wb.models.Movement):
@@ -440,6 +451,16 @@ class TrajectoryCursor:
                 ic(last_location, self._target_location, curr_location)
                 self._pause()
 
+    def __aiter__(self) -> AsyncIterator[wb.models.ExecuteTrajectoryResponse]:
+        return self
+
+    async def __anext__(self) -> wb.models.ExecuteTrajectoryResponse:
+        value = await self._in_queue.get()
+        self._in_queue.task_done()
+        if value is None:
+            raise StopAsyncIteration
+        return value
+
 
 async def init_movement_gen(
     motion_id, response_stream, initial_location
@@ -457,3 +478,95 @@ async def init_movement_gen(
         r1 = initialize_movement_response.actual_instance
         if not r1.init_response.succeeded:
             raise InitMovementFailed(r1.init_response)
+
+
+import json
+
+from nova.events import nats
+
+
+class TrajectoryTuner:
+    def __init__(self, actions, plan_fn, execute_fn):
+        self.actions = actions
+        self.plan_fn = plan_fn
+        self.execute_fn = execute_fn
+
+    async def tune(self):
+        finished_tuning = False
+        joint_trajectory = await self.plan_fn(self.actions)
+
+        nats_client = await nats.get_client()
+
+        def get_cmd_sub_handler(cursor):
+            async def cmd_sub_handler(msg):
+                ic(msg.data)
+                match json.loads(msg.data.decode()):
+                    case {"command": "forward", **rest}:
+                        ic()
+                        await cursor.forward(playback_speed_in_percent=rest.get("speed", None))
+                    case {"command": "step-forward", **rest}:
+                        ic()
+                        await cursor.forward_to_next_action(
+                            playback_speed_in_percent=rest.get("speed", None)
+                        )
+                    case {"command": "backward", **rest}:
+                        await cursor.backward(playback_speed_in_percent=rest.get("speed", None))
+                    case {"command": "step-backward", **rest}:
+                        await cursor.backward_to_previous_action(
+                            playback_speed_in_percent=rest.get("speed", None)
+                        )
+                    case {"command": "pause", **rest}:
+                        await cursor.pause()
+                    case {"command": "finish", **rest}:
+                        cursor.detach()
+                        nonlocal finished_tuning
+                        finished_tuning = True
+                    case _:
+                        ic("Unknown command")
+
+            return cmd_sub_handler
+
+        async def runtime_monitor(interval=0.5):
+            start_time = asyncio.get_event_loop().time()
+            while True:
+                elapsed = asyncio.get_event_loop().time() - start_time
+                logger.warning(f"{elapsed:.2f}s")
+                await asyncio.sleep(interval)
+
+        # driver_task = asyncio.create_task(test_driver())
+        runtime_task = asyncio.create_task(runtime_monitor(0.5))  # Output every 0.5 seconds
+
+        try:
+            while not finished_tuning:
+                # TODO this plans the second time for the same actions when we get here because
+                # the initial joint trajectory was already planned before the MotionGroup._execute call
+                motion_id, joint_trajectory = await self.plan_fn(self.actions)
+
+                cursor = TrajectoryCursor(
+                    motion_id, joint_trajectory, self.actions, initial_location=0
+                )
+                sub = await nats_client.subscribe(
+                    "trajectory-cursor", cb=get_cmd_sub_handler(cursor)
+                )
+                execution_task = asyncio.create_task(
+                    self.execute_fn(
+                        client_request_generator=cursor(
+                            MovementControllerContext(
+                                combined_actions=CombinedActions(items=self.actions),
+                                motion_id=motion_id,
+                            )
+                        )
+                    )
+                )
+                async for execute_response in cursor:
+                    yield execute_response
+                await execution_task
+                await sub.unsubscribe()
+                ic()
+
+            runtime_task.cancel()
+            await runtime_task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await nats.close()

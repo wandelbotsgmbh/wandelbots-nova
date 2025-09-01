@@ -6,8 +6,6 @@ from uuid import UUID, uuid4
 from blinker import signal
 from pydantic import BaseModel, Field
 
-from nova.cell.cell import Cell
-
 cycle_started = signal("cycle_started")
 cycle_finished = signal("cycle_finished")
 cycle_failed = signal("cycle_failed")
@@ -81,9 +79,9 @@ class Cycle:
         cycle_id (UUID | None): Unique identifier for the cycle, set after start()
     """
 
-    def __init__(self, cell: Cell):
+    def __init__(self, cell: str):
         self.cycle_id: UUID | None = None
-        self._cell_id = cell.cell_id
+        self._cell_id = cell
         self._timer = Timer()
 
     async def start(self) -> datetime:
