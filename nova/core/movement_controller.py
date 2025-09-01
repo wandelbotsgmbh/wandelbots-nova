@@ -203,6 +203,7 @@ class TrajectoryCursor:
         joint_trajectory: wb.models.JointTrajectory,
         actions: list[Action],
         initial_location: float,
+        detach_on_standstill: bool = False,
     ):
         self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
@@ -214,6 +215,7 @@ class TrajectoryCursor:
         self._current_location = initial_location
         self._overshoot = 0.0
         self._target_location = self.end_location
+        self._detach_on_standstill = detach_on_standstill
 
         self._current_operation_future: Optional[asyncio.Future[OperationResult]] = None
         self._current_operation_type: Optional[OperationType] = None
@@ -263,6 +265,7 @@ class TrajectoryCursor:
         await self.forward(playback_speed_in_percent=playback_speed_in_percent)
 
     async def forward_to_next_action(self, playback_speed_in_percent: int | None = None):
+        # TODO this seems to fail if there is only one action
         index = floor(self._current_location - self._overshoot) + 1
         ic(self._current_location, self._overshoot, index, len(self.combined_actions))
         if index < len(self.combined_actions):
@@ -408,11 +411,14 @@ class TrajectoryCursor:
                     self._handle_movement(instance.movement, last_movement)
                     last_movement = instance.movement
                 elif isinstance(instance, wb.models.Standstill):
+                    ic(instance.standstill)
                     match instance.standstill.reason:
                         case wb.models.StandstillReason.REASON_USER_PAUSED_MOTION:
                             ic(self._current_location, self._target_location, self._overshoot)
                             self._overshoot = self._current_location - self._target_location
                             self._complete_operation()
+                            if self._detach_on_standstill:
+                                break
                         case wb.models.StandstillReason.REASON_MOTION_ENDED:
                             # self.context.movement_consumer(None)
                             ic()
@@ -495,17 +501,21 @@ class TrajectoryTuner:
 
     async def tune(self):
         finished_tuning = False
+        last_operation_result = None  # TODO implement this feature
         joint_trajectory = await self.plan_fn(self.actions)
 
         nats_client = await nats.get_client()
 
         def get_cmd_sub_handler(cursor):
             async def cmd_sub_handler(msg):
+                nonlocal last_operation_result, finished_tuning
                 ic(msg.data)
                 match json.loads(msg.data.decode()):
                     case {"command": "forward", **rest}:
                         ic()
-                        await cursor.forward(playback_speed_in_percent=rest.get("speed", None))
+                        last_operation_result = await cursor.forward(
+                            playback_speed_in_percent=rest.get("speed", None)
+                        )
                     case {"command": "step-forward", **rest}:
                         ic()
                         await cursor.forward_to_next_action(
@@ -521,7 +531,6 @@ class TrajectoryTuner:
                         await cursor.pause()
                     case {"command": "finish", **rest}:
                         cursor.detach()
-                        nonlocal finished_tuning
                         finished_tuning = True
                     case _:
                         ic("Unknown command")
@@ -535,18 +544,22 @@ class TrajectoryTuner:
                 logger.warning(f"{elapsed:.2f}s")
                 await asyncio.sleep(interval)
 
-        # driver_task = asyncio.create_task(test_driver())
-        runtime_task = asyncio.create_task(runtime_monitor(0.5))  # Output every 0.5 seconds
+        # runtime_task = asyncio.create_task(runtime_monitor(0.5))  # Output every 0.5 seconds
 
         try:
             # tuning loop
+            current_location = 0.0
             while not finished_tuning:
                 # TODO this plans the second time for the same actions when we get here because
                 # the initial joint trajectory was already planned before the MotionGroup._execute call
                 motion_id, joint_trajectory = await self.plan_fn(self.actions)
-
+                ic(current_location)
                 cursor = TrajectoryCursor(
-                    motion_id, joint_trajectory, self.actions, initial_location=0
+                    motion_id,
+                    joint_trajectory,
+                    self.actions,
+                    initial_location=current_location,
+                    detach_on_standstill=True,
                 )
                 sub = await nats_client.subscribe(
                     "trajectory-cursor", cb=get_cmd_sub_handler(cursor)
@@ -567,10 +580,15 @@ class TrajectoryTuner:
                 ic()
                 await execution_task
                 await sub.unsubscribe()
+                current_location = (
+                    cursor._current_location
+                )  # TODO is this the cleanest way to get the current location?
+
+                # somehow obtain the modified actions for the next iteration
                 ic()
 
-            runtime_task.cancel()
-            await runtime_task
+            # runtime_task.cancel()
+            # await runtime_task
         except asyncio.CancelledError:
             pass
         finally:
