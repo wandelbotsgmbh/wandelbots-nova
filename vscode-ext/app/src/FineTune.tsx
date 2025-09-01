@@ -15,6 +15,7 @@ import {
   Wrench,
 } from 'lucide-react'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { sendNatsMessage } from './nats'
 
 const SectionHeader = ({ title, right }) => (
   <div className="flex items-center justify-between gap-3 px-6 py-4">
@@ -98,31 +99,73 @@ const MotionGroupSelector = ({ value, onChange, options }) => {
   )
 }
 
-const MoveControls = ({ onStart, onStop, moving }) => (
-  <div className="flex flex-col items-center gap-4">
-    <p className="text-sm text-slate-400">Press and Hold to move</p>
-    <div className="space-y-3 flex flex-col items-center justify-center">
-      <ToggleButtonGroup
-        color="primary"
-        value={moving}
-        exclusive
-        onChange={onStart}
-        aria-label="Platform"
-      >
-        <ToggleButton value="backward" size="large">
-          <ChevronLeft className="size-12 mx-6 my-3" />
-        </ToggleButton>
-        <ToggleButton value="forward" size="large">
-          <ChevronRight className="size-12 mx-6 my-3" />
-        </ToggleButton>
-      </ToggleButtonGroup>
-      <div className="flex items-center justify-center gap-6 text-slate-400">
-        <span className="text-base font-medium">backward</span>
-        <span className="text-base font-medium">forward</span>
+const MoveControls = ({ onStart, onStop, moving, snap }) => {
+  const handleButtonClick = async (event: any, direction: string) => {
+    try {
+      // Send NATS message with movement direction and snap setting
+      await sendNatsMessage('robot.movement', {
+        direction,
+        snap,
+        timestamp: new Date().toISOString(),
+        action: 'start'
+      })
+
+      // Call the original onStart handler
+      onStart(direction)
+    } catch (error) {
+      console.error('Failed to send NATS message:', error)
+      // Still call onStart even if NATS fails
+      onStart(direction)
+    }
+  }
+
+  const handleButtonRelease = async () => {
+    try {
+      // Send NATS message to stop movement
+      await sendNatsMessage('robot.movement', {
+        direction: null,
+        snap,
+        timestamp: new Date().toISOString(),
+        action: 'stop'
+      })
+
+      // Call the original onStop handler
+      onStop()
+    } catch (error) {
+      console.error('Failed to send NATS message:', error)
+      // Still call onStop even if NATS fails
+      onStop()
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <p className="text-sm text-slate-400">Press and Hold to move</p>
+      <div className="space-y-3 flex flex-col items-center justify-center">
+        <ToggleButtonGroup
+          color="primary"
+          value={moving}
+          exclusive
+          onChange={handleButtonClick}
+          onMouseLeave={handleButtonRelease}
+          onTouchEnd={handleButtonRelease}
+          aria-label="Platform"
+        >
+          <ToggleButton value="backward" size="large">
+            <ChevronLeft className="size-12 mx-6 my-3" />
+          </ToggleButton>
+          <ToggleButton value="forward" size="large">
+            <ChevronRight className="size-12 mx-6 my-3" />
+          </ToggleButton>
+        </ToggleButtonGroup>
+        <div className="flex items-center justify-center gap-6 text-slate-400">
+          <span className="text-base font-medium">backward</span>
+          <span className="text-base font-medium">forward</span>
+        </div>
       </div>
     </div>
-  </div>
-)
+  )
+}
 
 /****************************
  * Main Panel – Motion Group
@@ -232,6 +275,7 @@ const MotionGroupPanel = () => {
           onStart={handleStart}
           onStop={handleStop}
           moving={moving}
+          snap={snap}
         />
       </div>
 
@@ -286,7 +330,7 @@ export default function FineTuning() {
           <main className="mx-auto max-w-5xl p-6">
             <div className="space-y-6">
               <section>
-                <SectionHeader title="Motion Group" />
+                <SectionHeader title="Motion Group" right={null} />
                 <MotionGroupPanel />
               </section>
             </div>
