@@ -1,45 +1,32 @@
-import { connect, NatsConnection, StringCodec } from 'nats'
+import { type NatsConnection, wsconnect } from '@nats-io/nats-core'
 
-let nc: NatsConnection | null = null
-const sc = StringCodec()
+let nc: NatsConnection | undefined
 
-type Message = {
-
-}
-
+type Message = {}
 export async function connectToNats(): Promise<NatsConnection> {
-  if (nc) {
-    return nc
-  }
+  if (nc) return nc
 
-  try {
-    // Try to connect to localhost first, then fallback to demo servers
-    const servers = [
-      { servers: 'localhost:4222' },
-      { servers: ['demo.nats.io:4442', 'demo.nats.io:4222'] },
-      { servers: 'demo.nats.io:4443' },
-    ]
+  // Use ws:// for local dev (no TLS). Use wss:// with TLS in prod.
+  const servers = 'ws://localhost:9222'
 
-    for (const config of servers) {
-      try {
-        nc = await connect(config)
-        console.log(`Connected to NATS at ${nc.getServer()}`)
-        return nc
-      } catch (err) {
-        console.log(`Failed to connect to ${JSON.stringify(config)}:`, err)
-      }
-    }
+  nc = await wsconnect({
+    servers,
+    name: `webui-${crypto.randomUUID()}`,
+  })
 
-    throw new Error('Failed to connect to any NATS server')
-  } catch (err) {
-    console.error('Error connecting to NATS:', err)
-    throw err
-  }
+  // optional: handle disconnects
+  nc.closed().then((err) => {
+    if (err) console.error('NATS closed with error:', err)
+    nc = undefined
+  })
+
+  console.log(`Connected to NATS at ${nc.getServer()}`)
+  return nc
 }
 
 export async function sendNatsMessage(
   subject: string,
-  message: any
+  message: any,
 ): Promise<void> {
   if (!nc) {
     await connectToNats()
@@ -51,7 +38,7 @@ export async function sendNatsMessage(
 
   try {
     const messageStr = JSON.stringify(message)
-    await nc.publish(subject, sc.encode(messageStr))
+    await nc.publish(subject, JSON.stringify(message))
     console.log(`Sent message to ${subject}:`, messageStr)
   } catch (err) {
     console.error('Error sending NATS message:', err)
@@ -62,11 +49,11 @@ export async function sendNatsMessage(
 export async function disconnectFromNats(): Promise<void> {
   if (nc) {
     await nc.close()
-    nc = null
+    nc = undefined
     console.log('Disconnected from NATS')
   }
 }
 
-export function getNatsConnection(): NatsConnection | null {
+export function getNatsConnection(): NatsConnection | undefined {
   return nc
 }

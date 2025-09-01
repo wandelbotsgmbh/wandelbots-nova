@@ -2,8 +2,6 @@ import Button from '@mui/material/Button'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import FormGroup from '@mui/material/FormGroup'
 import Switch from '@mui/material/Switch'
-import ToggleButton from '@mui/material/ToggleButton'
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import { VelocitySlider } from '@wandelbots/wandelbots-js-react-components'
 import {
   ChevronDown,
@@ -15,7 +13,8 @@ import {
   Wrench,
 } from 'lucide-react'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { sendNatsMessage } from './nats'
+
+import { connectToNats, disconnectFromNats, sendNatsMessage } from './nats'
 
 const SectionHeader = ({ title, right }) => (
   <div className="flex items-center justify-between gap-3 px-6 py-4">
@@ -32,13 +31,6 @@ const Pill = ({ children, tone = 'violet' }) => (
   >
     {children}
   </span>
-)
-
-const IconButton = ({ icon: Icon, label, onClick, className = '' }) => (
-  <Button onClick={onClick}>
-    {Icon && <Icon className="h-4 w-4 opacity-80" />}
-    <span>{label}</span>
-  </Button>
 )
 
 const Range = ({ value, onChange, min = 0, max = 100, step = 1 }) => (
@@ -99,15 +91,31 @@ const MotionGroupSelector = ({ value, onChange, options }) => {
   )
 }
 
-const MoveControls = ({ onStart, onStop, moving, snap }) => {
+const MoveControls = ({ onStart, onStop, moving, snap, speed }) => {
   const handleButtonClick = async (event: any, direction: string) => {
+    // Prevent default behavior and stop propagation
+    event?.preventDefault?.()
+    event?.stopPropagation?.()
+
+    console.log('Button clicked:', direction, 'Event type:', event?.type)
+
     try {
-      // Send NATS message with movement direction and snap setting
-      await sendNatsMessage('robot.movement', {
-        direction,
-        snap,
-        timestamp: new Date().toISOString(),
-        action: 'start'
+      const command = snap
+        ? direction === 'forward'
+          ? 'step_forward'
+          : 'step_backward'
+        : direction
+
+      console.log(
+        'Sending NATS message with movement command and speed',
+        command,
+        speed,
+      )
+
+      // Send NATS message with movement command and speed
+      await sendNatsMessage('trajectory-cursor', {
+        command,
+        speed,
       })
 
       // Call the original onStart handler
@@ -121,12 +129,11 @@ const MoveControls = ({ onStart, onStop, moving, snap }) => {
 
   const handleButtonRelease = async () => {
     try {
-      // Send NATS message to stop movement
-      await sendNatsMessage('robot.movement', {
-        direction: null,
-        snap,
-        timestamp: new Date().toISOString(),
-        action: 'stop'
+      console.log('Sending NATS message to pause movement')
+
+      // Send NATS message to pause movement
+      await sendNatsMessage('trajectory-cursor', {
+        command: 'pause',
       })
 
       // Call the original onStop handler
@@ -142,22 +149,24 @@ const MoveControls = ({ onStart, onStop, moving, snap }) => {
     <div className="flex flex-col items-center gap-4">
       <p className="text-sm text-slate-400">Press and Hold to move</p>
       <div className="space-y-3 flex flex-col items-center justify-center">
-        <ToggleButtonGroup
-          color="primary"
-          value={moving}
-          exclusive
-          onChange={handleButtonClick}
-          onMouseLeave={handleButtonRelease}
-          onTouchEnd={handleButtonRelease}
-          aria-label="Platform"
-        >
-          <ToggleButton value="backward" size="large">
-            <ChevronLeft className="size-12 mx-6 my-3" />
-          </ToggleButton>
-          <ToggleButton value="forward" size="large">
-            <ChevronRight className="size-12 mx-6 my-3" />
-          </ToggleButton>
-        </ToggleButtonGroup>
+        <div className="flex gap-4">
+          <Button
+            onMouseDown={(e) => handleButtonClick(e, 'backward')}
+            onMouseUp={handleButtonRelease}
+            variant="contained"
+            color="secondary"
+          >
+            <ChevronLeft className="size-12" />
+          </Button>
+          <Button
+            onMouseDown={(e) => handleButtonClick(e, 'forward')}
+            onMouseUp={handleButtonRelease}
+            variant="contained"
+            color="secondary"
+          >
+            <ChevronRight className="size-12" />
+          </Button>
+        </div>
         <div className="flex items-center justify-center gap-6 text-slate-400">
           <span className="text-base font-medium">backward</span>
           <span className="text-base font-medium">forward</span>
@@ -186,6 +195,25 @@ const MotionGroupPanel = () => {
     rZ: 3.14,
   })
   const [lastTest, setLastTest] = useState(null)
+
+  // Connect to NATS when component mounts
+  useEffect(() => {
+    const connectNats = async () => {
+      try {
+        await connectToNats()
+        console.log('Connected to NATS successfully')
+      } catch (error) {
+        console.error('Failed to connect to NATS:', error)
+      }
+    }
+
+    connectNats()
+
+    // Cleanup: disconnect when component unmounts
+    return () => {
+      disconnectFromNats().catch(console.error)
+    }
+  }, [])
 
   const handleSnapChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSnap(event.target.checked)
@@ -276,6 +304,7 @@ const MotionGroupPanel = () => {
           onStop={handleStop}
           moving={moving}
           snap={snap}
+          speed={speed}
         />
       </div>
 

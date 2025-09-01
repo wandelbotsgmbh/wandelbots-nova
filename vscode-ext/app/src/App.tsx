@@ -16,14 +16,6 @@ const theme = createNovaMuiTheme({
   },
 })
 
-function Button({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button className="bg-blue-500 text-white p-2 rounded-md" onClick={onClick}>
-      {label}
-    </button>
-  )
-}
-
 function Page({ children }: { children: React.ReactNode }) {
   return (
     <div className="px-3 py-3 h-full w-full overflow-y-auto">{children}</div>
