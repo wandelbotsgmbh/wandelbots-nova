@@ -6,18 +6,9 @@ from uuid import UUID, uuid4
 from decouple import config
 from pydantic import BaseModel, Field
 
-from nova.cell.cell import Cell
-from nova.cell.robot_cell import Device, OutputDevice
-from nova.logging import logger
-from nova.nats import Message as NatsMessage
-
-# Read BASE_PATH environment variable and extract app name
-# TODO: make a util and move the logic there
-_BASE_PATH = config("BASE_PATH", default=None)
-if _BASE_PATH:
-    _APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else None
-else:
-    _APP_NAME = None
+cycle_started = signal("cycle_started")
+cycle_finished = signal("cycle_finished")
+cycle_failed = signal("cycle_failed")
 
 _NATS_SUBJECT_TEMPLATE = "nova.v2.cells.{cell_id}.cycle"
 _APP_NAME_EXTRA_FIELD = "app"
@@ -102,16 +93,10 @@ class Cycle:
         cycle_id (UUID | None): Unique identifier for the cycle, set after start()
     """
 
-    def __init__(self, cell: Cell, extra: dict[str, Any] = {}):
-        """
-        cell: The cell associated with this cycle.
-        extra: Optional metadata to include with the cycle events. Must be JSON serializable.
-        """
+    def __init__(self, cell: str):
         self.cycle_id: UUID | None = None
+        self._cell_id = cell
         self._timer = Timer()
-        self._cell = cell
-        self._cell_id = cell.cell_id
-        self._subject = _NATS_SUBJECT_TEMPLATE.format(cell_id=self._cell_id)
 
         self._extra: dict[str, Any] = self._ensure_json_serializable(extra)
 
