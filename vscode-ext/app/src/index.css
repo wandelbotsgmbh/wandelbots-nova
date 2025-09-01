@@ -1,4 +1,90 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+
+@theme static {
+  /* Main Colors */
+  --color-bay-leaf-50: #f1f8f3;
+  --color-bay-leaf-100: #deede1;
+  --color-bay-leaf-200: #bfdbc6;
+  --color-bay-leaf-300: #93c2a2;
+  --color-bay-leaf-400: #7baf8e;
+  --color-bay-leaf-500: #44855d;
+  --color-bay-leaf-600: #326949;
+  --color-bay-leaf-700: #28543c;
+  --color-bay-leaf-800: #224331;
+  --color-bay-leaf-900: #1c3828;
+  --color-bay-leaf-950: #0f1f17;
+  /* Wandelbots Colors */
+  --color-wandelbots-blue-50: #e6f0ff;
+  --color-wandelbots-blue-100: #cce0ff;
+  --color-wandelbots-blue-200: #99c2ff;
+  --color-wandelbots-blue-300: #66a3ff;
+  --color-wandelbots-blue-400: #3385ff;
+  --color-wandelbots-blue-500: #0066ff;
+  /* Font Families */
+  --font-inter: 'Inter', sans-serif;
+}
+
+:root {
+  /* Least prominent text */
+  --ui-text-dimmed: var(--ui-color-neutral-400);
+  /* Slightly muted text */
+  --ui-text-muted: var(--ui-color-neutral-500);
+  /* Moderately prominent text */
+  --ui-text-toned: var(--ui-color-neutral-600);
+  /* Default text color */
+  --ui-text: var(--ui-color-neutral-700);
+  /* Most prominent text */
+  --ui-text-highlighted: var(--ui-color-neutral-900);
+
+  /* Main background color */
+  --ui-bg: var(--color-white);
+  /* Slightly elevated background */
+  --ui-bg-elevated: var(--ui-color-neutral-50);
+  /* More prominent background */
+  --ui-bg-accented: var(--ui-color-neutral-100);
+  /* Inverted background color */
+  --ui-bg-inverted: var(--ui-color-neutral-900);
+
+  /* Default border color */
+  --ui-border: var(--ui-color-neutral-200);
+  /* Subtle border */
+  --ui-border-muted: var(--ui-color-neutral-200);
+  /* More prominent border */
+  --ui-border-accented: var(--ui-color-neutral-300);
+  /* Inverted border color */
+  --ui-border-inverted: var(--ui-color-neutral-950);
+}
+
+.dark {
+  /* Least prominent text */
+  --ui-text-dimmed: var(--ui-color-neutral-500);
+  /* Slightly muted text */
+  --ui-text-muted: var(--ui-color-neutral-400);
+  /* Moderately prominent text */
+  --ui-text-toned: var(--ui-color-neutral-300);
+  /* Default text color */
+  --ui-text: var(--ui-color-neutral-200);
+  /* Most prominent text */
+  --ui-text-highlighted: var(--color-white);
+
+  /* Main background color */
+  --ui-bg: var(--ui-color-neutral-950);
+  /* Slightly elevated background */
+  --ui-bg-elevated: var(--ui-color-neutral-900);
+  /* More prominent background */
+  --ui-bg-accented: var(--ui-color-neutral-800);
+  /* Inverted background color */
+  --ui-bg-inverted: var(--color-white);
+
+  /* Default border color */
+  --ui-border: var(--ui-color-neutral-800);
+  /* Subtle border */
+  --ui-border-muted: var(--ui-color-neutral-700);
+  /* More prominent border */
+  --ui-border-accented: var(--ui-color-neutral-700);
+  /* Inverted border color */
+  --ui-border-inverted: var(--color-white);
+}
 
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
@@ -26,10 +112,10 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
+  padding: 0;
   min-width: 320px;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 h1 {
@@ -56,7 +142,7 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
-@media (prefers-color-scheme: light) {
+/*@media (prefers-color-scheme: light) {
   :root {
     color: #213547;
     background-color: #ffffff;
@@ -68,3 +154,4 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+*/

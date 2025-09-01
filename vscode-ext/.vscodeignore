@@ -15,4 +15,4 @@ vsc-extension-quickstart.md
 vitest.config.ts
 **/*.test.ts
 app/**
-!app/build/**
+!app/dist/**

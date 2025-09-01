@@ -65,7 +65,7 @@ export class WandelbotsNovaViewerProvider
         this._url = await getConfiguredUrl()
         console.log(`Refreshed URL: ${this._url}`)
 
-        this._view.webview.html = this._getHtmlForWebview(this._view.webview)
+        this._view.webview.html = this._getReactAppHtml(this._view.webview) // this._getHtmlForWebview(this._view.webview)
       } catch (error) {
         console.error('Error during hard refresh:', error)
         this._view.webview.html = this._getErrorHtml(error)
@@ -219,10 +219,50 @@ export class WandelbotsNovaViewerProvider
       this._url = await getConfiguredUrl()
       console.log(`Using URL: ${this._url}`)
 
-      webviewView.webview.html = this._getHtmlForWebview(webviewView.webview)
+      webviewView.webview.html = this._getReactAppHtml(webviewView.webview) // this._getHtmlForWebview(webviewView.webview)
     } catch (error) {
       console.error('Error resolving URL:', error)
       webviewView.webview.html = this._getErrorHtml(error)
+    }
+  }
+
+  /**
+   * Returns the HTML content for the React app
+   */
+  private _getReactAppHtml(webview: vscode.Webview): string {
+    try {
+      // Get path to index.html in build directory
+      const indexPath = vscode.Uri.joinPath(
+        this._extensionUri,
+        'app',
+        'dist',
+        'index.html',
+      )
+
+      // Read the HTML file content
+      const fs = require('fs')
+      const htmlContent = fs.readFileSync(indexPath.fsPath, 'utf8')
+
+      // Convert any resource URIs to webview URIs
+      const buildUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(this._extensionUri, 'app', 'dist'),
+      )
+
+      // Replace paths to be webview-friendly
+      const updatedHtml = htmlContent.replace(
+        /(href|src)="([^"]*)"/g,
+        (match: string, attr: string, path: string) => {
+          if (path.startsWith('/')) {
+            path = path.slice(1)
+          }
+          return `${attr}="${buildUri}/${path}"`
+        },
+      )
+
+      return updatedHtml
+    } catch (error) {
+      console.error('Error loading React app:', error)
+      return this._getErrorHtml(error)
     }
   }
 
@@ -491,46 +531,6 @@ export class WandelbotsNovaViewerProvider
       </body>
       </html>
     `
-  }
-
-  /**
-   * Returns the HTML content for the React app
-   */
-  private _getReactAppHtml(webview: vscode.Webview): string {
-    try {
-      // Get path to index.html in build directory
-      const indexPath = vscode.Uri.joinPath(
-        this._extensionUri,
-        'app',
-        'build',
-        'index.html',
-      )
-
-      // Read the HTML file content
-      const fs = require('fs')
-      const htmlContent = fs.readFileSync(indexPath.fsPath, 'utf8')
-
-      // Convert any resource URIs to webview URIs
-      const buildUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(this._extensionUri, 'app', 'build'),
-      )
-
-      // Replace paths to be webview-friendly
-      const updatedHtml = htmlContent.replace(
-        /(href|src)="([^"]*)"/g,
-        (match: string, attr: string, path: string) => {
-          if (path.startsWith('/')) {
-            path = path.slice(1)
-          }
-          return `${attr}="${buildUri}/${path}"`
-        },
-      )
-
-      return updatedHtml
-    } catch (error) {
-      console.error('Error loading React app:', error)
-      return this._getErrorHtml(error)
-    }
   }
 }
 

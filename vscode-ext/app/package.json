@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mui/icons-material": "^7.3.1",
+    "@mui/material": "^7.3.1",
     "@react-three/drei": "^10.7.4",
     "@wandelbots/nova-js": "^3.0.0",
     "@wandelbots/wandelbots-js-react-components": "^2.35.0",

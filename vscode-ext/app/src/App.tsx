@@ -1,60 +1,77 @@
-import { useState } from 'react'
-import './App.css'
+import { ThemeProvider } from '@mui/material'
 import { TabBar } from '@wandelbots/wandelbots-js-react-components'
-import FineTuning from './FineTune'
+import {
+  JoggingPanel,
+  createNovaMuiTheme,
+} from '@wandelbots/wandelbots-js-react-components'
+import React, { useState } from 'react'
 
-function Button({ label, onClick }: { label: string, onClick: () => void }) {
-  return <button className='bg-blue-500 text-white p-2 rounded-md' onClick={onClick}>{label}</button>
+import './App.css'
+import FineTuning from './FineTune'
+import NovaHome from './pages/Home'
+
+const theme = createNovaMuiTheme({
+  palette: {
+    mode: 'dark',
+  },
+})
+
+function Button({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button className="bg-blue-500 text-white p-2 rounded-md" onClick={onClick}>
+      {label}
+    </button>
+  )
 }
 
-function NovaHome() {
-  return <>
-    <div className='space-y-3 flex flex-col items-center'>
-      <img src="/logo-wandelbots-nova.png" alt="logo" className='max-w-48' />
-      <div className="text-xs font-bold text-gray-500">Extension</div>
-    </div>
-    <div>
-      <Button label='3D Viz: rerun' onClick={() => {}} />
-      <div>
-        See planned paths and robot movement in 3D for visual debugging and analysis
-      </div>
-    </div>
-    <div>
-      <Button label='Program Fine-Tuning' onClick={() => {}} />
-      <div>
-      Adjust robot programs step by step with extended program execution controls while transfering robot programs to physical setup
-      </div>
-    </div>
-  </>
+function Page({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="px-3 py-3 h-full w-full overflow-y-auto">{children}</div>
+  )
 }
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <TabBar
-        defaultActiveTab={0}
-        items={[
-          {
-            content: <NovaHome />,
-            id: 'tab1',
-            label: 'WB Nova Home'
-          },
-          {
-            content: <div>Content for second tab</div>,
-            id: 'tab2',
-            label: '3D Viz: rerun'
-          },
-          {
-            content: <FineTuning />,
-            id: 'tab3',
-            label: 'Fine-Tuning'
-          }
-        ]}
-        onTabChange={function WCe(){}}
-      />
-    </>
+    <ThemeProvider theme={theme}>
+      <div className="flex flex-col h-full w-full from-slate-950 to-slate-900 text-slate-100 bg-gradient-to-b">
+        <TabBar
+          defaultActiveTab={0}
+          items={[
+            {
+              content: (
+                <Page>
+                  <NovaHome />
+                </Page>
+              ),
+              id: 'tab1',
+              label: 'WB Nova Home',
+            },
+            {
+              content: (
+                <Page>
+                  <div>Content for second tab</div>
+                </Page>
+              ),
+              id: 'tab2',
+              label: '3D Viz: rerun',
+            },
+            {
+              content: (
+                <Page>
+                  <FineTuning />
+                </Page>
+              ),
+              id: 'tab3',
+              label: 'Fine-Tuning',
+            },
+          ]}
+          onTabChange={function WCe() {}}
+        />
+        <div className="flex-1 overflow-auto">
+          {/* Tab content will be rendered here by TabBar component */}
+        </div>
+      </div>
+    </ThemeProvider>
   )
 }
 

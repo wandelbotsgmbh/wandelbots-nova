@@ -16,11 +16,11 @@ import {
   VIEWER_ID,
 } from './consts'
 import { logger } from './logging'
+import { connectToNats } from './nova/nats'
 import { readRobotPose } from './nova/readRobotPose'
 import { NovaApi } from './novaApi'
 import { runNovaProgram } from './novaProgram'
 import { getAccessToken, getCellId, getNovaApiAddress } from './urlResolver'
-import { connectToNats } from './nova/nats'
 import {
   WandelbotsNovaViewerProvider,
   setupPythonScriptMonitoring,

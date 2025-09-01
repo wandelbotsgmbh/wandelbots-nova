@@ -86,8 +86,8 @@ export async function runNovaProgram(
         console: 'integratedTerminal',
         cwd: workspaceFolder.uri.fsPath,
         env: {
-          ENABLE_TRAJECTORY_TUNER: '1'
-        }
+          ENABLE_TRAJECTORY_TUNER: '1',
+        },
       }
 
       await vscode.debug.startDebugging(workspaceFolder, debugConfig)
