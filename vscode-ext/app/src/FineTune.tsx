@@ -102,8 +102,8 @@ const MoveControls = ({ onStart, onStop, moving, snap, speed }) => {
     try {
       const command = snap
         ? direction === 'forward'
-          ? 'step_forward'
-          : 'step_backward'
+          ? 'step-forward'
+          : 'step-backward'
         : direction
 
       console.log(
