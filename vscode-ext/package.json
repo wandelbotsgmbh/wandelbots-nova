@@ -147,7 +147,7 @@
   "scripts": {
     "vscode:prepublish": "npm run package",
     "compile": "npm run typecheck && npm run lint && node esbuild.js",
-    "compile:app": "cd ./app && npm run build",
+    "compile:app": "cd ./app && npm install && npm run build",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",

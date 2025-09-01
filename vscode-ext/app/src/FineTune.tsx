@@ -335,6 +335,25 @@ const MotionGroupPanel = () => {
             <GitBranch className="h-4 w-4" />
             <span className="ml-2">Move robot</span>
           </Button>
+          <Button
+            color="secondary"
+            variant="contained"
+            className="w-full"
+            onClick={async () => {
+              try {
+                console.log('Sending NATS finish command')
+                await sendNatsMessage('trajectory-cursor', {
+                  command: 'finish',
+                })
+                console.log('Finish command sent successfully')
+              } catch (error) {
+                console.error('Failed to send finish command:', error)
+              }
+            }}
+          >
+            <GitBranch className="h-4 w-4" />
+            <span className="ml-2">Finish Trajectory</span>
+          </Button>
         </div>
 
         <div className="mt-8">
