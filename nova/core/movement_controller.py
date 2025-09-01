@@ -430,6 +430,8 @@ class TrajectoryCursor:
             ic()
             # stop the request loop
             self.detach()
+            # stop the cursor iterator (TODO is this the right place?)
+            self._in_queue.put_nowait(None)  # TODO make sentinel more explicit
 
     def _handle_movement(
         self, curr_movement: wb.models.MovementMovement, last_movement: wb.models.MovementMovement
@@ -537,6 +539,7 @@ class TrajectoryTuner:
         runtime_task = asyncio.create_task(runtime_monitor(0.5))  # Output every 0.5 seconds
 
         try:
+            # tuning loop
             while not finished_tuning:
                 # TODO this plans the second time for the same actions when we get here because
                 # the initial joint trajectory was already planned before the MotionGroup._execute call
@@ -558,8 +561,10 @@ class TrajectoryTuner:
                         )
                     )
                 )
+                ic()
                 async for execute_response in cursor:
                     yield execute_response
+                ic()
                 await execution_task
                 await sub.unsubscribe()
                 ic()
