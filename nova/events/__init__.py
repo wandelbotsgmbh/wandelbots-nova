@@ -6,7 +6,6 @@ from uuid import UUID, uuid4
 from blinker import signal
 from pydantic import BaseModel, Field
 
-from nova.cell.cell import Cell
 from nova.cell.robot_cell import Device, OutputDevice
 from nova.logging import logger
 from nova.nats import Message as NatsMessage
@@ -54,7 +53,7 @@ class Timer:
 class CycleDevice(OutputDevice, Device):
     def __init__(self, cell: Cell):
         super().__init__()
-        self._cycle = Cycle(cell=cell)
+        self._cycle = Cycle(cell_id=cell)
 
     async def write(self, key, _):
         if hasattr(self._cycle, key):
@@ -100,10 +99,10 @@ class Cycle:
         cycle_id (UUID | None): Unique identifier for the cycle, set after start()
     """
 
-    def __init__(self, cell: Cell):
+    def __init__(self, cell_id: str):
         self.cycle_id: UUID | None = None
         self._timer = Timer()
-        self._cell_id = cell.cell_id
+        self._cell_id = cell_id
         self._cycle_subject = _NATS_CYCLE_SUBJECT.format(cell=self._cell_id)
 
     async def start(self) -> datetime:

@@ -1,37 +1,26 @@
+import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import FormGroup from '@mui/material/FormGroup'
+import Modal from '@mui/material/Modal'
 import Switch from '@mui/material/Switch'
 import { VelocitySlider } from '@wandelbots/wandelbots-js-react-components'
 import {
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Cpu,
   GitBranch,
   Play,
-  Wrench,
+  Route,
+  SplinePointer,
 } from 'lucide-react'
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
-import { connectToNats, disconnectFromNats, sendNatsMessage } from './nats'
-
-const SectionHeader = ({ title, right }) => (
-  <div className="flex items-center justify-between gap-3 px-6 py-4">
-    <h3 className="text-lg font-semibold tracking-tight text-slate-100">
-      {title}
-    </h3>
-    <div className="flex items-center gap-2">{right}</div>
-  </div>
-)
-
-const Pill = ({ children, tone = 'violet' }) => (
-  <span
-    className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium bg-${tone}-500/15 text-${tone}-300 border border-${tone}-400/20`}
-  >
-    {children}
-  </span>
-)
+import {
+  connectToNats,
+  disconnectFromNats,
+  sendNatsMessage,
+} from '../utils/nats'
+import JoggingPanel from './JoggingPanel'
 
 const Range = ({ value, onChange, min = 0, max = 100, step = 1 }) => (
   <VelocitySlider
@@ -46,50 +35,6 @@ const Range = ({ value, onChange, min = 0, max = 100, step = 1 }) => (
     }}
   />
 )
-
-const StatusPill = ({ state = 'Ready', mode = 'Auto' }) => (
-  <Pill>
-    <Cpu className="h-4 w-4" />
-    <span>
-      {state} <span className="opacity-60">/</span> {mode}
-    </span>
-  </Pill>
-)
-
-const MotionGroupSelector = ({ value, onChange, options }) => {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
-      >
-        <Wrench className="h-4 w-4" />
-        <span>{value}</span>
-        <ChevronDown className="h-4 w-4 opacity-70" />
-      </button>
-      {open && (
-        <div className="absolute z-20 mt-2 w-56 overflow-hidden rounded-xl border border-white/10 bg-slate-900/95 shadow-lg backdrop-blur">
-          {options.map((opt) => (
-            <button
-              key={opt}
-              onClick={() => {
-                onChange(opt)
-                setOpen(false)
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm hover:bg-white/5 ${
-                opt === value ? 'text-violet-300' : 'text-slate-200'
-              }`}
-            >
-              <Wrench className="h-4 w-4" />
-              <span>{opt}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 const MoveControls = ({ onStart, onStop, moving, snap, speed }) => {
   const handleButtonClick = async (event: any, direction: string) => {
@@ -167,9 +112,9 @@ const MoveControls = ({ onStart, onStop, moving, snap, speed }) => {
             <ChevronRight className="size-12" />
           </Button>
         </div>
-        <div className="flex items-center justify-center gap-6 text-slate-400">
-          <span className="text-base font-medium">backward</span>
-          <span className="text-base font-medium">forward</span>
+        <div className="grid grid-cols-2 gap-9 text-slate-400">
+          <span className="text-sm font-medium">backward</span>
+          <span className="text-sm font-medium">forward</span>
         </div>
       </div>
     </div>
@@ -180,12 +125,9 @@ const MoveControls = ({ onStart, onStop, moving, snap, speed }) => {
  * Main Panel – Motion Group
  ****************************/
 const MotionGroupPanel = () => {
-  const [group, setGroup] = useState('UR10e-handling')
-  const [state, setState] = useState('Ready')
-  const [mode, setMode] = useState('Auto')
   const [speed, setSpeed] = useState(40)
   const [snap, setSnap] = useState(true)
-  const [moving, setMoving] = useState(null) // "backward" | "forward" | null
+  const [moving, setMoving] = useState<'backward' | 'forward' | null>(null)
   const [pose, setPose] = useState({
     x: 120.2,
     y: 34.1,
@@ -220,7 +162,7 @@ const MotionGroupPanel = () => {
   }
 
   // Simulate movement & pose drift while holding a button
-  const moveInterval = useRef(null)
+  const moveInterval = useRef<number | null>(null)
   useEffect(() => {
     if (moving) {
       moveInterval.current = setInterval(() => {
@@ -232,46 +174,36 @@ const MotionGroupPanel = () => {
         }))
       }, 120)
     }
-    return () => clearInterval(moveInterval.current)
+    return () => clearInterval(moveInterval.current ?? 0)
   }, [moving, speed])
 
-  const handleStart = (dir) => setMoving(dir)
+  const handleStart = (dir: 'backward' | 'forward') => setMoving(dir)
   const handleStop = () => setMoving(null)
 
-  const speedDisplay = useMemo(() => `v = ${speed} mm/s`, [speed])
-
   const runTest = () => {
-    // Mock test result
     const ok = Math.random() > 0.12
-    setLastTest({
-      ok,
-      at: new Date().toLocaleTimeString(),
-      note: ok ? 'Trajectory validated' : 'Joint 3 exceeded threshold',
-    })
+    console.log('Test result:', ok)
   }
+
+  async function finishTrajectoryTuning() {
+    try {
+      console.log('Sending NATS finish command')
+      await sendNatsMessage('trajectory-cursor', {
+        command: 'finish',
+      })
+      console.log('Finish command sent successfully')
+    } catch (error) {
+      console.error('Failed to send finish command:', error)
+    }
+  }
+
+  const [isJoggingOpen, setIsJoggingOpen] = useState(false)
+
+  const handleOpenJogging = () => setIsJoggingOpen(true)
+  const handleCloseJogging = () => setIsJoggingOpen(false)
 
   return (
     <div className="px-3 py-6">
-      {/* Header Row */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <MotionGroupSelector
-            value={group}
-            onChange={setGroup}
-            options={['UR10e-handling', 'UR10e-welding', 'UR5-palletizing']}
-          />
-        </div>
-        <StatusPill state={state} mode={mode} />
-      </div>
-
-      {/* Robot Name */}
-      <div className="mt-6 border-t border-white/10 pt-6">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-100">UR10e</h2>
-          <p className="text-sm text-slate-400">0@ur10</p>
-        </div>
-      </div>
-
       {/* Execution Speed */}
       <div className="mt-8 grid grid-cols-1 items-center gap-4 md:grid-cols-[1fr_auto]">
         <div>
@@ -316,60 +248,74 @@ const MotionGroupPanel = () => {
             variant="contained"
             className="w-full"
             onClick={() => {
-              // Mock: nudge pose a little and pretend to fetch
               setPose((p) => ({ ...p, x: Number((p.x + 0.2).toFixed(2)) }))
             }}
           >
-            <GitBranch className="h-4 w-4" />
+            <SplinePointer className="h-4 w-4" />
             <span className="ml-2">Get current pose</span>
           </Button>
           <Button
             color="secondary"
             variant="contained"
             className="w-full"
-            onClick={() => {
-              // Mock action: toggle mode
-              setMode((m) => (m === 'Auto' ? 'Manual' : 'Auto'))
-            }}
+            onClick={handleOpenJogging}
           >
-            <GitBranch className="h-4 w-4" />
+            <Route className="h-4 w-4" />
             <span className="ml-2">Move robot</span>
           </Button>
           <Button
             color="secondary"
             variant="contained"
             className="w-full"
-            onClick={async () => {
-              try {
-                console.log('Sending NATS finish command')
-                await sendNatsMessage('trajectory-cursor', {
-                  command: 'finish',
-                })
-                console.log('Finish command sent successfully')
-              } catch (error) {
-                console.error('Failed to send finish command:', error)
-              }
-            }}
+            onClick={finishTrajectoryTuning}
           >
             <GitBranch className="h-4 w-4" />
             <span className="ml-2">Finish Trajectory</span>
           </Button>
         </div>
 
-        <div className="mt-8">
+        {/*<div className="mt-8">
           <Button variant="contained" onClick={runTest} className="w-56">
             <Play className="h-4 w-4" />
             <span className="ml-2">Run Test</span>
           </Button>
-        </div>
+        </div>*/}
       </div>
+
+      <Modal
+        open={isJoggingOpen}
+        onClose={handleCloseJogging}
+        aria-labelledby="jogging-modal-title"
+        aria-describedby="jogging-modal-description"
+      >
+        <Box
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 720,
+            maxWidth: '95vw',
+            bgcolor: 'background.paper',
+            boxShadow: 24,
+            p: 3,
+            borderRadius: 2,
+            maxHeight: '90vh',
+            overflow: 'auto',
+          }}
+        >
+          <div id="jogging-modal-title" className="text-lg font-semibold mb-3">
+            Jogging Panel
+          </div>
+          <div id="jogging-modal-description">
+            <JoggingPanel />
+          </div>
+        </Box>
+      </Modal>
     </div>
   )
 }
 
-/****************************
- * Root App
- ****************************/
 export default function FineTuning() {
   return (
     <div className="min-h-screen">
@@ -378,7 +324,6 @@ export default function FineTuning() {
           <main className="mx-auto max-w-5xl p-6">
             <div className="space-y-6">
               <section>
-                <SectionHeader title="Motion Group" right={null} />
                 <MotionGroupPanel />
               </section>
             </div>
