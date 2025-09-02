@@ -69,10 +69,6 @@
         "command": "wandelbots-nova.readRobotPose",
         "title": "Wandelbots NOVA: Read robot pose",
         "icon": "$(location)"
-      },
-      {
-        "command": "wandelbots-nova.connectToNats",
-        "title": "Wandelbots NOVA: Connect to NATS"
       }
     ],
     "languages": [
