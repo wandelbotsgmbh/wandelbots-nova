@@ -118,7 +118,7 @@ def create_wandelscript_program(
         async with Nova() as nova:
             robot_cell = await nova.cell().get_robot_cell()
             # This causes cyclic import, can't add to cell
-            cycle_device = CycleDevice(cell=nova.cell())
+            cycle_device = CycleDevice(cell_id=nova.cell().cell_id)
             robot_cell.devices["cycle"] = cycle_device
 
             # TODO: Don't create another runner here, just execute the program

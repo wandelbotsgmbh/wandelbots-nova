@@ -5,6 +5,7 @@ from functools import singledispatch
 from math import ceil, floor
 from typing import Any, AsyncIterator, Callable, Optional
 
+import pydantic
 import wandelbots_api_client as wb
 from aiohttp_retry import dataclass
 from icecream import ic
@@ -225,6 +226,7 @@ class TrajectoryCursor:
     def __call__(self, context: MovementControllerContext):
         self.context = context
         self.combined_actions: CombinedActions = context.combined_actions
+        self.motion_id = context.motion_id  # TODO does this override here make sense?
         # self.forward_to_next_action()
         return self.cntrl
 
@@ -420,9 +422,12 @@ class TrajectoryCursor:
                             if self._detach_on_standstill:
                                 break
                         case wb.models.StandstillReason.REASON_MOTION_ENDED:
+                            self._complete_operation()
+                            if self._detach_on_standstill:
+                                ic()
+                                break
                             # self.context.movement_consumer(None)
-                            ic()
-                            break
+                            # break
                 else:
                     ic(instance)
                     # Handle other types of instances if needed
@@ -480,17 +485,16 @@ async def init_movement_gen(
 
     # then we get the response
     initialize_movement_response = await anext(response_stream)
+    # TODO handle error response here (MovementError)
     if isinstance(
         initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
     ):
         r1 = initialize_movement_response.actual_instance
-        if not r1.init_response.succeeded:
+        if not r1.init_response.succeeded:  # TODO we don't come here if there was an error response
             raise InitMovementFailed(r1.init_response)
 
 
-import json
-
-from nova.events import nats
+from faststream.nats import NatsBroker
 
 
 class TrajectoryTuner:
@@ -503,39 +507,33 @@ class TrajectoryTuner:
         finished_tuning = False
         last_operation_result = None  # TODO implement this feature
         joint_trajectory = await self.plan_fn(self.actions)
+        current_cursor = None  # TODO maybe we can also initialize this here already
 
-        nats_client = await nats.get_client()
+        broker = NatsBroker()
 
-        def get_cmd_sub_handler(cursor):
-            async def cmd_sub_handler(msg):
-                nonlocal last_operation_result, finished_tuning
-                ic(msg.data)
-                match json.loads(msg.data.decode()):
-                    case {"command": "forward", **rest}:
-                        ic()
-                        last_operation_result = await cursor.forward(
-                            playback_speed_in_percent=rest.get("speed", None)
-                        )
-                    case {"command": "step-forward", **rest}:
-                        ic()
-                        await cursor.forward_to_next_action(
-                            playback_speed_in_percent=rest.get("speed", None)
-                        )
-                    case {"command": "backward", **rest}:
-                        await cursor.backward(playback_speed_in_percent=rest.get("speed", None))
-                    case {"command": "step-backward", **rest}:
-                        await cursor.backward_to_previous_action(
-                            playback_speed_in_percent=rest.get("speed", None)
-                        )
-                    case {"command": "pause", **rest}:
-                        await cursor.pause()
-                    case {"command": "finish", **rest}:
-                        cursor.detach()
-                        finished_tuning = True
-                    case _:
-                        ic("Unknown command")
-
-            return cmd_sub_handler
+        @broker.subscriber("trajectory-cursor")
+        async def controller_handler(command: str, speed: Optional[pydantic.PositiveInt]):
+            nonlocal last_operation_result, finished_tuning
+            match command:
+                case "forward":
+                    last_operation_result = await current_cursor.forward(
+                        playback_speed_in_percent=speed
+                    )
+                case "step-forward":
+                    await current_cursor.forward_to_next_action(playback_speed_in_percent=speed)
+                case "backward":
+                    await current_cursor.backward(playback_speed_in_percent=speed)
+                case "step-backward":
+                    await current_cursor.backward_to_previous_action(
+                        playback_speed_in_percent=speed
+                    )
+                case "pause":
+                    await current_cursor.pause()
+                case "finish":
+                    current_cursor.detach()
+                    finished_tuning = True
+                case _:
+                    ic("Unknown command")
 
         async def runtime_monitor(interval=0.5):
             start_time = asyncio.get_event_loop().time()
@@ -560,9 +558,6 @@ class TrajectoryTuner:
                     self.actions,
                     initial_location=current_location,
                     detach_on_standstill=True,
-                )
-                sub = await nats_client.subscribe(
-                    "trajectory-cursor", cb=get_cmd_sub_handler(cursor)
                 )
                 execution_task = asyncio.create_task(
                     self.execute_fn(
@@ -591,5 +586,3 @@ class TrajectoryTuner:
             # await runtime_task
         except asyncio.CancelledError:
             pass
-        finally:
-            await nats.close()
