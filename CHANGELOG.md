@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.15.0 (2025-09-02)
+
+### Features
+
+- **NDX-231**: Visualize current debug position in code editor (#269)
+  ([#269](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/269),
+  [`9de584e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9de584e781817c86559233695acf61af8eba513d))
+
+
 ## v2.14.1 (2025-08-29)
 
 ### Bug Fixes
