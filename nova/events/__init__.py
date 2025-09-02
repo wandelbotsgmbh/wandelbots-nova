@@ -45,9 +45,9 @@ class Timer:
 
 
 class CycleDevice(OutputDevice, Device):
-    def __init__(self, cell: Cell):
+    def __init__(self, cell_id: str):
         super().__init__()
-        self._cycle = Cycle(cell=cell)
+        self._cycle = Cycle(cell_id=cell_id)
 
     async def write(self, key, _):
         if hasattr(self._cycle, key):

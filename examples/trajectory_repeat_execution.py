@@ -19,7 +19,7 @@ import asyncio
 from math import pi
 
 import nova
-from nova import Nova, api, viewers
+from nova import Nova, api
 from nova.actions import jnt, lin
 from nova.cell import virtual_controller
 from nova.core.movement_controller import TrajectoryCursor
@@ -29,7 +29,6 @@ from nova.types import MotionSettings, Pose
 
 @nova.program(
     name="Trajectory Repeat Execution",
-    viewer=viewers.Rerun(),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -38,7 +37,7 @@ from nova.types import MotionSettings, Pose
                 type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             )
         ],
-        cleanup_controllers=True,
+        cleanup_controllers=False,
     ),
 )
 async def main():
@@ -115,16 +114,30 @@ async def main():
 
                 # Execute the trajectory using the motion group's execute method with TrajectoryCursor
                 print("Executing trajectory...")
-                motion_iter = await motion_group.execute(
-                    joint_trajectory, tcp, actions=actions, movement_controller=trajectory_cursor
-                )
 
-                # Monitor execution
-                step_count = 0
-                async for motion_state in motion_iter:
-                    if step_count % 50 == 0:  # Print every 50th state to avoid spam
-                        print(f"  Motion state - Path parameter: {motion_state.path_parameter:.3f}")
-                    step_count += 1
+                async def execute_trajectory():
+                    motion_iter = motion_group.stream_execute(
+                        joint_trajectory,
+                        tcp,
+                        actions=actions,
+                        movement_controller=trajectory_cursor,
+                    )
+
+                    # Monitor execution
+                    step_count = 0
+                    async for motion_state in motion_iter:
+                        if step_count % 50 == 0:  # Print every 50th state to avoid spam
+                            print(
+                                f"  Motion state - Path parameter: {motion_state.path_parameter:.3f}"
+                            )
+                        step_count += 1
+
+                execute_task = asyncio.create_task(execute_trajectory())
+                if initial_location == 0.0:
+                    await trajectory_cursor.forward()
+                else:
+                    await trajectory_cursor.backward()
+                await execute_task
 
                 # Verify final position
                 final_pose = await motion_group.tcp_pose(tcp)
