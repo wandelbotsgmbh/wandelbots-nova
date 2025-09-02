@@ -6,6 +6,7 @@ import * as vscode from 'vscode'
 import { NovaCodeLensProvider } from './codeLens'
 import {
   COMMAND_DEBUG_NOVA_PROGRAM,
+  COMMAND_FINE_TUNE_NOVA_PROGRAM,
   COMMAND_OPEN_NOVA_VIEWER,
   COMMAND_READ_ROBOT_POSE,
   COMMAND_REFRESH_CODE_LENS,
@@ -15,6 +16,7 @@ import {
   VIEWER_ID,
 } from './consts'
 import { logger } from './logging'
+import { connectToNats } from './nova/nats'
 import { readRobotPose } from './nova/readRobotPose'
 import { NovaApi } from './novaApi'
 import { runNovaProgram } from './novaProgram'
@@ -102,12 +104,30 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   )
 
+  // Register command to fine-tune Nova program
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      COMMAND_FINE_TUNE_NOVA_PROGRAM,
+      async (uri, functionName, line) => {
+        await runNovaProgram(uri, functionName, false, true)
+      },
+    ),
+  )
+
   // Register command to refresh CodeLens
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_REFRESH_CODE_LENS, () => {
       logger.info('Refreshing Nova CodeLens')
       novaCodeLensProvider.refresh()
       vscode.window.showInformationMessage('Nova CodeLens refreshed')
+    }),
+  )
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('wandelbots-nova.connectToNats', () => {
+      logger.info('Connecting to NATS')
+      connectToNats()
+      vscode.window.showInformationMessage('Connected to NATS')
     }),
   )
 
