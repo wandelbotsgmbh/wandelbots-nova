@@ -1,13 +1,10 @@
 import { ThemeProvider } from '@mui/material'
 import { TabBar } from '@wandelbots/wandelbots-js-react-components'
-import {
-  JoggingPanel,
-  createNovaMuiTheme,
-} from '@wandelbots/wandelbots-js-react-components'
+import { createNovaMuiTheme } from '@wandelbots/wandelbots-js-react-components'
 import React, { useState } from 'react'
 
 import './App.css'
-import FineTuning from './FineTune'
+import FineTuning from './pages/FineTune'
 import NovaHome from './pages/Home'
 
 const theme = createNovaMuiTheme({
