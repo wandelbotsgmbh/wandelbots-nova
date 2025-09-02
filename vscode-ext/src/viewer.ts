@@ -1,7 +1,12 @@
 import * as vscode from 'vscode'
 
 import { EXPLORER_ID, VIEWER_ID } from './consts'
-import { getConfiguredUrl } from './urlResolver'
+import {
+  getConfiguredUrl,
+  getNovaApiAddress,
+  getAccessToken,
+  getCellId,
+} from './urlResolver'
 
 // Track if this is the initial activation
 let isInitialActivation = true
@@ -249,7 +254,7 @@ export class WandelbotsNovaViewerProvider
       )
 
       // Replace paths to be webview-friendly
-      const updatedHtml = htmlContent.replace(
+      let updatedHtml = htmlContent.replace(
         /(href|src)="([^"]*)"/g,
         (match: string, attr: string, path: string) => {
           if (path.startsWith('/')) {
@@ -258,6 +263,23 @@ export class WandelbotsNovaViewerProvider
           return `${attr}="${buildUri}/${path}"`
         },
       )
+
+      // Inject configuration from VS Code settings/environment for the React app
+      const novaApiAddress = getNovaApiAddress()
+      const accessToken = getAccessToken()
+      const cellId = getCellId()
+      const configScript = `<script>window.__NOVA_CONFIG__ = ${JSON.stringify({
+        novaApi: novaApiAddress,
+        cellId,
+        accessToken,
+      })};</script>`
+
+      // Prefer to inject before </head>; if not present, prepend to body
+      if (updatedHtml.includes('</head>')) {
+        updatedHtml = updatedHtml.replace('</head>', `${configScript}</head>`)
+      } else {
+        updatedHtml = configScript + updatedHtml
+      }
 
       return updatedHtml
     } catch (error) {
