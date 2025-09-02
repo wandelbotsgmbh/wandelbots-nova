@@ -24,8 +24,6 @@ class NatsClient:
         self,
         host: str | None = None,
         access_token: str | None = None,
-        # TODO: check with Dirk, this allows all the config to pass from nova class to nats library
-        # is this really what we want
         nats_client_config: dict | None = None,
     ):
         """
@@ -46,29 +44,23 @@ class NatsClient:
         self._init_nats_client()
 
     def _init_nats_client(self) -> None:
-        """
-        Initialize the NATS WebSocket connection string.
-
-        Order of precedence:
-        1) Use self._host if present (derive ws/wss + default port).
-        2) Otherwise, read from NATS_BROKER env var.
-        """
         host = self._host
-        if host:
+        token = self._access_token
+
+        if host and token:
             host = host.strip()
             is_http = host.startswith("http://")
             # Remove protocol and trailing slashes
             clean_host = host.replace("https://", "").replace("http://", "").rstrip("/")
 
             scheme, port = ("ws", 80) if is_http else ("wss", 443)
-            token = self._access_token
-            auth = f"{token}@" if token else ""
+            auth = f"{token}@"
 
             self._nats_connection_string = f"{scheme}://{auth}{clean_host}:{port}/api/nats"
             self._is_configured = True
             return
 
-        logger.debug("Host not set; reading NATS connection from env var")
+        logger.debug("Host and token not both set; reading NATS connection from env var")
         self._nats_connection_string = config("NATS_BROKER", default=None)
 
         if self._nats_connection_string:
