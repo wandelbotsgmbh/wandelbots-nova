@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.15.1 (2025-09-02)
+
+### Bug Fixes
+
+- Only when token exists build connection string (#271)
+  ([#271](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/271),
+  [`048c365`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/048c36519dd897354d0fe01bd7afe21c42e0a644))
+
+
 ## v2.15.0 (2025-09-02)
 
 ### Features
