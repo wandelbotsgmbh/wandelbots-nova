@@ -8,6 +8,7 @@ from novax.program_manager import ProgramDetails, ProgramManager, ProgramRun, Ru
 router = APIRouter(prefix="/programs", tags=["programs"])
 
 
+# can we use the same api model from wandelbots_api_client
 class ProgramResponse(ProgramDetails):
     input_schema: dict[str, Any]
 

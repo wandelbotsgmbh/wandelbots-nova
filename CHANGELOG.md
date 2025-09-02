@@ -1,6 +1,87 @@
 # CHANGELOG
 
 
+## v2.15.0 (2025-09-02)
+
+### Features
+
+- **NDX-231**: Visualize current debug position in code editor (#269)
+  ([#269](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/269),
+  [`9de584e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9de584e781817c86559233695acf61af8eba513d))
+
+
+## v2.14.1 (2025-08-29)
+
+### Bug Fixes
+
+- Add none check for the robot cell (#268)
+  ([#268](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/268),
+  [`9772589`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/97725895160aa295b32c3fbeeba18ea5144017a9))
+
+
+## v2.14.0 (2025-08-29)
+
+### Features
+
+- Publish program run to nats (#249)
+  ([#249](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/249),
+  [`39df504`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/39df504156e224f5f40ed5b98daa5e2cda7167d6))
+
+
+## v2.13.0 (2025-08-28)
+
+### Features
+
+- **NDX-242**: Vscode extension to read the current robot pose and insert at cursor (#264)
+  ([#264](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/264),
+  [`bb05a81`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bb05a81c9b2335051aaf16723e3b4bf14c22c8db))
+
+
+## v2.12.2 (2025-08-27)
+
+### Bug Fixes
+
+- Preserve hash characters in KUKA IO names (#266)
+  ([#266](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/266),
+  [`f606baf`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f606baf6c9fc9192e1a5a58b2d2994b23f221c53))
+
+
+## v2.12.1 (2025-08-25)
+
+### Bug Fixes
+
+- **NDX-250**: Prevent index error when TrajectoryBuilder initialized without settings (#265)
+  ([#265](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/265),
+  [`8dbe7c6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8dbe7c649ec75a8e4803ac2d2d62ecb4cec6ac55))
+
+
+## v2.12.0 (2025-08-22)
+
+### Features
+
+- **NDX-216**: Upgrade generated Wandelbots NOVA API client to 25.7 (#263)
+  ([#263](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/263),
+  [`f571aa9`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f571aa98f4182aada61c77fae5407c6d09607c83))
+
+
+## v2.11.0 (2025-08-19)
+
+### Features
+
+- **NDX-227**: Added vscode extension with basic setup to wandelbots-nova (#261)
+  ([#261](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/261),
+  [`f1f38a1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f1f38a192b5f69a3bd4f5cefc869795137b17aa5))
+
+
+## v2.10.0 (2025-08-19)
+
+### Features
+
+- Update rerun-sdk version to 0.24.1 in optional dependencies (#262)
+  ([#262](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/262),
+  [`bce59ca`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bce59caf66d172c025deee7a246e427628420c48))
+
+
 ## v2.9.0 (2025-08-14)
 
 ### Features

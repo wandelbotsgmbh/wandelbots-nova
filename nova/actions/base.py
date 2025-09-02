@@ -5,7 +5,7 @@ from typing import ClassVar
 
 import pydantic
 
-from nova.core.logging import logger
+from nova.logging import logger
 
 
 class Action(pydantic.BaseModel, ABC):

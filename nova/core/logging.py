@@ -1,19 +1,23 @@
-import logging
-import sys
+"""Deprecated: use `nova.logging` instead of `nova.core.logging`.
 
-from decouple import config
+This module re-exports the new logging definitions and issues a warning to help
+users migrate. It will be removed in a future release.
+"""
 
-LOG_LEVEL: str = config("LOG_LEVEL", default="INFO").upper()
-LOG_FORMAT: str = config("LOG_FORMAT", default="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-LOG_DATETIME_FORMAT: str = config("LOG_DATETIME_FORMAT", default="%Y-%m-%d %H:%M:%S")
-LOGGER_NAME: str = config("LOGGER_NAME", default="wandelbots-nova")
+from warnings import warn
 
-# Setting up the underlying logger
-formatter: logging.Formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT)
-handler: logging.StreamHandler = logging.StreamHandler(sys.stdout)
-handler.setLevel(LOG_LEVEL)
-handler.setFormatter(formatter)
+import nova.logging as _new_logging_module
 
-logger: logging.Logger = logging.getLogger(LOGGER_NAME)
-logger.setLevel(LOG_LEVEL)
-logger.addHandler(handler)
+warn(
+    "`nova.core.logging` is deprecated and will be removed in a future release; import from `nova.logging` instead.",
+    FutureWarning,
+    stacklevel=2,
+)
+
+LOG_LEVEL = _new_logging_module._LOG_LEVEL
+LOG_FORMAT = _new_logging_module._LOG_FORMAT
+LOG_DATETIME_FORMAT = _new_logging_module._LOG_DATETIME_FORMAT
+LOGGER_NAME = _new_logging_module._LOGGER_NAME
+formatter = _new_logging_module._formatter
+handler = _new_logging_module._handler
+logger = _new_logging_module.logger

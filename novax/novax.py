@@ -5,7 +5,8 @@ from decouple import config
 from fastapi import APIRouter, FastAPI
 
 from nova.cell.robot_cell import RobotCell
-from nova.core.logging import logger
+from nova.core.nova import Nova
+from nova.logging import logger
 from nova.program.function import Program
 from nova.program.store import Program as StoreProgram
 from nova.program.store import ProgramStore
@@ -14,16 +15,16 @@ from novax.program_manager import ProgramDetails, ProgramManager
 # Read BASE_PATH environment variable and extract app name
 _BASE_PATH = config("BASE_PATH", default="/default/novax")
 _APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else "novax"
-logger.info(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
+logger.debug(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
 
 # Create nats programs bucket name
 _CELL_NAME = config("CELL_NAME", default="")
-_NATS_PROGRAM_BUCKET = f"nova_{_CELL_NAME}_programs"
-_NATS_CLIENT_CONFIG = {"connect_timeout": 2.0, "allow_reconnect": True, "max_reconnect_attempts": 2}
 
 
 class Novax:
     def __init__(self, robot_cell_override: RobotCell | None = None):
+        self._nova = Nova()
+        self._cell = self._nova.cell(cell_id=_CELL_NAME)
         self._program_manager: ProgramManager = ProgramManager(
             robot_cell_override=robot_cell_override
         )
@@ -61,19 +62,21 @@ class Novax:
         Lifespan context manager for FastAPI application lifecycle.
         Handles startup and shutdown events.
         """
-        await self._register_programs()
+        await self._nova.connect()
+        logger.info("Novax: Connected to Nova API")
+        store = ProgramStore(cell_id=self._cell.cell_id, nats_client=self._nova.nats)
+        await self._register_programs(store)
+        logger.info("Novax: Programs registered to store on startup")
 
-        try:
-            yield
-        finally:
-            await self._deregister_programs()
+        yield
+        await self._deregister_programs(store)
 
-    async def _register_programs(self):
+    async def _register_programs(self, program_store: ProgramStore):
         """
         Handle FastAPI startup - discover and register programs from sources to store
         """
         try:
-            logger.info("Novax: Starting program discovery and registration to store")
+            logger.debug("Novax: Starting program discovery and registration to store")
             programs = await self._program_manager.get_programs()
 
             store_programs = {}
@@ -90,21 +93,20 @@ class Novax:
                         description=program_details.description,
                         app=_APP_NAME,
                         preconditions=preconditions_dict,
+                        # TODO: once the types are streamlined, should be easy to fix, just map the data
+                        input_schema={},
                     )
 
                     store_programs[program_id] = store_program
                 except Exception as e:
                     logger.error(f"Failed to convert program {program_id} to store format: {e}")
 
-            async with ProgramStore(
-                nats_bucket_name=_NATS_PROGRAM_BUCKET, nats_client_config=_NATS_CLIENT_CONFIG
-            ) as program_store:
-                for program_id, store_program in store_programs.items():
-                    try:
-                        await program_store.put(f"{_APP_NAME}.{program_id}", store_program)
-                        logger.debug(f"Program {program_id} synced to store")
-                    except Exception as e:
-                        logger.error(f"Failed to sync program {program_id} to store: {e}")
+            for program_id, store_program in store_programs.items():
+                try:
+                    await program_store.put(f"{_APP_NAME}.{program_id}", store_program)
+                    logger.debug(f"Program {program_id} synced to store")
+                except Exception as e:
+                    logger.error(f"Failed to sync program {program_id} to store: {e}")
 
             logger.info(
                 f"Novax: {len(store_programs)} programs discovered and synced to store on startup"
@@ -113,26 +115,22 @@ class Novax:
             logger.error(f"Novax startup error: Failed to register programs to store: {e}")
             # Don't raise the exception to prevent app startup failure
 
-    async def _deregister_programs(self):
+    async def _deregister_programs(self, program_store: ProgramStore):
         """
         Handle FastAPI shutdown - cleanup programs from store
         """
         try:
-            logger.info("Novax: Starting program cleanup from store on shutdown")
-            # Get current programs first
+            logger.debug("Novax: Starting program cleanup from store on shutdown")
             programs = self._program_manager._programs
             program_ids = list(programs.keys())
             program_count = len(program_ids)
 
-            async with ProgramStore(
-                nats_bucket_name=_NATS_PROGRAM_BUCKET, nats_client_config=_NATS_CLIENT_CONFIG
-            ) as program_store:
-                for program_id in program_ids:
-                    try:
-                        await program_store.delete(f"{_APP_NAME}.{program_id}")
-                        logger.debug(f"Program {program_id} removed from store")
-                    except Exception as e:
-                        logger.error(f"Failed to remove program {program_id} from store: {e}")
+            for program_id in program_ids:
+                try:
+                    await program_store.delete(f"{_APP_NAME}.{program_id}")
+                    logger.debug(f"Program {program_id} removed from store")
+                except Exception as e:
+                    logger.error(f"Failed to remove program {program_id} from store: {e}")
 
             logger.info(f"Novax: Shutdown complete, removed {program_count} programs from store")
 

@@ -33,7 +33,7 @@ from nova.types import Pose
                 type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             )
         ],
-        cleanup_controllers=True,
+        cleanup_controllers=False,
     ),
 )
 async def main():

@@ -1,6 +1,6 @@
 import datetime as dt
 import inspect
-from typing import Any, Optional
+from typing import Any, Callable, Coroutine, Optional
 
 from pydantic import BaseModel
 
@@ -40,6 +40,7 @@ class NovaxProgramRunner(ProgramRunner):
         return result
 
 
+# can we remove this and use program model from wandelbots_api_client?
 class ProgramDetails(BaseModel):
     program: str
     name: str | None
@@ -55,7 +56,18 @@ class RunProgramRequest(BaseModel):
 class ProgramManager:
     """Manages program registration, storage, and execution"""
 
-    def __init__(self, robot_cell_override: RobotCell | None = None):
+    def __init__(
+        self,
+        robot_cell_override: RobotCell | None = None,
+        state_listener: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
+    ):
+        """
+        Initialize the ProgramManager.
+        Args:
+            robot_cell_override: Optional override for the robot cell the program runs against
+            state_listener: Optional listener for program state changes
+        """
+
         self._programs: dict[str, ProgramDetails] = {}
         self._program_functions: dict[str, Program] = {}
         self._runner: NovaxProgramRunner | None = None
@@ -123,9 +135,21 @@ class ProgramManager:
         return self._programs.get(program_id)
 
     async def start_program(
-        self, program_id: str, parameters: dict[str, Any] | None = None, sync: bool = False
+        self,
+        program_id: str,
+        parameters: dict[str, Any] | None = None,
+        sync: bool = False,
+        on_state_change: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
     ) -> ProgramRun:
-        """Start a registered program with given parameters"""
+        """
+        Start a registered program with given parameters.
+
+        Args:
+            program_id: The ID of the program to start
+            parameters: Optional parameters to pass to the program function
+            sync: If True, run the program synchronously
+            on_state_change: Optional callback to handle program state changes
+        """
         if self.is_any_program_running:
             raise RuntimeError("A program is already running")
 
@@ -136,7 +160,9 @@ class ProgramManager:
             robot_cell_override=self._robot_cell_override,
         )
         self._runner = runner
-        runner.start(sync=sync)
+
+        # Start the runner - state changes are handled internally by ProgramRunner
+        runner.start(sync=sync, on_state_change=on_state_change)
         return runner.program_run
 
     async def stop_program(self, program_id: str):

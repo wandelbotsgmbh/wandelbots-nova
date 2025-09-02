@@ -49,7 +49,7 @@ async def move_robot(motion_group: MotionGroup, tcp: str):
                 type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
             ),
         ],
-        cleanup_controllers=True,
+        cleanup_controllers=False,
     ),
 )
 async def main():

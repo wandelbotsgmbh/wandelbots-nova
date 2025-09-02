@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import pytest
@@ -36,8 +36,8 @@ class TestCycle:
         """Test the start method."""
         cycle = Cycle(mock_cell)
 
-        # Mock the signal.send_async to avoid actual event dispatch
-        with patch.object(cycle_started, "send_async", new=AsyncMock()) as mock_send:
+        # Mock the signal.send to avoid actual event dispatch
+        with patch.object(cycle_started, "send", new=MagicMock()) as mock_send:
             start_time = await cycle.start()
 
             # Verify return value and state changes
@@ -59,7 +59,7 @@ class TestCycle:
         """Test that starting an already running cycle raises an error."""
         cycle = Cycle(mock_cell)
 
-        with patch.object(cycle_started, "send_async", new=AsyncMock()):
+        with patch.object(cycle_started, "send", new=MagicMock()):
             await cycle.start()
 
             with pytest.raises(RuntimeError, match="Cycle already started"):
@@ -71,11 +71,11 @@ class TestCycle:
         cycle = Cycle(mock_cell)
 
         # Start the cycle first
-        with patch.object(cycle_started, "send_async", new=AsyncMock()):
+        with patch.object(cycle_started, "send", new=MagicMock()):
             await cycle.start()
 
         # Now test finish
-        with patch.object(cycle_finished, "send_async", new=AsyncMock()) as mock_send:
+        with patch.object(cycle_finished, "send", new=MagicMock()) as mock_send:
             cycle_time = await cycle.finish()
 
             # Verify return value and state changes
@@ -106,11 +106,11 @@ class TestCycle:
         cycle = Cycle(mock_cell)
 
         # Start the cycle first
-        with patch.object(cycle_started, "send_async", new=AsyncMock()):
+        with patch.object(cycle_started, "send", new=MagicMock()):
             await cycle.start()
 
         # Now test fail
-        with patch.object(cycle_failed, "send_async", new=AsyncMock()) as mock_send:
+        with patch.object(cycle_failed, "send", new=MagicMock()) as mock_send:
             await cycle.fail("Something went wrong")
 
             # Verify event was sent correctly
@@ -129,12 +129,12 @@ class TestCycle:
         cycle = Cycle(mock_cell)
 
         # Start the cycle first
-        with patch.object(cycle_started, "send_async", new=AsyncMock()):
+        with patch.object(cycle_started, "send", new=MagicMock()):
             await cycle.start()
 
         # Now test fail with exception
         exception = ValueError("Invalid value")
-        with patch.object(cycle_failed, "send_async", new=AsyncMock()) as mock_send:
+        with patch.object(cycle_failed, "send", new=MagicMock()) as mock_send:
             await cycle.fail(exception)
 
             # Verify event reason contains exception message
@@ -153,8 +153,7 @@ class TestCycle:
     async def test_fail_empty_reason(self, mock_cell):
         """Test that failing with an empty reason raises an error."""
         cycle = Cycle(mock_cell)
-
-        with patch.object(cycle_started, "send_async", new=AsyncMock()):
+        with patch.object(cycle_started, "send", new=MagicMock()):
             await cycle.start()
 
         with pytest.raises(ValueError, match="Reason for failure must be provided"):
@@ -164,9 +163,9 @@ class TestCycle:
     async def test_context_manager_success(self, mock_cell):
         """Test the context manager with successful execution."""
         with (
-            patch.object(cycle_started, "send_async", new=AsyncMock()) as mock_start,
-            patch.object(cycle_finished, "send_async", new=AsyncMock()) as mock_finish,
-            patch.object(cycle_failed, "send_async", new=AsyncMock()) as mock_fail,
+            patch.object(cycle_started, "send", new=MagicMock()) as mock_start,
+            patch.object(cycle_finished, "send", new=MagicMock()) as mock_finish,
+            patch.object(cycle_failed, "send", new=MagicMock()) as mock_fail,
         ):
             async with Cycle(mock_cell) as cycle:
                 assert cycle.cycle_id is not None
@@ -181,9 +180,9 @@ class TestCycle:
     async def test_context_manager_exception(self, mock_cell):
         """Test the context manager with an exception."""
         with (
-            patch.object(cycle_started, "send_async", new=AsyncMock()) as mock_start,
-            patch.object(cycle_finished, "send_async", new=AsyncMock()) as mock_finish,
-            patch.object(cycle_failed, "send_async", new=AsyncMock()) as mock_fail,
+            patch.object(cycle_started, "send", new=MagicMock()) as mock_start,
+            patch.object(cycle_finished, "send", new=MagicMock()) as mock_finish,
+            patch.object(cycle_failed, "send", new=MagicMock()) as mock_fail,
         ):
             try:
                 async with Cycle(mock_cell):

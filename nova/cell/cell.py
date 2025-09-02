@@ -36,13 +36,13 @@ class Cell:
     def _create_controller(self, controller_id: str) -> Controller:
         return Controller(
             configuration=Controller.Configuration(
-                nova_api=self._api_gateway.host,
-                nova_access_token=self._api_gateway.access_token,
-                nova_username=self._api_gateway.username,
-                nova_password=self._api_gateway.password,
                 cell_id=self._cell_id,
                 controller_id=controller_id,
                 id=controller_id,
+                nova_api=self._api_gateway._host,
+                nova_access_token=self._api_gateway._access_token,
+                nova_username=self._api_gateway._username,
+                nova_password=self._api_gateway._password,
             )
         )
 
@@ -147,4 +147,6 @@ class Cell:
             RobotCell: A RobotCell initialized with the available controllers.
         """
         controllers = await self.controllers()
-        return RobotCell(timer=None, **{controller.id: controller for controller in controllers})
+        return RobotCell(
+            timer=None, cycle=None, **{controller.id: controller for controller in controllers}
+        )
