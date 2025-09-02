@@ -1,7 +1,6 @@
 {
   "version": "0.2.0",
   "configurations": [
-  
     {
       "name": "Python: Debug Tests",
       "type": "python",
@@ -31,6 +30,17 @@
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/examples/trajectory_cursor.py",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Python: Debug Trajectory Tuning",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/trajectory_tuning.py",
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.env",
       "env": {
