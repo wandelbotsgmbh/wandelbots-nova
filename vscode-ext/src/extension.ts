@@ -16,7 +16,6 @@ import {
   VIEWER_ID,
 } from './consts'
 import { logger } from './logging'
-import { connectToNats } from './nova/nats'
 import { readRobotPose } from './nova/readRobotPose'
 import { NovaApi } from './novaApi'
 import { runNovaProgram } from './novaProgram'
@@ -120,14 +119,6 @@ export function activate(context: vscode.ExtensionContext) {
       logger.info('Refreshing Nova CodeLens')
       novaCodeLensProvider.refresh()
       vscode.window.showInformationMessage('Nova CodeLens refreshed')
-    }),
-  )
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('wandelbots-nova.connectToNats', () => {
-      logger.info('Connecting to NATS')
-      connectToNats()
-      vscode.window.showInformationMessage('Connected to NATS')
     }),
   )
 
