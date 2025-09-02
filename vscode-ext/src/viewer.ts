@@ -2,10 +2,10 @@ import * as vscode from 'vscode'
 
 import { EXPLORER_ID, VIEWER_ID } from './consts'
 import {
-  getConfiguredUrl,
-  getNovaApiAddress,
   getAccessToken,
   getCellId,
+  getConfiguredUrl,
+  getNovaApiAddress,
 } from './urlResolver'
 
 // Track if this is the initial activation

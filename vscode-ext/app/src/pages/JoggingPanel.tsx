@@ -1,6 +1,6 @@
+import { NovaClient } from '@wandelbots/nova-js/v1'
 import { JoggingPanel as LibraryJoggingPanel } from '@wandelbots/wandelbots-js-react-components'
 import React, { useMemo } from 'react'
-import { NovaClient } from '@wandelbots/nova-js/v1'
 
 function getConfig() {
   const ls = typeof window !== 'undefined' ? window.localStorage : undefined
@@ -11,7 +11,9 @@ function getConfig() {
   const cellId =
     injected.cellId || ls?.getItem('wandelbots-nova-viewer.cellId') || 'cell'
   const accessToken =
-    injected.accessToken || ls?.getItem('wandelbots-nova-viewer.accessToken') || ''
+    injected.accessToken ||
+    ls?.getItem('wandelbots-nova-viewer.accessToken') ||
+    ''
   const motionGroupId =
     ls?.getItem('wandelbots-nova-viewer.motionGroupId') || '0@robot'
   return { novaApi, cellId, accessToken, motionGroupId }
