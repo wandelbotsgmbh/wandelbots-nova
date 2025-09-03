@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from nova.types import Pose, Vector3d
 
