@@ -595,20 +595,24 @@ class TrajectoryTuner:
                     # last_operation_result = await future
                 case "step-forward":
                     future = current_cursor.forward_to_next_action(playback_speed_in_percent=speed)
+                    continue_tuning_event.set()
                     # await future
                 case "backward":
                     future = current_cursor.backward(playback_speed_in_percent=speed)
+                    continue_tuning_event.set()
                     # await future
                 case "step-backward":
                     future = current_cursor.backward_to_previous_action(
                         playback_speed_in_percent=speed
                     )
+                    continue_tuning_event.set()
                     # await future
                 case "pause":
                     future = current_cursor.pause()
                     # if future is not None:
                     #     await future
                 case "finish":
+                    continue_tuning_event.set()
                     current_cursor.detach()
                     finished_tuning = True
                 case _:
@@ -668,6 +672,7 @@ class TrajectoryTuner:
                 )  # TODO is this the cleanest way to get the current location?
 
                 # wait for user to send next command
+                logger.info("Waiting for user command...")
                 await continue_tuning_event.wait()
                 # somehow obtain the modified actions for the next iteration
                 ic()

@@ -151,6 +151,7 @@ def cartesian_ptp(
     target: PoseOrVectorTuple,
     settings: MotionSettings | None = None,
     collision_scene: wb.models.CollisionScene | None = None,
+    **kwargs: dict[str, Any],
 ) -> CartesianPTP:
     """Convenience function to create a point-to-point motion
 
@@ -173,7 +174,11 @@ def cartesian_ptp(
         t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
         target = Pose(t)
 
-    return CartesianPTP(target=target, settings=settings, collision_scene=collision_scene)
+    kwargs.update(line_number=utils.get_caller_linenumber())
+
+    return CartesianPTP(
+        target=target, settings=settings, collision_scene=collision_scene, metas=kwargs
+    )
 
 
 ptp = cartesian_ptp
@@ -213,6 +218,7 @@ def circular(
     intermediate: PoseOrVectorTuple,
     settings: MotionSettings | None = None,
     collision_scene: wb.models.CollisionScene | None = None,
+    **kwargs: dict[str, Any],
 ) -> Circular:
     """Convenience function to create a circular motion
 
@@ -240,8 +246,14 @@ def circular(
         i = (*intermediate, 0.0, 0.0, 0.0) if len(intermediate) == 3 else intermediate
         intermediate = Pose(i)
 
+    kwargs.update(line_number=utils.get_caller_linenumber())
+
     return Circular(
-        target=target, intermediate=intermediate, settings=settings, collision_scene=collision_scene
+        target=target,
+        intermediate=intermediate,
+        settings=settings,
+        collision_scene=collision_scene,
+        metas=kwargs,
     )
 
 
@@ -277,6 +289,7 @@ def joint_ptp(
     target: tuple[float, ...],
     settings: MotionSettings | None = None,
     collision_scene: wb.models.CollisionScene | None = None,
+    **kwargs: dict[str, Any],
 ) -> JointPTP:
     """Convenience function to create a joint PTP motion
 
@@ -293,7 +306,9 @@ def joint_ptp(
     JointPTP(type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
 
     """
-    return JointPTP(target=target, settings=settings, collision_scene=collision_scene)
+
+    kwargs.update(line_number=utils.get_caller_linenumber())
+    return JointPTP(target=target, settings=settings, collision_scene=collision_scene, metas=kwargs)
 
 
 jnt = joint_ptp
@@ -322,6 +337,7 @@ def spline(
     path_parameter: float = 1,
     time=None,
     collision_scene: wb.models.CollisionScene | None = None,
+    **kwargs: dict[str, Any],
 ) -> Spline:
     """Convenience function to create a spline motion
 
@@ -345,12 +361,15 @@ def spline(
         t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
         target = Pose(t)
 
+    kwargs.update(line_number=utils.get_caller_linenumber())
+
     return Spline(
         target=target,
         settings=settings,
         path_parameter=path_parameter,
         time=time,
         collision_scene=collision_scene,
+        metas=kwargs,
     )
 
 
