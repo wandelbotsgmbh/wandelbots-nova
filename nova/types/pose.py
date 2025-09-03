@@ -283,7 +283,6 @@ class Pose(pydantic.BaseModel, Sized):
             A new Pose object.
 
         Example:
-        >>> # 90 degree rotation around the Z axis
         >>> pose = Pose.from_euler(position=(1, 2, 3), euler_angles=(0, 0, 90), degrees=True)
         >>> np.allclose(pose.orientation.to_tuple(), (0, 0, np.pi/2))
         True
