@@ -16,3 +16,5 @@ vitest.config.ts
 **/*.test.ts
 app/**
 !app/dist/**
+#! Ensure the logo is available for README/marketplace and other uses
+!app/public/**

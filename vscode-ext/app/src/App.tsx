@@ -1,7 +1,7 @@
 import { ThemeProvider } from '@mui/material'
 import { TabBar } from '@wandelbots/wandelbots-js-react-components'
 import { createNovaMuiTheme } from '@wandelbots/wandelbots-js-react-components'
-import React, { useState } from 'react'
+import React from 'react'
 
 import './App.css'
 import FineTuning from './pages/FineTune'
