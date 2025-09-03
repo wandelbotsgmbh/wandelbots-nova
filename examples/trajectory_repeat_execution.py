@@ -18,6 +18,8 @@ Prerequisites:
 import asyncio
 from math import pi
 
+from icecream import ic
+
 import nova
 from nova import Nova, api
 from nova.actions import jnt, lin
@@ -61,14 +63,14 @@ async def main():
             print(f"Starting pose: {start_pose}")
 
             # Define the trajectory movement (100mm along X and Y axes)
-            movement_distance = 100  # mm
+            movement_distance = 300  # mm
             target_offset = Pose((movement_distance, movement_distance, 0, 0, 0, 0))
 
             # Configure motion settings
-            motion_settings = MotionSettings(tcp_velocity_limit=200)
+            motion_settings = MotionSettings(tcp_velocity_limit=500)
 
             # Number of trajectory executions
-            num_executions = 6
+            num_executions = 60
 
             # Plan the trajectory once - we'll reuse it with different initial locations
             current_pose = await motion_group.tcp_pose(tcp)
@@ -86,22 +88,12 @@ async def main():
             # Plan the trajectory once
             print("Planning trajectory...")
             joint_trajectory = await motion_group.plan(actions, tcp)
+            ic(joint_trajectory.locations[0], joint_trajectory.joint_positions[0])
+            ic(joint_trajectory.locations[-1], joint_trajectory.joint_positions[-1])
+            initial_location = joint_trajectory.locations[0]
 
             for execution in range(num_executions):
                 print(f"\n--- Execution {execution + 1}/{num_executions} ---")
-
-                # Determine initial location based on execution number
-                # Even executions (0, 2, 4...) start from beginning (0.0)
-                # Odd executions (1, 3, 5...) start from end (end_location)
-                if execution % 2 == 0:
-                    initial_location = 0.0  # Start from beginning
-                    direction_desc = "forward (start → target)"
-                else:
-                    initial_location = joint_trajectory.locations[-1]  # Start from end
-                    direction_desc = "backward (target → start)"
-
-                print(f"Starting from location: {initial_location:.3f}")
-                print(f"Direction: {direction_desc}")
 
                 # Create TrajectoryCursor with the specified initial location
                 trajectory_cursor = TrajectoryCursor(
@@ -133,10 +125,16 @@ async def main():
                         step_count += 1
 
                 execute_task = asyncio.create_task(execute_trajectory())
-                if initial_location == 0.0:
-                    await trajectory_cursor.forward()
+                if initial_location <= 1.2:
+                    direction_desc = "forward (start → target)"
+                    print(f"Starting from location: {initial_location:.3f}")
+                    print(f"Direction: {direction_desc}")
+                    await trajectory_cursor.forward_to(1.7)
                 else:
-                    await trajectory_cursor.backward()
+                    direction_desc = "backward (target → start)"
+                    print(f"Starting from location: {initial_location:.3f}")
+                    print(f"Direction: {direction_desc}")
+                    await trajectory_cursor.backward_to(1.2)
                 await execute_task
 
                 # Verify final position
@@ -144,9 +142,10 @@ async def main():
                 final_location = trajectory_cursor._current_location
                 print(f"Final pose: {final_pose}")
                 print(f"Final trajectory location: {final_location:.3f}")
+                initial_location = final_location
 
                 # Small pause between executions
-                await asyncio.sleep(0.5)
+                # await asyncio.sleep(0.5)
 
             print(f"\nCompleted {num_executions} trajectory executions using TrajectoryCursor!")
             print("Executions alternated between forward and backward directions.")
@@ -155,9 +154,7 @@ async def main():
 
             # Optional: Return to home position
             print("\nReturning to home position...")
-            motion_iter = await motion_group.plan_and_execute([jnt(home_joints)], tcp)
-            async for motion_state in motion_iter:
-                pass
+            await motion_group.plan_and_execute([jnt(home_joints)], tcp)
 
 
 if __name__ == "__main__":
