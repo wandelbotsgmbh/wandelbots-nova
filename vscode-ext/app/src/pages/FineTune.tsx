@@ -3,6 +3,7 @@ import Button from '@mui/material/Button'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import FormGroup from '@mui/material/FormGroup'
 import Modal from '@mui/material/Modal'
+import Snackbar from '@mui/material/Snackbar'
 import Switch from '@mui/material/Switch'
 import { NovaClient } from '@wandelbots/nova-js/v2'
 import { VelocitySlider } from '@wandelbots/wandelbots-js-react-components'
@@ -18,7 +19,7 @@ import {
 import React, { useEffect, useRef, useState } from 'react'
 
 import MotionGroupSelection from '../components/MotionGroupSelection'
-import { accessToken, cellId, novaApi } from '../config'
+import { accessToken, cellId, natsBroker, novaApi } from '../config'
 import {
   connectToNats,
   disconnectFromNats,
@@ -102,7 +103,7 @@ const MoveControls = ({ onStart, onStop, moving, snap, speed }) => {
             variant="contained"
             color="secondary"
           >
-            <ChevronLeft className="size-12" />
+            <ChevronLeft className="size-8 mx-9 my-3" />
           </Button>
           <Button
             onMouseDown={(e) => handleButtonClick(e, 'forward')}
@@ -110,7 +111,7 @@ const MoveControls = ({ onStart, onStop, moving, snap, speed }) => {
             variant="contained"
             color="secondary"
           >
-            <ChevronRight className="size-12" />
+            <ChevronRight className="size-8 mx-9 my-3" />
           </Button>
         </div>
         <div className="grid grid-cols-2 gap-9 text-slate-400">
@@ -144,6 +145,8 @@ const MotionGroupPanel = () => {
   const [motionGroupOptions, setMotionGroupOptions] = useState<
     Array<{ value: string; label: string }>
   >([])
+  const [snackbarOpen, setSnackbarOpen] = useState(false)
+  const [snackbarMessage, setSnackbarMessage] = useState('')
 
   // Connect to NATS and fetch motion groups when component mounts
   useEffect(() => {
@@ -157,10 +160,15 @@ const MotionGroupPanel = () => {
     }
 
     const fetchMotionGroups = async () => {
+      if (!novaApi) {
+        console.warn('No Nova API provided')
+        return
+      }
+
       try {
         const nova = new NovaApi()
         await nova.connect({
-          apiUrl: novaApi || 'http://localhost',
+          apiUrl: novaApi,
           accessToken,
           cellId,
         })
@@ -232,6 +240,40 @@ const MotionGroupPanel = () => {
   const runTest = () => {
     const ok = Math.random() > 0.12
     console.log('Test result:', ok)
+  }
+
+  async function getCurrentPose() {
+    if (!selectedMotionGroupId) return
+
+    try {
+      const nova = new NovaApi()
+      await nova.connect({
+        apiUrl: novaApi,
+        accessToken,
+        cellId,
+      })
+
+      const controller = selectedMotionGroupId.split('@')[1]
+      if (!controller) {
+        console.error('Controller not found')
+        return
+      }
+
+      const pose = await nova.getRobotPose(controller, selectedMotionGroupId)
+
+      // Format pose as Pose((x, y, z, rx, ry, rz))
+      const poseString = `Pose((${pose.x}, ${pose.y}, ${pose.z}, ${pose.rx}, ${pose.ry}, ${pose.rz}))`
+
+      // Copy to clipboard
+      await navigator.clipboard.writeText(poseString)
+      console.log('Pose copied to clipboard:', poseString)
+
+      // Show success message
+      setSnackbarMessage('Pose saved to clipboard!')
+      setSnackbarOpen(true)
+    } catch (error) {
+      console.error('Failed to get current pose:', error)
+    }
   }
 
   async function finishTrajectoryTuning() {
@@ -310,9 +352,8 @@ const MotionGroupPanel = () => {
             color="secondary"
             variant="contained"
             className="w-full"
-            onClick={() => {
-              setPose((p) => ({ ...p, x: Number((p.x + 0.2).toFixed(2)) }))
-            }}
+            disabled={selectedMotionGroupId === null}
+            onClick={getCurrentPose}
           >
             <SplinePointer className="h-4 w-4" />
             <span className="ml-2">Get current pose</span>
@@ -391,6 +432,14 @@ const MotionGroupPanel = () => {
           </div>
         </Box>
       </Modal>
+
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={3000}
+        onClose={() => setSnackbarOpen(false)}
+        message={snackbarMessage}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </div>
   )
 }
@@ -400,8 +449,15 @@ export default function FineTuning() {
     <div className="min-h-screen">
       <div className="flex">
         <div className="relative flex-1">
-          <main className="mx-auto max-w-5xl p-6">
+          <main className="mx-auto max-w-xl">
             <div className="space-y-6">
+              <section>
+                <div className="text-sm font-medium text-slate-300">Debug info</div>
+                <div>{novaApi}</div>
+                <div>{cellId}</div>
+                <div>{accessToken}</div>
+                <div>{natsBroker}</div>
+              </section>
               <section>
                 <MotionGroupPanel />
               </section>

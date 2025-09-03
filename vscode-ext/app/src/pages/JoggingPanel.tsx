@@ -17,9 +17,6 @@ export default function JoggingPanel({
 
   return (
     <div>
-      <div>{novaApi}</div>
-      <div>{cellId}</div>
-      <div>{accessToken}</div>
       <LibraryJoggingPanel nova={novaClient} motionGroupId={motionGroupId} />
     </div>
   )
