@@ -14,9 +14,7 @@ const theme = createNovaMuiTheme({
 })
 
 function Page({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="px-3 py-3 h-full w-full overflow-y-auto">{children}</div>
-  )
+  return <div className="p-3 h-full w-full overflow-y-auto">{children}</div>
 }
 
 function App() {
