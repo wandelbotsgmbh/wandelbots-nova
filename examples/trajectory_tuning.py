@@ -67,7 +67,7 @@ async def main():
                 # jnt(home_joints),
             ]
             ic(actions)
-
+        ic(actions[0].metas)
         # you can update the settings of the action
         for action in actions:
             action.settings = MotionSettings(tcp_velocity_limit=100)

@@ -1,6 +1,6 @@
 import asyncio
 import bisect
-from enum import Enum, auto
+from enum import StrEnum, auto
 from functools import singledispatch
 from math import ceil, floor
 from typing import Any, AsyncIterator, Callable, Optional
@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Callable, Optional
 import pydantic
 import wandelbots_api_client as wb
 from aiohttp_retry import dataclass
+from blinker import signal
 from icecream import ic
 
 from nova.actions import MovementControllerContext
@@ -176,7 +177,7 @@ def speed_up(
     return movement_controller
 
 
-class OperationType(Enum):
+class OperationType(StrEnum):
     FORWARD = auto()
     BACKWARD = auto()
     FORWARD_TO = auto()
@@ -195,6 +196,22 @@ class OperationResult:
     final_location: Optional[float] = None
     overshoot: Optional[float] = None
     error: Optional[Exception] = None
+
+
+motion_started = signal("motion_started")
+motion_stopped = signal("motion_stopped")
+
+
+class MotionEventType(StrEnum):
+    STARTED = auto()
+    STOPPED = auto()
+
+
+class MotionEvent(pydantic.BaseModel):
+    type: MotionEventType
+    current_location: float
+    target_location: float
+    target_action: Action
 
 
 class TrajectoryCursor:
@@ -241,10 +258,14 @@ class TrajectoryCursor:
         bisect.insort(self._breakpoints, location)
 
     def forward(
-        self, playback_speed_in_percent: int | None = None
+        self, location: float | None = None, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
         # should idempotently move forward
         future = self._start_operation(OperationType.FORWARD)
+
+        # We can only use this with v2
+        # if location is not None:
+        #     self._target_location = location
 
         if playback_speed_in_percent is not None:
             self._command_queue.put_nowait(
@@ -386,6 +407,7 @@ class TrajectoryCursor:
         self._current_target_location = target_location
         self._current_start_location = self._current_location
         self._interrupt_requested = False
+
         return self._current_operation_future
 
     def _complete_operation(self, error: Optional[Exception] = None):
@@ -417,6 +439,19 @@ class TrajectoryCursor:
                 break
             ic(command)
             yield command
+
+            if isinstance(command, wb.models.StartMovementRequest):
+                target_action = self.actions[ceil(self._target_location) - 1]
+                await motion_started.send_async(
+                    self,
+                    event=MotionEvent(
+                        type=MotionEventType.STARTED,
+                        current_location=self._current_location,
+                        target_location=self._target_location,
+                        target_action=target_action,
+                    ),
+                )
+
             # yield await self._command_queue.get()
             self._command_queue.task_done()
         ic()
@@ -436,6 +471,18 @@ class TrajectoryCursor:
                     self._current_location = instance.movement.current_location
                     self._handle_movement(instance.movement, last_movement)
                     last_movement = instance.movement
+
+                    target_action = self.actions[ceil(self._target_location) - 1]
+                    await motion_started.send_async(
+                        self,
+                        event=MotionEvent(
+                            type=MotionEventType.STARTED,
+                            current_location=self._current_location,
+                            target_location=self._target_location,
+                            target_action=target_action,
+                        ),
+                    )
+
                 elif isinstance(instance, wb.models.Standstill):
                     ic(instance.standstill)
                     match instance.standstill.reason:
@@ -530,6 +577,7 @@ class TrajectoryTuner:
 
     async def tune(self):
         finished_tuning = False
+        continue_tuning_event = asyncio.Event()
         last_operation_result = None  # TODO implement this feature
         joint_trajectory = await self.plan_fn(self.actions)
         current_cursor = None  # TODO maybe we can also initialize this here already
@@ -543,6 +591,7 @@ class TrajectoryTuner:
             match command:
                 case "forward":
                     future = current_cursor.forward(playback_speed_in_percent=speed)
+                    continue_tuning_event.set()
                     # last_operation_result = await future
                 case "step-forward":
                     future = current_cursor.forward_to_next_action(playback_speed_in_percent=speed)
@@ -573,8 +622,15 @@ class TrajectoryTuner:
                 await asyncio.sleep(interval)
 
         faststream_app = FastStream(broker)
-        nats_task = asyncio.create_task(faststream_app.run())
+        faststream_app_task = asyncio.create_task(faststream_app.run())
         # runtime_task = asyncio.create_task(runtime_monitor(0.5))  # Output every 0.5 seconds
+
+        @motion_started.connect
+        async def on_motion_started(sender, event: MotionEvent):
+            ic(event)
+            await broker.publish(
+                {"line": event.target_action.metas["line_number"]}, "editor.line.select"
+            )
 
         try:
             # tuning loop
@@ -606,10 +662,13 @@ class TrajectoryTuner:
                     yield execute_response
                 ic()
                 await execution_task
+                continue_tuning_event.clear()
                 current_location = (
                     current_cursor._current_location
                 )  # TODO is this the cleanest way to get the current location?
 
+                # wait for user to send next command
+                await continue_tuning_event.wait()
                 # somehow obtain the modified actions for the next iteration
                 ic()
 
@@ -619,4 +678,4 @@ class TrajectoryTuner:
             ic()
             pass
         faststream_app.exit()
-        await nats_task
+        await faststream_app_task
