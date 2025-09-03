@@ -261,6 +261,7 @@ class Pose(pydantic.BaseModel, Sized):
                 rotation_vec[2],
             )
         )
+
     @classmethod
     def from_euler(
         cls,
