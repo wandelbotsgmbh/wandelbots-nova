@@ -282,7 +282,10 @@ const MotionGroupPanel = () => {
       await sendNatsMessage('trajectory-cursor', {
         command: 'finish',
       })
-      console.log('Finish command sent successfully')
+
+      // Show snackbar message
+      setSnackbarMessage('Continue program run')
+      setSnackbarOpen(true)
     } catch (error) {
       console.error('Failed to send finish command:', error)
     }
