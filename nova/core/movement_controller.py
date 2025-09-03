@@ -370,6 +370,7 @@ class TrajectoryCursor:
         # TODO this does not stop the movement atm, it just stops controlling movement
         # this is especially open for testing what happens when the movement is backwards
         # and no end is reached
+        # TODO only allow finishing if at forward end of trajectory
         self._command_queue.put_nowait(self._COMMAND_QUEUE_SENTINAL)
 
     async def cntrl(
@@ -485,14 +486,17 @@ class TrajectoryCursor:
 
                 elif isinstance(instance, wb.models.Standstill):
                     ic(instance.standstill)
+                    self._current_location = instance.standstill.location
+                    ic(self._current_location)
                     match instance.standstill.reason:
                         case wb.models.StandstillReason.REASON_USER_PAUSED_MOTION:
                             self._overshoot = self._current_location - self._target_location
-                            ic(self._current_location, self._target_location, self._overshoot)
+                            ic(self._target_location, self._overshoot)
                             self._complete_operation()
                             if self._detach_on_standstill:
                                 break
                         case wb.models.StandstillReason.REASON_MOTION_ENDED:
+                            self._overshoot = 0.0  # because the RAE takes care of that
                             self._complete_operation()
                             if self._detach_on_standstill:
                                 ic()
@@ -549,10 +553,13 @@ class TrajectoryCursor:
 async def init_movement_gen(
     motion_id, response_stream, initial_location
 ) -> ExecuteTrajectoryRequestStream:
+    ic(motion_id, initial_location)
     # The first request is to initialize the movement
-    yield wb.models.InitializeMovementRequest(
+    init_request = wb.models.InitializeMovementRequest(
         trajectory=motion_id, initial_location=initial_location
-    )  # type: ignore
+    )
+    ic(init_request)
+    yield init_request
 
     # then we get the response
     initialize_movement_response = await anext(response_stream)
@@ -590,28 +597,29 @@ class TrajectoryTuner:
             ic(command, speed)
             match command:
                 case "forward":
-                    future = current_cursor.forward(playback_speed_in_percent=speed)
                     continue_tuning_event.set()
+                    future = current_cursor.forward(playback_speed_in_percent=speed)
                     # last_operation_result = await future
                 case "step-forward":
-                    future = current_cursor.forward_to_next_action(playback_speed_in_percent=speed)
                     continue_tuning_event.set()
+                    future = current_cursor.forward_to_next_action(playback_speed_in_percent=speed)
                     # await future
                 case "backward":
-                    future = current_cursor.backward(playback_speed_in_percent=speed)
                     continue_tuning_event.set()
+                    future = current_cursor.backward(playback_speed_in_percent=speed)
                     # await future
                 case "step-backward":
+                    continue_tuning_event.set()
                     future = current_cursor.backward_to_previous_action(
                         playback_speed_in_percent=speed
                     )
-                    continue_tuning_event.set()
                     # await future
                 case "pause":
                     future = current_cursor.pause()
                     # if future is not None:
                     #     await future
                 case "finish":
+                    # TODO only allow finishing if at forward end of trajectory
                     continue_tuning_event.set()
                     current_cursor.detach()
                     finished_tuning = True
@@ -662,6 +670,9 @@ class TrajectoryTuner:
                     )
                 )
                 ic()
+                # wait for user to send next command
+                logger.info("Waiting for user command...")
+                await continue_tuning_event.wait()
                 async for execute_response in current_cursor:
                     yield execute_response
                 ic()
@@ -671,9 +682,6 @@ class TrajectoryTuner:
                     current_cursor._current_location
                 )  # TODO is this the cleanest way to get the current location?
 
-                # wait for user to send next command
-                logger.info("Waiting for user command...")
-                await continue_tuning_event.wait()
                 # somehow obtain the modified actions for the next iteration
                 ic()
 

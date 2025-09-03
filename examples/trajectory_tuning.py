@@ -50,14 +50,12 @@ async def main():
             tcp_names = await motion_group.tcp_names()
             ic(tcp_names)
             tcp = tcp_names[0]
-            motion_iter = await motion_group.plan_and_execute([jnt(home_joints)], tcp)
-            ic()
+            await motion_group.plan_and_execute([jnt(home_joints)], tcp)
 
             # Get current TCP pose and offset it slightly along the x-axis
             current_pose = await motion_group.tcp_pose(tcp)
             dist = 300
-            target_pose = current_pose @ Pose((dist, 0, 0, 0, 0, 0))
-            ic(current_pose, target_pose)
+            ic(current_pose)
 
             actions = [
                 lin(current_pose @ Pose((0, dist, 0, 0, 0, 0))),
@@ -75,8 +73,6 @@ async def main():
         joint_trajectory = await motion_group.plan(actions, tcp)
         # TODO this probaly not consumes the state stream immediately and thus might cause issues
         # only start consuming the state stream when the trajectory is actually executed
-        await motion_group.execute(joint_trajectory, tcp, actions=actions)
-        # try it twice to show that it works with multiple trajectories
         await motion_group.execute(joint_trajectory, tcp, actions=actions)
 
         ic("Program finished")
