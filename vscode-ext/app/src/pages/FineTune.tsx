@@ -4,6 +4,7 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import FormGroup from '@mui/material/FormGroup'
 import Modal from '@mui/material/Modal'
 import Switch from '@mui/material/Switch'
+import { NovaClient } from '@wandelbots/nova-js/v1'
 import { VelocitySlider } from '@wandelbots/wandelbots-js-react-components'
 import {
   ChevronLeft,
@@ -15,6 +16,9 @@ import {
 } from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
 
+import { NovaApi } from '../../../src/novaApi'
+import MotionGroupSelection from '../components/MotionGroupSelection'
+import { accessToken, cellId, novaApi } from '../config'
 import {
   connectToNats,
   disconnectFromNats,
@@ -28,11 +32,7 @@ const Range = ({ value, onChange, min = 0, max = 100, step = 1 }) => (
     onVelocityChange={onChange}
     min={min}
     max={max}
-    store={{
-      showTabIcons: false,
-      showVelocityLegend: false,
-      showVelocitySliderLabel: true,
-    }}
+    store={{} as any}
   />
 )
 
@@ -137,8 +137,12 @@ const MotionGroupPanel = () => {
     rZ: 3.14,
   })
   const [lastTest, setLastTest] = useState(null)
+  const [selectedMotionGroupId, setSelectedMotionGroupId] = useState<string>('')
+  const [motionGroupOptions, setMotionGroupOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([])
 
-  // Connect to NATS when component mounts
+  // Connect to NATS and fetch motion groups when component mounts
   useEffect(() => {
     const connectNats = async () => {
       try {
@@ -149,7 +153,51 @@ const MotionGroupPanel = () => {
       }
     }
 
+    const fetchMotionGroups = async () => {
+      try {
+        const novaApiClient = new NovaApi()
+        await novaApiClient.connect({
+          apiUrl: novaApi || 'http://localhost',
+          accessToken,
+          cellId,
+        })
+
+        // Get controllers first
+        const controllerNames = await novaApiClient.getControllersNames()
+        if (controllerNames.length === 0) {
+          console.warn('No controllers found')
+          return
+        }
+
+        // Get motion groups for the first controller
+        const firstController = controllerNames[0]
+        const motionGroupIds =
+          await novaApiClient.getMotionGroups(firstController)
+
+        const options = motionGroupIds.map((mgId) => ({
+          value: mgId,
+          label: `${mgId}`,
+        }))
+
+        setMotionGroupOptions(options)
+
+        // Select the first motion group
+        if (motionGroupIds.length > 0) {
+          setSelectedMotionGroupId(motionGroupIds[0])
+        }
+      } catch (error) {
+        console.error('Failed to fetch motion groups:', error)
+        // Fallback to default options
+        setMotionGroupOptions([
+          { value: '0@robot', label: 'Robot 0 (0@robot)' },
+          { value: '1@robot', label: 'Robot 1 (1@robot)' },
+        ])
+        setSelectedMotionGroupId('0@robot')
+      }
+    }
+
     connectNats()
+    fetchMotionGroups()
 
     // Cleanup: disconnect when component unmounts
     return () => {
@@ -204,6 +252,20 @@ const MotionGroupPanel = () => {
 
   return (
     <div className="px-3 py-6">
+      {/* Motion Group Selection */}
+      <div className="mt-2 flex items-center justify-between gap-4">
+        <div className="flex-1">
+          <p className="text-sm font-medium text-slate-300">Motion Group</p>
+          <div className="mt-2">
+            <MotionGroupSelection
+              value={selectedMotionGroupId}
+              onChange={setSelectedMotionGroupId}
+              options={motionGroupOptions}
+              width={280}
+            />
+          </div>
+        </div>
+      </div>
       {/* Execution Speed */}
       <div className="mt-8 grid grid-cols-1 items-center gap-4 md:grid-cols-[1fr_auto]">
         <div>
@@ -308,7 +370,7 @@ const MotionGroupPanel = () => {
             Jogging Panel
           </div>
           <div id="jogging-modal-description">
-            <JoggingPanel />
+            <JoggingPanel motionGroupId={selectedMotionGroupId} />
           </div>
         </Box>
       </Modal>
