@@ -34,3 +34,6 @@ class StreamExtractor(Generic[In, Out]):
         if value is None:
             raise StopAsyncIteration
         return value
+
+    def stop(self):
+        self._in_queue.put_nowait(None)

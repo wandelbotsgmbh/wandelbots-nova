@@ -240,7 +240,9 @@ class TrajectoryCursor:
         # How to pause at an exact location? (will be implemented by Motion Control)
         bisect.insort(self._breakpoints, location)
 
-    async def forward(self, playback_speed_in_percent: int | None = None):
+    def forward(
+        self, playback_speed_in_percent: int | None = None
+    ) -> asyncio.Future[OperationResult]:
         # should idempotently move forward
         future = self._start_operation(OperationType.FORWARD)
 
@@ -257,25 +259,39 @@ class TrajectoryCursor:
             )
         )
 
-        await future  # TODO will this raise?
+        return future
 
-    async def forward_to(self, location: float, playback_speed_in_percent: int | None = None):
+    def forward_to(
+        self, location: float, playback_speed_in_percent: int | None = None
+    ) -> asyncio.Future[OperationResult]:
         # currently we don't complain about invalid locations as long as they are not before the current location
         if location < self._current_location:
-            raise ValueError("Cannot move forward to a location before the current location")
+            # Create a future that's already resolved with an error
+            future = asyncio.Future()
+            future.set_exception(
+                ValueError("Cannot move forward to a location before the current location")
+            )
+            return future
         self._target_location = location
-        await self.forward(playback_speed_in_percent=playback_speed_in_percent)
+        return self.forward(playback_speed_in_percent=playback_speed_in_percent)
 
-    async def forward_to_next_action(self, playback_speed_in_percent: int | None = None):
+    def forward_to_next_action(
+        self, playback_speed_in_percent: int | None = None
+    ) -> asyncio.Future[OperationResult]:
         # TODO this seems to fail if there is only one action
         index = floor(self._current_location - self._overshoot) + 1
         ic(self._current_location, self._overshoot, index, len(self.combined_actions))
         if index < len(self.combined_actions):
-            await self.forward_to(index, playback_speed_in_percent=playback_speed_in_percent)
+            return self.forward_to(index, playback_speed_in_percent=playback_speed_in_percent)
         else:
-            raise ValueError("No next action found after current location.")
+            # Create a future that's already resolved with an error
+            future = asyncio.Future()
+            future.set_exception(ValueError("No next action found after current location."))
+            return future
 
-    async def backward(self, playback_speed_in_percent: int | None = None):
+    def backward(
+        self, playback_speed_in_percent: int | None = None
+    ) -> asyncio.Future[OperationResult]:
         future = self._start_operation(OperationType.BACKWARD)
 
         if playback_speed_in_percent is not None:
@@ -291,32 +307,43 @@ class TrajectoryCursor:
             )
         )
 
-        await future  # TODO will this raise?
+        return future
 
-    async def backward_to(self, location: float, playback_speed_in_percent: int | None = None):
+    def backward_to(
+        self, location: float, playback_speed_in_percent: int | None = None
+    ) -> asyncio.Future[OperationResult]:
         # currently we don't complain about invalid locations as long as they are not after the current location
         if location > self._current_location:
-            raise ValueError("Cannot move backward to a location after the current location")
+            # Create a future that's already resolved with an error
+            future = asyncio.Future()
+            future.set_exception(
+                ValueError("Cannot move backward to a location after the current location")
+            )
+            return future
         self._target_location = location
-        await self.backward(playback_speed_in_percent=playback_speed_in_percent)
+        return self.backward(playback_speed_in_percent=playback_speed_in_percent)
 
-    async def backward_to_previous_action(self, playback_speed_in_percent: int | None = None):
+    def backward_to_previous_action(
+        self, playback_speed_in_percent: int | None = None
+    ) -> asyncio.Future[OperationResult]:
         index = ceil(self._current_location - self._overshoot) - 1
         ic(self._current_location, self._overshoot, index, len(self.combined_actions))
         if index >= 0:
-            await self.backward_to(index, playback_speed_in_percent=playback_speed_in_percent)
+            return self.backward_to(index, playback_speed_in_percent=playback_speed_in_percent)
         else:
-            raise ValueError("No previous action found before current location.")
+            # Create a future that's already resolved with an error
+            future = asyncio.Future()
+            future.set_exception(ValueError("No previous action found before current location."))
+            return future
 
     def _pause(self):
         self._command_queue.put_nowait(wb.models.PauseMovementRequest())
 
-    async def pause(self):
-        future = await self._start_operation(OperationType.PAUSE)
-
+    def pause(self) -> asyncio.Future[OperationResult] | None:
         self._pause()
-
-        await future
+        if self._current_operation_future is not None:
+            return self._current_operation_future
+        return None
 
     def detach(self):
         # TODO this does not stop the movement atm, it just stops controlling movement
@@ -338,11 +365,8 @@ class TrajectoryCursor:
         )
 
         async for request in self._request_loop():
-            ic()
             yield request
-        ic()
         self._response_consumer_task.cancel()
-        ic()
         try:
             await self._response_consumer_task  # Where to put?
         except asyncio.CancelledError:
@@ -416,8 +440,8 @@ class TrajectoryCursor:
                     ic(instance.standstill)
                     match instance.standstill.reason:
                         case wb.models.StandstillReason.REASON_USER_PAUSED_MOTION:
-                            ic(self._current_location, self._target_location, self._overshoot)
                             self._overshoot = self._current_location - self._target_location
+                            ic(self._current_location, self._target_location, self._overshoot)
                             self._complete_operation()
                             if self._detach_on_standstill:
                                 break
@@ -494,6 +518,7 @@ async def init_movement_gen(
             raise InitMovementFailed(r1.init_response)
 
 
+from faststream import FastStream
 from faststream.nats import NatsBroker
 
 
@@ -512,23 +537,28 @@ class TrajectoryTuner:
         broker = NatsBroker()
 
         @broker.subscriber("trajectory-cursor")
-        async def controller_handler(command: str, speed: Optional[pydantic.PositiveInt]):
+        async def controller_handler(command: str, speed: Optional[pydantic.PositiveInt] = None):
             nonlocal last_operation_result, finished_tuning
+            ic(command, speed)
             match command:
                 case "forward":
-                    last_operation_result = await current_cursor.forward(
-                        playback_speed_in_percent=speed
-                    )
+                    future = current_cursor.forward(playback_speed_in_percent=speed)
+                    # last_operation_result = await future
                 case "step-forward":
-                    await current_cursor.forward_to_next_action(playback_speed_in_percent=speed)
+                    future = current_cursor.forward_to_next_action(playback_speed_in_percent=speed)
+                    # await future
                 case "backward":
-                    await current_cursor.backward(playback_speed_in_percent=speed)
+                    future = current_cursor.backward(playback_speed_in_percent=speed)
+                    # await future
                 case "step-backward":
-                    await current_cursor.backward_to_previous_action(
+                    future = current_cursor.backward_to_previous_action(
                         playback_speed_in_percent=speed
                     )
+                    # await future
                 case "pause":
-                    await current_cursor.pause()
+                    future = current_cursor.pause()
+                    # if future is not None:
+                    #     await future
                 case "finish":
                     current_cursor.detach()
                     finished_tuning = True
@@ -542,6 +572,8 @@ class TrajectoryTuner:
                 logger.warning(f"{elapsed:.2f}s")
                 await asyncio.sleep(interval)
 
+        faststream_app = FastStream(broker)
+        nats_task = asyncio.create_task(faststream_app.run())
         # runtime_task = asyncio.create_task(runtime_monitor(0.5))  # Output every 0.5 seconds
 
         try:
@@ -552,7 +584,7 @@ class TrajectoryTuner:
                 # the initial joint trajectory was already planned before the MotionGroup._execute call
                 motion_id, joint_trajectory = await self.plan_fn(self.actions)
                 ic(current_location)
-                cursor = TrajectoryCursor(
+                current_cursor = TrajectoryCursor(
                     motion_id,
                     joint_trajectory,
                     self.actions,
@@ -561,7 +593,7 @@ class TrajectoryTuner:
                 )
                 execution_task = asyncio.create_task(
                     self.execute_fn(
-                        client_request_generator=cursor(
+                        client_request_generator=current_cursor(
                             MovementControllerContext(
                                 combined_actions=CombinedActions(items=self.actions),
                                 motion_id=motion_id,
@@ -570,13 +602,12 @@ class TrajectoryTuner:
                     )
                 )
                 ic()
-                async for execute_response in cursor:
+                async for execute_response in current_cursor:
                     yield execute_response
                 ic()
                 await execution_task
-                await sub.unsubscribe()
                 current_location = (
-                    cursor._current_location
+                    current_cursor._current_location
                 )  # TODO is this the cleanest way to get the current location?
 
                 # somehow obtain the modified actions for the next iteration
@@ -585,4 +616,7 @@ class TrajectoryTuner:
             # runtime_task.cancel()
             # await runtime_task
         except asyncio.CancelledError:
+            ic()
             pass
+        faststream_app.exit()
+        await nats_task
