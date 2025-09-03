@@ -1,5 +1,10 @@
+import {
+  type NatsConnection,
+  StringCodec,
+  type Subscription,
+  connect,
+} from 'nats'
 import * as vscode from 'vscode'
-import { connect, type NatsConnection, type Subscription, StringCodec } from 'nats'
 
 /** Internal NATS state */
 let nc: NatsConnection | undefined
@@ -26,11 +31,14 @@ export type NatsLineSubscriberOptions = {
 }
 
 /** Establish NATS connection (fresh mechanism using the `nats` Node client). */
-async function ensureConnection(opts: NatsLineSubscriberOptions): Promise<NatsConnection> {
+async function ensureConnection(
+  opts: NatsLineSubscriberOptions,
+): Promise<NatsConnection> {
   if (nc) return nc
   nc = await connect({
     servers: opts.servers,
-    name: opts.name ?? `vscode-highlighter-${Math.random().toString(16).slice(2)}`,
+    name:
+      opts.name ?? `vscode-highlighter-${Math.random().toString(16).slice(2)}`,
   })
 
   // Log/cleanup on close
@@ -77,7 +85,10 @@ function selectLineInActiveEditor(zeroBasedLine: number) {
 
   // Set a single selection spanning exactly that line
   editor.selection = new vscode.Selection(lineRange.start, lineRange.end)
-  editor.revealRange(lineRange, vscode.TextEditorRevealType.InCenterIfOutsideViewport)
+  editor.revealRange(
+    lineRange,
+    vscode.TextEditorRevealType.InCenterIfOutsideViewport,
+  )
 
   // Apply highlight with our single reusable decoration type — this replaces the old range.
   editor.setDecorations(lineHighlightDecoration, [lineRange])
@@ -141,7 +152,11 @@ export async function stopNatsLineSubscriber(): Promise<void> {
     if (nc) {
       await nc.drain().catch(async () => {
         // If drain fails (e.g., already closed), attempt hard close
-        try { await nc!.close() } catch { /* ignore */ }
+        try {
+          await nc!.close()
+        } catch {
+          /* ignore */
+        }
       })
       nc = undefined
     }

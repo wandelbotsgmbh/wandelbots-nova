@@ -4,7 +4,7 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import FormGroup from '@mui/material/FormGroup'
 import Modal from '@mui/material/Modal'
 import Switch from '@mui/material/Switch'
-import { NovaClient } from '@wandelbots/nova-js/v1'
+import { NovaClient } from '@wandelbots/nova-js/v2'
 import { VelocitySlider } from '@wandelbots/wandelbots-js-react-components'
 import {
   ChevronLeft,
@@ -13,10 +13,10 @@ import {
   Play,
   Route,
   SplinePointer,
+  X,
 } from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
 
-import { NovaApi } from '../../../src/novaApi'
 import MotionGroupSelection from '../components/MotionGroupSelection'
 import { accessToken, cellId, novaApi } from '../config'
 import {
@@ -24,6 +24,7 @@ import {
   disconnectFromNats,
   sendNatsMessage,
 } from '../utils/nats'
+import { NovaApi } from '../utils/novaApi'
 import JoggingPanel from './JoggingPanel'
 
 const Range = ({ value, onChange, min = 0, max = 100, step = 1 }) => (
@@ -137,7 +138,9 @@ const MotionGroupPanel = () => {
     rZ: 3.14,
   })
   const [lastTest, setLastTest] = useState(null)
-  const [selectedMotionGroupId, setSelectedMotionGroupId] = useState<string>('')
+  const [selectedMotionGroupId, setSelectedMotionGroupId] = useState<
+    string | null
+  >(null)
   const [motionGroupOptions, setMotionGroupOptions] = useState<
     Array<{ value: string; label: string }>
   >([])
@@ -155,24 +158,25 @@ const MotionGroupPanel = () => {
 
     const fetchMotionGroups = async () => {
       try {
-        const novaApiClient = new NovaApi()
-        await novaApiClient.connect({
+        const nova = new NovaApi()
+        await nova.connect({
           apiUrl: novaApi || 'http://localhost',
           accessToken,
           cellId,
         })
 
-        // Get controllers first
-        const controllerNames = await novaApiClient.getControllersNames()
+        const controllerNames = await nova.getControllersNames()
         if (controllerNames.length === 0) {
           console.warn('No controllers found')
           return
         }
 
-        // Get motion groups for the first controller
-        const firstController = controllerNames[0]
-        const motionGroupIds =
-          await novaApiClient.getMotionGroups(firstController)
+        const motionGroupIds = await Promise.all(
+          controllerNames.map(
+            async (controllerName) =>
+              await nova.getMotionGroups(controllerName),
+          ),
+        ).then((groups) => groups.flat())
 
         const options = motionGroupIds.map((mgId) => ({
           value: mgId,
@@ -188,11 +192,8 @@ const MotionGroupPanel = () => {
       } catch (error) {
         console.error('Failed to fetch motion groups:', error)
         // Fallback to default options
-        setMotionGroupOptions([
-          { value: '0@robot', label: 'Robot 0 (0@robot)' },
-          { value: '1@robot', label: 'Robot 1 (1@robot)' },
-        ])
-        setSelectedMotionGroupId('0@robot')
+        setMotionGroupOptions([])
+        setSelectedMotionGroupId(null)
       }
     }
 
@@ -258,7 +259,7 @@ const MotionGroupPanel = () => {
           <p className="text-sm font-medium text-slate-300">Motion Group</p>
           <div className="mt-2">
             <MotionGroupSelection
-              value={selectedMotionGroupId}
+              value={selectedMotionGroupId ?? ''}
               onChange={setSelectedMotionGroupId}
               options={motionGroupOptions}
               width={280}
@@ -320,6 +321,7 @@ const MotionGroupPanel = () => {
             color="secondary"
             variant="contained"
             className="w-full"
+            disabled={selectedMotionGroupId === null}
             onClick={handleOpenJogging}
           >
             <Route className="h-4 w-4" />
@@ -345,7 +347,7 @@ const MotionGroupPanel = () => {
       </div>
 
       <Modal
-        open={isJoggingOpen}
+        open={isJoggingOpen && selectedMotionGroupId !== null}
         onClose={handleCloseJogging}
         aria-labelledby="jogging-modal-title"
         aria-describedby="jogging-modal-description"
@@ -366,11 +368,26 @@ const MotionGroupPanel = () => {
             overflow: 'auto',
           }}
         >
-          <div id="jogging-modal-title" className="text-lg font-semibold mb-3">
-            Jogging Panel
+          <div className="flex items-center justify-between mb-3">
+            <div id="jogging-modal-title" className="text-lg font-semibold">
+              Jogging Panel
+            </div>
+            <Button
+              onClick={handleCloseJogging}
+              sx={{
+                minWidth: 'auto',
+                p: 1,
+                color: 'text.secondary',
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                },
+              }}
+            >
+              <X className="h-5 w-5" />
+            </Button>
           </div>
           <div id="jogging-modal-description">
-            <JoggingPanel motionGroupId={selectedMotionGroupId} />
+            <JoggingPanel motionGroupId={selectedMotionGroupId!} />
           </div>
         </Box>
       </Modal>
