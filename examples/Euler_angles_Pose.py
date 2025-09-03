@@ -17,7 +17,7 @@ from nova import Nova, api, viewers
 from nova.actions import jnt, ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
-from nova.types import MotionSettings, Pose
+from nova.types import Pose
 
 
 @nova.program(
@@ -66,11 +66,13 @@ async def main():
             position = (current_pose[0], current_pose[1], current_pose[2])
             euler_angles_rad = (np.pi / 2, 0, np.pi / 2)  # (90, 0, 90) in radians
             target_pose = Pose.from_euler(
-                position, euler_angles_rad, convention="xyz", degrees=False
+                position, euler_angles_rad, convention="xzy", degrees=False
             )
-            await motion_group.plan_and_execute(
-                ptp(target_pose), settings=MotionSettings(tcp_velocity_limit=250), tcp=tcp
-            )
+            await motion_group.plan_and_execute(ptp(target_pose), tcp=tcp)
+
+            # move back to home_pose
+            await motion_group.plan_and_execute(jnt(home_pose), tcp=tcp)
+            current_pose = await motion_group.tcp_pose(tcp)
 
 
 if __name__ == "__main__":
