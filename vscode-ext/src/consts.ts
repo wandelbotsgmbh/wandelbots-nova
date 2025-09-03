@@ -15,3 +15,4 @@ export const SETTINGS_NOVA_API = 'novaApi' as const
 export const SETTINGS_RERUN_ADDRESS = 'rerunAddress' as const
 export const SETTINGS_ACCESS_TOKEN = 'accessToken' as const
 export const SETTINGS_CELL_ID = 'cellId' as const
+export const SETTINGS_NATS_BROKER = 'natsBroker' as const

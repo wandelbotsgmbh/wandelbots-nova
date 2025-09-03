@@ -10,7 +10,11 @@ function getConfig() {
     injected.accessToken ||
     ls?.getItem('wandelbots-nova-viewer.accessToken') ||
     ''
-  return { novaApi, cellId, accessToken }
+  const natsBroker =
+    injected.natsBroker ||
+    ls?.getItem('wandelbots-nova-viewer.natsBroker') ||
+    'nats://localhost:4222'
+  return { novaApi, cellId, accessToken, natsBroker }
 }
 
-export const { novaApi, cellId, accessToken } = getConfig()
+export const { novaApi, cellId, accessToken, natsBroker } = getConfig()
