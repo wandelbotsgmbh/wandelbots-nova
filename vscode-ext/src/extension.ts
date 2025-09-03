@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import * as vscode from 'vscode'
+import { startNatsLineSubscriber, stopNatsLineSubscriber } from './lineHighlighter'
 
 import { NovaCodeLensProvider } from './codeLens'
 import {
@@ -215,6 +216,12 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   )
 
+  /*startNatsLineSubscriber(context, {
+    servers: 'nats://localhost:4222',
+    subject: 'editor.line.select',
+    name: 'vscode-line-highlighter',
+  })*/
+
   context.subscriptions.push(...disposables)
 }
 
@@ -231,4 +238,6 @@ export function deactivate() {
       console.error('Failed to clean up temp directory:', error)
     }
   }
+
+  // stopNatsLineSubscriber()
 }

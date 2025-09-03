@@ -2,7 +2,6 @@ import { type NatsConnection, wsconnect } from '@nats-io/nats-core'
 
 let nc: NatsConnection | undefined
 
-type Message = {}
 export async function connectToNats(): Promise<NatsConnection> {
   if (nc) return nc
 
