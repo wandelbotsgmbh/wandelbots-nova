@@ -41,7 +41,6 @@ async def main():
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
-            home_joints = await motion_group.joints()
             tcp_names = await motion_group.tcp_names()
             tcp = tcp_names[0]
 
