@@ -5,6 +5,7 @@ import {
   getAccessToken,
   getCellId,
   getConfiguredUrl,
+  getNatsBroker,
   getNovaApiAddress,
 } from './urlResolver'
 
@@ -265,13 +266,15 @@ export class WandelbotsNovaViewerProvider
       )
 
       // Inject configuration from VS Code settings/environment for the React app
-      const novaApiAddress = getNovaApiAddress()
+      const novaApi = getNovaApiAddress()
       const accessToken = getAccessToken()
       const cellId = getCellId()
+      const natsBroker = getNatsBroker()
       const configScript = `<script>window.__NOVA_CONFIG__ = ${JSON.stringify({
-        novaApi: novaApiAddress,
+        novaApi,
         cellId,
         accessToken,
+        natsBroker,
       })};</script>`
 
       // Prefer to inject before </head>; if not present, prepend to body

@@ -2,7 +2,6 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import * as vscode from 'vscode'
-import { startNatsLineSubscriber, stopNatsLineSubscriber } from './lineHighlighter'
 
 import { NovaCodeLensProvider } from './codeLens'
 import {
@@ -16,6 +15,10 @@ import {
   COMMAND_SHOW_APP,
   VIEWER_ID,
 } from './consts'
+import {
+  startNatsLineSubscriber,
+  stopNatsLineSubscriber,
+} from './lineHighlighter'
 import { logger } from './logging'
 import { readRobotPose } from './nova/readRobotPose'
 import { NovaApi } from './novaApi'
@@ -29,7 +32,7 @@ import {
 let decorationType: vscode.TextEditorDecorationType | undefined
 let disposables: vscode.Disposable[] = []
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   logger.info('Wandelbots NOVA extension activating...')
 
   // ------------------------------
@@ -216,16 +219,16 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   )
 
-  /*startNatsLineSubscriber(context, {
+  await startNatsLineSubscriber(context, {
     servers: 'nats://localhost:4222',
     subject: 'editor.line.select',
     name: 'vscode-line-highlighter',
-  })*/
+  })
 
   context.subscriptions.push(...disposables)
 }
 
-export function deactivate() {
+export async function deactivate() {
   decorationType?.dispose()
   disposables.forEach((d) => d.dispose())
 
@@ -239,5 +242,5 @@ export function deactivate() {
     }
   }
 
-  // stopNatsLineSubscriber()
+  await stopNatsLineSubscriber()
 }

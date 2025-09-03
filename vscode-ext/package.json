@@ -112,6 +112,11 @@
           "default": "cell",
           "description": "The Wandelbots NOVA cell to use"
         },
+        "wandelbots-nova-viewer.natsBroker": {
+          "type": "string",
+          "default": "nats://localhost:4222",
+          "description": "The Wandelbots NOVA NATS broker to use"
+        },
         "wandelbots-nova-viewer.showDebugInfo": {
           "type": "boolean",
           "default": false,
