@@ -1,10 +1,10 @@
 from abc import ABC
-from typing import Literal
+from typing import Any, Literal
 
 import pydantic
 import wandelbots_api_client as wb
 
-from nova import api
+from nova import api, utils
 from nova.actions.base import Action
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
@@ -90,6 +90,7 @@ def linear(
     target: PoseOrVectorTuple,
     settings: MotionSettings | None = None,
     collision_scene: wb.models.CollisionScene | None = None,
+    **kwargs: dict[str, Any],
 ) -> Linear:
     """Convenience function to create a linear motion
 
@@ -112,7 +113,9 @@ def linear(
         t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
         target = Pose(t)
 
-    return Linear(target=target, settings=settings, collision_scene=collision_scene)
+    kwargs.update(line_number=utils.get_caller_linenumber())
+
+    return Linear(target=target, settings=settings, collision_scene=collision_scene, metas=kwargs)
 
 
 lin = linear
