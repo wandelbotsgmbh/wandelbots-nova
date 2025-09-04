@@ -455,7 +455,9 @@ export default function FineTuning() {
           <main className="mx-auto max-w-xl">
             <div className="space-y-6">
               <section>
-                <div className="text-sm font-medium text-slate-300">Debug info</div>
+                <div className="text-sm font-medium text-slate-300">
+                  Debug info
+                </div>
                 <div>{novaApi}</div>
                 <div>{cellId}</div>
                 <div>{accessToken}</div>
