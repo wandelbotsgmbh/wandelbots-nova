@@ -30,9 +30,9 @@ ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name="ur10e",
-                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                name="kuka",
+                manufacturer=api.models.Manufacturer.KUKA,
+                type=api.models.VirtualControllerTypes.KUKA_MINUS_KR16_R1610_2,
             )
         ],
         cleanup_controllers=False,
@@ -41,12 +41,14 @@ ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.controller("ur10e")
+        controller = await cell.controller("kuka")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
             # home_joints = await motion_group.joints()
-            home_joints = [0, -pi / 2, -pi / 2, -pi / 2, pi / 2, -pi / 2]
+            # home_joints = [0, -pi / 2, -pi / 2, -pi / 2, pi / 2, -pi / 2]
+            # home_joints = await motion_group.joints()
+            home_joints = [-1.8047, -1.8209, 1.8212, 0.2806, 1.0064, -0.4003]
             tcp_names = await motion_group.tcp_names()
             ic(tcp_names)
             tcp = tcp_names[0]
@@ -60,6 +62,11 @@ async def main():
             home_pose = await motion_group.tcp_pose(tcp)
             dist = 300
             ic(home_pose)
+
+            pose1 = Pose((-294.72441795539453, 857.5360255082029, 1571.6088053149488, -1.75879100697647, 1.9140012914288607, 0.5060621281068792))
+            pose2 = Pose((-746.1253358991424, 1200.613557032049, 1270.642099155898, -1.7588031006603488, 1.9139892257910591, 0.506079131889))
+            pose3 = Pose((-63.0910254674847, 1361.600279974159, 1039.0400574918995, -1.7587694971285424, 1.9139937306883776, 0.5060999965134398))
+            pose4 = Pose((-63.093070301797916, 1361.5991921028099, 1713.2416879448233, -1.758808332372446, 1.9140146130789166, 0.5061352892931338))
 
             actions = [
                 # lin(home_pose @ Pose((0, 0, 0, 0, 0, 0))),
