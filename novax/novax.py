@@ -1,4 +1,6 @@
+import json
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import AsyncIterator, Optional
 
 from decouple import config
@@ -7,7 +9,9 @@ from fastapi import APIRouter, FastAPI
 from nova.cell.robot_cell import RobotCell
 from nova.core.nova import Nova
 from nova.logging import logger
+from nova.nats import Message
 from nova.program.function import Program
+from nova.program.runner import ProgramRun
 from nova.program.store import Program as StoreProgram
 from nova.program.store import ProgramStore
 from novax.program_manager import ProgramDetails, ProgramManager
@@ -15,7 +19,7 @@ from novax.program_manager import ProgramDetails, ProgramManager
 # Read BASE_PATH environment variable and extract app name
 _BASE_PATH = config("BASE_PATH", default="/default/novax")
 _APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else "novax"
-logger.debug(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
+logger.info(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
 
 # Create nats programs bucket name
 _CELL_NAME = config("CELL_NAME", default="")
@@ -26,9 +30,24 @@ class Novax:
         self._nova = Nova()
         self._cell = self._nova.cell(cell_id=_CELL_NAME)
         self._program_manager: ProgramManager = ProgramManager(
-            robot_cell_override=robot_cell_override
+            robot_cell_override=robot_cell_override, state_listener=self._state_listener
         )
         self._app: FastAPI | None = None
+
+    async def _state_listener(self, program_run: ProgramRun):
+        data = program_run.model_dump()
+        data["timestamp"] = datetime.now().isoformat()
+        data["start_time"] = program_run.start_time.isoformat() if program_run.start_time else None
+        data["end_time"] = program_run.end_time.isoformat() if program_run.end_time else None
+        data["app"] = _APP_NAME
+
+        message = Message(
+            subject=f"nova.v2.cells.{_CELL_NAME}.programs", data=json.dumps(data).encode("utf-8")
+        )
+        logger.info(
+            f"publishing program run message for program: {program_run.program} run: {program_run.run}"
+        )
+        await self._nova.nats.publish_message(message)
 
     @property
     def program_manager(self) -> ProgramManager:
@@ -76,7 +95,7 @@ class Novax:
         Handle FastAPI startup - discover and register programs from sources to store
         """
         try:
-            logger.debug("Novax: Starting program discovery and registration to store")
+            logger.info("Novax: Starting program discovery and registration to store")
             programs = await self._program_manager.get_programs()
 
             store_programs = {}
@@ -120,7 +139,7 @@ class Novax:
         Handle FastAPI shutdown - cleanup programs from store
         """
         try:
-            logger.debug("Novax: Starting program cleanup from store on shutdown")
+            logger.info("Novax: Starting program cleanup from store on shutdown")
             programs = self._program_manager._programs
             program_ids = list(programs.keys())
             program_count = len(program_ids)

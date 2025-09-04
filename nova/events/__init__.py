@@ -4,6 +4,7 @@ from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from blinker import signal
+from decouple import config
 from pydantic import BaseModel, Field
 
 from nova.cell.cell import Cell
@@ -12,8 +13,14 @@ from nova.logging import logger
 from nova.nats import Message as NatsMessage
 from nova.nats import NatsClient
 
-# TODO: when connect is called on multiple nova instances, every cycle.start triggers multiple cycle events
-# TODO: check with Dirk
+# Read BASE_PATH environment variable and extract app name
+# TODO: make a util and move the logic there
+_BASE_PATH = config("BASE_PATH", default=None)
+if _BASE_PATH:
+    _APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else None
+else:
+    _APP_NAME = None
+
 cycle_started = signal("cycle_started")
 cycle_finished = signal("cycle_finished")
 cycle_failed = signal("cycle_failed")
@@ -100,11 +107,19 @@ class Cycle:
         cycle_id (UUID | None): Unique identifier for the cycle, set after start()
     """
 
-    def __init__(self, cell: Cell):
+    def __init__(self, cell: Cell, extra: dict[str, str] | None = None):
+        import json
+
+        json.dumps
+        """
+        cell: The cell associated with this cycle.
+        metadata: Optional metadata to include with the cycle events.
+        """
         self.cycle_id: UUID | None = None
         self._timer = Timer()
         self._cell_id = cell.cell_id
         self._cycle_subject = _NATS_CYCLE_SUBJECT.format(cell=self._cell_id)
+        self._extra = extra
 
     async def start(self) -> datetime:
         """
@@ -127,6 +142,10 @@ class Cycle:
         self.cycle_id = uuid4()
         event = CycleStartedEvent(cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id)
         logger.debug(f"Cycle started with ID: {self.cycle_id}")
+
+        event.extra = self._extra
+        if _APP_NAME and hasattr(event.extra, "app_name") is False:
+            event.extra["app_name"] = _APP_NAME
 
         # Emit blinker signal if available
         if cycle_started is not None:
@@ -162,6 +181,10 @@ class Cycle:
         event = CycleFinishedEvent(
             cycle_id=self.cycle_id, timestamp=end_time, duration_ms=duration_ms, cell=self._cell_id
         )
+
+        event.extra = self._extra
+        if _APP_NAME and hasattr(event.extra, "app_name") is False:
+            event.extra["app_name"] = _APP_NAME
 
         logger.debug(f"Cycle finished with ID: {self.cycle_id}")
 
@@ -208,6 +231,10 @@ class Cycle:
         )
         logger.info(f"Cycle failed with ID: {self.cycle_id}, reason: {reason}")
 
+        event.extra = self._extra
+        if _APP_NAME and hasattr(event.extra, "app_name") is False:
+            event.extra["app_name"] = _APP_NAME
+
         # Emit blinker signal if available
         if cycle_failed is not None:
             cycle_failed.send(self, message=event)
@@ -252,6 +279,9 @@ class BaseCycleEvent(BaseModel, ABC):
     cycle_id: UUID = Field(..., description="Unique identifier for the automation cycle")
     timestamp: datetime = Field(..., description="Event creation time (ISO 8601, UTC)")
     cell: str = Field(..., description="Identifier of the robotic cell")
+    extra: dict[str, str] | None = Field(
+        default_factory=dict, description="Additional metadata related to the event"
+    )
 
 
 class CycleStartedEvent(BaseCycleEvent):
