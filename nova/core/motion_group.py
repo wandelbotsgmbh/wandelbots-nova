@@ -13,7 +13,8 @@ from nova.cell.robot_cell import AbstractRobot
 from nova.core import logger
 from nova.core.exceptions import InconsistentCollisionScenes
 from nova.core.gateway import ApiGateway
-from nova.core.movement_controller import TrajectoryTuner, move_forward
+from nova.core.movement_controller import move_forward
+from nova.core.tuner import TrajectoryTuner
 from nova.types import InitialMovementStream, LoadPlanResponse, MovementResponse, Pose, RobotState
 from nova.utils import StreamExtractor
 

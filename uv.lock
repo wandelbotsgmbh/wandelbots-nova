@@ -2,9 +2,6 @@ version = 1
 revision = 3
 requires-python = ">=3.11, <3.13"
 
-[options]
-prerelease-mode = "allow"
-
 [[package]]
 name = "aiofiles"
 version = "24.1.0"
