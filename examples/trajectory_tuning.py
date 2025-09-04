@@ -58,6 +58,7 @@ async def main():
             ic(current_pose)
 
             actions = [
+                lin(current_pose @ Pose((0, 0, 0, 0, 0, 0))),
                 lin(current_pose @ Pose((0, dist, 0, 0, 0, 0))),
                 lin(current_pose @ Pose((0, dist, dist, 0, 0, 0))),
                 lin(current_pose @ Pose((0, 0, dist, 0, 0, 0))),

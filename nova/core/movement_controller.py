@@ -299,16 +299,16 @@ class TrajectoryCursor:
     def forward_to_next_action(
         self, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
-        # TODO this seems to fail if there is only one action
         index = floor(self._current_location - self._overshoot) + 1
         ic(self._current_location, self._overshoot, index, len(self.combined_actions))
         if index < len(self.combined_actions):
             return self.forward_to(index, playback_speed_in_percent=playback_speed_in_percent)
         else:
-            # Create a future that's already resolved with an error
-            future = asyncio.Future()
-            future.set_exception(ValueError("No next action found after current location."))
-            return future
+            pass
+            # # Create a future that's already resolved with an error
+            # future = asyncio.Future()
+            # future.set_exception(ValueError("No next action found after current location."))
+            # return future
 
     def backward(
         self, playback_speed_in_percent: int | None = None
@@ -373,28 +373,6 @@ class TrajectoryCursor:
         # TODO only allow finishing if at forward end of trajectory
         self._command_queue.put_nowait(self._COMMAND_QUEUE_SENTINAL)
 
-    async def cntrl(
-        self, response_stream: ExecuteTrajectoryResponseStream
-    ) -> ExecuteTrajectoryRequestStream:
-        self._response_stream = response_stream
-        async for request in init_movement_gen(
-            self.motion_id, response_stream, self._current_location
-        ):
-            yield request
-
-        self._response_consumer_task: asyncio.Task[None] = asyncio.create_task(
-            self._response_consumer(), name="response_consumer"
-        )
-
-        async for request in self._request_loop():
-            yield request
-        self._response_consumer_task.cancel()
-        try:
-            await self._response_consumer_task  # Where to put?
-        except asyncio.CancelledError:
-            pass
-        ic()
-
     def _start_operation(
         self, operation_type: OperationType, target_location: Optional[float] = None
     ) -> asyncio.Future[OperationResult]:
@@ -431,6 +409,38 @@ class TrajectoryCursor:
         else:
             self._current_operation_future.set_result(result)
 
+    async def cntrl(
+        self, response_stream: ExecuteTrajectoryResponseStream
+    ) -> ExecuteTrajectoryRequestStream:
+        self._response_stream = response_stream
+        async for request in init_movement_gen(
+            self.motion_id, response_stream, self._current_location
+        ):
+            yield request
+
+        respons_consumer_ready_event = asyncio.Event()
+        self._response_consumer_task: asyncio.Task[None] = asyncio.create_task(
+            self._response_consumer(ready_event=respons_consumer_ready_event),
+            name="response_consumer",
+        )
+        # we need to wait until the response consumer is ready because it stops the
+        # response stream iterator by enquing the sentinel
+        # if we cancel immediately due to the first command being a detach the response consumer might get
+        # cancelled before it has even started and thus will not react to the cancellation properly
+        await respons_consumer_ready_event.wait()
+        async for request in self._request_loop():
+            yield request
+        ic()
+        self._response_consumer_task.cancel()
+        try:
+            await self._response_consumer_task  # Where to put?
+        except asyncio.CancelledError:
+            ic()
+            pass
+        # stopping the external response stream iterator to be sure, but this is a smell
+        self._in_queue.put_nowait(None)
+        ic()
+
     async def _request_loop(self):
         while True:
             command = await self._command_queue.get()
@@ -457,7 +467,9 @@ class TrajectoryCursor:
             self._command_queue.task_done()
         ic()
 
-    async def _response_consumer(self):
+    async def _response_consumer(self, ready_event: asyncio.Event):
+        ic()
+        ready_event.set()
         last_movement = None
 
         try:
@@ -570,125 +582,3 @@ async def init_movement_gen(
         r1 = initialize_movement_response.actual_instance
         if not r1.init_response.succeeded:  # TODO we don't come here if there was an error response
             raise InitMovementFailed(r1.init_response)
-
-
-from faststream import FastStream
-from faststream.nats import NatsBroker
-
-
-class TrajectoryTuner:
-    def __init__(self, actions, plan_fn, execute_fn):
-        self.actions = actions
-        self.plan_fn = plan_fn
-        self.execute_fn = execute_fn
-
-    async def tune(self):
-        finished_tuning = False
-        continue_tuning_event = asyncio.Event()
-        last_operation_result = None  # TODO implement this feature
-        joint_trajectory = await self.plan_fn(self.actions)
-        current_cursor = None  # TODO maybe we can also initialize this here already
-
-        broker = NatsBroker()
-
-        @broker.subscriber("trajectory-cursor")
-        async def controller_handler(command: str, speed: Optional[pydantic.PositiveInt] = None):
-            nonlocal last_operation_result, finished_tuning
-            ic(command, speed)
-            match command:
-                case "forward":
-                    continue_tuning_event.set()
-                    future = current_cursor.forward(playback_speed_in_percent=speed)
-                    # last_operation_result = await future
-                case "step-forward":
-                    continue_tuning_event.set()
-                    future = current_cursor.forward_to_next_action(playback_speed_in_percent=speed)
-                    # await future
-                case "backward":
-                    continue_tuning_event.set()
-                    future = current_cursor.backward(playback_speed_in_percent=speed)
-                    # await future
-                case "step-backward":
-                    continue_tuning_event.set()
-                    future = current_cursor.backward_to_previous_action(
-                        playback_speed_in_percent=speed
-                    )
-                    # await future
-                case "pause":
-                    future = current_cursor.pause()
-                    # if future is not None:
-                    #     await future
-                case "finish":
-                    # TODO only allow finishing if at forward end of trajectory
-                    continue_tuning_event.set()
-                    current_cursor.detach()
-                    finished_tuning = True
-                case _:
-                    ic("Unknown command")
-
-        async def runtime_monitor(interval=0.5):
-            start_time = asyncio.get_event_loop().time()
-            while True:
-                elapsed = asyncio.get_event_loop().time() - start_time
-                logger.warning(f"{elapsed:.2f}s")
-                await asyncio.sleep(interval)
-
-        faststream_app = FastStream(broker)
-        faststream_app_task = asyncio.create_task(faststream_app.run())
-        # runtime_task = asyncio.create_task(runtime_monitor(0.5))  # Output every 0.5 seconds
-
-        @motion_started.connect
-        async def on_motion_started(sender, event: MotionEvent):
-            ic(event)
-            await broker.publish(
-                {"line": event.target_action.metas["line_number"]}, "editor.line.select"
-            )
-
-        try:
-            # tuning loop
-            current_location = 0.0
-            while not finished_tuning:
-                # TODO this plans the second time for the same actions when we get here because
-                # the initial joint trajectory was already planned before the MotionGroup._execute call
-                motion_id, joint_trajectory = await self.plan_fn(self.actions)
-                ic(current_location)
-                current_cursor = TrajectoryCursor(
-                    motion_id,
-                    joint_trajectory,
-                    self.actions,
-                    initial_location=current_location,
-                    detach_on_standstill=True,
-                )
-                execution_task = asyncio.create_task(
-                    self.execute_fn(
-                        client_request_generator=current_cursor(
-                            MovementControllerContext(
-                                combined_actions=CombinedActions(items=self.actions),
-                                motion_id=motion_id,
-                            )
-                        )
-                    )
-                )
-                ic()
-                # wait for user to send next command
-                logger.info("Waiting for user command...")
-                await continue_tuning_event.wait()
-                async for execute_response in current_cursor:
-                    yield execute_response
-                ic()
-                await execution_task
-                continue_tuning_event.clear()
-                current_location = (
-                    current_cursor._current_location
-                )  # TODO is this the cleanest way to get the current location?
-
-                # somehow obtain the modified actions for the next iteration
-                ic()
-
-            # runtime_task.cancel()
-            # await runtime_task
-        except asyncio.CancelledError:
-            ic()
-            pass
-        faststream_app.exit()
-        await faststream_app_task
