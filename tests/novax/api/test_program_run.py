@@ -20,7 +20,7 @@ async def sucessful_program():
 
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
-async def _test_novax_program_successful_run(novax_server):
+async def test_novax_program_successful_run(novax_server):
     nova = Nova()
     await nova.connect()
 
@@ -36,7 +36,7 @@ async def _test_novax_program_successful_run(novax_server):
     )
     assert start_program.status_code == 200, "Failed to start test program"
 
-    await asyncio.sleep(5)
+    await asyncio.sleep(10)
 
     assert len(program_run_message) == 3, (
         f"Expected 3 program run messages, but got {len(program_run_message)}"
@@ -60,7 +60,7 @@ async def failing_program():
 
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
-async def _test_novax_program_failed_run(novax_server):
+async def test_novax_program_failed_run(novax_server):
     nova = Nova()
     await nova.connect()
 

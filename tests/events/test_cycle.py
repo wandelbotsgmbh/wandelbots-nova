@@ -196,3 +196,34 @@ class TestCycle:
             mock_fail.assert_called_once()
             event = mock_fail.call_args[1]["message"]
             assert "Test exception" in event.reason
+
+    @pytest.mark.asyncio
+    async def test_cycle_with_metadata(self, mock_cell):
+        # TODO: mock environment variable
+        with (
+            patch.object(cycle_started, "send", new=MagicMock()) as mock_start,
+            patch.object(cycle_finished, "send", new=MagicMock()) as mock_finish,
+        ):
+            async with Cycle(mock_cell, extra={"key1": "value1", "key2": "value2"}):
+                pass
+
+            mock_start.assert_called_once()
+            extra = mock_start.call_args[1]["message"].extra
+            assert {"key1": "value1", "key2": "value2"} == extra
+
+            extra = mock_finish.call_args[1]["message"].extra
+            assert {"key1": "value1", "key2": "value2"} == extra
+
+        with (
+            patch.object(cycle_started, "send", new=MagicMock()) as mock_start,
+            patch.object(cycle_failed, "send", new=MagicMock()) as mock_fail,
+        ):
+            async with Cycle(mock_cell, extra={"key1": "value1", "key2": "value2"}):
+                raise ValueError("Test exception")
+
+            mock_start.assert_called_once()
+            extra = mock_start.call_args[1]["message"].extra
+            assert {"key1": "value1", "key2": "value2"} == extra
+
+            extra = mock_fail.call_args[1]["message"].extra
+            assert {"key1": "value1", "key2": "value2"} == extra
