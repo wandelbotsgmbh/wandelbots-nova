@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.16.0 (2025-09-04)
+
+### Features
+
+- Added from euler util function (#272)
+  ([#272](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/272),
+  [`1ab802b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1ab802bcc64927a907c2f3358e26459d4432c732))
+
+
 ## v2.15.1 (2025-09-02)
 
 ### Bug Fixes
