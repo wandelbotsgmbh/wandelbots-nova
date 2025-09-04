@@ -62,17 +62,22 @@ async def main():
             t.sequence(
                 cartesian_ptp(target_pose),
                 joint_ptp(home_joints),
-                cartesian_ptp(target_pose @ Pose((50, 0, 0, 0, 0, 0))),
-                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ Pose((0, 100, 100, 0, 0, 0))),
+                cartesian_ptp(
+                    target_pose @ Pose.from_euler((0, 100, 200), (0, 45, 0), "xyz", degrees=True)
+                ),  # used from_euler util function to specify orientation in euler angles
                 io_write(key="tool_out[0]", value=False),
             )
 
             # You can use the set(...) context manager to set settings for a block of actions
             with t.set(settings=fast):
-                t.move(cartesian_ptp(target_pose @ Pose((50, 100, 0, 0, 0, 0))))
                 t.move(
-                    joint_ptp(home_joints, settings=slow)
-                )  # Moving back to home with slow settings
+                    cartesian_ptp(
+                        target_pose @ Pose.from_euler((0, 0, 200), (0, 45, 0), "xyz", degrees=True),
+                        settings=slow,
+                    )
+                )  # moving with slow setting
+                t.move(joint_ptp(home_joints))
                 t.move(cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))))
 
             t.move(joint_ptp(home_joints, settings=slow))
