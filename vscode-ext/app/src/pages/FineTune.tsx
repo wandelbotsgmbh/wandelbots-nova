@@ -8,6 +8,8 @@ import Switch from '@mui/material/Switch'
 import { NovaClient } from '@wandelbots/nova-js/v2'
 import { VelocitySlider } from '@wandelbots/wandelbots-js-react-components'
 import {
+  ChevronFirst,
+  ChevronLast,
   ChevronLeft,
   ChevronRight,
   GitBranch,
@@ -103,7 +105,11 @@ const MoveControls = ({ onStart, onStop, moving, snap, speed }) => {
             variant="contained"
             color="secondary"
           >
-            <ChevronLeft className="size-8 mx-9 my-3" />
+            {snap ? (
+              <ChevronFirst className="size-8 mx-9 my-3" />
+            ) : (
+              <ChevronLeft className="size-8 mx-9 my-3" />
+            )}
           </Button>
           <Button
             onMouseDown={(e) => handleButtonClick(e, 'forward')}
@@ -111,7 +117,11 @@ const MoveControls = ({ onStart, onStop, moving, snap, speed }) => {
             variant="contained"
             color="secondary"
           >
-            <ChevronRight className="size-8 mx-9 my-3" />
+            {snap ? (
+              <ChevronLast className="size-8 mx-9 my-3" />
+            ) : (
+              <ChevronRight className="size-8 mx-9 my-3" />
+            )}
           </Button>
         </div>
         <div className="grid grid-cols-2 gap-9 text-slate-400">
