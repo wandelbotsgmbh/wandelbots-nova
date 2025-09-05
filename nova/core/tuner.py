@@ -81,6 +81,11 @@ class TrajectoryTuner:
                 {"line": event.target_action.metas["line_number"]}, "editor.line.select"
             )
 
+        @broker.subscriber("editor.movement.options")
+        async def movement_options_handler(msg):
+            logger.info(f"Received movement options: {msg}")
+            ic(msg)
+
         try:
             # tuning loop
             current_location = 0.0
@@ -104,11 +109,6 @@ class TrajectoryTuner:
                 # wait for user to send next command
                 logger.info("Cursor initialized. Waiting for user command...")
                 # publish movement options
-
-                @broker.subscriber("editor.movement.options")
-                async def movement_options_handler(msg):
-                    ic(msg)
-
                 await broker.publish(
                     {"options": current_cursor.get_movement_options()}, "editor.movement.options"
                 )
