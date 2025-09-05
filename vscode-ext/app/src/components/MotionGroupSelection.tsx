@@ -6,6 +6,7 @@ import {
   SelectChangeEvent,
   Typography,
 } from '@mui/material'
+import { NovaClient } from '@wandelbots/nova-js/v1'
 import React from 'react'
 
 export type MotionGroupOption = {
@@ -14,12 +15,14 @@ export type MotionGroupOption = {
   icon?: React.ReactNode
 }
 
+// TODO: pass nova client
+// /** Either an existing NovaClient or the base url of a deployed Nova instance */
+//   nova: NovaClient | string
 export type MotionGroupSelectionProps = {
   value: string
   options: MotionGroupOption[]
   onChange: (value: string) => void
   disabled?: boolean
-  width?: number | string
 }
 
 export default function MotionGroupSelection({
@@ -27,14 +30,39 @@ export default function MotionGroupSelection({
   options,
   onChange,
   disabled,
-  width,
 }: MotionGroupSelectionProps) {
   const handleChange = (event: SelectChangeEvent<string>) => {
     onChange(event.target.value as string)
   }
 
+  // Show "no motion group found" message when there are no options
+  if (options.length === 0) {
+    return (
+      <Box
+        sx={{
+          width: '100%',
+          height: 40,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 9999,
+          backgroundColor: 'rgba(255,255,255,0.06)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          px: 1.25,
+        }}
+      >
+        <Typography
+          variant="body2"
+          sx={{ color: 'text.secondary', fontStyle: 'italic' }}
+        >
+          No motion group found
+        </Typography>
+      </Box>
+    )
+  }
+
   return (
-    <FormControl size="small" sx={{ width: width ?? 260 }} disabled={disabled}>
+    <FormControl size="small" sx={{ width: '100%' }} disabled={disabled}>
       <Select
         value={value}
         onChange={handleChange}
@@ -70,7 +98,7 @@ export default function MotionGroupSelection({
             sx: {
               mt: 1,
               borderRadius: 2,
-              minWidth: width ?? 260,
+              minWidth: '100%',
             },
           },
         }}
