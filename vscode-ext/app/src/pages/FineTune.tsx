@@ -5,15 +5,7 @@ import FormGroup from '@mui/material/FormGroup'
 import Modal from '@mui/material/Modal'
 import Snackbar from '@mui/material/Snackbar'
 import Switch from '@mui/material/Switch'
-import {
-  ConnectedMotionGroup,
-  type MotionStreamConnection,
-  NovaClient,
-} from '@wandelbots/nova-js/v1'
-import {
-  PoseCartesianValues,
-  VelocitySlider,
-} from '@wandelbots/wandelbots-js-react-components'
+import { VelocitySlider } from '@wandelbots/wandelbots-js-react-components'
 import {
   ChevronFirst,
   ChevronLast,
@@ -29,14 +21,13 @@ import React, { useEffect, useRef, useState } from 'react'
 
 import MotionGroupSelection from '../components/MotionGroupSelection'
 import { accessToken, cellId, natsBroker, novaApi } from '../config'
-import { useConnectMotionStream, useNovaClient } from '../useNovaClient'
 import {
   connectToNats,
   disconnectFromNats,
   sendNatsMessage,
   subscribeToNatsMessage,
 } from '../utils/nats'
-import { NovaApi } from '../utils/novaApi'
+import { NovaApi } from '../utils/novaAPI'
 import JoggingPanel from './JoggingPanel'
 
 const Range = ({ value, onChange, min = 0, max = 100, step = 1 }) => (
@@ -173,18 +164,11 @@ const MotionGroupPanel = () => {
     rY: 0,
     rZ: 3.14,
   })
-  const [lastTest, setLastTest] = useState(null)
   const [selectedMotionGroupId, setSelectedMotionGroupId] = useState<
     string | null
   >(null)
-  const [motionGroupOptions, setMotionGroupOptions] = useState<
-    Array<{ value: string; label: string }>
-  >([])
   const [snackbarOpen, setSnackbarOpen] = useState(false)
   const [snackbarMessage, setSnackbarMessage] = useState('')
-  const [motionStreamConnection, setMotionStreamConnection] =
-    useState<MotionStreamConnection | null>(null)
-  const [isConnected, setIsConnected] = useState(false)
   const [movementOptions, setMovementOptions] = useState<string[]>([])
   const [unsubscribeMovementOptions, setUnsubscribeMovementOptions] = useState<
     (() => void) | null
@@ -198,52 +182,6 @@ const MotionGroupPanel = () => {
         console.log('Connected to NATS successfully')
       } catch (error) {
         console.error('Failed to connect to NATS:', error)
-      }
-    }
-
-    const fetchMotionGroups = async () => {
-      if (!novaApi) {
-        console.warn('No Nova API provided')
-        return
-      }
-
-      try {
-        const nova = new NovaApi()
-        await nova.connect({
-          apiUrl: novaApi,
-          accessToken,
-          cellId,
-        })
-
-        const controllerNames = await nova.getControllersNames()
-        if (controllerNames.length === 0) {
-          console.warn('No controllers found')
-          return
-        }
-
-        const motionGroupIds = await Promise.all(
-          controllerNames.map(
-            async (controllerName) =>
-              await nova.getMotionGroups(controllerName),
-          ),
-        ).then((groups) => groups.flat())
-
-        const options = motionGroupIds.map((mgId) => ({
-          value: mgId,
-          label: `${mgId}`,
-        }))
-
-        setMotionGroupOptions(options)
-
-        // Select the first motion group
-        if (motionGroupIds.length > 0) {
-          setSelectedMotionGroupId(motionGroupIds[0])
-        }
-      } catch (error) {
-        console.error('Failed to fetch motion groups:', error)
-        // Fallback to default options
-        setMotionGroupOptions([])
-        setSelectedMotionGroupId(null)
       }
     }
 
@@ -266,75 +204,16 @@ const MotionGroupPanel = () => {
     }
 
     connectNats()
-    fetchMotionGroups()
     setupNatsSubscriptions()
 
     // Cleanup: disconnect when component unmounts
     return () => {
       disconnectFromNats().catch(console.error)
-      if (motionStreamConnection) {
-        motionStreamConnection.dispose?.()
-      }
       if (unsubscribeMovementOptions) {
         unsubscribeMovementOptions()
       }
     }
   }, [])
-
-  // Connect to motion group when selectedMotionGroupId changes
-  useEffect(() => {
-    const connectToMotionGroup = async () => {
-      if (!selectedMotionGroupId) {
-        return
-      }
-
-      try {
-        // Dispose of existing connection if any
-        /*if (motionStreamConnection) {
-          motionStreamConnection.dispose?.()
-          setMotionStreamConnection(null)
-          setIsConnected(false)
-        }*/
-
-        console.log('Connecting to motion group:', selectedMotionGroupId)
-
-        const motionStreamConnection = await useConnectMotionStream(
-          selectedMotionGroupId,
-        )
-
-        setMotionStreamConnection(motionStreamConnection)
-        setIsConnected(true)
-        console.log(
-          'Successfully connected to motion group:',
-          selectedMotionGroupId,
-        )
-
-        // Log real-time motion state updates
-        if (motionStreamConnection.rapidlyChangingMotionState) {
-          console.log(
-            'Motion group state:',
-            motionStreamConnection.rapidlyChangingMotionState.state,
-          )
-        }
-      } catch (error) {
-        console.error('Failed to connect to motion group:', error)
-        setSnackbarMessage(`Failed to connect to motion group: ${error}`)
-        setSnackbarOpen(true)
-        setIsConnected(false)
-      }
-    }
-
-    connectToMotionGroup()
-
-    // Cleanup when selectedMotionGroupId changes
-    return () => {
-      if (motionStreamConnection) {
-        motionStreamConnection.dispose?.()
-        setMotionStreamConnection(null)
-        setIsConnected(false)
-      }
-    }
-  }, [selectedMotionGroupId])
 
   const handleSnapChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSnap(event.target.checked)
@@ -421,6 +300,10 @@ const MotionGroupPanel = () => {
   // Check if forward movement is allowed
   const canMoveForward = movementOptions.includes('can_move_forward')
 
+  function handleMotionGroupChange(motionGroupId: string) {
+    setSelectedMotionGroupId(motionGroupId)
+  }
+
   return (
     <div className="px-3 py-6">
       {/* Motion Group Selection */}
@@ -428,22 +311,7 @@ const MotionGroupPanel = () => {
         <div className="flex-1">
           <p className="text-sm font-medium text-slate-300">Motion Group</p>
           <div className="mt-2">
-            <MotionGroupSelection
-              value={selectedMotionGroupId ?? ''}
-              onChange={setSelectedMotionGroupId}
-              options={motionGroupOptions}
-            />
-          </div>
-          {/* Connection Status */}
-          <div className="mt-2 flex items-center gap-2">
-            <div
-              className={`h-2 w-2 rounded-full ${
-                isConnected ? 'bg-green-500' : 'bg-red-500'
-              }`}
-            />
-            <span className="text-xs text-slate-400">
-              {isConnected ? 'Connected' : 'Disconnected'}
-            </span>
+            <MotionGroupSelection onChange={handleMotionGroupChange} />
           </div>
         </div>
       </div>
