@@ -5,8 +5,15 @@ import FormGroup from '@mui/material/FormGroup'
 import Modal from '@mui/material/Modal'
 import Snackbar from '@mui/material/Snackbar'
 import Switch from '@mui/material/Switch'
-import { NovaClient } from '@wandelbots/nova-js/v2'
-import { VelocitySlider } from '@wandelbots/wandelbots-js-react-components'
+import {
+  ConnectedMotionGroup,
+  type MotionStreamConnection,
+  NovaClient,
+} from '@wandelbots/nova-js/v1'
+import {
+  PoseCartesianValues,
+  VelocitySlider,
+} from '@wandelbots/wandelbots-js-react-components'
 import {
   ChevronFirst,
   ChevronLast,
@@ -22,10 +29,12 @@ import React, { useEffect, useRef, useState } from 'react'
 
 import MotionGroupSelection from '../components/MotionGroupSelection'
 import { accessToken, cellId, natsBroker, novaApi } from '../config'
+import { useConnectMotionStream, useNovaClient } from '../useNovaClient'
 import {
   connectToNats,
   disconnectFromNats,
   sendNatsMessage,
+  subscribeToNatsMessage,
 } from '../utils/nats'
 import { NovaApi } from '../utils/novaApi'
 import JoggingPanel from './JoggingPanel'
@@ -40,7 +49,14 @@ const Range = ({ value, onChange, min = 0, max = 100, step = 1 }) => (
   />
 )
 
-const MoveControls = ({ onStart, onStop, moving, snap, speed }) => {
+const MoveControls = ({
+  onStart,
+  onStop,
+  moving,
+  snap,
+  speed,
+  canMoveForward = true,
+}) => {
   const handleButtonClick = async (event: any, direction: string) => {
     // Prevent default behavior and stop propagation
     event?.preventDefault?.()
@@ -116,6 +132,11 @@ const MoveControls = ({ onStart, onStop, moving, snap, speed }) => {
             onMouseUp={handleButtonRelease}
             variant="contained"
             color="secondary"
+            disabled={!canMoveForward}
+            sx={{
+              opacity: canMoveForward ? 1 : 0.5,
+              cursor: canMoveForward ? 'pointer' : 'not-allowed',
+            }}
           >
             {snap ? (
               <ChevronLast className="size-8 mx-9 my-3" />
@@ -126,7 +147,11 @@ const MoveControls = ({ onStart, onStop, moving, snap, speed }) => {
         </div>
         <div className="grid grid-cols-2 gap-9 text-slate-400">
           <span className="text-sm font-medium">backward</span>
-          <span className="text-sm font-medium">forward</span>
+          <span
+            className={`text-sm font-medium ${!canMoveForward ? 'text-red-400' : ''}`}
+          >
+            forward {!canMoveForward && '(disabled)'}
+          </span>
         </div>
       </div>
     </div>
@@ -157,6 +182,13 @@ const MotionGroupPanel = () => {
   >([])
   const [snackbarOpen, setSnackbarOpen] = useState(false)
   const [snackbarMessage, setSnackbarMessage] = useState('')
+  const [motionStreamConnection, setMotionStreamConnection] =
+    useState<MotionStreamConnection | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
+  const [movementOptions, setMovementOptions] = useState<string[]>([])
+  const [unsubscribeMovementOptions, setUnsubscribeMovementOptions] = useState<
+    (() => void) | null
+  >(null)
 
   // Connect to NATS and fetch motion groups when component mounts
   useEffect(() => {
@@ -215,14 +247,94 @@ const MotionGroupPanel = () => {
       }
     }
 
+    const setupNatsSubscriptions = async () => {
+      try {
+        // Subscribe to movement options
+        const unsubscribe = await subscribeToNatsMessage(
+          'editor.movement.options',
+          (message) => {
+            console.log('Received movement options:', message)
+            if (message && Array.isArray(message.options)) {
+              setMovementOptions(message.options)
+            }
+          },
+        )
+        setUnsubscribeMovementOptions(() => unsubscribe)
+      } catch (error) {
+        console.error('Failed to subscribe to movement options:', error)
+      }
+    }
+
     connectNats()
     fetchMotionGroups()
+    setupNatsSubscriptions()
 
     // Cleanup: disconnect when component unmounts
     return () => {
       disconnectFromNats().catch(console.error)
+      if (motionStreamConnection) {
+        motionStreamConnection.dispose?.()
+      }
+      if (unsubscribeMovementOptions) {
+        unsubscribeMovementOptions()
+      }
     }
   }, [])
+
+  // Connect to motion group when selectedMotionGroupId changes
+  useEffect(() => {
+    const connectToMotionGroup = async () => {
+      if (!selectedMotionGroupId) {
+        return
+      }
+
+      try {
+        // Dispose of existing connection if any
+        /*if (motionStreamConnection) {
+          motionStreamConnection.dispose?.()
+          setMotionStreamConnection(null)
+          setIsConnected(false)
+        }*/
+
+        console.log('Connecting to motion group:', selectedMotionGroupId)
+
+        const motionStreamConnection = await useConnectMotionStream(
+          selectedMotionGroupId,
+        )
+
+        setMotionStreamConnection(motionStreamConnection)
+        setIsConnected(true)
+        console.log(
+          'Successfully connected to motion group:',
+          selectedMotionGroupId,
+        )
+
+        // Log real-time motion state updates
+        if (motionStreamConnection.rapidlyChangingMotionState) {
+          console.log(
+            'Motion group state:',
+            motionStreamConnection.rapidlyChangingMotionState.state,
+          )
+        }
+      } catch (error) {
+        console.error('Failed to connect to motion group:', error)
+        setSnackbarMessage(`Failed to connect to motion group: ${error}`)
+        setSnackbarOpen(true)
+        setIsConnected(false)
+      }
+    }
+
+    connectToMotionGroup()
+
+    // Cleanup when selectedMotionGroupId changes
+    return () => {
+      if (motionStreamConnection) {
+        motionStreamConnection.dispose?.()
+        setMotionStreamConnection(null)
+        setIsConnected(false)
+      }
+    }
+  }, [selectedMotionGroupId])
 
   const handleSnapChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSnap(event.target.checked)
@@ -306,6 +418,9 @@ const MotionGroupPanel = () => {
   const handleOpenJogging = () => setIsJoggingOpen(true)
   const handleCloseJogging = () => setIsJoggingOpen(false)
 
+  // Check if forward movement is allowed
+  const canMoveForward = movementOptions.includes('can_move_forward')
+
   return (
     <div className="px-3 py-6">
       {/* Motion Group Selection */}
@@ -317,8 +432,18 @@ const MotionGroupPanel = () => {
               value={selectedMotionGroupId ?? ''}
               onChange={setSelectedMotionGroupId}
               options={motionGroupOptions}
-              width={280}
             />
+          </div>
+          {/* Connection Status */}
+          <div className="mt-2 flex items-center gap-2">
+            <div
+              className={`h-2 w-2 rounded-full ${
+                isConnected ? 'bg-green-500' : 'bg-red-500'
+              }`}
+            />
+            <span className="text-xs text-slate-400">
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </span>
           </div>
         </div>
       </div>
@@ -355,6 +480,7 @@ const MotionGroupPanel = () => {
           moving={moving}
           snap={snap}
           speed={speed}
+          canMoveForward={canMoveForward}
         />
       </div>
 
