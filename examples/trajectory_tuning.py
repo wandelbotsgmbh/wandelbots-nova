@@ -66,10 +66,10 @@ async def main():
 
             actions = [
                 lin(current_pose @ Pose((0, 0, 0, 0, 0, 0))),
-                lin(pose1),
-                lin(pose2),
-                lin(pose3),
-                lin(pose4),
+                lin(current_pose @ Pose((0, dist, 0, 0, 0, 0))),
+                lin(current_pose @ Pose((0, dist, dist, 0, 0, 0))),
+                lin(current_pose @ Pose((0, 0, dist, 0, 0, 0))),
+                lin(current_pose @ Pose((0, 0, 0, 0, 0, 0))),
                 # jnt(home_joints),
             ]
             ic(actions)
