@@ -103,6 +103,16 @@ class TrajectoryTuner:
                 )
                 # wait for user to send next command
                 logger.info("Cursor initialized. Waiting for user command...")
+                # publish movement options
+
+                @broker.subscriber("editor.movement.options")
+                async def movement_options_handler(msg):
+                    ic(msg)
+
+                await broker.publish(
+                    {"options": current_cursor.get_movement_options()}, "editor.movement.options"
+                )
+
                 await continue_tuning_event.wait()
                 execution_task = asyncio.create_task(
                     self.execute_fn(client_request_generator=request_generator)

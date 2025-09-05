@@ -1,9 +1,8 @@
 import asyncio
-import bisect
 from enum import StrEnum, auto
 from functools import singledispatch
 from math import ceil, floor
-from typing import Any, AsyncIterator, Callable, Optional
+from typing import Any, AsyncIterator, Optional
 
 import pydantic
 import wandelbots_api_client as wb
@@ -14,7 +13,6 @@ from icecream import ic
 from nova.actions import MovementControllerContext
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
-from nova.core import logger
 from nova.core.exceptions import InitMovementFailed
 from nova.types import (
     ExecuteTrajectoryRequestStream,
@@ -119,64 +117,6 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     return movement_controller
 
 
-def speed_up(
-    context: MovementControllerContext, on_movement: Callable[[MotionState | None], None]
-) -> MovementControllerFunction:
-    async def movement_controller(
-        response_stream: ExecuteTrajectoryResponseStream,
-    ) -> ExecuteTrajectoryRequestStream:
-        # The first request is to initialize the movement
-        yield wb.models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)  # type: ignore
-
-        # then we get the response
-        initialize_movement_response = await anext(response_stream)
-        if isinstance(
-            initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
-        ):
-            r1 = initialize_movement_response.actual_instance
-            if not r1.init_response.succeeded:
-                raise InitMovementFailed(r1.init_response)
-
-        # The second request is to start the movement
-        set_io_list = context.combined_actions.to_set_io()
-        yield wb.models.StartMovementRequest(  # type: ignore
-            set_ios=set_io_list, start_on_io=None, pause_on_io=None
-        )
-
-        counter = 0
-        latest_speed = 10
-        # then we wait until the movement is finished
-        async for execute_trajectory_response in response_stream:
-            counter += 1
-            instance = execute_trajectory_response.actual_instance
-            # Send the current location to the consume
-            if isinstance(instance, wb.models.Movement):
-                motion_state = movement_to_motion_state(instance)
-                if motion_state:
-                    on_movement(motion_state)
-
-            # Terminate the generator
-            if isinstance(instance, wb.models.Standstill):
-                if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
-                    on_movement(None)
-                    return
-
-            if isinstance(instance, wb.models.PlaybackSpeedResponse):
-                playback_speed = instance.playback_speed_response
-                logger.info(f"Current playback speed: {playback_speed}")
-
-            if counter % 10 == 0:
-                yield wb.models.ExecuteTrajectoryRequest(
-                    wb.models.PlaybackSpeedRequest(playback_speed_in_percent=latest_speed)
-                )
-                counter = 0
-                latest_speed += 5
-                if latest_speed > 100:
-                    latest_speed = 100
-
-    return movement_controller
-
-
 class OperationType(StrEnum):
     FORWARD = auto()
     BACKWARD = auto()
@@ -196,6 +136,11 @@ class OperationResult:
     final_location: Optional[float] = None
     overshoot: Optional[float] = None
     error: Optional[Exception] = None
+
+
+class MovementOption(StrEnum):
+    CAN_MOVE_FORWARD = auto()
+    CAN_MOVE_BACKWARD = auto()
 
 
 motion_started = signal("motion_started")
@@ -229,7 +174,6 @@ class TrajectoryCursor:
         self._command_queue = asyncio.Queue()
         self._COMMAND_QUEUE_SENTINAL = object()
         self._in_queue: asyncio.Queue[wb.models.ExecuteTrajectoryResponse | None] = asyncio.Queue()
-        self._breakpoints = []
         self._current_location = initial_location
         self._overshoot = 0.0
         self._target_location = self.end_location
@@ -253,9 +197,12 @@ class TrajectoryCursor:
         assert getattr(self, "joint_trajectory", None) is not None
         return self.joint_trajectory.locations[-1]
 
-    def pause_at(self, location: float, debug_break: bool = True):
-        # How to pause at an exact location? (will be implemented by Motion Control)
-        bisect.insort(self._breakpoints, location)
+    def get_movement_options(self) -> dict[str, Any]:
+        options = {
+            MovementOption.CAN_MOVE_FORWARD: self._current_location < self.end_location,
+            MovementOption.CAN_MOVE_BACKWARD: self._current_location > 0.0,
+        }
+        return {option for option, available in options.items() if available}
 
     def forward(
         self, location: float | None = None, playback_speed_in_percent: int | None = None
@@ -452,16 +399,30 @@ class TrajectoryCursor:
             yield command
 
             if isinstance(command, wb.models.StartMovementRequest):
-                target_action = self.actions[ceil(self._target_location) - 1]
-                await motion_started.send_async(
-                    self,
-                    event=MotionEvent(
-                        type=MotionEventType.STARTED,
-                        current_location=self._current_location,
-                        target_location=self._target_location,
-                        target_action=target_action,
-                    ),
-                )
+                match command.direction:
+                    case wb.models.Direction.DIRECTION_FORWARD:
+                        target_action = self.actions[ceil(self._target_location) - 1]
+                        await motion_started.send_async(
+                            self,
+                            event=MotionEvent(
+                                type=MotionEventType.STARTED,
+                                current_location=self._current_location,
+                                target_location=self._target_location,
+                                target_action=target_action,
+                            ),
+                        )
+                    case wb.models.Direction.DIRECTION_BACKWARD:
+                        target_action = self.actions[floor(self._target_location) - 1]
+                        # ceil(self._current_location - self._overshoot) - 1
+                        await motion_started.send_async(
+                            self,
+                            event=MotionEvent(
+                                type=MotionEventType.STARTED,
+                                current_location=self._current_location,
+                                target_location=self._target_location,
+                                target_action=target_action,
+                            ),
+                        )
 
             # yield await self._command_queue.get()
             self._command_queue.task_done()
@@ -485,16 +446,29 @@ class TrajectoryCursor:
                     self._handle_movement(instance.movement, last_movement)
                     last_movement = instance.movement
 
-                    target_action = self.actions[ceil(self._target_location) - 1]
-                    await motion_started.send_async(
-                        self,
-                        event=MotionEvent(
-                            type=MotionEventType.STARTED,
-                            current_location=self._current_location,
-                            target_location=self._target_location,
-                            target_action=target_action,
-                        ),
-                    )
+                    match self._current_operation_type:
+                        case OperationType.FORWARD | OperationType.FORWARD_TO:
+                            target_action = self.actions[ceil(self._target_location) - 1]
+                            await motion_started.send_async(
+                                self,
+                                event=MotionEvent(
+                                    type=MotionEventType.STARTED,
+                                    current_location=self._current_location,
+                                    target_location=self._target_location,
+                                    target_action=target_action,
+                                ),
+                            )
+                        case OperationType.BACKWARD | OperationType.BACKWARD_TO:
+                            target_action = self.actions[floor(self._target_location) - 1]
+                            await motion_started.send_async(
+                                self,
+                                event=MotionEvent(
+                                    type=MotionEventType.STARTED,
+                                    current_location=self._current_location,
+                                    target_location=self._target_location,
+                                    target_action=target_action,
+                                ),
+                            )
 
                 elif isinstance(instance, wb.models.Standstill):
                     ic(instance.standstill)
