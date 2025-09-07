@@ -489,14 +489,13 @@ class TrajectoryCursor:
                                 break
                             # self.context.movement_consumer(None)
                             # break
+                elif isinstance(instance, wb.models.MovementError):
+                    ic(instance)
                 else:
                     ic(instance)
                     # Handle other types of instances if needed
         except asyncio.CancelledError:
             ic()
-            raise
-        except Exception as e:
-            ic(e)
             raise
         finally:
             ic()
