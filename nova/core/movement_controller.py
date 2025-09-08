@@ -176,7 +176,7 @@ class TrajectoryCursor:
         self._in_queue: asyncio.Queue[wb.models.ExecuteTrajectoryResponse | None] = asyncio.Queue()
         self._current_location = initial_location
         self._overshoot = 0.0
-        self._target_location = self.end_location
+        self._target_location = self.next_action_index + 1.0
         self._detach_on_standstill = detach_on_standstill
 
         self._current_operation_future: Optional[asyncio.Future[OperationResult]] = None
@@ -184,18 +184,45 @@ class TrajectoryCursor:
         self._current_target_location: Optional[float] = None
         self._current_start_location: Optional[float] = None
 
-    def __call__(self, context: MovementControllerContext):
-        self.context = context
-        self.combined_actions: CombinedActions = context.combined_actions
-        self.motion_id = context.motion_id  # TODO does this override here make sense?
-        # self.forward_to_next_action()
-        return self.cntrl
+        self._initialize_task = asyncio.create_task(self.ainitialize())
+
+    async def ainitialize(self):
+        await motion_started.send_async(
+            self,
+            event=MotionEvent(
+                type=MotionEventType.STARTED,
+                current_location=self._current_location,
+                target_location=self._target_location,
+                target_action=self.actions[self.next_action_index or 0],
+            ),
+        )
 
     @property
     def end_location(self) -> float:
         # The assert ensures that we not accidentally use it in __init__ before it is set.
         assert getattr(self, "joint_trajectory", None) is not None
         return self.joint_trajectory.locations[-1]
+
+    @property
+    def next_action_index(self) -> int:
+        index = ceil(self._current_location - self._overshoot) - 1
+        ic(self._current_location, self._overshoot, index, len(self.actions))
+        if index < 0:
+            return 0
+        if index < len(self.actions):
+            return index
+        # for now we don't allow forward wrap around
+        return len(self.actions) - 1
+
+    @property
+    def previous_action_index(self) -> int:
+        index = floor(self._current_location - self._overshoot) - 1
+        ic(self._current_location, self._overshoot, index, len(self.actions))
+        assert index <= len(self.actions)
+        # if index < 0:
+        #     # for now we don't allow backward wrap around
+        #     return 0
+        return index
 
     def get_movement_options(self) -> dict[str, Any]:
         options = {
@@ -246,10 +273,9 @@ class TrajectoryCursor:
     def forward_to_next_action(
         self, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
-        index = floor(self._current_location - self._overshoot) + 1
-        ic(self._current_location, self._overshoot, index, len(self.combined_actions))
-        if index < len(self.combined_actions):
-            return self.forward_to(index, playback_speed_in_percent=playback_speed_in_percent)
+        index = self.next_action_index
+        if index < len(self.actions):
+            return self.forward_to(index + 1.0, playback_speed_in_percent=playback_speed_in_percent)
         else:
             pass
             # # Create a future that's already resolved with an error
@@ -294,10 +320,12 @@ class TrajectoryCursor:
     def backward_to_previous_action(
         self, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
-        index = ceil(self._current_location - self._overshoot) - 1
-        ic(self._current_location, self._overshoot, index, len(self.combined_actions))
-        if index >= 0:
-            return self.backward_to(index, playback_speed_in_percent=playback_speed_in_percent)
+        index = self.previous_action_index
+        ic(self._current_location, self._overshoot, index, len(self.actions))
+        if index + 1.0 >= 0:
+            return self.backward_to(
+                index + 1.0, playback_speed_in_percent=playback_speed_in_percent
+            )
         else:
             # Create a future that's already resolved with an error
             future = asyncio.Future()
@@ -359,6 +387,8 @@ class TrajectoryCursor:
     async def cntrl(
         self, response_stream: ExecuteTrajectoryResponseStream
     ) -> ExecuteTrajectoryRequestStream:
+        await self._initialize_task
+
         self._response_stream = response_stream
         async for request in init_movement_gen(
             self.motion_id, response_stream, self._current_location
@@ -369,6 +399,9 @@ class TrajectoryCursor:
         self._response_consumer_task: asyncio.Task[None] = asyncio.create_task(
             self._response_consumer(ready_event=respons_consumer_ready_event),
             name="response_consumer",
+        )
+        motion_event_updater_task = asyncio.create_task(
+            self.motion_event_updater(), name="motion_event_updater"
         )
         # we need to wait until the response consumer is ready because it stops the
         # response stream iterator by enquing the sentinel
@@ -381,6 +414,12 @@ class TrajectoryCursor:
         self._response_consumer_task.cancel()
         try:
             await self._response_consumer_task  # Where to put?
+        except asyncio.CancelledError:
+            ic()
+            pass
+        motion_event_updater_task.cancel()
+        try:
+            await motion_event_updater_task
         except asyncio.CancelledError:
             ic()
             pass
@@ -401,7 +440,7 @@ class TrajectoryCursor:
             if isinstance(command, wb.models.StartMovementRequest):
                 match command.direction:
                     case wb.models.Direction.DIRECTION_FORWARD:
-                        target_action = self.actions[ceil(self._target_location) - 1]
+                        target_action = self.actions[self.next_action_index]
                         await motion_started.send_async(
                             self,
                             event=MotionEvent(
@@ -412,8 +451,7 @@ class TrajectoryCursor:
                             ),
                         )
                     case wb.models.Direction.DIRECTION_BACKWARD:
-                        target_action = self.actions[floor(self._target_location) - 1]
-                        # ceil(self._current_location - self._overshoot) - 1
+                        target_action = self.actions[self.previous_action_index]
                         await motion_started.send_async(
                             self,
                             event=MotionEvent(
@@ -446,30 +484,6 @@ class TrajectoryCursor:
                     self._handle_movement(instance.movement, last_movement)
                     last_movement = instance.movement
 
-                    match self._current_operation_type:
-                        case OperationType.FORWARD | OperationType.FORWARD_TO:
-                            target_action = self.actions[ceil(self._target_location) - 1]
-                            await motion_started.send_async(
-                                self,
-                                event=MotionEvent(
-                                    type=MotionEventType.STARTED,
-                                    current_location=self._current_location,
-                                    target_location=self._target_location,
-                                    target_action=target_action,
-                                ),
-                            )
-                        case OperationType.BACKWARD | OperationType.BACKWARD_TO:
-                            target_action = self.actions[floor(self._target_location) - 1]
-                            await motion_started.send_async(
-                                self,
-                                event=MotionEvent(
-                                    type=MotionEventType.STARTED,
-                                    current_location=self._current_location,
-                                    target_location=self._target_location,
-                                    target_action=target_action,
-                                ),
-                            )
-
                 elif isinstance(instance, wb.models.Standstill):
                     ic(instance.standstill)
                     self._current_location = instance.standstill.location
@@ -482,7 +496,9 @@ class TrajectoryCursor:
                             if self._detach_on_standstill:
                                 break
                         case wb.models.StandstillReason.REASON_MOTION_ENDED:
-                            self._overshoot = 0.0  # because the RAE takes care of that
+                            self._overshoot = self._current_location - self._target_location
+                            assert self._overshoot == 0.0
+                            # self._overshoot = 0.0  # because the RAE takes care of that
                             self._complete_operation()
                             if self._detach_on_standstill:
                                 ic()
@@ -507,7 +523,7 @@ class TrajectoryCursor:
     def _handle_movement(
         self, curr_movement: wb.models.MovementMovement, last_movement: wb.models.MovementMovement
     ):
-        if not 0.0 < self._target_location < self.end_location:
+        if not 0.0 <= self._target_location < self.end_location:
             return
         curr_location = curr_movement.current_location
         last_location = last_movement.current_location
@@ -523,6 +539,35 @@ class TrajectoryCursor:
             if last_location > self._target_location >= curr_location:
                 ic(last_location, self._target_location, curr_location)
                 self._pause()
+
+    async def motion_event_updater(self, interval=0.2):
+        while True:
+            match self._current_operation_type:
+                case OperationType.FORWARD | OperationType.FORWARD_TO:
+                    target_action = self.actions[self.next_action_index]
+                    await motion_started.send_async(
+                        self,
+                        event=MotionEvent(
+                            type=MotionEventType.STARTED,
+                            current_location=self._current_location,
+                            target_location=self._target_location,
+                            target_action=target_action,
+                        ),
+                    )
+                case OperationType.BACKWARD | OperationType.BACKWARD_TO:
+                    target_action = self.actions[self.previous_action_index]
+                    await motion_started.send_async(
+                        self,
+                        event=MotionEvent(
+                            type=MotionEventType.STARTED,
+                            current_location=self._current_location,
+                            target_location=self._target_location,
+                            target_action=target_action,
+                        ),
+                    )
+                case _:
+                    pass
+            await asyncio.sleep(interval)
 
     def __aiter__(self) -> AsyncIterator[wb.models.ExecuteTrajectoryResponse]:
         return self

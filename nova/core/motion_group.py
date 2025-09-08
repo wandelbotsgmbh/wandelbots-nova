@@ -436,8 +436,13 @@ class MotionGroup(AbstractRobot):
     async def _tune_trajectory(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str, actions: list[Action]
     ) -> AsyncIterable[MovementResponse]:
+        start_joints = await self.joints()
+
         async def plan_fn(actions: list[Action]) -> tuple[str, wb.models.JointTrajectory]:
-            joint_trajectory = await self._plan(actions, tcp)
+            # we fix the start joints here because the tuner might call plan multiple times whilst tuning
+            # and the start joints would change to the respective joint positions at the time of planning
+            # which is not what we want
+            joint_trajectory = await self._plan(actions, tcp, start_joints)
             load_planned_motion_response = await self._load_planned_motion(joint_trajectory, tcp)
             return load_planned_motion_response.motion, joint_trajectory
 
