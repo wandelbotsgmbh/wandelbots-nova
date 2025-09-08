@@ -1,10 +1,9 @@
 import asyncio
-from math import pi
 
 import nova
 from nova import Nova, api
 from nova.actions import lin
-from nova.cell.controllers import virtual_controller
+from nova.cell.controllers import kuka_controller, virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 
@@ -33,7 +32,14 @@ ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
                 name="ur10e",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
                 type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            )
+            ),
+            kuka_controller(
+                name="kuka",
+                controller_ip="192.168.1.20",
+                controller_port=54600,
+                rsi_server_ip="192.168.2.29",
+                rsi_server_port=30152,
+            ),
         ],
         cleanup_controllers=False,
     ),
@@ -41,36 +47,35 @@ ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.controller("ur10e")
+        controller = await cell.controller("kuka")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
             # home_joints = await motion_group.joints()
-            home_joints = [0, -pi / 2, -pi / 2, -pi / 2, pi / 2, -pi / 2]
+            # home_joints = [0, -pi / 2, -pi / 2, -pi / 2, pi / 2, -pi / 2]
             tcp_names = await motion_group.tcp_names()
             ic(tcp_names)
             tcp = tcp_names[0]
             # await motion_group.plan_and_execute(
-            #     # [jnt(home_joints), jnt([home_joints[0] + pi / 4] + home_joints[1:])],
-            #     [jnt(home_joints)],
-            #     tcp,
+            #     [jnt(home_joints), jnt([home_joints[0] + pi / 4] + home_joints[1:])], tcp
             # )
 
             # Get current TCP pose and offset it slightly along the x-axis
-            home_pose = await motion_group.tcp_pose(tcp)
+            current_pose = await motion_group.tcp_pose(tcp)
             dist = 300
-            ic(home_pose)
+            ic(current_pose)
 
             actions = [
-                # lin(home_pose @ Pose((0, 0, 0, 0, 0, 0))),
-                lin(home_pose @ Pose((0, dist, 0, 0, 0, 0))),
-                lin(home_pose @ Pose((0, dist, dist, 0, 0, 0))),
-                lin(home_pose @ Pose((0, 0, dist, 0, 0, 0))),
-                lin(home_pose @ Pose((0, 0, 0, 0, 0, 0))),
+                lin(current_pose @ Pose((0, 0, 0, 0, 0, 0))),
+                lin(current_pose @ Pose((0, dist, 0, 0, 0, 0))),
+                lin(current_pose @ Pose((0, dist, dist, 0, 0, 0))),
+                lin(current_pose @ Pose((0, 0, dist, 0, 0, 0))),
+                lin(current_pose @ Pose((0, 0, 0, 0, 0, 0))),
                 # jnt(home_joints),
             ]
             ic(actions)
         ic(actions[0].metas)
+
         # you can update the settings of the action
         for action in actions:
             action.settings = MotionSettings(tcp_velocity_limit=100)

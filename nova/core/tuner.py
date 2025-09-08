@@ -6,9 +6,7 @@ from faststream import FastStream
 from faststream.nats import NatsBroker
 from icecream import ic
 
-from nova.actions import CombinedActions
 from nova.core import logger
-from nova.core.movement_controller import MovementControllerContext
 
 from .movement_controller import MotionEvent, TrajectoryCursor, motion_started
 
@@ -22,9 +20,8 @@ class TrajectoryTuner:
     async def tune(self):
         finished_tuning = False
         continue_tuning_event = asyncio.Event()
+        faststream_app_ready_event = asyncio.Event()
         last_operation_result = None  # TODO implement this feature
-        joint_trajectory = await self.plan_fn(self.actions)
-        current_cursor = None  # TODO maybe we can also initialize this here already
 
         broker = NatsBroker()
 
@@ -71,6 +68,12 @@ class TrajectoryTuner:
                 await asyncio.sleep(interval)
 
         faststream_app = FastStream(broker)
+
+        @faststream_app.after_startup
+        async def after_startup():
+            ic("FastStream started")
+            faststream_app_ready_event.set()
+
         faststream_app_task = asyncio.create_task(faststream_app.run())
         # runtime_task = asyncio.create_task(runtime_monitor(0.5))  # Output every 0.5 seconds
 
@@ -88,6 +91,7 @@ class TrajectoryTuner:
 
         try:
             # tuning loop
+            await faststream_app_ready_event.wait()
             current_location = 0.0
             while not finished_tuning:
                 # TODO this plans the second time for the same actions when we get here because
@@ -101,21 +105,17 @@ class TrajectoryTuner:
                     initial_location=current_location,
                     detach_on_standstill=True,
                 )
-                request_generator = current_cursor(
-                    MovementControllerContext(
-                        combined_actions=CombinedActions(items=self.actions), motion_id=motion_id
-                    )
-                )
                 # wait for user to send next command
                 logger.info("Cursor initialized. Waiting for user command...")
                 # publish movement options
                 await broker.publish(
-                    {"options": current_cursor.get_movement_options()}, "editor.movement.options"
+                    {"options": list(current_cursor.get_movement_options())},
+                    "editor.movement.options",
                 )
 
                 await continue_tuning_event.wait()
                 execution_task = asyncio.create_task(
-                    self.execute_fn(client_request_generator=request_generator)
+                    self.execute_fn(client_request_generator=current_cursor.cntrl)
                 )
                 ic()
                 async for execute_response in current_cursor:
