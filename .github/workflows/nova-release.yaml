@@ -65,7 +65,7 @@ jobs:
           password: ${{ secrets.PYPI_TOKEN }}
       - name: Upload wheel to GitHub Release assets
         if: steps.semrel.outputs.released == 'true'
-        uses: python-semantic-release/publish-action@v10.2.0
+        uses: python-semantic-release/publish-action@v10.4.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.semrel.outputs.tag }}
