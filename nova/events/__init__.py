@@ -23,19 +23,6 @@ _NATS_SUBJECT_TEMPLATE = "nova.v2.cells.{cell_id}.cycle"
 _APP_NAME_EXTRA_FIELD = "app"
 
 
-class _MockSignal:
-    """Mock signal object for backward compatibility with tests."""
-
-    def send(self, sender, **kwargs):
-        pass
-
-
-# Mock signals for backward compatibility
-cycle_started = _MockSignal()
-cycle_finished = _MockSignal()
-cycle_failed = _MockSignal()
-
-
 class Timer:
     def __init__(self):
         self.start_time = None
