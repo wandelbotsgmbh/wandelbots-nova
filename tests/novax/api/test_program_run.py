@@ -119,7 +119,7 @@ async def test_novax_program_stopped_run(novax_server):
     assert start_program.status_code == 200, "Failed to start test program"
 
     # Wait for the program to start running
-    await asyncio.sleep(3)
+    await asyncio.sleep(5)
 
     # Verify program is running
     assert len(program_run_message) >= 2, (
@@ -134,7 +134,7 @@ async def test_novax_program_stopped_run(novax_server):
     assert stop_program.status_code == 200, "Failed to stop test program"
 
     # Wait for the stop event to be processed
-    await asyncio.sleep(3)
+    await asyncio.sleep(5)
 
     # Verify that we received the STOPPED event
     assert len(program_run_message) == 3, (

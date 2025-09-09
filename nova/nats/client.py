@@ -7,14 +7,12 @@ from __future__ import annotations
 import asyncio
 from typing import Awaitable, Callable
 
-import nats
 from decouple import config
-from nats.aio.msg import Msg as NatsLibMessage
 
+import nats
+from nats.aio.msg import Msg as NatsLibMessage
 from nova.logging import logger
 from nova.nats.message import Message
-
-# Internal publisher removed; we publish directly to NATS
 
 
 class NatsClient:
@@ -43,6 +41,9 @@ class NatsClient:
         self._is_configured = False
         self._init_nats_client()
 
+    # TODO: nats connection string is not built correctly when being accessed like below
+    # nova = Nova(host="...")
+    # nova.nats -> here we are still dependent on NATS_BROKER env variable
     def _init_nats_client(self) -> None:
         host = self._host
         token = self._access_token
@@ -129,6 +130,8 @@ class NatsClient:
             return
         try:
             await self._nats_client.publish(subject=message.subject, payload=message.data)  # type: ignore
+            # Ensure the server has processed the publish before returning
+            await self._nats_client.flush()
         except Exception as e:
             logger.error(f"Failed to publish message to {message.subject}: {e}")
 
@@ -152,3 +155,5 @@ class NatsClient:
             await on_message(message)
 
         await self._nats_client.subscribe(subject, cb=data_mapper)  # type: ignore
+        # ensure the sub is sent to server before returning
+        await self._nats_client.flush()

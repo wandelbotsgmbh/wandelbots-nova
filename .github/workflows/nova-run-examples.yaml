@@ -57,8 +57,7 @@ jobs:
           # single entry for the whole integration‑test batch
           - id: integration
             run_cmd: "pytest -rs -v -m integration"
-          # run novax API integration tests (not marked with 'integration')
-          # - id: novax_api_program_tests
+          - id: novax_api_program_tests
           #   run_cmd: "pytest -rs -v tests/novax/api/test_program_run.py tests/novax/api/test_program_cycle.py"
           # each example gets its own matrix entry
           - id: basic

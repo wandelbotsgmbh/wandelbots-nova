@@ -143,7 +143,7 @@ class Cycle:
         event = CycleStartedEvent(cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id)
         logger.debug(f"Cycle started with ID: {self.cycle_id}")
 
-        event.extra = self._extra
+        event.extra = self._extra or {}
         if _APP_NAME and hasattr(event.extra, "app_name") is False:
             event.extra["app_name"] = _APP_NAME
 
@@ -182,7 +182,7 @@ class Cycle:
             cycle_id=self.cycle_id, timestamp=end_time, duration_ms=duration_ms, cell=self._cell_id
         )
 
-        event.extra = self._extra
+        event.extra = self._extra or {}
         if _APP_NAME and hasattr(event.extra, "app_name") is False:
             event.extra["app_name"] = _APP_NAME
 
@@ -231,7 +231,7 @@ class Cycle:
         )
         logger.info(f"Cycle failed with ID: {self.cycle_id}, reason: {reason}")
 
-        event.extra = self._extra
+        event.extra = self._extra or {}
         if _APP_NAME and hasattr(event.extra, "app_name") is False:
             event.extra["app_name"] = _APP_NAME
 

@@ -34,6 +34,9 @@ class Novax:
         )
         self._app: FastAPI | None = None
 
+    # program manager doesn't have access to Nova instance
+    # program runner doesn't have access to Program object
+    # this is why we are doing this here, we can move it to some other places in the core package
     async def _state_listener(self, program_run: ProgramRun):
         data = program_run.model_dump()
         data["timestamp"] = datetime.now().isoformat()
@@ -88,6 +91,7 @@ class Novax:
         logger.info("Novax: Programs registered to store on startup")
 
         yield
+        await self._nova.close()
         await self._deregister_programs(store)
 
     async def _register_programs(self, program_store: ProgramStore):
