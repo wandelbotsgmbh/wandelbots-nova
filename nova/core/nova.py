@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-import asyncio
-from typing import Any, Callable
-
 from decouple import config
 
 from nova.cell.cell import Cell
 from nova.core.gateway import ApiGateway
-from nova.events import cycle_event_handler, cycle_failed, cycle_finished, cycle_started
-from nova.logging import logger
 from nova.nats import NatsClient
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
@@ -67,72 +62,7 @@ class Nova:
 
     def cell(self, cell_id: str = CELL_NAME) -> Cell:
         """Returns the cell object with the given ID."""
-        return Cell(self._api_client, cell_id)
-
-    def connect_cycle_signals(self) -> None:
-        """
-        Connect the cycle event signals to the NATS event handler with the nats client.
-
-        This creates a mapping of signal handlers for this Nova instance
-        so they can be properly disconnected later.
-        """
-        # Store handlers for this instance so we can disconnect them later
-        self._signal_handlers = {}
-
-        def create_handler(nats_client: NatsClient) -> Callable[..., None]:
-            """Create a handler function that captures the nats client"""
-
-            def handler(sender: Any, **kwargs: Any) -> None:
-                """Synchronous handler that schedules async work"""
-                logger.debug(f"Cycle event handler called with sender: {sender}, kwargs: {kwargs}")
-                message = kwargs.get("message")
-                if message is None:
-                    logger.debug("No message provided to cycle event handler")
-                    return
-                logger.debug(f"Calling cycle_event_handler with message: {message}")
-                # blinker needs sync functions but sending nats message is async, so we need to do this
-                asyncio.get_running_loop().create_task(
-                    cycle_event_handler(sender, message=message, nats_client=nats_client)
-                )
-
-            return handler
-
-        for signal_obj in [cycle_started, cycle_finished, cycle_failed]:
-            event_type = signal_obj.name
-            logger.debug(f"Connecting NATS event handler for {event_type} event")
-            handler = create_handler(self.nats)
-            signal_obj.connect(handler)
-            # Store the handler so we can disconnect it later
-            self._signal_handlers[signal_obj] = handler
-            logger.debug(
-                f"After connecting: {event_type} signal has {len(signal_obj.receivers)} receivers"
-            )
-
-    def disconnect_cycle_signals(self) -> None:
-        """
-        Disconnect the cycle event signals from the NATS event handler.
-
-        This only disconnects the handlers that were connected by this Nova instance,
-        not all handlers from all Nova instances.
-        """
-        if not hasattr(self, "_signal_handlers"):
-            logger.debug("No signal handlers to disconnect")
-            return
-
-        for signal_obj, handler in self._signal_handlers.items():
-            event_type = signal_obj.name
-            logger.debug(f"Disconnecting NATS event handler for {event_type} event")
-            logger.debug(
-                f"Before disconnecting: {event_type} signal has {len(signal_obj.receivers)} receivers"
-            )
-            # Disconnect only this specific handler, not all receivers
-            signal_obj.disconnect(handler)
-            logger.debug(
-                f"After disconnecting: {event_type} signal has {len(signal_obj.receivers)} receivers"
-            )
-
-        # Clear the handlers mapping for this instance
-        self._signal_handlers.clear()
+        return Cell(self._api_client, cell_id, nats_client=self.nats)
 
     async def connect(self):
         # ApiGateway doesn't need an explicit connect call, it's initialized in constructor
@@ -154,13 +84,7 @@ class Nova:
 
         await self.connect()
 
-        # Connect cycle event signals to NATS (only for context-managed usage)
-        self.connect_cycle_signals()
-
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        # Disconnect cycle event signals
-        self.disconnect_cycle_signals()
-
         await self.close()

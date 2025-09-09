@@ -3,6 +3,7 @@ from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
+from nova.nats import NatsClient
 
 # This is the default value we use to wait for add_controller API call to complete.
 DEFAULT_ADD_CONTROLLER_TIMEOUT = 120
@@ -14,15 +15,19 @@ DEFAULT_WAIT_FOR_READY_TIMEOUT = 120
 class Cell:
     """A representation of a robot cell, providing high-level operations on controllers."""
 
-    def __init__(self, api_gateway: ApiGateway, cell_id: str):
+    def __init__(
+        self, api_gateway: ApiGateway, cell_id: str, nats_client: NatsClient | None = None
+    ):
         """
         Initializes a Cell instance.
         Args:
             api_gateway (ApiGateway): The underlying gateway for making API calls.
             cell_id (str): The unique identifier for the cell.
+            nats_client (NatsClient | None): The NATS client for publishing events.
         """
         self._api_gateway = api_gateway
         self._cell_id = cell_id
+        self._nats_client = nats_client
 
     @property
     def cell_id(self) -> str:
@@ -32,6 +37,15 @@ class Cell:
             str: The cell ID.
         """
         return self._cell_id
+
+    @property
+    def nats(self) -> NatsClient | None:
+        """
+        Returns the NATS client for this cell.
+        Returns:
+            NatsClient | None: The NATS client instance or None if not configured.
+        """
+        return self._nats_client
 
     def _create_controller(self, controller_id: str) -> Controller:
         return Controller(
