@@ -523,7 +523,7 @@ class TrajectoryCursor:
     def _handle_movement(
         self, curr_movement: wb.models.MovementMovement, last_movement: wb.models.MovementMovement
     ):
-        if not 0.0 <= self._target_location < self.end_location:
+        if not 0.0 <= self._target_location <= self.end_location:
             return
         curr_location = curr_movement.current_location
         last_location = last_movement.current_location
