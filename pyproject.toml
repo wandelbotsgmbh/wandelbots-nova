@@ -199,3 +199,6 @@ insecure = false
 [tool.semantic_release.publish]
 dist_glob_patterns = ["dist/*"]
 upload_to_vcs_release = true
+
+[tool.ruff.lint.isort]
+known-first-party = ["nova", "nova_rerun_bridge", "novax"]

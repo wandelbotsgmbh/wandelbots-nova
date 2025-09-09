@@ -5,10 +5,10 @@ NATS client for Nova integration.
 import asyncio
 from typing import Awaitable, Callable
 
-from decouple import config
-
 import nats
+from decouple import config
 from nats.aio.msg import Msg as NatsLibMessage
+
 from nova.logging import logger
 from nova.nats.message import Message
 
