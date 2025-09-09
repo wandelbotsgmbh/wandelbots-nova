@@ -1,7 +1,7 @@
 import asyncio
 from enum import StrEnum, auto
 from functools import singledispatch
-from math import ceil, floor
+from math import ceil
 from typing import Any, AsyncIterator, Optional
 
 import pydantic
@@ -216,7 +216,7 @@ class TrajectoryCursor:
 
     @property
     def previous_action_index(self) -> int:
-        index = floor(self._current_location - self._overshoot) - 1
+        index = ceil(self._current_location - 1.0 - self._overshoot) - 1
         ic(self._current_location, self._overshoot, index, len(self.actions))
         assert index <= len(self.actions)
         # if index < 0:
