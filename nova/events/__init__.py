@@ -171,7 +171,9 @@ class Cycle:
             raise RuntimeError("Cycle already started") from e
 
         self.cycle_id = uuid4()
-        event = CycleStartedEvent(cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id, extra=self._extra)
+        event = CycleStartedEvent(
+            cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id, extra=self._extra
+        )
         logger.debug(f"Cycle started with ID: {self.cycle_id}")
 
         await self._publish_event(event)
@@ -201,7 +203,11 @@ class Cycle:
 
         duration_ms = int((end_time - self._timer.start_time).total_seconds() * 1000)
         event = CycleFinishedEvent(
-            cycle_id=self.cycle_id, timestamp=end_time, duration_ms=duration_ms, cell=self._cell_id, extra=self._extra
+            cycle_id=self.cycle_id,
+            timestamp=end_time,
+            duration_ms=duration_ms,
+            cell=self._cell_id,
+            extra=self._extra,
         )
         logger.debug(f"Cycle finished with ID: {self.cycle_id}")
 
@@ -239,7 +245,11 @@ class Cycle:
         if isinstance(reason, Exception):
             reason = str(reason)
         event = CycleFailedEvent(
-            cycle_id=self.cycle_id, timestamp=failure_time, cell=self._cell_id, reason=reason, extra=self._extra
+            cycle_id=self.cycle_id,
+            timestamp=failure_time,
+            cell=self._cell_id,
+            reason=reason,
+            extra=self._extra,
         )
         logger.info(f"Cycle failed with ID: {self.cycle_id}, reason: {reason}")
 

@@ -6,12 +6,7 @@ from uuid import UUID
 import pytest
 
 from nova import Cell
-from nova.events import (
-    Cycle,
-    CycleFailedEvent,
-    CycleFinishedEvent,
-    CycleStartedEvent,
-)
+from nova.events import Cycle, CycleFailedEvent, CycleFinishedEvent, CycleStartedEvent
 
 
 @pytest.fixture
@@ -48,7 +43,7 @@ class TestCycle:
             mock_publish.assert_called_once()
             published_message = mock_publish.call_args[0][0]
             assert published_message.subject == "nova.v2.cells.test-cell-1.cycle"
-            
+
             # Parse and verify the event data
             event_data = json.loads(published_message.data.decode())
             event = CycleStartedEvent.model_validate(event_data)
@@ -87,7 +82,7 @@ class TestCycle:
             mock_publish.assert_called_once()
             published_message = mock_publish.call_args[0][0]
             assert published_message.subject == "nova.v2.cells.test-cell-1.cycle"
-            
+
             # Parse and verify the event data
             event_data = json.loads(published_message.data.decode())
             event = CycleFinishedEvent.model_validate(event_data)
@@ -122,7 +117,7 @@ class TestCycle:
             mock_publish.assert_called_once()
             published_message = mock_publish.call_args[0][0]
             assert published_message.subject == "nova.v2.cells.test-cell-1.cycle"
-            
+
             # Parse and verify the event data
             event_data = json.loads(published_message.data.decode())
             event = CycleFailedEvent.model_validate(event_data)
@@ -147,11 +142,11 @@ class TestCycle:
 
             # Verify the published message
             published_message = mock_publish.call_args[0][0]
-            
+
             # Parse and verify the event data
             event_data = json.loads(published_message.data.decode())
             event = CycleFailedEvent.model_validate(event_data)
-            
+
             # Verify event reason contains exception message
             assert "Invalid value" in event.reason
 
@@ -176,16 +171,14 @@ class TestCycle:
     @pytest.mark.asyncio
     async def test_context_manager_success(self, mock_cell):
         """Test the context manager with successful execution."""
-        with (
-            patch.object(mock_cell.nats, "publish_message", new=AsyncMock()) as mock_publish,
-        ):
+        with patch.object(mock_cell.nats, "publish_message", new=AsyncMock()) as mock_publish:
             async with Cycle(mock_cell) as cycle:
                 assert cycle.cycle_id is not None
                 assert isinstance(cycle.cycle_id, UUID)
 
             # Verify both start and finish events were published
             assert mock_publish.call_count == 2
-            
+
             # Verify both events were published to the correct subject
             all_calls = mock_publish.call_args_list
             start_message = all_calls[0][0][0]
@@ -196,9 +189,7 @@ class TestCycle:
     @pytest.mark.asyncio
     async def test_context_manager_exception(self, mock_cell):
         """Test the context manager with an exception."""
-        with (
-            patch.object(mock_cell.nats, "publish_message", new=AsyncMock()) as mock_publish,
-        ):
+        with patch.object(mock_cell.nats, "publish_message", new=AsyncMock()) as mock_publish:
             try:
                 async with Cycle(mock_cell):
                     raise ValueError("Test exception")
@@ -207,14 +198,14 @@ class TestCycle:
 
             # Verify both start and fail events were published
             assert mock_publish.call_count == 2
-            
+
             # Check first event (start)
             start_message = mock_publish.call_args_list[0][0][0]
             assert start_message.subject == "nova.v2.cells.test-cell-1.cycle"
             start_event_data = json.loads(start_message.data.decode())
             start_event = CycleStartedEvent.model_validate(start_event_data)
             assert start_event.cell == "test-cell-1"
-            
+
             # Check second event (fail)
             fail_message = mock_publish.call_args_list[1][0][0]
             assert fail_message.subject == "nova.v2.cells.test-cell-1.cycle"
@@ -225,15 +216,13 @@ class TestCycle:
     @pytest.mark.asyncio
     async def test_cycle_with_extra(self, mock_cell):
         # TODO: mock environment variable
-        with (
-            patch.object(mock_cell.nats, "publish_message", new=AsyncMock()) as mock_publish,
-        ):
+        with patch.object(mock_cell.nats, "publish_message", new=AsyncMock()) as mock_publish:
             async with Cycle(mock_cell, extra={"key1": "value1", "key2": "value2"}):
                 pass
 
             # Verify both start and finish events were published
             assert mock_publish.call_count == 2
-            
+
             # Check start event
             start_message = mock_publish.call_args_list[0][0][0]
             start_event_data = json.loads(start_message.data.decode())
@@ -249,9 +238,7 @@ class TestCycle:
             assert finish_event.extra["key1"] == "value1"
             assert finish_event.extra["key2"] == "value2"
 
-        with (
-            patch.object(mock_cell.nats, "publish_message", new=AsyncMock()) as mock_publish,
-        ):
+        with patch.object(mock_cell.nats, "publish_message", new=AsyncMock()) as mock_publish:
             try:
                 async with Cycle(mock_cell, extra={"key1": "value1", "key2": "value2"}):
                     raise ValueError("Test exception")
@@ -260,7 +247,7 @@ class TestCycle:
 
             # Verify both start and fail events were published
             assert mock_publish.call_count == 2
-            
+
             # Check start event
             start_message = mock_publish.call_args_list[0][0][0]
             start_event_data = json.loads(start_message.data.decode())
