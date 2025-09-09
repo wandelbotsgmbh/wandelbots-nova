@@ -127,8 +127,13 @@ class NatsClient:
         if not self.is_connected():
             logger.debug("NATS client is not connected. Skipping message publishing.")
             return
+
+        if self._nats_client is None:
+            logger.debug("NATS client is None. Skipping message publishing.")
+            return
+
         try:
-            await self._nats_client.publish(subject=message.subject, payload=message.data)  # type: ignore
+            await self._nats_client.publish(subject=message.subject, payload=message.data)
             # Ensure the server has processed the publish before returning
             await self._nats_client.flush()
         except Exception as e:
@@ -149,10 +154,14 @@ class NatsClient:
             logger.debug("NATS client is not connected. Skipping subscription.")
             return
 
+        if self._nats_client is None:
+            logger.debug("NATS client is None. Skipping subscription.")
+            return
+
         async def data_mapper(msg: NatsLibMessage):
             message = Message(subject=msg.subject, data=msg.data)
             await on_message(message)
 
-        await self._nats_client.subscribe(subject, cb=data_mapper)  # type: ignore
+        await self._nats_client.subscribe(subject, cb=data_mapper)
         # ensure the sub is sent to server before returning
         await self._nats_client.flush()
