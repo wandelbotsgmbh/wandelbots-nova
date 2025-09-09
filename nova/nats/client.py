@@ -22,6 +22,7 @@ class NatsClient:
         self,
         host: str | None = None,
         access_token: str | None = None,
+        # TODO: accept "broker" parameter so the user can override the connection string
         nats_client_config: dict | None = None,
     ):
         """

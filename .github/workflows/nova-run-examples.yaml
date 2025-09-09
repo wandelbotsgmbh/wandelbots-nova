@@ -58,7 +58,7 @@ jobs:
           - id: integration
             run_cmd: "pytest -rs -v -m integration"
           - id: novax_api_program_tests
-          #   run_cmd: "pytest -rs -v tests/novax/api/test_program_run.py tests/novax/api/test_program_cycle.py"
+            run_cmd: "pytest -rs -v tests/novax/api/test_nats.py tests/novax/api/test_program_run.py tests/novax/api/test_program_cycle.py"
           # each example gets its own matrix entry
           - id: basic
             run_cmd: "python examples/basic.py"
