@@ -130,7 +130,6 @@ class TestCycle:
             assert event.cell == "test-cell-1"
             assert isinstance(event.timestamp, datetime)
             assert event.reason == "Something went wrong"
-        assert event.reason == "Something went wrong"
 
     @pytest.mark.asyncio
     async def test_fail_with_exception(self, mock_cell):
@@ -209,6 +208,13 @@ class TestCycle:
             # Verify both start and fail events were published
             assert mock_publish.call_count == 2
             
+            # Check first event (start)
+            start_message = mock_publish.call_args_list[0][0][0]
+            assert start_message.subject == "nova.v2.cells.test-cell-1.cycle"
+            start_event_data = json.loads(start_message.data.decode())
+            start_event = CycleStartedEvent.model_validate(start_event_data)
+            assert start_event.cell == "test-cell-1"
+            
             # Check second event (fail)
             fail_message = mock_publish.call_args_list[1][0][0]
             assert fail_message.subject == "nova.v2.cells.test-cell-1.cycle"
@@ -217,7 +223,7 @@ class TestCycle:
             assert "Test exception" in fail_event.reason
 
     @pytest.mark.asyncio
-    async def test_cycle_with_metadata(self, mock_cell):
+    async def test_cycle_with_extra(self, mock_cell):
         # TODO: mock environment variable
         with (
             patch.object(mock_cell.nats, "publish_message", new=AsyncMock()) as mock_publish,
@@ -232,14 +238,16 @@ class TestCycle:
             start_message = mock_publish.call_args_list[0][0][0]
             start_event_data = json.loads(start_message.data.decode())
             start_event = CycleStartedEvent.model_validate(start_event_data)
-            # Note: Currently the implementation doesn't pass extra data to events
-            assert start_event.extra == {}
+
+            assert start_event.extra["key1"] == "value1"
+            assert start_event.extra["key2"] == "value2"
 
             # Check finish event
             finish_message = mock_publish.call_args_list[1][0][0]
             finish_event_data = json.loads(finish_message.data.decode())
             finish_event = CycleFinishedEvent.model_validate(finish_event_data)
-            assert finish_event.extra == {}
+            assert finish_event.extra["key1"] == "value1"
+            assert finish_event.extra["key2"] == "value2"
 
         with (
             patch.object(mock_cell.nats, "publish_message", new=AsyncMock()) as mock_publish,
@@ -257,10 +265,12 @@ class TestCycle:
             start_message = mock_publish.call_args_list[0][0][0]
             start_event_data = json.loads(start_message.data.decode())
             start_event = CycleStartedEvent.model_validate(start_event_data)
-            assert start_event.extra == {}
+            assert finish_event.extra["key1"] == "value1"
+            assert finish_event.extra["key2"] == "value2"
 
             # Check fail event
             fail_message = mock_publish.call_args_list[1][0][0]
             fail_event_data = json.loads(fail_message.data.decode())
             fail_event = CycleFailedEvent.model_validate(fail_event_data)
-            assert fail_event.extra == {}
+            assert fail_event.extra["key1"] == "value1"
+            assert fail_event.extra["key2"] == "value2"
