@@ -6,6 +6,7 @@ from nova.core.nova import Nova
 from nova.nats import Message
 
 
+@pytest.mark.integration
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
 async def test_nats_pub_sub():
@@ -33,6 +34,7 @@ async def test_nats_pub_sub():
     )
 
 
+@pytest.mark.integration
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
 async def test_nats_message_order():
@@ -55,6 +57,7 @@ async def test_nats_message_order():
     assert messages == ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
 
 
+@pytest.mark.integration
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
 async def test_nats_message_order_two_instances():

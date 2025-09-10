@@ -18,6 +18,7 @@ async def sucessful_program():
     print("simple test program run")
 
 
+@pytest.mark.integration
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
 async def test_novax_program_successful_run(novax_server):
@@ -58,6 +59,7 @@ async def failing_program():
     raise ValueError("This program is designed to fail for testing purposes")
 
 
+@pytest.mark.integration
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
 async def test_novax_program_failed_run(novax_server):
@@ -99,6 +101,7 @@ async def long_running_program():
         await asyncio.sleep(1)
 
 
+@pytest.mark.integration
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
 async def test_novax_program_stopped_run(novax_server):
