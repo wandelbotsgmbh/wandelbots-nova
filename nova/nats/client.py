@@ -37,7 +37,6 @@ class NatsClient:
         self._nats_client: nats.NATS | None = None
         self._nats_connection_string: str = ""
         self._connect_lock = asyncio.Lock()
-        self._is_configured = False
         self._init_nats_client()
 
     # TODO: nats connection string is not built correctly when being accessed like below
@@ -57,24 +56,20 @@ class NatsClient:
             auth = f"{token}@"
 
             self._nats_connection_string = f"{scheme}://{auth}{clean_host}:{port}/api/nats"
-            self._is_configured = True
             return
 
         logger.debug("Host and token not both set; reading NATS connection from env var")
         self._nats_connection_string = config("NATS_BROKER", default=None)
 
-        if self._nats_connection_string:
-            self._is_configured = True
-        else:
+        if not self._nats_connection_string:
             logger.warning("NATS connection string is not set. NATS client will be disabled.")
-            self._is_configured = False
 
     async def connect(self):
         """Connect to NATS server.
 
         Subsequent calls are no-ops while connected.
         """
-        if not self._is_configured:
+        if not self._nats_connection_string:
             logger.info("NATS client is not configured. Skipping connection.")
             return
 
@@ -110,7 +105,7 @@ class NatsClient:
         Returns:
             bool: True if the NATS client is connected, False otherwise.
         """
-        if not self._is_configured:
+        if not self._nats_connection_string:
             return False
         return self._nats_client is not None and self._nats_client.is_connected
 
