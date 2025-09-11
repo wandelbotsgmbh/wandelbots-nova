@@ -91,8 +91,8 @@ class Novax:
         logger.info("Novax: Programs registered to store on startup")
 
         yield
-        await self._nova.close()
         await self._deregister_programs(store)
+        await self._nova.close()
 
     async def _register_programs(self, program_store: ProgramStore):
         """
