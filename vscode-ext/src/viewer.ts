@@ -27,7 +27,7 @@ export class WandelbotsNovaViewerProvider
    */
   async refreshView(): Promise<void> {
     // Check if auto-refresh is enabled
-    const config = vscode.workspace.getConfiguration('wandelbots-viewer')
+    const config = vscode.workspace.getConfiguration(VIEWER_ID)
     const autoRefresh = config.get<boolean>(
       'autoRefreshOnPythonExecution',
       true,
@@ -299,7 +299,7 @@ export class WandelbotsNovaViewerProvider
     const url = this._url
 
     // Get custom URL from settings if specified
-    const config = vscode.workspace.getConfiguration('wandelbots-viewer')
+    const config = vscode.workspace.getConfiguration(VIEWER_ID)
     const customUrl = config.get('customUrl')
     const showDebugInfo = config.get('showDebugInfo', false)
 
