@@ -46,6 +46,7 @@ const MoveControls = ({
   moving,
   snap,
   speed,
+  canMoveBackward = true,
   canMoveForward = true,
 }) => {
   const handleButtonClick = async (event: any, direction: string) => {
@@ -111,6 +112,11 @@ const MoveControls = ({
             onMouseUp={handleButtonRelease}
             variant="contained"
             color="secondary"
+            disabled={!canMoveBackward}
+            sx={{
+              opacity: canMoveBackward ? 1 : 0.5,
+              cursor: canMoveBackward ? 'pointer' : 'not-allowed',
+            }}
           >
             {snap ? (
               <ChevronFirst className="size-8 mx-9 my-3" />
@@ -138,11 +144,7 @@ const MoveControls = ({
         </div>
         <div className="grid grid-cols-2 gap-9 text-slate-400">
           <span className="text-sm font-medium">backward</span>
-          <span
-            className={`text-sm font-medium ${!canMoveForward ? 'text-red-400' : ''}`}
-          >
-            forward {!canMoveForward && '(disabled)'}
-          </span>
+          <span className="text-sm font-medium">forward</span>
         </div>
       </div>
     </div>
@@ -298,6 +300,7 @@ const MotionGroupPanel = () => {
   const handleCloseJogging = () => setIsJoggingOpen(false)
 
   // Check if forward movement is allowed
+  const canMoveBackward = movementOptions.includes('can_move_backward')
   const canMoveForward = movementOptions.includes('can_move_forward')
 
   function handleMotionGroupChange(motionGroupId: string) {
@@ -348,6 +351,7 @@ const MotionGroupPanel = () => {
           moving={moving}
           snap={snap}
           speed={speed}
+          canMoveBackward={canMoveBackward}
           canMoveForward={canMoveForward}
         />
       </div>

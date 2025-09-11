@@ -73,6 +73,8 @@ export default function MotionGroupSelection(props: MotionGroupSelectionProps) {
       // Select the first motion group
       if (motionGroupIds.length > 0) {
         setSelectedMotionGroupId(motionGroupIds[0])
+        // Notify parent so dependent controls become enabled immediately
+        props.onChange(motionGroupIds[0])
       }
     } catch (error) {
       console.error('Failed to fetch motion groups:', error)
