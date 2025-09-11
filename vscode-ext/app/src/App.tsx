@@ -1,7 +1,7 @@
 import { ThemeProvider } from '@mui/material'
 import { TabBar } from '@wandelbots/wandelbots-js-react-components'
 import { createNovaMuiTheme } from '@wandelbots/wandelbots-js-react-components'
-import React from 'react'
+import React, { useState } from 'react'
 
 import './App.css'
 import FineTuning from './pages/FineTune'
@@ -18,16 +18,19 @@ function Page({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  const [activeTab, setActiveTab] = useState(0)
+
   return (
     <ThemeProvider theme={theme}>
       <div className="flex flex-col h-full w-full from-slate-950 to-slate-900 text-slate-100 bg-gradient-to-b">
         <TabBar
           defaultActiveTab={0}
+          activeTab={activeTab}
           items={[
             {
               content: (
                 <Page>
-                  <NovaHome />
+                  <NovaHome onOpenFineTuning={() => setActiveTab(2)} />
                 </Page>
               ),
               id: 'tab1',
@@ -52,7 +55,7 @@ function App() {
               label: 'Fine-Tuning',
             },
           ]}
-          onTabChange={function WCe() {}}
+          onTabChange={setActiveTab}
         />
         <div className="flex-1 overflow-auto">
           {/* Tab content will be rendered here by TabBar component */}

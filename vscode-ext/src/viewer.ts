@@ -12,6 +12,13 @@ import {
 // Track if this is the initial activation
 let isInitialActivation = true
 
+function getNonce(): string {
+  let text = '';
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  for (let i = 0; i < 32; i++) text += possible.charAt(Math.floor(Math.random()*possible.length));
+  return text;
+}
+
 export class WandelbotsNovaViewerProvider
   implements vscode.WebviewViewProvider
 {
@@ -236,59 +243,47 @@ export class WandelbotsNovaViewerProvider
    * Returns the HTML content for the React app
    */
   private _getReactAppHtml(webview: vscode.Webview): string {
-    try {
-      // Get path to index.html in build directory
-      const indexPath = vscode.Uri.joinPath(
-        this._extensionUri,
-        'app',
-        'dist',
-        'index.html',
+    const fs = require('fs');
+    const indexPath = vscode.Uri.joinPath(this._extensionUri, 'app', 'dist', 'index.html');
+    let html = fs.readFileSync(indexPath.fsPath, 'utf8');
+
+    const distRoot = vscode.Uri.joinPath(this._extensionUri, 'app', 'dist');
+    const distWebviewRoot = webview.asWebviewUri(distRoot);
+
+    // Security: nonce + CSP
+    const nonce = getNonce();
+    const csp = `
+      default-src 'none';
+      img-src ${webview.cspSource} blob: data:;
+      style-src ${webview.cspSource} 'unsafe-inline';
+      font-src ${webview.cspSource};
+      script-src 'nonce-${nonce}';
+      connect-src https: http: ${webview.cspSource};
+    `.replace(/\n/g, ' ');
+
+    // Inject <base>, CSP, and your config
+    const configScript = `<script nonce="${nonce}">window.__NOVA_CONFIG__=${JSON.stringify({
+      novaApi: getNovaApiAddress(),
+      accessToken: getAccessToken(),
+      cellId: getCellId(),
+      natsBroker: getNatsBroker(),
+    })};</script>`;
+
+    html = html
+      // 1) Add <base> so all relative asset URLs resolve correctly
+      .replace(
+        /<head>/i,
+        `<head>
+           <base href="${distWebviewRoot.toString()}/">
+           <meta http-equiv="Content-Security-Policy" content="${csp}">
+         `
       )
+      // 2) Add nonce to every <script> tag Vite emitted
+      .replace(/<script /g, `<script nonce="${nonce} "`)
+      // 3) Inject your config just before </head>
+      .replace(/<\/head>/i, `${configScript}</head>`);
 
-      // Read the HTML file content
-      const fs = require('fs')
-      const htmlContent = fs.readFileSync(indexPath.fsPath, 'utf8')
-
-      // Convert any resource URIs to webview URIs
-      const buildUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(this._extensionUri, 'app', 'dist'),
-      )
-
-      // Replace paths to be webview-friendly
-      let updatedHtml = htmlContent.replace(
-        /(href|src)="([^"]*)"/g,
-        (match: string, attr: string, path: string) => {
-          if (path.startsWith('/')) {
-            path = path.slice(1)
-          }
-          return `${attr}="${buildUri}/${path}"`
-        },
-      )
-
-      // Inject configuration from VS Code settings/environment for the React app
-      const novaApi = getNovaApiAddress()
-      const accessToken = getAccessToken()
-      const cellId = getCellId()
-      const natsBroker = getNatsBroker()
-      const configScript = `<script>window.__NOVA_CONFIG__ = ${JSON.stringify({
-        novaApi,
-        cellId,
-        accessToken,
-        natsBroker,
-      })};</script>`
-
-      // Prefer to inject before </head>; if not present, prepend to body
-      if (updatedHtml.includes('</head>')) {
-        updatedHtml = updatedHtml.replace('</head>', `${configScript}</head>`)
-      } else {
-        updatedHtml = configScript + updatedHtml
-      }
-
-      return updatedHtml
-    } catch (error) {
-      console.error('Error loading React app:', error)
-      return this._getErrorHtml(error)
-    }
+    return html;
   }
 
   /**
