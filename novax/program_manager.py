@@ -30,8 +30,20 @@ def _report_state_change_to_event_loop(
     async def _state_listener(program_run: ProgramRun):
         logger.debug(f"Reporting state change to event loop for program run: {program_run.program}")
         coroutine = state_listener(program_run)
-        future: Future = asyncio.run_coroutine_threadsafe(coroutine, loop)
-        future.add_done_callback(_log_future_result)
+
+        try:
+            if loop.is_closed():
+                logger.warning(
+                    f"Event loop is closed, skipping state change callback for program: {program_run.program}"
+                )
+                return
+
+            future: Future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+            future.add_done_callback(_log_future_result)
+        except Exception as e:
+            logger.error(
+                f"Unexpected error in state change callback for program {program_run.program}: {e}"
+            )
 
     return _state_listener
 
