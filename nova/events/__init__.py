@@ -3,22 +3,24 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from blinker import signal
+from decouple import config
 from pydantic import BaseModel, Field
 
 from nova.cell.cell import Cell
 from nova.cell.robot_cell import Device, OutputDevice
 from nova.logging import logger
 from nova.nats import Message as NatsMessage
-from nova.nats import NatsClient
 
-# TODO: when connect is called on multiple nova instances, every cycle.start triggers multiple cycle events
-# TODO: check with Dirk
-cycle_started = signal("cycle_started")
-cycle_finished = signal("cycle_finished")
-cycle_failed = signal("cycle_failed")
+# Read BASE_PATH environment variable and extract app name
+# TODO: make a util and move the logic there
+_BASE_PATH = config("BASE_PATH", default=None)
+if _BASE_PATH:
+    _APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else None
+else:
+    _APP_NAME = None
 
-_NATS_CYCLE_SUBJECT = "nova.v2.cells.{cell}.cycle"
+_NATS_SUBJECT_TEMPLATE = "nova.v2.cells.{cell_id}.cycle"
+_APP_NAME_EXTRA_FIELD = "app"
 
 
 class Timer:
@@ -100,11 +102,55 @@ class Cycle:
         cycle_id (UUID | None): Unique identifier for the cycle, set after start()
     """
 
-    def __init__(self, cell: Cell):
+    def __init__(self, cell: Cell, extra: dict[str, Any] = {}):
+        """
+        cell: The cell associated with this cycle.
+        extra: Optional metadata to include with the cycle events. Must be JSON serializable.
+        """
         self.cycle_id: UUID | None = None
         self._timer = Timer()
+        self._cell = cell
         self._cell_id = cell.cell_id
-        self._cycle_subject = _NATS_CYCLE_SUBJECT.format(cell=self._cell_id)
+        self._subject = _NATS_SUBJECT_TEMPLATE.format(cell_id=self._cell_id)
+
+        self._extra: dict[str, Any] = self._ensure_json_serializable(extra)
+
+        # if we have the app name available always send it as extra
+        if _APP_NAME_EXTRA_FIELD not in self._extra and _APP_NAME is not None:
+            self._extra[_APP_NAME_EXTRA_FIELD] = _APP_NAME
+
+    @staticmethod
+    def _ensure_json_serializable(data: dict[str, Any]) -> dict[str, Any]:
+        """
+        Validate that provided data is JSON serializable.
+        """
+        import json
+
+        candidate = data.copy()
+        try:
+            json.dumps(candidate)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Extra data must be JSON serializable: {e}") from e
+        return candidate
+
+    async def _publish_event(self, event: "BaseCycleEvent") -> None:
+        """
+        Publish a cycle event to NATS if a NATS client is available.
+
+        Args:
+            event: The cycle event to publish
+        """
+        if self._cell.nats is None:
+            logger.debug("No NATS client available, skipping event publication")
+            return
+
+        try:
+            await self._cell.nats.connect()
+            nats_message = NatsMessage(subject=self._subject, data=event.model_dump_json().encode())
+            await self._cell.nats.publish_message(nats_message)
+            logger.debug(f"Published {event.event_type} event to NATS subject: {self._subject}")
+        except Exception as e:
+            logger.error(f"Failed to publish {event.event_type} event to NATS: {e}")
 
     async def start(self) -> datetime:
         """
@@ -125,15 +171,12 @@ class Cycle:
             raise RuntimeError("Cycle already started") from e
 
         self.cycle_id = uuid4()
-        event = CycleStartedEvent(cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id)
+        event = CycleStartedEvent(
+            cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id, extra=self._extra
+        )
         logger.debug(f"Cycle started with ID: {self.cycle_id}")
 
-        # Emit blinker signal if available
-        if cycle_started is not None:
-            logger.debug(
-                f"Emitting cycle_started signal with {len(cycle_started.receivers)} connected receivers"
-            )
-            cycle_started.send(self, message=event)
+        await self._publish_event(event)
 
         return start_time
 
@@ -160,17 +203,15 @@ class Cycle:
 
         duration_ms = int((end_time - self._timer.start_time).total_seconds() * 1000)
         event = CycleFinishedEvent(
-            cycle_id=self.cycle_id, timestamp=end_time, duration_ms=duration_ms, cell=self._cell_id
+            cycle_id=self.cycle_id,
+            timestamp=end_time,
+            duration_ms=duration_ms,
+            cell=self._cell_id,
+            extra=self._extra,
         )
-
         logger.debug(f"Cycle finished with ID: {self.cycle_id}")
 
-        # Emit blinker signal if available
-        if cycle_finished is not None:
-            logger.debug(
-                f"Emitting cycle_finished signal with {len(cycle_finished.receivers)} connected receivers"
-            )
-            cycle_finished.send(self, message=event)
+        await self._publish_event(event)
 
         cycle_time = self._timer.elapsed()
         self._timer.reset()
@@ -204,13 +245,15 @@ class Cycle:
         if isinstance(reason, Exception):
             reason = str(reason)
         event = CycleFailedEvent(
-            cycle_id=self.cycle_id, timestamp=failure_time, cell=self._cell_id, reason=reason
+            cycle_id=self.cycle_id,
+            timestamp=failure_time,
+            cell=self._cell_id,
+            reason=reason,
+            extra=self._extra,
         )
         logger.info(f"Cycle failed with ID: {self.cycle_id}, reason: {reason}")
 
-        # Emit blinker signal if available
-        if cycle_failed is not None:
-            cycle_failed.send(self, message=event)
+        await self._publish_event(event)
 
         self._timer.reset()
 
@@ -246,12 +289,24 @@ class Cycle:
         return True
 
 
+def novax_cycle(cell: Cell, app: str, program: str, extra: dict[str, Any] | None = None) -> Cycle:
+    """
+    A novaX cycle runs in an app and is annotated with program decorator.
+    """
+    cycle_extra = extra.copy() if extra is not None else {}
+    cycle_extra.update({"app": app, "program": program})
+    return Cycle(cell=cell, extra=cycle_extra)
+
+
 class BaseCycleEvent(BaseModel, ABC):
     event_type: Literal["cycle_started", "cycle_finished", "cycle_failed"]
     id: UUID = Field(default_factory=uuid4, description="Unique event identifier")
     cycle_id: UUID = Field(..., description="Unique identifier for the automation cycle")
     timestamp: datetime = Field(..., description="Event creation time (ISO 8601, UTC)")
     cell: str = Field(..., description="Identifier of the robotic cell")
+    extra: dict[str, Any] | None = Field(
+        default_factory=dict, description="Additional data related to the event"
+    )
 
 
 class CycleStartedEvent(BaseCycleEvent):
@@ -268,37 +323,6 @@ class CycleFailedEvent(BaseCycleEvent):
     reason: str = Field(..., description="Human-readable explanation of failure")
 
 
-async def cycle_event_handler(
-    sender: Any, message: BaseCycleEvent, nats_client: NatsClient
-) -> None:
-    """
-    Event handler that publishes cycle events to NATS using the nats client.
-
-    Args:
-        sender: The signal sender (blinker signal)
-        message: The cycle event message (BaseCycleEvent)
-        nats_client: The NATS client for publishing events
-        **kwargs: Additional keyword arguments
-    """
-    logger.debug(f"NATS event handler called with message: {message}, sender: {sender}")
-
-    event_type = message.event_type
-    logger.debug(f"NATS event handler received {event_type} event")
-
-    try:
-        # Use the provided nats client
-
-        subject = f"nova.v2.cells.{message.cell}.cycle"
-        nats_message = NatsMessage(subject=subject, data=message.model_dump_json().encode())
-
-        await nats_client.publish_message(nats_message)
-        logger.debug(f"Published {event_type} event to NATS subject: {subject}")
-
-    except Exception as e:
-        logger.error(f"Failed to publish {event_type} event to NATS: {e}")
-
-
-# Export key classes and signals for easy import
 __all__ = [
     "Timer",
     "CycleDevice",
@@ -307,8 +331,8 @@ __all__ = [
     "CycleStartedEvent",
     "CycleFinishedEvent",
     "CycleFailedEvent",
+    "novax_cycle",
     "cycle_started",
     "cycle_finished",
     "cycle_failed",
-    "cycle_event_handler",
 ]

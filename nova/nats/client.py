@@ -2,8 +2,6 @@
 NATS client for Nova integration.
 """
 
-from __future__ import annotations
-
 import asyncio
 from typing import Awaitable, Callable
 
@@ -14,8 +12,6 @@ from nats.aio.msg import Msg as NatsLibMessage
 from nova.logging import logger
 from nova.nats.message import Message
 
-# Internal publisher removed; we publish directly to NATS
-
 
 class NatsClient:
     """NATS client for Nova with connection management and publishing capabilities."""
@@ -24,6 +20,7 @@ class NatsClient:
         self,
         host: str | None = None,
         access_token: str | None = None,
+        # TODO: accept "broker" parameter so the user can override the connection string
         nats_client_config: dict | None = None,
     ):
         """
@@ -40,9 +37,11 @@ class NatsClient:
         self._nats_client: nats.NATS | None = None
         self._nats_connection_string: str = ""
         self._connect_lock = asyncio.Lock()
-        self._is_configured = False
         self._init_nats_client()
 
+    # TODO: nats connection string is not built correctly when being accessed like below
+    # nova = Nova(host="...")
+    # nova.nats -> here we are still dependent on NATS_BROKER env variable
     def _init_nats_client(self) -> None:
         host = self._host
         token = self._access_token
@@ -57,24 +56,20 @@ class NatsClient:
             auth = f"{token}@"
 
             self._nats_connection_string = f"{scheme}://{auth}{clean_host}:{port}/api/nats"
-            self._is_configured = True
             return
 
         logger.debug("Host and token not both set; reading NATS connection from env var")
         self._nats_connection_string = config("NATS_BROKER", default=None)
 
-        if self._nats_connection_string:
-            self._is_configured = True
-        else:
+        if not self._nats_connection_string:
             logger.warning("NATS connection string is not set. NATS client will be disabled.")
-            self._is_configured = False
 
     async def connect(self):
         """Connect to NATS server.
 
         Subsequent calls are no-ops while connected.
         """
-        if not self._is_configured:
+        if not self._nats_connection_string:
             logger.info("NATS client is not configured. Skipping connection.")
             return
 
@@ -110,7 +105,7 @@ class NatsClient:
         Returns:
             bool: True if the NATS client is connected, False otherwise.
         """
-        if not self._is_configured:
+        if not self._nats_connection_string:
             return False
         return self._nats_client is not None and self._nats_client.is_connected
 
@@ -127,8 +122,15 @@ class NatsClient:
         if not self.is_connected():
             logger.debug("NATS client is not connected. Skipping message publishing.")
             return
+
+        if self._nats_client is None:
+            logger.debug("NATS client is None. Skipping message publishing.")
+            return
+
         try:
-            await self._nats_client.publish(subject=message.subject, payload=message.data)  # type: ignore
+            await self._nats_client.publish(subject=message.subject, payload=message.data)
+            # Ensure the server has processed the publish before returning
+            await self._nats_client.flush()
         except Exception as e:
             logger.error(f"Failed to publish message to {message.subject}: {e}")
 
@@ -147,8 +149,14 @@ class NatsClient:
             logger.debug("NATS client is not connected. Skipping subscription.")
             return
 
+        if self._nats_client is None:
+            logger.debug("NATS client is None. Skipping subscription.")
+            return
+
         async def data_mapper(msg: NatsLibMessage):
             message = Message(subject=msg.subject, data=msg.data)
             await on_message(message)
 
-        await self._nats_client.subscribe(subject, cb=data_mapper)  # type: ignore
+        await self._nats_client.subscribe(subject, cb=data_mapper)
+        # ensure the sub is sent to server before returning
+        await self._nats_client.flush()

@@ -9,8 +9,16 @@ import uvicorn
 import nova
 from nova.cell.simulation import SimulatedRobotCell
 from novax import Novax
-from tests.novax.api.test_program_cycle import program_with_cycle_data, program_with_cycle_failure
-from tests.novax.api.test_program_run import failing_program, sucessful_program
+from tests.novax.api.test_program_cycle import (
+    program_with_cycle_data,
+    program_with_cycle_extra,
+    program_with_cycle_failure,
+)
+from tests.novax.api.test_program_run import (
+    failing_program,
+    long_running_program,
+    sucessful_program,
+)
 
 
 @nova.program(name="simple_program")
@@ -37,6 +45,8 @@ def novax_app():
     novax.register_program(failing_program)
     novax.register_program(program_with_cycle_data)
     novax.register_program(program_with_cycle_failure)
+    novax.register_program(program_with_cycle_extra)
+    novax.register_program(long_running_program)
 
     yield app
 
