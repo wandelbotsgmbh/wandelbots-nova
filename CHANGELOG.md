@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.16.1 (2025-09-14)
+
+### Bug Fixes
+
+- Add custom nats data and add program app name to the program (#273)
+  ([#273](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/273),
+  [`e2e0c6d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e2e0c6d3163b10e88885796bb9d90292cd40e5ee))
+
+
 ## v2.16.0 (2025-09-04)
 
 ### Features
