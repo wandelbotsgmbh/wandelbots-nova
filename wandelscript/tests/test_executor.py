@@ -3,8 +3,8 @@ import asyncio
 import pytest
 
 from nova.cell.robot_cell import RobotCell, Timer
+from nova.cell.simulation import SimulatedRobot
 from wandelscript import Program
-from wandelscript.simulation import SimulatedRobot
 
 
 @pytest.mark.asyncio

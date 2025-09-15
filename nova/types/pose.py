@@ -245,6 +245,42 @@ class Pose(pydantic.BaseModel, Sized):
             )
         )
 
+    @classmethod
+    def from_euler(
+        cls,
+        position: Vector3d | tuple | list,
+        euler_angles: tuple | list,
+        convention: str = "xyz",
+        degrees: bool = False,
+    ) -> Pose:
+        """
+        Create a Pose from a position and Euler angles.
+
+        Args:
+            position: The position as a Vector3d, tuple, or list of 3 floats.
+            euler_angles: The Euler angles (e.g., roll, pitch, yaw) as a tuple or list of 3 floats.
+            convention: The Euler angle convention (e.g., 'xyz', 'zyx'). Defaults to 'xyz'.
+            degrees: Whether the provided Euler angles are in degrees. Defaults to False (radians).
+
+        Returns:
+            A new Pose object.
+
+        Example:
+        >>> pose = Pose.from_euler(position=(1, 2, 3), euler_angles=(0, 0, 90), degrees=True)
+        >>> np.allclose(pose.orientation.to_tuple(), (0, 0, np.pi/2))
+        True
+        """
+        if not isinstance(position, Vector3d):
+            position = Vector3d.from_tuple(tuple(position))
+
+        # convert eulerangles to rotation vector
+        rotation = Rotation.from_euler(convention, euler_angles, degrees=degrees)
+        rotation_vector = rotation.as_rotvec()
+
+        orientation = Vector3d.from_tuple(tuple(rotation_vector))
+
+        return cls(position=position, orientation=orientation)
+
     def orientation_to_quaternion(self):
         values = np.asarray(self.orientation)
         half_angle = np.linalg.norm(values) / 2

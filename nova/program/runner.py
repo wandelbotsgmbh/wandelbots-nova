@@ -35,13 +35,13 @@ class ExecutionContext:
     # Maps the motion group id to the list of recorded motion lists
     # Each motion list is a path the was planned separately
     motion_group_recordings: list[list[MotionState]]
-    output: dict
+    output_data: dict[str, Any]
 
     def __init__(self, robot_cell: RobotCell, stop_event: anyio.Event):
         self._robot_cell = robot_cell
         self._stop_event = stop_event
         self.motion_group_recordings = []
-        self.output_data: dict[str, Any] = {}
+        self.output_data = {}
 
     @property
     def robot_cell(self) -> RobotCell:
@@ -52,21 +52,9 @@ class ExecutionContext:
         return self._stop_event
 
 
-# TODO: import from api.v2.models.ProgramType
-class ProgramType(Enum):
-    WANDELSCRIPT = "WANDELSCRIPT"
-    PYTHON = "PYTHON"
-
-
-# TODO: import from api.v2.models.Program
-class Program(BaseModel):
-    content: str = Field(..., title="Program content")
-    program_type: ProgramType = Field(..., description="Type of the program.", title="Program type")
-
-
 # TODO: import from api.v2.models.ProgramRunState
-class ProgramRunState(Enum):
-    NOT_STARTED = "NOT_STARTED"
+class ProgramRunState(str, Enum):
+    PREPARING = "PREPARING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
@@ -75,8 +63,8 @@ class ProgramRunState(Enum):
 
 # TODO: import from api.v2.models.ProgramRun
 class ProgramRun(BaseModel):
-    run_id: str = Field(..., description="Id of the program run")
-    program_id: str = Field(..., description="Id of the program")
+    run: str = Field(..., description="Id of the program run")
+    program: str = Field(..., description="Id of the program")
     state: ProgramRunState = Field(..., description="State of the program run")
     logs: str | None = Field(None, description="Logs of the program run")
     stdout: str | None = Field(None, description="Stdout of the program run")
@@ -87,6 +75,9 @@ class ProgramRun(BaseModel):
     input_data: dict[str, Any] | None = Field(None, description="Input of the program run")
     output_data: dict[str, Any] | None = Field(None, description="Output of the program run")
 
+    class Config:
+        extra = "allow"
+
 
 class ProgramRunner(ABC):
     """Abstract base class for program runners.
@@ -96,21 +87,22 @@ class ProgramRunner(ABC):
     """
 
     def __init__(
-        self,
-        program_id: str,
-        program: Program,
-        args: dict[str, Any],
-        robot_cell_override: RobotCell | None = None,
+        self, program_id: str, args: dict[str, Any], robot_cell_override: RobotCell | None = None
     ):
+        """
+        Args:
+            program_id (str): The unique identifier of the program.
+            args (dict[str, Any]): The arguments to pass to the program.
+            robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Defaults to None.
+        """
         self._run_id = str(uuid.uuid4())
         self._program_id = program_id
-        self._program = program
         self._args = args
         self._robot_cell_override = robot_cell_override
         self._program_run: ProgramRun = ProgramRun(
-            run_id=self._run_id,
-            program_id=program_id,
-            state=ProgramRunState.NOT_STARTED,
+            run=self._run_id,
+            program=program_id,
+            state=ProgramRunState.PREPARING,
             logs=None,
             stdout=None,
             error=None,
@@ -118,7 +110,7 @@ class ProgramRunner(ABC):
             start_time=None,
             end_time=None,
             input_data=args,
-            output_data=None,
+            output_data={},
         )
         self._thread: threading.Thread | None = None
         self._stop_event: threading.Event | None = None
@@ -177,7 +169,10 @@ class ProgramRunner(ABC):
         Returns:
             bool: True if a program is running, False otherwise
         """
-        return self._thread is not None and self.state is ProgramRunState.RUNNING
+        return self._thread is not None and self.state in (
+            ProgramRunState.PREPARING,
+            ProgramRunState.RUNNING,
+        )
 
     def join(self):
         """Wait for the program execution to finish.
@@ -203,7 +198,9 @@ class ProgramRunner(ABC):
             self.join()
 
     def start(
-        self, sync: bool = False, on_state_change: Callable[[Any], Awaitable[None]] | None = None
+        self,
+        sync: bool = False,
+        on_state_change: Callable[[ProgramRun], Awaitable[None]] | None = None,
     ):
         """Creates another thread and starts the program execution. If the program was executed already, is currently
         running, failed or was stopped a new program runner needs to be created.
@@ -216,14 +213,14 @@ class ProgramRunner(ABC):
             RuntimeError: when the runner is not in IDLE state
         """
         # Check if another program execution is already in progress
-        if self.state is not ProgramRunState.NOT_STARTED:
+        if self.state is not ProgramRunState.PREPARING:
             raise RuntimeError(
                 "The runner is not in the not_started state. Create a new runner to execute again."
             )
 
         async def _on_state_change():
             if on_state_change is not None:
-                await on_state_change(self._program_run)
+                await on_state_change(self._program_run.model_copy())
 
         def stopper(sync_stop_event, async_stop_event):
             while not sync_stop_event.wait(0.2):
@@ -345,6 +342,7 @@ class ProgramRunner(ABC):
                     logger.info(f"Program {self.program_id} run {self.run_id} started")
                     self._program_run.state = ProgramRunState.RUNNING
                     self._program_run.start_time = dt.datetime.now(dt.timezone.utc)
+                    await on_state_change()
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped
@@ -380,11 +378,10 @@ class ProgramRunner(ABC):
                             f"Program {self.program_id} run {self.run_id} completed successfully"
                         )
                 finally:
-                    # write path to output
-                    # self._program_run.execution_results = execution_context.motion_group_recordings
+                    # program output data
                     self._program_run.output_data = execution_context.output_data
 
-                    logger.info(
+                    logger.debug(
                         f"Program {self.program_id} run {self.run_id} finished. Run teardown routine..."
                     )
                     self._program_run.end_time = dt.datetime.now(dt.timezone.utc)

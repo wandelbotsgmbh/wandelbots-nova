@@ -8,6 +8,7 @@ from novax.program_manager import ProgramDetails, ProgramManager, ProgramRun, Ru
 router = APIRouter(prefix="/programs", tags=["programs"])
 
 
+# can we use the same api model from wandelbots_api_client
 class ProgramResponse(ProgramDetails):
     input_schema: dict[str, Any]
 
@@ -53,7 +54,7 @@ async def start_program(
     if program_manager.running_program:
         raise HTTPException(status_code=400, detail="A program is already running")
 
-    return await program_manager.run_program(program, request.parameters)
+    return await program_manager.start_program(program, request.parameters)
 
 
 @router.post("/{program}/stop", operation_id="stopProgram")

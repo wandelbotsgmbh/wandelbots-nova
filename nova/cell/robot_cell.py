@@ -649,7 +649,8 @@ class RobotCell:
 
     async def __aenter__(self):
         for device in self._devices.values():
-            await self._device_exit_stack.enter_async_context(device)
+            if device is not None:
+                await self._device_exit_stack.enter_async_context(device)
         return self
 
     async def __aexit__(self, exc_type, exc_value, exc_traceback):

@@ -1,37 +1,51 @@
+import asyncio
 import datetime as dt
 import inspect
-from pathlib import Path
-from typing import Any, AsyncIterator, Optional, Protocol
+from concurrent.futures import Future
+from typing import Any, Awaitable, Callable, Coroutine, Optional
 
-from loguru import logger
 from pydantic import BaseModel
 
-import nova
-from nova import Nova
-from nova.program.function import Program
-from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner, ProgramType
-from nova.program.runner import Program as SimpleProgram
-from wandelscript.ffi_loader import load_foreign_functions
-
-try:
-    import wandelscript
-
-    WANDELSCRIPT_AVAILABLE = True
-except ImportError:
-    WANDELSCRIPT_AVAILABLE = False
+from nova.cell.robot_cell import RobotCell
+from nova.logging import logger
+from nova.program.function import Program, ProgramPreconditions
+from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner
 
 
-class ProgramSource(Protocol):
-    """Protocol for program sources that can be registered with ProgramManager"""
+def _log_future_result(future: Future):
+    try:
+        result = future.result()
+        logger.debug(f"Program state change callback completed with result: {result}")
+    except Exception as e:
+        logger.error(f"Program state change callback failed with exception: {e}")
 
-    def get_programs(self, program_manager: "ProgramManager") -> AsyncIterator[Program]:
-        """
-        Discover and yield all programs from this source.
 
-        Yields:
-            Program: A Program object (decorated with @nova.program)
-        """
-        ...
+def _report_state_change_to_event_loop(
+    loop: asyncio.AbstractEventLoop,
+    state_listener: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None,
+) -> Callable[[ProgramRun], Awaitable[None]] | None:
+    if not state_listener:
+        return None
+
+    async def _state_listener(program_run: ProgramRun):
+        logger.debug(f"Reporting state change to event loop for program run: {program_run.program}")
+        coroutine = state_listener(program_run)
+
+        try:
+            if loop.is_closed():
+                logger.warning(
+                    f"Event loop is closed, skipping state change callback for program: {program_run.program}"
+                )
+                return
+
+            future: Future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+            future.add_done_callback(_log_future_result)
+        except Exception as e:
+            logger.error(
+                f"Unexpected error in state change callback for program {program_run.program}: {e}"
+            )
+
+    return _state_listener
 
 
 class NovaxProgramRunner(ProgramRunner):
@@ -40,12 +54,9 @@ class NovaxProgramRunner(ProgramRunner):
         program_id: str,
         program_functions: dict[str, Program],
         parameters: Optional[dict[str, Any]] = None,
+        robot_cell_override: RobotCell | None = None,
     ):
-        super().__init__(
-            program_id=program_id,
-            program=SimpleProgram(content="", program_type=ProgramType.PYTHON),
-            args={},
-        )
+        super().__init__(program_id=program_id, args={}, robot_cell_override=robot_cell_override)
         self.program_functions = program_functions
         self.parameters = parameters
 
@@ -68,10 +79,13 @@ class NovaxProgramRunner(ProgramRunner):
         return result
 
 
+# can we remove this and use program model from wandelbots_api_client?
 class ProgramDetails(BaseModel):
-    program_id: str
+    program: str
+    name: str | None
+    description: str | None
     created_at: dt.datetime
-    updated_at: dt.datetime
+    preconditions: ProgramPreconditions | None = None
 
 
 class RunProgramRequest(BaseModel):
@@ -81,11 +95,23 @@ class RunProgramRequest(BaseModel):
 class ProgramManager:
     """Manages program registration, storage, and execution"""
 
-    def __init__(self):
+    def __init__(
+        self,
+        robot_cell_override: RobotCell | None = None,
+        state_listener: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
+    ):
+        """
+        Initialize the ProgramManager.
+        Args:
+            robot_cell_override: Optional override for the robot cell the program runs against
+            state_listener: Optional listener for program state changes
+        """
+
         self._programs: dict[str, ProgramDetails] = {}
         self._program_functions: dict[str, Program] = {}
         self._runner: NovaxProgramRunner | None = None
-        self._program_sources: list[ProgramSource] = []
+        self._robot_cell_override: RobotCell | None = robot_cell_override
+        self._state_listener = state_listener
 
     def has_program(self, program_id: str) -> bool:
         return program_id in self._programs
@@ -97,25 +123,6 @@ class ProgramManager:
     @property
     def running_program(self) -> Optional[str]:
         return self._runner.program_id if self.is_any_program_running and self._runner else None
-
-    def register_program_source(self, program_source: ProgramSource) -> None:
-        """
-        Register a program source with the program manager.
-
-        Args:
-            program_source: The program source to register
-        """
-        self._program_sources.append(program_source)
-
-    def deregister_program_source(self, program_source: ProgramSource) -> None:
-        """
-        Deregister a program source from the program manager.
-
-        Args:
-            program_source: The program source to deregister
-        """
-        if program_source in self._program_sources:
-            self._program_sources.remove(program_source)
 
     def register_program(self, program: Program) -> str:
         """
@@ -129,12 +136,17 @@ class ProgramManager:
         """
 
         func = program
-        program_id = func.name
-
+        program_id = func.program_id
         now = dt.datetime.now(dt.timezone.utc)
 
         # Create ProgramDetails instance
-        program_details = ProgramDetails(program_id=program_id, created_at=now, updated_at=now)
+        program_details = ProgramDetails(
+            program=program_id,
+            name=program.name,
+            description=program.description,
+            created_at=now,
+            preconditions=program.preconditions,
+        )
 
         # Store program details and function separately
         self._programs[program_id] = program_details
@@ -142,26 +154,60 @@ class ProgramManager:
 
         return program_id
 
+    def deregister_program(self, program_id: str):
+        """
+        Deregister a program from the program manager
+
+        Args:
+            program_id: The ID of the program to deregister
+        """
+        if program_id not in self._programs:
+            return
+        del self._programs[program_id]
+        del self._program_functions[program_id]
+
     async def get_programs(self) -> dict[str, ProgramDetails]:
         """Get all registered programs"""
-        for program_source in self._program_sources:
-            async for program in program_source.get_programs(self):
-                self.register_program(program)
         return self._programs.copy()
 
     async def get_program(self, program_id: str) -> Optional[ProgramDetails]:
         """Get a specific program by ID"""
         return self._programs.get(program_id)
 
-    async def run_program(
-        self, program_id: str, parameters: dict[str, Any] | None = None
+    async def start_program(
+        self,
+        program_id: str,
+        parameters: dict[str, Any] | None = None,
+        sync: bool = False,
+        on_state_change: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
     ) -> ProgramRun:
-        """Run a registered program with given parameters"""
+        """
+        Start a registered program with given parameters.
+
+        Args:
+            program_id: The ID of the program to start
+            parameters: Optional parameters to pass to the program function
+            sync: If True, run the program synchronously
+            on_state_change: Optional callback to handle program state changes
+        """
         if self.is_any_program_running:
             raise RuntimeError("A program is already running")
 
-        runner = self._runner = NovaxProgramRunner(program_id, self._program_functions, parameters)
-        runner.start(sync=False)
+        runner = NovaxProgramRunner(
+            program_id,
+            self._program_functions,
+            parameters,
+            robot_cell_override=self._robot_cell_override,
+        )
+        self._runner = runner
+
+        # report the state change to the event loop requesting program start
+        loop = asyncio.get_running_loop()
+        state_change_listener = on_state_change if on_state_change else self._state_listener
+        runner.start(
+            sync=sync,
+            on_state_change=_report_state_change_to_event_loop(loop, state_change_listener),
+        )
         return runner.program_run
 
     async def stop_program(self, program_id: str):
@@ -176,70 +222,3 @@ class ProgramManager:
 
         self._runner.stop(sync=True)
         self._runner = None
-
-
-# Example implementations of ProgramSource
-
-
-class WandelscriptProgramSource:
-    def __init__(self, scan_paths: list[Path], foreign_functions_paths: list[Path] | None = None):
-        """
-        Initialize the WandelscriptProgramSource with a list of paths to scan.
-
-        Args:
-            scan_paths: List of paths to scan for .ws files. Can be individual files or directories.
-            foreign_functions: Optional dictionary of foreign functions to attach to all programs.
-        """
-        self.scan_paths = scan_paths
-        self.foreign_functions = (
-            load_foreign_functions(foreign_functions_paths) if foreign_functions_paths else {}
-        )
-
-    async def get_programs(self, program_manager: "ProgramManager") -> AsyncIterator[Program]:
-        """Discover and yield programs from filesystem"""
-        for path in self.scan_paths:
-            if not path.exists():
-                logger.warning(f"Path does not exist: {path}")
-                continue
-
-            if path.is_file():
-                # Single file
-                if path.suffix == ".ws":
-                    yield self._create_wandelscript_program(path)
-            elif path.is_dir():
-                # Directory - scan for .ws files
-                for file_path in path.glob("*.ws"):
-                    yield self._create_wandelscript_program(file_path)
-
-    def _create_wandelscript_program(self, path: Path) -> Program:
-        """Create a nova.program wrapper for a wandelscript file"""
-        if not WANDELSCRIPT_AVAILABLE:
-            raise ImportError(
-                f"Cannot register wandelscript file {path}: wandelscript package is not installed. "
-                "Please install it with 'pip install wandelscript' or 'uv add wandelscript'"
-            )
-
-        # Create program ID from filename
-        program_id = path.stem
-        logger.info(f"Creating wandelscript program: {program_id}")
-
-        # Create a wrapper function
-        @nova.program(name=program_id)
-        async def wandelscript_wrapper():
-            async with Nova() as nova:
-                robot_cell = await nova.cell().get_robot_cell()
-                # Read the file content
-                with open(path) as f:
-                    program_content = f.read()
-
-                result = wandelscript.run(
-                    program_id=program_id,
-                    program=program_content,
-                    # TODO: Also pass args
-                    args={},
-                    foreign_functions=self.foreign_functions,
-                    robot_cell_override=robot_cell,
-                )
-                return result
-
-        return wandelscript_wrapper

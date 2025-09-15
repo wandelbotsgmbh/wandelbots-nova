@@ -1,6 +1,6 @@
 from typing import AsyncGenerator, Literal, Sized
 
-from nova.api import models
+from nova import api
 from nova.cell.robot_cell import AbstractController, AbstractRobot, IODevice, ValueType
 from nova.core.gateway import NovaDevice
 from nova.core.io import IOAccess
@@ -111,7 +111,9 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         """
         return await self._io_access.write(key, value)
 
-    async def stream_state(self, rate_msecs) -> AsyncGenerator[models.RobotControllerState, None]:
+    async def stream_state(
+        self, rate_msecs
+    ) -> AsyncGenerator[api.models.RobotControllerState, None]:
         async for state in self._nova_api.stream_robot_controller_state(
             cell=self.configuration.cell_id,
             controller_id=self.configuration.controller_id,

@@ -19,4 +19,6 @@ __all__ = [
     "wait",
     "MovementController",
     "MovementControllerContext",
+    "TrajectoryBuilder",
+    "TrajectoryMacher",
 ]

@@ -24,10 +24,10 @@ from nova.version import version as pkg_version
 
 def _custom_quote_for_ios(param, safe=""):
     """
-    Custom quote function that preserves square brackets for I/O names.
-    This prevents double encoding of I/O names like "tool_out[0]".
+    Custom quote function that preserves square brackets and hash characters for I/O names.
+    This prevents double encoding of I/O names like "tool_out[0]" and KUKA names like "OUT#2".
     """
-    return original_quote(param, safe="[]")
+    return original_quote(param, safe="[]#")
 
 
 T = TypeVar("T")
@@ -222,7 +222,7 @@ class ApiGateway:
             import wandelbots_api_client.api.controller_ios_api as ios_api_module
 
             ios_api_module.quote = self._original_quote_func
-        return await self._api_client.close()
+        await self._api_client.close()
 
     async def _ensure_valid_token(self):
         """Ensure we have a valid access token, requesting a new one if needed"""

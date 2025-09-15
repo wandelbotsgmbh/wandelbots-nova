@@ -39,7 +39,7 @@ async def main(code: str, foreign_functions: dict[str, Any] | None = None):
         default_robot=None,
         foreign_functions=foreign_functions,
     )
-    echo(f"Execution results:\n{runner.program_run.output_data}")
+    echo(f"Execution results:\n{runner.program_run.state}")
 
 
 @app.command()

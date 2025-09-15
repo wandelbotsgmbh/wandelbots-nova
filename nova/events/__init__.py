@@ -1,14 +1,26 @@
 from abc import ABC
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from blinker import signal
+from decouple import config
 from pydantic import BaseModel, Field
 
-cycle_started = signal("cycle_started")
-cycle_finished = signal("cycle_finished")
-cycle_failed = signal("cycle_failed")
+from nova.cell.cell import Cell
+from nova.cell.robot_cell import Device, OutputDevice
+from nova.logging import logger
+from nova.nats import Message as NatsMessage
+
+# Read BASE_PATH environment variable and extract app name
+# TODO: make a util and move the logic there
+_BASE_PATH = config("BASE_PATH", default=None)
+if _BASE_PATH:
+    _APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else None
+else:
+    _APP_NAME = None
+
+_NATS_SUBJECT_TEMPLATE = "nova.v2.cells.{cell_id}.cycle"
+_APP_NAME_EXTRA_FIELD = "app"
 
 
 class Timer:
@@ -39,6 +51,17 @@ class Timer:
 
     def is_running(self) -> bool:
         return self.start_time is not None and self.stop_time is None
+
+
+class CycleDevice(OutputDevice, Device):
+    def __init__(self, cell: Cell):
+        super().__init__()
+        self._cycle = Cycle(cell=cell)
+
+    async def write(self, key, _):
+        if hasattr(self._cycle, key):
+            method = getattr(self._cycle, key)
+            await method()
 
 
 class Cycle:
@@ -79,10 +102,55 @@ class Cycle:
         cycle_id (UUID | None): Unique identifier for the cycle, set after start()
     """
 
-    def __init__(self, cell_id: str):
+    def __init__(self, cell: Cell, extra: dict[str, Any] = {}):
+        """
+        cell: The cell associated with this cycle.
+        extra: Optional metadata to include with the cycle events. Must be JSON serializable.
+        """
         self.cycle_id: UUID | None = None
-        self._cell_id = cell_id
         self._timer = Timer()
+        self._cell = cell
+        self._cell_id = cell.cell_id
+        self._subject = _NATS_SUBJECT_TEMPLATE.format(cell_id=self._cell_id)
+
+        self._extra: dict[str, Any] = self._ensure_json_serializable(extra)
+
+        # if we have the app name available always send it as extra
+        if _APP_NAME_EXTRA_FIELD not in self._extra and _APP_NAME is not None:
+            self._extra[_APP_NAME_EXTRA_FIELD] = _APP_NAME
+
+    @staticmethod
+    def _ensure_json_serializable(data: dict[str, Any]) -> dict[str, Any]:
+        """
+        Validate that provided data is JSON serializable.
+        """
+        import json
+
+        candidate = data.copy()
+        try:
+            json.dumps(candidate)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Extra data must be JSON serializable: {e}") from e
+        return candidate
+
+    async def _publish_event(self, event: "BaseCycleEvent") -> None:
+        """
+        Publish a cycle event to NATS if a NATS client is available.
+
+        Args:
+            event: The cycle event to publish
+        """
+        if self._cell.nats is None:
+            logger.debug("No NATS client available, skipping event publication")
+            return
+
+        try:
+            await self._cell.nats.connect()
+            nats_message = NatsMessage(subject=self._subject, data=event.model_dump_json().encode())
+            await self._cell.nats.publish_message(nats_message)
+            logger.debug(f"Published {event.event_type} event to NATS subject: {self._subject}")
+        except Exception as e:
+            logger.error(f"Failed to publish {event.event_type} event to NATS: {e}")
 
     async def start(self) -> datetime:
         """
@@ -103,8 +171,13 @@ class Cycle:
             raise RuntimeError("Cycle already started") from e
 
         self.cycle_id = uuid4()
-        event = CycleStartedEvent(cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id)
-        await cycle_started.send_async(self, message=event)
+        event = CycleStartedEvent(
+            cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id, extra=self._extra
+        )
+        logger.debug(f"Cycle started with ID: {self.cycle_id}")
+
+        await self._publish_event(event)
+
         return start_time
 
     async def finish(self) -> timedelta:
@@ -130,9 +203,16 @@ class Cycle:
 
         duration_ms = int((end_time - self._timer.start_time).total_seconds() * 1000)
         event = CycleFinishedEvent(
-            cycle_id=self.cycle_id, timestamp=end_time, duration_ms=duration_ms, cell=self._cell_id
+            cycle_id=self.cycle_id,
+            timestamp=end_time,
+            duration_ms=duration_ms,
+            cell=self._cell_id,
+            extra=self._extra,
         )
-        await cycle_finished.send_async(self, message=event)
+        logger.debug(f"Cycle finished with ID: {self.cycle_id}")
+
+        await self._publish_event(event)
+
         cycle_time = self._timer.elapsed()
         self._timer.reset()
         return cycle_time
@@ -165,9 +245,16 @@ class Cycle:
         if isinstance(reason, Exception):
             reason = str(reason)
         event = CycleFailedEvent(
-            cycle_id=self.cycle_id, timestamp=failure_time, cell=self._cell_id, reason=reason
+            cycle_id=self.cycle_id,
+            timestamp=failure_time,
+            cell=self._cell_id,
+            reason=reason,
+            extra=self._extra,
         )
-        await cycle_failed.send_async(self, message=event)
+        logger.info(f"Cycle failed with ID: {self.cycle_id}, reason: {reason}")
+
+        await self._publish_event(event)
+
         self._timer.reset()
 
     async def __aenter__(self):
@@ -202,12 +289,24 @@ class Cycle:
         return True
 
 
+def novax_cycle(cell: Cell, app: str, program: str, extra: dict[str, Any] | None = None) -> Cycle:
+    """
+    A novaX cycle runs in an app and is annotated with program decorator.
+    """
+    cycle_extra = extra.copy() if extra is not None else {}
+    cycle_extra.update({"app": app, "program": program})
+    return Cycle(cell=cell, extra=cycle_extra)
+
+
 class BaseCycleEvent(BaseModel, ABC):
     event_type: Literal["cycle_started", "cycle_finished", "cycle_failed"]
     id: UUID = Field(default_factory=uuid4, description="Unique event identifier")
     cycle_id: UUID = Field(..., description="Unique identifier for the automation cycle")
     timestamp: datetime = Field(..., description="Event creation time (ISO 8601, UTC)")
     cell: str = Field(..., description="Identifier of the robotic cell")
+    extra: dict[str, Any] | None = Field(
+        default_factory=dict, description="Additional data related to the event"
+    )
 
 
 class CycleStartedEvent(BaseCycleEvent):
@@ -222,3 +321,18 @@ class CycleFinishedEvent(BaseCycleEvent):
 class CycleFailedEvent(BaseCycleEvent):
     event_type: Literal["cycle_failed"] = "cycle_failed"
     reason: str = Field(..., description="Human-readable explanation of failure")
+
+
+__all__ = [
+    "Timer",
+    "CycleDevice",
+    "Cycle",
+    "BaseCycleEvent",
+    "CycleStartedEvent",
+    "CycleFinishedEvent",
+    "CycleFailedEvent",
+    "novax_cycle",
+    "cycle_started",
+    "cycle_finished",
+    "cycle_failed",
+]

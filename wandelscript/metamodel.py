@@ -23,6 +23,7 @@ from nova.cell.robot_cell import (
     RobotCell,
     RobotMotionError,
 )
+from nova.cell.simulation import SimulatedRobotCell, UnknownPose
 from nova.types import MotionSettings, Pose, Vector3d
 from wandelscript.exception import GenericRuntimeError, TextRange
 from wandelscript.operators import (
@@ -35,7 +36,6 @@ from wandelscript.operators import (
     Sign,
 )
 from wandelscript.runtime import ExecutionContext, Store
-from wandelscript.simulation import SimulatedRobotCell, UnknownPose
 from wandelscript.utils.pose import pose_to_versor, versor_to_pose
 
 ElementType = TypeVar("ElementType", bound=t.ElementType)

@@ -9,9 +9,9 @@ from loguru import logger
 
 import wandelscript
 from nova.cell.robot_cell import ConfigurablePeriphery, RobotCell
+from nova.cell.simulation import SimulatedRobotCell
 from nova.types import Pose, Vector3d
 from wandelscript.examples import EXAMPLES
-from wandelscript.simulation import SimulatedRobotCell
 
 
 def filter_dict(d, ignore_paths: list[str]):
@@ -74,9 +74,13 @@ def test_example(example_name):
     logger.info(f"Running example {example_name}...")
     program, data, config = EXAMPLES[example_name]
     robot_cell = _robot_cell_from_configuration(config)
-    runner = wandelscript.run(program, robot_cell_override=robot_cell, default_tcp="Flange")
-    store = runner.program_run.result
-    print(store)
+    runner = wandelscript.run(
+        program_id=example_name,
+        program=program,
+        robot_cell_override=robot_cell,
+        default_tcp="Flange",
+    )
+    store = runner.program_run.output_data
     for key, expected in data.items():
         if isinstance(expected, list):
             expected = tuple(tuple(v) if isinstance(v, list) else v for v in expected)

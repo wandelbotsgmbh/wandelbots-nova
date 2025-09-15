@@ -5,6 +5,11 @@ import pytest
 from nova.actions import cartesian_ptp, circular, io_write, linear
 from nova.actions.container import ActionLocation
 from nova.cell.robot_cell import RobotCell
+from nova.cell.simulation import (
+    SimulatedController,
+    SimulatedRobotCell,
+    get_simulated_robot_configs,
+)
 from nova.types import Pose
 from nova.types.state import MotionState, RobotState
 from wandelscript import exception as wsexception
@@ -12,11 +17,6 @@ from wandelscript.exception import NameError_
 from wandelscript.metamodel import register_debug_func, run_program
 from wandelscript.runner import run
 from wandelscript.runtime import ActionQueue, ExecutionContext, Store
-from wandelscript.simulation import (
-    SimulatedController,
-    SimulatedRobotCell,
-    get_simulated_robot_configs,
-)
 
 
 @pytest.mark.asyncio
@@ -47,7 +47,13 @@ debug()
 """
 
     robot_cell = SimulatedRobotCell()
-    run(code, robot_cell_override=robot_cell, default_robot="0@controller", default_tcp="Flange")
+    run(
+        program_id="test",
+        program=code,
+        robot_cell_override=robot_cell,
+        default_robot="0@controller",
+        default_tcp="Flange",
+    )
     assert test_a == 1
 
 
@@ -104,9 +110,16 @@ def test_robot_code_execution(code, num_robots, expected_exception):
     )
     if expected_exception:
         with pytest.raises(expected_exception):
-            run(code, robot_cell_override=robot_cell, default_tcp="Flange")
+            run(
+                program_id="test",
+                program=code,
+                robot_cell_override=robot_cell,
+                default_tcp="Flange",
+            )
     else:
-        result = run(code, robot_cell_override=robot_cell, default_tcp="Flange")
+        result = run(
+            program_id="test", program=code, robot_cell_override=robot_cell, default_tcp="Flange"
+        )
         assert result is not None
 
 

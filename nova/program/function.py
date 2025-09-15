@@ -24,7 +24,7 @@ from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
 from nova.core.exceptions import ControllerCreationFailed
-from nova.core.logging import logger
+from nova.logging import logger
 
 Parameters = ParamSpec("Parameters")
 Return = TypeVar("Return")
@@ -39,7 +39,8 @@ class Program(BaseModel, Generic[Parameters, Return]):
     _wrapped: Callable[Parameters, Any] = PrivateAttr(
         default_factory=lambda: lambda *args, **kwargs: None
     )
-    name: str
+    program_id: str
+    name: str | None
     description: str | None
     input: type[BaseModel]
     output: type[BaseModel]
@@ -52,14 +53,15 @@ class Program(BaseModel, Generic[Parameters, Return]):
         if not callable(value):
             raise TypeError("value must be callable")
 
-        name = value.__name__
-
+        program_id = value.__name__
         docstring = parse_docstring(value.__doc__ or "")
         description = docstring.description
 
         input, output = input_and_output_types(value, docstring)
 
-        function = cls(name=name, description=description, input=input, output=output)
+        function = cls(
+            program_id=program_id, name=None, description=description, input=input, output=output
+        )
         function._wrapped = validate_call(validate_return=True)(value)
         return function
 
@@ -142,9 +144,16 @@ class Program(BaseModel, Generic[Parameters, Return]):
             async with Nova() as nova:
                 cell = nova.cell()
                 for controller_id in controller_ids:
-                    await cell.delete_robot_controller(controller_id)
-                    self._log("info", f"Cleaned up controller with ID '{controller_id}'")
+                    try:
+                        await cell.delete_robot_controller(controller_id)
+                        self._log("info", f"Cleaned up controller with ID '{controller_id}'")
+                    except Exception as e:
+                        # WORKAROUND: {"code":9, "message":"Failed to 'Connect to Host' due the
+                        #   following reason:\nConnection refused (2)!\nexception::CommunicationException: Configured robot connection is not reachable.", "details":[]}
+                        # Log and suppress errors for individual controller cleanup
+                        self._log("error", f"Error cleaning up controller '{controller_id}': {e}")
         except Exception as e:
+            # Log and suppress errors for the overall cleanup process
             self._log("error", f"Error during controller cleanup: {e}")
 
     @property
@@ -293,7 +302,9 @@ def input_and_output_types(
 
 
 def program(
+    id: str | None = None,
     name: str | None = None,
+    description: str | None = None,
     preconditions: ProgramPreconditions | None = None,
     viewer: Any | None = None,
 ):
@@ -314,8 +325,12 @@ def program(
             raise TypeError(f"Program function '{function.__name__}' must be async")
 
         func_obj = Program.validate(function)
+        if id:
+            func_obj.program_id = id
         if name:
             func_obj.name = name
+        if description:
+            func_obj.description = description
         func_obj.preconditions = preconditions
 
         # Create a wrapper that handles controller lifecycle

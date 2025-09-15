@@ -1,6 +1,300 @@
 # CHANGELOG
 
 
+## v2.16.1 (2025-09-14)
+
+### Bug Fixes
+
+- Add custom nats data and add program app name to the program (#273)
+  ([#273](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/273),
+  [`e2e0c6d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e2e0c6d3163b10e88885796bb9d90292cd40e5ee))
+
+
+## v2.16.0 (2025-09-04)
+
+### Features
+
+- Added from euler util function (#272)
+  ([#272](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/272),
+  [`1ab802b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1ab802bcc64927a907c2f3358e26459d4432c732))
+
+
+## v2.15.1 (2025-09-02)
+
+### Bug Fixes
+
+- Only when token exists build connection string (#271)
+  ([#271](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/271),
+  [`048c365`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/048c36519dd897354d0fe01bd7afe21c42e0a644))
+
+
+## v2.15.0 (2025-09-02)
+
+### Features
+
+- **NDX-231**: Visualize current debug position in code editor (#269)
+  ([#269](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/269),
+  [`9de584e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9de584e781817c86559233695acf61af8eba513d))
+
+
+## v2.14.1 (2025-08-29)
+
+### Bug Fixes
+
+- Add none check for the robot cell (#268)
+  ([#268](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/268),
+  [`9772589`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/97725895160aa295b32c3fbeeba18ea5144017a9))
+
+
+## v2.14.0 (2025-08-29)
+
+### Features
+
+- Publish program run to nats (#249)
+  ([#249](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/249),
+  [`39df504`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/39df504156e224f5f40ed5b98daa5e2cda7167d6))
+
+
+## v2.13.0 (2025-08-28)
+
+### Features
+
+- **NDX-242**: Vscode extension to read the current robot pose and insert at cursor (#264)
+  ([#264](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/264),
+  [`bb05a81`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bb05a81c9b2335051aaf16723e3b4bf14c22c8db))
+
+
+## v2.12.2 (2025-08-27)
+
+### Bug Fixes
+
+- Preserve hash characters in KUKA IO names (#266)
+  ([#266](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/266),
+  [`f606baf`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f606baf6c9fc9192e1a5a58b2d2994b23f221c53))
+
+
+## v2.12.1 (2025-08-25)
+
+### Bug Fixes
+
+- **NDX-250**: Prevent index error when TrajectoryBuilder initialized without settings (#265)
+  ([#265](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/265),
+  [`8dbe7c6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8dbe7c649ec75a8e4803ac2d2d62ecb4cec6ac55))
+
+
+## v2.12.0 (2025-08-22)
+
+### Features
+
+- **NDX-216**: Upgrade generated Wandelbots NOVA API client to 25.7 (#263)
+  ([#263](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/263),
+  [`f571aa9`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f571aa98f4182aada61c77fae5407c6d09607c83))
+
+
+## v2.11.0 (2025-08-19)
+
+### Features
+
+- **NDX-227**: Added vscode extension with basic setup to wandelbots-nova (#261)
+  ([#261](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/261),
+  [`f1f38a1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f1f38a192b5f69a3bd4f5cefc869795137b17aa5))
+
+
+## v2.10.0 (2025-08-19)
+
+### Features
+
+- Update rerun-sdk version to 0.24.1 in optional dependencies (#262)
+  ([#262](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/262),
+  [`bce59ca`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bce59caf66d172c025deee7a246e427628420c48))
+
+
+## v2.9.0 (2025-08-14)
+
+### Features
+
+- **NDX-232**: TrajectoryBuilder .sequence should handle *args (#260)
+  ([#260](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/260),
+  [`bce1239`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bce1239f03ff2b3a0cfba520f8bcf856446d9a0d))
+
+
+## v2.8.7 (2025-08-13)
+
+### Bug Fixes
+
+- **NDX-172**: Fixed missing api autocompletion in IDE (#259)
+  ([#259](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/259),
+  [`d3c837e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d3c837ee936870f8640a8ca6c938ed5e27a71f1b))
+
+
+## v2.8.6 (2025-08-12)
+
+### Chores
+
+- Upgraded dev dependencies (#258)
+  ([#258](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/258),
+  [`d8b09fa`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d8b09fad1628e7d60e6f6c069cc75b7287f97ddc))
+
+
+## v2.8.5 (2025-08-12)
+
+### Chores
+
+- **deps**: Bump actions/checkout from 4 to 5 (#253)
+  ([#253](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/253),
+  [`9fe9029`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9fe9029d6ab9ff375bc55168c1b8d05150a6e57c))
+
+
+## v2.8.4 (2025-08-12)
+
+### Bug Fixes
+
+- Re-enabled Wandelscript unit tests & fixed them (#257)
+  ([#257](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/257),
+  [`9e7bd5a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9e7bd5a7aab7a28f00c340e755426fdd88d236f5))
+
+
+## v2.8.3 (2025-08-12)
+
+### Chores
+
+- **deps**: Update typer[all] requirement from <0.16,>=0.12 to >=0.12,<0.17 (#204)
+  ([#204](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/204),
+  [`100354d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/100354de31079b68b1b2fde307033b5caa8cf8ed))
+
+
+## v2.8.2 (2025-07-31)
+
+### Bug Fixes
+
+- Use . instead of : (#248) ([#248](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/248),
+  [`4c2bcae`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4c2bcae2035ac352afaff5276f801bbe4663b25b))
+
+
+## v2.8.1 (2025-07-31)
+
+### Bug Fixes
+
+- Use . instead of : for novax programs (#247)
+  ([#247](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/247),
+  [`ff78f77`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ff78f7764c72202641edbe0c25ae76811e811985))
+
+
+## v2.8.0 (2025-07-30)
+
+### Features
+
+- Read nats_broker env for cycle related nats client (#246)
+  ([#246](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/246),
+  [`e2861f4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e2861f41b8cab74d5c6f30b81be3427cb4c83eb9))
+
+
+## v2.7.4 (2025-07-30)
+
+### Bug Fixes
+
+- Update nats client version (#245)
+  ([#245](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/245),
+  [`4484d98`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4484d987af03d8b6fe7895c83dc7625402524f06))
+
+
+## v2.7.3 (2025-07-25)
+
+### Bug Fixes
+
+- Removed program source & introduced wandelscript program creation (#242)
+  ([#242](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/242),
+  [`5289423`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/528942351fe8d6861998e42d4abaf279e22aa2aa))
+
+
+## v2.7.2 (2025-07-24)
+
+### Chores
+
+- **NDX-159**: Align readme with docs.wandelbots.io (#240)
+  ([#240](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/240),
+  [`dd6c594`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/dd6c594a9ea5bbe9a428d2228a2112b7a9e7164a))
+
+
+## v2.7.1 (2025-07-24)
+
+### Bug Fixes
+
+- Update the program bucket novax uses (#241)
+  ([#241](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/241),
+  [`b92c954`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b92c9548d75652e2eb7424d3624df30de146de45))
+
+
+## v2.7.0 (2025-07-24)
+
+### Features
+
+- **NDX-174**: Implemented TrajectoryBuilder (#236)
+  ([#236](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/236),
+  [`e34db72`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e34db721c9d6b9e152b862b7ce91a752cfd19ff3))
+
+
+## v2.6.3 (2025-07-24)
+
+### Bug Fixes
+
+- Novax should not create bucket and use cell variable (#239)
+  ([#239](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/239),
+  [`9abb2fb`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9abb2fb17b41729f33489f5e42ad6e1985abda8f))
+
+
+## v2.6.2 (2025-07-24)
+
+### Bug Fixes
+
+- Pin to nats 2.10 (#238) ([#238](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/238),
+  [`893fc25`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/893fc25a9c6d120434daa8051e3a6e1b7eb4dcd2))
+
+
+## v2.6.1 (2025-07-23)
+
+### Bug Fixes
+
+- Update nats connections settings for novax (#237)
+  ([#237](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/237),
+  [`7ce45b8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7ce45b84da8e65391ef1d3814cf161d9a0ab4d1b))
+
+
+## v2.6.0 (2025-07-22)
+
+### Features
+
+- Add program store (#235) ([#235](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/235),
+  [`47f3196`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/47f31966759674957687b331020f446a7ee44840))
+
+
+## v2.5.0 (2025-07-17)
+
+### Features
+
+- Added deregister_program to novax (#234)
+  ([#234](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/234),
+  [`0e75f9f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0e75f9f30e005907fb8dc91ce890780623d6bdef))
+
+
+## v2.4.1 (2025-07-16)
+
+### Bug Fixes
+
+- Update example and rerun address for VS Code integration (#233)
+  ([#233](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/233),
+  [`cf4957b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/cf4957bfc8bbb492617e3cec477a7308c7594025))
+
+
+## v2.4.0 (2025-07-15)
+
+### Features
+
+- Improved program metadata & API description (#232)
+  ([#232](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/232),
+  [`cb435a0`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/cb435a0f95995a708a27e08e39a716d8934b6790))
+
+
 ## v2.3.1 (2025-07-14)
 
 ### Bug Fixes

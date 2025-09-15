@@ -1,7 +1,6 @@
 import asyncio
 import sys
 import time
-import uuid
 from datetime import datetime
 from typing import Any
 
@@ -10,12 +9,12 @@ import pytest
 from icecream import ic
 
 from nova.cell.robot_cell import RobotCell
-from nova.program.runner import Program, ProgramRun, ProgramRunState, ProgramType
+from nova.cell.simulation import SimulatedRobotCell, get_robot_controller
+from nova.program.runner import ProgramRun, ProgramRunState
 from wandelscript import ProgramRunner, run
 from wandelscript.exception import NameError_, ProgramSyntaxError
 from wandelscript.ffi import ForeignFunction
 from wandelscript.runtime import ExecutionContext
-from wandelscript.simulation import SimulatedRobotCell, get_robot_controller
 from wandelscript.utils.runtime import Tee
 
 robot_cell = RobotCell(controller=get_robot_controller())
@@ -80,14 +79,15 @@ move via line() to home :: (0, 100, 0, 0, 0, 0)
     }
 
     runner = run(
-        code,
+        program_id="test",
+        program=code,
         args={},
         robot_cell_override=SimulatedRobotCell(),
         default_robot="0@controller",
         default_tcp="Flange",
         foreign_functions=foreign_functions,
     )
-    store = runner.program_run.result
+    store = runner.program_run.output_data
     assert "home" in store
     assert store["a"] == 9
     assert runner.program_run.state is ProgramRunState.COMPLETED
@@ -114,7 +114,8 @@ print(a)
 """
 
     runner = run(
-        code,
+        program_id="test",
+        program=code,
         args={},
         robot_cell_override=SimulatedRobotCell(),
         default_robot="0@controller",
@@ -127,14 +128,11 @@ print(a)
 
 def test_program_runner():
     program_runner = ProgramRunner(
-        Program(
-            content="move via p2p() to [100, 0, 300, 0, pi, 0]",
-            program_type=ProgramType.WANDELSCRIPT,
-        ),
-        args={},
+        program_id="test", program="move via p2p() to [100, 0, 300, 0, pi, 0]", args={}
     )
-    assert uuid.UUID(str(program_runner.id)) is not None
-    assert program_runner.state is ProgramRunState.NOT_STARTED
+    assert program_runner.program_run.run is not None
+    assert program_runner.program_run.program is not None
+    assert program_runner.state is ProgramRunState.PREPARING
 
 
 # TODO andreasl 2024-08-20: flaky
@@ -158,7 +156,8 @@ print(read(controller[0], "pose"))
 move via line() to (0, 100, 300, 0, pi, 0)
 """
     program_runner = ProgramRunner(
-        Program(content=code, program_type=ProgramType.WANDELSCRIPT),
+        program_id="test",
+        program=code,
         args={},
         robot_cell_override=SimulatedRobotCell(),
         default_tcp="Flange",
@@ -181,12 +180,8 @@ move via line() to (0, 100, 300, 0, pi, 0)
     # It should not be possible to start the runner after the runner was completed
     with pytest.raises(RuntimeError):
         program_runner.start(sync=True)
-    # Check path
-    assert len(program_runner.program_run.execution_results) > 0
-    last_state = program_runner.program_run.execution_results[-1][-1]
-    assert np.allclose(last_state.state.pose.to_tuple(), (0, 100, 300, 0, np.pi, 0))
     # Check store
-    store = program_runner.program_run.result
+    store = program_runner.program_run.output_data
     assert np.allclose(
         tuple(store["home"]["position"]) + tuple(store["home"]["orientation"]),
         (0, 0, 400, 0, np.pi, 0),
@@ -216,7 +211,8 @@ move via p2p() to home
 )
 def test_program_runner_stop(code):
     program_runner = ProgramRunner(
-        Program(content=code, program_type=ProgramType.WANDELSCRIPT),
+        program_id="test",
+        program=code,
         args={},
         robot_cell_override=SimulatedRobotCell(),
         default_robot="0@controller",
@@ -253,7 +249,9 @@ move via p2p() to mispelled_var
 )
 def test_program_runner_failed(code, exception):
     with pytest.raises(exception):
-        runner = run(code, args={}, robot_cell_override=SimulatedRobotCell())
+        runner = run(
+            program_id="test", program=code, args={}, robot_cell_override=SimulatedRobotCell()
+        )
         assert runner.program_run.state is ProgramRunState.FAILED
         assert runner.program_run.error is not None
         assert runner.program_run.traceback is not None
@@ -269,5 +267,7 @@ wait 4000
 move via p2p() to home :: (0, 0, 100)
 """
     with pytest.raises(Exception):
-        runner = run(code, args={}, robot_cell_override=raising_robot_cell)
+        runner = run(
+            program_id="test", program=code, args={}, robot_cell_override=raising_robot_cell
+        )
         assert runner.program_run.state is ProgramRunState.FAILED
