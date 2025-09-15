@@ -13,7 +13,7 @@ from nova.nats import Message
 from nova.program.function import Program
 from nova.program.runner import ProgramRun
 from nova.program.store import Program as StoreProgram
-from nova.program.store import ProgramLinks, ProgramStore
+from nova.program.store import ProgramStore
 from novax.program_manager import ProgramDetails, ProgramManager
 
 # Read BASE_PATH environment variable and extract app name
@@ -31,7 +31,8 @@ class Novax:
         self._nova = Nova()
         self._cell = self._nova.cell(cell_id=_CELL_NAME)
         self._program_manager: ProgramManager = ProgramManager(
-            robot_cell_override=robot_cell_override, state_listener=self._state_listener
+            robot_cell_override=robot_cell_override, 
+            state_listener=self._state_listener
         )
         self._app: FastAPI | None = None
 
@@ -161,14 +162,6 @@ class Novax:
 
         except Exception as e:
             logger.error(f"Novax shutdown error: {e}")
-
-    def _create_program_links(self, program_id: str) -> ProgramLinks:
-        if _NOVAX_MOUNT_PATH:
-            base_url = f"{_BASE_PATH}/{_NOVAX_MOUNT_PATH}/programs/{program_id}"
-        else:
-            base_url = f"{_BASE_PATH}/programs/{program_id}"
-
-        return ProgramLinks(self=base_url, start=f"{base_url}/start", stop=f"{base_url}/stop")
 
     async def get_programs(self) -> dict[str, ProgramDetails]:
         """Get all registered programs"""

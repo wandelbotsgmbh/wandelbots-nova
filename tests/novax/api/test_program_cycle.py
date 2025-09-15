@@ -5,6 +5,7 @@ Simple test programs for integration testing.
 import asyncio
 
 import httpx
+from urllib.parse import urljoin
 import pytest
 
 import nova
@@ -37,9 +38,10 @@ async def test_novax_program_cycle_data(novax_server):
 
         await nova.nats.subscribe("nova.v2.cells.cell.cycle", on_message=cb)
 
-        start_program = httpx.post(
-            f"{novax_server}/programs/program_with_cycle_data/start", json={"arguments": {}}
-        )
+        prog_resp = httpx.get(f"{novax_server}/programs/program_with_cycle_data")
+        assert prog_resp.status_code == 200
+        start_url = urljoin(novax_server + "/", prog_resp.json()["links"]["start"]) 
+        start_program = httpx.post(start_url, json={"arguments": {}})
         assert start_program.status_code == 200, "Failed to start test program"
 
         await asyncio.sleep(5)
@@ -80,9 +82,10 @@ async def test_novax_program_cycle_failure(novax_server):
 
     await nova.nats.subscribe("nova.v2.cells.cell.cycle", on_message=cb)
 
-    start_program = httpx.post(
-        f"{novax_server}/programs/program_with_cycle_failure/start", json={"arguments": {}}
-    )
+    prog_resp = httpx.get(f"{novax_server}/programs/program_with_cycle_failure")
+    assert prog_resp.status_code == 200
+    start_url = urljoin(novax_server + "/", prog_resp.json()["links"]["start"]) 
+    start_program = httpx.post(start_url, json={"arguments": {}})
     assert start_program.status_code == 200, "Failed to start test program"
 
     await asyncio.sleep(5)
@@ -124,9 +127,10 @@ async def test_novax_program_cycle_with_extra(novax_server):
 
         await nova.nats.subscribe("nova.v2.cells.cell.cycle", on_message=cb)
 
-        start_program = httpx.post(
-            f"{novax_server}/programs/program_with_cycle_extra/start", json={"arguments": {}}
-        )
+        prog_resp = httpx.get(f"{novax_server}/programs/program_with_cycle_extra")
+        assert prog_resp.status_code == 200
+        start_url = urljoin(novax_server + "/", prog_resp.json()["links"]["start"]) 
+        start_program = httpx.post(start_url, json={"arguments": {}})
         assert start_program.status_code == 200, "Failed to start test program"
 
         await asyncio.sleep(5)

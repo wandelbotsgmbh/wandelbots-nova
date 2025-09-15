@@ -4,12 +4,19 @@ import inspect
 from concurrent.futures import Future
 from typing import Any, Awaitable, Callable, Coroutine, Optional
 
+from decouple import config
 from pydantic import BaseModel
 
 from nova.cell.robot_cell import RobotCell
 from nova.logging import logger
 from nova.program.function import Program, ProgramPreconditions
 from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner
+from nova.program.store import ProgramLinks
+
+
+# Configuration for creating program links
+_BASE_PATH = config("BASE_PATH", default="/default/novax")
+_NOVAX_MOUNT_PATH = config("NOVAX_MOUNT_PATH", default=None)
 
 
 def _log_future_result(future: Future):
@@ -85,6 +92,7 @@ class ProgramDetails(BaseModel):
     description: str | None
     created_at: dt.datetime
     preconditions: ProgramPreconditions | None = None
+    links: ProgramLinks | None = None
 
 
 class RunProgramRequest(BaseModel):
@@ -115,6 +123,15 @@ class ProgramManager:
     def has_program(self, program_id: str) -> bool:
         return program_id in self._programs
 
+    def _create_program_links(self, program_id: str) -> ProgramLinks:
+        """Create program links for a given program ID"""
+        if _NOVAX_MOUNT_PATH:
+            base_url = f"{_BASE_PATH}/{_NOVAX_MOUNT_PATH}/programs/{program_id}"
+        else:
+            base_url = f"{_BASE_PATH}/programs/{program_id}"
+
+        return ProgramLinks(self=base_url, start=f"{base_url}/start", stop=f"{base_url}/stop")
+
     @property
     def is_any_program_running(self) -> bool:
         return self._runner is not None and self._runner.is_running()
@@ -138,6 +155,9 @@ class ProgramManager:
         program_id = func.program_id
         now = dt.datetime.now(dt.timezone.utc)
 
+        # Create links for the program
+        links = self._create_program_links(program_id)
+
         # Create ProgramDetails instance
         program_details = ProgramDetails(
             program=program_id,
@@ -145,6 +165,7 @@ class ProgramManager:
             description=program.description,
             created_at=now,
             preconditions=program.preconditions,
+            links=links,
         )
 
         # Store program details and function separately

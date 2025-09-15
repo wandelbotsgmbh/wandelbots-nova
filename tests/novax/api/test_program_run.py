@@ -1,6 +1,7 @@
 import asyncio
 
 import httpx
+from urllib.parse import urljoin
 import pytest
 
 import nova
@@ -32,9 +33,11 @@ async def test_novax_program_successful_run(novax_server):
 
     await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
 
-    start_program = httpx.post(
-        f"{novax_server}/programs/sucessful_program/start", json={"arguments": {}}
-    )
+    # Use program links from API
+    prog_resp = httpx.get(f"{novax_server}/programs/sucessful_program")
+    assert prog_resp.status_code == 200
+    start_url = urljoin(novax_server + "/", prog_resp.json()["links"]["start"])
+    start_program = httpx.post(start_url, json={"arguments": {}})
     assert start_program.status_code == 200, "Failed to start test program"
 
     await asyncio.sleep(10)
@@ -73,9 +76,10 @@ async def test_novax_program_failed_run(novax_server):
 
     await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
 
-    start_program = httpx.post(
-        f"{novax_server}/programs/failing_program/start", json={"arguments": {}}
-    )
+    prog_resp = httpx.get(f"{novax_server}/programs/failing_program")
+    assert prog_resp.status_code == 200
+    start_url = urljoin(novax_server + "/", prog_resp.json()["links"]["start"]) 
+    start_program = httpx.post(start_url, json={"arguments": {}})
     assert start_program.status_code == 200, "Failed to start test program"
 
     await asyncio.sleep(2)
@@ -116,9 +120,11 @@ async def test_novax_program_stopped_run(novax_server):
     await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
 
     # Start the long-running program
-    start_program = httpx.post(
-        f"{novax_server}/programs/long_running_program/start", json={"arguments": {}}
-    )
+    prog_resp = httpx.get(f"{novax_server}/programs/long_running_program")
+    assert prog_resp.status_code == 200
+    links = prog_resp.json()["links"]
+    start_url = urljoin(novax_server + "/", links["start"]) 
+    start_program = httpx.post(start_url, json={"arguments": {}})
     assert start_program.status_code == 200, "Failed to start test program"
 
     # Wait for the program to start running
@@ -133,7 +139,8 @@ async def test_novax_program_stopped_run(novax_server):
     assert models[1].state == ProgramRunState.RUNNING
 
     # Stop the program
-    stop_program = httpx.post(f"{novax_server}/programs/long_running_program/stop")
+    stop_url = urljoin(novax_server + "/", links["stop"]) 
+    stop_program = httpx.post(stop_url)
     assert stop_program.status_code == 200, "Failed to stop test program"
 
     # Wait for the stop event to be processed
