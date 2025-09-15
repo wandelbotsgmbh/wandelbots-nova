@@ -1,7 +1,7 @@
 import asyncio
 from enum import StrEnum, auto
 from functools import singledispatch
-from math import ceil
+from math import ceil, floor
 from typing import Any, AsyncIterator, Optional
 
 import pydantic
@@ -155,6 +155,7 @@ class MotionEventType(StrEnum):
 class MotionEvent(pydantic.BaseModel):
     type: MotionEventType
     current_location: float
+    current_action: Action
     target_location: float
     target_action: Action
 
@@ -187,21 +188,19 @@ class TrajectoryCursor:
         self._initialize_task = asyncio.create_task(self.ainitialize())
 
     async def ainitialize(self):
-        await motion_started.send_async(
-            self,
-            event=MotionEvent(
-                type=MotionEventType.STARTED,
-                current_location=self._current_location,
-                target_location=self._target_location,
-                target_action=self.actions[self.next_action_index or 0],
-            ),
-        )
+        target_action = self.actions[self.next_action_index or 0]
+        await motion_started.send_async(self, event=self._get_motion_event(target_action))
 
     @property
     def end_location(self) -> float:
         # The assert ensures that we not accidentally use it in __init__ before it is set.
         assert getattr(self, "joint_trajectory", None) is not None
         return self.joint_trajectory.locations[-1]
+
+    @property
+    def current_action(self) -> Action:
+        current_action_index = floor(self._current_location)
+        return self.actions[current_action_index]
 
     @property
     def next_action_index(self) -> int:
@@ -442,24 +441,12 @@ class TrajectoryCursor:
                     case wb.models.Direction.DIRECTION_FORWARD:
                         target_action = self.actions[self.next_action_index]
                         await motion_started.send_async(
-                            self,
-                            event=MotionEvent(
-                                type=MotionEventType.STARTED,
-                                current_location=self._current_location,
-                                target_location=self._target_location,
-                                target_action=target_action,
-                            ),
+                            self, event=self._get_motion_event(target_action)
                         )
                     case wb.models.Direction.DIRECTION_BACKWARD:
                         target_action = self.actions[self.previous_action_index]
                         await motion_started.send_async(
-                            self,
-                            event=MotionEvent(
-                                type=MotionEventType.STARTED,
-                                current_location=self._current_location,
-                                target_location=self._target_location,
-                                target_action=target_action,
-                            ),
+                            self, event=self._get_motion_event(target_action)
                         )
 
             # yield await self._command_queue.get()
@@ -546,28 +533,25 @@ class TrajectoryCursor:
                 case OperationType.FORWARD | OperationType.FORWARD_TO:
                     target_action = self.actions[self.next_action_index]
                     await motion_started.send_async(
-                        self,
-                        event=MotionEvent(
-                            type=MotionEventType.STARTED,
-                            current_location=self._current_location,
-                            target_location=self._target_location,
-                            target_action=target_action,
-                        ),
+                        self, event=self._get_motion_event(target_action)
                     )
                 case OperationType.BACKWARD | OperationType.BACKWARD_TO:
                     target_action = self.actions[self.previous_action_index]
                     await motion_started.send_async(
-                        self,
-                        event=MotionEvent(
-                            type=MotionEventType.STARTED,
-                            current_location=self._current_location,
-                            target_location=self._target_location,
-                            target_action=target_action,
-                        ),
+                        self, event=self._get_motion_event(target_action)
                     )
                 case _:
                     pass
             await asyncio.sleep(interval)
+
+    def _get_motion_event(self, target_action: Action) -> MotionEvent:
+        return MotionEvent(
+            type=MotionEventType.STARTED,
+            current_location=self._current_location,
+            current_action=self.current_action,
+            target_location=self._target_location,
+            target_action=target_action,
+        )
 
     def __aiter__(self) -> AsyncIterator[wb.models.ExecuteTrajectoryResponse]:
         return self
