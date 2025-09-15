@@ -81,7 +81,9 @@ class TrajectoryTuner:
         async def on_motion_started(sender, event: MotionEvent):
             ic(event)
             await broker.publish(
-                {"line": event.target_action.metas["line_number"]}, "editor.line.select"
+                # {"line": event.target_action.metas["line_number"]}, "editor.line.select"
+                event,
+                "editor.motion-event",
             )
 
         @broker.subscriber("editor.movement.options")
