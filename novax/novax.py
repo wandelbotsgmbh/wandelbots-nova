@@ -13,11 +13,12 @@ from nova.nats import Message
 from nova.program.function import Program
 from nova.program.runner import ProgramRun
 from nova.program.store import Program as StoreProgram
-from nova.program.store import ProgramStore
+from nova.program.store import ProgramLinks, ProgramStore
 from novax.program_manager import ProgramDetails, ProgramManager
 
 # Read BASE_PATH environment variable and extract app name
 _BASE_PATH = config("BASE_PATH", default="/default/novax")
+_NOVAX_MOUNT_PATH = config("NOVAX_MOUNT_PATH", default=None)
 _APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else "novax"
 logger.info(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
 
@@ -109,13 +110,14 @@ class Novax:
                     if program_details.preconditions:
                         preconditions_dict = program_details.preconditions.model_dump()
 
-                    # TODO: schema is not present in ProgramDetails
+                    # TODO: input_schema is not present in ProgramDetails
                     store_program = StoreProgram(
                         program=program_details.program,
                         name=program_details.name,
                         description=program_details.description,
                         app=_APP_NAME,
                         preconditions=preconditions_dict,
+                        links=self._create_program_links(program_id),
                         # TODO: once the types are streamlined, should be easy to fix, just map the data
                         input_schema={},
                     )
@@ -159,6 +161,14 @@ class Novax:
 
         except Exception as e:
             logger.error(f"Novax shutdown error: {e}")
+
+    def _create_program_links(self, program_id: str) -> ProgramLinks:
+        if _NOVAX_MOUNT_PATH:
+            base_url = f"{_BASE_PATH}/{_NOVAX_MOUNT_PATH}/programs/{program_id}"
+        else:
+            base_url = f"{_BASE_PATH}/programs/{program_id}"
+
+        return ProgramLinks(self=base_url, start=f"{base_url}/start", stop=f"{base_url}/stop")
 
     async def get_programs(self) -> dict[str, ProgramDetails]:
         """Get all registered programs"""

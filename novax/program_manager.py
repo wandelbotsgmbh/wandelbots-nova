@@ -79,7 +79,6 @@ class NovaxProgramRunner(ProgramRunner):
         return result
 
 
-# can we remove this and use program model from wandelbots_api_client?
 class ProgramDetails(BaseModel):
     program: str
     name: str | None

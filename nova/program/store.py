@@ -185,6 +185,12 @@ class _KeyValueStore(Generic[_T]):
         return models
 
 
+class ProgramLinks(BaseModel):
+    self: str = Field(..., title="Link to the program details")
+    start: str = Field(..., title="Link to start the program")
+    stop: str = Field(..., title="Link to stop the program")
+
+
 # this is data model that we should take from service manager api client
 # for now we are duplicating the model here, will be removed once the other side is ready
 class Program(BaseModel):
@@ -198,6 +204,7 @@ class Program(BaseModel):
     preconditions: dict[str, Any] | None = Field(
         None, title="Preconditions before the program can be started"
     )
+    links: ProgramLinks = Field(..., title="Links to interact with the program")
 
 
 class ProgramStore(_KeyValueStore[Program]):
