@@ -6,7 +6,6 @@ import {
   SelectChangeEvent,
   Typography,
 } from '@mui/material'
-import { NovaClient } from '@wandelbots/nova-js/v1'
 import React, { useEffect, useState } from 'react'
 
 import { accessToken, cellId, novaApi } from '../config'
@@ -41,6 +40,7 @@ export default function MotionGroupSelection(props: MotionGroupSelectionProps) {
   }
 
   async function fetchMotionGroups() {
+    console.log('fetchMotionGroups', novaApi, accessToken, cellId)
     const nova = new NovaApi()
     await nova.connect({
       apiUrl: novaApi,

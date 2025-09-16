@@ -4,6 +4,7 @@ import * as path from 'path'
 import * as vscode from 'vscode'
 
 import { getNovaApiAddress } from './urlResolver'
+import { COMMAND_SELECT_VIEWER_TAB } from './consts'
 
 interface PythonExecutionDetails {
   execCommand?: string[]
@@ -167,6 +168,15 @@ if inspect.iscoroutine(result):
         console.log(`Could not clean up temp file: ${error.message}`)
       }
     }, 30_000) // Clean up after 30 seconds
+
+    // If fine-tune requested, pre-select the Fine-Tuning tab (index 1 due to hidden tab2)
+    if (fineTune) {
+      try {
+        await vscode.commands.executeCommand(COMMAND_SELECT_VIEWER_TAB, 1)
+      } catch (e) {
+        console.log('Could not select Fine-Tuning tab:', e)
+      }
+    }
 
     // Send the command to terminal (nova.rrd file watcher will handle completion)
     console.log(`🚀 Sending command to terminal "${terminalName}": ${command}`)

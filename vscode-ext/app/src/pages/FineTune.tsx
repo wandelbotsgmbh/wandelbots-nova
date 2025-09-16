@@ -6,19 +6,10 @@ import Modal from '@mui/material/Modal'
 import Snackbar from '@mui/material/Snackbar'
 import Switch from '@mui/material/Switch'
 import { VelocitySlider } from '@wandelbots/wandelbots-js-react-components'
-import {
-  ChevronFirst,
-  ChevronLast,
-  ChevronLeft,
-  ChevronRight,
-  GitBranch,
-  Play,
-  Route,
-  SplinePointer,
-  X,
-} from 'lucide-react'
+import { Route, SplinePointer, X } from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
 
+import { TrajectoryTunerControls } from '../components'
 import MotionGroupSelection from '../components/MotionGroupSelection'
 import { accessToken, cellId, natsBroker, novaApi } from '../config'
 import {
@@ -28,7 +19,7 @@ import {
   subscribeToNatsMessage,
 } from '../utils/nats'
 import { NovaApi } from '../utils/novaAPI'
-import JoggingPanel from './JoggingPanel'
+import JoggingPanel from '../components/JoggingPanel'
 
 const Range = ({ value, onChange, min = 0, max = 100, step = 1 }) => (
   <VelocitySlider
@@ -40,132 +31,12 @@ const Range = ({ value, onChange, min = 0, max = 100, step = 1 }) => (
   />
 )
 
-const MoveControls = ({
-  onStart,
-  onStop,
-  moving,
-  snap,
-  speed,
-  canMoveBackward = true,
-  canMoveForward = true,
-}) => {
-  const handleButtonClick = async (event: any, direction: string) => {
-    // Prevent default behavior and stop propagation
-    event?.preventDefault?.()
-    event?.stopPropagation?.()
-
-    console.log('Button clicked:', direction, 'Event type:', event?.type)
-
-    try {
-      const command = snap
-        ? direction === 'forward'
-          ? 'step-forward'
-          : 'step-backward'
-        : direction
-
-      console.log(
-        'Sending NATS message with movement command and speed',
-        command,
-        speed,
-      )
-
-      // Send NATS message with movement command and speed
-      await sendNatsMessage('trajectory-cursor', {
-        command,
-        speed,
-      })
-
-      // Call the original onStart handler
-      onStart(direction)
-    } catch (error) {
-      console.error('Failed to send NATS message:', error)
-      // Still call onStart even if NATS fails
-      onStart(direction)
-    }
-  }
-
-  const handleButtonRelease = async () => {
-    try {
-      console.log('Sending NATS message to pause movement')
-
-      // Send NATS message to pause movement
-      await sendNatsMessage('trajectory-cursor', {
-        command: 'pause',
-      })
-
-      // Call the original onStop handler
-      onStop()
-    } catch (error) {
-      console.error('Failed to send NATS message:', error)
-      // Still call onStop even if NATS fails
-      onStop()
-    }
-  }
-
-  return (
-    <div className="flex flex-col items-center gap-4">
-      <p className="text-sm text-slate-400">Press and Hold to move</p>
-      <div className="space-y-3 flex flex-col items-center justify-center">
-        <div className="flex gap-4">
-          <Button
-            onMouseDown={(e) => handleButtonClick(e, 'backward')}
-            onMouseUp={handleButtonRelease}
-            variant="contained"
-            color="secondary"
-            disabled={!canMoveBackward}
-            sx={{
-              opacity: canMoveBackward ? 1 : 0.5,
-              cursor: canMoveBackward ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {snap ? (
-              <ChevronFirst className="size-8 mx-9 my-3" />
-            ) : (
-              <ChevronLeft className="size-8 mx-9 my-3" />
-            )}
-          </Button>
-          <Button
-            onMouseDown={(e) => handleButtonClick(e, 'forward')}
-            onMouseUp={handleButtonRelease}
-            variant="contained"
-            color="secondary"
-            disabled={!canMoveForward}
-            sx={{
-              opacity: canMoveForward ? 1 : 0.5,
-              cursor: canMoveForward ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {snap ? (
-              <ChevronLast className="size-8 mx-9 my-3" />
-            ) : (
-              <ChevronRight className="size-8 mx-9 my-3" />
-            )}
-          </Button>
-        </div>
-        <div className="grid grid-cols-2 gap-9 text-slate-400">
-          <span className="text-sm font-medium">backward</span>
-          <span className="text-sm font-medium">forward</span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 /****************************
  * Main Panel – Motion Group
  ****************************/
 const MotionGroupPanel = () => {
   const [speed, setSpeed] = useState(40)
   const [snap, setSnap] = useState(true)
-  const [moving, setMoving] = useState<'backward' | 'forward' | null>(null)
-  const [pose, setPose] = useState({
-    x: 120.2,
-    y: 34.1,
-    z: 512.7,
-    rX: -1.57,
-    rY: 0,
-    rZ: 3.14,
-  })
   const [selectedMotionGroupId, setSelectedMotionGroupId] = useState<
     string | null
   >(null)
@@ -221,29 +92,8 @@ const MotionGroupPanel = () => {
     setSnap(event.target.checked)
   }
 
-  // Simulate movement & pose drift while holding a button
-  const moveInterval = useRef<number | null>(null)
-  useEffect(() => {
-    if (moving) {
-      moveInterval.current = setInterval(() => {
-        setPose((p) => ({
-          ...p,
-          z: Number(
-            (p.z + (moving === 'forward' ? 1 : -1) * speed * 0.1).toFixed(2),
-          ),
-        }))
-      }, 120)
-    }
-    return () => clearInterval(moveInterval.current ?? 0)
-  }, [moving, speed])
-
-  const handleStart = (dir: 'backward' | 'forward') => setMoving(dir)
-  const handleStop = () => setMoving(null)
-
-  const runTest = () => {
-    const ok = Math.random() > 0.12
-    console.log('Test result:', ok)
-  }
+  const handleStart = (dir: 'backward' | 'forward') => {}
+  const handleStop = () => {}
 
   async function getCurrentPose() {
     if (!selectedMotionGroupId) return
@@ -345,10 +195,9 @@ const MotionGroupPanel = () => {
 
       {/* Move Controls */}
       <div className="mt-8">
-        <MoveControls
+        <TrajectoryTunerControls
           onStart={handleStart}
           onStop={handleStop}
-          moving={moving}
           snap={snap}
           speed={speed}
           canMoveBackward={canMoveBackward}
@@ -378,15 +227,6 @@ const MotionGroupPanel = () => {
           >
             <Route className="h-4 w-4" />
             <span className="ml-2">Move robot</span>
-          </Button>
-          <Button
-            color="secondary"
-            variant="contained"
-            className="w-full"
-            onClick={finishTrajectoryTuning}
-          >
-            <GitBranch className="h-4 w-4" />
-            <span className="ml-2">Finish Trajectory</span>
           </Button>
         </div>
 

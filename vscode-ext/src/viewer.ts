@@ -13,10 +13,12 @@ import {
 let isInitialActivation = true
 
 function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) text += possible.charAt(Math.floor(Math.random()*possible.length));
-  return text;
+  let text = ''
+  const possible =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  for (let i = 0; i < 32; i++)
+    text += possible.charAt(Math.floor(Math.random() * possible.length))
+  return text
 }
 
 export class WandelbotsNovaViewerProvider
@@ -26,6 +28,7 @@ export class WandelbotsNovaViewerProvider
   private _url: string = 'https://wandelbots.com' // Default URL, will be updated
   // Track running Python processes (kept from original; attach usage if needed)
   private _runningPythonProcesses: Set<number> = new Set()
+  private _pendingInitialTab: number | undefined
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -63,6 +66,21 @@ export class WandelbotsNovaViewerProvider
         )
         // Fallback: Update URL and reload
         await this.hardRefresh()
+      }
+    }
+  }
+
+  /**
+   * Select a tab in the embedded React app. If the webview is not ready yet,
+   * store it and inject as initialTab once created.
+   */
+  selectTab(tabIndex: number): void {
+    this._pendingInitialTab = tabIndex
+    if (this._view) {
+      try {
+        this._view.webview.postMessage({ command: 'selectTab', index: tabIndex })
+      } catch (err) {
+        console.error('Failed to send selectTab message to webview:', err)
       }
     }
   }
@@ -243,31 +261,39 @@ export class WandelbotsNovaViewerProvider
    * Returns the HTML content for the React app
    */
   private _getReactAppHtml(webview: vscode.Webview): string {
-    const fs = require('fs');
-    const indexPath = vscode.Uri.joinPath(this._extensionUri, 'app', 'dist', 'index.html');
-    let html = fs.readFileSync(indexPath.fsPath, 'utf8');
+    const fs = require('fs')
+    const indexPath = vscode.Uri.joinPath(
+      this._extensionUri,
+      'app',
+      'dist',
+      'index.html',
+    )
+    let html = fs.readFileSync(indexPath.fsPath, 'utf8')
 
-    const distRoot = vscode.Uri.joinPath(this._extensionUri, 'app', 'dist');
-    const distWebviewRoot = webview.asWebviewUri(distRoot);
+    const distRoot = vscode.Uri.joinPath(this._extensionUri, 'app', 'dist')
+    const distWebviewRoot = webview.asWebviewUri(distRoot)
 
     // Security: nonce + CSP
-    const nonce = getNonce();
+    const nonce = getNonce()
     const csp = `
       default-src 'none';
       img-src ${webview.cspSource} blob: data:;
       style-src ${webview.cspSource} 'unsafe-inline';
       font-src ${webview.cspSource};
       script-src 'nonce-${nonce}';
-      connect-src https: http: ${webview.cspSource};
-    `.replace(/\n/g, ' ');
+      connect-src ${webview.cspSource} https: http: ws: wss:;
+    `.replace(/\n/g, ' ')
 
     // Inject <base>, CSP, and your config
-    const configScript = `<script nonce="${nonce}">window.__NOVA_CONFIG__=${JSON.stringify({
-      novaApi: getNovaApiAddress(),
-      accessToken: getAccessToken(),
-      cellId: getCellId(),
-      natsBroker: getNatsBroker(),
-    })};</script>`;
+    const configScript = `<script nonce="${nonce}">window.__NOVA_CONFIG__=${JSON.stringify(
+      {
+        novaApi: getNovaApiAddress(),
+        accessToken: getAccessToken(),
+        cellId: getCellId(),
+        natsBroker: getNatsBroker(),
+        initialTab: this._pendingInitialTab,
+      },
+    )};</script>`
 
     html = html
       // 1) Add <base> so all relative asset URLs resolve correctly
@@ -276,14 +302,14 @@ export class WandelbotsNovaViewerProvider
         `<head>
            <base href="${distWebviewRoot.toString()}/">
            <meta http-equiv="Content-Security-Policy" content="${csp}">
-         `
+         `,
       )
       // 2) Add nonce to every <script> tag Vite emitted
       .replace(/<script /g, `<script nonce="${nonce} "`)
       // 3) Inject your config just before </head>
-      .replace(/<\/head>/i, `${configScript}</head>`);
+      .replace(/<\/head>/i, `${configScript}</head>`)
 
-    return html;
+    return html
   }
 
   /**

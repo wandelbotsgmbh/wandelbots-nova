@@ -14,10 +14,18 @@ let sub: Subscription | undefined
 let pendingLine: number | null = null
 
 /** One decoration type we reuse so only one line is highlighted at any time. */
-const lineHighlightDecoration = vscode.window.createTextEditorDecorationType({
+const currentLineHighlightDecoration = vscode.window.createTextEditorDecorationType({
   isWholeLine: true,
   // Use theme selection colors so it always looks consistent.
   backgroundColor: new vscode.ThemeColor('editor.selectionBackground'),
+  border: '1px solid',
+  borderColor: new vscode.ThemeColor('editor.selectionHighlightBorder'),
+})
+
+const targetLineHighlightDecoration = vscode.window.createTextEditorDecorationType({
+  isWholeLine: true,
+  // Use theme selection colors so it always looks consistent.
+  backgroundColor: undefined,
   border: '1px solid',
   borderColor: new vscode.ThemeColor('editor.selectionHighlightBorder'),
 })
@@ -91,7 +99,7 @@ function selectLineInActiveEditor(zeroBasedLine: number) {
   )
 
   // Apply highlight with our single reusable decoration type — this replaces the old range.
-  editor.setDecorations(lineHighlightDecoration, [lineRange])
+  editor.setDecorations(targetLineHighlightDecoration, [lineRange])
 }
 
 /** Apply a pending line when/if an editor becomes available. */

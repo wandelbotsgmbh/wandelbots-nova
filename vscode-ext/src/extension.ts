@@ -11,6 +11,7 @@ import {
   COMMAND_READ_ROBOT_POSE,
   COMMAND_REFRESH_CODE_LENS,
   COMMAND_REFRESH_NOVA_VIEWER,
+  COMMAND_SELECT_VIEWER_TAB,
   COMMAND_RUN_NOVA_PROGRAM,
   COMMAND_SHOW_APP,
   VIEWER_ID,
@@ -50,8 +51,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Register command to open the webview
   context.subscriptions.push(
-    vscode.commands.registerCommand(COMMAND_OPEN_NOVA_VIEWER, () => {
-      provider.forceReveal()
+    vscode.commands.registerCommand(COMMAND_OPEN_NOVA_VIEWER, async () => {
+      await provider.forceReveal()
+      provider.selectTab(1)
     }),
   )
 
@@ -62,6 +64,18 @@ export async function activate(context: vscode.ExtensionContext) {
       await provider.hardRefresh()
       vscode.window.showInformationMessage('Wandelbots NOVA Viewer refreshed')
     }),
+  )
+
+  // Register command to select a specific tab in the viewer
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      COMMAND_SELECT_VIEWER_TAB,
+      async (tabIndex: number) => {
+        // Reveal the viewer first
+        await provider.forceReveal()
+        provider.selectTab(typeof tabIndex === 'number' ? tabIndex : 0)
+      },
+    ),
   )
 
   // Listen for configuration changes

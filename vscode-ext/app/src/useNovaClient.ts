@@ -1,4 +1,4 @@
-import { type MotionStreamConnection, NovaClient } from '@wandelbots/nova-js/v1'
+import { type ConnectedMotionGroup, NovaClient } from '@wandelbots/nova-js/v1'
 
 import { accessToken, cellId, novaApi } from './config'
 
@@ -15,9 +15,9 @@ export function useNovaClient(): NovaClient {
   }
 }
 
-export async function useConnectMotionStream(
+export async function useConnectMotionGroup(
   motionGroupId: string,
-): Promise<MotionStreamConnection> {
+): Promise<ConnectedMotionGroup> {
   const novaClient = useNovaClient()
-  return await novaClient.connectMotionStream(motionGroupId)
+  return await novaClient.connectMotionGroup(motionGroupId)
 }

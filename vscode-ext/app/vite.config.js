@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [react(), tailwind()],
   build: {
     outDir: 'dist',
-    assetsDir: 'src/assets',    // default; fine either way
+    assetsDir: 'src/assets', // default; fine either way
     sourcemap: false,
   },
 })

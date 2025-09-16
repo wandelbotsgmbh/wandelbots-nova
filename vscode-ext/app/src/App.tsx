@@ -1,7 +1,7 @@
 import { ThemeProvider } from '@mui/material'
 import { TabBar } from '@wandelbots/wandelbots-js-react-components'
 import { createNovaMuiTheme } from '@wandelbots/wandelbots-js-react-components'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 import './App.css'
 import FineTuning from './pages/FineTune'
@@ -18,7 +18,53 @@ function Page({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState(0)
+  const [activeTab, setActiveTab] = useState<number | undefined>(() => {
+    const injected: any =
+      typeof window !== 'undefined' ? (window as any).__NOVA_CONFIG__ : undefined
+    const initial = injected?.initialTab
+    return typeof initial === 'number' ? initial : 0
+  })
+
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      const msg = event.data as { command?: string; index?: number }
+      if (msg?.command === 'selectTab' && typeof msg.index === 'number') {
+        setActiveTab(msg.index)
+      }
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [])
+
+  const items = [
+    {
+      content: (
+        <Page>
+          <NovaHome onOpenFineTuning={() => setActiveTab(2)} />
+        </Page>
+      ),
+      id: 'tab1',
+      label: 'WB Nova Home',
+    },
+    /*{
+      content: (
+        <Page>
+          <div>Content for second tab</div>
+        </Page>
+      ),
+      id: 'tab2',
+      label: '3D Viz: rerun',
+    },*/
+    {
+      content: (
+        <Page>
+          <FineTuning />
+        </Page>
+      ),
+      id: 'tab3',
+      label: 'Fine-Tuning',
+    },
+  ]
 
   return (
     <ThemeProvider theme={theme}>
@@ -26,40 +72,10 @@ function App() {
         <TabBar
           defaultActiveTab={0}
           activeTab={activeTab}
-          items={[
-            {
-              content: (
-                <Page>
-                  <NovaHome onOpenFineTuning={() => setActiveTab(2)} />
-                </Page>
-              ),
-              id: 'tab1',
-              label: 'WB Nova Home',
-            },
-            {
-              content: (
-                <Page>
-                  <div>Content for second tab</div>
-                </Page>
-              ),
-              id: 'tab2',
-              label: '3D Viz: rerun',
-            },
-            {
-              content: (
-                <Page>
-                  <FineTuning />
-                </Page>
-              ),
-              id: 'tab3',
-              label: 'Fine-Tuning',
-            },
-          ]}
+          items={items}
           onTabChange={setActiveTab}
+          sx={{ padding: 2 }}
         />
-        <div className="flex-1 overflow-auto">
-          {/* Tab content will be rendered here by TabBar component */}
-        </div>
       </div>
     </ThemeProvider>
   )
