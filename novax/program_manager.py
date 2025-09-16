@@ -4,7 +4,6 @@ import inspect
 from concurrent.futures import Future
 from typing import Any, Awaitable, Callable, Coroutine, Optional
 
-from decouple import config
 from pydantic import BaseModel
 
 from nova.cell.robot_cell import RobotCell
@@ -13,10 +12,9 @@ from nova.program.function import Program, ProgramPreconditions
 from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner
 from nova.program.store import ProgramLinks
 
+from .config import BASE_PATH, NOVAX_MOUNT_PATH
 
-# Configuration for creating program links
-_BASE_PATH = config("BASE_PATH", default="/default/novax")
-_NOVAX_MOUNT_PATH = config("NOVAX_MOUNT_PATH", default=None)
+# Configuration for creating program links (centralized in novax.config)
 
 
 def _log_future_result(future: Future):
@@ -125,10 +123,10 @@ class ProgramManager:
 
     def _create_program_links(self, program_id: str) -> ProgramLinks:
         """Create program links for a given program ID"""
-        if _NOVAX_MOUNT_PATH:
-            base_url = f"{_BASE_PATH}/{_NOVAX_MOUNT_PATH}/programs/{program_id}"
+        if NOVAX_MOUNT_PATH:
+            base_url = f"{BASE_PATH}/{NOVAX_MOUNT_PATH}/programs/{program_id}"
         else:
-            base_url = f"{_BASE_PATH}/programs/{program_id}"
+            base_url = f"{BASE_PATH}/programs/{program_id}"
 
         return ProgramLinks(self=base_url, start=f"{base_url}/start", stop=f"{base_url}/stop")
 

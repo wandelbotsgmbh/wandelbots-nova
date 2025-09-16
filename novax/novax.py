@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import AsyncIterator, Optional
 
-from decouple import config
 from fastapi import APIRouter, FastAPI
 
 from nova.cell.robot_cell import RobotCell
@@ -13,26 +12,21 @@ from nova.nats import Message
 from nova.program.function import Program
 from nova.program.runner import ProgramRun
 from nova.program.store import Program as StoreProgram
-from nova.program.store import ProgramStore
+from nova.program.store import ProgramLinks, ProgramStore
 from novax.program_manager import ProgramDetails, ProgramManager
 
-# Read BASE_PATH environment variable and extract app name
-_BASE_PATH = config("BASE_PATH", default="/default/novax")
-_NOVAX_MOUNT_PATH = config("NOVAX_MOUNT_PATH", default=None)
-_APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else "novax"
-logger.info(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
+from .config import APP_NAME, BASE_PATH, CELL_NAME, NOVAX_MOUNT_PATH
 
-# Create nats programs bucket name
-_CELL_NAME = config("CELL_NAME", default="")
+# Log derived app name to aid debugging of environment-based configuration
+logger.info(f"Extracted app name '{APP_NAME}' from BASE_PATH '{BASE_PATH}'")
 
 
 class Novax:
     def __init__(self, robot_cell_override: RobotCell | None = None):
         self._nova = Nova()
-        self._cell = self._nova.cell(cell_id=_CELL_NAME)
+        self._cell = self._nova.cell(cell_id=CELL_NAME)
         self._program_manager: ProgramManager = ProgramManager(
-            robot_cell_override=robot_cell_override, 
-            state_listener=self._state_listener
+            robot_cell_override=robot_cell_override, state_listener=self._state_listener
         )
         self._app: FastAPI | None = None
 
@@ -44,10 +38,10 @@ class Novax:
         data["timestamp"] = datetime.now().isoformat()
         data["start_time"] = program_run.start_time.isoformat() if program_run.start_time else None
         data["end_time"] = program_run.end_time.isoformat() if program_run.end_time else None
-        data["app"] = _APP_NAME
+        data["app"] = APP_NAME
 
         message = Message(
-            subject=f"nova.v2.cells.{_CELL_NAME}.programs", data=json.dumps(data).encode("utf-8")
+            subject=f"nova.v2.cells.{CELL_NAME}.programs", data=json.dumps(data).encode("utf-8")
         )
         logger.info(
             f"publishing program run message for program: {program_run.program} run: {program_run.run}"
@@ -116,7 +110,7 @@ class Novax:
                         program=program_details.program,
                         name=program_details.name,
                         description=program_details.description,
-                        app=_APP_NAME,
+                        app=APP_NAME,
                         preconditions=preconditions_dict,
                         links=self._create_program_links(program_id),
                         # TODO: once the types are streamlined, should be easy to fix, just map the data
@@ -129,7 +123,7 @@ class Novax:
 
             for program_id, store_program in store_programs.items():
                 try:
-                    await program_store.put(f"{_APP_NAME}.{program_id}", store_program)
+                    await program_store.put(f"{APP_NAME}.{program_id}", store_program)
                     logger.debug(f"Program {program_id} synced to store")
                 except Exception as e:
                     logger.error(f"Failed to sync program {program_id} to store: {e}")
@@ -153,7 +147,7 @@ class Novax:
 
             for program_id in program_ids:
                 try:
-                    await program_store.delete(f"{_APP_NAME}.{program_id}")
+                    await program_store.delete(f"{APP_NAME}.{program_id}")
                     logger.debug(f"Program {program_id} removed from store")
                 except Exception as e:
                     logger.error(f"Failed to remove program {program_id} from store: {e}")
@@ -214,7 +208,7 @@ class Novax:
         # Replace the dependency function on the FastAPI app
         app.dependency_overrides[get_program_manager] = get_program_manager_override
 
-        if not _CELL_NAME:
+        if not CELL_NAME:
             logger.error(
                 "Novax: CELL_NAME environment variable is not set, your programs will not be registered"
             )
@@ -225,3 +219,16 @@ class Novax:
         app.include_router(programs_router)
 
         return app
+
+    def _create_program_links(self, program_id: str) -> ProgramLinks:
+        """Create program links for a given program ID.
+
+        Mirrors link construction used by ProgramManager but is used here when
+        serializing programs into the store representation.
+        """
+        if NOVAX_MOUNT_PATH:
+            base_url = f"{BASE_PATH}/{NOVAX_MOUNT_PATH}/programs/{program_id}"
+        else:
+            base_url = f"{BASE_PATH}/programs/{program_id}"
+
+        return ProgramLinks(self=base_url, start=f"{base_url}/start", stop=f"{base_url}/stop")
