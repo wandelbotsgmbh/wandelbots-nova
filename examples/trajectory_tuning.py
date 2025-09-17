@@ -72,7 +72,7 @@ async def main():
                 # lin(home_pose @ Pose((0, 0, 0, 0, 0, 0))),
                 lin(home_pose @ Pose((0, dist, 0, 0, 0, 0))),
                 lin(home_pose @ Pose((0, dist, dist, 0, 0, 0))),
-                lin(home_pose @ Pose((0, 0, dist, 0, 0, 0))),
+                lin(Pose((915.8, 710.2, 996.9, -0.0000, -3.1416, 0.0000))),
                 lin(home_pose @ Pose((0, 0, 0, 0, 0, 0))),
                 # jnt(home_joints),
             ]

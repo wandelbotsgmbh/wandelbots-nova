@@ -78,7 +78,10 @@ export class WandelbotsNovaViewerProvider
     this._pendingInitialTab = tabIndex
     if (this._view) {
       try {
-        this._view.webview.postMessage({ command: 'selectTab', index: tabIndex })
+        this._view.webview.postMessage({
+          command: 'selectTab',
+          index: tabIndex,
+        })
       } catch (err) {
         console.error('Failed to send selectTab message to webview:', err)
       }

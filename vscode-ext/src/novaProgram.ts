@@ -3,8 +3,8 @@ import * as os from 'os'
 import * as path from 'path'
 import * as vscode from 'vscode'
 
-import { getNovaApiAddress } from './urlResolver'
 import { COMMAND_SELECT_VIEWER_TAB } from './consts'
+import { getNovaApiAddress } from './urlResolver'
 
 interface PythonExecutionDetails {
   execCommand?: string[]

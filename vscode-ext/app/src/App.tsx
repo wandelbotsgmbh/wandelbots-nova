@@ -20,7 +20,9 @@ function Page({ children }: { children: React.ReactNode }) {
 function App() {
   const [activeTab, setActiveTab] = useState<number | undefined>(() => {
     const injected: any =
-      typeof window !== 'undefined' ? (window as any).__NOVA_CONFIG__ : undefined
+      typeof window !== 'undefined'
+        ? (window as any).__NOVA_CONFIG__
+        : undefined
     const initial = injected?.initialTab
     return typeof initial === 'number' ? initial : 0
   })

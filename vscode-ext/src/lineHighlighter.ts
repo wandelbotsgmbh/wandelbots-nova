@@ -6,6 +6,8 @@ import {
 } from 'nats'
 import * as vscode from 'vscode'
 
+import { MotionEventMessage } from './types/motionEvent'
+
 /** Internal NATS state */
 let nc: NatsConnection | undefined
 let sub: Subscription | undefined
@@ -14,21 +16,23 @@ let sub: Subscription | undefined
 let pendingLine: number | null = null
 
 /** One decoration type we reuse so only one line is highlighted at any time. */
-const currentLineHighlightDecoration = vscode.window.createTextEditorDecorationType({
-  isWholeLine: true,
-  // Use theme selection colors so it always looks consistent.
-  backgroundColor: new vscode.ThemeColor('editor.selectionBackground'),
-  border: '1px solid',
-  borderColor: new vscode.ThemeColor('editor.selectionHighlightBorder'),
-})
+const currentLineHighlightDecoration =
+  vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    // Use theme selection colors so it always looks consistent.
+    backgroundColor: new vscode.ThemeColor('editor.selectionBackground'),
+    border: '1px solid',
+    borderColor: new vscode.ThemeColor('editor.selectionHighlightBorder'),
+  })
 
-const targetLineHighlightDecoration = vscode.window.createTextEditorDecorationType({
-  isWholeLine: true,
-  // Use theme selection colors so it always looks consistent.
-  backgroundColor: undefined,
-  border: '1px solid',
-  borderColor: new vscode.ThemeColor('editor.selectionHighlightBorder'),
-})
+const targetLineHighlightDecoration =
+  vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    // Use theme selection colors so it always looks consistent.
+    backgroundColor: undefined,
+    border: '1px dashed',
+    borderColor: new vscode.ThemeColor('editor.selectionHighlightBorder'),
+  })
 
 /** Options for starting the subscriber. */
 export type NatsLineSubscriberOptions = {
@@ -80,6 +84,26 @@ function parseLineNumber(raw: string): number | null {
   return null
 }
 
+/** Parse JSON into a MotionEventMessage if shape looks correct. */
+function parseMotionEvent(raw: string): MotionEventMessage | null {
+  try {
+    const obj = JSON.parse(raw) as unknown
+    if (
+      obj &&
+      typeof obj === 'object' &&
+      'current_action' in obj &&
+      'target_action' in obj &&
+      'current_location' in obj &&
+      'target_location' in obj
+    ) {
+      return obj as MotionEventMessage
+    }
+  } catch {
+    // ignore non-JSON payloads
+  }
+  return null
+}
+
 /** Select and reveal the (0-based) line in the active editor; ensure only one selection. */
 function selectLineInActiveEditor(zeroBasedLine: number) {
   const editor = vscode.window.activeTextEditor
@@ -125,20 +149,65 @@ export async function startNatsLineSubscriber(
   ;(async () => {
     for await (const msg of sub!) {
       const body = sc.decode(msg.data)
-      const ln = parseLineNumber(body)
-      if (ln === null) {
-        console.warn('[NATS] ignoring message without line number:', body)
+      // Prefer structured motion-event with two line numbers
+      const motion = parseMotionEvent(body)
+      if (motion) {
+        const currentLine = motion.current_action?.metas?.line_number
+        const targetLine = motion.target_action?.metas?.line_number
+
+        const editor = vscode.window.activeTextEditor
+        if (!editor) {
+          // Fallback: if no editor, remember target if present
+          if (typeof targetLine === 'number' && Number.isFinite(targetLine)) {
+            const zeroBased = targetLine > 0 ? targetLine - 1 : 0
+            pendingLine = zeroBased
+          }
+          continue
+        }
+
+        const doc = editor.document
+        const rangesCurrent: vscode.Range[] = []
+        const rangesTarget: vscode.Range[] = []
+
+        if (typeof currentLine === 'number' && Number.isFinite(currentLine)) {
+          const cl = currentLine > 0 ? currentLine - 1 : 0
+          const clamped = Math.max(0, Math.min(cl, doc.lineCount - 1))
+          rangesCurrent.push(doc.lineAt(clamped).range)
+        }
+        if (typeof targetLine === 'number' && Number.isFinite(targetLine)) {
+          const tl = targetLine > 0 ? targetLine - 1 : 0
+          const clamped = Math.max(0, Math.min(tl, doc.lineCount - 1))
+          rangesTarget.push(doc.lineAt(clamped).range)
+        }
+
+        // Apply decorations. Using separate types keeps styles distinct.
+        editor.setDecorations(currentLineHighlightDecoration, rangesCurrent)
+        editor.setDecorations(targetLineHighlightDecoration, rangesTarget)
+
+        // Optionally reveal the target if available; otherwise reveal current
+        const reveal = rangesTarget[0] ?? rangesCurrent[0]
+        if (reveal) {
+          editor.revealRange(
+            reveal,
+            vscode.TextEditorRevealType.InCenterIfOutsideViewport,
+          )
+        }
         continue
       }
-      // Convert to 0-based if a 1-based line index is sent (most human messages are 1-based)
-      const zeroBased = ln > 0 ? ln - 1 : 0
 
-      // If there is an editor, select immediately; otherwise remember for next time
-      if (vscode.window.activeTextEditor) {
-        selectLineInActiveEditor(zeroBased)
-      } else {
-        pendingLine = zeroBased
+      // Backwards compatibility: single line number payloads
+      const ln = parseLineNumber(body)
+      if (ln !== null) {
+        const zeroBased = ln > 0 ? ln - 1 : 0
+        if (vscode.window.activeTextEditor) {
+          selectLineInActiveEditor(zeroBased)
+        } else {
+          pendingLine = zeroBased
+        }
+        continue
       }
+
+      console.warn('[NATS] ignoring message without line number(s):', body)
     }
   })().catch((err) => console.error('[NATS] subscriber error:', err))
 

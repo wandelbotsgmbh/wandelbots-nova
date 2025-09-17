@@ -11,8 +11,8 @@ import {
   COMMAND_READ_ROBOT_POSE,
   COMMAND_REFRESH_CODE_LENS,
   COMMAND_REFRESH_NOVA_VIEWER,
-  COMMAND_SELECT_VIEWER_TAB,
   COMMAND_RUN_NOVA_PROGRAM,
+  COMMAND_SELECT_VIEWER_TAB,
   COMMAND_SHOW_APP,
   VIEWER_ID,
 } from './consts'
@@ -235,7 +235,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   await startNatsLineSubscriber(context, {
     servers: 'nats://localhost:4222',
-    subject: 'editor.line.select',
+    subject: 'editor.motion-event',
     name: 'vscode-line-highlighter',
   })
 

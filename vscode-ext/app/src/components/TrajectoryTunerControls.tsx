@@ -4,7 +4,6 @@ import {
   ChevronLast,
   ChevronLeft,
   ChevronRight,
-  ArrowBigRightDash,
 } from 'lucide-react'
 import React, { useRef } from 'react'
 
@@ -101,7 +100,7 @@ export const TrajectoryTunerControls = ({
               onMouseDown={(e) => handleButtonClick(e, 'backward')}
               onMouseUp={handleButtonRelease}
               variant="contained"
-              color="secondary"
+              color={canMoveBackward ? 'secondary' : 'primary'}
               disabled={!canMoveBackward}
               sx={{
                 opacity: canMoveBackward ? 1 : 0.5,
@@ -114,27 +113,27 @@ export const TrajectoryTunerControls = ({
                 <ChevronLeft className="size-8 mx-9 my-3" />
               )}
             </Button>
-            <div className="text-sm font-medium text-slate-400">backward</div>
+            <div className="text-sm font-medium text-slate-400">bwd</div>
           </div>
           <div className="flex flex-col items-center gap-1">
             <Button
               onMouseDown={(e) => handleButtonClick(e, 'forward')}
               onMouseUp={handleButtonRelease}
               variant="contained"
-              color="secondary"
+              color={canMoveForward ? 'secondary' : 'primary'}
               sx={{
                 cursor: 'pointer',
               }}
             >
-              {!canMoveForward ? (
-                <ArrowBigRightDash className="size-8 mx-9 my-3" />
-              ) : snap ? (
+              {snap ? (
                 <ChevronLast className="size-8 mx-9 my-3" />
               ) : (
                 <ChevronRight className="size-8 mx-9 my-3" />
               )}
             </Button>
-            <div className="text-sm font-medium text-slate-400">{canMoveForward ? 'forward' : 'next trajectory'}</div>
+            <div className="text-sm font-medium text-slate-400">
+              {canMoveForward ? 'fwd' : 'next'}
+            </div>
           </div>
         </div>
       </div>
