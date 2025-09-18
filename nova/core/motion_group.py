@@ -33,12 +33,18 @@ def motion_group_setup_from_motion_group_description(
         tool=motion_group_description.safety_tool_colliders,
         self_collision_detection=True,  # explicitly set here until we have a better understanding
     )
+    # For the time being it is assumed that the auto limits are always present
+    # We also assume that the motion player in RAE will scale corretly if the
+    # planned trajectory is played back with different limits (due to a different robot mode)
+    # than the one used for planning
+    assert motion_group_description.operation_limits.auto_limits is not None
+    limits = motion_group_description.operation_limits.auto_limits
     # TODO maybe we also want to give the user more control over the collision scene
     return wb.models.MotionGroupSetup(
         motion_group_model=motion_group_description.motion_group_model,
         cycle_time=motion_group_description.cycle_time,
         mounting=motion_group_description.mounting,
-        global_limits=motion_group_description.global_limits.physical_limits,
+        global_limits=limits,
         tcp_offset=motion_group_description.tcps[tcp_name].pose,
         payload=payload,
         collision_scene=collision_scene,

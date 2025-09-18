@@ -116,9 +116,9 @@ class Vector3d(pydantic.BaseModel):
         half_angle = np.linalg.norm(values) / 2
         return np.concatenate([np.cos(half_angle)[None], values * np.sinc(half_angle / np.pi) / 2])
 
-    def to_api_vector3d(self) -> wb.models.Vector3d:
-        return wb.models.Vector3d(x=self.x, y=self.y, z=self.z)
-	return {"x": self.x, "y": self.y, "z": self.z}
+    def to_api_vector3d(self) -> dict:
+        # TODO check if this is now the way to go in v2
+        return {"x": self.x, "y": self.y, "z": self.z}
 
     @pydantic.model_serializer
     def serialize_model(self) -> dict:

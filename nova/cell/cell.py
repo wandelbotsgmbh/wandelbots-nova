@@ -6,6 +6,7 @@ from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
+from nova.logging import logger
 from nova.nats import NatsClient
 
 # This is the default value we use to wait for add_controller API call to complete.
@@ -186,7 +187,9 @@ class Cell:
         controllers = await self.controllers()
         return RobotCell(timer=None, **{controller.id: controller for controller in controllers})
 
-    async def _wait_for_controller_ready(self, cell: str, name: str, timeout: int = 25) -> None:
+    async def _wait_for_controller_ready(
+        self, cell: str, name: str, timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT
+    ) -> None:
         """
         Wait until the given controller has finished initializing or until timeout.
         Args:
@@ -194,7 +197,7 @@ class Cell:
             name: The name of the controller.
             timeout: The timeout in seconds.
         """
-        nc = await nats.get_client()
+        nc = self._nats_client
         nats_subject = f"nova.v2.cells.{cell}.status"
         sub = await nc.subscribe(subject=nats_subject)
 
