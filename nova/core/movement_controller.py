@@ -199,7 +199,9 @@ class TrajectoryCursor:
 
     @property
     def current_action(self) -> Action:
-        current_action_index = floor(self._current_location)
+        current_action_index = floor(self._current_location) - 1
+        if current_action_index < 0:
+            current_action_index = 0
         return self.actions[current_action_index]
 
     @property
