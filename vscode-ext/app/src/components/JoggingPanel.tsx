@@ -1,6 +1,7 @@
 import type { ConnectedMotionGroup } from '@wandelbots/nova-js/v1'
 import type { Joints } from '@wandelbots/nova-js/v1'
 import {
+  JoggingStore,
   JoggingPanel as LibraryJoggingPanel,
   PoseCartesianValues,
   PoseJointValues,
@@ -16,6 +17,7 @@ export default function JoggingPanel({
 }) {
   const [connectedMotionGroup, setConnectedMotionGroup] =
     useState<ConnectedMotionGroup | null>(null)
+  const [joggingStore, setJoggingStore] = useState<JoggingStore | null>(null)
 
   const novaClient = useNovaClient()
 
@@ -62,7 +64,12 @@ export default function JoggingPanel({
 
   return (
     <div className="flex flex-col gap-3 items-center justify-center">
-      <LibraryJoggingPanel nova={novaClient} motionGroupId={motionGroupId} />
+      {joggingStore && String(joggingStore.currentTab)}
+      <LibraryJoggingPanel
+        nova={novaClient}
+        motionGroupId={motionGroupId}
+        onSetup={setJoggingStore}
+      />
       {connectedMotionGroup && (
         <>
           <PoseCartesianValues
