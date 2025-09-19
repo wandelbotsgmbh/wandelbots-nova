@@ -76,8 +76,11 @@ function App() {
           activeTab={activeTab}
           items={items}
           onTabChange={setActiveTab}
-          sx={{ padding: 2 }}
+          sx={{ padding: 2, flexShrink: 0 }}
         />
+        <div className="flex-1 min-h-0">
+          {items[activeTab || 0]?.content}
+        </div>
       </div>
     </ThemeProvider>
   )

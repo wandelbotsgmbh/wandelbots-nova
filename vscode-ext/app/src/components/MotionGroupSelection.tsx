@@ -95,7 +95,6 @@ export default function MotionGroupSelection(props: MotionGroupSelectionProps) {
       <Box
         sx={{
           width: '100%',
-          height: 40,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -103,6 +102,7 @@ export default function MotionGroupSelection(props: MotionGroupSelectionProps) {
           backgroundColor: 'rgba(255,255,255,0.06)',
           border: '1px solid rgba(255,255,255,0.1)',
           px: 1.25,
+          py: 0.75, // Match the Select component's vertical padding
         }}
       >
         <Typography

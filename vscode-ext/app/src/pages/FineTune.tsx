@@ -138,12 +138,12 @@ export default function FineTuning() {
   }
 
   return (
-    <div className="min-h-screen">
-      <div className="flex">
+    <div className="h-full">
+      <div className="flex h-full">
         <div className="relative flex-1">
           <main className="mx-auto max-w-xl">
             <div className="flex flex-col gap-3">
-              <SectionCard
+              {/*<SectionCard
                 subheader="Debug info"
                 color="secondary"
                 className="text-xs"
@@ -152,7 +152,7 @@ export default function FineTuning() {
                 <div>{cellId}</div>
                 <div>{accessToken}</div>
                 <div>{natsBroker}</div>
-              </SectionCard>
+              </SectionCard>*/}
               {/* Motion Group Selection */}
               <SectionCard subheader="Fine Tuning" color="secondary">
                 <div className="flex-1 flex justify-between items-center">
