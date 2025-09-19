@@ -6,9 +6,9 @@ import {
   PoseCartesianValues,
   PoseJointValues,
 } from '@wandelbots/wandelbots-js-react-components'
+import { runInAction } from 'mobx'
+import { useLocalObservable } from 'mobx-react-lite'
 import React, { useEffect, useState } from 'react'
-import { runInAction } from "mobx"
-import { useLocalObservable, observer } from "mobx-react-lite"
 
 import { useConnectMotionGroup, useNovaClient } from '../useNovaClient'
 
@@ -16,7 +16,7 @@ type JoggingPanelProps = {
   motionGroupId: string
 }
 
-const JoggingPanel = observer(({ props }: { props: JoggingPanelProps }) => {
+export const JoggingPanel = ({ motionGroupId }: JoggingPanelProps) => {
   const [connectedMotionGroup, setConnectedMotionGroup] =
     useState<ConnectedMotionGroup | null>(null)
 
@@ -24,13 +24,13 @@ const JoggingPanel = observer(({ props }: { props: JoggingPanelProps }) => {
 
   useEffect(() => {
     async function connectToMotionGroup() {
-      if (!props.motionGroupId) return
+      if (!motionGroupId) return
 
       try {
-        console.log('Connecting to motion group:', props.motionGroupId)
+        console.log('Connecting to motion group:', motionGroupId)
 
         const fetchedConnectedMotionGroup =
-          await useConnectMotionGroup(props.motionGroupId)
+          await useConnectMotionGroup(motionGroupId)
 
         setConnectedMotionGroup(fetchedConnectedMotionGroup)
 
@@ -41,7 +41,7 @@ const JoggingPanel = observer(({ props }: { props: JoggingPanelProps }) => {
             ?.position,
         )
         // setIsConnected(true)
-        console.log('Successfully connected to motion group:', props.motionGroupId)
+        console.log('Successfully connected to motion group:', motionGroupId)
       } catch (error) {
         console.error('Failed to connect to motion group:', error)
         //setSnackbarMessage(`Failed to connect to motion group: ${error}`)
@@ -59,80 +59,47 @@ const JoggingPanel = observer(({ props }: { props: JoggingPanelProps }) => {
         // setIsConnected(false)
       }
     }
-  }, [props.motionGroupId])
+  }, [motionGroupId])
 
   const state = useLocalObservable(() => ({
     joggingStore: null as JoggingStore | null,
   }))
 
-  const joggingPanelFooter = (tabId: string, connectedMotionGroup: ConnectedMotionGroup) => {
-    switch (tabId) {
-      case 'cartesian':
-        return <PoseCartesianValues
-        showCopyButton={true}
-        tcpPose={(() => {
-          const motionState =
-            connectedMotionGroup.rapidlyChangingMotionState
-          const state = motionState?.state
-          const tcpPose = state?.tcp_pose
-          return tcpPose
-        })()}
-      />
-      case 'joint':
-        return <PoseJointValues
-          showCopyButton={true}
-          joints={(() => {
-            const motionState =
-              connectedMotionGroup.rapidlyChangingMotionState
-            const state = motionState?.state
-            const joints = state?.joint_position
-
-            const pose = joints || ({ joints: [0, 0, 0, 0, 0, 0] } as Joints)
-            return pose
-          })()}
-        />
-      default:
-        return null
-    }
-  }
-
   return (
-    <div className="flex flex-col gap-3 items-center justify-center">
-      {state.joggingStore && String(state.joggingStore.currentTab.label)}
+    <div className="flex flex-col gap-3 items-center justify-center h-full">
       <LibraryJoggingPanel
         nova={novaClient}
-        motionGroupId={props.motionGroupId}
+        motionGroupId={motionGroupId}
         onSetup={(store) => runInAction(() => (state.joggingStore = store))}
       />
-      {
-        connectedMotionGroup && state.joggingStore &&
-          <>
-            <PoseCartesianValues
-              showCopyButton={true}
-              tcpPose={(() => {
-                const motionState =
-                  connectedMotionGroup.rapidlyChangingMotionState
-                const state = motionState?.state
-                const tcpPose = state?.tcp_pose
-                return tcpPose
-              })()}
-            />
-            <PoseJointValues
-              showCopyButton={true}
-              joints={(() => {
-                const motionState =
-                  connectedMotionGroup.rapidlyChangingMotionState
-                const state = motionState?.state
-                const joints = state?.joint_position
+      {connectedMotionGroup && state.joggingStore && (
+        <>
+          <PoseCartesianValues
+            showCopyButton={true}
+            tcpPose={(() => {
+              const motionState =
+                connectedMotionGroup.rapidlyChangingMotionState
+              const state = motionState?.state
+              const tcpPose = state?.tcp_pose
+              return tcpPose
+            })()}
+          />
+          <PoseJointValues
+            showCopyButton={true}
+            joints={(() => {
+              const motionState =
+                connectedMotionGroup.rapidlyChangingMotionState
+              const state = motionState?.state
+              const joints = state?.joint_position
 
-                const pose = joints || ({ joints: [0, 0, 0, 0, 0, 0] } as Joints)
-                return pose
-              })()}
-            />
-          </>
-      }
+              const pose = joints || ({ joints: [0, 0, 0, 0, 0, 0] } as Joints)
+              return pose
+            })()}
+          />
+        </>
+      )}
     </div>
   )
-})
+}
 
 export default JoggingPanel

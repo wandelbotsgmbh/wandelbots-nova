@@ -1,16 +1,18 @@
 import Box from '@mui/material/Box'
+import Breadcrumbs from '@mui/material/Breadcrumbs'
 import Button from '@mui/material/Button'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import FormGroup from '@mui/material/FormGroup'
+import Link from '@mui/material/Link'
 import Modal from '@mui/material/Modal'
-import Snackbar from '@mui/material/Snackbar'
 import Switch from '@mui/material/Switch'
+import Typography from '@mui/material/Typography'
 import {
   VelocitySlider,
   VelocitySliderLabel,
 } from '@wandelbots/wandelbots-js-react-components'
-import { Route, SplinePointer, X } from 'lucide-react'
-import React, { useEffect, useRef, useState } from 'react'
+import { ChevronRight, Route, SplinePointer } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
 
 import { SectionCard } from '../components'
 import { TrajectoryTunerControls } from '../components'
@@ -31,12 +33,11 @@ export default function FineTuning() {
   const [selectedMotionGroupId, setSelectedMotionGroupId] = useState<
     string | null
   >(null)
-  const [snackbarOpen, setSnackbarOpen] = useState(false)
-  const [snackbarMessage, setSnackbarMessage] = useState('')
   const [movementOptions, setMovementOptions] = useState<string[]>([])
   const [unsubscribeMovementOptions, setUnsubscribeMovementOptions] = useState<
     (() => void) | null
   >(null)
+  const [isJoggingOpen, setIsJoggingOpen] = useState(false)
 
   // Connect to NATS and fetch motion groups when component mounts
   useEffect(() => {
@@ -111,31 +112,10 @@ export default function FineTuning() {
       // Copy to clipboard
       await navigator.clipboard.writeText(poseString)
       console.log('Pose copied to clipboard:', poseString)
-
-      // Show success message
-      setSnackbarMessage('Pose saved to clipboard!')
-      setSnackbarOpen(true)
     } catch (error) {
       console.error('Failed to get current pose:', error)
     }
   }
-
-  async function finishTrajectoryTuning() {
-    try {
-      console.log('Sending NATS finish command')
-      await sendNatsMessage('trajectory-cursor', {
-        command: 'finish',
-      })
-
-      // Show snackbar message
-      setSnackbarMessage('Continue program run')
-      setSnackbarOpen(true)
-    } catch (error) {
-      console.error('Failed to send finish command:', error)
-    }
-  }
-
-  const [isJoggingOpen, setIsJoggingOpen] = useState(false)
 
   const handleOpenJogging = () => setIsJoggingOpen(true)
   const handleCloseJogging = () => setIsJoggingOpen(false)
@@ -274,17 +254,19 @@ export default function FineTuning() {
               >
                 <Box
                   sx={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    width: 720,
-                    maxWidth: '95vw',
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    width: '100vw',
+                    height: '100vh',
+                    maxWidth: '100vw',
+                    maxHeight: '100vh',
                     bgcolor: 'background.paper',
                     boxShadow: 24,
                     p: 3,
-                    borderRadius: 2,
-                    maxHeight: '90vh',
+                    borderRadius: 0,
                     overflow: 'auto',
                   }}
                 >
@@ -293,21 +275,23 @@ export default function FineTuning() {
                       id="jogging-modal-title"
                       className="text-lg font-semibold"
                     >
-                      Jogging Panel
+                      <Breadcrumbs
+                        aria-label="breadcrumb"
+                        separator={<ChevronRight className="h-4 w-4" />}
+                      >
+                        <Link
+                          color="inherit"
+                          underline="hover"
+                          onClick={handleCloseJogging}
+                          sx={{ cursor: 'pointer' }}
+                        >
+                          Fine-Tuning
+                        </Link>
+                        <Typography color="text.primary">
+                          Jogging Panel
+                        </Typography>
+                      </Breadcrumbs>
                     </div>
-                    <Button
-                      onClick={handleCloseJogging}
-                      sx={{
-                        minWidth: 'auto',
-                        p: 1,
-                        color: 'text.secondary',
-                        '&:hover': {
-                          backgroundColor: 'action.hover',
-                        },
-                      }}
-                    >
-                      <X className="h-5 w-5" />
-                    </Button>
                   </div>
                   <div id="jogging-modal-description">
                     <JoggingPanel motionGroupId={selectedMotionGroupId!} />

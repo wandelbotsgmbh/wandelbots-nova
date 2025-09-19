@@ -1,13 +1,8 @@
 import { Button } from '@mui/material'
-import {
-  ChevronFirst,
-  ChevronLast,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react'
 import React, { useRef } from 'react'
 
 import { sendNatsMessage } from '../utils/nats'
+import { ArrowFirst, ArrowLast, ArrowPlayLeft, ArrowPlayRight } from './icons'
 
 export const TrajectoryTunerControls = ({
   onStart,
@@ -108,9 +103,9 @@ export const TrajectoryTunerControls = ({
               }}
             >
               {snap ? (
-                <ChevronFirst className="size-8 mx-9 my-3" />
+                <ArrowFirst className="size-8 mx-9 my-3" />
               ) : (
-                <ChevronLeft className="size-8 mx-9 my-3" />
+                <ArrowPlayLeft className="size-8 mx-9 my-3" />
               )}
             </Button>
             <div className="text-sm font-medium text-slate-400">bwd</div>
@@ -126,9 +121,9 @@ export const TrajectoryTunerControls = ({
               }}
             >
               {snap ? (
-                <ChevronLast className="size-8 mx-9 my-3" />
+                <ArrowLast className="size-8 mx-9 my-3" />
               ) : (
-                <ChevronRight className="size-8 mx-9 my-3" />
+                <ArrowPlayRight className="size-8 mx-9 my-3" />
               )}
             </Button>
             <div className="text-sm font-medium text-slate-400">
