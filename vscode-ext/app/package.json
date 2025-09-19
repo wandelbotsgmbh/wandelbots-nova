@@ -18,6 +18,8 @@
     "@wandelbots/wandelbots-js-react-components": "2.41.0-pr.feature-seperate-timer.383.4d0d430",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.542.0",
+    "mobx": "^6.13.7",
+    "mobx-react-lite": "^4.1.0",
     "nats": "^2.29.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
