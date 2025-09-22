@@ -1,5 +1,7 @@
 import pytest
 
+from nova.cell.robot_cell import RobotCell
+from nova.cell.simulation import SimulatedRobotCell
 from nova.program.exceptions import NotPlannableError
 from nova.program.runner import ProgramRunner, ProgramRunState
 
@@ -13,8 +15,9 @@ class TestProgramRunner(ProgramRunner):
         args: dict,
         should_fail: bool = False,
         should_not_plannable: bool = False,
+        robot_cell_override: RobotCell = SimulatedRobotCell(),
     ):
-        super().__init__(program_id=program_id, args=args)
+        super().__init__(program_id=program_id, args=args, robot_cell_override=robot_cell_override)
         self._should_fail = should_fail
         self._should_not_plannable = should_not_plannable
 
@@ -35,7 +38,6 @@ def test_program_runner_initialization():
     assert not runner.is_running()
 
 
-@pytest.mark.integration
 def test_program_runner_state_transitions():
     runner = TestProgramRunner(program_id="test", args={})
 

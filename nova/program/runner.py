@@ -79,6 +79,13 @@ class ProgramRun(BaseModel):
         extra = "allow"
 
 
+# Runner doesn't know how to run the program, this is done in _run function
+# it only knows the id of the program for house keeping
+
+
+# why does it know about robot_cell_override?
+# Programrunner handles one program run, what if we want to run multiple programs at the same time?
+# maybe stick to one program run for now?
 class ProgramRunner(ABC):
     """Abstract base class for program runners.
 
@@ -295,6 +302,21 @@ class ProgramRunner(ABC):
         self._program_run.traceback = traceback
         self._program_run.state = ProgramRunState.FAILED
 
+    async def _get_robot_cell(self) -> RobotCell:
+        robot_cell = None
+        # TODO: this should be removed to make it possible running programs without a robot cell
+        if self._robot_cell_override:
+            robot_cell = self._robot_cell_override
+        else:
+            # TODO: in case nova connection is not available this will hang because of the default nats client configuration
+            async with Nova() as nova:
+                cell = nova.cell()
+                robot_cell = await cell.get_robot_cell()
+
+        if robot_cell is None:
+            raise RuntimeError("No robot cell available")
+        return robot_cell
+
     async def _run_program(
         self, stop_event: anyio.Event, on_state_change: Callable[[], Awaitable[None]]
     ) -> None:
@@ -316,18 +338,7 @@ class ProgramRunner(ABC):
         sink_id = logger.add(log_capture)
 
         try:
-            robot_cell = None
-            # TODO: this should be removed to make it possible running programs without a robot cell
-            if self._robot_cell_override:
-                robot_cell = self._robot_cell_override
-            else:
-                async with Nova() as nova:
-                    cell = nova.cell()
-                    robot_cell = await cell.get_robot_cell()
-
-            if robot_cell is None:
-                raise RuntimeError("No robot cell available")
-
+            robot_cell = await self._get_robot_cell()
             self.execution_context = execution_context = ExecutionContext(
                 robot_cell=robot_cell, stop_event=stop_event
             )
@@ -335,6 +346,10 @@ class ProgramRunner(ABC):
             await on_state_change()
 
             monitoring_scope = anyio.CancelScope()
+            # TODO: this causes async_context_enter on all devices in the robot cell
+            #       in the end all motion groups gets activated
+            #       I guess this means in a pysical robot the breaks will be released
+            #       and if any motion can't be activated the program will fail
             async with robot_cell, anyio.create_task_group() as tg:
                 await tg.start(self._estop_handler, monitoring_scope)
 
