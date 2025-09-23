@@ -3,15 +3,29 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
+from blinker import signal
 from decouple import config
 from pydantic import BaseModel, Field
+
+from nova.cell.cell import Cell
+from nova.cell.robot_cell import Device, OutputDevice
+from nova.logging import logger
+from nova.nats import Message as NatsMessage
+
+# Read BASE_PATH environment variable and extract app name
+# TODO: make a util and move the logic there
+_BASE_PATH = config("BASE_PATH", default=None)
+if _BASE_PATH:
+    _APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else None
+else:
+    _APP_NAME = None
+
+_NATS_SUBJECT_TEMPLATE = "nova.v2.cells.{cell_id}.cycle"
+_APP_NAME_EXTRA_FIELD = "app"
 
 cycle_started = signal("cycle_started")
 cycle_finished = signal("cycle_finished")
 cycle_failed = signal("cycle_failed")
-
-_NATS_SUBJECT_TEMPLATE = "nova.v2.cells.{cell_id}.cycle"
-_APP_NAME_EXTRA_FIELD = "app"
 
 
 class Timer:
@@ -45,9 +59,9 @@ class Timer:
 
 
 class CycleDevice(OutputDevice, Device):
-    def __init__(self, cell_id: str):
+    def __init__(self, cell: Cell):
         super().__init__()
-        self._cycle = Cycle(cell_id=cell_id)
+        self._cycle = Cycle(cell=cell)
 
     async def write(self, key, _):
         if hasattr(self._cycle, key):
@@ -93,10 +107,12 @@ class Cycle:
         cycle_id (UUID | None): Unique identifier for the cycle, set after start()
     """
 
-    def __init__(self, cell: str):
+    def __init__(self, cell: Cell, extra: dict[str, Any] = {}):
         self.cycle_id: UUID | None = None
-        self._cell_id = cell
+        self._cell = cell
+        self._cell_id = cell.cell_id
         self._timer = Timer()
+        self._subject = _NATS_SUBJECT_TEMPLATE.format(cell_id=self._cell_id)
 
         self._extra: dict[str, Any] = self._ensure_json_serializable(extra)
 
@@ -157,7 +173,7 @@ class Cycle:
 
         self.cycle_id = uuid4()
         event = CycleStartedEvent(
-            cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id, extra=self._extra
+            cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell, extra=self._extra
         )
         logger.debug(f"Cycle started with ID: {self.cycle_id}")
 
@@ -191,7 +207,7 @@ class Cycle:
             cycle_id=self.cycle_id,
             timestamp=end_time,
             duration_ms=duration_ms,
-            cell=self._cell_id,
+            cell=self._cell,
             extra=self._extra,
         )
         logger.debug(f"Cycle finished with ID: {self.cycle_id}")
@@ -232,7 +248,7 @@ class Cycle:
         event = CycleFailedEvent(
             cycle_id=self.cycle_id,
             timestamp=failure_time,
-            cell=self._cell_id,
+            cell=self._cell,
             reason=reason,
             extra=self._extra,
         )
