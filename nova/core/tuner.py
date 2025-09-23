@@ -32,24 +32,22 @@ class TrajectoryTuner:
             match command:
                 case "forward":
                     continue_tuning_event.set()
-                    future = current_cursor.forward(playback_speed_in_percent=speed)
+                    current_cursor.forward(playback_speed_in_percent=speed)
                     # last_operation_result = await future
                 case "step-forward":
                     continue_tuning_event.set()
-                    future = current_cursor.forward_to_next_action(playback_speed_in_percent=speed)
+                    current_cursor.forward_to_next_action(playback_speed_in_percent=speed)
                     # await future
                 case "backward":
                     continue_tuning_event.set()
-                    future = current_cursor.backward(playback_speed_in_percent=speed)
+                    current_cursor.backward(playback_speed_in_percent=speed)
                     # await future
                 case "step-backward":
                     continue_tuning_event.set()
-                    future = current_cursor.backward_to_previous_action(
-                        playback_speed_in_percent=speed
-                    )
+                    current_cursor.backward_to_previous_action(playback_speed_in_percent=speed)
                     # await future
                 case "pause":
-                    future = current_cursor.pause()
+                    current_cursor.pause()
                     # if future is not None:
                     #     await future
                 case "finish":

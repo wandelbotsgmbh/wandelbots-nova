@@ -372,6 +372,7 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         movement_controller: MovementController | None,
     ) -> AsyncIterable[MovementResponse]:
+        # This is the entrypoint for the trajectory tuning mode
         if config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False):
             logger.info("Entering trajectory tuning mode...")
             async for execute_response in self._tune_trajectory(joint_trajectory, tcp, actions):
@@ -384,26 +385,26 @@ class MotionGroup(AbstractRobot):
         # Load planned trajectory
         load_plan_response = await self._load_planned_motion(joint_trajectory, tcp)
 
-        # # Move to start position
-        # number_of_joints = await self._api_gateway.get_joint_number(
-        #     cell=self._cell, motion_group_id=self.motion_group_id
-        # )
-        # joints_velocities = [MAX_JOINT_VELOCITY_PREPARE_MOVE] * number_of_joints
-        # movement_stream = await self.move_to_start_position(joints_velocities, load_plan_response)
+        # Move to start position
+        number_of_joints = await self._api_gateway.get_joint_number(
+            cell=self._cell, motion_group_id=self.motion_group_id
+        )
+        joints_velocities = [MAX_JOINT_VELOCITY_PREPARE_MOVE] * number_of_joints
+        movement_stream = await self.move_to_start_position(joints_velocities, load_plan_response)
 
-        # # If there's an initial consumer, feed it the data
-        # async for move_to_response in movement_stream:
-        #     # TODO: refactor
-        #     if (
-        #         move_to_response.state is None
-        #         or move_to_response.state.motion_groups is None
-        #         or len(move_to_response.state.motion_groups) == 0
-        #         or move_to_response.move_response is None
-        #         or move_to_response.move_response.current_location_on_trajectory is None
-        #     ):
-        #         continue
+        # If there's an initial consumer, feed it the data
+        async for move_to_response in movement_stream:
+            # TODO: refactor
+            if (
+                move_to_response.state is None
+                or move_to_response.state.motion_groups is None
+                or len(move_to_response.state.motion_groups) == 0
+                or move_to_response.move_response is None
+                or move_to_response.move_response.current_location_on_trajectory is None
+            ):
+                continue
 
-        #     yield move_to_response
+            yield move_to_response
 
         controller = movement_controller(
             MovementControllerContext(
@@ -421,14 +422,12 @@ class MotionGroup(AbstractRobot):
             )
 
         execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
-
-        async def execute_trajectory():
-            await self._api_gateway.motion_api.execute_trajectory(
+        execution_task = asyncio.create_task(
+            self._api_gateway.motion_api.execute_trajectory(
                 cell=self._cell, client_request_generator=execute_response_streaming_controller
             )
-            execute_response_streaming_controller.stop()
+        )
 
-        execution_task = asyncio.create_task(execute_trajectory())
         async for execute_response in execute_response_streaming_controller:
             yield execute_response
         await execution_task
