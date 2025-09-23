@@ -47,7 +47,6 @@ def test_program_runner_state_transitions():
     assert runner.state == ProgramRunState.COMPLETED
 
 
-@pytest.mark.integration
 def test_program_runner_stop():
     runner = TestProgramRunner(program_id="test", args={})
 
@@ -61,7 +60,6 @@ def test_program_runner_stop():
     assert not runner.is_running()
 
 
-@pytest.mark.integration
 def test_program_runner_double_start():
     runner = TestProgramRunner(program_id="test", args={})
 
@@ -71,7 +69,6 @@ def test_program_runner_double_start():
         runner.start()
 
 
-@pytest.mark.integration
 def test_program_runner_error_handling():
     # Test general exception handling
     with pytest.raises(RuntimeError):
@@ -80,6 +77,7 @@ def test_program_runner_error_handling():
         assert runner.state == ProgramRunState.FAILED
         assert runner.program_run.error is not None
         assert runner.program_run.traceback is not None
+        assert runner.is_running() is False
 
     # Test NotPlannableError handling
     with pytest.raises(NotPlannableError):
@@ -87,9 +85,9 @@ def test_program_runner_error_handling():
         runner.start(sync=True)
         assert runner.state == ProgramRunState.FAILED
         assert "NotPlannableError" in runner.program_run.error
+        assert runner.is_running() is False
 
 
-@pytest.mark.integration
 def test_program_runner_logs_and_stdout():
     runner = TestProgramRunner(program_id="test", args={})
 
@@ -103,3 +101,28 @@ def test_program_runner_logs_and_stdout():
     # Verify logs and stdout are captured
     assert runner.program_run.logs is not None
     assert runner.program_run.stdout is not None
+    assert runner.is_running() is False
+
+
+# TODO: this test is failing because the runner only captures logs with the loguru
+#       can we capture everything from the thread?
+#       since we have this feature to capture program output and report it to other systems
+#       what kind of output do we want to capture? logger? print? both?
+def test_program_runner_contains_logs():
+    class DummyRunner(TestProgramRunner):
+        def __init__(self, program_id, args):
+            super().__init__(program_id, args)
+
+        async def _run(self, execution_context):
+            print("Hello from DummyRunner")
+            from loguru import logger
+
+            logger.info("Hello from DummyRunner")
+
+    runner = DummyRunner(program_id="test", args={})
+
+    # Run the program
+    runner.start(sync=True)
+
+    # After running, logs should be present
+    assert runner.program_run.logs.find("Hello from DummyRunner") != -1
