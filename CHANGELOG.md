@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.16.2 (2025-09-23)
+
+### Chores
+
+- **deps**: Bump actions/setup-python from 5 to 6 (#276)
+  ([#276](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/276),
+  [`34cbd9e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/34cbd9e9069dd6720be09ad184f307574aaae4a0))
+
+
 ## v2.16.1 (2025-09-14)
 
 ### Bug Fixes
