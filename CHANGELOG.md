@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v2.16.3 (2025-09-23)
+
+### Chores
+
+- **deps**: Bump antlr4-python3-runtime from 4.13.1 to 4.13.2 (#205)
+  ([#205](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/205),
+  [`327dccb`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/327dccbab82d33512e457c562fab3e584b0c1692))
+
+- **deps**: Update typer[all] requirement from <0.17,>=0.12 to >=0.12,<0.20 (#283)
+  ([#283](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/283),
+  [`8d9eb45`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8d9eb455a45df9cdce6a859dd26a3e90d2de8950))
+
+
 ## v2.16.2 (2025-09-23)
 
 ### Chores
