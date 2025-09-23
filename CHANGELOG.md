@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.17.0 (2025-09-23)
+
+### Features
+
+- Upgrade Python SDK to Python v3.11+ (#285)
+  ([#285](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/285),
+  [`c6efc71`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c6efc718f2928623fcdfe3eb34d503d644f7d783))
+
+
 ## v2.16.3 (2025-09-23)
 
 ### Chores
