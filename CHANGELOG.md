@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.17.1 (2025-09-24)
+
+### Bug Fixes
+
+- Default port (#286) ([#286](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/286),
+  [`b510611`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b5106111416b13c7f0489857ea7e5a3a59bee772))
+
+
 ## v2.17.0 (2025-09-23)
 
 ### Features
