@@ -20,7 +20,7 @@ from nova.events import Cycle, CycleFailedEvent, CycleFinishedEvent, CycleStarte
 async def program_with_cycle_data():
     async with Nova() as nova:
         cell = nova.cell()
-        cycle = Cycle(cell_id=cell)
+        cycle = Cycle(cell=cell)
         await cycle.start()
         await cycle.finish()
 
@@ -61,7 +61,7 @@ async def test_novax_program_cycle_data(novax_server):
 async def program_with_cycle_failure():
     async with Nova() as nova:
         cell = nova.cell()
-        cycle = Cycle(cell_id=cell)
+        cycle = Cycle(cell=cell)
         await cycle.start()
         await cycle.fail("This cycle failed for testing purposes")
 
