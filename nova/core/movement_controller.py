@@ -171,8 +171,8 @@ class TrajectoryCursor:
     ):
         self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
-        self.actions = CombinedActions(items=actions)
-        self._command_queue = asyncio.Queue()
+        self.actions = CombinedActions(items=actions)  # type: ignore
+        self._command_queue: asyncio.Queue = asyncio.Queue()
         self._COMMAND_QUEUE_SENTINAL = object()
         self._in_queue: asyncio.Queue[wb.models.ExecuteTrajectoryResponse | None] = asyncio.Queue()
         self._current_location = initial_location
@@ -225,7 +225,7 @@ class TrajectoryCursor:
         #     return 0
         return index
 
-    def get_movement_options(self) -> dict[str, Any]:
+    def get_movement_options(self) -> set[MovementOption]:
         options = {
             MovementOption.CAN_MOVE_FORWARD: self._current_location < self.end_location,
             MovementOption.CAN_MOVE_BACKWARD: self._current_location > 0.0,
@@ -263,7 +263,7 @@ class TrajectoryCursor:
         # currently we don't complain about invalid locations as long as they are not before the current location
         if location < self._current_location:
             # Create a future that's already resolved with an error
-            future = asyncio.Future()
+            future: asyncio.Future[OperationResult] = asyncio.Future()
             future.set_exception(
                 ValueError("Cannot move forward to a location before the current location")
             )
@@ -278,7 +278,7 @@ class TrajectoryCursor:
         if index < len(self.actions):
             return self.forward_to(index + 1.0, playback_speed_in_percent=playback_speed_in_percent)
         else:
-            pass
+            return asyncio.Future()
             # # Create a future that's already resolved with an error
             # future = asyncio.Future()
             # future.set_exception(ValueError("No next action found after current location."))
@@ -310,7 +310,7 @@ class TrajectoryCursor:
         # currently we don't complain about invalid locations as long as they are not after the current location
         if location > self._current_location:
             # Create a future that's already resolved with an error
-            future = asyncio.Future()
+            future: asyncio.Future[OperationResult] = asyncio.Future()
             future.set_exception(
                 ValueError("Cannot move backward to a location after the current location")
             )
@@ -329,7 +329,7 @@ class TrajectoryCursor:
             )
         else:
             # Create a future that's already resolved with an error
-            future = asyncio.Future()
+            future: asyncio.Future[OperationResult] = asyncio.Future()
             future.set_exception(ValueError("No previous action found before current location."))
             return future
 
@@ -368,6 +368,9 @@ class TrajectoryCursor:
     def _complete_operation(self, error: Optional[Exception] = None):
         """Complete the current operation with the given status."""
         if not self._current_operation_future or self._current_operation_future.done():
+            return
+
+        if self._current_operation_type is None:
             return
 
         result = OperationResult(
@@ -575,7 +578,7 @@ async def init_movement_gen(
         trajectory=motion_id, initial_location=initial_location
     )
     ic(init_request)
-    yield init_request
+    yield init_request  # type: ignore
 
     # then we get the response
     initialize_movement_response = await anext(response_stream)
