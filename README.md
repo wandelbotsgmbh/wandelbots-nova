@@ -132,7 +132,7 @@ def simple_program():
     print("Hello World!")
 
 
-def main(host: str = "0.0.0.0", port: int = 8000):
+def main(host: str = "0.0.0.0", port: int = 8001):
     # Create a new Novax instance
     novax = Novax()
     # Create a new FastAPI app
@@ -157,7 +157,7 @@ def main(host: str = "0.0.0.0", port: int = 8000):
     )
 ```
 
-Inspect the API at `http://localhost:8000/docs`.
+Inspect the API at `http://localhost:8001/docs`.
 
 ## 🚀 Quickstart
 
