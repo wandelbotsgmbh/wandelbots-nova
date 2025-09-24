@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.18.0 (2025-09-24)
+
+### Features
+
+- **NDX-228**: Trajectory cursor debug (#281)
+  ([#281](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/281),
+  [`9eaf965`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9eaf965e216d1dd4587af016ef6ab65f6bba5354))
+
+
 ## v2.17.1 (2025-09-24)
 
 ### Bug Fixes
