@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from blinker import signal
 from decouple import config
 from pydantic import BaseModel, Field
 
@@ -22,10 +21,6 @@ else:
 
 _NATS_SUBJECT_TEMPLATE = "nova.v2.cells.{cell_id}.cycle"
 _APP_NAME_EXTRA_FIELD = "app"
-
-cycle_started = signal("cycle_started")
-cycle_finished = signal("cycle_finished")
-cycle_failed = signal("cycle_failed")
 
 
 class Timer:

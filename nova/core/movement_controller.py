@@ -370,8 +370,7 @@ class TrajectoryCursor:
         if not self._current_operation_future or self._current_operation_future.done():
             return
 
-        if self._current_operation_type is None:
-            return
+        assert self._current_operation_type is not None
 
         result = OperationResult(
             operation_type=self._current_operation_type,
