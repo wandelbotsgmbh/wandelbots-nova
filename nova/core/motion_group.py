@@ -1,7 +1,9 @@
 import asyncio
+from functools import partial
 from typing import AsyncIterable, cast
 
 import wandelbots_api_client as wb
+from decouple import config
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
@@ -12,6 +14,7 @@ from nova.core import logger
 from nova.core.exceptions import InconsistentCollisionScenes
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
+from nova.core.tuner import TrajectoryTuner
 from nova.types import InitialMovementStream, LoadPlanResponse, MovementResponse, Pose, RobotState
 from nova.utils import StreamExtractor
 
@@ -369,6 +372,13 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         movement_controller: MovementController | None,
     ) -> AsyncIterable[MovementResponse]:
+        # This is the entrypoint for the trajectory tuning mode
+        if config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False):
+            logger.info("Entering trajectory tuning mode...")
+            async for execute_response in self._tune_trajectory(joint_trajectory, tcp, actions):
+                yield execute_response
+            return
+
         if movement_controller is None:
             movement_controller = move_forward
 
@@ -417,9 +427,28 @@ class MotionGroup(AbstractRobot):
                 cell=self._cell, client_request_generator=execute_response_streaming_controller
             )
         )
+
         async for execute_response in execute_response_streaming_controller:
             yield execute_response
         await execution_task
+
+    async def _tune_trajectory(
+        self, joint_trajectory: wb.models.JointTrajectory, tcp: str, actions: list[Action]
+    ) -> AsyncIterable[MovementResponse]:
+        start_joints = await self.joints()
+
+        async def plan_fn(actions: list[Action]) -> tuple[str, wb.models.JointTrajectory]:
+            # we fix the start joints here because the tuner might call plan multiple times whilst tuning
+            # and the start joints would change to the respective joint positions at the time of planning
+            # which is not what we want
+            joint_trajectory = await self._plan(actions, tcp, start_joints)
+            load_planned_motion_response = await self._load_planned_motion(joint_trajectory, tcp)
+            return load_planned_motion_response.motion, joint_trajectory
+
+        execute_fn = partial(self._api_gateway.motion_api.execute_trajectory, cell=self._cell)
+        tuner = TrajectoryTuner(actions, plan_fn, execute_fn)
+        async for response in tuner.tune():
+            yield response
 
     async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
         # TODO: mypy failed on main branch, need to check

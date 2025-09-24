@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 from typing import AsyncIterable, AsyncIterator, Callable, Generic, TypeVar
 
 In = TypeVar("In")
@@ -34,3 +35,18 @@ class StreamExtractor(Generic[In, Out]):
         if value is None:
             raise StopAsyncIteration
         return value
+
+    def stop(self):
+        self._in_queue.put_nowait(None)
+
+
+def get_caller_linenumber():
+    """
+    Returns the line number where the function that called this
+    function was itself called.
+    """
+    stack = inspect.stack()
+    # Frame [2] = caller of the caller
+    if len(stack) > 2:
+        return stack[2].lineno
+    return None

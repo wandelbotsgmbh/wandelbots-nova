@@ -103,10 +103,6 @@ class Cycle:
     """
 
     def __init__(self, cell: Cell, extra: dict[str, Any] = {}):
-        """
-        cell: The cell associated with this cycle.
-        extra: Optional metadata to include with the cycle events. Must be JSON serializable.
-        """
         self.cycle_id: UUID | None = None
         self._timer = Timer()
         self._cell = cell

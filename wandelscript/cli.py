@@ -14,7 +14,7 @@ from typer import Exit, FileText, Option, Typer, echo
 import wandelscript
 from wandelscript.ffi_loader import load_foreign_functions
 
-ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now().time().isoformat()} | ")
+ic.configureOutput(includeContext=True, prefix=f"{datetime.now().time().isoformat()} | ")
 
 load_dotenv()
 
