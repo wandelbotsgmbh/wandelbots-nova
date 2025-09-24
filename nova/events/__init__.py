@@ -173,7 +173,7 @@ class Cycle:
 
         self.cycle_id = uuid4()
         event = CycleStartedEvent(
-            cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell.cell_id, extra=self._extra
+            cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id, extra=self._extra
         )
         logger.debug(f"Cycle started with ID: {self.cycle_id}")
 
@@ -207,7 +207,7 @@ class Cycle:
             cycle_id=self.cycle_id,
             timestamp=end_time,
             duration_ms=duration_ms,
-            cell=self._cell.cell_id,
+            cell=self._cell_id,
             extra=self._extra,
         )
         logger.debug(f"Cycle finished with ID: {self.cycle_id}")
@@ -248,7 +248,7 @@ class Cycle:
         event = CycleFailedEvent(
             cycle_id=self.cycle_id,
             timestamp=failure_time,
-            cell=self._cell.cell_id,
+            cell=self._cell_id,
             reason=reason,
             extra=self._extra,
         )
