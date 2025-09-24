@@ -109,9 +109,9 @@ class Cycle:
 
     def __init__(self, cell: Cell, extra: dict[str, Any] = {}):
         self.cycle_id: UUID | None = None
+        self._timer = Timer()
         self._cell = cell
         self._cell_id = cell.cell_id
-        self._timer = Timer()
         self._subject = _NATS_SUBJECT_TEMPLATE.format(cell_id=self._cell_id)
 
         self._extra: dict[str, Any] = self._ensure_json_serializable(extra)
