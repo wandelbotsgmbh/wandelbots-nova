@@ -7,9 +7,13 @@ import uvicorn
 
 import nova
 from nova.cell.simulation import SimulatedRobotCell
+from nova.core.nova import Nova
 from novax import Novax
 
 
+# TODO: this approach is closer to what happens in reality, web server runs in a thread an we interact with it from an external system
+#       however this is not standard approach, usually we test with some test clients etc...
+#       evaluate if we should switch and if this makes integration test quality less or more
 @pytest.fixture
 async def server_runner():
     """Fixture that provides a server runner for any FastAPI app. Only one server at a time."""
@@ -164,6 +168,53 @@ async def test_nats_jetstream_get_all(server_runner):
         all_programs = await store.get_all()
         program_definition = [
             p for p in all_programs if p.program == example_program.program_id and p.app == "novax"
+        ][0]
+
+        assert example_program.program_id in program_definition.program
+        assert example_program.name == program_definition.name
+        assert example_program.description == program_definition.description
+        assert example_program.input_schema == program_definition.input_schema
+        assert example_program.preconditions == program_definition.preconditions
+
+
+@pytest.mark.xdist_group("program-runs")
+@pytest.mark.asyncio
+async def test_program_definition_from_discovery_service(server_runner):
+    """Test program registry with the example program."""
+    # Create app with example program
+    novax = Novax(robot_cell_override=SimulatedRobotCell())
+    app = novax.create_app()
+    novax.register_program(example_program)
+    novax.include_programs_router(app)
+
+    # Run the app (server will shutdown any previous server first)
+    base_url = await server_runner(app)
+
+    import wandelbots_api_client.v2 as wb
+    from wandelbots_api_client.v2.api import ProgramApi
+
+    async with Nova(version="v2") as nova:
+        v1_api_client = nova._api_client._api_client
+        config = wb.Configuration(
+            host=v1_api_client.configuration.host.replace("/v1", "/v2"),
+            username=v1_api_client.configuration.username,
+            password=v1_api_client.configuration.password,
+            access_token=v1_api_client.configuration.access_token,
+        )
+
+        program_discovery_api = ProgramApi(wb.ApiClient(configuration=config))
+        program_definition = await program_discovery_api.get_program(
+            cell="cell", program=f"novax.{example_program.program_id}"
+        )
+        assert example_program.program_id in program_definition.program
+        assert example_program.name == program_definition.name
+        assert example_program.description == program_definition.description
+        assert example_program.input_schema == program_definition.input_schema
+        assert example_program.preconditions == program_definition.preconditions
+
+        programs = await program_discovery_api.list_programs(cell="cell")
+        program_definition = [
+            p for p in programs if p.program == example_program.program_id and p.app == "novax"
         ][0]
 
         assert example_program.program_id in program_definition.program
