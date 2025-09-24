@@ -4,12 +4,18 @@ import inspect
 from concurrent.futures import Future
 from typing import Any, Awaitable, Callable, Coroutine, Optional
 
+from decouple import config
 from pydantic import BaseModel
+from wandelbots_api_client.v2.models.program import Program as ProgramDetails
 
 from nova.cell.robot_cell import RobotCell
 from nova.logging import logger
-from nova.program.function import Program, ProgramPreconditions
+from nova.program.function import Program
 from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner
+
+_BASE_PATH = config("BASE_PATH", default="/default/novax")
+_APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else "novax"
+logger.info(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
 
 
 def _log_future_result(future: Future):
@@ -79,15 +85,6 @@ class NovaxProgramRunner(ProgramRunner):
         return result
 
 
-# can we remove this and use program model from wandelbots_api_client?
-class ProgramDetails(BaseModel):
-    program: str
-    name: str | None
-    description: str | None
-    created_at: dt.datetime
-    preconditions: ProgramPreconditions | None = None
-
-
 class RunProgramRequest(BaseModel):
     parameters: Optional[dict[str, Any]] = None
 
@@ -141,11 +138,13 @@ class ProgramManager:
 
         # Create ProgramDetails instance
         program_details = ProgramDetails(
+            app=_APP_NAME,
             program=program_id,
             name=program.name,
             description=program.description,
             created_at=now,
             preconditions=program.preconditions,
+            input_schema=program.input_schema,
         )
 
         # Store program details and function separately

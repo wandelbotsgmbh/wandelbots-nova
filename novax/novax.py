@@ -116,8 +116,7 @@ class Novax:
                         description=program_details.description,
                         app=_APP_NAME,
                         preconditions=preconditions_dict,
-                        # TODO: once the types are streamlined, should be easy to fix, just map the data
-                        input_schema={},
+                        input_schema=program_details.input_schema,
                     )
 
                     store_programs[program_id] = store_program
