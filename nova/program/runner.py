@@ -15,7 +15,8 @@ from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
 from exceptiongroup import ExceptionGroup
 from loguru import logger
-from wandelbots_api_client.v2.models import ProgramRun, ProgramRunState
+from wandelbots_api_client.v2.models import ProgramRun as ApiProgramRun
+from wandelbots_api_client.v2.models import ProgramRunState
 
 from nova import Nova, api
 from nova.cell.robot_cell import RobotCell
@@ -27,6 +28,11 @@ from nova.types import MotionState
 current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
     "current_execution_context_var"
 )
+
+
+# needs to change somehow
+class ProgramRun(ApiProgramRun):
+    output_data: dict[str, Any] = {}
 
 
 # TODO: should provide a number of tools to the program to control the execution of the program
