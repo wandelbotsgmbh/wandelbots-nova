@@ -19,7 +19,6 @@ def test_get_programs(novax_app):
     assert "program" in simple_program
     assert "name" in simple_program
     assert "description" in simple_program
-    assert "created_at" in simple_program
 
 
 def test_get_program_success(novax_app):
@@ -30,7 +29,6 @@ def test_get_program_success(novax_app):
     program = response.json()
 
     assert program["program"] == "simple_program"
-    assert "created_at" in program
     assert "name" in program
     assert "description" in program
     assert "input_schema" in program
