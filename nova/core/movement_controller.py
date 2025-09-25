@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from enum import StrEnum, auto
 from functools import singledispatch
 from math import ceil, floor
@@ -13,6 +12,7 @@ from blinker import signal
 from nova.actions import MovementControllerContext
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
+from nova.core import logger
 from nova.core.exceptions import InitMovementFailed
 from nova.types import (
     ExecuteTrajectoryRequestStream,
@@ -414,15 +414,13 @@ class TrajectoryCursor:
         try:
             await self._response_consumer_task  # Where to put?
         except asyncio.CancelledError:
-            logging.debug("Response consumer task was cancelled during trajectory cursor cleanup")
+            logger.debug("Response consumer task was cancelled during trajectory cursor cleanup")
             pass
         motion_event_updater_task.cancel()
         try:
             await motion_event_updater_task
         except asyncio.CancelledError:
-            logging.debug(
-                "Motion event updater task was cancelled during trajectory cursor cleanup"
-            )
+            logger.debug("Motion event updater task was cancelled during trajectory cursor cleanup")
             pass
         # stopping the external response stream iterator to be sure, but this is a smell
         self._in_queue.put_nowait(None)
@@ -484,7 +482,7 @@ class TrajectoryCursor:
                             # self.context.movement_consumer(None)
                             # break
         except asyncio.CancelledError:
-            logging.debug("Response consumer was cancelled, cleaning up trajectory cursor")
+            logger.debug("Response consumer was cancelled, cleaning up trajectory cursor")
             raise
         finally:
             # stop the request loop
