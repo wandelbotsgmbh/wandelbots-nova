@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.18.1 (2025-09-25)
+
+### Bug Fixes
+
+- Remove icecream (#287) ([#287](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/287),
+  [`da2fd24`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/da2fd24f12d53db47f319501ab9ae155bc0a76d4))
+
+
 ## v2.18.0 (2025-09-24)
 
 ### Features
