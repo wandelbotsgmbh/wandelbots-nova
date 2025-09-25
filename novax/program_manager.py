@@ -142,7 +142,6 @@ class ProgramManager:
             program=program_id,
             name=program.name,
             description=program.description,
-            created_at=now,
             preconditions=program.preconditions.model_dump(mode="json")
             if program.preconditions
             else None,

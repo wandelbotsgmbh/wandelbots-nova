@@ -100,9 +100,13 @@ def filter_programs_by_name(programs: list[Program], id: str, app: str) -> Progr
 
 
 def assert_program_definition_matches(
-    expected_program: DecoratedProgram, found_program: Program
+    expected_program: DecoratedProgram | None, found_program: Program | None
 ) -> None:
     """Helper function to assert that a program definition matches the expected program."""
+    if expected_program is None:
+        assert found_program is None
+        return
+
     assert expected_program.program_id == found_program.program
     assert expected_program.name == found_program.name
     assert expected_program.description == found_program.description
