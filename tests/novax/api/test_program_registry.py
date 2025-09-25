@@ -142,6 +142,7 @@ async def verify_program_definition_all_sources(
     assert_program_definition_matches(decorated_program, found_program)
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_program_definition_for_simple_program():
     """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
@@ -164,6 +165,7 @@ async def test_program_definition_for_simple_program():
         await verify_program_definition_all_sources(client, example_program)
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_program_definition_for_program_with_preconditions():
     """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
@@ -200,6 +202,7 @@ async def test_program_definition_for_program_with_preconditions():
         await verify_program_definition_all_sources(client, program_with_preconditions)
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_program_definition_for_program_with_input_schema():
     """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
@@ -221,6 +224,7 @@ async def test_program_definition_for_program_with_input_schema():
         await verify_program_definition_all_sources(client, program_with_preconditions)
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_program_definition_for_program_with_pydantic_input_schema():
     """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
@@ -246,6 +250,7 @@ async def test_program_definition_for_program_with_pydantic_input_schema():
         await verify_program_definition_all_sources(client, program_with_preconditions)
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_program_definition_for_program_with_input_schema_and_preconditions():
     """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
@@ -282,7 +287,7 @@ async def test_program_definition_for_program_with_input_schema_and_precondition
         await verify_program_definition_all_sources(client, program_with_preconditions)
 
 
-@pytest.mark.xdist_group("program-runs")
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_empty_program_registry():
     """Test program registry when no programs are registered."""

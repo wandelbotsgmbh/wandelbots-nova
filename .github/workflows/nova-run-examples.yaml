@@ -96,6 +96,7 @@ jobs:
           NOVA_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
           # used for publishing nats data
           CELL_NAME: cell
+          BASE_PATH: "/cell/novax"
         run: |
           echo "DEBUG: decoded token length = ${#NOVA_ACCESS_TOKEN}"
           [[ -z "${NOVA_ACCESS_TOKEN}" ]] && {
