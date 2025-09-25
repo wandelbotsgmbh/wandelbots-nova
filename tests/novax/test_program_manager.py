@@ -1,5 +1,4 @@
 import asyncio
-import datetime as dt
 
 import pytest
 
