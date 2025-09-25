@@ -4,7 +4,6 @@ from concurrent.futures import Future
 from typing import Any, Awaitable, Callable, Coroutine, Optional
 
 from decouple import config
-from pydantic import BaseModel
 from wandelbots_api_client.v2.models.program import Program as ProgramDetails
 
 from nova.cell.robot_cell import RobotCell
@@ -82,10 +81,6 @@ class NovaxProgramRunner(ProgramRunner):
             result = await result
 
         return result
-
-
-class RunProgramRequest(BaseModel):
-    parameters: Optional[dict[str, Any]] = None
 
 
 class ProgramManager:
