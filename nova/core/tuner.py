@@ -4,7 +4,6 @@ from typing import Optional
 import pydantic
 from faststream import FastStream
 from faststream.nats import NatsBroker
-from icecream import ic
 
 from nova.core import logger
 
@@ -28,7 +27,6 @@ class TrajectoryTuner:
         @broker.subscriber("trajectory-cursor")
         async def controller_handler(command: str, speed: Optional[pydantic.PositiveInt] = None):
             nonlocal last_operation_result, finished_tuning
-            ic(command, speed)
             match command:
                 case "forward":
                     continue_tuning_event.set()
@@ -56,7 +54,7 @@ class TrajectoryTuner:
                     current_cursor.detach()
                     finished_tuning = True
                 case _:
-                    ic("Unknown command")
+                    logger.warning(f"Unknown command received in trajectory-cursor: {command}")
 
         async def runtime_monitor(interval=0.5):
             start_time = asyncio.get_event_loop().time()
@@ -69,7 +67,6 @@ class TrajectoryTuner:
 
         @faststream_app.after_startup
         async def after_startup():
-            ic("FastStream started")
             faststream_app_ready_event.set()
 
         faststream_app_task = asyncio.create_task(faststream_app.run())
@@ -77,7 +74,6 @@ class TrajectoryTuner:
 
         @motion_started.connect
         async def on_motion_started(sender, event: MotionEvent):
-            ic(event)
             await broker.publish(
                 # {"line": event.target_action.metas["line_number"]}, "editor.line.select"
                 event,
@@ -87,7 +83,6 @@ class TrajectoryTuner:
         @broker.subscriber("editor.movement.options")
         async def movement_options_handler(msg):
             logger.info(f"Received movement options: {msg}")
-            ic(msg)
 
         try:
             # tuning loop
@@ -97,7 +92,6 @@ class TrajectoryTuner:
                 # TODO this plans the second time for the same actions when we get here because
                 # the initial joint trajectory was already planned before the MotionGroup._execute call
                 motion_id, joint_trajectory = await self.plan_fn(self.actions)
-                ic(current_location)
                 current_cursor = TrajectoryCursor(
                     motion_id,
                     joint_trajectory,
@@ -117,10 +111,8 @@ class TrajectoryTuner:
                 execution_task = asyncio.create_task(
                     self.execute_fn(client_request_generator=current_cursor.cntrl)
                 )
-                ic()
                 async for execute_response in current_cursor:
                     yield execute_response
-                ic()
                 await execution_task
                 continue_tuning_event.clear()
                 current_location = (
@@ -128,12 +120,14 @@ class TrajectoryTuner:
                 )  # TODO is this the cleanest way to get the current location?
 
                 # somehow obtain the modified actions for the next iteration
-                ic()
 
             # runtime_task.cancel()
             # await runtime_task
         except asyncio.CancelledError:
-            ic()
+            logger.debug(
+                f"TrajectoryTuner main loop was cancelled during cleanup. "
+                f"finished_tuning={finished_tuning}, current_location={current_location}, last_operation_result={last_operation_result}"
+            )
             pass
         faststream_app.exit()
         await faststream_app_task
