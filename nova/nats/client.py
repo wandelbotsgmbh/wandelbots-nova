@@ -6,9 +6,10 @@ import asyncio
 from typing import Awaitable, Callable
 
 from decouple import config
-from nats.aio.msg import Msg as NatsLibMessage
 
 import nats
+from nats.aio.msg import Msg as NatsLibMessage
+
 from nova.logging import logger
 from nova.nats.message import Message
 
