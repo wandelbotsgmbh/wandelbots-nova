@@ -1,7 +1,6 @@
 import asyncio
 from typing import Generic, TypeVar
 
-import nats
 from nats.js.api import KeyValueConfig
 from nats.js.client import KeyValue
 from nats.js.errors import KeyNotFoundError as KvKeyError
@@ -9,6 +8,7 @@ from nats.js.errors import NoKeysError, NotFoundError
 from pydantic import BaseModel, ValidationError
 from wandelbots_api_client.v2.models.program import Program
 
+import nats
 from nova.logging import logger as nova_logger
 from nova.nats import NatsClient
 
