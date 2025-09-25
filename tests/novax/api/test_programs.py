@@ -70,7 +70,7 @@ def test_start_program_without_parameters(novax_app):
 
 def test_start_program_not_found(novax_app):
     client = TestClient(novax_app)
-    response = client.post("/programs/nonexistent_program/start", json={})
+    response = client.post("/programs/nonexistent_program/start", json={"arguments": {}})
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Program not found"
