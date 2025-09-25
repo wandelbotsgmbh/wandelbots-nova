@@ -1,10 +1,6 @@
 import asyncio
-import threading
-import time
 
-import httpx
 import pytest
-import uvicorn
 
 import nova
 from nova.cell.simulation import SimulatedRobotCell

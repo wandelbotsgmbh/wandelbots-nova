@@ -1,8 +1,9 @@
 import asyncio
 from concurrent.futures import Future
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 import nova
 from nova.core.nova import Nova
@@ -35,9 +36,7 @@ async def test_novax_program_successful_run(novax_app):
     await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
 
     with TestClient(novax_app) as client:
-        start_program = client.post(
-            "/programs/sucessful_program/start", json={"arguments": {}}
-        )
+        start_program = client.post("/programs/sucessful_program/start", json={"arguments": {}})
         assert start_program.status_code == 200, "Failed to start test program"
 
         await asyncio.sleep(10)
@@ -77,9 +76,7 @@ async def test_novax_program_failed_run(novax_app):
     await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
 
     with TestClient(novax_app) as client:
-        start_program = client.post(
-            "/programs/failing_program/start", json={"arguments": {}}
-        )
+        start_program = client.post("/programs/failing_program/start", json={"arguments": {}})
         assert start_program.status_code == 200, "Failed to start test program"
 
         await asyncio.sleep(2)
@@ -147,7 +144,9 @@ async def test_novax_program_stopped_run(novax_app):
             f"Expected 3 program run messages, but got {len(program_run_message)}"
         )
 
-        final_models = [ProgramRun.model_validate_json(message.data) for message in program_run_message]
+        final_models = [
+            ProgramRun.model_validate_json(message.data) for message in program_run_message
+        ]
         assert final_models[0].state == ProgramRunState.PREPARING
         assert final_models[1].state == ProgramRunState.RUNNING
         assert final_models[2].state == ProgramRunState.STOPPED
@@ -167,21 +166,84 @@ async def test_novax_program_pass_arguments():
         try:
             assert number_of_iterations == 5
             assertion.set_result(True)
-        except Exception as e:
+        except Exception:
             assertion.set_result(False)
 
     novax.register_program(example_program)
     novax.include_programs_router(app)
 
-    loop = asyncio.get_running_loop()
+    with TestClient(app) as client:
+        start_program = client.post(
+            f"/programs/{example_program.program_id}/start",
+            json={"arguments": {"number_of_iterations": 5}},
+        )
+        # TODO: this should return 400 Bad Request when schema validation is implemented
+        assert start_program.status_code == 200, "Failed to start test program"
+
+        assert assertion.result(timeout=10)
+
+
+@pytest.mark.integration
+@pytest.mark.xdist_group("program-runs")
+@pytest.mark.asyncio
+async def test_novax_program_pass_arguments_with_default_params():
+    novax = Novax()
+    app = novax.create_app()
+
+    assertion = Future()
+
+    @nova.program()
+    async def example_program(number_of_iterations: int, some_defaul_param: str = "default"):
+        try:
+            assert number_of_iterations == 5
+            assert some_defaul_param == "default"
+            assertion.set_result(True)
+        except Exception:
+            assertion.set_result(False)
+
+    novax.register_program(example_program)
+    novax.include_programs_router(app)
 
     with TestClient(app) as client:
-        start_program = await loop.run_in_executor(
-            None,
-            lambda: client.post(
-                "/programs/example_program/start",
-                json={"arguments": {"number_of_iterations": 5}},
-            ),
+        start_program = client.post(
+            f"/programs/{example_program.program_id}/start",
+            json={"arguments": {"number_of_iterations": 5}},
+        )
+        # TODO: this should return 400 Bad Request when schema validation is implemented
+        assert start_program.status_code == 200, "Failed to start test program"
+
+        assert assertion.result(timeout=10)
+
+
+@pytest.mark.integration
+@pytest.mark.xdist_group("program-runs")
+@pytest.mark.asyncio
+async def test_novax_program_pass_arguments_with_pydantic_model():
+    novax = Novax()
+    app = novax.create_app()
+
+    assertion = Future()
+
+    class ProgramArgs(BaseModel):
+        number_of_iterations: int
+        some_defaul_param: str = "default"
+
+    @nova.program()
+    async def example_program(args: ProgramArgs):
+        try:
+            assert args.number_of_iterations == 5
+            assert args.some_defaul_param == "default"
+            assertion.set_result(True)
+        except Exception:
+            assertion.set_result(False)
+
+    novax.register_program(example_program)
+    novax.include_programs_router(app)
+
+    with TestClient(app) as client:
+        start_program = client.post(
+            f"/programs/{example_program.program_id}/start",
+            json={"arguments": {"args": {"number_of_iterations": 5}}},
         )
         # TODO: this should return 400 Bad Request when schema validation is implemented
         assert start_program.status_code == 200, "Failed to start test program"
