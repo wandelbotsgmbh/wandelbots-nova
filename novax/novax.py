@@ -105,17 +105,13 @@ class Novax:
             store_programs = {}
             for program_id, program_details in programs.items():
                 try:
-                    preconditions_dict = None
-                    if program_details.preconditions:
-                        preconditions_dict = program_details.preconditions.model_dump()
-
                     # TODO: schema is not present in ProgramDetails
                     store_program = StoreProgram(
                         program=program_details.program,
                         name=program_details.name,
                         description=program_details.description,
                         app=_APP_NAME,
-                        preconditions=preconditions_dict,
+                        preconditions=program_details.preconditions,
                         input_schema=program_details.input_schema,
                     )
 

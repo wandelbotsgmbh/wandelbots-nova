@@ -143,7 +143,9 @@ class ProgramManager:
             name=program.name,
             description=program.description,
             created_at=now,
-            preconditions=program.preconditions,
+            preconditions=program.preconditions.model_dump(mode="json")
+            if program.preconditions
+            else None,
             input_schema=program.input_schema,
         )
 

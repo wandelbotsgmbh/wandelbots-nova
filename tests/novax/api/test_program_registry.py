@@ -1,15 +1,17 @@
 import asyncio
-import threading
 
-import httpx
 import pytest
-import uvicorn
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
 from wandelbots_api_client.v2.models.program import Program
 
 import nova
+from nova import api
+from nova.cell import virtual_controller
 from nova.cell.simulation import SimulatedRobotCell
 from nova.core.nova import Nova
 from nova.program.function import Program as DecoratedProgram
+from nova.program.function import ProgramPreconditions
 from novax import Novax
 
 
@@ -35,22 +37,22 @@ async def get_all_from_nats(cell_id: str = "cell") -> list[Program]:
         return programs
 
 
-async def get_from_novax(base_url: str, program_id: str) -> Program | None:
-    """Get a single program from Novax REST API."""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{base_url}/programs/{program_id}")
-        if response.status_code != 200:
-            return None
-        return Program(**response.json())
+async def get_from_novax(client: TestClient, program_id: str) -> Program | None:
+    """Get a single program from Novax REST API using FastAPI TestClient."""
+    loop = asyncio.get_running_loop()
+    response = await loop.run_in_executor(None, lambda: client.get(f"/programs/{program_id}"))
+    if response.status_code != 200:
+        return None
+    return Program(**response.json())
 
 
-async def get_all_from_novax(base_url: str) -> list[Program]:
-    """Get all programs from Novax REST API."""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{base_url}/programs")
-        if response.status_code == 200:
-            return [Program(**program) for program in response.json()]
-        return []
+async def get_all_from_novax(client: TestClient) -> list[Program]:
+    """Get all programs from Novax REST API using FastAPI TestClient."""
+    loop = asyncio.get_running_loop()
+    response = await loop.run_in_executor(None, lambda: client.get("/programs"))
+    if response.status_code == 200:
+        return [Program(**program) for program in response.json()]
+    return []
 
 
 async def get_from_discovery_service(program_id: str, cell: str = "cell") -> Program:
@@ -105,117 +107,192 @@ def assert_program_definition_matches(
     assert expected_program.name == found_program.name
     assert expected_program.description == found_program.description
     assert expected_program.input_schema == found_program.input_schema
-    assert expected_program.preconditions == found_program.preconditions
+    assert (
+        expected_program.preconditions.model_dump(mode="json")
+        if expected_program.preconditions
+        else None
+    ) == found_program.preconditions
 
 
-# TODO: this approach is closer to what happens in reality, web server runs in a thread an we interact with it from an external system
-#       however this is not standard approach, usually we test with some test clients etc...
-#       evaluate if we should switch and if this makes integration test quality less or more
-@pytest.fixture
-async def server_runner():
-    """Fixture that provides a server runner for any FastAPI app. Only one server at a time."""
-    current_server = {"thread": None, "port": None}
-
-    async def run_app(app, port=8001, timeout=10):
-        """Run the given app on the specified port. Shuts down previous server first."""
-        if current_server["thread"] is not None:
-            current_server["thread"].join(timeout=2)
-            await asyncio.sleep(1)
-
-        def run_server():
-            uvicorn.run(app, host="0.0.0.0", port=port, log_level="error")
-
-        server_thread = threading.Thread(target=run_server, daemon=True)
-        server_thread.start()
-        current_server["thread"] = server_thread
-        current_server["port"] = port
-
-        # Wait for server to be ready
-        counter = 0
-        base_url = f"http://localhost:{port}"
-        while counter < timeout:
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(f"{base_url}/programs")
-                    if response.status_code == 200:
-                        break
-            except Exception:
-                pass
-            finally:
-                counter += 1
-                await asyncio.sleep(1)
-
-        if counter == timeout:
-            raise TimeoutError(f"Failed to start server on port {port}")
-
-        return base_url
-
-    yield run_app
-
-    # Cleanup: shutdown the current server
-    if current_server["thread"] is not None:
-        current_server["thread"].join(timeout=5)
-
-
-@nova.program(
-    id="program_with_cycle_failure",
-    name="Test cycle failed",
-    description="A program that report cycle failure",
-)
-async def example_program():
-    pass
-
-
-@pytest.mark.xdist_group("program-runs")
-@pytest.mark.asyncio
-async def test_program_definition_across_all_sources(server_runner):
-    """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
-    novax = Novax(robot_cell_override=SimulatedRobotCell())
-    app = novax.create_app()
-    novax.register_program(example_program)
-    novax.include_programs_router(app)
-
-    # Run the app (server will shutdown any previous server first)
-    base_url = await server_runner(app)
-
+async def verify_program_definition_all_sources(
+    client: TestClient, decorated_program: DecoratedProgram
+):
     # NOVAX
-    all_programs = await get_all_from_novax(base_url)
-    found_program = filter_programs_by_name(all_programs, example_program.program_id, "novax")
-    assert_program_definition_matches(example_program, found_program)
+    all_programs = await get_all_from_novax(client)
+    found_program = filter_programs_by_name(all_programs, decorated_program.program_id, "novax")
+    assert_program_definition_matches(decorated_program, found_program)
 
-    found_program = await get_from_novax(base_url, example_program.program_id)
-    assert_program_definition_matches(example_program, found_program)
+    found_program = await get_from_novax(client, decorated_program.program_id)
+    assert_program_definition_matches(decorated_program, found_program)
 
     # NATS
     all_programs = await get_all_from_nats()
-    found_program = filter_programs_by_name(all_programs, example_program.program_id, "novax")
-    assert_program_definition_matches(example_program, found_program)
+    found_program = filter_programs_by_name(all_programs, decorated_program.program_id, "novax")
+    assert_program_definition_matches(decorated_program, found_program)
 
-    found_program = await get_from_nats(example_program.program_id)
-    assert_program_definition_matches(example_program, found_program)
+    found_program = await get_from_nats(decorated_program.program_id)
+    assert_program_definition_matches(decorated_program, found_program)
 
     # Discovery Service
     all_programs = await get_all_from_discovery_service()
-    found_program = filter_programs_by_name(all_programs, example_program.program_id, "novax")
-    assert_program_definition_matches(example_program, found_program)
+    found_program = filter_programs_by_name(all_programs, decorated_program.program_id, "novax")
+    assert_program_definition_matches(decorated_program, found_program)
 
-    found_program = await get_from_discovery_service(example_program.program_id)
-    assert_program_definition_matches(example_program, found_program)
+    found_program = await get_from_discovery_service(decorated_program.program_id)
+    assert_program_definition_matches(decorated_program, found_program)
+
+
+@pytest.mark.asyncio
+async def test_program_definition_for_simple_program():
+    """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
+    novax = Novax(robot_cell_override=SimulatedRobotCell())
+    app = novax.create_app()
+
+    # Define a program to test
+    @nova.program(
+        id="program_with_cycle_failure",
+        name="Test cycle failed",
+        description="A program that report cycle failure",
+    )
+    async def example_program():
+        pass
+
+    novax.register_program(example_program)
+    novax.include_programs_router(app)
+
+    with TestClient(app) as client:
+        await verify_program_definition_all_sources(client, example_program)
+
+
+@pytest.mark.asyncio
+async def test_program_definition_for_program_with_preconditions():
+    """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
+    novax = Novax(robot_cell_override=SimulatedRobotCell())
+    app = novax.create_app()
+
+    @nova.program(
+        id="program_with_preconditions",
+        name="Test cycle failed",
+        description="A program that report cycle failure",
+        preconditions=ProgramPreconditions(
+            controllers=[
+                virtual_controller(
+                    name="controller1",
+                    manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                    type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                ),
+                virtual_controller(
+                    name="controller2",
+                    manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                    type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
+                ),
+            ],
+            cleanup_controllers=False,
+        ),
+    )
+    async def program_with_preconditions():
+        pass
+
+    novax.register_program(program_with_preconditions)
+    novax.include_programs_router(app)
+
+    with TestClient(app) as client:
+        await verify_program_definition_all_sources(client, program_with_preconditions)
+
+
+@pytest.mark.asyncio
+async def test_program_definition_for_program_with_input_schema():
+    """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
+    novax = Novax(robot_cell_override=SimulatedRobotCell())
+    app = novax.create_app()
+
+    @nova.program(
+        id="program_with_preconditions",
+        name="Test cycle failed",
+        description="A program that report cycle failure",
+    )
+    async def program_with_preconditions(should_reset: bool, enable_opc_ua: bool):
+        pass
+
+    novax.register_program(program_with_preconditions)
+    novax.include_programs_router(app)
+
+    with TestClient(app) as client:
+        await verify_program_definition_all_sources(client, program_with_preconditions)
+
+
+@pytest.mark.asyncio
+async def test_program_definition_for_program_with_pydantic_input_schema():
+    """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
+    novax = Novax(robot_cell_override=SimulatedRobotCell())
+    app = novax.create_app()
+
+    class ProgramInputSchema(BaseModel):
+        should_reset: bool
+        enable_opc_ua: bool
+
+    @nova.program(
+        id="program_with_preconditions",
+        name="Test cycle failed",
+        description="A program that report cycle failure",
+    )
+    async def program_with_preconditions(program_input: ProgramInputSchema):
+        pass
+
+    novax.register_program(program_with_preconditions)
+    novax.include_programs_router(app)
+
+    with TestClient(app) as client:
+        await verify_program_definition_all_sources(client, program_with_preconditions)
+
+
+@pytest.mark.asyncio
+async def test_program_definition_for_program_with_input_schema_and_preconditions():
+    """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
+    novax = Novax(robot_cell_override=SimulatedRobotCell())
+    app = novax.create_app()
+
+    @nova.program(
+        id="program_with_preconditions",
+        name="Test cycle failed",
+        description="A program that report cycle failure",
+        preconditions=ProgramPreconditions(
+            controllers=[
+                virtual_controller(
+                    name="controller1",
+                    manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                    type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                ),
+                virtual_controller(
+                    name="controller2",
+                    manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                    type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
+                ),
+            ],
+            cleanup_controllers=False,
+        ),
+    )
+    async def program_with_preconditions(should_reset: bool, enable_opc_ua: bool):
+        pass
+
+    novax.register_program(program_with_preconditions)
+    novax.include_programs_router(app)
+
+    with TestClient(app) as client:
+        await verify_program_definition_all_sources(client, program_with_preconditions)
 
 
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
-async def test_empty_program_registry(server_runner):
+async def test_empty_program_registry():
     """Test program registry when no programs are registered."""
     # Create app without any programs
     novax = Novax(robot_cell_override=SimulatedRobotCell())
     app = novax.create_app()
     novax.include_programs_router(app)  # Just add the router, no programs
 
-    # Run the app (server will shutdown previous server first)
-    base_url = await server_runner(app)
-
-    # Test the registry is empty using helper function
-    programs = await get_all_from_novax(base_url)
-    assert isinstance(programs, list)
-    assert len(programs) == 0
+    with TestClient(app) as client:
+        # Test the registry is empty using helper function
+        programs = await get_all_from_novax(client)
+        assert isinstance(programs, list)
+        assert len(programs) == 0
