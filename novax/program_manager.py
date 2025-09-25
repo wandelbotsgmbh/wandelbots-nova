@@ -1,5 +1,4 @@
 import asyncio
-import datetime as dt
 import inspect
 from concurrent.futures import Future
 from typing import Any, Awaitable, Callable, Coroutine, Optional
@@ -134,7 +133,6 @@ class ProgramManager:
 
         func = program
         program_id = func.program_id
-        now = dt.datetime.now(dt.timezone.utc)
 
         # Create ProgramDetails instance
         program_details = ProgramDetails(

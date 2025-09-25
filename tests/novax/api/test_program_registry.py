@@ -107,6 +107,10 @@ def assert_program_definition_matches(
         assert found_program is None
         return
 
+    assert (
+        found_program is not None
+    ), f"Expected program '{expected_program.program_id}' but none was found"
+
     assert expected_program.program_id == found_program.program
     assert expected_program.name == found_program.name
     assert expected_program.description == found_program.description
