@@ -8,7 +8,6 @@ import pydantic
 import wandelbots_api_client as wb
 from aiohttp_retry import dataclass
 from blinker import signal
-from icecream import ic
 
 from nova.actions import MovementControllerContext
 from nova.actions.base import Action
@@ -207,7 +206,6 @@ class TrajectoryCursor:
     @property
     def next_action_index(self) -> int:
         index = ceil(self._current_location - self._overshoot) - 1
-        ic(self._current_location, self._overshoot, index, len(self.actions))
         if index < 0:
             return 0
         if index < len(self.actions):
@@ -218,7 +216,6 @@ class TrajectoryCursor:
     @property
     def previous_action_index(self) -> int:
         index = ceil(self._current_location - 1.0 - self._overshoot) - 1
-        ic(self._current_location, self._overshoot, index, len(self.actions))
         assert index <= len(self.actions)
         # if index < 0:
         #     # for now we don't allow backward wrap around
@@ -322,7 +319,6 @@ class TrajectoryCursor:
         self, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
         index = self.previous_action_index
-        ic(self._current_location, self._overshoot, index, len(self.actions))
         if index + 1.0 >= 0:
             return self.backward_to(
                 index + 1.0, playback_speed_in_percent=playback_speed_in_percent
@@ -413,31 +409,25 @@ class TrajectoryCursor:
         await respons_consumer_ready_event.wait()
         async for request in self._request_loop():
             yield request
-        ic()
         self._response_consumer_task.cancel()
         try:
             await self._response_consumer_task  # Where to put?
         except asyncio.CancelledError:
-            ic()
             pass
         motion_event_updater_task.cancel()
         try:
             await motion_event_updater_task
         except asyncio.CancelledError:
-            ic()
             pass
         # stopping the external response stream iterator to be sure, but this is a smell
         self._in_queue.put_nowait(None)
-        ic()
 
     async def _request_loop(self):
         while True:
             command = await self._command_queue.get()
             if command is self._COMMAND_QUEUE_SENTINAL:
-                ic("Detaching movement controller (TrajectoryCursor)")
                 self._command_queue.task_done()
                 break
-            ic(command)
             yield command
 
             if isinstance(command, wb.models.StartMovementRequest):
@@ -455,10 +445,8 @@ class TrajectoryCursor:
 
             # yield await self._command_queue.get()
             self._command_queue.task_done()
-        ic()
 
     async def _response_consumer(self, ready_event: asyncio.Event):
-        ic()
         ready_event.set()
         last_movement = None
 
@@ -466,9 +454,7 @@ class TrajectoryCursor:
             async for response in self._response_stream:
                 self._in_queue.put_nowait(response)
                 instance = response.actual_instance
-                # ic(instance)
                 if isinstance(instance, wb.models.Movement):
-                    # ic(instance.movement.state.timestamp)
                     if last_movement is None:
                         last_movement = instance.movement
                     self._current_location = instance.movement.current_location
@@ -476,13 +462,10 @@ class TrajectoryCursor:
                     last_movement = instance.movement
 
                 elif isinstance(instance, wb.models.Standstill):
-                    ic(instance.standstill)
                     self._current_location = instance.standstill.location
-                    ic(self._current_location)
                     match instance.standstill.reason:
                         case wb.models.StandstillReason.REASON_USER_PAUSED_MOTION:
                             self._overshoot = self._current_location - self._target_location
-                            ic(self._target_location, self._overshoot)
                             self._complete_operation()
                             if self._detach_on_standstill:
                                 break
@@ -492,20 +475,12 @@ class TrajectoryCursor:
                             # self._overshoot = 0.0  # because the RAE takes care of that
                             self._complete_operation()
                             if self._detach_on_standstill:
-                                ic()
                                 break
                             # self.context.movement_consumer(None)
                             # break
-                elif isinstance(instance, wb.models.MovementError):
-                    ic(instance)
-                else:
-                    ic(instance)
-                    # Handle other types of instances if needed
         except asyncio.CancelledError:
-            ic()
             raise
         finally:
-            ic()
             # stop the request loop
             self.detach()
             # stop the cursor iterator (TODO is this the right place?)
@@ -523,12 +498,10 @@ class TrajectoryCursor:
         if curr_location > last_location:
             # moving forwards
             if last_location <= self._target_location < curr_location:
-                ic(last_location, self._target_location, curr_location)
                 self._pause()
         else:
             # moving backwards
             if last_location > self._target_location >= curr_location:
-                ic(last_location, self._target_location, curr_location)
                 self._pause()
 
     async def motion_event_updater(self, interval=0.2):
@@ -571,12 +544,10 @@ class TrajectoryCursor:
 async def init_movement_gen(
     motion_id, response_stream, initial_location
 ) -> ExecuteTrajectoryRequestStream:
-    ic(motion_id, initial_location)
     # The first request is to initialize the movement
     init_request = wb.models.InitializeMovementRequest(
         trajectory=motion_id, initial_location=initial_location
     )
-    ic(init_request)
     yield init_request  # type: ignore
 
     # then we get the response
