@@ -54,7 +54,7 @@ class TrajectoryTuner:
                     current_cursor.detach()
                     finished_tuning = True
                 case _:
-                    pass
+                    logger.warning(f"Unknown command received in trajectory-cursor: {command}")
 
         async def runtime_monitor(interval=0.5):
             start_time = asyncio.get_event_loop().time()
