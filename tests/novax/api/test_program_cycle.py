@@ -40,7 +40,7 @@ async def test_novax_program_cycle_data(novax_app):
 
         with TestClient(novax_app) as client:
             start_program = client.post(
-                f"/programs/program_with_cycle_data/start", json={"arguments": {}}
+                "/programs/program_with_cycle_data/start", json={"arguments": {}}
             )
             assert start_program.status_code == 200, "Failed to start test program"
 
@@ -86,7 +86,7 @@ async def test_novax_program_cycle_failure(novax_app):
 
     with TestClient(novax_app) as client:
         start_program = client.post(
-            f"/programs/program_with_cycle_failure/start", json={"arguments": {}}
+            "/programs/program_with_cycle_failure/start", json={"arguments": {}}
         )
         assert start_program.status_code == 200, "Failed to start test program"
 
@@ -131,14 +131,14 @@ async def test_novax_program_cycle_with_extra(novax_app):
 
         with TestClient(novax_app) as client:
             start_program = client.post(
-                f"/programs/program_with_cycle_extra/start", json={"arguments": {}}
+                "/programs/program_with_cycle_extra/start", json={"arguments": {}}
             )
             assert start_program.status_code == 200, "Failed to start test program"
 
             await asyncio.sleep(5)
 
             assert len(cycle_messages) == 2, (
-                f"Expected 2 cycle messages, but got {len(cycle_messages)}"
+                "Expected 2 cycle messages, but got {len(cycle_messages)}"
             )
 
             cycle_started = CycleStartedEvent.model_validate_json(cycle_messages[0].data)
