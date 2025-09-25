@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.18.3 (2025-09-25)
+
+### Bug Fixes
+
+- Ndx-330-program-parameters (#289)
+  ([#289](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/289),
+  [`b7e1b24`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b7e1b2453519a8efafae55aa15415a5bb0a37c32))
+
+
 ## v2.18.2 (2025-09-25)
 
 ### Bug Fixes
