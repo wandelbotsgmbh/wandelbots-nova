@@ -4,8 +4,8 @@ Simple test programs for integration testing.
 
 import asyncio
 
-import httpx
 import pytest
+from fastapi.testclient import TestClient
 
 import nova
 from nova.core.nova import Nova
@@ -28,7 +28,7 @@ async def program_with_cycle_data():
 @pytest.mark.integration
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
-async def test_novax_program_cycle_data(novax_server):
+async def test_novax_program_cycle_data(novax_app):
     async with Nova() as nova:
         cycle_messages = []
 
@@ -37,20 +37,23 @@ async def test_novax_program_cycle_data(novax_server):
 
         await nova.nats.subscribe("nova.v2.cells.cell.cycle", on_message=cb)
 
-        start_program = httpx.post(
-            f"{novax_server}/programs/program_with_cycle_data/start", json={"arguments": {}}
-        )
-        assert start_program.status_code == 200, "Failed to start test program"
+        with TestClient(novax_app) as client:
+            start_program = client.post(
+                "/programs/program_with_cycle_data/start", json={"arguments": {}}
+            )
+            assert start_program.status_code == 200, "Failed to start test program"
 
-        await asyncio.sleep(5)
+            await asyncio.sleep(5)
 
-        assert len(cycle_messages) == 2, f"Expected 2 cycle messages, but got {len(cycle_messages)}"
+            assert len(cycle_messages) == 2, (
+                f"Expected 2 cycle messages, but got {len(cycle_messages)}"
+            )
 
-        cycle_started = CycleStartedEvent.model_validate_json(cycle_messages[0].data)
-        cycle_finished = CycleFinishedEvent.model_validate_json(cycle_messages[1].data)
+            cycle_started = CycleStartedEvent.model_validate_json(cycle_messages[0].data)
+            cycle_finished = CycleFinishedEvent.model_validate_json(cycle_messages[1].data)
 
-        assert cycle_started.event_type == "cycle_started"
-        assert cycle_finished.event_type == "cycle_finished"
+            assert cycle_started.event_type == "cycle_started"
+            assert cycle_finished.event_type == "cycle_finished"
 
 
 @nova.program(
@@ -69,7 +72,7 @@ async def program_with_cycle_failure():
 @pytest.mark.integration
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
-async def test_novax_program_cycle_failure(novax_server):
+async def test_novax_program_cycle_failure(novax_app):
     nova = Nova()
     await nova.connect()
 
@@ -80,21 +83,22 @@ async def test_novax_program_cycle_failure(novax_server):
 
     await nova.nats.subscribe("nova.v2.cells.cell.cycle", on_message=cb)
 
-    start_program = httpx.post(
-        f"{novax_server}/programs/program_with_cycle_failure/start", json={"arguments": {}}
-    )
-    assert start_program.status_code == 200, "Failed to start test program"
+    with TestClient(novax_app) as client:
+        start_program = client.post(
+            "/programs/program_with_cycle_failure/start", json={"arguments": {}}
+        )
+        assert start_program.status_code == 200, "Failed to start test program"
 
-    await asyncio.sleep(5)
+        await asyncio.sleep(5)
 
-    assert len(cycle_messages) == 2, f"Expected 2 cycle messages, but got {len(cycle_messages)}"
+        assert len(cycle_messages) == 2, f"Expected 2 cycle messages, but got {len(cycle_messages)}"
 
-    cycle_started = CycleStartedEvent.model_validate_json(cycle_messages[0].data)
-    cycle_failed = CycleFailedEvent.model_validate_json(cycle_messages[1].data)
+        cycle_started = CycleStartedEvent.model_validate_json(cycle_messages[0].data)
+        cycle_failed = CycleFailedEvent.model_validate_json(cycle_messages[1].data)
 
-    assert cycle_started.event_type == "cycle_started"
-    assert cycle_failed.event_type == "cycle_failed"
-    await nova.close()
+        assert cycle_started.event_type == "cycle_started"
+        assert cycle_failed.event_type == "cycle_failed"
+        await nova.close()
 
 
 @nova.program(
@@ -114,7 +118,7 @@ async def program_with_cycle_extra():
 @pytest.mark.integration
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
-async def test_novax_program_cycle_with_extra(novax_server):
+async def test_novax_program_cycle_with_extra(novax_app):
     """Test that cycle events include extra data when provided."""
     async with Nova() as nova:
         cycle_messages = []
@@ -124,26 +128,29 @@ async def test_novax_program_cycle_with_extra(novax_server):
 
         await nova.nats.subscribe("nova.v2.cells.cell.cycle", on_message=cb)
 
-        start_program = httpx.post(
-            f"{novax_server}/programs/program_with_cycle_extra/start", json={"arguments": {}}
-        )
-        assert start_program.status_code == 200, "Failed to start test program"
+        with TestClient(novax_app) as client:
+            start_program = client.post(
+                "/programs/program_with_cycle_extra/start", json={"arguments": {}}
+            )
+            assert start_program.status_code == 200, "Failed to start test program"
 
-        await asyncio.sleep(5)
+            await asyncio.sleep(5)
 
-        assert len(cycle_messages) == 2, f"Expected 2 cycle messages, but got {len(cycle_messages)}"
+            assert len(cycle_messages) == 2, (
+                "Expected 2 cycle messages, but got {len(cycle_messages)}"
+            )
 
-        cycle_started = CycleStartedEvent.model_validate_json(cycle_messages[0].data)
-        cycle_finished = CycleFinishedEvent.model_validate_json(cycle_messages[1].data)
+            cycle_started = CycleStartedEvent.model_validate_json(cycle_messages[0].data)
+            cycle_finished = CycleFinishedEvent.model_validate_json(cycle_messages[1].data)
 
-        assert cycle_started.event_type == "cycle_started"
-        assert cycle_finished.event_type == "cycle_finished"
+            assert cycle_started.event_type == "cycle_started"
+            assert cycle_finished.event_type == "cycle_finished"
 
-        # Verify extra data is present in both events
-        assert cycle_started.extra["key1"] == "value1"
-        assert cycle_started.extra["key2"] == "value2"
-        assert cycle_started.extra["test_id"] == 12345
+            # Verify extra data is present in both events
+            assert cycle_started.extra["key1"] == "value1"
+            assert cycle_started.extra["key2"] == "value2"
+            assert cycle_started.extra["test_id"] == 12345
 
-        assert cycle_finished.extra["key1"] == "value1"
-        assert cycle_finished.extra["key2"] == "value2"
-        assert cycle_finished.extra["test_id"] == 12345
+            assert cycle_finished.extra["key1"] == "value1"
+            assert cycle_finished.extra["key2"] == "value2"
+            assert cycle_finished.extra["test_id"] == 12345

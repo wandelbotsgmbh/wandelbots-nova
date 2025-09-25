@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
 from wandelbots_api_client.v2.models.program import Program
+from wandelbots_api_client.v2.models.program_start_request import ProgramStartRequest
 
 from novax.api.dependencies import get_program_manager
-from novax.program_manager import ProgramManager, ProgramRun, RunProgramRequest
+from novax.program_manager import ProgramManager, ProgramRun
 
 router = APIRouter(prefix="/programs", tags=["programs"])
 
@@ -30,7 +31,7 @@ async def get_program(
 @router.post("/{program}/start", operation_id="startProgram", response_model=ProgramRun)
 async def start_program(
     program: str = Path(..., description="The ID of the program"),
-    request: RunProgramRequest = Body(...),
+    request: ProgramStartRequest = Body(...),
     program_manager: ProgramManager = Depends(get_program_manager),
 ):
     """Run a program"""
@@ -40,7 +41,7 @@ async def start_program(
     if program_manager.running_program:
         raise HTTPException(status_code=400, detail="A program is already running")
 
-    return await program_manager.start_program(program, request.parameters)
+    return await program_manager.start_program(program, request.arguments)
 
 
 @router.post("/{program}/stop", operation_id="stopProgram")
