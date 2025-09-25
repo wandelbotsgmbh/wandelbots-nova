@@ -124,6 +124,7 @@ class TrajectoryTuner:
             # runtime_task.cancel()
             # await runtime_task
         except asyncio.CancelledError:
+            logger.debug("TrajectoryTuner main loop was cancelled during cleanup")
             pass
         faststream_app.exit()
         await faststream_app_task
