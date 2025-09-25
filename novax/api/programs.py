@@ -1,44 +1,30 @@
-from typing import Any
-
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
+from wandelbots_api_client.v2.models.program import Program
 
 from novax.api.dependencies import get_program_manager
-from novax.program_manager import ProgramDetails, ProgramManager, ProgramRun, RunProgramRequest
+from novax.program_manager import ProgramManager, ProgramRun, RunProgramRequest
 
 router = APIRouter(prefix="/programs", tags=["programs"])
 
 
-# can we use the same api model from wandelbots_api_client
-class ProgramResponse(ProgramDetails):
-    input_schema: dict[str, Any]
-
-
-@router.get("", operation_id="getPrograms", response_model=list[ProgramResponse])
+@router.get("", operation_id="getPrograms", response_model=list[Program])
 async def get_programs(program_manager: ProgramManager = Depends(get_program_manager)):
     """List all programs"""
     programs = await program_manager.get_programs()
-    return [
-        ProgramResponse(
-            **program_details.model_dump(),
-            input_schema=program_manager._program_functions[program].json_schema,
-        )
-        for program, program_details in programs.items()
-    ]
+    return [program_definition for _, program_definition in programs.items()]
 
 
-@router.get("/{program}", operation_id="getProgram", response_model=ProgramResponse)
+@router.get("/{program}", operation_id="getProgram", response_model=Program)
 async def get_program(
     program: str = Path(..., description="The ID of the program"),
     program_manager: ProgramManager = Depends(get_program_manager),
 ):
     """Get program details"""
-    program_details = await program_manager.get_program(program)
-    if not program_details:
+    program_definition = await program_manager.get_program(program)
+    if not program_definition:
         raise HTTPException(status_code=404, detail="Program not found")
 
-    program_fn = program_manager._program_functions[program]
-
-    return ProgramResponse(**program_details.model_dump(), input_schema=program_fn.json_schema)
+    return program_definition
 
 
 @router.post("/{program}/start", operation_id="startProgram", response_model=ProgramRun)
