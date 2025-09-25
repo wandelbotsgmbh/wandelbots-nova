@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.18.2 (2025-09-25)
+
+### Bug Fixes
+
+- Program-input-schema (#288) ([#288](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/288),
+  [`3bfc7ec`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3bfc7ecff5ed038dc8002d7979b2bd6d16ead01d))
+
+
 ## v2.18.1 (2025-09-25)
 
 ### Bug Fixes
