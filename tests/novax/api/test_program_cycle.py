@@ -4,7 +4,6 @@ Simple test programs for integration testing.
 
 import asyncio
 
-import httpx
 import pytest
 from fastapi.testclient import TestClient
 
