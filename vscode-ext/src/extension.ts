@@ -67,6 +67,16 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   )
 
+  // Register command to open extension settings (used by view title gear)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('wandelbots-nova.openSettings', async () => {
+      await vscode.commands.executeCommand(
+        'workbench.action.openSettings',
+        '@ext:wandelbots.wandelbots-nova',
+      )
+    }),
+  )
+
   // Register command to select a specific tab in the viewer
   context.subscriptions.push(
     vscode.commands.registerCommand(

@@ -34,8 +34,17 @@
         {
           "type": "webview",
           "id": "wandelbots-nova-viewer",
-          "name": "Wandelbots NOVA Viewer",
+          "name": "Wandelbots NOVA",
           "when": "true"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "wandelbots-nova.openSettings",
+          "when": "view == wandelbots-nova-viewer",
+          "group": "navigation@99999"
         }
       ]
     },
@@ -65,6 +74,11 @@
       {
         "command": "wandelbots-nova.showApp",
         "title": "Wandelbots NOVA: Show app"
+      },
+      {
+        "command": "wandelbots-nova.openSettings",
+        "title": "Wandelbots NOVA: Settings",
+        "icon": "$(gear)"
       },
       {
         "command": "wandelbots-nova.readRobotPose",
