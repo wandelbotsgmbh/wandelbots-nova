@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.19.0 (2025-09-27)
+
+### Features
+
+- **NDX-231**: Fine-tuning vscode extension (#270)
+  ([#270](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/270),
+  [`3d5b640`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3d5b640ba34acb92ecc47ded461fb3c3473b704b))
+
+
 ## v2.18.3 (2025-09-25)
 
 ### Bug Fixes
