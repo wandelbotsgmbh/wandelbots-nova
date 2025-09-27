@@ -3,12 +3,17 @@ import * as os from 'os'
 import * as path from 'path'
 import * as vscode from 'vscode'
 
+import { COMMAND_SELECT_VIEWER_TAB } from './consts'
+import { getNovaApiAddress } from './urlResolver'
+
 interface PythonExecutionDetails {
   execCommand?: string[]
 }
+
 interface PythonSettingsAPI {
   getExecutionDetails(resource: vscode.Uri): Promise<PythonExecutionDetails>
 }
+
 interface PythonExtensionAPI {
   settings?: PythonSettingsAPI
 }
@@ -27,6 +32,36 @@ export async function runNovaProgram(
   fineTune: boolean = false,
 ): Promise<void> {
   try {
+    // Ensure the file is saved before running/debugging
+    let document = await vscode.workspace.openTextDocument(uri)
+    if (document.isUntitled || document.isDirty) {
+      const choice = await vscode.window.showWarningMessage(
+        'This file has unsaved changes. Save before running?',
+        { modal: true },
+        'Save',
+        "Don't Save",
+        'Cancel',
+      )
+
+      if (choice === 'Cancel' || choice === undefined) {
+        return
+      }
+
+      if (choice === 'Save') {
+        const saved = await document.save()
+        if (!saved) {
+          vscode.window.showErrorMessage('File was not saved. Aborting run.')
+          return
+        }
+        // Document URI may change after save (e.g., from untitled)
+        uri = document.uri
+      } else if (document.isUntitled) {
+        // Cannot run an untitled (unsaved) document without saving
+        vscode.window.showErrorMessage('Please save the file before running.')
+        return
+      }
+    }
+
     const filePath = uri.fsPath
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri)
 
@@ -72,6 +107,9 @@ export async function runNovaProgram(
       )
     }
 
+    // Resolve NOVA_API from settings/environment
+    const novaApiAddress = getNovaApiAddress()
+
     if (debug) {
       // For debugging, we'll use VS Code's built-in Python debugger
       vscode.window.showInformationMessage(
@@ -87,6 +125,7 @@ export async function runNovaProgram(
         cwd: workspaceFolder.uri.fsPath,
         env: {
           ENABLE_TRAJECTORY_TUNING: '1',
+          NOVA_API: novaApiAddress,
         },
       }
 
@@ -131,23 +170,22 @@ if inspect.iscoroutine(result):
 
     let command = `"${pythonPath}" "${tempFilePath}"`
 
-    if (fineTune) {
-      // Set environment variable for trajectory tuning
-      if (process.platform === 'win32') {
-        // Windows: use set command
-        command = `set ENABLE_TRAJECTORY_TUNING=1 && ${command}`
-      } else {
-        // Unix-like systems (macOS, Linux): use export
-        command = `ENABLE_TRAJECTORY_TUNING=1 ${command}`
-      }
-      vscode.window.showInformationMessage(
-        `Running Nova program with trajectory tuning: ${functionName}`,
-      )
+    // Inject NOVA_API and optional tuning flag into environment for the run
+    if (process.platform === 'win32') {
+      const envParts: string[] = [`set NOVA_API=${novaApiAddress}`]
+      if (fineTune) envParts.push('set ENABLE_TRAJECTORY_TUNING=1')
+      command = `${envParts.join(' && ')} && ${command}`
     } else {
-      vscode.window.showInformationMessage(
-        `Running Nova program: ${functionName}`,
-      )
+      const envParts: string[] = [`NOVA_API="${novaApiAddress}"`]
+      if (fineTune) envParts.push('ENABLE_TRAJECTORY_TUNING=1')
+      command = `${envParts.join(' ')} ${command}`
     }
+
+    vscode.window.showInformationMessage(
+      fineTune
+        ? `Running Nova program with trajectory tuning: ${functionName}`
+        : `Running Nova program: ${functionName}`,
+    )
 
     // Clean up temp file after a delay
     setTimeout((): void => {
@@ -160,6 +198,15 @@ if inspect.iscoroutine(result):
         console.log(`Could not clean up temp file: ${error.message}`)
       }
     }, 30_000) // Clean up after 30 seconds
+
+    // If fine-tune requested, pre-select the Fine-Tuning tab (index 1 due to hidden tab2)
+    if (fineTune) {
+      try {
+        await vscode.commands.executeCommand(COMMAND_SELECT_VIEWER_TAB, 1)
+      } catch (e) {
+        console.log('Could not select Fine-Tuning tab:', e)
+      }
+    }
 
     // Send the command to terminal (nova.rrd file watcher will handle completion)
     console.log(`🚀 Sending command to terminal "${terminalName}": ${command}`)

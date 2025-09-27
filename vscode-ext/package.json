@@ -2,8 +2,9 @@
   "name": "wandelbots-nova",
   "displayName": "Wandelbots NOVA",
   "description": "Wandelbots NOVA VSCode Extension",
-  "version": "0.2.0",
+  "version": "0.6.0",
   "publisher": "wandelbots",
+  "icon": "media/logo.png",
   "engines": {
     "vscode": "^1.99.0"
   },
@@ -33,8 +34,17 @@
         {
           "type": "webview",
           "id": "wandelbots-nova-viewer",
-          "name": "Wandelbots NOVA Viewer",
+          "name": "Wandelbots NOVA",
           "when": "true"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "wandelbots-nova.openSettings",
+          "when": "view == wandelbots-nova-viewer",
+          "group": "navigation@99999"
         }
       ]
     },
@@ -66,13 +76,14 @@
         "title": "Wandelbots NOVA: Show app"
       },
       {
+        "command": "wandelbots-nova.openSettings",
+        "title": "Wandelbots NOVA: Settings",
+        "icon": "$(gear)"
+      },
+      {
         "command": "wandelbots-nova.readRobotPose",
         "title": "Wandelbots NOVA: Read robot pose",
         "icon": "$(location)"
-      },
-      {
-        "command": "wandelbots-nova.connectToNats",
-        "title": "Wandelbots NOVA: Connect to NATS"
       }
     ],
     "languages": [
@@ -115,6 +126,11 @@
           "type": "string",
           "default": "cell",
           "description": "The Wandelbots NOVA cell to use"
+        },
+        "wandelbots-nova-viewer.natsBroker": {
+          "type": "string",
+          "default": "nats://localhost:4222",
+          "description": "The Wandelbots NOVA NATS broker to use"
         },
         "wandelbots-nova-viewer.showDebugInfo": {
           "type": "boolean",

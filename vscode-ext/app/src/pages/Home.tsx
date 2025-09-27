@@ -1,15 +1,21 @@
 import Button from '@mui/material/Button'
 import React from 'react'
 
-export default function NovaHome() {
+import logo from '../assets/logo-wandelbots-nova.png'
+
+type NovaHomeProps = {
+  onOpenFineTuning?: () => void
+}
+
+export default function NovaHome({ onOpenFineTuning }: NovaHomeProps) {
   return (
     <>
       <div className="flex flex-col items-center gap-12 max-w-md py-12 mx-auto">
         <div className="space-y-3 flex flex-col items-center">
-          <img src="/logo-wandelbots-nova.png" alt="logo" className="h-8" />
+          <img src={logo} alt="logo" className="h-6" />
           <div className="text-xs font-bold text-gray-500">Extension</div>
         </div>
-        <div className="flex flex-col items-center gap-3">
+        {/*<div className="flex flex-col items-center gap-3">
           <Button
             onClick={() => {}}
             variant="contained"
@@ -23,10 +29,10 @@ export default function NovaHome() {
             See planned paths and robot movement in 3D for visual debugging and
             analysis
           </div>
-        </div>
+        </div>*/}
         <div className="flex flex-col items-center gap-3">
           <Button
-            onClick={() => {}}
+            onClick={() => onOpenFineTuning?.()}
             variant="contained"
             size="large"
             className="w-full"
