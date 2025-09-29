@@ -503,9 +503,7 @@ class RobotCell:
 
     _devices: dict
 
-    def __init__(
-        self, timer: AbstractTimer | None = None, **kwargs
-    ):
+    def __init__(self, timer: AbstractTimer | None = None, **kwargs):
         if timer is None:
             timer = Timer()
         devices = {"timer": timer, **kwargs}
