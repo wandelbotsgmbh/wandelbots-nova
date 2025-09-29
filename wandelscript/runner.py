@@ -8,7 +8,6 @@ from nova.cell.robot_cell import RobotCell
 from nova.events import CycleDevice
 from nova.program import Program
 from nova.program import ProgramRunner as NovaProgramRunner
-from nova.program import runner as nova_program_runner_module
 from nova.program.runner import ExecutionContext as NovaExecutionContext
 from wandelscript.datatypes import ElementType
 from wandelscript.ffi import ForeignFunction
