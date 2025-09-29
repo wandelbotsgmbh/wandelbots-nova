@@ -15,7 +15,7 @@ The Wandelbots NOVA extension for VS Code.
 ### Configure the NOVA instance
 
 1. Open VS Code settings and search for Wandelbots NOVA.
-2. Set **NOVA Instance Host** to the host of your NOVA instance.
+2. Set your NOVA instance address as the NOVA API host.
 
 ### Run and debug from your code
 
