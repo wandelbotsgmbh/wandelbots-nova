@@ -15,7 +15,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
     """
 
     class Configuration(NovaDevice.Configuration):
-        type: Literal["controller"] = "controller"  # type: ignore
+        type: Literal["controller"] = "controller"  # type: ignore[assignment]
         id: str = "controller"
         cell_id: str
         controller_id: str
