@@ -4,6 +4,7 @@ from typing import AsyncIterable, cast
 
 import wandelbots_api_client as wb
 from decouple import config
+from wandelbots_api_client.models.robot_system_mode import RobotSystemMode
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
@@ -171,8 +172,6 @@ class MotionGroup(AbstractRobot):
         """
         # Restore MONITOR mode if we switched from MONITOR to CONTROL during this session
         if self._controller and self._switched_from_monitor_to_control:
-            from wandelbots_api_client.models.robot_system_mode import RobotSystemMode
-
             logger.info(
                 f"Motion group {self._motion_group_id}: Switching controller back to MONITOR mode after execution session"
             )
@@ -402,8 +401,6 @@ class MotionGroup(AbstractRobot):
         # Switch controller to CONTROL mode on first execution to avoid brake cycling
         # Only switch if currently in MONITOR mode (respects user's CONTROL mode preference)
         if self._controller and not self._switched_from_monitor_to_control:
-            from wandelbots_api_client.models.robot_system_mode import RobotSystemMode
-
             current_mode = await self._controller.get_current_mode()
             if current_mode == RobotSystemMode.ROBOT_SYSTEM_MODE_MONITOR:
                 logger.info(
