@@ -503,9 +503,13 @@ class RobotCell:
 
     _devices: dict
 
-    def __init__(self, timer: AbstractTimer | None = None, **kwargs):
+    def __init__(
+        self, timer: AbstractTimer | None = None, open_all_devices: bool = False, **kwargs
+    ):
         if timer is None:
             timer = Timer()
+
+        self._open_all_devices = open_all_devices
         devices = {"timer": timer, **kwargs}
         # TODO: if "timer" has not the same id it cannot correctly be serialized/deserialized currently
         for device_name, device in devices.items():
@@ -650,9 +654,9 @@ class RobotCell:
     #    raise NotImplementedError()
 
     async def __aenter__(self):
-        for device in self._devices.values():
-            if device is not None:
-                await self._device_exit_stack.enter_async_context(device)
+        # for device in self._devices.values():
+        #    if device is not None:
+        #        await self._device_exit_stack.enter_async_context(device)
         return self
 
     async def __aexit__(self, exc_type, exc_value, exc_traceback):
