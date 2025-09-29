@@ -42,7 +42,6 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             cell=self.configuration.cell_id, controller=self.configuration.controller_id
         )
         logger.info(f"Activated motion groups: {self._activated_motion_group_ids}")
-        return None
 
     async def close(self):
         # RPS-1174: when a motion group is deactivated, RAE closes all open connections
