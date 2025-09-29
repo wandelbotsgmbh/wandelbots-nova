@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import anyio
 from loguru import logger
 
 import nova
@@ -114,6 +113,7 @@ def create_wandelscript_program(
     foreign_functions = (
         load_foreign_functions(foreign_functions_paths) if foreign_functions_paths else {}
     )
+    compiled_program = WandelscriptProgram.from_code(code)
 
     @nova.program(id=program_id)
     async def wandelscript_wrapper():
@@ -131,40 +131,16 @@ def create_wandelscript_program(
             cycle_device = CycleDevice(cell=nova.cell())
             robot_cell.devices["cycle"] = cycle_device
 
-            try:
-                nova_execution_context: NovaExecutionContext | None = (
-                    nova_program_runner_module.current_execution_context_var.get()
-                )
-            except LookupError:
-                nova_execution_context = None
-
-            stop_event = (
-                nova_execution_context.stop_event
-                if nova_execution_context is not None
-                else anyio.Event()
-            )
-
-            ws_execution_context = ExecutionContext(
-                robot_cell=robot_cell,
-                stop_event=stop_event,
+            # TODO: Don't create another runner here, just execute the program
+            result = run(
+                program_id=program_id,
+                program=code,
+                args=args,
+                foreign_functions=foreign_functions,
+                robot_cell_override=robot_cell,
                 default_robot=default_robot,
                 default_tcp=default_tcp,
-                run_args=dict(args) if args is not None else None,
-                foreign_functions=foreign_functions,
             )
-
-            program = WandelscriptProgram.from_code(code)
-            async with robot_cell:
-                await program(ws_execution_context)
-
-            output_data = ws_execution_context.store.data_dict
-
-            if nova_execution_context is not None:
-                nova_execution_context.motion_group_recordings = (
-                    ws_execution_context.motion_group_recordings
-                )
-                nova_execution_context.output_data = output_data
-
-            return output_data
+            return result
 
     return wandelscript_wrapper
