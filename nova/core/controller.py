@@ -154,9 +154,14 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             ValueError: If mode is not a valid controller mode.
         """
         # Validate mode parameter
-        if mode not in [RobotSystemMode.ROBOT_SYSTEM_MODE_MONITOR, RobotSystemMode.ROBOT_SYSTEM_MODE_CONTROL]:
-            raise ValueError(f"Invalid mode: {mode}. Must be ROBOT_SYSTEM_MODE_MONITOR or ROBOT_SYSTEM_MODE_CONTROL")
-        
+        if mode not in [
+            RobotSystemMode.ROBOT_SYSTEM_MODE_MONITOR,
+            RobotSystemMode.ROBOT_SYSTEM_MODE_CONTROL,
+        ]:
+            raise ValueError(
+                f"Invalid mode: {mode}. Must be ROBOT_SYSTEM_MODE_MONITOR or ROBOT_SYSTEM_MODE_CONTROL"
+            )
+
         await self._nova_api.controller_api.set_default_mode(
             cell=self.configuration.cell_id, controller=self.configuration.controller_id, mode=mode
         )
@@ -164,7 +169,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
     async def get_current_mode(self) -> RobotSystemMode:
         """
         Get the current default mode of the robot controller.
-        
+
         Returns:
             RobotSystemMode: The current mode (ROBOT_SYSTEM_MODE_MONITOR or ROBOT_SYSTEM_MODE_CONTROL).
         """
