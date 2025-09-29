@@ -112,7 +112,6 @@ def create_wandelscript_program(
     foreign_functions = (
         load_foreign_functions(foreign_functions_paths) if foreign_functions_paths else {}
     )
-    compiled_program = WandelscriptProgram.from_code(code)
 
     @nova.program(id=program_id)
     async def wandelscript_wrapper():
