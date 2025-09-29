@@ -504,12 +504,10 @@ class RobotCell:
     _devices: dict
 
     def __init__(
-        self, timer: AbstractTimer | None = None, open_all_devices: bool = False, **kwargs
+        self, timer: AbstractTimer | None = None, **kwargs
     ):
         if timer is None:
             timer = Timer()
-
-        self._open_all_devices = open_all_devices
         devices = {"timer": timer, **kwargs}
         # TODO: if "timer" has not the same id it cannot correctly be serialized/deserialized currently
         for device_name, device in devices.items():
