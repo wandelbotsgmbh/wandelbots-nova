@@ -129,7 +129,7 @@ def validate_collision_scenes(actions: list[Action]) -> list[models.CollisionSce
 class MotionGroup(AbstractRobot):
     """Manages motion planning and execution within a specified motion group."""
 
-    def __init__(self, api_gateway: ApiGateway, cell: str, motion_group_id: str):
+    def __init__(self, api_gateway: ApiGateway, cell: str, motion_group_id: str, controller=None):
         """
         Initializes a new MotionGroup instance.
 
@@ -137,21 +137,45 @@ class MotionGroup(AbstractRobot):
             api_gateway (ApiGateway): The API gateway through which motion commands are sent.
             cell (str): The name or identifier of the robotic cell.
             motion_group_id (str): The identifier of the motion group.
+            controller: The controller instance for automatic mode switching.
         """
         self._api_gateway = api_gateway
         self._cell = cell
         self._motion_group_id = motion_group_id
+        self._controller = controller
         self._current_motion: str | None = None
         self._optimizer_setup: wb.models.OptimizerSetup | None = None
+        # Track if we switched from MONITOR to CONTROL (to restore MONITOR when done)
+        self._switched_from_monitor_to_control: bool = False
         super().__init__(id=motion_group_id)
 
-    async def open(self):
+    async def open(self) -> None:
+        """Activate the motion group for use.
+        
+        Controller mode will be managed during execution:
+        - If in MONITOR mode: switches to CONTROL for execution, restores MONITOR when done
+        - If in CONTROL mode: stays in CONTROL (respects user preference)
+        """
         await self._api_gateway.activate_motion_group(
             cell=self._cell, motion_group_id=self._motion_group_id
         )
-        return self
+        # Reset mode switching state for this context
+        self._switched_from_monitor_to_control = False
 
     async def close(self):
+        """Clean up the motion group and restore MONITOR mode if needed.
+        
+        If the controller was switched from MONITOR to CONTROL during execution,
+        it will be restored to MONITOR mode. If the controller was already in
+        CONTROL mode when execution began, it remains in CONTROL mode.
+        """
+        # Restore MONITOR mode if we switched from MONITOR to CONTROL during this session
+        if self._controller and self._switched_from_monitor_to_control:
+            from wandelbots_api_client.models.robot_system_mode import RobotSystemMode
+            logger.info(f"Motion group {self._motion_group_id}: Switching controller back to MONITOR mode after execution session")
+            await self._controller.set_default_mode(RobotSystemMode.ROBOT_SYSTEM_MODE_MONITOR)
+            self._switched_from_monitor_to_control = False
+        
         # RPS-1174: when a motion group is deactivated, RAE closes all open connections
         #           this behaviour is not desired in some cases,
         #           so for now we will not deactivate for the user
@@ -372,6 +396,18 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         movement_controller: MovementController | None,
     ) -> AsyncIterable[MovementResponse]:
+        # Switch controller to CONTROL mode on first execution to avoid brake cycling
+        # Only switch if currently in MONITOR mode (respects user's CONTROL mode preference)
+        if self._controller and not self._switched_from_monitor_to_control:
+            from wandelbots_api_client.models.robot_system_mode import RobotSystemMode
+            current_mode = await self._controller.get_current_mode()
+            if current_mode == RobotSystemMode.ROBOT_SYSTEM_MODE_MONITOR:
+                logger.info(f"Motion group {self._motion_group_id}: Switching controller from MONITOR to CONTROL mode for execution session")
+                await self._controller.set_default_mode(RobotSystemMode.ROBOT_SYSTEM_MODE_CONTROL)
+                self._switched_from_monitor_to_control = True
+            else:
+                logger.info(f"Motion group {self._motion_group_id}: Controller already in CONTROL mode, no switch needed")
+        
         # This is the entrypoint for the trajectory tuning mode
         if config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False):
             logger.info("Entering trajectory tuning mode...")

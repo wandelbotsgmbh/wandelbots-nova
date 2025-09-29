@@ -2,10 +2,11 @@ from typing import AsyncGenerator, Literal, Sized
 
 from nova import api
 from nova.cell.robot_cell import AbstractController, AbstractRobot, IODevice, ValueType
-from nova.core import logger
 from nova.core.gateway import NovaDevice
 from nova.core.io import IOAccess
 from nova.core.motion_group import MotionGroup
+from nova.logging import logger
+from wandelbots_api_client.models.robot_system_mode import RobotSystemMode
 
 
 class Controller(Sized, AbstractController, NovaDevice, IODevice):
@@ -14,13 +15,14 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
     """
 
     class Configuration(NovaDevice.Configuration):
-        type: Literal["controller"] = "controller"
+        type: Literal["controller"] = "controller"  # type: ignore
         id: str = "controller"
         cell_id: str
         controller_id: str
 
     def __init__(self, configuration: Configuration):
         super().__init__(configuration)
+        self.configuration: Controller.Configuration
         self._activated_motion_group_ids: list[str] = []
         self._io_access = IOAccess(
             api_gateway=self._nova_api,
@@ -33,12 +35,14 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         """Returns the unique controller ID."""
         return self.configuration.controller_id
 
-    async def open(self):
-        """Activates all motion groups."""
-        motion_group_ids = await self.activated_motion_group_ids()
-        self._activated_motion_group_ids = motion_group_ids
-        logger.info(f"Found motion group {motion_group_ids}")
-        return self
+    async def open(self) -> None:
+        """Open the controller connection."""
+        await super().open()
+        self._activated_motion_group_ids = await self._nova_api.activate_all_motion_groups(
+            cell=self.configuration.cell_id, controller=self.configuration.controller_id
+        )
+        logger.info(f"Activated motion groups: {self._activated_motion_group_ids}")
+        return None
 
     async def close(self):
         # RPS-1174: when a motion group is deactivated, RAE closes all open connections
@@ -62,6 +66,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             api_gateway=self._nova_api,
             cell=self.configuration.cell_id,
             motion_group_id=motion_group_id,
+            controller=self,
         )
 
     def __getitem__(self, motion_group_id: int) -> MotionGroup:
@@ -122,6 +127,51 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             value (ValueType): The value to write to the specified IO key.
         """
         return await self._io_access.write(key, value)
+
+    async def set_default_mode(self, mode: RobotSystemMode) -> None:
+        """
+        Switch between monitor and control usage as default for this robot controller.
+
+        Monitoring mode is used to read information from the robot controller and control mode
+        is used to command the robot system. As long as the robot controller is connected via
+        network monitoring mode is always possible.
+
+        To switch to control mode the robot controller must be in automatic or manual operating
+        mode and safety state 'normal' or 'reduced'. If the robot controller is in manual
+        operating mode, you have manually confirm the control usage activation on the robot
+        control panel.
+
+        Important: When switching from CONTROL to MONITOR mode, the robot's brakes are
+        automatically activated for safety. When switching from MONITOR to CONTROL mode,
+        the brakes are released. Frequent mode switching causes brake activation/deactivation
+        cycles which significantly impact cycle time performance. For optimal performance,
+        minimize mode switches by staying in CONTROL mode during execution sessions.
+
+        Args:
+            mode: The mode to set. Use RobotSystemMode.ROBOT_SYSTEM_MODE_MONITOR or RobotSystemMode.ROBOT_SYSTEM_MODE_CONTROL.
+
+        Raises:
+            ValueError: If mode is not a valid controller mode.
+        """
+        # Validate mode parameter
+        if mode not in [RobotSystemMode.ROBOT_SYSTEM_MODE_MONITOR, RobotSystemMode.ROBOT_SYSTEM_MODE_CONTROL]:
+            raise ValueError(f"Invalid mode: {mode}. Must be ROBOT_SYSTEM_MODE_MONITOR or ROBOT_SYSTEM_MODE_CONTROL")
+        
+        await self._nova_api.controller_api.set_default_mode(
+            cell=self.configuration.cell_id, controller=self.configuration.controller_id, mode=mode
+        )
+
+    async def get_current_mode(self) -> RobotSystemMode:
+        """
+        Get the current default mode of the robot controller.
+        
+        Returns:
+            RobotSystemMode: The current mode (ROBOT_SYSTEM_MODE_MONITOR or ROBOT_SYSTEM_MODE_CONTROL).
+        """
+        response = await self._nova_api.controller_api.get_mode(
+            cell=self.configuration.cell_id, controller=self.configuration.controller_id
+        )
+        return response.robot_system_mode
 
     async def stream_state(
         self, rate_msecs
