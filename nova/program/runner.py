@@ -305,6 +305,7 @@ class ProgramRunner(ABC):
             else:
                 async with Nova() as nova:
                     cell = nova.cell()
+                    # TODO: we need to get rid of robot_cell here
                     robot_cell = await cell.get_robot_cell()
 
             if robot_cell is None:

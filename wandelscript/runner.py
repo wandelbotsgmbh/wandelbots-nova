@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import anyio
 from loguru import logger
 
 import nova
@@ -8,6 +9,7 @@ from nova.cell.robot_cell import RobotCell
 from nova.events import CycleDevice
 from nova.program import Program
 from nova.program import ProgramRunner as NovaProgramRunner
+from nova.program import runner as nova_program_runner_module
 from nova.program.runner import ExecutionContext as NovaExecutionContext
 from wandelscript.datatypes import ElementType
 from wandelscript.ffi import ForeignFunction
@@ -116,21 +118,53 @@ def create_wandelscript_program(
     @nova.program(id=program_id)
     async def wandelscript_wrapper():
         async with Nova() as nova:
-            robot_cell = await nova.cell().get_robot_cell()
+            cell = nova.cell()
+            controllers = await cell.controllers()
+            robot_cell = RobotCell(
+                timer=None,
+                open_all_devices=True,
+                cycle=None,
+                **{controller.id: controller for controller in controllers},
+            )
+
             # This causes cyclic import, can't add to cell
             cycle_device = CycleDevice(cell=nova.cell())
             robot_cell.devices["cycle"] = cycle_device
 
-            # TODO: Don't create another runner here, just execute the program
-            result = run(
-                program_id=program_id,
-                program=code,
-                args=args,
-                foreign_functions=foreign_functions,
-                robot_cell_override=robot_cell,
+            try:
+                nova_execution_context: NovaExecutionContext | None = (
+                    nova_program_runner_module.current_execution_context_var.get()
+                )
+            except LookupError:
+                nova_execution_context = None
+
+            stop_event = (
+                nova_execution_context.stop_event
+                if nova_execution_context is not None
+                else anyio.Event()
+            )
+
+            ws_execution_context = ExecutionContext(
+                robot_cell=robot_cell,
+                stop_event=stop_event,
                 default_robot=default_robot,
                 default_tcp=default_tcp,
+                run_args=dict(args) if args is not None else None,
+                foreign_functions=foreign_functions,
             )
-            return result
+
+            program = WandelscriptProgram.from_code(code)
+            async with robot_cell:
+                await program(ws_execution_context)
+
+            output_data = ws_execution_context.store.data_dict
+
+            if nova_execution_context is not None:
+                nova_execution_context.motion_group_recordings = (
+                    ws_execution_context.motion_group_recordings
+                )
+                nova_execution_context.output_data = output_data
+
+            return output_data
 
     return wandelscript_wrapper

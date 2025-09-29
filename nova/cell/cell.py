@@ -154,7 +154,8 @@ class Cell:
             cell=self._cell_id, controller=name, completion_timeout=timeout
         )
 
-    async def get_robot_cell(self) -> RobotCell:
+    # TODO: this should be removed to make it possible running programs without a robot cell
+    async def get_robot_cell(self, open_all_devices: bool = False) -> RobotCell:
         """
         Return a RobotCell object containing all known controllers.
         Returns:
@@ -162,5 +163,8 @@ class Cell:
         """
         controllers = await self.controllers()
         return RobotCell(
-            timer=None, cycle=None, **{controller.id: controller for controller in controllers}
+            timer=None,
+            open_all_devices=open_all_devices,
+            cycle=None,
+            **{controller.id: controller for controller in controllers},
         )

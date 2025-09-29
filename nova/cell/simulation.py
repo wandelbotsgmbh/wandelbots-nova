@@ -577,6 +577,6 @@ def get_robot_controller(
     )
 
 
-def get_robot_cell() -> SimulatedRobotCell:
+def get_simulated_robot_cell() -> SimulatedRobotCell:
     """Get a simulated robot cell"""
     return SimulatedRobotCell(controller=get_robot_controller())
