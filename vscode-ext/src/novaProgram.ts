@@ -113,11 +113,11 @@ export async function runNovaProgram(
     if (debug) {
       // For debugging, we'll use VS Code's built-in Python debugger
       vscode.window.showInformationMessage(
-        `Starting debug session for Nova program: ${functionName}`,
+        `Starting debug session for NOVA program: ${functionName}`,
       )
 
       const debugConfig: vscode.DebugConfiguration = {
-        name: `Debug Nova Program: ${functionName}`,
+        name: `Debug NOVA program: ${functionName}`,
         type: 'python',
         request: 'launch',
         program: filePath,
@@ -152,7 +152,7 @@ sys.path.insert(0, r'${moduleDirEscaped}')
 import ${moduleName}
 
 # Get the function and run it
-# Nova functions return coroutines when called, even if they don't appear as coroutine functions
+# NOVA functions return coroutines when called, even if they don't appear as coroutine functions
 func = getattr(${moduleName}, '${functionName}')
 result = func()
 
@@ -183,8 +183,8 @@ if inspect.iscoroutine(result):
 
     vscode.window.showInformationMessage(
       fineTune
-        ? `Running Nova program with trajectory tuning: ${functionName}`
-        : `Running Nova program: ${functionName}`,
+        ? `Running NOVA program with trajectory tuning: ${functionName}`
+        : `Running NOVA program: ${functionName}`,
     )
 
     // Clean up temp file after a delay
@@ -204,7 +204,7 @@ if inspect.iscoroutine(result):
       try {
         await vscode.commands.executeCommand(COMMAND_SELECT_VIEWER_TAB, 1)
       } catch (e) {
-        console.log('Could not select Fine-Tuning tab:', e)
+        console.log('Could not select fine-tuning tab:', e)
       }
     }
 
@@ -212,18 +212,18 @@ if inspect.iscoroutine(result):
     console.log(`🚀 Sending command to terminal "${terminalName}": ${command}`)
     terminal.sendText(command)
     console.log(
-      `✅ Nova program function started: ${functionName} in terminal: ${terminalName}`,
+      `✅ NOVA program function started: ${functionName} in terminal: ${terminalName}`,
     )
     console.log(
       '⏳ Waiting for nova.rrd file to be created/updated to detect completion...',
     )
     console.log(
-      '📝 Make sure your Nova program writes to nova.rrd when it completes!',
+      '📝 Make sure your NOVA program writes to nova.rrd when it completes!',
     )
   } catch (error: any) {
     vscode.window.showErrorMessage(
-      `Failed to run Nova program: ${error.message}`,
+      `Failed to run NOVA program: ${error.message}`,
     )
-    console.error('Error running Nova program:', error)
+    console.error('Error running NOVA program:', error)
   }
 }
