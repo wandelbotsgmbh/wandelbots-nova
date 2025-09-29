@@ -3,7 +3,9 @@
 The Wandelbots NOVA extension for VS Code.
 
 ## What this extension does
+
 ƒ
+
 - **CodeLens actions**: Adds buttons above each `@nova.program` to quickly run NOVA programs: **Run**, **Debug**, and **Tune path**.
 - **Trajectory fine-tuning (Trajectory tuner)**: Interactively step through trajectories, jog the robot, and save adjusted poses.
 - **Instance selection**: Configure which NOVA instance to connect to via extension settings.
@@ -29,13 +31,13 @@ Use Trajectory Tuner to iteratively adjust trajectory waypoints and actions:
 
 1. Click **Tune Trajectory** above a `@nova.program`.\
    Execution will pause at each execution call.
-3. In the **Fine-Tuning** panel, use the following controls:
+2. In the **Fine-Tuning** panel, use the following controls:
    - **Forward/Backward**: Hold to step through the trajectory in either direction.
    - **Snap to point**: Toggle on to stop at every action/keyframe; toggle off to glide continuously.
-4. Fine-tune points:
+3. Fine-tune points:
    - Use the built-in **Jogging Panel** to move a robot to the desired pose.
    - Save to create a new point, updating the path.
-5. Continue stepping and saving until the trajectory is tuned to your needs, then exit the Trajectory Tuner.
+4. Continue stepping and saving until the trajectory is tuned to your needs, then exit the Trajectory Tuner.
 
 ## Local development
 
