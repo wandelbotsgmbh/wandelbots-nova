@@ -29,6 +29,10 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         )
 
     @property
+    def cell_id(self) -> str:
+        return self.configuration.cell_id
+
+    @property
     def controller_id(self) -> str:
         """Returns the unique controller ID."""
         return self.configuration.controller_id
@@ -132,3 +136,22 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             response_rate=rate_msecs,
         ):
             yield state
+
+
+class VirtualController(Controller):
+    """
+    A virtual controller with some additional functionality on top of the Controller class
+    """
+
+    def __init__(self, configuration: Controller.Configuration):
+        super().__init__(configuration)
+
+    async def get_estop(self) -> bool:
+        return await self._nova_api.virtual_robot_api_v2.get_emergency_stop(
+            cell=self.cell_id, controller=self.controller_id
+        )
+
+    async def set_estop(self, active: bool):
+        await self._nova_api.virtual_robot_api_v2.set_emergency_stop(
+            cell=self.cell_id, controller=self.controller_id, active=active
+        )
