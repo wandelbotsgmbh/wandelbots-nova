@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.19.1 (2025-09-30)
+
+### Bug Fixes
+
+- Review readme & UI texts (#291)
+  ([#291](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/291),
+  [`ab6a3a5`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ab6a3a5140cf8237a1b432b70803bfc3257f67e6))
+
+
 ## v2.19.0 (2025-09-27)
 
 ### Features
