@@ -120,12 +120,13 @@ class ProgramManager:
         if self.is_any_program_running:
             raise RuntimeError("A program is already running")
 
+        on_state_change_listener = on_state_change if on_state_change else self._state_listener
         runner = run_program(
             program,
             parameters=parameters,
             robot_cell_override=self._robot_cell_override,
             sync=sync,
-            on_state_change=on_state_change,
+            on_state_change=on_state_change_listener,
         )
 
         self._runner = runner
