@@ -395,6 +395,7 @@ class PythonProgramRunner(ProgramRunner):
         parameters: Optional[dict[str, Any]] = None,
         robot_cell_override: RobotCell | None = None,
     ):
+        print(program)
         super().__init__(
             program_id=program.program_id, args={}, robot_cell_override=robot_cell_override
         )
@@ -475,7 +476,9 @@ def run_program(
         PythonProgramRunner: The runner for the program
 
     """
-    runner = PythonProgramRunner(program, parameters, robot_cell_override=robot_cell_override)
+    runner = PythonProgramRunner(
+        program, parameters=parameters, robot_cell_override=robot_cell_override
+    )
 
     # Try to grab a caller loop if there is one; otherwise, fall back to None.
     try:
