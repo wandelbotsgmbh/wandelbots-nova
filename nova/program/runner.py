@@ -458,7 +458,7 @@ def run_program(
     program: Program,
     *,
     parameters: dict[str, Any] | None = None,
-    sync: bool = False,
+    sync: bool = True,
     robot_cell_override: RobotCell | None = None,
     on_state_change: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
 ) -> PythonProgramRunner:
