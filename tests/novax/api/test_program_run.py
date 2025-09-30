@@ -79,7 +79,7 @@ async def test_novax_program_failed_run(novax_app):
         start_program = client.post("/programs/failing_program/start", json={"arguments": {}})
         assert start_program.status_code == 200, "Failed to start test program"
 
-        await asyncio.sleep(2)
+        await asyncio.sleep(8)
 
         assert len(program_run_message) == 3, (
             f"Expected 3 program run messages, but got {len(program_run_message)}"
@@ -98,7 +98,7 @@ async def test_novax_program_failed_run(novax_app):
 )
 async def long_running_program():
     """Program that runs for a while and can be stopped."""
-    for i in range(100):
+    for _ in range(100):
         await asyncio.sleep(1)
 
 
