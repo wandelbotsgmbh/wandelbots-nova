@@ -11,7 +11,7 @@ from wandelbots_api_client.models import (
 )
 
 import nova
-from nova import Nova, api
+from nova import Nova, api, run_program
 from nova.actions import Action
 from nova.actions.motions import Motion, cartesian_ptp, collision_free
 from nova.cell import virtual_controller
@@ -82,7 +82,7 @@ async def build_collision_world(
         cleanup_controllers=False,
     ),
 )
-async def test() -> None:
+async def collision_free_p2p() -> None:
     """
     Example of planning a collision free PTP motion. A sphere is placed in the robot's path and the robot uses collision free p2p to move around it.
     """
@@ -175,4 +175,4 @@ async def test() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(test())
+    run_program(collision_free_p2p)

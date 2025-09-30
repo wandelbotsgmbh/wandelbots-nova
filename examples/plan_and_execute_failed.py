@@ -1,7 +1,5 @@
-import asyncio
-
 import nova
-from nova import Nova, api
+from nova import Nova, api, run_program
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -22,7 +20,7 @@ from nova.types import MotionSettings, Pose
         cleanup_controllers=False,
     ),
 )
-async def test():
+async def plan_and_execute_failed():
     async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.controller("ur")
@@ -54,4 +52,4 @@ async def test():
 
 
 if __name__ == "__main__":
-    asyncio.run(test())
+    run_program(plan_and_execute_failed)
