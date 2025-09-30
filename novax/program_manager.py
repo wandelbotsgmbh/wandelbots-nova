@@ -113,12 +113,12 @@ class ProgramManager:
             sync: If True, run the program synchronously
             on_state_change: Optional callback to handle program state changes
         """
-        if self.is_any_program_running:
-            raise RuntimeError("A program is already running")
-
         program = self._program_functions[program_id]
         if program is None:
-            raise RuntimeError(f"Program {program_id} not found")
+            raise KeyError(f"Program {program_id} not found")
+
+        if self.is_any_program_running:
+            raise RuntimeError("A program is already running")
 
         runner = run_program(
             program,
