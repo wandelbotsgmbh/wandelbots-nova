@@ -11,7 +11,7 @@ Prerequisites:
 import asyncio
 
 import nova
-from nova import Nova, api, viewers
+from nova import Nova, api, run_program, viewers
 from nova.actions import TrajectoryBuilder, cartesian_ptp, io_write, joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -96,4 +96,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_program(main, sync=True)
