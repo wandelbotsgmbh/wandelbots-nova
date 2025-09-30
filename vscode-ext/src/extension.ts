@@ -164,7 +164,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const novaApiUrl = getNovaApiAddress()
         if (!novaApiUrl) {
           vscode.window.showErrorMessage(
-            'Nova API URL not configured. Please set "wandelbots-nova-viewer.novaApi" in your VSCode settings.',
+            'NOVA API URL not configured. Please set "wandelbots-nova-viewer.novaApi" in your VSCode settings.',
           )
           return
         }

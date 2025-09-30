@@ -187,7 +187,7 @@ export class NovaCodeLensProvider implements vscode.CodeLensProvider {
 
         // Add "Fine-Tune" button
         const fineTuneCommand: vscode.Command = {
-          title: '🎯 Fine-Tune Trajectory',
+          title: '🎯 Fine-tune trajectory',
           command: COMMAND_FINE_TUNE_NOVA_PROGRAM,
           arguments: [document.uri, functionName, startLine],
         }

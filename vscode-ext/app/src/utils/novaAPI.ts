@@ -99,7 +99,7 @@ export class NovaApi {
       },
     })
 
-    console.debug('Connecting to Nova API', basePath)
+    console.debug('Connecting to NOVA API', basePath)
 
     axiosInstance.interceptors.request.use(async (request) => {
       if (!request.headers.Authorization) {
@@ -127,7 +127,7 @@ export class NovaApi {
 
   async getControllersNames(): Promise<string[]> {
     if (!this.api) {
-      throw new Error('Not connected to Nova API')
+      throw new Error('Not connected to NOVA API')
     }
 
     try {
@@ -142,7 +142,7 @@ export class NovaApi {
 
   async getMotionGroups(controllerName: string): Promise<string[]> {
     if (!this.api) {
-      throw new Error('Not connected to Nova API')
+      throw new Error('Not connected to NOVA API')
     }
 
     console.debug('Getting motion groups for controller', controllerName)
@@ -171,7 +171,7 @@ export class NovaApi {
     motionGroupId: string,
   ): Promise<MotionGroupDescription> {
     if (!this.api) {
-      throw new Error('Not connected to Nova API')
+      throw new Error('Not connected to NOVA API')
     }
 
     try {
@@ -188,7 +188,7 @@ export class NovaApi {
 
   async listCoordinateSystems(controller: string): Promise<string[]> {
     if (!this.api) {
-      throw new Error('Not connected to Nova API')
+      throw new Error('Not connected to NOVA API')
     }
 
     try {
@@ -208,7 +208,7 @@ export class NovaApi {
     coordinateSystem?: string,
   ): Promise<Pose> {
     if (!this.api) {
-      throw new Error('Not connected to Nova API')
+      throw new Error('Not connected to NOVA API')
     }
 
     console.debug(
