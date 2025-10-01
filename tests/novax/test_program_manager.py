@@ -1,5 +1,4 @@
 import asyncio
-import datetime as dt
 
 import pytest
 
@@ -63,7 +62,6 @@ def test_register_program():
         program_details.description
         == "Simple program that prints 'Hello World!' and then sleeps a bit."
     )
-    assert isinstance(program_details.created_at, dt.datetime)
 
 
 def test_deregister_program():

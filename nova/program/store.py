@@ -1,12 +1,13 @@
 import asyncio
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 
 import nats
 from nats.js.api import KeyValueConfig
 from nats.js.client import KeyValue
 from nats.js.errors import KeyNotFoundError as KvKeyError
 from nats.js.errors import NoKeysError, NotFoundError
-from pydantic import BaseModel, Field, ValidationError, constr
+from pydantic import BaseModel, ValidationError
+from wandelbots_api_client.v2.models.program import Program
 
 from nova.logging import logger as nova_logger
 from nova.nats import NatsClient
@@ -183,21 +184,6 @@ class _KeyValueStore(Generic[_T]):
                 continue
 
         return models
-
-
-# this is data model that we should take from service manager api client
-# for now we are duplicating the model here, will be removed once the other side is ready
-class Program(BaseModel):
-    program: constr(pattern=r"^[a-zA-Z0-9_-]+$", min_length=1, max_length=255) = Field(  # type: ignore
-        ..., examples=["my_program"], title="Unique program identifier"
-    )
-    name: str | None = Field(None, title="Program name")
-    description: str | None = Field(None, title="Program description")
-    app: str = Field(..., title="The app containing the program.")
-    input_schema: dict[str, Any] | None = Field(None, title="Program input json schema")
-    preconditions: dict[str, Any] | None = Field(
-        None, title="Preconditions before the program can be started"
-    )
 
 
 class ProgramStore(_KeyValueStore[Program]):

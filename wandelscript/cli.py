@@ -2,19 +2,15 @@
 """CLI tool to work with Wandelscript."""
 
 import asyncio
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-from icecream import ic
 from typer import Exit, FileText, Option, Typer, echo
 
 import wandelscript
 from wandelscript.ffi_loader import load_foreign_functions
-
-ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now().time().isoformat()} | ")
 
 load_dotenv()
 

@@ -20,7 +20,7 @@ from wandelscript.utils.runtime import Tee
 robot_cell = RobotCell(controller=get_robot_controller())
 raising_robot_cell = RobotCell(controller=get_robot_controller(raises_on_open=True))
 
-ic.configureOutput(prefix=lambda: f"{datetime.now().time()} | ", includeContext=True)
+ic.configureOutput(prefix=f"{datetime.now().time()} | ", includeContext=True)
 
 
 def check_program_state(

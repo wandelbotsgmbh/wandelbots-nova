@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import pydantic
 
@@ -10,6 +10,14 @@ from nova.logging import logger
 
 class Action(pydantic.BaseModel, ABC):
     _registry: ClassVar[dict[str, type[Action]]] = {}
+    metas: dict[str, Any] = pydantic.Field(
+        default_factory=dict, description="User-defined metadata"
+    )
+
+    @pydantic.field_validator("metas", mode="before")
+    @classmethod
+    def ensure_dict(cls, v):
+        return {} if v is None else dict(v)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

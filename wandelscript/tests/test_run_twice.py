@@ -10,7 +10,7 @@ from wandelscript.utils.runtime import Tee
 
 robot_cell = SimulatedRobotCell(controller=get_robot_controller())
 
-ic.configureOutput(prefix=lambda: f"{datetime.now().time()} | ", includeContext=True)
+ic.configureOutput(prefix=f"{datetime.now().time()} | ", includeContext=True)
 
 
 def test_run_code_twice():

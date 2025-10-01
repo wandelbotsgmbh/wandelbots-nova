@@ -48,7 +48,21 @@
       "env": {
         "PYTHONPATH": "${workspaceFolder}"
       }
-    }
-
+    },
+    {
+      "name": "pytest",
+      "purpose": ["debug-test"],
+      "presentation": {
+        "hidden": true
+      },
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "args": [
+        "-v"
+      ],
+      "console": "internalConsole",
+      "justMyCode": false
+    }  
   ]
 }

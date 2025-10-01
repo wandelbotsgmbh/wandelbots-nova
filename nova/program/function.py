@@ -312,7 +312,9 @@ def program(
     Decorator factory for creating Nova programs with declarative controller setup.
 
     Args:
-        name: Name of the program
+        id: ID of the program (needs to be unique across all programs)
+        name: Readable name of the program
+        description: Description of the program
         preconditions: ProgramPreconditions containing controller configurations and cleanup settings
         viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
     """

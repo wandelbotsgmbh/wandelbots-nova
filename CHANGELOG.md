@@ -1,6 +1,88 @@
 # CHANGELOG
 
 
+## v2.19.0 (2025-09-27)
+
+### Features
+
+- **NDX-231**: Fine-tuning vscode extension (#270)
+  ([#270](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/270),
+  [`3d5b640`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3d5b640ba34acb92ecc47ded461fb3c3473b704b))
+
+
+## v2.18.3 (2025-09-25)
+
+### Bug Fixes
+
+- Ndx-330-program-parameters (#289)
+  ([#289](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/289),
+  [`b7e1b24`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b7e1b2453519a8efafae55aa15415a5bb0a37c32))
+
+
+## v2.18.2 (2025-09-25)
+
+### Bug Fixes
+
+- Program-input-schema (#288) ([#288](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/288),
+  [`3bfc7ec`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3bfc7ecff5ed038dc8002d7979b2bd6d16ead01d))
+
+
+## v2.18.1 (2025-09-25)
+
+### Bug Fixes
+
+- Remove icecream (#287) ([#287](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/287),
+  [`da2fd24`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/da2fd24f12d53db47f319501ab9ae155bc0a76d4))
+
+
+## v2.18.0 (2025-09-24)
+
+### Features
+
+- **NDX-228**: Trajectory cursor debug (#281)
+  ([#281](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/281),
+  [`9eaf965`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9eaf965e216d1dd4587af016ef6ab65f6bba5354))
+
+
+## v2.17.1 (2025-09-24)
+
+### Bug Fixes
+
+- Default port (#286) ([#286](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/286),
+  [`b510611`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b5106111416b13c7f0489857ea7e5a3a59bee772))
+
+
+## v2.17.0 (2025-09-23)
+
+### Features
+
+- Upgrade Python SDK to Python v3.11+ (#285)
+  ([#285](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/285),
+  [`c6efc71`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c6efc718f2928623fcdfe3eb34d503d644f7d783))
+
+
+## v2.16.3 (2025-09-23)
+
+### Chores
+
+- **deps**: Bump antlr4-python3-runtime from 4.13.1 to 4.13.2 (#205)
+  ([#205](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/205),
+  [`327dccb`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/327dccbab82d33512e457c562fab3e584b0c1692))
+
+- **deps**: Update typer[all] requirement from <0.17,>=0.12 to >=0.12,<0.20 (#283)
+  ([#283](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/283),
+  [`8d9eb45`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8d9eb455a45df9cdce6a859dd26a3e90d2de8950))
+
+
+## v2.16.2 (2025-09-23)
+
+### Chores
+
+- **deps**: Bump actions/setup-python from 5 to 6 (#276)
+  ([#276](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/276),
+  [`34cbd9e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/34cbd9e9069dd6720be09ad184f307574aaae4a0))
+
+
 ## v2.16.1 (2025-09-14)
 
 ### Bug Fixes

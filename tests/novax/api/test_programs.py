@@ -19,7 +19,6 @@ def test_get_programs(novax_app):
     assert "program" in simple_program
     assert "name" in simple_program
     assert "description" in simple_program
-    assert "created_at" in simple_program
 
 
 def test_get_program_success(novax_app):
@@ -30,7 +29,6 @@ def test_get_program_success(novax_app):
     program = response.json()
 
     assert program["program"] == "simple_program"
-    assert "created_at" in program
     assert "name" in program
     assert "description" in program
     assert "input_schema" in program
@@ -47,7 +45,7 @@ def test_get_program_not_found(novax_app):
 def test_start_program_success(novax_app):
     client = TestClient(novax_app)
     response = client.post(
-        "/programs/simple_program/start", json={"parameters": {"number_of_steps": 5}}
+        "/programs/simple_program/start", json={"arguments": {"number_of_steps": 5}}
     )
 
     assert response.status_code == 200
@@ -60,7 +58,7 @@ def test_start_program_success(novax_app):
 
 def test_start_program_without_parameters(novax_app):
     client = TestClient(novax_app)
-    response = client.post("/programs/simple_program/start", json={})
+    response = client.post("/programs/simple_program/start", json={"arguments": {}})
 
     assert response.status_code == 200
     run = response.json()
@@ -72,7 +70,7 @@ def test_start_program_without_parameters(novax_app):
 
 def test_start_program_not_found(novax_app):
     client = TestClient(novax_app)
-    response = client.post("/programs/nonexistent_program/start", json={"parameters": {}})
+    response = client.post("/programs/nonexistent_program/start", json={"arguments": {}})
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Program not found"
@@ -83,7 +81,7 @@ def test_start_program(novax_app):
 
     # Start first program
     response1 = client.post(
-        "/programs/simple_program/start", json={"parameters": {"number_of_steps": 10}}
+        "/programs/simple_program/start", json={"arguments": {"number_of_steps": 10}}
     )
     assert response1.status_code == 200
 
@@ -93,7 +91,7 @@ def test_stop_program_success(novax_app):
 
     # First start a program
     start_response = client.post(
-        "/programs/simple_program/start", json={"parameters": {"number_of_steps": 30}}
+        "/programs/simple_program/start", json={"arguments": {"number_of_steps": 30}}
     )
     assert start_response.status_code == 200
 
@@ -123,7 +121,7 @@ def test_stop_program_wrong_program(novax_app):
 
     # Start a program
     start_response = client.post(
-        "/programs/simple_program/start", json={"parameters": {"number_of_steps": 10}}
+        "/programs/simple_program/start", json={"arguments": {"number_of_steps": 10}}
     )
     assert start_response.status_code == 200
 
