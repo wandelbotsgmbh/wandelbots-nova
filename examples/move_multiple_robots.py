@@ -11,7 +11,7 @@ Prerequisites:
 import asyncio
 
 import nova
-from nova import Controller, Nova, api
+from nova import Controller, Nova, api, run_program
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -50,7 +50,7 @@ async def move_robot(controller: Controller):
         cleanup_controllers=False,
     ),
 )
-async def main():
+async def move_multiple_robots():
     async with Nova() as nova:
         cell = nova.cell()
         ur10 = await cell.controller("ur10")
@@ -59,4 +59,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_program(move_multiple_robots)

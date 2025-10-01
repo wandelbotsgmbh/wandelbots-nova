@@ -1,6 +1,8 @@
+import asyncio
 import contextlib
 import contextvars
 import datetime as dt
+import inspect
 import io
 import sys
 import threading
@@ -8,7 +10,8 @@ import traceback as tb
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
-from typing import Any
+from concurrent.futures import Future
+from typing import Any, Coroutine, Optional
 
 import anyio
 from anyio import from_thread, to_thread
@@ -22,6 +25,7 @@ from nova import Nova, api
 from nova.cell.robot_cell import RobotCell
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.program.exceptions import NotPlannableError
+from nova.program.function import Program
 from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
 
@@ -380,3 +384,111 @@ class ProgramRunner(ABC):
         The main function that runs the program. This method should be overridden by subclasses to implement the
         runner logic.
         """
+
+
+class PythonProgramRunner(ProgramRunner):
+    """Runner for Python programs"""
+
+    def __init__(
+        self,
+        program: Program,
+        parameters: Optional[dict[str, Any]] = None,
+        robot_cell_override: RobotCell | None = None,
+    ):
+        super().__init__(
+            program_id=program.program_id, args={}, robot_cell_override=robot_cell_override
+        )
+        self.program = program
+        self.parameters = parameters
+
+    async def _run(self, execution_context: ExecutionContext) -> Any:
+        # Execute the function with parameters
+        result = self.program(**(self.parameters or {}))
+
+        # Check if the function is async and await it if necessary
+        if inspect.iscoroutine(result):
+            result = await result
+
+        return result
+
+
+def _log_future_result(future: Future):
+    try:
+        result = future.result()
+        logger.debug(f"Program state change callback completed with result: {result}")
+    except Exception as e:
+        logger.error(f"Program state change callback failed with exception: {e}")
+
+
+def _report_state_change_to_event_loop(
+    loop: asyncio.AbstractEventLoop | None,
+    state_listener: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None,
+) -> Callable[[ProgramRun], Awaitable[None]] | None:
+    """Return an awaitable listener that schedules the user's async callback.
+
+    If `loop` is a running, open asyncio loop, callbacks are posted to it
+    (thread-safe). Otherwise, callbacks are scheduled on the *current* loop,
+    i.e., the runner thread's event loop created by `anyio.run`.
+
+    """
+    if not state_listener:
+        return None
+
+    async def _state_listener(program_run: ProgramRun):
+        logger.debug(f"Reporting state change to event loop for program run: {program_run.program}")
+        coroutine = state_listener(program_run)
+
+        try:
+            if loop and loop.is_running() and not loop.is_closed():
+                # Post the callback onto the caller's loop, thread-safe.
+                future: Future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+                future.add_done_callback(_log_future_result)
+            else:
+                # No caller loop: schedule on the runner thread's loop.
+                asyncio.create_task(coroutine)
+        except Exception as e:
+            logger.error(
+                f"Unexpected error in state change callback for program {program_run.program}: {e}"
+            )
+
+    return _state_listener
+
+
+def run_program(
+    program: Program,
+    *,
+    parameters: dict[str, Any] | None = None,
+    sync: bool = True,
+    robot_cell_override: RobotCell | None = None,
+    on_state_change: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
+) -> PythonProgramRunner:
+    """Run a program with given parameters.
+
+    Args:
+        program: The program to run
+        parameters: The parameters to pass to the program
+        sync: If True, the program runs synchronously
+        robot_cell_override: The robot cell to use for the program
+        on_state_change: The callback to call when the state of the program changes
+
+    Returns:
+        PythonProgramRunner: The runner for the program
+
+    """
+    runner = PythonProgramRunner(
+        program, parameters=parameters, robot_cell_override=robot_cell_override
+    )
+
+    # Try to grab a caller loop if there is one; otherwise, fall back to None.
+    try:
+        loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    on_state_change_listener = (
+        _report_state_change_to_event_loop(loop, on_state_change) if on_state_change else None
+    )
+
+    runner.start(sync=sync, on_state_change=on_state_change_listener)
+
+    return runner

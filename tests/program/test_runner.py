@@ -1,5 +1,7 @@
 import pytest
 
+import nova
+from nova import run_program
 from nova.program.exceptions import NotPlannableError
 from nova.program.runner import ProgramRunner, ProgramRunState
 
@@ -101,3 +103,14 @@ def test_program_runner_logs_and_stdout():
     # Verify logs and stdout are captured
     assert runner.program_run.logs is not None
     assert runner.program_run.stdout is not None
+
+
+@pytest.mark.integration
+def test_simple_program():
+    @nova.program()
+    async def test_program():
+        print("Hello, world")
+
+    runner = run_program(test_program)
+    assert runner.state == ProgramRunState.COMPLETED
+    assert runner.program_run.error is None
