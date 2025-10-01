@@ -395,7 +395,6 @@ class PythonProgramRunner(ProgramRunner):
         parameters: Optional[dict[str, Any]] = None,
         robot_cell_override: RobotCell | None = None,
     ):
-        print(program)
         super().__init__(
             program_id=program.program_id, args={}, robot_cell_override=robot_cell_override
         )

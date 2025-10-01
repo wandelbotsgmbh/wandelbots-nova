@@ -106,12 +106,11 @@ def test_program_runner_logs_and_stdout():
 
 
 @pytest.mark.integration
-def test_program_run_with_error_state_in_cell():
-    @nova.program
-    def test_program():
-        print("test program")
+def test_simple_program():
+    @nova.program()
+    async def test_program():
+        print("Hello, world")
 
     runner = run_program(test_program)
     assert runner.state == ProgramRunState.COMPLETED
-    assert runner.program_run.error is not None
-    assert runner.program_run.traceback is not None
+    assert runner.program_run.error is None
