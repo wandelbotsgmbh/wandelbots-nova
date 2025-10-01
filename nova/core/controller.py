@@ -18,6 +18,8 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         id: str = "controller"
         cell_id: str
         controller_id: str
+        # TODO: here?
+        is_virtual: bool = False
 
     def __init__(self, configuration: Configuration):
         super().__init__(configuration)
@@ -137,21 +139,18 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         ):
             yield state
 
-
-class VirtualController(Controller):
-    """
-    A virtual controller with some additional functionality on top of the Controller class
-    """
-
-    def __init__(self, configuration: Controller.Configuration):
-        super().__init__(configuration)
-
     async def get_estop(self) -> bool:
+        if not self.configuration.is_virtual:
+            raise NotImplementedError("This method is only available for virtual controllers")
+
         return await self._nova_api.virtual_robot_api_v2.get_emergency_stop(
             cell=self.cell_id, controller=self.controller_id
         )
 
     async def set_estop(self, active: bool):
+        if not self.configuration.is_virtual:
+            raise NotImplementedError("This method is only available for virtual controllers")
+
         await self._nova_api.virtual_robot_api_v2.set_emergency_stop(
             cell=self.cell_id, controller=self.controller_id, active=active
         )
