@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.20.0 (2025-10-01)
+
+### Features
+
+- **NDX-331**: Make sure all programs are executed by the program runner (#294)
+  ([#294](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/294),
+  [`71b1203`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/71b12037e91c2025dd6daf45535e7585cd88d8ee))
+
+
 ## v2.19.1 (2025-09-30)
 
 ### Bug Fixes
