@@ -2,7 +2,7 @@
   "name": "wandelbots-nova",
   "displayName": "Wandelbots NOVA",
   "description": "Wandelbots NOVA VSCode extension",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "wandelbots",
   "icon": "media/logo.png",
   "engines": {
