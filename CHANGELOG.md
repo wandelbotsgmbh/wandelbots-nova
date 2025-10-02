@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.20.2 (2025-10-02)
+
+### Bug Fixes
+
+- **vscode-ext**: Respect NOVA_ACCESS_TOKEN when running programs (#296)
+  ([#296](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/296),
+  [`313fc49`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/313fc4949462347b4d95dc285b4de492a44b2f3b))
+
+
 ## v2.20.1 (2025-10-02)
 
 ### Bug Fixes
