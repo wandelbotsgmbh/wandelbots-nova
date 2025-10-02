@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.20.3 (2025-10-02)
+
+### Bug Fixes
+
+- Use tilda operator for the dependent package (#298)
+  ([#298](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/298),
+  [`8108c0b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8108c0b147a108ed3d3c125449dc3b0ed8d35bb7))
+
+
 ## v2.20.2 (2025-10-02)
 
 ### Bug Fixes
