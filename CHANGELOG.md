@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.20.1 (2025-10-02)
+
+### Bug Fixes
+
+- Add init args to the runner (#295)
+  ([#295](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/295),
+  [`905c234`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/905c234481021031197b6d7e93c29cb80239b3df))
+
+
 ## v2.20.0 (2025-10-01)
 
 ### Features
