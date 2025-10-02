@@ -249,3 +249,29 @@ async def test_novax_program_pass_arguments_with_pydantic_model():
         assert start_program.status_code == 200, "Failed to start test program"
 
         assert assertion.result(timeout=10)
+
+
+@pytest.mark.integration
+@pytest.mark.xdist_group("program-runs")
+@pytest.mark.asyncio
+async def test_program_run_contains_init_args():
+    novax = Novax()
+    app = novax.create_app()
+
+    @nova.program()
+    async def example_program(cycle_count: int = 1):
+        pass
+
+    novax.register_program(example_program)
+    novax.include_programs_router(app)
+
+    args = {"cycle_count": 5}
+    with TestClient(app) as client:
+        start_program = client.post(
+            f"/programs/{example_program.program_id}/start", json={"arguments": args}
+        )
+        # TODO: this should return 400 Bad Request when schema validation is implemented
+        assert start_program.status_code == 200, "Failed to start test program"
+        program_run = ProgramRun.model_validate(start_program.json())
+
+        assert program_run.input_data == args

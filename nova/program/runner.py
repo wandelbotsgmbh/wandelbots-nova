@@ -396,7 +396,9 @@ class PythonProgramRunner(ProgramRunner):
         robot_cell_override: RobotCell | None = None,
     ):
         super().__init__(
-            program_id=program.program_id, args={}, robot_cell_override=robot_cell_override
+            program_id=program.program_id,
+            args=parameters if parameters else {},
+            robot_cell_override=robot_cell_override,
         )
         self.program = program
         self.parameters = parameters
