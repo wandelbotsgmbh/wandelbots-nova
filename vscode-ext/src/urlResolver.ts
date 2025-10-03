@@ -8,6 +8,7 @@ import {
   SETTINGS_RERUN_ADDRESS,
   VIEWER_ID,
 } from './consts'
+import { buildNatsConnectionString } from './utils/nats'
 
 /**
  * Gets the protocol from the environment
@@ -137,10 +138,16 @@ export function getCellId(): string {
   return cellId
 }
 
-export function getNatsBroker(): string {
+export function getNatsBroker(): string | null {
   const config = vscode.workspace.getConfiguration(VIEWER_ID)
   const natsBroker = config.get<string>(SETTINGS_NATS_BROKER, '')
-  return natsBroker
+  if (natsBroker) {
+    return natsBroker
+  }
+
+  const novaApi = getNovaApiAddress()
+  const accessToken = getAccessToken()
+  return buildNatsConnectionString(novaApi, accessToken)
 }
 
 /**
