@@ -116,7 +116,15 @@ def create_wandelscript_program(
     @nova.program(id=program_id)
     async def wandelscript_wrapper():
         async with Nova() as nova:
-            robot_cell = await nova.cell().get_robot_cell()
+            cell = nova.cell()
+            controllers = await cell.controllers()
+            robot_cell = RobotCell(
+                timer=None,
+                open_all_devices=True,
+                cycle=None,
+                **{controller.id: controller for controller in controllers},
+            )
+
             # This causes cyclic import, can't add to cell
             cycle_device = CycleDevice(cell=nova.cell())
             robot_cell.devices["cycle"] = cycle_device

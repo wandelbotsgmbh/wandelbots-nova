@@ -8,7 +8,7 @@ from nova.cell.simulation import (
     SimulatedController,
     SimulatedRobot,
     SimulatedRobotCell,
-    get_robot_cell,
+    get_simulated_robot_cell,
 )
 from nova.types import Pose
 from wandelscript.exception import ProgramRuntimeError
@@ -59,7 +59,7 @@ move via ptp() to (23, 0, 626, 0, 0, 0)
         [Linear, CartesianPTP],
     ]
 
-    cell = get_robot_cell()
+    cell = get_simulated_robot_cell()
     runner = wandelscript.run(
         program_id="test", program=code, robot_cell_override=cell, default_tcp="Flange"
     )
@@ -144,7 +144,7 @@ move via joint_p2p() to [31, 0, 626, 0, 0, 0]
         ],
     ]
     # Create a robot cell:
-    cell = get_robot_cell()
+    cell = get_simulated_robot_cell()
     # Execute code:
     runner = wandelscript.run(code, robot_cell_override=cell)
 
@@ -176,7 +176,7 @@ move via joint_p2p() to joints
 write(controller, "10010#0001", True)
 move via joint_p2p() to joints
 """
-    cell = get_robot_cell()
+    cell = get_simulated_robot_cell()
     runner = wandelscript.run(code, robot_cell_override=cell)
     print(runner.execution_context.store)
 
