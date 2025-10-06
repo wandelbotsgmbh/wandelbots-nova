@@ -221,7 +221,6 @@ class ApiGateway:
             username=self._username,
             password=self._password,
             access_token=self._access_token,
-            verify_ssl=self._verify_ssl,
         )
         self._api_v2_client = v2.ApiClient(configuration=api_v2_client_config)
         self._api_v2_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
