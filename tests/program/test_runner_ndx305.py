@@ -52,6 +52,7 @@ async def test_program_runner_with_unrelated_controller_in_estop():
             type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
         )
     )
+    print(controller_in_estop.is_virtual)
     await controller_in_estop.set_estop(active=True)
 
     runner = run_program(test_program)

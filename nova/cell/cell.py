@@ -1,5 +1,4 @@
 import nova.api as api
-from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
@@ -166,19 +165,4 @@ class Cell:
         """
         await self._api_gateway.delete_robot_controller(
             cell=self._cell_id, controller=name, completion_timeout=timeout
-        )
-
-    # TODO: this should be removed to make it possible running programs without a robot cell
-    async def get_robot_cell(self, open_all_devices: bool = False) -> RobotCell:
-        """
-        Return a RobotCell object containing all known controllers.
-        Returns:
-            RobotCell: A RobotCell initialized with the available controllers.
-        """
-        controllers = await self.controllers()
-        return RobotCell(
-            timer=None,
-            open_all_devices=open_all_devices,
-            cycle=None,
-            **{controller.id: controller for controller in controllers},
         )

@@ -72,13 +72,10 @@ def test_example(example_name):
     ):
         return
     logger.info(f"Running example {example_name}...")
-    program, data, config = EXAMPLES[example_name]
+    code, data, config = EXAMPLES[example_name]
     robot_cell = _robot_cell_from_configuration(config)
     runner = wandelscript.run(
-        program_id=example_name,
-        program=program,
-        robot_cell_override=robot_cell,
-        default_tcp="Flange",
+        program_id=example_name, code=code, robot_cell_override=robot_cell, default_tcp="Flange"
     )
     store = runner.program_run.output_data
     for key, expected in data.items():

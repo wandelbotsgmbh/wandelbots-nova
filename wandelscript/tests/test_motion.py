@@ -30,7 +30,7 @@ move frame("tool") to (2, 2, 0)
     with pytest.raises(ProgramRuntimeError):
         wandelscript.run(
             program_id="test",
-            program=code,
+            code=code,
             robot_cell_override=SimulatedRobotCell(controller=controller),
             default_robot="0@controller",
         )
@@ -38,7 +38,7 @@ move frame("tool") to (2, 2, 0)
 
 def test_no_robot():
     code = """print("hello world")"""
-    wandelscript.run(program_id="test", program=code, robot_cell_override=RobotCell())
+    wandelscript.run(program_id="test", code=code, robot_cell_override=RobotCell())
 
 
 def test_motion_type_p2p_line():
@@ -61,7 +61,7 @@ move via ptp() to (23, 0, 626, 0, 0, 0)
 
     cell = get_simulated_robot_cell()
     runner = wandelscript.run(
-        program_id="test", program=code, robot_cell_override=cell, default_tcp="Flange"
+        program_id="test", code=code, robot_cell_override=cell, default_tcp="Flange"
     )
 
     record_of_commands = runner.execution_context.robot_cell.get_motion_group(
@@ -146,7 +146,7 @@ move via joint_p2p() to [31, 0, 626, 0, 0, 0]
     # Create a robot cell:
     cell = get_simulated_robot_cell()
     # Execute code:
-    runner = wandelscript.run(code, robot_cell_override=cell)
+    runner = wandelscript.run(program_id="test", code=code, robot_cell_override=cell)
 
     record_of_commands = runner.execution_context.robot_cell.get_motion_group(
         "0@controller"
@@ -177,7 +177,7 @@ write(controller, "10010#0001", True)
 move via joint_p2p() to joints
 """
     cell = get_simulated_robot_cell()
-    runner = wandelscript.run(code, robot_cell_override=cell)
+    runner = wandelscript.run(program_id="test", code=code, robot_cell_override=cell)
     print(runner.execution_context.store)
 
     path = runner.execution_context.robot_cell.robot.record_of_commands[0]

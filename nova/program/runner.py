@@ -69,17 +69,24 @@ class ProgramRunner(ABC):
     """
 
     def __init__(
-        self, program_id: str, args: dict[str, Any], robot_cell_override: RobotCell | None = None
+        self,
+        program: Program,
+        *,
+        parameters: dict[str, Any],
+        robot_cell_override: RobotCell | None = None,
     ):
         """
         Args:
             program_id (str): The unique identifier of the program.
-            args (dict[str, Any]): The arguments to pass to the program.
+            parameters (dict[str, Any]): The parameters that are passed to the program.
             robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Defaults to None.
         """
+        program_id = program.program_id
+
         self._run_id = str(uuid.uuid4())
         self._program_id = program_id
-        self._args = args
+        self._preconditions = program.preconditions
+        self._parameters = parameters
         self._robot_cell_override = robot_cell_override
         self._program_run: ProgramRun = ProgramRun(
             run=self._run_id,
@@ -91,7 +98,7 @@ class ProgramRunner(ABC):
             traceback=None,
             start_time=None,
             end_time=None,
-            input_data=args,
+            input_data=parameters,
             output_data={},
         )
         self._thread: threading.Thread | None = None
@@ -253,6 +260,8 @@ class ProgramRunner(ABC):
             )
 
         with monitoring_scope:
+            # TODO: only stream devices that are running, not everything in the robot cell.
+            #   -> How to figure that out? Maybe only controllers in precondition?
             cell_state_stream = self.execution_context.robot_cell.stream_state(1000)
             task_status.started()
 
@@ -305,8 +314,27 @@ class ProgramRunner(ABC):
             else:
                 async with Nova() as nova:
                     cell = nova.cell()
-                    # TODO: we need to get rid of robot_cell here
-                    robot_cell = await cell.get_robot_cell()
+                    controllers = await cell.controllers()
+
+                    # Based on the program preconditions, a robot cell is created
+                    #   That means also only devices that are part of the preconditions are opened and streamed for e.g. estop handling
+                    controller_preconditions = (
+                        self._preconditions.controllers if self._preconditions else None
+                    )
+                    controller_ids = (
+                        [controller_id for controller_id in controller_preconditions]
+                        if controller_preconditions
+                        else []
+                    )
+                    controllers = [
+                        controller for controller in controllers if controller.id in controller_ids
+                    ]
+                    robot_cell = RobotCell(
+                        timer=None,
+                        open_all_devices=True,
+                        cycle=None,
+                        **{controller.id: controller for controller in controllers},
+                    )
 
             if robot_cell is None:
                 raise RuntimeError("No robot cell available")
@@ -397,10 +425,11 @@ class PythonProgramRunner(ProgramRunner):
         robot_cell_override: RobotCell | None = None,
     ):
         super().__init__(
-            program_id=program.program_id,
-            args=parameters if parameters else {},
+            program,
+            parameters=parameters if parameters else {},
             robot_cell_override=robot_cell_override,
         )
+        # TODO: is this still required?
         self.program = program
         self.parameters = parameters
 

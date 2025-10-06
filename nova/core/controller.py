@@ -39,6 +39,10 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         """Returns the unique controller ID."""
         return self.configuration.controller_id
 
+    @property
+    def is_virtual(self) -> bool:
+        return self.configuration.is_virtual
+
     async def open(self):
         """Activates all motion groups."""
         motion_group_ids = await self.activated_motion_group_ids()
@@ -140,17 +144,27 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             yield state
 
     async def get_estop(self) -> bool:
-        if not self.configuration.is_virtual:
-            raise NotImplementedError("This method is only available for virtual controllers")
+        """Get the emergency stop state for the controller. Works on virtual controllers only.
 
+        Returns:
+            bool: Whether the emergency stop is active (True) or not (False).
+
+        Raises:
+            NotImplementedError: If called on a non-virtual controller.
+        """
         return await self._nova_api.virtual_robot_api_v2.get_emergency_stop(
             cell=self.cell_id, controller=self.controller_id
         )
 
     async def set_estop(self, active: bool):
-        if not self.configuration.is_virtual:
-            raise NotImplementedError("This method is only available for virtual controllers")
+        """Set the emergency stop state for the controller. Works on virtual controllers only.
 
+        Args:
+            active (bool): Whether to activate (True) or deactivate (False) the emergency stop.
+
+        Raises:
+            NotImplementedError: If called on a non-virtual controller.
+        """
         await self._nova_api.virtual_robot_api_v2.set_emergency_stop(
             cell=self.cell_id, controller=self.controller_id, active=active
         )

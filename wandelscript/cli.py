@@ -29,8 +29,8 @@ async def main(code: str, foreign_functions: dict[str, Any] | None = None):
     """Main program logic."""
     runner = wandelscript.run(
         program_id="ws_program",
-        program=code,
-        args={},
+        code=code,
+        parameters={},
         default_tcp=None,
         default_robot=None,
         foreign_functions=foreign_functions,
