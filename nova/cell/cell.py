@@ -1,5 +1,4 @@
 import nova.api as api
-from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
@@ -60,6 +59,11 @@ class Cell:
             )
         )
 
+    def _create_controller_from_config(
+        self, robot_controller: api.models.RobotController
+    ) -> Controller:
+        return self._create_controller(controller_id=robot_controller.name)
+
     async def add_controller(
         self,
         robot_controller: api.models.RobotController,
@@ -86,7 +90,7 @@ class Cell:
             cell=self._cell_id, name=robot_controller.name, timeout=wait_for_ready_timeout
         )
 
-        return self._create_controller(robot_controller.name)
+        return self._create_controller_from_config(robot_controller)
 
     async def ensure_controller(
         self,
@@ -112,7 +116,7 @@ class Cell:
         )
 
         if controller:
-            return self._create_controller(controller.controller)
+            return self._create_controller_from_config(robot_controller)
         return await self.add_controller(
             robot_controller, add_timeout=add_timeout, wait_for_ready_timeout=wait_for_ready_timeout
         )
@@ -123,6 +127,7 @@ class Cell:
         Returns:
             list[Controller]: A list of Controller objects associated with this cell.
         """
+        #  TODO: Information if the controller is virtual or physical is missing
         instances = await self._api_gateway.list_controllers(cell=self._cell_id)
         return [self._create_controller(ci.controller) for ci in instances]
 
@@ -141,6 +146,7 @@ class Cell:
         )
         if not controller_instance:
             raise ControllerNotFound(controller=name)
+
         return self._create_controller(controller_instance.controller)
 
     async def delete_robot_controller(self, name: str, timeout: int = 25):
@@ -152,15 +158,4 @@ class Cell:
         """
         await self._api_gateway.delete_robot_controller(
             cell=self._cell_id, controller=name, completion_timeout=timeout
-        )
-
-    async def get_robot_cell(self) -> RobotCell:
-        """
-        Return a RobotCell object containing all known controllers.
-        Returns:
-            RobotCell: A RobotCell initialized with the available controllers.
-        """
-        controllers = await self.controllers()
-        return RobotCell(
-            timer=None, cycle=None, **{controller.id: controller for controller in controllers}
         )

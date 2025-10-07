@@ -20,9 +20,9 @@ move via p2p() to (0, 0, 400, 0, pi, 0)
 print("print something")
 move via line() to (0, 100, 400, 0, pi, 0)
 """
-    for i in range(2):
+    for _ in range(2):
         runner = run(
-            program_id="test", program=code, robot_cell_override=robot_cell, default_tcp="Flange"
+            program_id="test", code=code, robot_cell_override=robot_cell, default_tcp="Flange"
         )
         assert runner.program_run.output_data["a"] == 9
         assert runner.program_run.state is ProgramRunState.COMPLETED

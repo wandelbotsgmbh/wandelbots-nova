@@ -308,6 +308,8 @@ def program(
         name: Readable name of the program
         description: Description of the program
         preconditions: ProgramPreconditions containing controller configurations and cleanup settings
+            Based on the program preconditions, a robot cell is created when running the program in a runner
+            Only devices that are part of the preconditions are opened and listened for e.g. estop handling
         viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
 
     Decorator / decorator-factory for creating Nova programs.
