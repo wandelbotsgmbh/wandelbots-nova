@@ -425,7 +425,7 @@ class PythonProgramRunner(ProgramRunner):
     ):
         super().__init__(
             program,
-            parameters=parameters if parameters else {},
+            parameters=parameters or {},
             robot_cell_override=robot_cell_override,
         )
         # TODO: is this still required?
