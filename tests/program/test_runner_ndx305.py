@@ -15,7 +15,7 @@ async def test_program_runner_with_unrelated_controller_in_estop():
         preconditions=ProgramPreconditions(
             controllers=[
                 virtual_controller(
-                    name="kuka",
+                    name="kuka-no-estop",
                     manufacturer=api.models.Manufacturer.KUKA,
                     type=api.models.VirtualControllerTypes.KUKA_MINUS_KR16_R1610_2,
                 )
@@ -26,7 +26,7 @@ async def test_program_runner_with_unrelated_controller_in_estop():
     async def test_program():
         async with Nova() as nova:
             cell = nova.cell()
-            controller = await cell.controller("kuka")
+            controller = await cell.controller("kuka-no-estop")
 
             async with controller[0] as motion_group:
                 home_joints = await motion_group.joints()
@@ -47,7 +47,7 @@ async def test_program_runner_with_unrelated_controller_in_estop():
     cell = nova_instance.cell()
     controller_in_estop = await cell.ensure_controller(
         virtual_controller(
-            name="ur10",
+            name="ur10e-estop",
             manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
             type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
         )
