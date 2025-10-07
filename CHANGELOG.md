@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v2.20.4 (2025-10-07)
+
+### Bug Fixes
+
+- **NDX-305**: Not all controllers in the cell should be opened (#292)
+  ([#292](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/292),
+  [`3c4d9f3`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3c4d9f347c49ed72f3e348d46dfcb4b11de5be6d))
+
+
 ## v2.20.3 (2025-10-02)
 
 ### Bug Fixes
