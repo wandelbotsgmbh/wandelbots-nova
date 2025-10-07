@@ -424,9 +424,7 @@ class PythonProgramRunner(ProgramRunner):
         robot_cell_override: RobotCell | None = None,
     ):
         super().__init__(
-            program,
-            parameters=parameters or {},
-            robot_cell_override=robot_cell_override,
+            program, parameters=parameters or {}, robot_cell_override=robot_cell_override
         )
         # TODO: is this still required?
         self.program = program
