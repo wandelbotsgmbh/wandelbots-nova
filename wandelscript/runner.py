@@ -127,10 +127,7 @@ async def run_wandelscript_program(
         cell = nova.cell()
         controllers = await cell.controllers()
         robot_cell = RobotCell(
-            timer=None,
-            open_all_devices=True,
-            cycle=None,
-            **{controller.id: controller for controller in controllers},
+            timer=None, cycle=None, **{controller.id: controller for controller in controllers}
         )
         cycle_device = CycleDevice(cell=cell)
         robot_cell.devices["cycle"] = cycle_device

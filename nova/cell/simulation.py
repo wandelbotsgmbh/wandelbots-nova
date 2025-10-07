@@ -550,7 +550,7 @@ class SimulatedRobotCell(RobotCell):
             if key not in kwargs:
                 kwargs[key] = value
 
-        super().__init__(open_all_devices=True, **kwargs)
+        super().__init__(**kwargs)
 
 
 def get_simulated_robot_configs(

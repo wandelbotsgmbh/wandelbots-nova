@@ -331,7 +331,6 @@ class ProgramRunner(ABC):
 
                     robot_cell = RobotCell(
                         timer=None,
-                        open_all_devices=True,
                         cycle=None,
                         **{controller.id: controller for controller in controllers},
                     )

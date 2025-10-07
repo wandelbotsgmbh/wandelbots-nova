@@ -503,9 +503,7 @@ class RobotCell:
 
     _devices: dict
 
-    def __init__(
-        self, timer: AbstractTimer | None = None, open_all_devices: bool = False, **kwargs
-    ):
+    def __init__(self, timer: AbstractTimer | None = None, **kwargs):
         if timer is None:
             timer = Timer()
         devices = {"timer": timer, **kwargs}
@@ -517,7 +515,6 @@ class RobotCell:
                 )
         self._devices = devices
         self._device_exit_stack = AsyncExitStack()
-        self._open_all_devices = open_all_devices
 
     @property
     def devices(self) -> dict:
@@ -653,10 +650,9 @@ class RobotCell:
     #    raise NotImplementedError()
 
     async def __aenter__(self):
-        if self._open_all_devices:
-            for device in self._devices.values():
-                if device is not None:
-                    await self._device_exit_stack.enter_async_context(device)
+        for device in self._devices.values():
+            if device is not None:
+                await self._device_exit_stack.enter_async_context(device)
         return self
 
     async def __aexit__(self, exc_type, exc_value, exc_traceback):
