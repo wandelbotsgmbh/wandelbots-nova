@@ -312,23 +312,23 @@ class ProgramRunner(ABC):
             if self._robot_cell_override:
                 robot_cell = self._robot_cell_override
             else:
+                # When there is not robot_cell_override given we create a new robot cell
+                #   based on the program preconditions. That means also only devices that are
+                #   part of the preconditions are opened and streamed for e.g. estop handling
                 async with Nova() as nova:
                     cell = nova.cell()
                     controllers = await cell.controllers()
+                    controller_specs = (
+                        list(self._preconditions.controllers or []) if self._preconditions else []
+                    )
+                    controllers = []
+                    for controller_spec in controller_specs:
+                        # Ensure the controller exists and get the actual controller object
+                        # TODO: right now they are also ensured in the decorator. Maybe it makes sense to
+                        #   only ensure them here
+                        ctrl = await cell.ensure_controller(controller_spec)
+                        controllers.append(ctrl)
 
-                    # Based on the program preconditions, a robot cell is created
-                    #   That means also only devices that are part of the preconditions are opened and streamed for e.g. estop handling
-                    controller_preconditions = (
-                        self._preconditions.controllers if self._preconditions else None
-                    )
-                    controller_ids = (
-                        [controller_id for controller_id in controller_preconditions]
-                        if controller_preconditions
-                        else []
-                    )
-                    controllers = [
-                        controller for controller in controllers if controller.id in controller_ids
-                    ]
                     robot_cell = RobotCell(
                         timer=None,
                         open_all_devices=True,

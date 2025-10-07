@@ -11,18 +11,18 @@ from nova.types import Pose
 
 @pytest.mark.integration
 async def test_program_runner_with_unrelated_controller_in_estop():
-    @nova.program(
-        preconditions=ProgramPreconditions(
-            controllers=[
-                virtual_controller(
-                    name="kuka-no-estop",
-                    manufacturer=api.models.Manufacturer.KUKA,
-                    type=api.models.VirtualControllerTypes.KUKA_MINUS_KR16_R1610_2,
-                )
-            ],
-            cleanup_controllers=True,
-        )
+    preconditions = ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="kuka-no-estop",
+                manufacturer=api.models.Manufacturer.KUKA,
+                type=api.models.VirtualControllerTypes.KUKA_MINUS_KR16_R1610_2,
+            )
+        ],
+        cleanup_controllers=False,
     )
+
+    @nova.program(preconditions=preconditions)
     async def test_program():
         async with Nova() as nova:
             cell = nova.cell()
@@ -52,9 +52,19 @@ async def test_program_runner_with_unrelated_controller_in_estop():
             type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
         )
     )
-    print(controller_in_estop.is_virtual)
+    # Set the controller in estop
     await controller_in_estop.set_estop(active=True)
 
+    # Check if the program starts even if one (unused) controller is in estop
     runner = run_program(test_program)
     assert runner.state == ProgramRunState.COMPLETED
     assert runner.program_run.error is None
+
+    # Check if the program runner has the correct preconditions & robot cell
+    assert runner._preconditions == preconditions
+    # Timer, cycle timer and the kuka controller
+    assert len(runner.execution_context.robot_cell.devices) == 3
+    assert "kuka-no-estop" in runner.execution_context.robot_cell.devices
+    assert "cycle" in runner.execution_context.robot_cell.devices
+    assert "timer" in runner.execution_context.robot_cell.devices
+    assert "ur10e-estop" not in runner.execution_context.robot_cell.devices
