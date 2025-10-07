@@ -312,7 +312,7 @@ class ProgramRunner(ABC):
             if self._robot_cell_override:
                 robot_cell = self._robot_cell_override
             else:
-                # When there is not robot_cell_override given we create a new robot cell
+                # When there is no robot_cell_override we create a new robot cell
                 #   based on the program preconditions. That means also only devices that are
                 #   part of the preconditions are opened and streamed for e.g. estop handling
                 async with Nova() as nova:
