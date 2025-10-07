@@ -11,10 +11,6 @@ DEFAULT_ADD_CONTROLLER_TIMEOUT = 120
 DEFAULT_WAIT_FOR_READY_TIMEOUT = 120
 
 
-def _is_virtual(robot_controller: api.models.RobotController) -> bool:
-    return isinstance(robot_controller.configuration, api.models.VirtualRobotConfiguration)
-
-
 class Cell:
     """A representation of a robot cell, providing high-level operations on controllers."""
 
@@ -50,7 +46,7 @@ class Cell:
         """
         return self._nats_client
 
-    def _create_controller(self, controller_id: str, is_virtual: bool) -> Controller:
+    def _create_controller(self, controller_id: str) -> Controller:
         return Controller(
             configuration=Controller.Configuration(
                 cell_id=self._cell_id,
@@ -60,15 +56,13 @@ class Cell:
                 nova_access_token=self._api_gateway._access_token,
                 nova_username=self._api_gateway._username,
                 nova_password=self._api_gateway._password,
-                is_virtual=is_virtual,
             )
         )
 
     def _create_controller_from_config(
         self, robot_controller: api.models.RobotController
     ) -> Controller:
-        is_virtual = _is_virtual(robot_controller)
-        return self._create_controller(controller_id=robot_controller.name, is_virtual=is_virtual)
+        return self._create_controller(controller_id=robot_controller.name)
 
     async def add_controller(
         self,
@@ -135,7 +129,7 @@ class Cell:
         """
         #  TODO: Information if the controller is virtual or physical is missing
         instances = await self._api_gateway.list_controllers(cell=self._cell_id)
-        return [self._create_controller(ci.controller, is_virtual=True) for ci in instances]
+        return [self._create_controller(ci.controller) for ci in instances]
 
     async def controller(self, name: str) -> Controller:
         """
@@ -153,8 +147,7 @@ class Cell:
         if not controller_instance:
             raise ControllerNotFound(controller=name)
 
-        #  TODO: Information if the controller is virtual or physical is missing
-        return self._create_controller(controller_instance.controller, is_virtual=True)
+        return self._create_controller(controller_instance.controller)
 
     async def delete_robot_controller(self, name: str, timeout: int = 25):
         """

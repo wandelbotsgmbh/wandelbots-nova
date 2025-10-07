@@ -18,8 +18,6 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         id: str = "controller"
         cell_id: str
         controller_id: str
-        # TODO: here?
-        is_virtual: bool = False
 
     def __init__(self, configuration: Configuration):
         super().__init__(configuration)
@@ -38,10 +36,6 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
     def controller_id(self) -> str:
         """Returns the unique controller ID."""
         return self.configuration.controller_id
-
-    @property
-    def is_virtual(self) -> bool:
-        return self.configuration.is_virtual
 
     async def open(self):
         """Activates all motion groups."""

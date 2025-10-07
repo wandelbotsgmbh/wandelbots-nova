@@ -140,15 +140,6 @@ class ApiGateway:
             self._auth0 = Auth0DeviceAuthorization(auth0_config=auth0_config)
 
         self._host = self._host_with_prefix(host=host)
-        stripped_host = self._host.rstrip("/")
-        api_client_config = wb.Configuration(
-            host=f"{stripped_host}/api/{version}",
-            username=username,
-            password=password,
-            access_token=access_token,
-        )
-        api_client_config.verify_ssl = verify_ssl
-
         self._access_token = access_token
         self._username = username
         self._password = password
