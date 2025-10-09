@@ -232,12 +232,11 @@ class ProgramRunner(ABC):
                 )
                 data["app"] = self._app_name
 
-                message = Message(
-                    subject=f"nova.v2.cells.{self._cell_id}.programs",
-                    data=json.dumps(data).encode("utf-8"),
-                )
-                logger.info(
-                    f"publishing program run message for program: {program_run.program} run: {program_run.run}"
+                subject = f"nova.v2.cells.{self._cell_id}.programs"
+
+                message = Message(subject=subject, data=json.dumps(data).encode("utf-8"))
+                logger.debug(
+                    f"publishing program run message for program: {program_run.program} run: {program_run.run} to subject: {subject}"
                 )
                 await self._nova.nats.publish_message(message)
 
