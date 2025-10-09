@@ -1,25 +1,17 @@
 from typing import Any, Callable, Coroutine, Optional
 
-from decouple import config
 from wandelbots_api_client.v2.models.program import Program as ProgramDetails
 
 from nova.cell.robot_cell import RobotCell
-from nova.logging import logger
 from nova.program import Program, PythonProgramRunner, run_program
 from nova.program.runner import ProgramRun
-
-_BASE_PATH = config("BASE_PATH", default="/default/novax")
-_APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else "novax"
-logger.info(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
 
 
 class ProgramManager:
     """Manages program registration, storage, and execution"""
 
     def __init__(
-        self,
-        robot_cell_override: RobotCell | None = None,
-        state_listener: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
+        self, cell_id: str, app_name: str, *, robot_cell_override: RobotCell | None = None
     ):
         """
         Initialize the ProgramManager.
@@ -28,11 +20,12 @@ class ProgramManager:
             state_listener: Optional listener for program state changes
         """
 
+        self._cell_id = cell_id
+        self._app_name = app_name
         self._programs: dict[str, ProgramDetails] = {}
         self._program_functions: dict[str, Program] = {}
         self._runner: PythonProgramRunner | None = None
         self._robot_cell_override: RobotCell | None = robot_cell_override
-        self._state_listener = state_listener
 
     def has_program(self, program_id: str) -> bool:
         return program_id in self._programs
@@ -61,7 +54,7 @@ class ProgramManager:
 
         # Create ProgramDetails instance
         program_details = ProgramDetails(
-            app=_APP_NAME,
+            app=self._app_name,
             program=program_id,
             name=program.name,
             description=program.description,
@@ -120,13 +113,12 @@ class ProgramManager:
         if self.is_any_program_running:
             raise RuntimeError("A program is already running")
 
-        on_state_change_listener = on_state_change if on_state_change else self._state_listener
         runner = run_program(
             program,
             parameters=parameters,
             robot_cell_override=self._robot_cell_override,
             sync=sync,
-            on_state_change=on_state_change_listener,
+            on_state_change=on_state_change,
         )
 
         self._runner = runner

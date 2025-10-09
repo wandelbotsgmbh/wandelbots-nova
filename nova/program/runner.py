@@ -4,6 +4,7 @@ import contextvars
 import datetime as dt
 import inspect
 import io
+import json
 import sys
 import threading
 import traceback as tb
@@ -11,11 +12,13 @@ import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from concurrent.futures import Future
+from datetime import datetime
 from typing import Any, Coroutine, Optional
 
 import anyio
 from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
+from decouple import config
 from exceptiongroup import ExceptionGroup
 from loguru import logger
 from wandelbots_api_client.v2.models import ProgramRun as ApiProgramRun
@@ -24,10 +27,13 @@ from wandelbots_api_client.v2.models import ProgramRunState
 from nova import Nova, api
 from nova.cell.robot_cell import RobotCell
 from nova.core.exceptions import PlanTrajectoryFailed
+from nova.nats import Message
 from nova.program.exceptions import NotPlannableError
 from nova.program.function import Program
 from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
+
+_CELL_NAME = config("CELL_NAME", default="")
 
 current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
     "current_execution_context_var"
@@ -74,12 +80,16 @@ class ProgramRunner(ABC):
         *,
         parameters: dict[str, Any],
         robot_cell_override: RobotCell | None = None,
+        cell_id: str | None = None,
+        app_name: str | None = None,
     ):
         """
         Args:
             program_id (str): The unique identifier of the program.
             parameters (dict[str, Any]): The parameters that are passed to the program.
             robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Defaults to None.
+            cell_id (str | None, optional): The cell ID to use for the program. Defaults to None.
+            app_name (str | None, optional): The app name to use for the program. Defaults to None.
         """
         program_id = program.program_id
 
@@ -88,6 +98,9 @@ class ProgramRunner(ABC):
         self._preconditions = program.preconditions
         self._parameters = parameters
         self._robot_cell_override = robot_cell_override
+        self._cell_id = cell_id or _CELL_NAME
+        self._app_name = app_name
+        self._nova = Nova()
         self._program_run: ProgramRun = ProgramRun(
             run=self._run_id,
             program=program_id,
@@ -208,6 +221,28 @@ class ProgramRunner(ABC):
             )
 
         async def _on_state_change():
+            async def publish_program_run_to_nats(program_run: ProgramRun):
+                data = program_run.model_dump()
+                data["timestamp"] = datetime.now().isoformat()
+                data["start_time"] = (
+                    program_run.start_time.isoformat() if program_run.start_time else None
+                )
+                data["end_time"] = (
+                    program_run.end_time.isoformat() if program_run.end_time else None
+                )
+                data["app"] = self._app_name
+
+                message = Message(
+                    subject=f"nova.v2.cells.{self._cell_id}.programs",
+                    data=json.dumps(data).encode("utf-8"),
+                )
+                logger.info(
+                    f"publishing program run message for program: {program_run.program} run: {program_run.run}"
+                )
+                await self._nova.nats.publish_message(message)
+
+            await publish_program_run_to_nats(self._program_run.model_copy())
+
             if on_state_change is not None:
                 await on_state_change(self._program_run.model_copy())
 
@@ -315,7 +350,7 @@ class ProgramRunner(ABC):
                 # When there is no robot_cell_override we create a new robot cell
                 #   based on the program preconditions. That means also only devices that are
                 #   part of the preconditions are opened and streamed for e.g. estop handling
-                async with Nova() as nova:
+                async with self._nova as nova:
                     cell = nova.cell()
                     controllers = await cell.controllers()
                     controller_specs = (
