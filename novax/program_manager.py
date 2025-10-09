@@ -5,13 +5,18 @@ from wandelbots_api_client.v2.models.program import Program as ProgramDetails
 from nova.cell.robot_cell import RobotCell
 from nova.program import Program, PythonProgramRunner, run_program
 from nova.program.runner import ProgramRun
+from novax.config import APP_NAME, CELL_NAME
 
 
 class ProgramManager:
     """Manages program registration, storage, and execution"""
 
     def __init__(
-        self, cell_id: str, app_name: str, *, robot_cell_override: RobotCell | None = None
+        self,
+        *,
+        robot_cell_override: RobotCell | None = None,
+        cell_id: str | None = None,
+        app_name: str | None = None,
     ):
         """
         Initialize the ProgramManager.
@@ -20,8 +25,8 @@ class ProgramManager:
             state_listener: Optional listener for program state changes
         """
 
-        self._cell_id = cell_id
-        self._app_name = app_name
+        self._cell_id = cell_id or CELL_NAME
+        self._app_name = app_name or APP_NAME
         self._programs: dict[str, ProgramDetails] = {}
         self._program_functions: dict[str, Program] = {}
         self._runner: PythonProgramRunner | None = None
