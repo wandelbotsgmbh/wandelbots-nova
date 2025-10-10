@@ -13,7 +13,7 @@ from wandelbots_api_client.models import (
     PlanTrajectoryFailedResponseErrorFeedback,
 )
 
-from nova import MotionGroup
+from nova import MotionGroup, NovaConfig
 from nova.actions import Action
 from nova.actions.io import WriteAction
 from nova.actions.motions import CollisionFreeMotion, Motion
@@ -707,12 +707,14 @@ class NovaRerunBridge:
             host = host[:-5]  # Remove '/api/'
 
         self._bridge_nova = Nova(
-            host=host,
-            access_token=api_client._access_token,
-            username=api_client._username,
-            password=api_client._password,
-            version=api_client._version,
-            verify_ssl=api_client._verify_ssl,
+            config=NovaConfig(
+                host=host,
+                access_token=api_client._access_token,
+                username=api_client._username,
+                password=api_client._password,
+                version=api_client._version,
+                verify_ssl=api_client._verify_ssl,
+            )
         )
         await self._bridge_nova.__aenter__()
         return self

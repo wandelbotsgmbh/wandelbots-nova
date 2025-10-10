@@ -40,7 +40,7 @@ class NovaConfig(BaseModel):
 class Nova:
     """A high-level Nova client for interacting with robot cells and controllers."""
 
-    def __init__(self, *, config: NovaConfig | None = None):
+    def __init__(self, config: NovaConfig | None = None):
         """
         Initialize the Nova client.
 

@@ -40,7 +40,6 @@ class NatsClient:
         self._init_nats_client()
 
     # TODO: nats connection string is not built correctly when being accessed like below
-    # nova = Nova(host="...")
     # nova.nats -> here we are still dependent on NATS_BROKER env variable
     def _init_nats_client(self) -> None:
         host = self._host
