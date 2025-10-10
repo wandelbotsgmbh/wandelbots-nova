@@ -391,7 +391,7 @@ class ProgramRunner(ABC):
                             await robot_cell.stop()
                     except Exception as e:
                         logger.error(
-                            f"Program {self.program_id} run {self.run_id}: Error while stopping robot cell: {e!r}"
+                            f"Program {self.program_id} run {self.run_id}: Error while stopping robot cell: {e}"
                         )
                         raise
 
