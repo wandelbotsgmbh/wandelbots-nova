@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from nova.cell.cell import Cell
 from nova.core.gateway import ApiGateway
 from nova.nats import NatsClient
+from nova.config import NovaConfig
 
 LOG_LEVEL = env_config("LOG_LEVEL", default="INFO")
 CELL_NAME = env_config("CELL_NAME", default="cell", cast=str)
@@ -13,28 +14,6 @@ NOVA_API = env_config("NOVA_API", default=None)
 NOVA_ACCESS_TOKEN = env_config("NOVA_ACCESS_TOKEN", default=None)
 NOVA_USERNAME = env_config("NOVA_USERNAME", default=None)
 NOVA_PASSWORD = env_config("NOVA_PASSWORD", default=None)
-
-
-class NovaConfig(BaseModel):
-    """
-    Configuration for connecting to the Nova API.
-
-    Args:
-        host (str | None): The Nova API host.
-        access_token (str | None): An access token for the Nova API.
-        username (str | None): [Deprecated] Username to authenticate with the Nova API.
-        password (str | None): [Deprecated] Password to authenticate with the Nova API.
-        version (str): The API version to use (default: "v1").
-        verify_ssl (bool): Whether or not to verify SSL certificates (default: True).
-        nats_client_config (dict | None): Configuration dictionary for NATS client.
-    """
-
-    host: str | None = Field(default=None, description="Nova API host.")
-    access_token: str | None = None
-    username: str | None = Field(default=None, deprecated=True)
-    password: str | None = Field(default=None, deprecated=True)
-    verify_ssl: bool = Field(default=True)
-    nats_client_config: dict | None = None
 
 
 class Nova:
