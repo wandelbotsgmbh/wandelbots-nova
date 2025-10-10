@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from decouple import config as env_config
-from pydantic import BaseModel, Field
 
 from nova.cell.cell import Cell
+from nova.config import NovaConfig
 from nova.core.gateway import ApiGateway
 from nova.nats import NatsClient
-from nova.config import NovaConfig
 
 LOG_LEVEL = env_config("LOG_LEVEL", default="INFO")
 CELL_NAME = env_config("CELL_NAME", default="cell", cast=str)

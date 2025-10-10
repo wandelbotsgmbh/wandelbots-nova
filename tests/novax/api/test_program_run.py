@@ -109,10 +109,10 @@ async def test_novax_program_stopped_run(novax_app):
     nova = Nova()
     await nova.connect()
 
-    program_run_message = []
+    program_run_messages = []
 
     async def cb(msg):
-        program_run_message.append(msg)
+        program_run_messages.append(msg)
 
     await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
 
@@ -125,10 +125,10 @@ async def test_novax_program_stopped_run(novax_app):
         await asyncio.sleep(5)
 
         # Verify program is running
-        assert len(program_run_message) >= 2, (
-            f"Expected at least 2 program run messages, but got {len(program_run_message)}"
+        assert len(program_run_messages) >= 2, (
+            f"Expected at least 2 program run messages, but got {len(program_run_messages)}"
         )
-        models = [ProgramRun.model_validate_json(message.data) for message in program_run_message]
+        models = [ProgramRun.model_validate_json(message.data) for message in program_run_messages]
         assert models[0].state == ProgramRunState.PREPARING
         assert models[1].state == ProgramRunState.RUNNING
 
@@ -140,12 +140,12 @@ async def test_novax_program_stopped_run(novax_app):
         await asyncio.sleep(5)
 
         # Verify that we received the STOPPED event
-        assert len(program_run_message) == 3, (
-            f"Expected 3 program run messages, but got {len(program_run_message)}"
+        assert len(program_run_messages) == 3, (
+            f"Expected 3 program run messages, but got {len(program_run_messages)}"
         )
 
         final_models = [
-            ProgramRun.model_validate_json(message.data) for message in program_run_message
+            ProgramRun.model_validate_json(message.data) for message in program_run_messages
         ]
         assert final_models[0].state == ProgramRunState.PREPARING
         assert final_models[1].state == ProgramRunState.RUNNING

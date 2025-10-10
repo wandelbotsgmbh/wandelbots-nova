@@ -244,6 +244,7 @@ class ProgramRunner(ABC):
                 logger.debug(
                     f"publishing program run message for program: {program_run.program} run: {program_run.run} to subject: {subject}"
                 )
+                logger.debug(f"program_run: {data}")
 
                 async with Nova(config=self._nova_config) as nova:
                     await nova.nats.publish_message(message)
