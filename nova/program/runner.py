@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import contextvars
-import datetime as dt
 import inspect
 import io
 import json
@@ -12,7 +11,6 @@ import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from concurrent.futures import Future
-from datetime import datetime
 from typing import Any, Coroutine, Optional
 
 import anyio
@@ -32,6 +30,7 @@ from nova.program.exceptions import NotPlannableError
 from nova.program.function import Program
 from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
+from nova.utils import timestamp
 
 _CELL_NAME = config("CELL_NAME", default="")
 
@@ -223,13 +222,9 @@ class ProgramRunner(ABC):
         async def _on_state_change():
             async def publish_program_run_to_nats(program_run: ProgramRun):
                 data = program_run.model_dump()
-                data["timestamp"] = datetime.now().isoformat()
-                data["start_time"] = (
-                    program_run.start_time.isoformat() if program_run.start_time else None
-                )
-                data["end_time"] = (
-                    program_run.end_time.isoformat() if program_run.end_time else None
-                )
+                data["timestamp"] = timestamp.now_rfc3339()
+                data["start_time"] = program_run.start_time
+                data["end_time"] = program_run.end_time
                 data["app"] = self._app_name
 
                 subject = f"nova.v2.cells.{self._cell_id}.programs"
@@ -385,7 +380,7 @@ class ProgramRunner(ABC):
                 try:
                     logger.info(f"Program {self.program_id} run {self.run_id} started")
                     self._program_run.state = ProgramRunState.RUNNING
-                    self._program_run.start_time = dt.datetime.now(dt.timezone.utc)
+                    self._program_run.start_time = timestamp.now_rfc3339()
                     await on_state_change()
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
@@ -428,7 +423,7 @@ class ProgramRunner(ABC):
                     logger.debug(
                         f"Program {self.program_id} run {self.run_id} finished. Run teardown routine..."
                     )
-                    self._program_run.end_time = dt.datetime.now(dt.timezone.utc)
+                    self._program_run.end_time = timestamp.now_rfc3339()
 
                     logger.remove(sink_id)
                     self._program_run.logs = log_capture.getvalue()
