@@ -688,33 +688,42 @@ class NovaRerunBridge:
         self._motion_group_timers[motion_group_id] = 0.0
 
     async def __aenter__(self) -> "NovaRerunBridge":
-        """Context manager entry point.
-
-        Creates a separate Nova client instance for the bridge to use.
-
-        Returns:
-            NovaRerunBridge: Self reference for context manager usage.
-        """
-        # Create a separate Nova instance for the bridge using the same connection parameters
-        # This ensures the bridge has its own session that won't be closed by the main program
+        """Context manager entry point."""
         api_client = self.nova._api_client
 
         # Extract the host without the /api/v1 suffix
         host = api_client._host
         if host.endswith("/api/v1"):
-            host = host[:-7]  # Remove '/api/v1'
+            host = host[:-7]
         elif host.endswith("/api/"):
-            host = host[:-5]  # Remove '/api/'
+            host = host[:-5]
 
-        self._bridge_nova = Nova(
-            NovaConfig(
-                host=host,
-                access_token=api_client._access_token,
-                username=api_client._username,
-                password=api_client._password,
-                verify_ssl=api_client._verify_ssl,
-            )
-        )
+        # Helper coercers so we never pass Mock() into Pydantic
+        def as_opt_str(value):
+            return value if isinstance(value, str) else None
+
+        def as_opt_bool(value):
+            return value if isinstance(value, bool) else None
+
+        cfg_kwargs = {"host": host}
+
+        # Only include fields if they are the right primitive type;
+        # otherwise, leave them out so Pydantic never sees a Mock.
+        access_token = as_opt_str(getattr(api_client, "_access_token", None))
+        username = as_opt_str(getattr(api_client, "_username", None))
+        password = as_opt_str(getattr(api_client, "_password", None))
+        verify_ssl = as_opt_bool(getattr(api_client, "_verify_ssl", None))
+
+        if access_token is not None:
+            cfg_kwargs["access_token"] = access_token
+        if username is not None:
+            cfg_kwargs["username"] = username
+        if password is not None:
+            cfg_kwargs["password"] = password
+        if verify_ssl is not None:
+            cfg_kwargs["verify_ssl"] = verify_ssl
+
+        self._bridge_nova = Nova(NovaConfig(**cfg_kwargs))
         await self._bridge_nova.__aenter__()
         return self
 
