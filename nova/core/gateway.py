@@ -165,7 +165,7 @@ class ApiGateway:
 
         # init v1 api client
         api_client_config = wb.Configuration(
-            host=f"{stripped_host}/api/{self._version}",
+            host=f"{stripped_host}/api/v1",
             username=self._username,
             password=self._password,
             access_token=self._access_token,

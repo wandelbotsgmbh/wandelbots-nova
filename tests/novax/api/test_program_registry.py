@@ -60,7 +60,7 @@ async def get_from_discovery_service(program_id: str, cell: str = "cell") -> Pro
     import wandelbots_api_client.v2 as wb
     from wandelbots_api_client.v2.api import ProgramApi
 
-    async with Nova(version="v2") as nova:
+    async with Nova() as nova:
         v1_api_client = nova._api_client._api_client
         config = wb.Configuration(
             host=v1_api_client.configuration.host.replace("/v1", "/v2"),
