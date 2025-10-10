@@ -707,12 +707,11 @@ class NovaRerunBridge:
             host = host[:-5]  # Remove '/api/'
 
         self._bridge_nova = Nova(
-            config=NovaConfig(
+            NovaConfig(
                 host=host,
                 access_token=api_client._access_token,
                 username=api_client._username,
                 password=api_client._password,
-                version=api_client._version,
                 verify_ssl=api_client._verify_ssl,
             )
         )
