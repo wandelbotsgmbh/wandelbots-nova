@@ -465,9 +465,13 @@ class PythonProgramRunner(ProgramRunner):
         program: Program,
         parameters: Optional[dict[str, Any]] = None,
         robot_cell_override: RobotCell | None = None,
+        nova_config: NovaConfig | None = None,
     ):
         super().__init__(
-            program, parameters=parameters or {}, robot_cell_override=robot_cell_override
+            program,
+            parameters=parameters or {},
+            robot_cell_override=robot_cell_override,
+            nova_config=nova_config,
         )
         # TODO: is this still required?
         self.program = program
@@ -533,6 +537,7 @@ def run_program(
     sync: bool = True,
     robot_cell_override: RobotCell | None = None,
     on_state_change: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
+    nova_config: NovaConfig | None = None,
 ) -> PythonProgramRunner:
     """Run a program with given parameters.
 
@@ -548,7 +553,10 @@ def run_program(
 
     """
     runner = PythonProgramRunner(
-        program, parameters=parameters, robot_cell_override=robot_cell_override
+        program,
+        parameters=parameters,
+        robot_cell_override=robot_cell_override,
+        nova_config=nova_config,
     )
 
     # Try to grab a caller loop if there is one; otherwise, fall back to None.

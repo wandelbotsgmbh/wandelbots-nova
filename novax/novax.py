@@ -15,10 +15,14 @@ from novax.program_manager import ProgramDetails, ProgramManager
 
 class Novax:
     def __init__(self, robot_cell_override: RobotCell | None = None):
-        self._nova = Nova()
+        nova = Nova()
+        self._nova = nova
         self._cell = self._nova.cell(cell_id=CELL_NAME)
         self._program_manager: ProgramManager = ProgramManager(
-            cell_id=CELL_NAME, app_name=APP_NAME, robot_cell_override=robot_cell_override
+            cell_id=CELL_NAME,
+            app_name=APP_NAME,
+            robot_cell_override=robot_cell_override,
+            nova_config=nova.config,
         )
         self._app: FastAPI | None = None
 

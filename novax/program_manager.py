@@ -3,6 +3,7 @@ from typing import Any, Callable, Coroutine, Optional
 from wandelbots_api_client.v2.models.program import Program as ProgramDetails
 
 from nova.cell.robot_cell import RobotCell
+from nova.config import NovaConfig
 from nova.program import Program, PythonProgramRunner, run_program
 from nova.program.runner import ProgramRun
 from novax.config import APP_NAME, CELL_NAME
@@ -14,6 +15,7 @@ class ProgramManager:
     def __init__(
         self,
         *,
+        nova_config: NovaConfig | None = None,
         robot_cell_override: RobotCell | None = None,
         cell_id: str | None = None,
         app_name: str | None = None,
@@ -31,6 +33,7 @@ class ProgramManager:
         self._program_functions: dict[str, Program] = {}
         self._runner: PythonProgramRunner | None = None
         self._robot_cell_override: RobotCell | None = robot_cell_override
+        self._nova_config: NovaConfig | None = nova_config
 
     def has_program(self, program_id: str) -> bool:
         return program_id in self._programs
@@ -124,6 +127,7 @@ class ProgramManager:
             robot_cell_override=self._robot_cell_override,
             sync=sync,
             on_state_change=on_state_change,
+            nova_config=self._nova_config,
         )
 
         self._runner = runner
