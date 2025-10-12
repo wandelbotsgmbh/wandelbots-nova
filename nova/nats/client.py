@@ -64,6 +64,15 @@ class NatsClient:
         if not self._nats_connection_string:
             logger.warning("NATS connection string is not set. NATS client will be disabled.")
 
+    async def raw_client(self) -> nats.NATS | None:
+        """Get the raw NATS client instance.
+        Note: as we update the version of the NATS library you might experience issues when using the raw client directly.
+
+        Returns:
+            nats.NATS | None: The NATS client instance or None if not connected.
+        """
+        return self._nats_client
+
     async def connect(self):
         """Connect to NATS server.
 

@@ -8,7 +8,9 @@ from pydantic import BaseModel
 import nova
 from nova.core.nova import Nova
 from nova.program.runner import ProgramRun, ProgramRunState
-from novax.novax import Novax
+from novax import Novax
+from wandelbots_api_client.v2.models import ProgramRunState
+
 
 
 @nova.program(

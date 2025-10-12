@@ -37,6 +37,7 @@ current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
 # needs to change somehow
 class ProgramRun(ApiProgramRun):
     output_data: dict[str, Any] = {}
+    app: Optional[str] = None
 
 
 # TODO: should provide a number of tools to the program to control the execution of the program
