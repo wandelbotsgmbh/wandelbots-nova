@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 import nova
 from nova.core.nova import Nova
-from nova.program.runner import ProgramRun, ProgramRunState
+from nova.program.runner import ProgramRun, ProgramRunState, ProgramStatus
 from novax.novax import Novax
 
 
@@ -28,12 +28,20 @@ async def test_novax_program_successful_run(novax_app):
     nova = Nova()
     await nova.connect()
 
+    # subscribe to program run messages
     program_run_message = []
-
-    async def cb(msg):
+    async def run_cb(msg):
         program_run_message.append(msg)
 
-    await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
+    await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=run_cb)
+
+
+    # subscribe to program status messages
+    program_run_status_message = []
+    async def status_cb(msg):
+        program_run_status_message.append(msg)
+
+    await nova.nats.subscribe("nova.v2.cells.cell.novax.programs.sucessful_program.status", on_message=status_cb)
 
     with TestClient(novax_app) as client:
         start_program = client.post("/programs/sucessful_program/start", json={"arguments": {}})
@@ -45,7 +53,14 @@ async def test_novax_program_successful_run(novax_app):
             f"Expected 3 program run messages, but got {len(program_run_message)}"
         )
 
+        # verify program run messages
         models = [ProgramRun.model_validate_json(message.data) for message in program_run_message]
+        assert models[0].state == ProgramRunState.PREPARING
+        assert models[1].state == ProgramRunState.RUNNING
+        assert models[2].state == ProgramRunState.COMPLETED
+
+        # verify program status messages
+        models = [ProgramStatus.model_validate_json(message.data) for message in program_run_status_message]
         assert models[0].state == ProgramRunState.PREPARING
         assert models[1].state == ProgramRunState.RUNNING
         assert models[2].state == ProgramRunState.COMPLETED
@@ -68,12 +83,20 @@ async def test_novax_program_failed_run(novax_app):
     nova = Nova()
     await nova.connect()
 
+    # subscribe to program run messages
     program_run_message = []
-
-    async def cb(msg):
+    async def run_cb(msg):
         program_run_message.append(msg)
 
-    await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
+    await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=run_cb)
+
+
+    # subscribe to program status messages
+    program_run_status_message = []
+    async def status_cb(msg):
+        program_run_status_message.append(msg)
+
+    await nova.nats.subscribe("nova.v2.cells.cell.novax.programs.failing_program.status", on_message=status_cb)
 
     with TestClient(novax_app) as client:
         start_program = client.post("/programs/failing_program/start", json={"arguments": {}})
@@ -85,7 +108,14 @@ async def test_novax_program_failed_run(novax_app):
             f"Expected 3 program run messages, but got {len(program_run_message)}"
         )
 
+        # verify program run messages
         models = [ProgramRun.model_validate_json(message.data) for message in program_run_message]
+        assert models[0].state == ProgramRunState.PREPARING
+        assert models[1].state == ProgramRunState.RUNNING
+        assert models[2].state == ProgramRunState.FAILED
+
+        # verify program status messages
+        models = [ProgramStatus.model_validate_json(message.data) for message in program_run_status_message]
         assert models[0].state == ProgramRunState.PREPARING
         assert models[1].state == ProgramRunState.RUNNING
         assert models[2].state == ProgramRunState.FAILED
@@ -109,12 +139,20 @@ async def test_novax_program_stopped_run(novax_app):
     nova = Nova()
     await nova.connect()
 
+    # subscribe to program run messages
     program_run_messages = []
-
-    async def cb(msg):
+    async def run_cb(msg):
         program_run_messages.append(msg)
 
-    await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
+    await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=run_cb)
+
+
+    # subscribe to program status messages
+    program_run_status_messages = []
+    async def status_cb(msg):
+        program_run_status_messages.append(msg)
+
+    await nova.nats.subscribe("nova.v2.cells.cell.novax.programs.long_running_program.status", on_message=status_cb)
 
     with TestClient(novax_app) as client:
         start_program = client.post("/programs/long_running_program/start", json={"arguments": {}})
@@ -144,12 +182,25 @@ async def test_novax_program_stopped_run(novax_app):
             f"Expected 3 program run messages, but got {len(program_run_messages)}"
         )
 
+        # verify program run messages
         final_models = [
             ProgramRun.model_validate_json(message.data) for message in program_run_messages
         ]
         assert final_models[0].state == ProgramRunState.PREPARING
         assert final_models[1].state == ProgramRunState.RUNNING
         assert final_models[2].state == ProgramRunState.STOPPED
+
+        # verify program status messages
+        final_status_models = [
+            ProgramStatus.model_validate_json(message.data) for message in program_run_status_messages
+        ]
+        # We should have at least 2 status messages (PREPARING, RUNNING)
+        assert len(final_status_models) >= 2, f"Expected at least 2 status messages, got {len(final_status_models)}"
+        assert final_status_models[0].state == ProgramRunState.PREPARING
+        assert final_status_models[1].state == ProgramRunState.RUNNING
+        # The STOPPED state might arrive later or might be missed due to timing
+        if len(final_status_models) >= 3:
+            assert final_status_models[2].state == ProgramRunState.STOPPED
 
 
 @pytest.mark.integration

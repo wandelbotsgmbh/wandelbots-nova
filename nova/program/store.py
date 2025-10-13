@@ -1,13 +1,15 @@
 import asyncio
-from typing import Generic, TypeVar
+import datetime
+from typing import Generic, Optional, TypeVar
 
 import nats
 from nats.js.api import KeyValueConfig
 from nats.js.client import KeyValue
 from nats.js.errors import KeyNotFoundError as KvKeyError
 from nats.js.errors import NoKeysError, NotFoundError
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, StrictStr, ValidationError
 from wandelbots_api_client.v2.models.program import Program
+from wandelbots_api_client.v2.models import ProgramRunState
 
 from nova.logging import logger as nova_logger
 from nova.nats import NatsClient
@@ -16,6 +18,9 @@ _T = TypeVar("_T", bound=BaseModel)
 _NATS_PROGRAMS_BUCKET_TEMPLATE = "nova_cells_{cell}_programs"
 _NATS_PROGRAMS_MESSAGE_SIZE = 128 * 1024
 _NATS_PROGRAMS_BUCKET_SIZE = _NATS_PROGRAMS_MESSAGE_SIZE * 100
+
+_NATS_PROGRAMS_STATE_MESSAGE_SIZE = 128 * 1024
+_NATS_PROGRAMS_STATE_BUCKET_SIZE = _NATS_PROGRAMS_STATE_MESSAGE_SIZE * 100
 
 
 # We don't want to expose this to public usage until the jetstream concept gets more mature
