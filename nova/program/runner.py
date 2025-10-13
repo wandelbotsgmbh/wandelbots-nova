@@ -329,6 +329,12 @@ class ProgramRunner(ABC):
         self._program_run.traceback = traceback
         self._program_run.state = ProgramRunState.FAILED
 
+    async def _set_program_state(
+        self, state: ProgramRunState, on_state_change: Callable[[], Awaitable[None]]
+    ):
+        self._program_run.state = state
+        await on_state_change()
+
     async def _run_program(
         self, stop_event: anyio.Event, on_state_change: Callable[[], Awaitable[None]]
     ) -> None:
@@ -385,7 +391,7 @@ class ProgramRunner(ABC):
                 robot_cell=robot_cell, stop_event=stop_event
             )
             current_execution_context_var.set(execution_context)
-            await on_state_change()
+            await self._set_program_state(ProgramRunState.PREPARING, on_state_change)
 
             monitoring_scope = anyio.CancelScope()
             async with robot_cell, anyio.create_task_group() as tg:
@@ -393,9 +399,8 @@ class ProgramRunner(ABC):
 
                 try:
                     logger.info(f"Program {self.program_id} run {self.run_id} started")
-                    self._program_run.state = ProgramRunState.RUNNING
                     self._program_run.start_time = timestamp.now_utc()
-                    await on_state_change()
+                    await self._set_program_state(ProgramRunState.RUNNING, on_state_change)
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped
@@ -409,7 +414,7 @@ class ProgramRunner(ABC):
                         )
                         raise
 
-                    self._program_run.state = ProgramRunState.STOPPED
+                    await self._set_program_state(ProgramRunState.STOPPED, on_state_change)
                     raise
 
                 except NotPlannableError as exc:
@@ -423,26 +428,25 @@ class ProgramRunner(ABC):
                         logger.info(
                             f"Program {self.program_id} run {self.run_id} stopped successfully"
                         )
-                        self._program_run.state = ProgramRunState.STOPPED
+                        await self._set_program_state(ProgramRunState.STOPPED, on_state_change)
                     elif self._program_run.state is ProgramRunState.RUNNING:
                         # Program was completed
-                        self._program_run.state = ProgramRunState.COMPLETED
+                        await self._set_program_state(ProgramRunState.COMPLETED, on_state_change)
                         logger.info(
                             f"Program {self.program_id} run {self.run_id} completed successfully"
                         )
                 finally:
-                    # program output data
+                    # get program output data
                     self._program_run.output_data = execution_context.output_data
+                    self._program_run.end_time = timestamp.now_utc()
 
-                    logger.debug(
+                    logger.info(
                         f"Program {self.program_id} run {self.run_id} finished. Run teardown routine..."
                     )
-                    self._program_run.end_time = timestamp.now_utc()
 
                     logger.remove(sink_id)
                     self._program_run.logs = log_capture.getvalue()
                     monitoring_scope.cancel()
-                    await on_state_change()
         except anyio.get_cancelled_exc_class():
             raise
         except Exception as exc:  # pylint: disable=broad-except
