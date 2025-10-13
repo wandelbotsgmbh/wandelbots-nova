@@ -128,6 +128,7 @@ class ProgramManager:
             on_state_change=on_state_change,
             nova_config=self._nova_config,
             robot_cell_override=self._robot_cell_override,
+            app_name=self._app_name,
         )
 
         self._runner = runner

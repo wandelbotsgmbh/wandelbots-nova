@@ -3,6 +3,7 @@ import contextlib
 import contextvars
 import inspect
 import io
+from datetime import datetime
 import json
 import sys
 import threading
@@ -19,6 +20,7 @@ from anyio.abc import TaskStatus
 from decouple import config
 from exceptiongroup import ExceptionGroup
 from loguru import logger
+from pydantic import BaseModel, Field, StrictStr
 from wandelbots_api_client.v2.models import ProgramRun as ApiProgramRun
 from wandelbots_api_client.v2.models import ProgramRunState
 
@@ -42,6 +44,14 @@ current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
 # needs to change somehow
 class ProgramRun(ApiProgramRun):
     output_data: dict[str, Any] = {}
+
+
+class ProgramStatus(BaseModel):
+    run: StrictStr = Field(description="Unique identifier of the program run")
+    program: StrictStr = Field(description="Unique identifier of the program")
+    state: ProgramRunState = Field(description="State of the program run")
+    start_time: Optional[datetime] = Field(default=None, description="Start time of the program run")
+    end_time: Optional[datetime] = Field(default=None, description="End time of the program run")
 
 
 # TODO: should provide a number of tools to the program to control the execution of the program
@@ -330,6 +340,20 @@ class ProgramRunner(ABC):
             message = Message(subject=subject, data=json.dumps(data).encode("utf-8"))
             await nova.nats.publish_message(message)
 
+
+            # publish program status which includes minimal information to identify the status of the program
+            program_status = ProgramStatus(
+                run=self._program_run.run,
+                program=self._program_run.program,
+                state=self._program_run.state,
+                start_time=data["start_time"],
+                end_time=data["end_time"],
+            )
+            status_subject = f"nova.v2.cells.{self._cell_id}.{self._app_name}.programs.{self._program_id}.status"
+            message = Message(subject=status_subject, data=program_status.model_dump_json().encode("utf-8"))
+            await nova.nats.publish_message(message)
+            
+
     async def _run_program(
         self, stop_event: anyio.Event, on_state_change: Callable[[], Awaitable[None]]
     ) -> None:
@@ -469,12 +493,14 @@ class PythonProgramRunner(ProgramRunner):
         parameters: Optional[dict[str, Any]] = None,
         robot_cell_override: RobotCell | None = None,
         nova_config: NovaConfig | None = None,
+        app_name: str | None = None,
     ):
         super().__init__(
             program,
             parameters=parameters or {},
             robot_cell_override=robot_cell_override,
             nova_config=nova_config,
+            app_name=app_name,
         )
         # TODO: is this still required?
         self.program = program
@@ -541,6 +567,7 @@ def run_program(
     robot_cell_override: RobotCell | None = None,
     on_state_change: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
     nova_config: NovaConfig | None = None,
+    app_name: str | None = None,
 ) -> PythonProgramRunner:
     """Run a program with given parameters.
 
@@ -560,6 +587,7 @@ def run_program(
         parameters=parameters,
         robot_cell_override=robot_cell_override,
         nova_config=nova_config,
+        app_name=app_name,
     )
 
     # Try to grab a caller loop if there is one; otherwise, fall back to None.
