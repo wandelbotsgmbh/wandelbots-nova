@@ -32,7 +32,6 @@ class Action(pydantic.BaseModel, ABC):
             logger.warning(f"Duplicate action type '{action_type}'")
             return
         Action._registry[action_type] = cls
-        logger.debug(f"Registered action type: {action_type}")
 
     @classmethod
     def from_dict(cls, data: dict) -> Action:

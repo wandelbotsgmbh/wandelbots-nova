@@ -32,12 +32,14 @@ NOVA_ACCESS_TOKEN="your-access-token"
 
 ```python
 from nova_rerun_bridge import NovaRerunBridge
-from nova import Nova
+from nova import Nova, NovaConfig
 
 # Connect to your Nova instance (or use .env file)
 nova = Nova(
+  config=NovaConfig(
     host="https://your-instance.wandelbots.io",
     access_token="your-access-token"
+  )
 )
 bridge = NovaRerunBridge(nova)
 

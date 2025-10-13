@@ -41,11 +41,13 @@ The example creates a bridge between Nova and rerun:
 
 ```python
 from nova_rerun_bridge import NovaRerunBridge
-from nova import Nova
+from nova import Nova, NovaConfig
 
 nova = Nova(
-    host="https://your-instance.wandelbots.io",
-    access_token="your-access-token"
+    NovaConfig(
+        host="https://your-instance.wandelbots.io",
+        access_token="your-access-token"
+    )
 )
 bridge = NovaRerunBridge(nova)
 
