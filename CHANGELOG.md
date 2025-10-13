@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.0.0 (2025-10-13)
+
+### Features
+
+- **NDX-347**: Publish program run message without novax - from runner (#299)
+  ([#299](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/299),
+  [`10a0234`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/10a02348d5b977916d0c9345c95e15a7f3aa42fb))
+
+
 ## v2.20.4 (2025-10-07)
 
 ### Bug Fixes
