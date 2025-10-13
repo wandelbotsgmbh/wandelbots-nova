@@ -8,7 +8,6 @@ from wandelbots_api_client.v2.models.program import Program
 import nova
 from nova import api
 from nova.cell import virtual_controller
-from nova.cell.simulation import SimulatedRobotCell
 from nova.core.nova import Nova
 from nova.program.function import Program as DecoratedProgram
 from nova.program.function import ProgramPreconditions
@@ -154,7 +153,7 @@ async def verify_program_definition_all_sources(
 @pytest.mark.asyncio
 async def test_program_definition_for_simple_program():
     """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
-    novax = Novax(robot_cell_override=SimulatedRobotCell())
+    novax = Novax()
     app = novax.create_app()
 
     # Define a program to test
@@ -177,7 +176,7 @@ async def test_program_definition_for_simple_program():
 @pytest.mark.asyncio
 async def test_program_definition_for_program_with_preconditions():
     """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
-    novax = Novax(robot_cell_override=SimulatedRobotCell())
+    novax = Novax()
     app = novax.create_app()
 
     @nova.program(
@@ -214,7 +213,7 @@ async def test_program_definition_for_program_with_preconditions():
 @pytest.mark.asyncio
 async def test_program_definition_for_program_with_input_schema():
     """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
-    novax = Novax(robot_cell_override=SimulatedRobotCell())
+    novax = Novax()
     app = novax.create_app()
 
     @nova.program(
@@ -236,7 +235,7 @@ async def test_program_definition_for_program_with_input_schema():
 @pytest.mark.asyncio
 async def test_program_definition_for_program_with_pydantic_input_schema():
     """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
-    novax = Novax(robot_cell_override=SimulatedRobotCell())
+    novax = Novax()
     app = novax.create_app()
 
     class ProgramInputSchema(BaseModel):
@@ -262,7 +261,7 @@ async def test_program_definition_for_program_with_pydantic_input_schema():
 @pytest.mark.asyncio
 async def test_program_definition_for_program_with_input_schema_and_preconditions():
     """Test program definition retrieval from all sources: Novax API, NATS, and Discovery Service."""
-    novax = Novax(robot_cell_override=SimulatedRobotCell())
+    novax = Novax()
     app = novax.create_app()
 
     @nova.program(
@@ -300,7 +299,7 @@ async def test_program_definition_for_program_with_input_schema_and_precondition
 async def test_empty_program_registry():
     """Test program registry when no programs are registered."""
     # Create app without any programs
-    novax = Novax(robot_cell_override=SimulatedRobotCell())
+    novax = Novax()
     app = novax.create_app()
     novax.include_programs_router(app)  # Just add the router, no programs
 
