@@ -56,6 +56,9 @@ class Nova:
         """Returns the cell object with the given ID."""
         return Cell(self._api_client, cell_id, nats_client=self.nats)
 
+    def is_connected(self) -> bool:
+        return self.nats.is_connected()
+
     async def connect(self):
         # ApiGateway doesn't need an explicit connect call, it's initialized in constructor
         await self.nats.connect()

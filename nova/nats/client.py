@@ -119,12 +119,10 @@ class NatsClient:
         )
 
         if not self.is_connected():
-            logger.debug("NATS client is not connected. Skipping message publishing.")
-            return
+            raise RuntimeError("NATS client is not connected. Skipping message publishing.")
 
         if self._nats_client is None:
-            logger.debug("NATS client is None. Skipping message publishing.")
-            return
+            raise RuntimeError("NATS client is None. Skipping message publishing.")
 
         try:
             await self._nats_client.publish(subject=message.subject, payload=message.data)
