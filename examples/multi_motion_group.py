@@ -2,10 +2,10 @@ import asyncio
 from functools import partial
 from pathlib import Path
 
-import nova
 import wandelbots_api_client.models as v1models
 from pydantic import TypeAdapter
 
+import nova
 from nova import run_program
 from nova.actions import MovementControllerContext
 from nova.cell import virtual_controller
