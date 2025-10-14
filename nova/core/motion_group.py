@@ -371,6 +371,7 @@ class MotionGroup(AbstractRobot):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
+        start_on_io: wb.models.StartOnIO | None = None,
     ) -> AsyncIterable[MovementResponse]:
         # This is the entrypoint for the trajectory tuning mode
         if config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False):
@@ -410,6 +411,7 @@ class MotionGroup(AbstractRobot):
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
                 motion_id=load_plan_response.motion,
+                start_on_io=start_on_io,
             )
         )
 

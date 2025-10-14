@@ -1,5 +1,4 @@
 import asyncio
-from functools import partial
 from pathlib import Path
 
 import wandelbots_api_client.models as v1models
@@ -7,15 +6,8 @@ from pydantic import TypeAdapter
 
 import nova
 from nova import run_program
-from nova.actions import MovementControllerContext
 from nova.cell import virtual_controller
-from nova.core.exceptions import InitMovementFailed
 from nova.program import ProgramPreconditions
-from nova.types import (
-    ExecuteTrajectoryRequestStream,
-    ExecuteTrajectoryResponseStream,
-    MovementControllerFunction,
-)
 
 ROBOT_TCP_ID = "1"
 POSITIONER_TCP_ID = "0"
@@ -24,45 +16,6 @@ ROBOT_MOTION_GROUP_ID = "0@kuka"
 POSITIONER_MOTION_GROUP_ID = "1@kuka"
 
 SYNC_IO_ID = "OUT#1"
-
-
-def move_forward_in_sync(
-    context: MovementControllerContext, start_on_io: v1models.StartOnIO
-) -> MovementControllerFunction:
-    """
-    This is a copy of the default movement controller with added start_on_io handling.
-    """
-
-    async def movement_controller(
-        response_stream: ExecuteTrajectoryResponseStream,
-    ) -> ExecuteTrajectoryRequestStream:
-        # The first request is to initialize the movement
-        yield v1models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)  # type: ignore[misc]
-
-        # then we get the response
-        initialize_movement_response = await anext(response_stream)
-        if isinstance(
-            initialize_movement_response.actual_instance, v1models.InitializeMovementResponse
-        ):
-            r1 = initialize_movement_response.actual_instance
-            if not r1.init_response.succeeded:
-                raise InitMovementFailed(r1.init_response)
-
-        # The second request is to start the movement
-        set_io_list = context.combined_actions.to_set_io()
-        yield v1models.StartMovementRequest(
-            set_ios=set_io_list, start_on_io=start_on_io, pause_on_io=None
-        )  # type: ignore[misc]
-
-        # then we wait until the movement is finished
-        async for execute_trajectory_response in response_stream:
-            instance = execute_trajectory_response.actual_instance
-            # Stop when standstill indicates motion ended
-            if isinstance(instance, v1models.Standstill):
-                if instance.standstill.reason == v1models.StandstillReason.REASON_MOTION_ENDED:
-                    return
-
-    return movement_controller
 
 
 def load_controller_config() -> str:
@@ -95,9 +48,6 @@ async def multi_motion_group_trajectory():
     """
 
     async def set_io():
-        # Give some time to ensure both controllers are ready and waiting for the IO signal
-        # Ideally, feedback from movement controllers would be used to ensure readiness
-        await asyncio.sleep(1)
         print("Setting sync IO to True")
         await controller.write(key=SYNC_IO_ID, value=True)
 
@@ -122,21 +72,21 @@ async def multi_motion_group_trajectory():
 
         print("Starting synchronized execution...")
 
-        # Creating movement controllers with the start_on_io condition
+        # Starting both movements concurrently with waiting for IO
         start_on_io = v1models.StartOnIO(
             io=v1models.IOValue(io=SYNC_IO_ID, boolean_value=True),
             comparator=v1models.Comparator.COMPARATOR_EQUALS,
         )
-        robot_controller = partial(move_forward_in_sync, start_on_io=start_on_io)
-        positioner_controller = partial(move_forward_in_sync, start_on_io=start_on_io)
-
-        # Starting both movements concurrently
         robot_trajectory_exec = asyncio.create_task(
-            robot.execute(robot_path, ROBOT_TCP_ID, [], robot_controller)
+            robot.execute(robot_path, ROBOT_TCP_ID, [], start_on_io=start_on_io)
         )
         positioner_trajectory_exec = asyncio.create_task(
-            positioner.execute(positioner_path, POSITIONER_TCP_ID, [], positioner_controller)
+            positioner.execute(positioner_path, POSITIONER_TCP_ID, [], start_on_io=start_on_io)
         )
+
+        # Give some time to ensure both controllers are ready and waiting for the IO signal
+        # Ideally, feedback from movement controllers would be used to ensure readiness
+        await asyncio.sleep(1)
 
         # Triggering the IO signal to start both movements
         await set_io()
