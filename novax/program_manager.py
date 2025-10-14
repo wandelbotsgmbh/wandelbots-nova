@@ -133,7 +133,7 @@ class ProgramManager:
         self._runner = runner
         return runner.program_run
 
-    async def stop_program(self, program_id: str = None):
+    async def stop_program(self, program_id: str | None = None):
         """
         Stop a running program
         Args:
@@ -145,7 +145,7 @@ class ProgramManager:
         if program_id is None:
             program_id = self.running_program
 
-        if self.running_program != program_id:
+        if program_id is not None and self.running_program != program_id:
             raise RuntimeError(
                 f"Program {program_id} is not running. Currently running: {self.running_program}"
             )

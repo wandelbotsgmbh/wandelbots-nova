@@ -1,9 +1,9 @@
 import asyncio
+
 from fastapi.testclient import TestClient
 
 import nova
 from novax.novax import Novax
-from tests.novax.conftest import novax_app
 
 
 def test_get_programs(novax_app):
@@ -146,14 +146,8 @@ def test_stop_program_on_lifespan_end():
     app = novax.create_app()
     novax.include_programs_router(app)
 
-
     with TestClient(app) as client:
-        start_response = client.post(
-            "/programs/endless_program/start", json={"arguments": {}}
-        )
+        start_response = client.post("/programs/endless_program/start", json={"arguments": {}})
         assert start_response.status_code == 200
 
     assert novax.program_manager.is_any_program_running is False
-
-    
-
