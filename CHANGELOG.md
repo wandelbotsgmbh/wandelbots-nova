@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.0.1 (2025-10-14)
+
+### Chores
+
+- **deps**: Update ipython requirement from <9 to <10 (#293)
+  ([#293](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/293),
+  [`d2cd005`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d2cd005be5d6a71a86ad2d8159eea3427898e164))
+
+
 ## v3.0.0 (2025-10-13)
 
 ### Features
