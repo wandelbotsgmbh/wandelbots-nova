@@ -37,7 +37,7 @@ def move_forward_in_sync(
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
         # The first request is to initialize the movement
-        yield v1models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)
+        yield v1models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)  # type: ignore[misc]
 
         # then we get the response
         initialize_movement_response = await anext(response_stream)
@@ -52,7 +52,7 @@ def move_forward_in_sync(
         set_io_list = context.combined_actions.to_set_io()
         yield v1models.StartMovementRequest(
             set_ios=set_io_list, start_on_io=start_on_io, pause_on_io=None
-        )
+        )  # type: ignore[misc]
 
         # then we wait until the movement is finished
         async for execute_trajectory_response in response_stream:
