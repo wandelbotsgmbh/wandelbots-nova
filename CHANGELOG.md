@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.0.2 (2025-10-15)
+
+### Bug Fixes
+
+- **vscode**: Correctly pass env to program execution (#303)
+  ([#303](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/303),
+  [`81ee527`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/81ee527ee416d6ff6e14018df82236846a72ef2d))
+
+
 ## v3.0.1 (2025-10-14)
 
 ### Chores
