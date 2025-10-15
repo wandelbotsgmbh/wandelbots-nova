@@ -4,7 +4,8 @@ import * as path from 'path'
 import * as vscode from 'vscode'
 
 import { COMMAND_SELECT_VIEWER_TAB } from './consts'
-import { getAccessToken, getNovaApiAddress } from './urlResolver'
+import { logger } from './logging'
+import { getNovaConfig } from './urlResolver'
 
 interface PythonExecutionDetails {
   execCommand?: string[]
@@ -86,16 +87,21 @@ export async function runNovaProgram(
     }
 
     // Resolve NOVA env
-    const novaApiAddress = getNovaApiAddress()
-    const accessToken = getAccessToken()
+    const { novaApi, novaAccessToken, cellId, natsBroker } = getNovaConfig()
 
     const runEnv: Record<string, string> = {
-      NOVA_API: novaApiAddress,
-      ...(accessToken && accessToken.trim()
-        ? { NOVA_ACCESS_TOKEN: accessToken }
+      NOVA_API: novaApi,
+      ...(novaAccessToken && novaAccessToken.trim()
+        ? { NOVA_ACCESS_TOKEN: novaAccessToken }
         : {}),
+      ...(cellId && cellId.trim() ? { CELL_NAME: cellId } : {}),
+      ...(natsBroker && natsBroker.trim() ? { NATS_BROKER: natsBroker } : {}),
       ...(fineTune ? { ENABLE_TRAJECTORY_TUNING: '1' } : {}),
     }
+
+    // Log the resolved environment used to run the program
+    const log = logger.child('runNovaProgram')
+    log.info('Resolved NOVA environment for program run:', runEnv)
 
     if (debug) {
       // Use VS Code's Python debugger

@@ -9,6 +9,13 @@ import {
   VIEWER_ID,
 } from './consts'
 
+export type NovaConfig = {
+  novaApi: string
+  novaAccessToken: string
+  cellId: string
+  natsBroker: string
+}
+
 /**
  * Gets the protocol from the environment
  * @returns The protocol ("http://" or "https://")
@@ -125,22 +132,27 @@ export function getNovaApiAddress(): string {
   }
 }
 
-export function getAccessToken(): string {
+export function getNovaConfig(): NovaConfig {
   const config = vscode.workspace.getConfiguration(VIEWER_ID)
-  const accessToken = config.get<string>(SETTINGS_ACCESS_TOKEN, '')
-  return accessToken
+  return {
+    novaApi: getNovaApiAddress(),
+    novaAccessToken: config.get<string>(SETTINGS_ACCESS_TOKEN, ''),
+    cellId: config.get<string>(SETTINGS_CELL_ID, ''),
+    natsBroker: config.get<string>(SETTINGS_NATS_BROKER, ''),
+  }
+}
+
+// Keep individual getters for backwards compatibility
+export function getAccessToken(): string {
+  return getNovaConfig().novaAccessToken
 }
 
 export function getCellId(): string {
-  const config = vscode.workspace.getConfiguration(VIEWER_ID)
-  const cellId = config.get<string>(SETTINGS_CELL_ID, '')
-  return cellId
+  return getNovaConfig().cellId
 }
 
 export function getNatsBroker(): string {
-  const config = vscode.workspace.getConfiguration(VIEWER_ID)
-  const natsBroker = config.get<string>(SETTINGS_NATS_BROKER, '')
-  return natsBroker
+  return getNovaConfig().natsBroker
 }
 
 /**
