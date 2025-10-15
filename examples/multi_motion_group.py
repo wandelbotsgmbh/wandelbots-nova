@@ -1,11 +1,10 @@
 import asyncio
 from pathlib import Path
 
-import wandelbots_api_client.models as v1models
 from pydantic import TypeAdapter
 
 import nova
-from nova import run_program
+from nova import api, run_program
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 
@@ -23,9 +22,9 @@ def load_controller_config() -> str:
     return path.read_text()
 
 
-def load_joint_trajectories() -> dict[str, v1models.JointTrajectory]:
+def load_joint_trajectories() -> dict[str, api.models.JointTrajectory]:
     path = Path(__file__).parent / "multi_motion_group_trajectory.json"
-    adapter = TypeAdapter(dict[str, v1models.JointTrajectory])
+    adapter = TypeAdapter(dict[str, api.models.JointTrajectory])
     return adapter.validate_json(path.read_text())
 
 
@@ -46,11 +45,6 @@ async def multi_motion_group_trajectory():
     """
     Example of synchronized trajectory execution with two motion groups (robot and positioner).
     """
-
-    async def set_io():
-        print("Setting sync IO to True")
-        await controller.write(key=SYNC_IO_ID, value=True)
-
     async with nova.Nova() as n:
         cell = n.cell()
         controller = await cell.controller("kuka")
@@ -59,13 +53,8 @@ async def multi_motion_group_trajectory():
 
         # Load trajectories for both motion groups (same duration expected).
         trajectories = load_joint_trajectories()
-        try:
-            robot_path = trajectories["manipulator_path"]
-            positioner_path = trajectories["positioner_path"]
-        except KeyError as missing_name:
-            raise KeyError(
-                f"Trajectory '{missing_name.args[0]}' not found in multi_motion_group_trajectory.json"
-            ) from missing_name
+        robot_path = trajectories["manipulator_path"]
+        positioner_path = trajectories["positioner_path"]
 
         # Resetting the sync IO to False before starting
         await controller.write(key=SYNC_IO_ID, value=False)
@@ -73,9 +62,9 @@ async def multi_motion_group_trajectory():
         print("Starting synchronized execution...")
 
         # Starting both movements concurrently with waiting for IO
-        start_on_io = v1models.StartOnIO(
-            io=v1models.IOValue(io=SYNC_IO_ID, boolean_value=True),
-            comparator=v1models.Comparator.COMPARATOR_EQUALS,
+        start_on_io = api.models.StartOnIO(
+            io=api.models.IOValue(io=SYNC_IO_ID, boolean_value=True),
+            comparator=api.models.Comparator.COMPARATOR_EQUALS,
         )
         robot_trajectory_exec = asyncio.create_task(
             robot.execute(robot_path, ROBOT_TCP_ID, [], start_on_io=start_on_io)
@@ -89,7 +78,8 @@ async def multi_motion_group_trajectory():
         await asyncio.sleep(1)
 
         # Triggering the IO signal to start both movements
-        await set_io()
+        print("Setting sync IO to True")
+        await controller.write(key=SYNC_IO_ID, value=True)
         await asyncio.gather(robot_trajectory_exec, positioner_trajectory_exec)
 
 
