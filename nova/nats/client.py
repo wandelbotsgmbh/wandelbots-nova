@@ -45,7 +45,9 @@ class NatsClient:
         host = self._host
         token = self._access_token
 
-        if host and token:
+        self._nats_connection_string = config("NATS_BROKER", default=None)
+
+        if not self._nats_connection_string and host and token:
             host = host.strip()
             is_http = host.startswith("http://")
             # Remove protocol and trailing slashes
@@ -58,7 +60,6 @@ class NatsClient:
             return
 
         logger.debug("Host and token not both set; reading NATS connection from env var")
-        self._nats_connection_string = config("NATS_BROKER", default=None)
 
         if not self._nats_connection_string:
             logger.warning("NATS connection string is not set. NATS client will be disabled.")
