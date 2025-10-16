@@ -58,8 +58,8 @@ jobs:
           - id: integration
             run_cmd: "pytest -rs -v -m integration"
           # each example gets its own matrix entry
-          - id: basic
-            run_cmd: "python examples/basic.py"
+          - id: start_here
+            run_cmd: "python examples/start_here.py"
           - id: plan_and_execute
             run_cmd: "python examples/plan_and_execute.py"
           - id: move_multiple_robots
