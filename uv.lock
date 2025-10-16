@@ -1662,7 +1662,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "2.20.4"
+version = "3.0.2"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
@@ -1772,7 +1772,7 @@ dev = [
     { name = "freezegun", specifier = ">=1.5.5" },
     { name = "glom", specifier = ">=24.11.0" },
     { name = "icecream", specifier = ">=2.1.5" },
-    { name = "ipython", specifier = "<9" },
+    { name = "ipython", specifier = "<10" },
     { name = "mypy", specifier = ">=1.18.2" },
     { name = "pre-commit", specifier = ">=4.3.0" },
     { name = "pyinstrument", specifier = ">=5.1.1" },

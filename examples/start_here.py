@@ -16,20 +16,19 @@ Key robotics concepts:
 """
 
 import nova
-from nova.actions import joint_ptp, cartesian_ptp, circular, linear
+from nova import api, run_program
+from nova.actions import TrajectoryBuilder, cartesian_ptp, circular, joint_ptp, linear
 from nova.cell import virtual_controller
 from nova.core.nova import Nova
+from nova.events import Cycle
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
-from nova import api, run_program
-from nova.actions import TrajectoryBuilder
-from nova.events import Cycle
 
 
 # Configure the robot program
 @nova.program(
-    id="start_here", # Unique identifier of the program. If not provided, the function name will be used.
-    name="Start Here", # Readable name of the program
+    id="start_here",  # Unique identifier of the program. If not provided, the function name will be used.
+    name="Start Here",  # Readable name of the program
     viewer=nova.viewers.Rerun(),  # add this line for a 3D visualization
     preconditions=ProgramPreconditions(
         controllers=[
@@ -73,7 +72,9 @@ async def start():
                 joint_ptp(home_joints),  # Move to home position
                 cartesian_ptp(target_pose),  # Move to target pose
                 joint_ptp(home_joints),  # Return to home
-                cartesian_ptp(target_pose @ [100, 0, 0, 0, 0, 0]),  # Move 100mm in target pose's local x-axis
+                cartesian_ptp(
+                    target_pose @ [100, 0, 0, 0, 0, 0]
+                ),  # Move 100mm in target pose's local x-axis
                 joint_ptp(home_joints),
                 linear(target_pose @ (100, 100, 0, 0, 0, 0)),  # Move 100mm in local x and y axes
             )
@@ -83,7 +84,12 @@ async def start():
                 t.move(joint_ptp(home_joints))
                 t.move(cartesian_ptp(target_pose @ Pose((0, 100, 0, 0, 0, 0))))
                 t.move(joint_ptp(home_joints))
-                t.move(circular(target_pose @ Pose((100, 100, 0, 0, 0, 0)), intermediate=target_pose @ Pose((0, 100, 0, 0, 0, 0))))
+                t.move(
+                    circular(
+                        target_pose @ Pose((100, 100, 0, 0, 0, 0)),
+                        intermediate=target_pose @ Pose((0, 100, 0, 0, 0, 0)),
+                    )
+                )
 
             # This moves the robot back to home position with normal settings
             t.move(joint_ptp(home_joints))
