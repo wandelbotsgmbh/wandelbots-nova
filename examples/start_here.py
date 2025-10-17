@@ -57,7 +57,7 @@ async def start():
 
             # Get current TCP pose and create target poses
             current_pose = await motion_group.tcp_pose(tcp)
-            target_pose = current_pose @ Pose((50, 0, 0, 0, 0, 0))
+            target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
 
             # Actions define the sequence of movements and other actions to be executed by the robot
             actions = [
@@ -65,16 +65,16 @@ async def start():
                 cartesian_ptp(target_pose),  # Move to target pose
                 joint_ptp(home_joints),  # Return to home
                 cartesian_ptp(
-                    target_pose @ [100, 0, 0, 0, 0, 0]
+                    target_pose @ [200, 0, 0, 0, 0, 0]
                 ),  # Move 100mm in target pose's local x-axis
                 joint_ptp(home_joints),
-                linear(target_pose @ (100, 100, 0, 0, 0, 0)),  # Move 100mm in local x and y axes
+                linear(target_pose @ (200, 200, 0, 0, 0, 0)),  # Move 100mm in local x and y axes
                 joint_ptp(home_joints, settings=slow),
-                cartesian_ptp(target_pose @ Pose((0, 100, 0, 0, 0, 0))),
+                cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0))),
                 joint_ptp(home_joints),
                 circular(
-                    target_pose @ Pose((100, 100, 0, 0, 0, 0)),
-                    intermediate=target_pose @ Pose((0, 100, 0, 0, 0, 0)),
+                    target_pose @ Pose((0, 200, 0, 0, 0, 0)),
+                    intermediate=target_pose @ Pose((0, 200, 0, 0, 0, 0)),
                 ),
                 joint_ptp(home_joints),
             ]
