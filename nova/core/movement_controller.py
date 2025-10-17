@@ -103,7 +103,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         # The second request is to start the movement
         set_io_list = context.combined_actions.to_set_io()
         yield wb.models.StartMovementRequest(  # type: ignore
-            set_ios=set_io_list, start_on_io=None, pause_on_io=None
+            set_ios=set_io_list, start_on_io=context.start_on_io, pause_on_io=None
         )
 
         # then we wait until the movement is finished
