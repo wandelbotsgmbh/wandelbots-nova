@@ -8,13 +8,12 @@ Prerequisites:
     - NOVA_ACCESS_TOKEN=<token>
 """
 
-import asyncio
 import json
 
 from wandelbots_api_client.models.joint_trajectory import JointTrajectory
 
 import nova
-from nova import Nova
+from nova import Nova, run_program
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.actions.base import Action
 from nova.api import models
@@ -28,7 +27,7 @@ from nova.types import Pose
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name="ur10",
+                name="ur10e",
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
                 type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             )
@@ -39,7 +38,7 @@ from nova.types import Pose
 async def main():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.controller("ur10")
+        controller = await cell.controller("ur10e")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
@@ -88,4 +87,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_program(main)
