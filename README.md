@@ -279,6 +279,9 @@ async def move_robots():
 
 More information in [move_multiple_robots](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/move_multiple_robots.py).
 
+4. **Synchronous execution start of multiple motion groups**  
+   Explore coordinated execution with [multi_motion_group](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/multi_motion_group.py).
+
 ### Advanced features
 
 1. **Input/Output control**

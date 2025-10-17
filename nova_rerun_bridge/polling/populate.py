@@ -5,7 +5,7 @@ import rerun as rr
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from nova import Nova
+from nova import Nova, NovaConfig
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.blueprint import get_blueprint
 from nova_rerun_bridge.consts import RECORDING_INTERVAL, SCHEDULE_INTERVAL, TIME_INTERVAL_NAME
@@ -26,7 +26,7 @@ async def process_motions():
     global previous_motion_group_list
 
     # use http://api-gateway:8080 on prod instances
-    async with Nova(host="http://api-gateway:8080") as nova:
+    async with Nova(config=NovaConfig(host="http://api-gateway:8080")) as nova:
         motion_api = nova._api_client.motion_api
 
         try:

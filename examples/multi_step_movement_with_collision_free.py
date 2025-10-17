@@ -8,11 +8,9 @@ Prerequisites:
     - NOVA_ACCESS_TOKEN=<token>
 """
 
-import asyncio
-
-from nova import MotionSettings, Nova
-from nova.actions import cartesian_ptp, joint_ptp
-from nova.actions.io import io_write
+import nova
+from nova import Nova, run_program
+from nova.actions import cartesian_ptp, collision_free, io_write, joint_ptp
 from nova.api import models
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -32,7 +30,7 @@ from nova.types import MotionSettings, Pose
         cleanup_controllers=False,
     ),
 )
-async def main():
+async def multi_step_movement_with_collision_free():
     async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.controller("ur")
@@ -76,4 +74,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_program(multi_step_movement_with_collision_free)

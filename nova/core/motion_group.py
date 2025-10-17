@@ -498,6 +498,7 @@ class MotionGroup(AbstractRobot):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
+        start_on_io: wb.models.StartOnIO | None = None,
     ) -> AsyncIterable[MotionState]:
         # This is the entrypoint for the trajectory tuning mode
         if config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False):
@@ -517,9 +518,24 @@ class MotionGroup(AbstractRobot):
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
                 motion_id=trajectory_id,
+                start_on_io=start_on_io,
                 motion_group_state_stream_gen=self.stream_state,
             )
         )
+        joints_velocities = [MAX_JOINT_VELOCITY_PREPARE_MOVE] * number_of_joints
+        movement_stream = await self.move_to_start_position(joints_velocities, load_plan_response)
+
+        # If there's an initial consumer, feed it the data
+        async for move_to_response in movement_stream:
+            # TODO: refactor
+            if (
+                move_to_response.state is None
+                or move_to_response.state.motion_groups is None
+                or len(move_to_response.state.motion_groups) == 0
+                or move_to_response.move_response is None
+                or move_to_response.move_response.current_location_on_trajectory is None
+            ):
+                continue
         states = asyncio.Queue[wb.models.MotionGroupState]()
         SENTINEL = None
 
@@ -536,6 +552,7 @@ class MotionGroup(AbstractRobot):
             )
             states.put_nowait(SENTINEL)
 
+            yield move_to_response
         monitor_task = asyncio.create_task(monitor_motion_group_state())
         execution_task = asyncio.create_task(
             execution(), name=f"execute_trajectory-{trajectory_id}-{self.motion_group_id}"
@@ -562,6 +579,7 @@ class MotionGroup(AbstractRobot):
     async def _stream_jogging(self, tcp, movement_controller):
         controller = movement_controller(
             MovementControllerContext(
+                combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
                 combined_actions=CombinedActions(),  # type: ignore
                 motion_id="DUMMY_MOTION_ID",  # TODO This is a dummy ID, not used in jogging
             )

@@ -1,8 +1,8 @@
 {
   "name": "wandelbots-nova",
   "displayName": "Wandelbots NOVA",
-  "description": "Wandelbots NOVA VSCode Extension",
-  "version": "0.6.0",
+  "description": "Wandelbots NOVA VSCode extension",
+  "version": "0.9.0",
   "publisher": "wandelbots",
   "icon": "media/logo.png",
   "engines": {
@@ -95,7 +95,7 @@
       }
     ],
     "configuration": {
-      "title": "Wandelbots NOVA Viewer",
+      "title": "Wandelbots NOVA viewer",
       "properties": {
         "wandelbots-nova-viewer.urlType": {
           "type": "string",
@@ -115,7 +115,7 @@
         "wandelbots-nova-viewer.novaApi": {
           "type": "string",
           "default": "",
-          "description": "Your Wandelbots NOVA API URL (e.g. 'uqserrrn.instance.wandelbots.io')"
+          "description": "Your Wandelbots NOVA API URL, e.g., 'uqserrrn.instance.wandelbots.io'"
         },
         "wandelbots-nova-viewer.accessToken": {
           "type": "string",
@@ -145,7 +145,7 @@
         "wandelbots-nova-viewer.autoOpenOnPythonExecution": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically open the view when Python scripts finish executing"
+          "description": "Automatically open the view once Python scripts finish executing"
         },
         "wandelbots-nova-viewer.requireNovaRrdFile": {
           "type": "boolean",
@@ -155,7 +155,7 @@
         "wandelbots-nova-viewer.enableNovaCodeLens": {
           "type": "boolean",
           "default": true,
-          "description": "Enable CodeLens for Nova programs (show Run/Debug buttons)"
+          "description": "Enable CodeLens for NOVA programs (display Run/Debug buttons)"
         }
       }
     }

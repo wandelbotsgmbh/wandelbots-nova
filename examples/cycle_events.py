@@ -1,12 +1,12 @@
 import asyncio
 
 import nova
-from nova import Nova
+from nova import Nova, run_program
 from nova.events import Cycle
 
 
 @nova.program()
-async def main():
+async def cycle_events():
     async with Nova() as nova:
         cell = nova.cell()
         # Track a process cycle in the cell.
@@ -41,4 +41,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_program(cycle_events)

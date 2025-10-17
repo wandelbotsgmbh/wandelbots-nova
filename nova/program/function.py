@@ -302,6 +302,9 @@ def input_and_output_types(
 
 
 def program(
+    # allows bare @nova.program
+    _func: Callable[Parameters, Return] | None = None,
+    *,
     id: str | None = None,
     name: str | None = None,
     description: str | None = None,
@@ -316,7 +319,27 @@ def program(
         name: Readable name of the program
         description: Description of the program
         preconditions: ProgramPreconditions containing controller configurations and cleanup settings
+            Based on the program preconditions, a robot cell is created when running the program in a runner
+            Only devices that are part of the preconditions are opened and listened for e.g. estop handling
         viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
+
+    Decorator / decorator-factory for creating Nova programs.
+        - Bare usage:        @nova.program
+        - With options:      @nova.program(id="...", name="...")
+
+    Examples:
+        >>> import nova
+        >>> @program
+        ... async def simple_program():
+        ...     print("Hello World!")
+        >>> simple_program.program_id
+        'simple_program'
+
+        >>> @program(id="my_program", name="My Program")
+        ... async def program_with_options():
+        ...     print("Hello from My Program!")
+        >>> program_with_options.program_id
+        'my_program'
     """
 
     def decorator(
@@ -368,4 +391,6 @@ def program(
         func_obj._wrapped = async_wrapper
         return func_obj
 
-    return decorator
+    # If used as @nova.program(), return the decorator.
+    # If used as @nova.program, decorate immediately.
+    return decorator if _func is None else decorator(_func)

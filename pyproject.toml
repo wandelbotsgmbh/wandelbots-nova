@@ -1,6 +1,6 @@
 [project]
 name = "wandelbots-nova"
-version = "2.19.0"
+version = "3.1.0"
 description = "Official Python SDK for the Wandelbots Nova"
 authors = [
     { name = "Wandelbots GmbH" },
@@ -38,10 +38,10 @@ dev = [
     "ruff>=0.12.8",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
-    "mypy>=1.17.1",
+    "mypy>=1.18.2",
     "pre-commit>=4.3.0",
     "icecream>=2.1.5",
-    "ipython<9",
+    "ipython<10",
     "freezegun>=1.5.5",
     "pyinstrument>=5.1.1",
     "glom>=24.11.0",

@@ -299,6 +299,7 @@ class AbstractRobot(Device):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
+        start_on_io: api.models.start_on_io.StartOnIO | None = None,
     ) -> AsyncIterable[MovementResponse]:
         """Execute a planned motion
 
@@ -307,6 +308,7 @@ class AbstractRobot(Device):
             tcp (str): The id of the tool center point (TCP)
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
+            start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
         """
 
     async def stream_execute(
@@ -315,6 +317,7 @@ class AbstractRobot(Device):
         tcp: str,
         actions: list[Action] | Action,
         movement_controller: MovementController | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
     ) -> AsyncIterable[MotionState]:
         """Execute a planned motion
 
@@ -323,6 +326,7 @@ class AbstractRobot(Device):
             tcp (str): The id of the tool center point (TCP)
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
+            start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
         """
         if not isinstance(actions, list):
             actions = [actions]
@@ -340,6 +344,7 @@ class AbstractRobot(Device):
         tcp: str,
         actions: list[Action] | Action,
         movement_controller: MovementController | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
     ) -> None:
         """Execute a planned motion
 
@@ -348,9 +353,14 @@ class AbstractRobot(Device):
             tcp (str): The id of the tool center point (TCP)
             actions (list[Action] | Action): The actions to be executed.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
+            start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
         """
         async for _ in self.stream_execute(
-            joint_trajectory, tcp, actions, movement_controller=movement_controller
+            joint_trajectory,
+            tcp,
+            actions,
+            movement_controller=movement_controller,
+            start_on_io=start_on_io,
         ):
             pass
 

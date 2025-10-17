@@ -1,7 +1,15 @@
 import pytest
 
+import nova
+from nova import run_program
 from nova.program.exceptions import NotPlannableError
+from nova.program.function import Program
 from nova.program.runner import ProgramRunner, ProgramRunState
+
+
+@nova.program()
+async def hello_world_program():
+    print("Hello, world")
 
 
 class TestProgramRunner(ProgramRunner):
@@ -9,12 +17,12 @@ class TestProgramRunner(ProgramRunner):
 
     def __init__(
         self,
-        program_id: str,
-        args: dict,
+        program: Program,
+        parameters: dict,
         should_fail: bool = False,
         should_not_plannable: bool = False,
     ):
-        super().__init__(program_id=program_id, args=args)
+        super().__init__(program, parameters=parameters)
         self._should_fail = should_fail
         self._should_not_plannable = should_not_plannable
 
@@ -28,7 +36,7 @@ class TestProgramRunner(ProgramRunner):
 
 def test_program_runner_initialization():
     # Test basic initialization
-    runner = TestProgramRunner(program_id="test", args={})
+    runner = TestProgramRunner(hello_world_program, parameters={})
 
     assert runner.run_id is not None
     assert runner.state == ProgramRunState.PREPARING
@@ -36,18 +44,18 @@ def test_program_runner_initialization():
 
 
 @pytest.mark.integration
-def test_program_runner_state_transitions():
-    runner = TestProgramRunner(program_id="test", args={})
+def test_program_runner_state_transitions() -> None:
+    runner = TestProgramRunner(hello_world_program, parameters={})
 
     # Test state transitions
     assert runner.state == ProgramRunState.PREPARING
     runner.start(sync=True)
-    assert runner.state == ProgramRunState.COMPLETED
+    assert runner.state == ProgramRunState.COMPLETED  # type: ignore
 
 
 @pytest.mark.integration
 def test_program_runner_stop():
-    runner = TestProgramRunner(program_id="test", args={})
+    runner = TestProgramRunner(hello_world_program, parameters={})
 
     # Test stopping before start
     with pytest.raises(RuntimeError):
@@ -61,7 +69,7 @@ def test_program_runner_stop():
 
 @pytest.mark.integration
 def test_program_runner_double_start():
-    runner = TestProgramRunner(program_id="test", args={})
+    runner = TestProgramRunner(hello_world_program, parameters={})
 
     # Test starting twice
     runner.start(sync=True)
@@ -73,7 +81,7 @@ def test_program_runner_double_start():
 def test_program_runner_error_handling():
     # Test general exception handling
     with pytest.raises(RuntimeError):
-        runner = TestProgramRunner(program_id="test", args={}, should_fail=True)
+        runner = TestProgramRunner(hello_world_program, parameters={}, should_fail=True)
         runner.start(sync=True)
         assert runner.state == ProgramRunState.FAILED
         assert runner.program_run.error is not None
@@ -81,7 +89,7 @@ def test_program_runner_error_handling():
 
     # Test NotPlannableError handling
     with pytest.raises(NotPlannableError):
-        runner = TestProgramRunner(program_id="test", args={}, should_not_plannable=True)
+        runner = TestProgramRunner(hello_world_program, parameters={}, should_not_plannable=True)
         runner.start(sync=True)
         assert runner.state == ProgramRunState.FAILED
         assert "NotPlannableError" in runner.program_run.error
@@ -89,7 +97,7 @@ def test_program_runner_error_handling():
 
 @pytest.mark.integration
 def test_program_runner_logs_and_stdout():
-    runner = TestProgramRunner(program_id="test", args={})
+    runner = TestProgramRunner(hello_world_program, parameters={})
 
     # Test initial state
     assert runner.program_run.logs is None
@@ -101,3 +109,14 @@ def test_program_runner_logs_and_stdout():
     # Verify logs and stdout are captured
     assert runner.program_run.logs is not None
     assert runner.program_run.stdout is not None
+
+
+@pytest.mark.integration
+def test_simple_program():
+    @nova.program()
+    async def test_program():
+        print("Hello, world")
+
+    runner = run_program(test_program)
+    assert runner.state == ProgramRunState.COMPLETED
+    assert runner.program_run.error is None

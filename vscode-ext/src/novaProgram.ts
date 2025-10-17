@@ -4,7 +4,8 @@ import * as path from 'path'
 import * as vscode from 'vscode'
 
 import { COMMAND_SELECT_VIEWER_TAB } from './consts'
-import { getNovaApiAddress } from './urlResolver'
+import { logger } from './logging'
+import { getNovaConfig } from './urlResolver'
 
 interface PythonExecutionDetails {
   execCommand?: string[]
@@ -43,9 +44,7 @@ export async function runNovaProgram(
         'Cancel',
       )
 
-      if (choice === 'Cancel' || choice === undefined) {
-        return
-      }
+      if (choice === 'Cancel' || choice === undefined) return
 
       if (choice === 'Save') {
         const saved = await document.save()
@@ -53,10 +52,9 @@ export async function runNovaProgram(
           vscode.window.showErrorMessage('File was not saved. Aborting run.')
           return
         }
-        // Document URI may change after save (e.g., from untitled)
+        // URI may change after save (e.g., from untitled)
         uri = document.uri
       } else if (document.isUntitled) {
-        // Cannot run an untitled (unsaved) document without saving
         vscode.window.showErrorMessage('Please save the file before running.')
         return
       }
@@ -64,102 +62,87 @@ export async function runNovaProgram(
 
     const filePath = uri.fsPath
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri)
-
     if (!workspaceFolder) {
       vscode.window.showErrorMessage('No workspace folder found for this file')
       return
     }
 
-    // Create or reuse terminal for running the program
-    const terminalName = `Python: ${functionName}`
-    let terminal = vscode.window.terminals.find((t) => t.name === terminalName)
-
-    if (!terminal) {
-      console.log(`Creating new terminal: ${terminalName}`)
-      terminal = vscode.window.createTerminal({
-        name: terminalName,
-        cwd: workspaceFolder.uri.fsPath,
-      })
-    } else {
-      console.log(`Reusing existing terminal: ${terminalName}`)
-    }
-
-    // Show the terminal
-    terminal.show()
-
-    // Try to get the Python interpreter path from VS Code's Python extension
+    // Determine Python interpreter (via Python extension if available)
     let pythonPath = 'python'
     try {
       const pythonExtension =
         vscode.extensions.getExtension<PythonExtensionAPI>('ms-python.python')
-      if (pythonExtension && pythonExtension.isActive) {
+      if (pythonExtension) {
+        if (!pythonExtension.isActive) {
+          await pythonExtension.activate() // ensure exports populated
+        }
         const pythonApi = pythonExtension.exports
-        const activeInterpreter =
-          await pythonApi?.settings?.getExecutionDetails(uri)
-        if (activeInterpreter?.execCommand?.length) {
-          pythonPath = activeInterpreter.execCommand[0]
+        const execDetails = await pythonApi?.settings?.getExecutionDetails(uri)
+        if (execDetails?.execCommand?.length) {
+          pythonPath = execDetails.execCommand[0]
         }
       }
-    } catch (error) {
-      console.log(
-        'Could not get Python interpreter from Python extension, using default:',
-        error,
-      )
+    } catch (err) {
+      console.log('Falling back to default Python interpreter:', err)
     }
 
-    // Resolve NOVA_API from settings/environment
-    const novaApiAddress = getNovaApiAddress()
+    // Resolve NOVA env
+    const { novaApi, novaAccessToken, cellId, natsBroker } = getNovaConfig()
+
+    const runEnv: Record<string, string> = {
+      NOVA_API: novaApi,
+      ...(novaAccessToken && novaAccessToken.trim()
+        ? { NOVA_ACCESS_TOKEN: novaAccessToken }
+        : {}),
+      ...(cellId && cellId.trim() ? { CELL_NAME: cellId } : {}),
+      ...(natsBroker && natsBroker.trim() ? { NATS_BROKER: natsBroker } : {}),
+      ...(fineTune ? { ENABLE_TRAJECTORY_TUNING: '1' } : {}),
+    }
+
+    // Log the resolved environment used to run the program
+    const log = logger.child('runNovaProgram')
+    log.info('Resolved NOVA environment for program run:', runEnv)
 
     if (debug) {
-      // For debugging, we'll use VS Code's built-in Python debugger
+      // Use VS Code's Python debugger
       vscode.window.showInformationMessage(
-        `Starting debug session for Nova program: ${functionName}`,
+        `Starting debug session for NOVA program: ${functionName}`,
       )
 
       const debugConfig: vscode.DebugConfiguration = {
-        name: `Debug Nova Program: ${functionName}`,
+        name: `Debug NOVA program: ${functionName}`,
         type: 'python',
         request: 'launch',
         program: filePath,
         console: 'integratedTerminal',
         cwd: workspaceFolder.uri.fsPath,
-        env: {
-          ENABLE_TRAJECTORY_TUNING: '1',
-          NOVA_API: novaApiAddress,
-        },
+        env: runEnv,
       }
 
       await vscode.debug.startDebugging(workspaceFolder, debugConfig)
-      return // Debug session handles execution
+      return
     }
 
-    // Create a temporary Python file that imports and runs the specific function
+    // Create a temporary Python shim that imports and runs the target function
     const moduleName = path.basename(filePath, '.py')
     const moduleDir = path.dirname(filePath)
     const moduleDirEscaped = moduleDir.replace(/\\/g, '\\\\')
 
-    // TODO: solve this via the runner
     const tempFileContent = `
 import sys
-import os
 import asyncio
 import inspect
 
-# Add the module directory to Python path
+# Ensure module directory is on sys.path
 sys.path.insert(0, r'${moduleDirEscaped}')
 
-# Import the module containing the function
 import ${moduleName}
 
-# Get the function and run it
-# Nova functions return coroutines when called, even if they don't appear as coroutine functions
 func = getattr(${moduleName}, '${functionName}')
 result = func()
 
-# Check if the result is a coroutine and run it with asyncio.run()
 if inspect.iscoroutine(result):
     asyncio.run(result)
-# If it's not a coroutine, the function executed synchronously
 `.trim()
 
     const tempFilePath = path.join(
@@ -168,26 +151,43 @@ if inspect.iscoroutine(result):
     )
     fs.writeFileSync(tempFilePath, tempFileContent, { encoding: 'utf8' })
 
-    let command = `"${pythonPath}" "${tempFilePath}"`
+    // Recreate terminal to ensure fresh env is applied
+    const terminalName = `Python: ${functionName}`
+    vscode.window.terminals
+      .filter((t) => t.name === terminalName)
+      .forEach((t) => t.dispose())
 
-    // Inject NOVA_API and optional tuning flag into environment for the run
-    if (process.platform === 'win32') {
-      const envParts: string[] = [`set NOVA_API=${novaApiAddress}`]
-      if (fineTune) envParts.push('set ENABLE_TRAJECTORY_TUNING=1')
-      command = `${envParts.join(' && ')} && ${command}`
-    } else {
-      const envParts: string[] = [`NOVA_API="${novaApiAddress}"`]
-      if (fineTune) envParts.push('ENABLE_TRAJECTORY_TUNING=1')
-      command = `${envParts.join(' ')} ${command}`
-    }
+    console.log(`Creating terminal "${terminalName}" with NOVA env`)
+    const terminal = vscode.window.createTerminal({
+      name: terminalName,
+      cwd: workspaceFolder.uri.fsPath,
+      env: runEnv,
+    })
+    terminal.show()
+
+    // Quote paths conservatively for common shells
+    const quote = (s: string) => `"${s.replace(/"/g, '\\"')}"`
+    const command = `${quote(pythonPath)} ${quote(tempFilePath)}`
+
+    // Fire it off (no env prefix)
+    terminal.sendText(command, true)
 
     vscode.window.showInformationMessage(
       fineTune
-        ? `Running Nova program with trajectory tuning: ${functionName}`
-        : `Running Nova program: ${functionName}`,
+        ? `Running NOVA program with trajectory tuning: ${functionName}`
+        : `Running NOVA program: ${functionName}`,
     )
 
-    // Clean up temp file after a delay
+    // Optionally switch to the Fine-Tuning tab
+    if (fineTune) {
+      try {
+        await vscode.commands.executeCommand(COMMAND_SELECT_VIEWER_TAB, 1)
+      } catch (e) {
+        console.warn('Could not select fine-tuning tab:', e)
+      }
+    }
+
+    // Clean up temp file after a short delay
     setTimeout((): void => {
       try {
         if (fs.existsSync(tempFilePath)) {
@@ -197,33 +197,11 @@ if inspect.iscoroutine(result):
       } catch (error: any) {
         console.log(`Could not clean up temp file: ${error.message}`)
       }
-    }, 30_000) // Clean up after 30 seconds
-
-    // If fine-tune requested, pre-select the Fine-Tuning tab (index 1 due to hidden tab2)
-    if (fineTune) {
-      try {
-        await vscode.commands.executeCommand(COMMAND_SELECT_VIEWER_TAB, 1)
-      } catch (e) {
-        console.log('Could not select Fine-Tuning tab:', e)
-      }
-    }
-
-    // Send the command to terminal (nova.rrd file watcher will handle completion)
-    console.log(`🚀 Sending command to terminal "${terminalName}": ${command}`)
-    terminal.sendText(command)
-    console.log(
-      `✅ Nova program function started: ${functionName} in terminal: ${terminalName}`,
-    )
-    console.log(
-      '⏳ Waiting for nova.rrd file to be created/updated to detect completion...',
-    )
-    console.log(
-      '📝 Make sure your Nova program writes to nova.rrd when it completes!',
-    )
+    }, 30_000)
   } catch (error: any) {
     vscode.window.showErrorMessage(
-      `Failed to run Nova program: ${error.message}`,
+      `Failed to run NOVA program: ${error.message}`,
     )
-    console.error('Error running Nova program:', error)
+    console.error('Error running NOVA program:', error)
   }
 }

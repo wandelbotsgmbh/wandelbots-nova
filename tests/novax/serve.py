@@ -1,7 +1,7 @@
 import asyncio
 
 import nova
-from examples.plan_and_execute import main as plan_and_execute
+from examples.plan_and_execute import plan_and_execute
 
 
 @nova.program(id="test1")

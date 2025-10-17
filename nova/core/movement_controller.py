@@ -1,11 +1,10 @@
 import asyncio
 from enum import StrEnum, auto
-from functools import singledispatch
 from math import ceil, floor
-from typing import Any, AsyncIterator, Optional
+from typing import AsyncIterator, Optional
 
 import pydantic
-import wandelbots_api_client as wb
+import wandelbots_api_client.v2 as wb
 from aiohttp_retry import dataclass
 from blinker import signal
 
@@ -291,8 +290,8 @@ def trajectory_cursor(context: MovementControllerContext) -> MovementControllerF
         # The second request is to start the movement
         set_io_list = context.combined_actions.to_set_io()
         yield wb.models.StartMovementRequest(  # type: ignore
-            set_ios=set_io_list, start_on_io=None, pause_on_io=None
-        )  # type: ignore
+            set_ios=set_io_list, start_on_io=context.start_on_io, pause_on_io=None
+        )
 
         # then we wait until the movement is finished
         async for execute_trajectory_response in response_stream:

@@ -276,6 +276,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
+        start_on_io: models.StartOnIO | None = None,
     ) -> AsyncIterable[MovementResponse]:
         """
         Executes the given joint_trajectory by simulating the robot's motion.
@@ -549,6 +550,7 @@ class SimulatedRobotCell(RobotCell):
         for key, value in defaults.items():
             if key not in kwargs:
                 kwargs[key] = value
+
         super().__init__(**kwargs)
 
 
@@ -576,6 +578,6 @@ def get_robot_controller(
     )
 
 
-def get_robot_cell() -> SimulatedRobotCell:
+def get_simulated_robot_cell() -> SimulatedRobotCell:
     """Get a simulated robot cell"""
     return SimulatedRobotCell(controller=get_robot_controller())

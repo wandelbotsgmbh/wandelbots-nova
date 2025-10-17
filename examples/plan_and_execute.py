@@ -8,10 +8,8 @@ Prerequisites:
     - NOVA_ACCESS_TOKEN=<token>
 """
 
-import asyncio
-
 import nova
-from nova import Nova, api, viewers
+from nova import Nova, api, run_program, viewers
 from nova.actions import TrajectoryBuilder, cartesian_ptp, io_write, joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -32,7 +30,7 @@ from nova.types import MotionSettings, Pose
         cleanup_controllers=False,
     ),
 )
-async def main():
+async def plan_and_execute():
     async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.controller("ur10")
@@ -96,4 +94,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_program(plan_and_execute)

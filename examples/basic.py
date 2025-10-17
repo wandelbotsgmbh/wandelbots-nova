@@ -8,10 +8,8 @@ Prerequisites:
     - NOVA_ACCESS_TOKEN=<token>
 """
 
-import asyncio
-
 import nova
-from nova import Nova, api
+from nova import Nova, api, run_program
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 
@@ -29,7 +27,7 @@ from nova.program import ProgramPreconditions
         cleanup_controllers=False,
     ),
 )
-async def main():
+async def basic():
     async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.controller("ur10e")
@@ -65,4 +63,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_program(basic)

@@ -572,7 +572,7 @@ export class WandelbotsNovaViewerProvider
         </style>
       </head>
       <body>
-        <h2>Error Loading Wandelbots</h2>
+        <h2>Error loading Wandelbots</h2>
         <div class="error">
           <p>Failed to load Wandelbots viewer: ${message}</p>
         </div>
@@ -677,8 +677,8 @@ export function setupPythonScriptMonitoring(
   // Watch for nova.rrd file changes (indicates Nova program completion)
   context.subscriptions.push(
     rrdWatcher.onDidChange(async (uri) => {
-      console.log(`🔄 Nova.rrd file CHANGED: ${uri.fsPath}`)
-      console.log('✅ Nova program COMPLETED - scheduling debounced refresh')
+      console.log(`🔄 NOVA.rrd file CHANGED: ${uri.fsPath}`)
+      console.log('✅ NOVA program COMPLETED - scheduling debounced refresh')
 
       refreshDebouncer.execute(async () => {
         await provider.refreshView()
@@ -691,9 +691,9 @@ export function setupPythonScriptMonitoring(
   // Watch for nova.rrd file creation (first run in workspace)
   context.subscriptions.push(
     rrdWatcher.onDidCreate(async (uri) => {
-      console.log(`🆕 Nova.rrd file CREATED: ${uri.fsPath}`)
+      console.log(`🆕 NOVA.rrd file CREATED: ${uri.fsPath}`)
       console.log(
-        '✅ Nova program COMPLETED (first run) - scheduling debounced refresh',
+        '✅ NOVA program COMPLETED (first run) - scheduling debounced refresh',
       )
 
       refreshDebouncer.execute(async () => {
@@ -705,10 +705,10 @@ export function setupPythonScriptMonitoring(
   )
 
   console.log(
-    '✅ Nova.rrd file monitoring setup complete - this is the ONLY refresh trigger for Nova programs',
+    '✅ NOVA.rrd file monitoring setup complete - this is the ONLY refresh trigger for NOVA programs',
   )
 
-  // Only monitor Nova-specific debug sessions that might not use nova.rrd
+  // Only monitor NOVA-specific debug sessions that might not use nova.rrd
   context.subscriptions.push(
     vscode.debug.onDidTerminateDebugSession((session) => {
       if (session.type === 'python') {
@@ -716,18 +716,18 @@ export function setupPythonScriptMonitoring(
         const config = session.configuration as vscode.DebugConfiguration & {
           name?: string
         }
-        if (config?.name?.includes('Nova Program')) {
-          console.log('Nova debug session ended - checking for nova.rrd file')
-          // Small delay to allow nova.rrd to be written if this was a Nova program
+        if (config?.name?.includes('NOVA program')) {
+          console.log('NOVA debug session ended - checking for nova.rrd file')
+          // Small delay to allow nova.rrd to be written if this was a NOVA program
           setTimeout(async () => {
             const hasNovaRrd = await provider.hasNovaRrdFile()
             if (hasNovaRrd) {
-              console.log('Nova.rrd file found - refreshing view')
+              console.log('NOVA.rrd file found - refreshing view')
               await provider.refreshView()
               await provider.reveal()
             } else {
               console.log(
-                'No nova.rrd file found - debug session may not have been a Nova program',
+                'No nova.rrd file found - debug session may not have been a NOVA program',
               )
             }
           }, 1000)

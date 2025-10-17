@@ -40,13 +40,14 @@ class NatsClient:
         self._init_nats_client()
 
     # TODO: nats connection string is not built correctly when being accessed like below
-    # nova = Nova(host="...")
     # nova.nats -> here we are still dependent on NATS_BROKER env variable
     def _init_nats_client(self) -> None:
         host = self._host
         token = self._access_token
 
-        if host and token:
+        self._nats_connection_string = config("NATS_BROKER", default=None)
+
+        if not self._nats_connection_string and host and token:
             host = host.strip()
             is_http = host.startswith("http://")
             # Remove protocol and trailing slashes
@@ -59,7 +60,6 @@ class NatsClient:
             return
 
         logger.debug("Host and token not both set; reading NATS connection from env var")
-        self._nats_connection_string = config("NATS_BROKER", default=None)
 
         if not self._nats_connection_string:
             logger.warning("NATS connection string is not set. NATS client will be disabled.")
@@ -120,12 +120,10 @@ class NatsClient:
         )
 
         if not self.is_connected():
-            logger.debug("NATS client is not connected. Skipping message publishing.")
-            return
+            raise RuntimeError("NATS client is not connected. Skipping message publishing.")
 
         if self._nats_client is None:
-            logger.debug("NATS client is None. Skipping message publishing.")
-            return
+            raise RuntimeError("NATS client is None. Skipping message publishing.")
 
         try:
             await self._nats_client.publish(subject=message.subject, payload=message.data)

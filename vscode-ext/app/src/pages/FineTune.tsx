@@ -143,21 +143,11 @@ export default function FineTuning() {
         <div className="relative flex-1">
           <main className="mx-auto max-w-xl">
             <div className="flex flex-col gap-3">
-              {/*<SectionCard
-                subheader="Debug info"
-                color="secondary"
-                className="text-xs"
-              >
-                <div>{novaApi}</div>
-                <div>{cellId}</div>
-                <div>{accessToken}</div>
-                <div>{natsBroker}</div>
-              </SectionCard>*/}
               {/* Motion Group Selection */}
-              <SectionCard subheader="Fine Tuning" color="secondary">
+              <SectionCard subheader="Fine tuning" color="secondary">
                 <div className="flex-1 flex justify-between items-center">
                   <p className="text-sm font-medium text-slate-300 flex-1">
-                    Motion Group
+                    Motion group
                   </p>
                   <div className="flex-1">
                     <MotionGroupSelection onChange={handleMotionGroupChange} />
@@ -168,7 +158,7 @@ export default function FineTuning() {
               <SectionCard color="secondary">
                 <div>
                   <p className="text-sm font-medium text-slate-300">
-                    Execution Speed
+                    Execution speed
                   </p>
                   <div className="mt-3 rounded-xl">
                     <VelocitySlider
@@ -246,6 +236,16 @@ export default function FineTuning() {
                   </div>
                 </div>
               </SectionCard>
+              <SectionCard
+                subheader="Debug info"
+                color="secondary"
+                className="text-xs"
+              >
+                <div>NOVA API: {novaApi}</div>
+                <div>CELL: {cellId}</div>
+                <div>ACCESS TOKEN: {accessToken}</div>
+                <div>NATS BROKER: {natsBroker}</div>
+              </SectionCard>
               <Modal
                 open={isJoggingOpen && selectedMotionGroupId !== null}
                 onClose={handleCloseJogging}
@@ -285,10 +285,10 @@ export default function FineTuning() {
                           onClick={handleCloseJogging}
                           sx={{ cursor: 'pointer' }}
                         >
-                          Fine-Tuning
+                          Fine-tuning
                         </Link>
                         <Typography color="text.primary">
-                          Jogging Panel
+                          Jogging panel
                         </Typography>
                       </Breadcrumbs>
                     </div>

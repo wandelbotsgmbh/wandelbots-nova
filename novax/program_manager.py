@@ -1,86 +1,12 @@
-import asyncio
-import inspect
-from concurrent.futures import Future
-from typing import Any, Awaitable, Callable, Coroutine, Optional
+from typing import Any, Callable, Coroutine, Optional
 
-from decouple import config
 from wandelbots_api_client.v2.models.program import Program as ProgramDetails
 
 from nova.cell.robot_cell import RobotCell
-from nova.logging import logger
-from nova.program.function import Program
-from nova.program.runner import ExecutionContext, ProgramRun, ProgramRunner
-
-_BASE_PATH = config("BASE_PATH", default="/default/novax")
-_APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else "novax"
-logger.info(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
-
-
-def _log_future_result(future: Future):
-    try:
-        result = future.result()
-        logger.debug(f"Program state change callback completed with result: {result}")
-    except Exception as e:
-        logger.error(f"Program state change callback failed with exception: {e}")
-
-
-def _report_state_change_to_event_loop(
-    loop: asyncio.AbstractEventLoop,
-    state_listener: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None,
-) -> Callable[[ProgramRun], Awaitable[None]] | None:
-    if not state_listener:
-        return None
-
-    async def _state_listener(program_run: ProgramRun):
-        logger.debug(f"Reporting state change to event loop for program run: {program_run.program}")
-        coroutine = state_listener(program_run)
-
-        try:
-            if loop.is_closed():
-                logger.warning(
-                    f"Event loop is closed, skipping state change callback for program: {program_run.program}"
-                )
-                return
-
-            future: Future = asyncio.run_coroutine_threadsafe(coroutine, loop)
-            future.add_done_callback(_log_future_result)
-        except Exception as e:
-            logger.error(
-                f"Unexpected error in state change callback for program {program_run.program}: {e}"
-            )
-
-    return _state_listener
-
-
-class NovaxProgramRunner(ProgramRunner):
-    def __init__(
-        self,
-        program_id: str,
-        program_functions: dict[str, Program],
-        parameters: Optional[dict[str, Any]] = None,
-        robot_cell_override: RobotCell | None = None,
-    ):
-        super().__init__(program_id=program_id, args={}, robot_cell_override=robot_cell_override)
-        self.program_functions = program_functions
-        self.parameters = parameters
-
-    async def _run(self, execution_context: ExecutionContext) -> Any:
-        if self.program_id not in self.program_functions:
-            raise ValueError(f"Program {self.program_id} not found")
-
-        func = self.program_functions[self.program_id]
-
-        # Execute the function with parameters
-        if self.parameters:
-            result = func(**self.parameters)
-        else:
-            result = func()
-
-        # Check if the function is async and await it if necessary
-        if inspect.iscoroutine(result):
-            result = await result
-
-        return result
+from nova.config import NovaConfig
+from nova.program import Program, PythonProgramRunner, run_program
+from nova.program.runner import ProgramRun
+from novax.config import APP_NAME, CELL_NAME
 
 
 class ProgramManager:
@@ -88,8 +14,11 @@ class ProgramManager:
 
     def __init__(
         self,
+        *,
+        nova_config: NovaConfig | None = None,
+        cell_id: str | None = None,
+        app_name: str | None = None,
         robot_cell_override: RobotCell | None = None,
-        state_listener: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
     ):
         """
         Initialize the ProgramManager.
@@ -98,11 +27,13 @@ class ProgramManager:
             state_listener: Optional listener for program state changes
         """
 
+        self._cell_id = cell_id or CELL_NAME
+        self._app_name = app_name or APP_NAME
         self._programs: dict[str, ProgramDetails] = {}
         self._program_functions: dict[str, Program] = {}
-        self._runner: NovaxProgramRunner | None = None
+        self._runner: PythonProgramRunner | None = None
+        self._nova_config: NovaConfig | None = nova_config
         self._robot_cell_override: RobotCell | None = robot_cell_override
-        self._state_listener = state_listener
 
     def has_program(self, program_id: str) -> bool:
         return program_id in self._programs
@@ -131,7 +62,7 @@ class ProgramManager:
 
         # Create ProgramDetails instance
         program_details = ProgramDetails(
-            app=_APP_NAME,
+            app=self._app_name,
             program=program_id,
             name=program.name,
             description=program.description,
@@ -183,24 +114,23 @@ class ProgramManager:
             sync: If True, run the program synchronously
             on_state_change: Optional callback to handle program state changes
         """
+        program = self._program_functions[program_id]
+        if program is None:
+            raise KeyError(f"Program {program_id} not found")
+
         if self.is_any_program_running:
             raise RuntimeError("A program is already running")
 
-        runner = NovaxProgramRunner(
-            program_id,
-            self._program_functions,
-            parameters,
+        runner = run_program(
+            program,
+            parameters=parameters,
+            sync=sync,
+            on_state_change=on_state_change,
+            nova_config=self._nova_config,
             robot_cell_override=self._robot_cell_override,
         )
-        self._runner = runner
 
-        # report the state change to the event loop requesting program start
-        loop = asyncio.get_running_loop()
-        state_change_listener = on_state_change if on_state_change else self._state_listener
-        runner.start(
-            sync=sync,
-            on_state_change=_report_state_change_to_event_loop(loop, state_change_listener),
-        )
+        self._runner = runner
         return runner.program_run
 
     async def stop_program(self, program_id: str):

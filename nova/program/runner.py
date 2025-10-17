@@ -1,29 +1,38 @@
+import asyncio
 import contextlib
 import contextvars
-import datetime as dt
+import inspect
 import io
+import json
 import sys
 import threading
 import traceback as tb
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
-from typing import Any
+from concurrent.futures import Future
+from typing import Any, Coroutine, Optional
 
 import anyio
 from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
+from decouple import config
 from exceptiongroup import ExceptionGroup
 from loguru import logger
 from wandelbots_api_client.v2.models import ProgramRun as ApiProgramRun
 from wandelbots_api_client.v2.models import ProgramRunState
 
-from nova import Nova, api
+from nova import Nova, NovaConfig, api
 from nova.cell.robot_cell import RobotCell
 from nova.core.exceptions import PlanTrajectoryFailed
+from nova.nats import Message
 from nova.program.exceptions import NotPlannableError
+from nova.program.function import Program
 from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
+from nova.utils import timestamp
+
+_CELL_NAME = config("CELL_NAME", default="")
 
 current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
     "current_execution_context_var"
@@ -65,18 +74,34 @@ class ProgramRunner(ABC):
     """
 
     def __init__(
-        self, program_id: str, args: dict[str, Any], robot_cell_override: RobotCell | None = None
+        self,
+        program: Program,
+        *,
+        parameters: dict[str, Any],
+        robot_cell_override: RobotCell | None = None,
+        cell_id: str | None = None,
+        app_name: str | None = None,
+        nova_config: NovaConfig | None = None,
     ):
         """
         Args:
             program_id (str): The unique identifier of the program.
-            args (dict[str, Any]): The arguments to pass to the program.
-            robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Defaults to None.
+            parameters (dict[str, Any]): The parameters that are passed to the program.
+            robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Should only be used for testing purposes. When a robot cell is provided, no Nova instance is created. Defaults to None.
+            cell_id (str | None, optional): The cell ID to use for the program. Defaults to None.
+            app_name (str | None, optional): The app name to use for the program. Defaults to None.
+            nova_config (NovaConfig | None, optional): The Nova config to use for the program. Defaults to None.
         """
+        program_id = program.program_id
+
         self._run_id = str(uuid.uuid4())
         self._program_id = program_id
-        self._args = args
+        self._preconditions = program.preconditions
+        self._parameters = parameters
         self._robot_cell_override = robot_cell_override
+        self._cell_id = cell_id or _CELL_NAME
+        self._app_name = app_name
+        self._nova_config = nova_config
         self._program_run: ProgramRun = ProgramRun(
             run=self._run_id,
             program=program_id,
@@ -87,7 +112,7 @@ class ProgramRunner(ABC):
             traceback=None,
             start_time=None,
             end_time=None,
-            input_data=args,
+            input_data=parameters,
             output_data={},
         )
         self._thread: threading.Thread | None = None
@@ -191,6 +216,7 @@ class ProgramRunner(ABC):
             RuntimeError: when the runner is not in IDLE state
         """
         # Check if another program execution is already in progress
+        # TODO: introduce real state machine to manage the program run states
         if self.state is not ProgramRunState.PREPARING:
             raise RuntimeError(
                 "The runner is not in the not_started state. Create a new runner to execute again."
@@ -224,8 +250,7 @@ class ProgramRunner(ABC):
                     raise eg.exceptions[0]
                 self._program_run.stdout = stdout.getvalue()
 
-        # Create new thread and runs _run
-        # start a new thread
+        # Create new thread and run _run
         self._thread = threading.Thread(target=anyio.run, name="ProgramRunner", args=[runner])
         self._thread.start()
 
@@ -249,6 +274,8 @@ class ProgramRunner(ABC):
             )
 
         with monitoring_scope:
+            # TODO: only stream devices that are running, not everything in the robot cell.
+            #   -> How to figure that out? Maybe only controllers in precondition?
             cell_state_stream = self.execution_context.robot_cell.stream_state(1000)
             task_status.started()
 
@@ -271,7 +298,37 @@ class ProgramRunner(ABC):
         logger.error(message)
         self._program_run.error = message
         self._program_run.traceback = traceback
-        self._program_run.state = ProgramRunState.FAILED
+
+    async def _set_program_state(
+        self,
+        state: ProgramRunState,
+        on_state_change: Callable[[], Awaitable[None]],
+        nova: Nova | None = None,
+    ):
+        logger.info(f"Set state of program {self.program_id} run {self.run_id} to {state}")
+        self._program_run.state = state
+        await on_state_change()
+
+        if nova is not None:
+            # publish program run to NATS
+            # TODO: also use autogenerated model for NATS
+            data = self._program_run.model_dump()
+            data["timestamp"] = timestamp.now_rfc3339()
+            data["start_time"] = (
+                timestamp.datetime_to_rfc3339(self._program_run.start_time)
+                if self._program_run.start_time
+                else None
+            )
+            data["end_time"] = (
+                timestamp.datetime_to_rfc3339(self._program_run.end_time)
+                if self._program_run.end_time
+                else None
+            )
+            data["app"] = self._app_name
+
+            subject = f"nova.v2.cells.{self._cell_id}.programs"
+            message = Message(subject=subject, data=json.dumps(data).encode("utf-8"))
+            await nova.nats.publish_message(message)
 
     async def _run_program(
         self, stop_event: anyio.Event, on_state_change: Callable[[], Awaitable[None]]
@@ -294,33 +351,55 @@ class ProgramRunner(ABC):
         sink_id = logger.add(log_capture)
 
         try:
+            nova: Nova | None = None
             robot_cell = None
-            # TODO: this should be removed to make it possible running programs without a robot cell
+
             if self._robot_cell_override:
                 robot_cell = self._robot_cell_override
             else:
-                async with Nova() as nova:
-                    cell = nova.cell()
-                    robot_cell = await cell.get_robot_cell()
+                # When there is no robot_cell_override we create a new robot cell
+                #   based on the program preconditions. That means also only devices that are
+                #   part of the preconditions are opened and streamed for e.g. estop handling
+                nova = Nova(config=self._nova_config)
+                await nova.connect()
+                cell = nova.cell()
+                controllers = await cell.controllers()
+                controller_specs = (
+                    list(self._preconditions.controllers or []) if self._preconditions else []
+                )
+                controllers = []
+                for controller_spec in controller_specs:
+                    # Ensure the controller exists and get the actual controller object
+                    # TODO: right now they are also ensured in the decorator. Maybe it makes sense to
+                    #   only ensure them here
+                    ctrl = await cell.ensure_controller(controller_spec)
+                    controllers.append(ctrl)
+
+                robot_cell = RobotCell(
+                    timer=None,
+                    cycle=None,
+                    **{controller.id: controller for controller in controllers},
+                )
 
             if robot_cell is None:
                 raise RuntimeError("No robot cell available")
+
+            # if not self._robot_cell_override and not nova.is_connected():
+            #    await nova.connect()
 
             self.execution_context = execution_context = ExecutionContext(
                 robot_cell=robot_cell, stop_event=stop_event
             )
             current_execution_context_var.set(execution_context)
-            await on_state_change()
+            await self._set_program_state(ProgramRunState.PREPARING, on_state_change, nova)
 
             monitoring_scope = anyio.CancelScope()
             async with robot_cell, anyio.create_task_group() as tg:
                 await tg.start(self._estop_handler, monitoring_scope)
 
                 try:
-                    logger.info(f"Program {self.program_id} run {self.run_id} started")
-                    self._program_run.state = ProgramRunState.RUNNING
-                    self._program_run.start_time = dt.datetime.now(dt.timezone.utc)
-                    await on_state_change()
+                    self._program_run.start_time = timestamp.now_utc()
+                    await self._set_program_state(ProgramRunState.RUNNING, on_state_change, nova)
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped
@@ -330,49 +409,48 @@ class ProgramRunner(ABC):
                             await robot_cell.stop()
                     except Exception as e:
                         logger.error(
-                            f"Program {self.program_id} run {self.run_id}: Error while stopping robot cell: {e!r}"
+                            f"Program {self.program_id} run {self.run_id}: Error while stopping robot cell: {e}"
                         )
                         raise
 
-                    self._program_run.state = ProgramRunState.STOPPED
+                    await self._set_program_state(ProgramRunState.STOPPED, on_state_change, nova)
                     raise
-
                 except NotPlannableError as exc:
                     # Program was not plannable (aka. /plan/ endpoint)
                     self._handle_general_exception(exc)
+                    await self._set_program_state(ProgramRunState.FAILED, on_state_change, nova)
                 except Exception as exc:  # pylint: disable=broad-except
                     self._handle_general_exception(exc)
+                    await self._set_program_state(ProgramRunState.FAILED, on_state_change, nova)
                 else:
                     if self.stopped:
                         # Program was stopped
-                        logger.info(
-                            f"Program {self.program_id} run {self.run_id} stopped successfully"
+                        await self._set_program_state(
+                            ProgramRunState.STOPPED, on_state_change, nova
                         )
-                        self._program_run.state = ProgramRunState.STOPPED
                     elif self._program_run.state is ProgramRunState.RUNNING:
                         # Program was completed
-                        self._program_run.state = ProgramRunState.COMPLETED
-                        logger.info(
-                            f"Program {self.program_id} run {self.run_id} completed successfully"
+                        await self._set_program_state(
+                            ProgramRunState.COMPLETED, on_state_change, nova
                         )
                 finally:
-                    # program output data
+                    # get program output data
                     self._program_run.output_data = execution_context.output_data
+                    self._program_run.end_time = timestamp.now_utc()
 
-                    logger.debug(
+                    logger.info(
                         f"Program {self.program_id} run {self.run_id} finished. Run teardown routine..."
                     )
-                    self._program_run.end_time = dt.datetime.now(dt.timezone.utc)
 
                     logger.remove(sink_id)
                     self._program_run.logs = log_capture.getvalue()
                     monitoring_scope.cancel()
-                    await on_state_change()
         except anyio.get_cancelled_exc_class():
             raise
         except Exception as exc:  # pylint: disable=broad-except
             # Handle any exceptions raised during entering the robot cell context
             self._handle_general_exception(exc)
+            await self._set_program_state(ProgramRunState.FAILED, on_state_change, nova)
 
     @abstractmethod
     async def _run(self, execution_context: ExecutionContext):
@@ -380,3 +458,120 @@ class ProgramRunner(ABC):
         The main function that runs the program. This method should be overridden by subclasses to implement the
         runner logic.
         """
+
+
+class PythonProgramRunner(ProgramRunner):
+    """Runner for Python programs"""
+
+    def __init__(
+        self,
+        program: Program,
+        parameters: Optional[dict[str, Any]] = None,
+        robot_cell_override: RobotCell | None = None,
+        nova_config: NovaConfig | None = None,
+    ):
+        super().__init__(
+            program,
+            parameters=parameters or {},
+            robot_cell_override=robot_cell_override,
+            nova_config=nova_config,
+        )
+        # TODO: is this still required?
+        self.program = program
+        self.parameters = parameters
+
+    async def _run(self, execution_context: ExecutionContext) -> Any:
+        # Execute the function with parameters
+        result = self.program(**(self.parameters or {}))
+
+        # Check if the function is async and await it if necessary
+        if inspect.iscoroutine(result):
+            result = await result
+
+        return result
+
+
+def _log_future_result(future: Future):
+    try:
+        result = future.result()
+        logger.debug(f"Program state change callback completed with result: {result}")
+    except Exception as e:
+        logger.error(f"Program state change callback failed with exception: {e}")
+
+
+def _report_state_change_to_event_loop(
+    loop: asyncio.AbstractEventLoop | None,
+    state_listener: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None,
+) -> Callable[[ProgramRun], Awaitable[None]] | None:
+    """Return an awaitable listener that schedules the user's async callback.
+
+    If `loop` is a running, open asyncio loop, callbacks are posted to it
+    (thread-safe). Otherwise, callbacks are scheduled on the *current* loop,
+    i.e., the runner thread's event loop created by `anyio.run`.
+
+    """
+    if not state_listener:
+        return None
+
+    async def _state_listener(program_run: ProgramRun):
+        logger.debug(f"Reporting state change to event loop for program run: {program_run.program}")
+        coroutine = state_listener(program_run)
+
+        try:
+            if loop and loop.is_running() and not loop.is_closed():
+                # Post the callback onto the caller's loop, thread-safe.
+                future: Future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+                future.add_done_callback(_log_future_result)
+            else:
+                # No caller loop: schedule on the runner thread's loop.
+                asyncio.create_task(coroutine)
+        except Exception as e:
+            logger.error(
+                f"Unexpected error in state change callback for program {program_run.program}: {e}"
+            )
+
+    return _state_listener
+
+
+def run_program(
+    program: Program,
+    *,
+    parameters: dict[str, Any] | None = None,
+    sync: bool = True,
+    robot_cell_override: RobotCell | None = None,
+    on_state_change: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
+    nova_config: NovaConfig | None = None,
+) -> PythonProgramRunner:
+    """Run a program with given parameters.
+
+    Args:
+        program: The program to run
+        parameters: The parameters to pass to the program
+        sync: If True, the program runs synchronously
+        robot_cell_override: The robot cell to use for the program
+        on_state_change: The callback to call when the state of the program changes
+
+    Returns:
+        PythonProgramRunner: The runner for the program
+
+    """
+    runner = PythonProgramRunner(
+        program,
+        parameters=parameters,
+        robot_cell_override=robot_cell_override,
+        nova_config=nova_config,
+    )
+
+    # Try to grab a caller loop if there is one; otherwise, fall back to None.
+    try:
+        loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    on_state_change_listener = (
+        _report_state_change_to_event_loop(loop, on_state_change) if on_state_change else None
+    )
+
+    runner.start(sync=sync, on_state_change=on_state_change_listener)
+
+    return runner

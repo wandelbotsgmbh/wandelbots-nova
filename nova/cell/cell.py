@@ -2,7 +2,6 @@ import asyncio
 import json
 
 import nova.api as api
-from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
@@ -64,6 +63,11 @@ class Cell:
             )
         )
 
+    def _create_controller_from_config(
+        self, robot_controller: api.models.RobotController
+    ) -> Controller:
+        return self._create_controller(controller_id=robot_controller.name)
+
     async def add_controller(
         self,
         robot_controller: api.models.RobotController,
@@ -105,7 +109,7 @@ class Cell:
                 f"Timeout while adding controller {robot_controller.name} to cell {self._cell_id}"
             )
 
-        return self._create_controller(robot_controller.name)
+        return self._create_controller_from_config(robot_controller)
 
     async def ensure_controller(
         self,

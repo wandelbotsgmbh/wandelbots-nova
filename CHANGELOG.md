@@ -1,6 +1,95 @@
 # CHANGELOG
 
 
+## v3.1.0 (2025-10-17)
+
+### Features
+
+- Start on io (#301) ([#301](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/301),
+  [`89c4c76`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/89c4c76741eae293fef24c10ff194e3bf22fc4d7))
+
+
+## v3.0.2 (2025-10-15)
+
+### Bug Fixes
+
+- **vscode**: Correctly pass env to program execution (#303)
+  ([#303](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/303),
+  [`81ee527`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/81ee527ee416d6ff6e14018df82236846a72ef2d))
+
+
+## v3.0.1 (2025-10-14)
+
+### Chores
+
+- **deps**: Update ipython requirement from <9 to <10 (#293)
+  ([#293](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/293),
+  [`d2cd005`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d2cd005be5d6a71a86ad2d8159eea3427898e164))
+
+
+## v3.0.0 (2025-10-13)
+
+### Features
+
+- **NDX-347**: Publish program run message without novax - from runner (#299)
+  ([#299](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/299),
+  [`10a0234`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/10a02348d5b977916d0c9345c95e15a7f3aa42fb))
+
+
+## v2.20.4 (2025-10-07)
+
+### Bug Fixes
+
+- **NDX-305**: Not all controllers in the cell should be opened (#292)
+  ([#292](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/292),
+  [`3c4d9f3`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3c4d9f347c49ed72f3e348d46dfcb4b11de5be6d))
+
+
+## v2.20.3 (2025-10-02)
+
+### Bug Fixes
+
+- Use tilda operator for the dependent package (#298)
+  ([#298](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/298),
+  [`8108c0b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8108c0b147a108ed3d3c125449dc3b0ed8d35bb7))
+
+
+## v2.20.2 (2025-10-02)
+
+### Bug Fixes
+
+- **vscode-ext**: Respect NOVA_ACCESS_TOKEN when running programs (#296)
+  ([#296](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/296),
+  [`313fc49`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/313fc4949462347b4d95dc285b4de492a44b2f3b))
+
+
+## v2.20.1 (2025-10-02)
+
+### Bug Fixes
+
+- Add init args to the runner (#295)
+  ([#295](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/295),
+  [`905c234`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/905c234481021031197b6d7e93c29cb80239b3df))
+
+
+## v2.20.0 (2025-10-01)
+
+### Features
+
+- **NDX-331**: Make sure all programs are executed by the program runner (#294)
+  ([#294](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/294),
+  [`71b1203`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/71b12037e91c2025dd6daf45535e7585cd88d8ee))
+
+
+## v2.19.1 (2025-09-30)
+
+### Bug Fixes
+
+- Review readme & UI texts (#291)
+  ([#291](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/291),
+  [`ab6a3a5`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ab6a3a5140cf8237a1b432b70803bfc3257f67e6))
+
+
 ## v2.19.0 (2025-09-27)
 
 ### Features

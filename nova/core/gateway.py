@@ -98,6 +98,9 @@ def intercept(api_instance: T, gateway: "ApiGateway") -> T:
 
 
 class ApiGateway:
+    _api_client: wb.ApiClient
+    _api_v2_client: v2.ApiClient
+
     def __init__(
         self,
         *,
@@ -138,15 +141,6 @@ class ApiGateway:
             self._auth0 = Auth0DeviceAuthorization(auth0_config=auth0_config)
 
         self._host = self._host_with_prefix(host=host)
-        stripped_host = self._host.rstrip("/")
-        api_client_config = wb.Configuration(
-            host=f"{stripped_host}/api/{version}",
-            username=username,
-            password=password,
-            access_token=access_token,
-        )
-        api_client_config.verify_ssl = verify_ssl
-
         self._access_token = access_token
         self._username = username
         self._password = password
@@ -169,14 +163,15 @@ class ApiGateway:
             ios_api_module.quote = _custom_quote_for_ios
 
         stripped_host = self._host.rstrip("/")
+
+        # init v1 api client
         api_client_config = wb.Configuration(
-            host=f"{stripped_host}/api/{self._version}",
+            host=f"{stripped_host}/api/v1",
             username=self._username,
             password=self._password,
             access_token=self._access_token,
         )
         api_client_config.verify_ssl = self._verify_ssl
-
         self._api_client = wb.ApiClient(configuration=api_client_config)
         self._api_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
 
@@ -212,6 +207,20 @@ class ApiGateway:
             wb.TrajectoryCachingApi(api_client=self._api_client), self
         )
         self.kinematics_api = intercept(wb.KinematicsApi(api_client=self._api_client), self)
+
+        # init v2 api client
+        api_v2_client_config = v2.Configuration(
+            host=f"{stripped_host}/api/v2",
+            username=self._username,
+            password=self._password,
+            access_token=self._access_token,
+        )
+        self._api_v2_client = v2.ApiClient(configuration=api_v2_client_config)
+        self._api_v2_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
+
+        self.virtual_robot_api_v2 = intercept(
+            v2.VirtualControllerApi(api_client=self._api_v2_client), self
+        )
 
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 

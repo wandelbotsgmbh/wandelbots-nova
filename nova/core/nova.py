@@ -1,68 +1,63 @@
 from __future__ import annotations
 
-from decouple import config
+from decouple import config as env_config
 
 from nova.cell.cell import Cell
+from nova.config import NovaConfig
 from nova.core.gateway import ApiGateway
 from nova.nats import NatsClient
 
-LOG_LEVEL = config("LOG_LEVEL", default="INFO")
-CELL_NAME = config("CELL_NAME", default="cell", cast=str)
+LOG_LEVEL = env_config("LOG_LEVEL", default="INFO")
+CELL_NAME = env_config("CELL_NAME", default="cell", cast=str)
+NOVA_API = env_config("NOVA_API", default=None)
+NOVA_ACCESS_TOKEN = env_config("NOVA_ACCESS_TOKEN", default=None)
+NOVA_USERNAME = env_config("NOVA_USERNAME", default=None)
+NOVA_PASSWORD = env_config("NOVA_PASSWORD", default=None)
 
 
-# TODO: could also extend NovaDevice
 class Nova:
     """A high-level Nova client for interacting with robot cells and controllers."""
 
-    def __init__(
-        self,
-        *,
-        host: str | None = None,
-        access_token: str | None = None,
-        username: str | None = None,
-        password: str | None = None,
-        version: str = "v2",
-        verify_ssl: bool = True,
-        nats_client_config: dict | None = None,
-    ):
+    def __init__(self, config: NovaConfig | None = None):
         """
         Initialize the Nova client.
 
         Args:
-            host (str | None): The Nova API host.
-            access_token (str | None): An access token for the Nova API.
-            username (str | None): Username to authenticate with the Nova API.
-            password (str | None): Password to authenticate with the Nova API.
-            version (str): The API version to use (default: "v1").
-            verify_ssl (bool): Whether or not to verify SSL certificates (default: True).
-            nats_client_config (dict | None): Configuration dictionary for NATS client.
+            config (NovaConfig | None): The Nova configuration.
         """
 
-        if host is None:
-            host = config("NOVA_API", default=None)
-        if access_token is None:
-            access_token = config("NOVA_ACCESS_TOKEN", default=None)
-        if username is None:
-            username = config("NOVA_USERNAME", default=None)
-        if password is None:
-            password = config("NOVA_PASSWORD", default=None)
+        config = config or NovaConfig(
+            host=NOVA_API,
+            access_token=NOVA_ACCESS_TOKEN,
+            username=NOVA_USERNAME,
+            password=NOVA_PASSWORD,
+        )
 
+        self._config = config
         self._api_client = ApiGateway(
-            host=host,
-            access_token=access_token,
-            username=username,
-            password=password,
-            version=version,
-            verify_ssl=verify_ssl,
+            host=config.host,
+            access_token=config.access_token,
+            username=config.username,
+            password=config.password,
+            verify_ssl=config.verify_ssl,
         )
 
         self.nats = NatsClient(
-            host=host, access_token=access_token, nats_client_config=nats_client_config
+            host=config.host,
+            access_token=config.access_token,
+            nats_client_config=config.nats_client_config,
         )
+
+    @property
+    def config(self) -> NovaConfig:
+        return self._config
 
     def cell(self, cell_id: str = CELL_NAME) -> Cell:
         """Returns the cell object with the given ID."""
         return Cell(self._api_client, cell_id, nats_client=self.nats)
+
+    def is_connected(self) -> bool:
+        return self.nats.is_connected()
 
     async def connect(self):
         # ApiGateway doesn't need an explicit connect call, it's initialized in constructor

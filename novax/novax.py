@@ -1,56 +1,26 @@
-import json
 from contextlib import asynccontextmanager
-from datetime import datetime
 from typing import AsyncIterator, Optional
 
-from decouple import config
 from fastapi import APIRouter, FastAPI
 
-from nova.cell.robot_cell import RobotCell
 from nova.core.nova import Nova
 from nova.logging import logger
-from nova.nats import Message
 from nova.program.function import Program
-from nova.program.runner import ProgramRun
 from nova.program.store import Program as StoreProgram
 from nova.program.store import ProgramStore
+from novax.config import APP_NAME, CELL_NAME
 from novax.program_manager import ProgramDetails, ProgramManager
-
-# Read BASE_PATH environment variable and extract app name
-_BASE_PATH = config("BASE_PATH", default="/default/novax")
-_APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else "novax"
-logger.info(f"Extracted app name '{_APP_NAME}' from BASE_PATH '{_BASE_PATH}'")
-
-# Create nats programs bucket name
-_CELL_NAME = config("CELL_NAME", default="")
 
 
 class Novax:
-    def __init__(self, robot_cell_override: RobotCell | None = None):
-        self._nova = Nova()
-        self._cell = self._nova.cell(cell_id=_CELL_NAME)
+    def __init__(self):
+        nova = Nova()
+        self._nova = nova
+        self._cell = self._nova.cell(cell_id=CELL_NAME)
         self._program_manager: ProgramManager = ProgramManager(
-            robot_cell_override=robot_cell_override, state_listener=self._state_listener
+            cell_id=CELL_NAME, app_name=APP_NAME, nova_config=nova.config
         )
         self._app: FastAPI | None = None
-
-    # program manager doesn't have access to Nova instance
-    # program runner doesn't have access to Program object
-    # this is why we are doing this here, we can move it to some other places in the core package
-    async def _state_listener(self, program_run: ProgramRun):
-        data = program_run.model_dump()
-        data["timestamp"] = datetime.now().isoformat()
-        data["start_time"] = program_run.start_time.isoformat() if program_run.start_time else None
-        data["end_time"] = program_run.end_time.isoformat() if program_run.end_time else None
-        data["app"] = _APP_NAME
-
-        message = Message(
-            subject=f"nova.v2.cells.{_CELL_NAME}.programs", data=json.dumps(data).encode("utf-8")
-        )
-        logger.info(
-            f"publishing program run message for program: {program_run.program} run: {program_run.run}"
-        )
-        await self._nova.nats.publish_message(message)
 
     @property
     def program_manager(self) -> ProgramManager:
@@ -110,7 +80,7 @@ class Novax:
                         program=program_details.program,
                         name=program_details.name,
                         description=program_details.description,
-                        app=_APP_NAME,
+                        app=APP_NAME,
                         preconditions=program_details.preconditions,
                         input_schema=program_details.input_schema,
                     )
@@ -121,7 +91,7 @@ class Novax:
 
             for program_id, store_program in store_programs.items():
                 try:
-                    await program_store.put(f"{_APP_NAME}.{program_id}", store_program)
+                    await program_store.put(f"{APP_NAME}.{program_id}", store_program)
                     logger.debug(f"Program {program_id} synced to store")
                 except Exception as e:
                     logger.error(f"Failed to sync program {program_id} to store: {e}")
@@ -145,7 +115,7 @@ class Novax:
 
             for program_id in program_ids:
                 try:
-                    await program_store.delete(f"{_APP_NAME}.{program_id}")
+                    await program_store.delete(f"{APP_NAME}.{program_id}")
                     logger.debug(f"Program {program_id} removed from store")
                 except Exception as e:
                     logger.error(f"Failed to remove program {program_id} from store: {e}")
@@ -206,7 +176,7 @@ class Novax:
         # Replace the dependency function on the FastAPI app
         app.dependency_overrides[get_program_manager] = get_program_manager_override
 
-        if not _CELL_NAME:
+        if not CELL_NAME:
             logger.error(
                 "Novax: CELL_NAME environment variable is not set, your programs will not be registered"
             )

@@ -1,17 +1,19 @@
 # Import api, types, and actions modules
 from nova import actions, api, types, viewers
 from nova.cell.cell import Cell
+from nova.config import NovaConfig
 from nova.core.controller import Controller
 from nova.core.motion_group import MotionGroup, combine_trajectories
 from nova.core.nova import Nova
 from nova.logging import logger
-from nova.program import program
+from nova.program import program, run_program
 from nova.version import version
 
 __version__ = version
 
 __all__ = [
     "Nova",
+    "NovaConfig",
     "Cell",
     "MotionGroup",
     "combine_trajectories",
@@ -22,5 +24,6 @@ __all__ = [
     "viewers",
     "logger",
     "program",
+    "run_program",
     "__version__",
 ]
