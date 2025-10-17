@@ -69,7 +69,6 @@ async def build_collision_world(
 
 
 @nova.program(
-    name="collision_free_p2p",
     viewer=nova.viewers.Rerun(),
     preconditions=ProgramPreconditions(
         controllers=[
