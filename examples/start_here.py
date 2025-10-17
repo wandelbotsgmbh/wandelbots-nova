@@ -49,7 +49,6 @@ async def start():
         cycle = Cycle(cell=cell, extra={"app": "visual-studio-code", "program": "start_here"})
 
         slow = MotionSettings(tcp_velocity_limit=50)
-        normal = MotionSettings(tcp_velocity_limit=250)
 
         async with controller[0] as motion_group:
             home_joints = await motion_group.joints()
@@ -70,7 +69,7 @@ async def start():
                 ),  # Move 100mm in target pose's local x-axis
                 joint_ptp(home_joints),
                 linear(target_pose @ (100, 100, 0, 0, 0, 0)),  # Move 100mm in local x and y axes
-                joint_ptp(home_joints),
+                joint_ptp(home_joints, settings=slow),
                 cartesian_ptp(target_pose @ Pose((0, 100, 0, 0, 0, 0))),
                 joint_ptp(home_joints),
                 circular(
