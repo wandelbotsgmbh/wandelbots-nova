@@ -17,7 +17,7 @@ Key robotics concepts:
 
 import nova
 from nova import api, run_program
-from nova.actions import TrajectoryBuilder, cartesian_ptp, circular, joint_ptp, linear
+from nova.actions import cartesian_ptp, circular, joint_ptp, linear
 from nova.cell import virtual_controller
 from nova.core.nova import Nova
 from nova.events import Cycle
@@ -60,16 +60,9 @@ async def start():
             current_pose = await motion_group.tcp_pose(tcp)
             target_pose = current_pose @ Pose((50, 0, 0, 0, 0, 0))
 
-            # The trajectory builder is a context manager that can be used to build a trajectory with fine-grained control over the settings
-            t = TrajectoryBuilder(settings=normal)
-
-            # First move to the home position, since we passed "slow" settings to the motion it will override the one from the trajectory builder
-            t.move(joint_ptp(home_joints, settings=slow))
-
-            # It's possible to use the sequence method to add multiple actions to the trajectory. Since no settings are specified it takes
-            #   the settings from the trajectory builder
-            t.sequence(
-                joint_ptp(home_joints),  # Move to home position
+            # Actions define the sequence of movements and other actions to be executed by the robot
+            actions = [
+                joint_ptp(home_joints, settings=slow),  # Move to home position slowly
                 cartesian_ptp(target_pose),  # Move to target pose
                 joint_ptp(home_joints),  # Return to home
                 cartesian_ptp(
@@ -77,33 +70,26 @@ async def start():
                 ),  # Move 100mm in target pose's local x-axis
                 joint_ptp(home_joints),
                 linear(target_pose @ (100, 100, 0, 0, 0, 0)),  # Move 100mm in local x and y axes
-            )
-
-            # You can use the set(...) context manager to set settings for a block of actions
-            with t.set(settings=slow):
-                t.move(joint_ptp(home_joints))
-                t.move(cartesian_ptp(target_pose @ Pose((0, 100, 0, 0, 0, 0))))
-                t.move(joint_ptp(home_joints))
-                t.move(
-                    circular(
-                        target_pose @ Pose((100, 100, 0, 0, 0, 0)),
-                        intermediate=target_pose @ Pose((0, 100, 0, 0, 0, 0)),
-                    )
-                )
-
-            # This moves the robot back to home position with normal settings
-            t.move(joint_ptp(home_joints))
+                joint_ptp(home_joints),
+                cartesian_ptp(target_pose @ Pose((0, 100, 0, 0, 0, 0))),
+                joint_ptp(home_joints),
+                circular(
+                    target_pose @ Pose((100, 100, 0, 0, 0, 0)),
+                    intermediate=target_pose @ Pose((0, 100, 0, 0, 0, 0)),
+                ),
+                joint_ptp(home_joints),
+            ]
 
             # Start the cycle
             await cycle.start()
 
             # Plan the movements (shows in 3D viewer or creates an rrd file)
-            joint_trajectory = await motion_group.plan(t.actions, tcp)
+            joint_trajectory = await motion_group.plan(actions, tcp)
 
             # OPTIONAL: Execute the planned movements
             # You can comment out the lines below to only see the plan in Rerun
             print("Executing planned movements...")
-            await motion_group.execute(joint_trajectory, tcp, actions=t.actions)
+            await motion_group.execute(joint_trajectory, tcp, actions=actions)
 
             # Finish the cycle
             await cycle.finish()
