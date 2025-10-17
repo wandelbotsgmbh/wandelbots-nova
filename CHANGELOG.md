@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.2.0 (2025-10-17)
+
+### Features
+
+- **NDX-338**: Added start_here example (#304)
+  ([#304](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/304),
+  [`81ba1f2`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/81ba1f2b64cfd06ca546239f0b5f7af21b5db508))
+
+
 ## v3.1.0 (2025-10-17)
 
 ### Features
