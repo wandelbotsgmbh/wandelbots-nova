@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v3.1.0 (2025-10-17)
+
+### Features
+
+- Start on io (#301) ([#301](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/301),
+  [`89c4c76`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/89c4c76741eae293fef24c10ff194e3bf22fc4d7))
+
+
 ## v3.0.2 (2025-10-15)
 
 ### Bug Fixes
