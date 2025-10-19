@@ -4,6 +4,7 @@ from math import ceil, floor
 from typing import AsyncIterator, Optional
 
 import pydantic
+import wandelbots_api_client as wb_v1
 import wandelbots_api_client.v2 as wb
 from aiohttp_retry import dataclass
 from blinker import signal
@@ -19,7 +20,6 @@ from nova.types import (
     MotionState,
     MovementControllerFunction,
 )
-from nova.types.state import motion_group_state_to_motion_state
 
 ExecuteJoggingRequestStream = AsyncIterator[wb.models.ExecuteJoggingRequest]
 ExecuteJoggingResponseStream = AsyncIterator[wb.models.ExecuteJoggingResponse]
@@ -114,194 +114,194 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     return movement_controller
 
 
-class TrajectoryCursor:
-    def __init__(
-        self,
-        effect_stream: AsyncIterator[wb.models.MotionGroupState],
-        joint_trajectory: wb.models.JointTrajectory,
-    ):
-        self.joint_trajectory = joint_trajectory
-        self._command_queue = asyncio.Queue()
-        self._response_queue = asyncio.Queue()
-        self._effect_stream: AsyncIterator[wb.models.MotionGroupState] = effect_stream
-        self._breakpoints = []
+# class TrajectoryCursor:
+#     def __init__(
+#         self,
+#         effect_stream: AsyncIterator[wb.models.MotionGroupState],
+#         joint_trajectory: wb.models.JointTrajectory,
+#     ):
+#         self.joint_trajectory = joint_trajectory
+#         self._command_queue = asyncio.Queue()
+#         self._response_queue = asyncio.Queue()
+#         self._effect_stream: AsyncIterator[wb.models.MotionGroupState] = effect_stream
+#         self._breakpoints = []
 
-    def __call__(self, context: MovementControllerContext):
-        self.context = context
-        return self.cntrl
+#     def __call__(self, context: MovementControllerContext):
+#         self.context = context
+#         return self.cntrl
 
-    def forward(self):
-        self._command_queue.put_nowait(
-            wb.models.StartMovementRequest(
-                direction=wb.models.Direction.DIRECTION_FORWARD,
-                # set_ios=self.context.combined_actions.to_set_io(),  # somehow gets called before self.context is set
-                start_on_io=None,
-                pause_on_io=None,
-            )
-        )
+#     def forward(self):
+#         self._command_queue.put_nowait(
+#             wb.models.StartMovementRequest(
+#                 direction=wb.models.Direction.DIRECTION_FORWARD,
+#                 # set_ios=self.context.combined_actions.to_set_io(),  # somehow gets called before self.context is set
+#                 start_on_io=None,
+#                 pause_on_io=None,
+#             )
+#         )
 
-    def backward(self):
-        self._command_queue.put_nowait(
-            wb.models.StartMovementRequest(
-                direction=wb.models.Direction.DIRECTION_BACKWARD,
-                # set_ios=self.context.combined_actions.to_set_io(),
-                start_on_io=None,
-                pause_on_io=None,
-            )
-        )
+#     def backward(self):
+#         self._command_queue.put_nowait(
+#             wb.models.StartMovementRequest(
+#                 direction=wb.models.Direction.DIRECTION_BACKWARD,
+#                 # set_ios=self.context.combined_actions.to_set_io(),
+#                 start_on_io=None,
+#                 pause_on_io=None,
+#             )
+#         )
 
-    def pause(self):
-        self._command_queue.put_nowait(wb.models.PauseMovementRequest())
+#     def pause(self):
+#         self._command_queue.put_nowait(wb.models.PauseMovementRequest())
 
-    def pause_at(self, location: float):
-        # How to pause at an exact location?
-        bisect.insort(self._breakpoints, location)
+#     def pause_at(self, location: float):
+#         # How to pause at an exact location?
+#         bisect.insort(self._breakpoints, location)
 
-    async def cntrl(
-        self, response_stream: ExecuteTrajectoryResponseStream
-    ) -> ExecuteTrajectoryRequestStream:
-        self._response_stream = response_stream
-        async for request in init_movement_gen(self.context.motion_id, response_stream):
-            yield request
+#     async def cntrl(
+#         self, response_stream: ExecuteTrajectoryResponseStream
+#     ) -> ExecuteTrajectoryRequestStream:
+#         self._response_stream = response_stream
+#         async for request in init_movement_gen(self.context.motion_id, response_stream):
+#             yield request
 
-        async with asyncio.TaskGroup() as tg:
-            tg.create_task(self._effect_consumer(), name="effect_consumer")
-            tg.create_task(self._response_consumer(), name="request_consumer")
-            tg.create_task(self._combined_response_consumer(), name="combined_response_consumer")
+#         async with asyncio.TaskGroup() as tg:
+#             tg.create_task(self._effect_consumer(), name="effect_consumer")
+#             tg.create_task(self._response_consumer(), name="request_consumer")
+#             tg.create_task(self._combined_response_consumer(), name="combined_response_consumer")
 
-            async for request in self._request_loop():
-                yield request
+#             async for request in self._request_loop():
+#                 yield request
 
-    async def _request_loop(self):
-        while True:
-            yield await self._command_queue.get()
-            self._command_queue.task_done()
+#     async def _request_loop(self):
+#         while True:
+#             yield await self._command_queue.get()
+#             self._command_queue.task_done()
 
-    async def _effect_consumer(self):
-        async for effect in self._effect_stream:
-            # ic(effect)
-            self._response_queue.put_nowait(effect)
+#     async def _effect_consumer(self):
+#         async for effect in self._effect_stream:
+#             # ic(effect)
+#             self._response_queue.put_nowait(effect)
 
-    async def _response_consumer(self):
-        async for response in self._response_stream:
-            ic(response)
-            self._response_queue.put_nowait(response)
+#     async def _response_consumer(self):
+#         async for response in self._response_stream:
+#             ic(response)
+#             self._response_queue.put_nowait(response)
 
-    async def _combined_response_consumer(self):
-        last_motion_state = None
+#     async def _combined_response_consumer(self):
+#         last_motion_state = None
 
-        try:
-            while True:
-                response = await self._response_queue.get()
-                # ic(response)
-                if isinstance(response, wb.models.MotionGroupState):
-                    motion_group_state = response
-                    if motion_group_state.execute and isinstance(
-                        motion_group_state.execute.details.actual_instance.state.actual_instance,
-                        wb.models.TrajectoryEnded,
-                    ):
-                        # TODO this is not always the intended end of the movement, but how do we know?
-                        ic()
-                        break
+#         try:
+#             while True:
+#                 response = await self._response_queue.get()
+#                 # ic(response)
+#                 if isinstance(response, wb.models.MotionGroupState):
+#                     motion_group_state = response
+#                     if motion_group_state.execute and isinstance(
+#                         motion_group_state.execute.details.actual_instance.state.actual_instance,
+#                         wb.models.TrajectoryEnded,
+#                     ):
+#                         # TODO this is not always the intended end of the movement, but how do we know?
+#                         ic()
+#                         break
 
-                    motion_state = motion_group_state_to_motion_state(response)
-                    if last_motion_state is None:
-                        last_motion_state = motion_state
-                    self._handle_motion_state(motion_state, last_motion_state)
-                    last_motion_state = motion_state
-                    self._response_queue.task_done()
-                elif isinstance(response, wb.models.ExecuteTrajectoryResponse):
-                    if isinstance(response.actual_instance, wb.models.MovementErrorResponse):
-                        ic()
-                        self._response_queue.task_done()
-                        # TODO propagate the error
-                        break
-                else:
-                    ic(f"Unexpected response type: {type(response)}")
-                    self._response_queue.task_done()
-        except asyncio.CancelledError:
-            ic()
-            raise
-        except Exception as e:
-            ic(e)
-            raise
-        ic()
+#                     motion_state = motion_group_state_to_motion_state(response)
+#                     if last_motion_state is None:
+#                         last_motion_state = motion_state
+#                     self._handle_motion_state(motion_state, last_motion_state)
+#                     last_motion_state = motion_state
+#                     self._response_queue.task_done()
+#                 elif isinstance(response, wb.models.ExecuteTrajectoryResponse):
+#                     if isinstance(response.actual_instance, wb.models.MovementErrorResponse):
+#                         ic()
+#                         self._response_queue.task_done()
+#                         # TODO propagate the error
+#                         break
+#                 else:
+#                     ic(f"Unexpected response type: {type(response)}")
+#                     self._response_queue.task_done()
+#         except asyncio.CancelledError:
+#             ic()
+#             raise
+#         except Exception as e:
+#             ic(e)
+#             raise
+#         ic()
 
-    def _handle_motion_state(self, curr_motion_state: MotionState, last_motion_state: MotionState):
-        if not self._breakpoints:
-            return
-        curr_location = curr_motion_state.path_parameter
-        last_location = last_motion_state.path_parameter
-        if curr_location == last_location:
-            return
-        if curr_location > last_location:
-            # moving forwards
-            for breakpoint in self._breakpoints:
-                if last_location <= breakpoint < curr_location:
-                    ic(last_location, breakpoint, curr_location)
-                    self.pause()
-                    # disable the breakpoint so it doesn't trigger again for the location window
-        else:
-            # moving backwards
-            for breakpoint in self._breakpoints:
-                if last_location > breakpoint >= curr_location:
-                    ic()
-                    self.pause()
-                    # disable the breakpoint so it doesn't trigger again for the location window
-
-
-async def init_movement_gen(motion_id, response_stream) -> ExecuteTrajectoryRequestStream:
-    # The first request is to initialize the movement
-    yield wb.models.InitializeMovementRequest(
-        trajectory=wb.models.InitializeMovementRequestTrajectory(
-            wb.models.TrajectoryId(id=motion_id)
-        ),
-        initial_location=0,
-    )  # type: ignore
-
-    # then we get the response
-    execute_trajectory_response = await anext(response_stream)
-    initialize_movement_response = execute_trajectory_response.actual_instance
-    ic(initialize_movement_response)
-    assert isinstance(initialize_movement_response, wb.models.InitializeMovementResponse)
-    ic()
-    # TODO this should actually check for None but currently the API seems to return an empty string instead
-    if initialize_movement_response.message or initialize_movement_response.add_trajectory_error:
-        raise InitMovementFailed(initialize_movement_response)
-
-    # assert isinstance(
-    #     initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
-    # ), "Expected InitializeMovementResponse, got: " + str(
-    #     initialize_movement_response.actual_instance
-    # )
-    # if isinstance(
-    #     initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
-    # ):
-    #     r1 = initialize_movement_response.actual_instance
-    #     if not r1.init_response.succeeded:
-    #         raise InitMovementFailed(r1.init_response)
+#     def _handle_motion_state(self, curr_motion_state: MotionState, last_motion_state: MotionState):
+#         if not self._breakpoints:
+#             return
+#         curr_location = curr_motion_state.path_parameter
+#         last_location = last_motion_state.path_parameter
+#         if curr_location == last_location:
+#             return
+#         if curr_location > last_location:
+#             # moving forwards
+#             for breakpoint in self._breakpoints:
+#                 if last_location <= breakpoint < curr_location:
+#                     ic(last_location, breakpoint, curr_location)
+#                     self.pause()
+#                     # disable the breakpoint so it doesn't trigger again for the location window
+#         else:
+#             # moving backwards
+#             for breakpoint in self._breakpoints:
+#                 if last_location > breakpoint >= curr_location:
+#                     ic()
+#                     self.pause()
+#                     # disable the breakpoint so it doesn't trigger again for the location window
 
 
-# TODO do we need this?
-def trajectory_cursor(context: MovementControllerContext) -> MovementControllerFunction:
-    async def movement_controller(
-        response_stream: ExecuteTrajectoryResponseStream,
-    ) -> ExecuteTrajectoryRequestStream:
-        # The second request is to start the movement
-        set_io_list = context.combined_actions.to_set_io()
-        yield wb.models.StartMovementRequest(  # type: ignore
-            set_ios=set_io_list, start_on_io=context.start_on_io, pause_on_io=None
-        )
+# async def init_movement_gen(motion_id, response_stream) -> ExecuteTrajectoryRequestStream:
+#     # The first request is to initialize the movement
+#     yield wb.models.InitializeMovementRequest(
+#         trajectory=wb.models.InitializeMovementRequestTrajectory(
+#             wb.models.TrajectoryId(id=motion_id)
+#         ),
+#         initial_location=0,
+#     )  # type: ignore
 
-        # then we wait until the movement is finished
-        async for execute_trajectory_response in response_stream:
-            instance = execute_trajectory_response.actual_instance
-            # Stop when standstill indicates motion ended
-            if isinstance(instance, wb.models.Standstill):
-                if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
-                    return
+#     # then we get the response
+#     execute_trajectory_response = await anext(response_stream)
+#     initialize_movement_response = execute_trajectory_response.actual_instance
+#     ic(initialize_movement_response)
+#     assert isinstance(initialize_movement_response, wb.models.InitializeMovementResponse)
+#     ic()
+#     # TODO this should actually check for None but currently the API seems to return an empty string instead
+#     if initialize_movement_response.message or initialize_movement_response.add_trajectory_error:
+#         raise InitMovementFailed(initialize_movement_response)
 
-    return TrajectoryCursor(context)
+#     # assert isinstance(
+#     #     initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
+#     # ), "Expected InitializeMovementResponse, got: " + str(
+#     #     initialize_movement_response.actual_instance
+#     # )
+#     # if isinstance(
+#     #     initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
+#     # ):
+#     #     r1 = initialize_movement_response.actual_instance
+#     #     if not r1.init_response.succeeded:
+#     #         raise InitMovementFailed(r1.init_response)
+
+
+# # TODO do we need this?
+# def trajectory_cursor(context: MovementControllerContext) -> MovementControllerFunction:
+#     async def movement_controller(
+#         response_stream: ExecuteTrajectoryResponseStream,
+#     ) -> ExecuteTrajectoryRequestStream:
+#         # The second request is to start the movement
+#         set_io_list = context.combined_actions.to_set_io()
+#         yield wb.models.StartMovementRequest(  # type: ignore
+#             set_ios=set_io_list, start_on_io=context.start_on_io, pause_on_io=None
+#         )
+
+#         # then we wait until the movement is finished
+#         async for execute_trajectory_response in response_stream:
+#             instance = execute_trajectory_response.actual_instance
+#             # Stop when standstill indicates motion ended
+#             if isinstance(instance, wb.models.Standstill):
+#                 if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
+#                     return
+
+#     return TrajectoryCursor(context)
 
 
 class OperationType(StrEnum):
@@ -351,7 +351,7 @@ class TrajectoryCursor:
     def __init__(
         self,
         motion_id: str,
-        joint_trajectory: wb.models.JointTrajectory,
+        joint_trajectory: wb_v1.models.JointTrajectory,
         actions: list[Action],
         initial_location: float,
         detach_on_standstill: bool = False,
@@ -361,7 +361,9 @@ class TrajectoryCursor:
         self.actions = CombinedActions(items=actions)  # type: ignore
         self._command_queue: asyncio.Queue = asyncio.Queue()
         self._COMMAND_QUEUE_SENTINAL = object()
-        self._in_queue: asyncio.Queue[wb.models.ExecuteTrajectoryResponse | None] = asyncio.Queue()
+        self._in_queue: asyncio.Queue[wb_v1.models.ExecuteTrajectoryResponse | None] = (
+            asyncio.Queue()
+        )
         self._current_location = initial_location
         self._overshoot = 0.0
         self._target_location = self.next_action_index + 1.0
@@ -432,8 +434,8 @@ class TrajectoryCursor:
                 wb.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
             )
         self._command_queue.put_nowait(
-            wb.models.StartMovementRequest(
-                direction=wb.models.Direction.DIRECTION_FORWARD,
+            wb_v1.models.StartMovementRequest(
+                direction=wb_v1.models.Direction.DIRECTION_FORWARD,
                 # set_ios=self.context.combined_actions.to_set_io(),  # somehow gets called before self.context is set
                 start_on_io=None,
                 pause_on_io=None,
@@ -479,8 +481,8 @@ class TrajectoryCursor:
                 wb.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
             )
         self._command_queue.put_nowait(
-            wb.models.StartMovementRequest(
-                direction=wb.models.Direction.DIRECTION_BACKWARD,
+            wb_v1.models.StartMovementRequest(
+                direction=wb_v1.models.Direction.DIRECTION_BACKWARD,
                 # set_ios=self.context.combined_actions.to_set_io(),
                 start_on_io=None,
                 pause_on_io=None,
@@ -518,7 +520,7 @@ class TrajectoryCursor:
             return future
 
     def _pause(self):
-        self._command_queue.put_nowait(wb.models.PauseMovementRequest())
+        self._command_queue.put_nowait(wb_v1.models.PauseMovementRequest())
 
     def pause(self) -> asyncio.Future[OperationResult] | None:
         self._pause()
@@ -620,14 +622,14 @@ class TrajectoryCursor:
                 break
             yield command
 
-            if isinstance(command, wb.models.StartMovementRequest):
+            if isinstance(command, wb_v1.models.StartMovementRequest):
                 match command.direction:
-                    case wb.models.Direction.DIRECTION_FORWARD:
+                    case wb_v1.models.Direction.DIRECTION_FORWARD:
                         target_action = self.actions[self.next_action_index]
                         await motion_started.send_async(
                             self, event=self._get_motion_event(target_action)
                         )
-                    case wb.models.Direction.DIRECTION_BACKWARD:
+                    case wb_v1.models.Direction.DIRECTION_BACKWARD:
                         target_action = self.actions[self.previous_action_index]
                         await motion_started.send_async(
                             self, event=self._get_motion_event(target_action)
@@ -644,22 +646,22 @@ class TrajectoryCursor:
             async for response in self._response_stream:
                 self._in_queue.put_nowait(response)
                 instance = response.actual_instance
-                if isinstance(instance, wb.models.Movement):
+                if isinstance(instance, wb_v1.models.Movement):
                     if last_movement is None:
                         last_movement = instance.movement
                     self._current_location = instance.movement.current_location
                     self._handle_movement(instance.movement, last_movement)
                     last_movement = instance.movement
 
-                elif isinstance(instance, wb.models.Standstill):
+                elif isinstance(instance, wb_v1.models.Standstill):
                     self._current_location = instance.standstill.location
                     match instance.standstill.reason:
-                        case wb.models.StandstillReason.REASON_USER_PAUSED_MOTION:
+                        case wb_v1.models.StandstillReason.REASON_USER_PAUSED_MOTION:
                             self._overshoot = self._current_location - self._target_location
                             self._complete_operation()
                             if self._detach_on_standstill:
                                 break
-                        case wb.models.StandstillReason.REASON_MOTION_ENDED:
+                        case wb_v1.models.StandstillReason.REASON_MOTION_ENDED:
                             self._overshoot = self._current_location - self._target_location
                             assert self._overshoot == 0.0
                             # self._overshoot = 0.0  # because the RAE takes care of that
@@ -678,7 +680,9 @@ class TrajectoryCursor:
             self._in_queue.put_nowait(None)  # TODO make sentinel more explicit
 
     def _handle_movement(
-        self, curr_movement: wb.models.MovementMovement, last_movement: wb.models.MovementMovement
+        self,
+        curr_movement: wb_v1.models.MovementMovement,
+        last_movement: wb_v1.models.MovementMovement,
     ):
         if not 0.0 <= self._target_location <= self.end_location:
             return
@@ -721,10 +725,10 @@ class TrajectoryCursor:
             target_action=target_action,
         )
 
-    def __aiter__(self) -> AsyncIterator[wb.models.ExecuteTrajectoryResponse]:
+    def __aiter__(self) -> AsyncIterator[wb_v1.models.ExecuteTrajectoryResponse]:
         return self
 
-    async def __anext__(self) -> wb.models.ExecuteTrajectoryResponse:
+    async def __anext__(self) -> wb_v1.models.ExecuteTrajectoryResponse:
         value = await self._in_queue.get()
         self._in_queue.task_done()
         if value is None:
@@ -736,7 +740,7 @@ async def init_movement_gen(
     motion_id, response_stream, initial_location
 ) -> ExecuteTrajectoryRequestStream:
     # The first request is to initialize the movement
-    init_request = wb.models.InitializeMovementRequest(
+    init_request = wb_v1.models.InitializeMovementRequest(
         trajectory=motion_id, initial_location=initial_location
     )
     yield init_request  # type: ignore
@@ -745,7 +749,7 @@ async def init_movement_gen(
     initialize_movement_response = await anext(response_stream)
     # TODO handle error response here (MovementError)
     if isinstance(
-        initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
+        initialize_movement_response.actual_instance, wb_v1.models.InitializeMovementResponse
     ):
         r1 = initialize_movement_response.actual_instance
         if not r1.init_response.succeeded:  # TODO we don't come here if there was an error response

@@ -99,7 +99,6 @@ def intercept(api_instance: T, gateway: "ApiGateway") -> T:
 
 class ApiGateway:
     _api_client: wb.ApiClient
-    _api_v2_client: v2.ApiClient
 
     def __init__(
         self,
@@ -166,7 +165,7 @@ class ApiGateway:
 
         # init v1 api client
         api_client_config = wb.Configuration(
-            host=f"{stripped_host}/api/v1",
+            host=f"{stripped_host}/api/v2",
             username=self._username,
             password=self._password,
             access_token=self._access_token,
@@ -209,17 +208,17 @@ class ApiGateway:
         self.kinematics_api = intercept(wb.KinematicsApi(api_client=self._api_client), self)
 
         # init v2 api client
-        api_v2_client_config = v2.Configuration(
+        api_v2_client_config = wb.Configuration(
             host=f"{stripped_host}/api/v2",
             username=self._username,
             password=self._password,
             access_token=self._access_token,
         )
-        self._api_v2_client = v2.ApiClient(configuration=api_v2_client_config)
+        self._api_v2_client = wb.ApiClient(configuration=api_v2_client_config)
         self._api_v2_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
 
         self.virtual_robot_api_v2 = intercept(
-            v2.VirtualControllerApi(api_client=self._api_v2_client), self
+            wb.VirtualControllerApi(api_client=self._api_v2_client), self
         )
 
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")

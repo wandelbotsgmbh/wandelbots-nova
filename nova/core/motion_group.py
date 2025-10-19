@@ -1,9 +1,8 @@
 import asyncio
+from functools import partial
 from typing import AsyncIterable
 
 import wandelbots_api_client.v2 as wb
-from aiostream import stream
-from functools import partial
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
@@ -14,10 +13,9 @@ from nova.core import logger
 from nova.core.exceptions import InconsistentCollisionScenes
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
-from nova.types import Pose, RobotState, RobotTcp
-from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.core.tuner import TrajectoryTuner
-from nova.types import InitialMovementStream, LoadPlanResponse, MovementResponse, Pose, RobotState
+from nova.types import MovementResponse, Pose, RobotState, RobotTcp
+from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.utils import StreamExtractor
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
@@ -414,7 +412,7 @@ class MotionGroup(AbstractRobot):
         if collision_scenes and len(collision_scenes) > 0:
             static_colliders = collision_scenes[0].colliders
 
-            motion_group_type = robot_setup.motion_group_type
+            motion_group_type = robot_setup.motion_group_model
             if (
                 collision_scenes[0].motion_groups
                 and motion_group_type in collision_scenes[0].motion_groups
@@ -425,8 +423,6 @@ class MotionGroup(AbstractRobot):
             motion_group_setup=robot_setup,
             start_joint_position=list(start_joint_position),
             motion_commands=motion_commands,
-            static_colliders=static_colliders,
-            collision_motion_group=collision_motion_group,
         )
 
         return await self._api_gateway.plan_trajectory(
@@ -507,7 +503,6 @@ class MotionGroup(AbstractRobot):
                 yield execute_response
             return
 
-
         if movement_controller is None:
             movement_controller = move_forward
 
@@ -553,6 +548,7 @@ class MotionGroup(AbstractRobot):
             states.put_nowait(SENTINEL)
 
             yield move_to_response
+
         monitor_task = asyncio.create_task(monitor_motion_group_state())
         execution_task = asyncio.create_task(
             execution(), name=f"execute_trajectory-{trajectory_id}-{self.motion_group_id}"
@@ -579,7 +575,6 @@ class MotionGroup(AbstractRobot):
     async def _stream_jogging(self, tcp, movement_controller):
         controller = movement_controller(
             MovementControllerContext(
-                combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
                 combined_actions=CombinedActions(),  # type: ignore
                 motion_id="DUMMY_MOTION_ID",  # TODO This is a dummy ID, not used in jogging
             )
@@ -594,23 +589,23 @@ class MotionGroup(AbstractRobot):
                 cell=self._cell, controller=self._controller_id, client_request_generator=controller
             )
         )
-		# BEGIN TODO 
-		# This has just been copied during the last main merge and needs to be checked
-        #MOTION_STATE_STREAM_RATE_MS = 100
-        #motion_state_stream = self._api_gateway.motion_group_api.stream_motion_group_state(
+        # BEGIN TODO
+        # This has just been copied during the last main merge and needs to be checked
+        # MOTION_STATE_STREAM_RATE_MS = 100
+        # motion_state_stream = self._api_gateway.motion_group_api.stream_motion_group_state(
         #    cell=self._cell,
         #    controller=self._controller_id,
         #    motion_group=self.motion_group_id,
         #    response_rate=MOTION_STATE_STREAM_RATE_MS,
-        #)
-        #execute_response_stream = stream.merge(
+        # )
+        # execute_response_stream = stream.merge(
         #    execute_response_streaming_controller, motion_state_stream
-        #)
-        #async for execute_response in execute_response_stream.stream():
+        # )
+        # async for execute_response in execute_response_stream.stream():
         #    # async for execute_response in execute_response_streaming_controller:
         #    yield execute_response
-        #await execution_task
-		# END TODO
+        # await execution_task
+        # END TODO
 
         async for execute_response in execute_response_streaming_controller:
             yield execute_response
@@ -633,39 +628,6 @@ class MotionGroup(AbstractRobot):
         tuner = TrajectoryTuner(actions, plan_fn, execute_fn)
         async for response in tuner.tune():
             yield response
-
-    async def _get_optimizer_setup(self, tcp: str) -> wb.models.OptimizerSetup:
-        # TODO: mypy failed on main branch, need to check
-        if self._optimizer_setup is None or self._optimizer_setup.tcp != tcp:  # type: ignore
-            self._optimizer_setup = await self._api_gateway.get_optimizer_config(
-                cell=self._cell, motion_group_id=self.motion_group_id, tcp=tcp
-            )
-
-        return self._optimizer_setup
-
-    async def _load_planned_motion(
-        self, joint_trajectory: wb.models.JointTrajectory, tcp: str
-    ) -> wb.models.PlanSuccessfulResponse:
-        return await self._api_gateway.load_planned_motion(
-            cell=self._cell,
-            motion_group_id=self.motion_group_id,
-            joint_trajectory=joint_trajectory,
-            tcp=tcp,
-        )
-
-    async def move_to_start_position(
-        self, joint_velocities, load_plan_response: LoadPlanResponse
-    ) -> InitialMovementStream:
-        limit_override = wb.models.LimitsOverride()
-        if joint_velocities is not None:
-            limit_override.joint_velocity_limits = wb.models.Joints(joints=joint_velocities)
-
-        return self._api_gateway.stream_move_to_trajectory_via_join_ptp(
-            cell=self._cell,
-            motion_id=load_plan_response.motion,
-            location_on_trajectory=0,
-            joint_velocity_limits=limit_override.joint_velocity_limits,
-        )
 
     async def stop(self):
         logger.debug(f"Stopping motion of {self}...")

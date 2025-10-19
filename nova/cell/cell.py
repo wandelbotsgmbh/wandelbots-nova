@@ -2,6 +2,7 @@ import asyncio
 import json
 
 import nova.api as api
+from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
@@ -203,30 +204,32 @@ class Cell:
         """
         nc = self._nats_client
         nats_subject = f"nova.v2.cells.{cell}.status"
-        sub = await nc.subscribe(subject=nats_subject)
+        controller_ready_event = asyncio.Event()
 
-        async def cell_status_consumer():
-            async for msg in sub.messages:
-                logger.debug(f"Received message on {msg.subject}: {msg.data}")
-                data = json.loads(msg.data)
-                # filter RobotControllers
-                assert data[-1]["group"] == "RobotController" and data[-1]["service"] == name
-                for status in data:
-                    logger.debug(f"Controller status: {status}")
-                    if status["service"] == name:
-                        if status["status"]["code"] == "Running":
-                            await (
-                                sub.unsubscribe()
-                            )  # TODO is this the right place to unsubscribe? is it sufficient?
-                            return
-                        else:
-                            logger.info(f"Controller {name} status: {status['status']['code']}")
+        async def on_cell_status_message(msg):
+            logger.debug(f"Received message on {msg.subject}: {msg.data}")
+            data = json.loads(msg.data)
+            # filter RobotControllers
+            assert data[-1]["group"] == "RobotController" and data[-1]["service"] == name
+            for status in data:
+                logger.debug(f"Controller status: {status}")
+                if status["service"] == name:
+                    if status["status"]["code"] == "Running":
+                        controller_ready_event.set()
+                        await (
+                            sub.unsubscribe()
+                        )  # TODO is this the right place to unsubscribe? is it sufficient?
+                        return
+                    else:
+                        logger.info(f"Controller {name} status: {status['status']['code']}")
 
+        sub = await nc.subscribe(subject=nats_subject, on_message=on_cell_status_message)
         try:
-            await asyncio.wait_for(cell_status_consumer(), timeout=timeout)
+            await asyncio.wait_for(controller_ready_event.wait(), timeout=timeout)
         except asyncio.TimeoutError:
             logger.warning(f"Timeout waiting for {cell}/{name} controller to be ready")
             # Check if the controller exists, if not, log it
+            await sub.unsubscribe()
             raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")
         finally:
             logger.debug("Cleaning up NATS subscription")
