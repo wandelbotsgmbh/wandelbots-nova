@@ -29,7 +29,7 @@ async def simple_program(number_of_steps: int = 30):
 
 @pytest.fixture
 def novax_app():
-    novax = Novax()
+    novax = Novax(app_name="novax_test")
     app = novax.create_app()
     novax.include_programs_router(app)
 
