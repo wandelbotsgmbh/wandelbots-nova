@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.3.0 (2025-10-20)
+
+### Features
+
+- **NDX-358**: Publish program status messages with app name over NATS (#300)
+  ([#300](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/300),
+  [`bd80432`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bd8043293554d623511204b33b0593a6453f7654))
+
+
 ## v3.2.0 (2025-10-17)
 
 ### Features
