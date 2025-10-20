@@ -20,6 +20,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
 
     def __init__(self, configuration: Configuration):
         super().__init__(configuration)
+        self._motiom_group_ids = None
         self._io_access = IOAccess(
             api_gateway=self._nova_api,
             cell=self.configuration.cell_id,
@@ -32,6 +33,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         return self.configuration.controller_id
 
     async def open(self):
+        self._motiom_group_ids = (await self._fetch_description()).connected_motion_groups
         return self
 
     async def close(self):
@@ -42,7 +44,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
 
     def __len__(self) -> int:
         # TODO What is this for? Is it still needed when motion group activation is gone?
-        return len(self._activated_motion_group_ids)
+        return len(self._motion_group_ids)
 
     def motion_group(self, motion_group_id: str) -> MotionGroup:
         """Returns motion group with specific id.
@@ -88,7 +90,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         # TODO Why do we have get_robots() and motion_groups()?
         return {
             motion_group_id: self.motion_group(motion_group_id)
-            for motion_group_id in self._activated_motion_group_ids
+            for motion_group_id in self._motion_group_ids
         }
 
     async def read(self, key: str) -> ValueType:
@@ -120,3 +122,8 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             response_rate=rate_msecs,
         ):
             yield state
+
+    async def _fetch_description(self):
+        return await self._nova_api.controller_api.get_controller_description(
+            self.configuration.cell_id, self.configuration.controller_id
+        )
