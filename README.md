@@ -123,7 +123,7 @@ nova app create "your-nova-app" -g python_app
 
 For more information on using NOVAx see the [README](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/README.md). Explore [this example](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/your-nova-app/app.py) to use the NOVAx entry point.
 
-> **Important Note:** When using NOVAx, you must import the actual program functions from their respective Python files, not just the files themselves. This ensures proper function registration and execution within the NOVAx runtime environment.
+> **Important:** When using NOVAx, you must import the actual program functions from their respective Python files. Only importing the program files won't suffice. This ensures proper function registration and execution within the NOVAx runtime environment.
 
 ## 🚀 Quickstart
 
