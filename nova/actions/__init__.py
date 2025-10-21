@@ -3,6 +3,7 @@ from nova.actions.container import CombinedActions, MovementController, Movement
 from nova.actions.io import io_write
 from nova.actions.mock import wait
 from nova.actions.motions import cartesian_ptp, cir, circular, jnt, joint_ptp, lin, linear, ptp
+from nova.actions.trajectory_builder import TrajectoryBuilder
 
 __all__ = [
     "Action",

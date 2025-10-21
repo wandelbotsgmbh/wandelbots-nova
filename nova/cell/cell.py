@@ -207,28 +207,29 @@ class Cell:
         controller_ready_event = asyncio.Event()
 
         async def on_cell_status_message(msg):
+            if controller_ready_event.is_set():
+                # Skip processing if controller is already ready
+                return
             logger.debug(f"Received message on {msg.subject}: {msg.data}")
             data = json.loads(msg.data)
-            # filter RobotControllers
-            assert data[-1]["group"] == "RobotController" and data[-1]["service"] == name
-            for status in data:
-                logger.debug(f"Controller status: {status}")
-                if status["service"] == name:
-                    if status["status"]["code"] == "Running":
-                        controller_ready_event.set()
-                        await (
-                            sub.unsubscribe()
-                        )  # TODO is this the right place to unsubscribe? is it sufficient?
-                        return
-                    else:
-                        logger.info(f"Controller {name} status: {status['status']['code']}")
+            robot_controller_service_status = [
+                d for d in data if d["group"] == "RobotController" and d["service"] == name
+            ]
+            assert len(robot_controller_service_status) == 1, "Multiple controllers with same name?"
+            if robot_controller_service_status[0]["status"]["code"] == "Running":
+                controller_ready_event.set()
+            else:
+                logger.info(
+                    f"Controller {name} status: {robot_controller_service_status[0]['status']['code']}"
+                )
 
+        # TODO currently the NotsClient does not support unsubscribing from a subject, keeping the code
+        # code like this for when it is supported.
         sub = await nc.subscribe(subject=nats_subject, on_message=on_cell_status_message)
         try:
             await asyncio.wait_for(controller_ready_event.wait(), timeout=timeout)
         except asyncio.TimeoutError:
             logger.warning(f"Timeout waiting for {cell}/{name} controller to be ready")
-            # Check if the controller exists, if not, log it
             await sub.unsubscribe()
             raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")
         finally:
@@ -236,3 +237,4 @@ class Cell:
             pass
             # await sub.unsubscribe()
             # await nc.drain()  # Ensure we clean up the subscription and connection
+        await asyncio.sleep(1)  # Give some time for any final messages to be processed

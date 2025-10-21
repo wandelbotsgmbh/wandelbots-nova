@@ -8,6 +8,7 @@ import wandelbots_api_client as wb_v1
 import wandelbots_api_client.v2 as wb
 from aiohttp_retry import dataclass
 from blinker import signal
+from icecream import ic
 
 from nova.actions import MovementControllerContext
 from nova.actions.base import Action
@@ -73,14 +74,12 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         )
 
         await motion_group_state_monitor_ready.wait()
-        yield wb.models.InitializeMovementRequest(
-            trajectory=wb.models.InitializeMovementRequestTrajectory(
-                wb.models.TrajectoryId(id=context.motion_id)
-            ),
-            initial_location=0,
-        )
+        trajectory_id = wb.models.TrajectoryId(id=context.motion_id)
+        trajectory_request = wb.models.InitializeMovementRequestTrajectory(trajectory_id)
+        yield wb.models.InitializeMovementRequest(trajectory=trajectory_request, initial_location=0)
         execute_trajectory_response = await anext(response_stream)
         initialize_movement_response = execute_trajectory_response.actual_instance
+        ic(initialize_movement_response)
         assert isinstance(initialize_movement_response, wb.models.InitializeMovementResponse)
         # TODO this should actually check for None but currently the API seems to return an empty string instead
         # create issue with the API to fix this

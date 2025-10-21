@@ -517,7 +517,7 @@ class RobotCell:
         devices = {"timer": timer, **kwargs}
         # TODO: if "timer" has not the same id it cannot correctly be serialized/deserialized currently
         for device_name, device in devices.items():
-            if device and device_name != device.id:
+            if device is not None and device_name != device.id:
                 raise ValueError(
                     f"The device name should match its name in the robotcell but are '{device_name}' and '{device.id}'"
                 )

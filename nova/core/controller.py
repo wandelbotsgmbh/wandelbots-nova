@@ -20,7 +20,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
 
     def __init__(self, configuration: Configuration):
         super().__init__(configuration)
-        self._motiom_group_ids = None
+        self._motion_group_ids = None
         self._io_access = IOAccess(
             api_gateway=self._nova_api,
             cell=self.configuration.cell_id,
@@ -33,7 +33,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         return self.configuration.controller_id
 
     async def open(self):
-        self._motiom_group_ids = (await self._fetch_description()).connected_motion_groups
+        self._motion_group_ids = (await self._fetch_description()).connected_motion_groups
         return self
 
     async def close(self):
