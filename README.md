@@ -122,14 +122,12 @@ uv add wandelbots-nova --extra novax
 To use NOVAx in your application, you need to create a new `Novax` instance as an entrypoint.
 
 ```python
-from pathlib import Path
 import uvicorn
+from pathlib import Path
 from novax import Novax
 
-
-@nova.program()
-def simple_program():
-    print("Hello World!")
+# Import Nova program functions to register them with NovaX
+from program_01 import start_program_01
 
 
 def main(host: str = "0.0.0.0", port: int = 8001):
@@ -141,7 +139,7 @@ def main(host: str = "0.0.0.0", port: int = 8001):
     novax.include_programs_router(app)
 
     # Register Python programs (existing functionality)
-    novax.register_program(simple_program)
+    novax.register_program(start_program_01)
     # You can also register Wandelscript files
     novax.register_program(Path(__file__).parent / "programs" / "program2.ws")
 
@@ -151,11 +149,16 @@ def main(host: str = "0.0.0.0", port: int = 8001):
         host=host,
         port=port,
         reload=False,
-        log_level=log_level,
+        log_level="info",
         proxy_headers=True,
         forwarded_allow_ips="*",
     )
+
+if __name__ == "__main__":
+    main()
 ```
+
+> **Important Note:** When using NovaX, you must import the actual program functions from their respective Python files, not just the files themselves. This ensures proper function registration and execution within the NovaX runtime environment.
 
 Inspect the API at `http://localhost:8001/docs`.
 
@@ -481,47 +484,6 @@ async def setup_coordinated_robots():
 ```
 
 <img width="100%" alt="thumbnail" src="https://github.com/user-attachments/assets/6f0c441e-b133-4a3a-bf0e-0e947d3efad4" />
-
-5. **NovaX Program Registration**
-
-```python
-import uvicorn
-from pathlib import Path
-from novax import Novax
-
-# Import Nova program functions to register them with NovaX
-from program_01 import start_program_01
-
-
-def main(host: str = "0.0.0.0", port: int = 8001):
-    # Create a new Novax instance
-    novax = Novax()
-    # Create a new FastAPI app
-    app = novax.create_app()
-    # Include the programs router
-    novax.include_programs_router(app)
-
-    # Register Python programs (existing functionality)
-    novax.register_program(start_program_01)
-    # You can also register Wandelscript files
-    novax.register_program(Path(__file__).parent / "programs" / "program2.ws")
-
-    # Serve the FastAPI app
-    uvicorn.run(
-        app,
-        host=host,
-        port=port,
-        reload=False,
-        log_level="info",
-        proxy_headers=True,
-        forwarded_allow_ips="*",
-    )
-
-if __name__ == "__main__":
-    main()
-```
-
-> **Important Note:** When using NovaX, you must import the actual program functions from their respective Python files, not just the files themselves. This ensures proper function registration and execution within the NovaX runtime environment.
 
 ## Development
 
