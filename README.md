@@ -485,37 +485,40 @@ async def setup_coordinated_robots():
 5. **NovaX Program Registration**
 
 ```python
-from nova import Nova
-from nova.api import models
-import asyncio
-import logging
+import uvicorn
+from pathlib import Path
+from novax import Novax
 
-# Import program functions from separate files
+# Import Nova program functions to register them with NovaX
 from program_01 import start_program_01
 
-async def main():
-    # Setup logging
-    logging.basicConfig(level="info")
-    
-    async with Nova() as nova:
-        cell = nova.cell()
-        controller = await cell.ensure_virtual_robot_controller(
-            "robot1", 
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS
-        )
 
-        # Create NovaX instance for program registration
-        novax = nova.create_novax_instance()
-        
-        # Register program functions from imported modules
-        novax.register_program(start_program_01)
-        
-        # Start the NovaX runtime
-        await novax.start()
+def main(host: str = "0.0.0.0", port: int = 8001):
+    # Create a new Novax instance
+    novax = Novax()
+    # Create a new FastAPI app
+    app = novax.create_app()
+    # Include the programs router
+    novax.include_programs_router(app)
+
+    # Register Python programs (existing functionality)
+    novax.register_program(start_program_01)
+    # You can also register Wandelscript files
+    novax.register_program(Path(__file__).parent / "programs" / "program2.ws")
+
+    # Serve the FastAPI app
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        reload=False,
+        log_level="info",
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+    )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
 ```
 
 > **Important Note:** When using NovaX, you must import the actual program functions from their respective Python files, not just the files themselves. This ensures proper function registration and execution within the NovaX runtime environment.
