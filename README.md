@@ -115,52 +115,16 @@ implementation details or contributing to Wandelscript, refer to the [Wandelscri
 NOVAx is an app framework for building server applications on top of Wandelbots NOVA.
 It provides common core concepts like the handling of programs and their execution.
 
+You can create a new NOVAx app using the [NOVA CLI](https://github.com/wandelbotsgmbh/nova-cli) generator:
+
 ```bash
-uv add wandelbots-nova --extra novax
+nova app create "your-nova-app" -g python_app
 ```
 
-To use NOVAx in your application, you need to create a new `Novax` instance as an entrypoint.
+For more information on using NOVAx see the [README](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/README.md).
+[Here](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/your-nova-app/app.py) you will find a example on how to use the NOVAx entry point.
 
-```python
-import uvicorn
-from pathlib import Path
-from novax import Novax
-
-# Import Nova program functions to register them with NovaX
-from program_01 import start_program_01
-
-
-def main(host: str = "0.0.0.0", port: int = 8001):
-    # Create a new Novax instance
-    novax = Novax()
-    # Create a new FastAPI app
-    app = novax.create_app()
-    # Include the programs router
-    novax.include_programs_router(app)
-
-    # Register Python programs (existing functionality)
-    novax.register_program(start_program_01)
-    # You can also register Wandelscript files
-    novax.register_program(Path(__file__).parent / "programs" / "program2.ws")
-
-    # Serve the FastAPI app
-    uvicorn.run(
-        app,
-        host=host,
-        port=port,
-        reload=False,
-        log_level="info",
-        proxy_headers=True,
-        forwarded_allow_ips="*",
-    )
-
-if __name__ == "__main__":
-    main()
-```
-
-> **Important Note:** When using NovaX, you must import the actual program functions from their respective Python files, not just the files themselves. This ensures proper function registration and execution within the NovaX runtime environment.
-
-Inspect the API at `http://localhost:8001/docs`.
+> **Important Note:** When using NOVAx, you must import the actual program functions from their respective Python files, not just the files themselves. This ensures proper function registration and execution within the NOVAx runtime environment.
 
 ## 🚀 Quickstart
 
