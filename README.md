@@ -482,6 +482,44 @@ async def setup_coordinated_robots():
 
 <img width="100%" alt="thumbnail" src="https://github.com/user-attachments/assets/6f0c441e-b133-4a3a-bf0e-0e947d3efad4" />
 
+5. **NovaX Program Registration**
+
+```python
+from nova import Nova
+from nova.api import models
+import asyncio
+import logging
+
+# Import program functions from separate files
+from program_01 import start_program_01
+
+async def main():
+    # Setup logging
+    logging.basicConfig(level="info")
+    
+    async with Nova() as nova:
+        cell = nova.cell()
+        controller = await cell.ensure_virtual_robot_controller(
+            "robot1", 
+            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            models.Manufacturer.UNIVERSALROBOTS
+        )
+
+        # Create NovaX instance for program registration
+        novax = nova.create_novax_instance()
+        
+        # Register program functions from imported modules
+        novax.register_program(start_program_01)
+        
+        # Start the NovaX runtime
+        await novax.start()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+> **Important Note:** When using NovaX, you must import the actual program functions from their respective Python files, not just the files themselves. This ensures proper function registration and execution within the NovaX runtime environment.
+
 ## Development
 
 To install development dependencies, run
