@@ -121,7 +121,7 @@ You can create a new NOVAx app using the [NOVA CLI](https://github.com/wandelbot
 nova app create "your-nova-app" -g python_app
 ```
 
-For more information on using NOVAx see the [README](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/README.md). [Here](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/your-nova-app/app.py) you will find a example on how to use the NOVAx entry point.
+For more information on using NOVAx see the [README](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/README.md). Explore [this example](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/your-nova-app/app.py) to use the NOVAx entry point.
 
 > **Important Note:** When using NOVAx, you must import the actual program functions from their respective Python files, not just the files themselves. This ensures proper function registration and execution within the NOVAx runtime environment.
 
