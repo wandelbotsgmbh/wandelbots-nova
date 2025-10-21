@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v3.3.1 (2025-10-21)
+
+### Chores
+
+- **deps**: Bump axios from 1.11.0 to 1.12.2 in /vscode-ext (#308)
+  ([#308](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/308),
+  [`fcaf66c`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fcaf66caf138fd524f8b07ceb548afaf45719fc0))
+
+- **deps-dev**: Bump vite from 7.1.7 to 7.1.11 in /vscode-ext/app (#309)
+  ([#309](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/309),
+  [`637320d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/637320dd2b9cd8b3cf5b0297d9b208b863acf54a))
+
+
 ## v3.3.0 (2025-10-20)
 
 ### Features
