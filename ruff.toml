@@ -27,6 +27,7 @@ exclude = [
     "site-packages",
     "venv",
     "wandelscript/grammar",
+    "examples/your-nova-app",
 ]
 
 # Same as Black.
