@@ -42,11 +42,7 @@ class Nova:
             verify_ssl=config.verify_ssl,
         )
 
-        self.nats = NatsClient(
-            host=config.host,
-            access_token=config.access_token,
-            nats_client_config=config.nats_client_config,
-        )
+        self.nats = NatsClient(nats_client_config=config.nats_client_config)
 
     @property
     def config(self) -> NovaConfig:
