@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.3.2 (2025-10-22)
+
+### Chores
+
+- Add NOVAx program registration example to README (#307)
+  ([#307](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/307),
+  [`c05beba`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c05beba6d570d384abdbb9551cd022a81cbecf82))
+
+
 ## v3.3.1 (2025-10-21)
 
 ### Chores
