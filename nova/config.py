@@ -62,4 +62,10 @@ class NovaConfig(BaseModel):
             )
             return self
 
+        # for backward compatiblity
+        if self.host and self.access_token and not parsed_host.scheme:
+            self.nats_client_config["servers"] = (
+                f"wss://{self.access_token}@{self.host}:{443}/api/nats"
+            )
+
         return self
