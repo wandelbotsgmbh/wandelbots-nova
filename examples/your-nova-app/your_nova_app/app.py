@@ -48,7 +48,7 @@ async def get_app_icon():
         raise HTTPException(status_code=404, detail="Icon not found")
 
 
-def serve(host: str = "0.0.0.0", port: int = 3000):
+def main(host: str = "0.0.0.0", port: int = 3000):
     uvicorn.run(
         app,
         host=host,

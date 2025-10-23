@@ -1,4 +1,4 @@
-from your_nova_app.app import serve
+from your_nova_app.register_programs import main
 
 if __name__ == "__main__":
-    serve()
+    main()
