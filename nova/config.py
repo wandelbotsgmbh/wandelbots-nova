@@ -3,6 +3,14 @@ from urllib.parse import urlparse
 from decouple import config
 from pydantic import BaseModel, Field, model_validator
 
+LOG_LEVEL = config("LOG_LEVEL", default="INFO")
+CELL_NAME = config("CELL_NAME", default="cell", cast=str)
+NOVA_API = config("NOVA_API", default=None)
+NOVA_ACCESS_TOKEN = config("NOVA_ACCESS_TOKEN", default=None)
+NOVA_USERNAME = config("NOVA_USERNAME", default=None)
+NOVA_PASSWORD = config("NOVA_PASSWORD", default=None)
+INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
+
 
 class NovaConfig(BaseModel):
     """
@@ -69,3 +77,8 @@ class NovaConfig(BaseModel):
             )
 
         return self
+
+
+default_config = NovaConfig(
+    host=NOVA_API, access_token=NOVA_ACCESS_TOKEN, username=NOVA_USERNAME, password=NOVA_PASSWORD
+)

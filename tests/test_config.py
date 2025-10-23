@@ -41,6 +41,7 @@ def test_when_everything_prioritize_user_input():
         )
         assert config.nats_client_config["servers"] == "nats://custom-server:4222"
 
+
 def test_when_scheme_not_set_use_https():
     config = NovaConfig(host="example.com", access_token="token")
     assert config.nats_client_config["servers"] == "wss://token@example.com:443/api/nats"

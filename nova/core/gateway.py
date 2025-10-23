@@ -15,6 +15,7 @@ from decouple import config
 from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.cell.robot_cell import ConfigurablePeriphery, Device
+from nova.config import INTERNAL_CLUSTER_NOVA_API  # add to the module for backward compatibility
 from nova.core import logger
 from nova.core.env_handler import set_key
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
@@ -30,8 +31,6 @@ def _custom_quote_for_ios(param, safe=""):
 
 
 T = TypeVar("T")
-
-INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 
 
 class ComparisonType(Enum):
