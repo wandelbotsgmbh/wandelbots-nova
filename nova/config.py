@@ -3,7 +3,6 @@ from urllib.parse import urlparse
 from decouple import config
 from pydantic import BaseModel, Field, model_validator
 
-
 # Configuration for accessing the Nova platform
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 NOVA_API = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
@@ -30,6 +29,7 @@ LOGGER_NAME: str = config("LOGGER_NAME", default="wandelbots-nova")
 
 # Feature flags
 ENABLE_TRAJECTORY_TUNING = config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False)
+
 
 class NovaConfig(BaseModel):
     """

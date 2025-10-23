@@ -14,7 +14,13 @@ import wandelbots_api_client.v2 as v2
 from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.cell.robot_cell import ConfigurablePeriphery, Device
-from nova.config import INTERNAL_CLUSTER_NOVA_API, NOVA_ACCESS_TOKEN, NOVA_API, NOVA_PASSWORD, NOVA_USERNAME  # add to the module for backward compatibility
+from nova.config import (  # add to the module for backward compatibility
+    INTERNAL_CLUSTER_NOVA_API,  # noqa: F401
+    NOVA_ACCESS_TOKEN,
+    NOVA_API,
+    NOVA_PASSWORD,
+    NOVA_USERNAME,
+)
 from nova.core import logger
 from nova.core.env_handler import set_key
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
@@ -113,7 +119,6 @@ class ApiGateway:
         access_token = access_token or NOVA_ACCESS_TOKEN
         username = username or NOVA_USERNAME
         password = password or NOVA_PASSWORD
-
 
         self._version = version
         self._verify_ssl = verify_ssl

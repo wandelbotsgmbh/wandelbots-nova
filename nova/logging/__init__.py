@@ -3,7 +3,6 @@ import sys
 
 from nova.config import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL, LOGGER_NAME
 
-
 # Setting up the underlying logger
 _formatter: logging.Formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT)
 _handler: logging.StreamHandler = logging.StreamHandler(sys.stdout)

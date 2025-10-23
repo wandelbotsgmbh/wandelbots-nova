@@ -15,9 +15,7 @@ class Auth0Config:
     def from_env(cls) -> "Auth0Config":
         """Create Auth0Config from environment variables"""
         return cls(
-            domain=NOVA_AUTH0_DOMAIN,
-            client_id=NOVA_AUTH0_CLIENT_ID,
-            audience=NOVA_AUTH0_AUDIENCE,
+            domain=NOVA_AUTH0_DOMAIN, client_id=NOVA_AUTH0_CLIENT_ID, audience=NOVA_AUTH0_AUDIENCE
         )
 
     def is_complete(self) -> bool:

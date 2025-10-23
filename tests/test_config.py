@@ -1,6 +1,3 @@
-import os
-from unittest.mock import patch
-
 import nova.config as config_module
 from nova.config import NovaConfig
 
