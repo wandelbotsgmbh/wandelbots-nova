@@ -10,10 +10,10 @@ from wandelbots_api_client.models.yaskawa_controller import YaskawaController
 from nova import api
 
 MANUFACTURER_HOME_POSITIONS = {
-    api.models.Manufacturer.ABB: [0.0, 0.0, 0.0, 0.0, pi / 2, 0.0, 0.0],
+    api.models.Manufacturer.ABB: [0.0, 0.0, 0.0, 0.0, pi / 2, pi, 0.0],
     api.models.Manufacturer.FANUC: [0.0, 0.0, 0.0, 0.0, -pi / 2, 0.0, 0.0],
     api.models.Manufacturer.YASKAWA: [0.0, 0.0, 0.0, 0.0, -pi / 2, 0.0, 0.0],
-    api.models.Manufacturer.KUKA: [0.0, -pi / 2, pi / 2, 0.0, pi / 2, 0.0, 0.0],
+    api.models.Manufacturer.KUKA: [0.0, -pi / 2, pi / 2, 0.0, pi / 2, pi, 0.0],
     api.models.Manufacturer.UNIVERSALROBOTS: [0.0, -pi / 2, -pi / 2, -pi / 2, pi / 2, -pi / 2, 0.0],
 }
 
