@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v3.3.3 (2025-10-23)
+
+### Bug Fixes
+
+- Update homejoints (#311) ([#311](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/311),
+  [`36b1623`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/36b16233e49b36ddcaf26e94fd446a13f3e26c23))
+
+
 ## v3.3.2 (2025-10-22)
 
 ### Chores
