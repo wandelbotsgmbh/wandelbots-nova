@@ -97,6 +97,7 @@ class NovaConfig(BaseModel):
         return self
 
 
+# default config to be used by the SDK if no other explict config is provided
 default_config = NovaConfig(
     host=NOVA_API, access_token=NOVA_ACCESS_TOKEN, username=NOVA_USERNAME, password=NOVA_PASSWORD
 )
