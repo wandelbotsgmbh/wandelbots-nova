@@ -37,7 +37,7 @@ class NovaConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def calculate_nats_connection_string(self) -> "NovaConfig":
+    def _derive_nats_connection_string(self) -> "NovaConfig":
         """
         Automatically derive the NATS client configuration if not explicitly set.
         """
