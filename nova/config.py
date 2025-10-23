@@ -3,14 +3,33 @@ from urllib.parse import urlparse
 from decouple import config
 from pydantic import BaseModel, Field, model_validator
 
-LOG_LEVEL = config("LOG_LEVEL", default="INFO")
-CELL_NAME = config("CELL_NAME", default="cell", cast=str)
-NOVA_API = config("NOVA_API", default=None)
+
+# Configuration for accessing the Nova platform
+INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
+NOVA_API = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
 NOVA_ACCESS_TOKEN = config("NOVA_ACCESS_TOKEN", default=None)
 NOVA_USERNAME = config("NOVA_USERNAME", default=None)
 NOVA_PASSWORD = config("NOVA_PASSWORD", default=None)
-INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 
+# Auth0 config
+NOVA_AUTH0_DOMAIN = config("NOVA_AUTH0_DOMAIN", default="#{NOVA_AUTH0_DOMAIN}#")
+NOVA_AUTH0_CLIENT_ID = config("NOVA_AUTH0_CLIENT_ID", default="#{NOVA_AUTH0_CLIENT_ID}#")
+NOVA_AUTH0_AUDIENCE = config("NOVA_AUTH0_AUDIENCE", default="#{NOVA_AUTH0_AUDIENCE}#")
+
+# Runtime configuration provided by the environment
+NATS_BROKER = config("NATS_BROKER", default=None)
+CELL_NAME = config("CELL_NAME", default="cell", cast=str)
+BASE_PATH = config("BASE_PATH", default=None)
+K8S_NAMESPACE = config("K8S_NAMESPACE", default="cell")
+
+# Log configuration
+LOG_LEVEL: str = config("LOG_LEVEL", default="INFO").upper()
+LOG_FORMAT: str = config("LOG_FORMAT", default="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+LOG_DATETIME_FORMAT: str = config("LOG_DATETIME_FORMAT", default="%Y-%m-%d %H:%M:%S")
+LOGGER_NAME: str = config("LOGGER_NAME", default="wandelbots-nova")
+
+# Feature flags
+ENABLE_TRAJECTORY_TUNING = config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False)
 
 class NovaConfig(BaseModel):
     """
@@ -48,9 +67,8 @@ class NovaConfig(BaseModel):
         self.nats_client_config = self.nats_client_config or {}
 
         # there is an environment variable NATS_BROKER set, use that
-        nats_broker_env = config("NATS_BROKER", default=None)
-        if nats_broker_env:
-            self.nats_client_config["servers"] = nats_broker_env
+        if NATS_BROKER:
+            self.nats_client_config["servers"] = NATS_BROKER
             return self
 
         # there is no host set, cannot derive NATS config

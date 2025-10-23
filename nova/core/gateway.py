@@ -10,12 +10,11 @@ from urllib.parse import quote as original_quote
 
 import wandelbots_api_client as wb
 import wandelbots_api_client.v2 as v2
-from decouple import config
 
 from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.cell.robot_cell import ConfigurablePeriphery, Device
-from nova.config import INTERNAL_CLUSTER_NOVA_API  # add to the module for backward compatibility
+from nova.config import INTERNAL_CLUSTER_NOVA_API, NOVA_ACCESS_TOKEN, NOVA_API, NOVA_PASSWORD, NOVA_USERNAME  # add to the module for backward compatibility
 from nova.core import logger
 from nova.core.env_handler import set_key
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
@@ -110,17 +109,11 @@ class ApiGateway:
         verify_ssl: bool = True,
         auth0_config: Auth0Config | None = None,
     ):
-        if host is None:
-            host = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
+        host = host or NOVA_API
+        access_token = access_token or NOVA_ACCESS_TOKEN
+        username = username or NOVA_USERNAME
+        password = password or NOVA_PASSWORD
 
-        if username is None:
-            username = config("NOVA_USERNAME", default=None)
-
-        if password is None:
-            password = config("NOVA_PASSWORD", default=None)
-
-        if access_token is None:
-            access_token = config("NOVA_ACCESS_TOKEN", default=None)
 
         self._version = version
         self._verify_ssl = verify_ssl
