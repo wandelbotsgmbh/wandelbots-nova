@@ -60,7 +60,7 @@ wandelscript = [
     "antlr4-python3-runtime==4.13.2",
     "dotenv",
     "geometricalgebra>=0.1.3,<0.2",
-    "typer[all]>=0.12,<0.20",
+    "typer[all]>=0.12,<0.21",
     "numpy>=1.1.19",
 ]
 novax = [
