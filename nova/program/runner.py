@@ -16,7 +16,6 @@ from typing import Any, Coroutine, Optional
 import anyio
 from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
-from decouple import config
 from exceptiongroup import ExceptionGroup
 from loguru import logger
 from pydantic import BaseModel, Field, StrictStr
@@ -25,6 +24,7 @@ from wandelbots_api_client.v2.models import ProgramRunState
 
 from nova import Nova, NovaConfig, api
 from nova.cell.robot_cell import RobotCell
+from nova.config import CELL_NAME
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.nats import Message
 from nova.program.exceptions import NotPlannableError
@@ -32,8 +32,6 @@ from nova.program.function import Program
 from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
 from nova.utils import timestamp
-
-_CELL_NAME = config("CELL_NAME", default="")
 
 current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
     "current_execution_context_var"
@@ -112,7 +110,7 @@ class ProgramRunner(ABC):
         self._preconditions = program.preconditions
         self._parameters = parameters
         self._robot_cell_override = robot_cell_override
-        self._cell_id = cell_id or _CELL_NAME
+        self._cell_id = cell_id or CELL_NAME
         self._app_name = app_name
         self._nova_config = nova_config
         self._program_run: ProgramRun = ProgramRun(

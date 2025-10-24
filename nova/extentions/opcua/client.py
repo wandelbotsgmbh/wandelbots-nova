@@ -13,9 +13,9 @@ from asyncua.common import Node
 from asyncua.common.subscription import DataChangeNotif, DataChangeNotificationHandlerAsync
 from asyncua.crypto import security_policies
 from asyncua.ua import CreateSubscriptionParameters, DataValue, Variant, VariantType
-from decouple import config
 
 from nova import logger
+from nova.config import K8S_NAMESPACE
 
 
 class DataChangeSubscription(DataChangeNotificationHandlerAsync):
@@ -73,7 +73,7 @@ class SubscriptionConfig(pydantic.BaseModel):
 
 
 async def fetch_certificate(certificate_path: str, private_key_path: str) -> tuple[bytes, bytes]:
-    cell = config("K8S_NAMESPACE", default="cell")
+    cell = K8S_NAMESPACE
 
     cert_url = f"http://api-gateway:8080/api/v1/cells/{cell}/store/objects/{certificate_path}"
     private_key_url = (

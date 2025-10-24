@@ -2,7 +2,7 @@ import uvicorn
 from decouple import config
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from novax import Novax
 
 from your_nova_app.start_here import start
@@ -35,9 +35,30 @@ app.add_middleware(
 
 
 # Add redirect from root to docs
-@app.get("/")
+@app.get("/", summary="Opens the interactive API", response_class=HTMLResponse)
 async def root():
-    return RedirectResponse(url="/docs")
+    # One could serve a nice UI here as well. For simplicity, we just redirect to the Stoplight UI.
+    return f"""
+    <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+            <title>Elements in HTML</title>
+            <!-- Embed elements Elements via Web Component -->
+            <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
+            <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
+          </head>
+          <body>
+            <elements-api
+              apiDescriptionUrl="{BASE_PATH}/openapi.json"
+              router="hash"
+              layout="sidebar"
+              tryItCredentialsPolicy="same-origin"
+            />
+          </body>
+    </html>
+    """
 
 
 @app.get("/app_icon.png", summary="Services the app icon for the homescreen")
@@ -48,7 +69,7 @@ async def get_app_icon():
         raise HTTPException(status_code=404, detail="Icon not found")
 
 
-def serve(host: str = "0.0.0.0", port: int = 3000):
+def main(host: str = "0.0.0.0", port: int = 3000):
     uvicorn.run(
         app,
         host=host,

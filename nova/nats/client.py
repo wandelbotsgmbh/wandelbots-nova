@@ -6,7 +6,6 @@ import asyncio
 from typing import Awaitable, Callable
 
 import nats
-from decouple import config
 from nats.aio.msg import Msg as NatsLibMessage
 
 from nova.logging import logger
@@ -16,70 +15,30 @@ from nova.nats.message import Message
 class NatsClient:
     """NATS client for Nova with connection management and publishing capabilities."""
 
-    def __init__(
-        self,
-        host: str | None = None,
-        access_token: str | None = None,
-        # TODO: accept "broker" parameter so the user can override the connection string
-        nats_client_config: dict | None = None,
-    ):
+    def __init__(self, nats_client_config: dict | None = None):
         """
         Initialize the NATS client.
 
         Args:
-            host (str | None): The Nova API host.
-            access_token (str | None): An access token for authentication.
             nats_client_config (dict | None): Configuration dictionary for NATS client.
         """
-        self._host = host
-        self._access_token = access_token
         self._nats_config = nats_client_config or {}
         self._nats_client: nats.NATS | None = None
-        self._nats_connection_string: str = ""
         self._connect_lock = asyncio.Lock()
-        self._init_nats_client()
-
-    # TODO: nats connection string is not built correctly when being accessed like below
-    # nova.nats -> here we are still dependent on NATS_BROKER env variable
-    def _init_nats_client(self) -> None:
-        host = self._host
-        token = self._access_token
-
-        self._nats_connection_string = config("NATS_BROKER", default=None)
-
-        if not self._nats_connection_string and host and token:
-            host = host.strip()
-            is_http = host.startswith("http://")
-            # Remove protocol and trailing slashes
-            clean_host = host.replace("https://", "").replace("http://", "").rstrip("/")
-
-            scheme, port = ("ws", 80) if is_http else ("wss", 443)
-            auth = f"{token}@"
-
-            self._nats_connection_string = f"{scheme}://{auth}{clean_host}:{port}/api/nats"
-            return
-
-        logger.debug("Host and token not both set; reading NATS connection from env var")
-
-        if not self._nats_connection_string:
-            logger.warning("NATS connection string is not set. NATS client will be disabled.")
 
     async def connect(self):
         """Connect to NATS server.
 
         Subsequent calls are no-ops while connected.
         """
-        if not self._nats_connection_string:
-            logger.info("NATS client is not configured. Skipping connection.")
-            return
+        if "servers" not in self._nats_config:
+            raise ValueError("NATS connection is missing.")
 
         async with self._connect_lock:
             if self._nats_client is not None:
                 return
 
-            self._nats_client = await nats.connect(
-                self._nats_connection_string, **self._nats_config
-            )
+            self._nats_client = await nats.connect(**self._nats_config)
             logger.debug("NATS client connected successfully")
 
     async def close(self):
@@ -105,8 +64,6 @@ class NatsClient:
         Returns:
             bool: True if the NATS client is connected, False otherwise.
         """
-        if not self._nats_connection_string:
-            return False
         return self._nats_client is not None and self._nats_client.is_connected
 
     async def publish_message(self, message: Message) -> None:
