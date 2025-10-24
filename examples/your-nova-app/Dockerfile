@@ -2,7 +2,7 @@ FROM ghcr.io/astral-sh/uv:0.7.3 AS uv
 
 # Docker image with uv
 # https://github.com/astral-sh/uv-docker-example/blob/main/Dockerfile
-FROM wandelbots.azurecr.io/docker.io/library/python:3.12-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 

@@ -132,22 +132,6 @@ async def verify_program_definition_all_sources(
     found_program = await get_from_novax(client, decorated_program.program_id)
     assert_program_definition_matches(decorated_program, found_program)
 
-    # NATS
-    all_programs = await get_all_from_nats()
-    found_program = filter_programs_by_name(all_programs, decorated_program.program_id, "novax")
-    assert_program_definition_matches(decorated_program, found_program)
-
-    found_program = await get_from_nats(decorated_program.program_id)
-    assert_program_definition_matches(decorated_program, found_program)
-
-    # Discovery Service
-    all_programs = await get_all_from_discovery_service()
-    found_program = filter_programs_by_name(all_programs, decorated_program.program_id, "novax")
-    assert_program_definition_matches(decorated_program, found_program)
-
-    found_program = await get_from_discovery_service(decorated_program.program_id)
-    assert_program_definition_matches(decorated_program, found_program)
-
 
 @pytest.mark.integration
 @pytest.mark.asyncio

@@ -3,13 +3,13 @@ from functools import partial
 from typing import AsyncIterable, cast
 
 import wandelbots_api_client as wb
-from decouple import config
 
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.api import models
 from nova.cell.robot_cell import AbstractRobot
+from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core import logger
 from nova.core.exceptions import InconsistentCollisionScenes
 from nova.core.gateway import ApiGateway
@@ -374,7 +374,7 @@ class MotionGroup(AbstractRobot):
         start_on_io: wb.models.StartOnIO | None = None,
     ) -> AsyncIterable[MovementResponse]:
         # This is the entrypoint for the trajectory tuning mode
-        if config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False):
+        if ENABLE_TRAJECTORY_TUNING:
             logger.info("Entering trajectory tuning mode...")
             async for execute_response in self._tune_trajectory(joint_trajectory, tcp, actions):
                 yield execute_response

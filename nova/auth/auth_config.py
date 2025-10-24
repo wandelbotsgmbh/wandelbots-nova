@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from decouple import config
+from nova.config import NOVA_AUTH0_AUDIENCE, NOVA_AUTH0_CLIENT_ID, NOVA_AUTH0_DOMAIN
 
 
 @dataclass
@@ -15,9 +15,7 @@ class Auth0Config:
     def from_env(cls) -> "Auth0Config":
         """Create Auth0Config from environment variables"""
         return cls(
-            domain=config("NOVA_AUTH0_DOMAIN", default="#{NOVA_AUTH0_DOMAIN}#"),
-            client_id=config("NOVA_AUTH0_CLIENT_ID", default="#{NOVA_AUTH0_CLIENT_ID}#"),
-            audience=config("NOVA_AUTH0_AUDIENCE", default="#{NOVA_AUTH0_AUDIENCE}#"),
+            domain=NOVA_AUTH0_DOMAIN, client_id=NOVA_AUTH0_CLIENT_ID, audience=NOVA_AUTH0_AUDIENCE
         )
 
     def is_complete(self) -> bool:

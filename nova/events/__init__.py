@@ -3,19 +3,19 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from decouple import config
 from pydantic import BaseModel, Field
 
 from nova.cell.cell import Cell
 from nova.cell.robot_cell import Device, OutputDevice
+from nova.config import BASE_PATH
 from nova.logging import logger
 from nova.nats import Message as NatsMessage
 
 # Read BASE_PATH environment variable and extract app name
 # TODO: make a util and move the logic there
-_BASE_PATH = config("BASE_PATH", default=None)
-if _BASE_PATH:
-    _APP_NAME = _BASE_PATH.split("/")[-1] if "/" in _BASE_PATH else None
+
+if BASE_PATH:
+    _APP_NAME = BASE_PATH.split("/")[-1] if "/" in BASE_PATH else None
 else:
     _APP_NAME = None
 
