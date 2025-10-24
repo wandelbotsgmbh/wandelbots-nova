@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.3.4 (2025-10-24)
+
+### Bug Fixes
+
+- Move nats logic to the config module (#310)
+  ([#310](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/310),
+  [`f714943`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f7149433cfc75594971d185da815beb379a14eec))
+
+
 ## v3.3.3 (2025-10-23)
 
 ### Bug Fixes
