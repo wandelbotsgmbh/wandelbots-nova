@@ -1,5 +1,5 @@
 import asyncio
-from enum import StrEnum, auto
+from enum import Enum, auto
 from functools import singledispatch
 from math import ceil, floor
 from typing import Any, AsyncIterator, Optional
@@ -117,7 +117,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     return movement_controller
 
 
-class OperationType(StrEnum):
+class OperationType(Enum):
     FORWARD = auto()
     BACKWARD = auto()
     FORWARD_TO = auto()
@@ -138,18 +138,18 @@ class OperationResult:
     error: Optional[Exception] = None
 
 
-class MovementOption(StrEnum):
-    CAN_MOVE_FORWARD = auto()
-    CAN_MOVE_BACKWARD = auto()
+class MovementOption(str, Enum):
+    CAN_MOVE_FORWARD = "CAN_MOVE_FORWARD"
+    CAN_MOVE_BACKWARD = "CAN_MOVE_BACKWARD"
 
 
 motion_started = signal("motion_started")
 motion_stopped = signal("motion_stopped")
 
 
-class MotionEventType(StrEnum):
-    STARTED = auto()
-    STOPPED = auto()
+class MotionEventType(str, Enum):
+    STARTED = "STARTED"
+    STOPPED = "STOPPED"
 
 
 class MotionEvent(pydantic.BaseModel):
@@ -224,7 +224,7 @@ class TrajectoryCursor:
         return index
 
     def get_movement_options(self) -> set[MovementOption]:
-        options = {
+        options: dict[MovementOption, bool] = {
             MovementOption.CAN_MOVE_FORWARD: self._current_location < self.end_location,
             MovementOption.CAN_MOVE_BACKWARD: self._current_location > 0.0,
         }

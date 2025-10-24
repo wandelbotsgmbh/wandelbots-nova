@@ -11,7 +11,7 @@ authors = [
     { name = "Stefan Wagner", email = "stefan.wagner@wandelbots.com" },
     { name = "André Kühnert", email = "andre.kuhnert@wandelbots.com" },
 ]
-requires-python = ">=3.11, <3.13"
+requires-python = ">=3.10, <3.13"
 readme = "README.md"
 dependencies = [
     "httpx>=0.28.0,<0.29",
@@ -124,7 +124,7 @@ markers = """
 """
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.10"
 ignore_missing_imports = true
 warn_unreachable = true
 warn_unused_configs = true
