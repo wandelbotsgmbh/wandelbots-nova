@@ -50,7 +50,7 @@ dev = [
 
 [project.optional-dependencies]
 nova-rerun-bridge = [
-    "rerun-sdk==0.24.1",
+    "rerun-sdk==0.26.2",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",
@@ -69,7 +69,7 @@ novax = [
     "python-decouple>=3.8",
 ]
 benchmark = [
-    "rerun-sdk==0.24.1",
+    "rerun-sdk==0.26.2",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",
