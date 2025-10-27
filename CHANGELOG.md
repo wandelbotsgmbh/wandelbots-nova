@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.4.1 (2025-10-27)
+
+### Bug Fixes
+
+- Add docs folder and getting started guideline (#314)
+  ([#314](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/314),
+  [`5466e9b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5466e9b089154209d76539efca0a051285fa2be9))
+
+
 ## v3.4.0 (2025-10-27)
 
 ### Features
