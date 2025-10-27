@@ -115,3 +115,12 @@ class NatsClient:
         await self._nats_client.subscribe(subject, cb=data_mapper)
         # ensure the sub is sent to server before returning
         await self._nats_client.flush()
+
+    def raw_client(self) -> nats.NATS | None:
+        """
+        Get the underlying NATS client instance.
+
+        Returns:
+            nats.NATS | None: The underlying NATS client instance or None if not connected.
+        """
+        return self._nats_client
