@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v3.4.3 (2025-10-27)
+
+### Bug Fixes
+
+- Expose raw nats client (#316) ([#316](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/316),
+  [`95f7c3b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/95f7c3b5fa16720af9cf16ce0fbf437f260aa106))
+
+
 ## v3.4.2 (2025-10-27)
 
 ### Bug Fixes
