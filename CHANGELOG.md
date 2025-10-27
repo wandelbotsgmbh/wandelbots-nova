@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.4.2 (2025-10-27)
+
+### Bug Fixes
+
+- Update python sdk min version to 3.10 (#313)
+  ([#313](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/313),
+  [`c808e85`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c808e852dc95410ac752fa9af5990f828a9dd403))
+
+
 ## v3.4.1 (2025-10-27)
 
 ### Bug Fixes
