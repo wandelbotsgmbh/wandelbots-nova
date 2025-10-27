@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.4.0 (2025-10-27)
+
+### Features
+
+- Add store object API interception to ApiGateway (#315)
+  ([#315](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/315),
+  [`49fea77`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/49fea77d4ff79c7c765b052137bfaa32431849dd))
+
+
 ## v3.3.4 (2025-10-24)
 
 ### Bug Fixes
