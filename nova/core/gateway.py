@@ -202,6 +202,7 @@ class ApiGateway:
         self.motion_group_jogging_api = intercept(
             wb.MotionGroupJoggingApi(api_client=self._api_client), self
         )
+        self.store_object_api = intercept(wb.StoreObjectApi(api_client=self._api_client), self)
 
         # init v2 api client
         api_v2_client_config = v2.Configuration(
