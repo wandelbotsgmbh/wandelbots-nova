@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Optional, Sequence, cast
+from typing import TYPE_CHECKING, Sequence, cast
 
 if TYPE_CHECKING:
     from nova.actions import Action
@@ -56,14 +56,14 @@ class Rerun(Viewer):
 
     def __init__(
         self,
-        application_id: Optional[str] = None,
+        application_id: str | None = None,
         spawn: bool = True,
         show_safety_zones: bool = True,
         show_collision_scenes: bool = True,
         show_collision_link_chain: bool = False,
         show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
-        tcp_tools: Optional[dict[str, str]] = None,
+        tcp_tools: dict[str, str] | None = None,
         show_details: bool = False,
     ) -> None:
         """
@@ -80,7 +80,7 @@ class Rerun(Viewer):
             tcp_tools: Optional mapping of TCP IDs to tool asset file paths
             show_details: Whether to show detailed analysis panels with charts and logs (False = 3D view only)
         """
-        self.application_id: Optional[str] = application_id
+        self.application_id: str | None = application_id
         self.spawn: bool = spawn
         self.show_safety_zones: bool = show_safety_zones
         self.show_collision_scenes: bool = show_collision_scenes
@@ -89,7 +89,7 @@ class Rerun(Viewer):
         self.show_safety_link_chain: bool = show_safety_link_chain
         self.tcp_tools: dict[str, str] = tcp_tools or {}
         self.show_details: bool = show_details
-        self._bridge: Optional[NovaRerunBridgeProtocol] = None
+        self._bridge: NovaRerunBridgeProtocol | None = None
         self._logged_safety_zones: set[str] = (
             set()
         )  # Track motion groups that already have safety zones logged
@@ -99,8 +99,16 @@ class Rerun(Viewer):
 
     def configure(self, nova: Nova) -> None:
         """Configure rerun integration for program execution."""
+        # Allow reconfiguration with different Nova instances (e.g., from decorator temp instance to user instance)
+        # Only reconfigure if it's a different instance
         if self._bridge is not None:
-            return  # Already configured
+            # Check if it's the same Nova instance
+            if hasattr(self._bridge, "nova") and self._bridge.nova is nova:
+                return  # Already configured with this instance
+
+            # Different instance - update the bridge's Nova reference
+            self._bridge.nova = nova
+            return
 
         try:
             from nova_rerun_bridge import NovaRerunBridge
@@ -115,7 +123,6 @@ class Rerun(Viewer):
                 show_safety_link_chain=self.show_safety_link_chain,
             )
             self._bridge = cast(NovaRerunBridgeProtocol, bridge)
-            # Don't setup async components immediately - wait for controllers to be ready
         except ImportError:
             # nova_rerun_bridge not available, skip rerun integration
             logger.warning(
@@ -124,19 +131,25 @@ class Rerun(Viewer):
             )
 
     async def setup_after_preconditions(self) -> None:
-        """Setup async components after preconditions (like controllers) are satisfied."""
-        if self._bridge and not hasattr(self, "_async_setup_done"):
-            await self._setup_async_components()
-            self._async_setup_done = True
+        pass
 
     async def _setup_async_components(self) -> None:
-        """Setup async components like blueprint."""
-        if self._bridge:
-            # Initialize the bridge's own Nova client before using it
+        pass
+
+    async def _ensure_bridge_initialized(self) -> None:
+        """Lazy initialization of bridge - called before first use.
+
+        This ensures the blueprint is set up only when needed, avoiding resource
+        conflicts during program startup.
+        """
+        if self._bridge and not hasattr(self, "_bridge_initialized"):
+            # Initialize the bridge's context manager
+            # By now, the Nova instance is fully connected and ready
             await self._bridge.__aenter__()
 
-            # Setup blueprint (show_details is already configured in bridge)
+            # Setup blueprint using the user's Nova instance
             await self._bridge.setup_blueprint()
+            self._bridge_initialized = True
 
     async def _ensure_safety_zones_logged(self, motion_group: MotionGroup) -> None:
         """Ensure safety zones are logged for the given motion group.
@@ -180,6 +193,9 @@ class Rerun(Viewer):
         if not self._bridge:
             return
 
+        # Lazy initialization - setup bridge on first use
+        await self._ensure_bridge_initialized()
+
         try:
             # Log actions
             await self._bridge.log_actions(list(actions), motion_group=motion_group)
@@ -213,6 +229,9 @@ class Rerun(Viewer):
             tcp: TCP used for planning
             motion_group: The motion group used for planning
         """
+        # Lazy initialization - setup bridge on first use
+        await self._ensure_bridge_initialized()
+
         # Ensure safety zones are logged for this motion group (only on first use)
         await self._ensure_safety_zones_logged(motion_group)
 
@@ -227,11 +246,15 @@ class Rerun(Viewer):
         Args:
             actions: List of actions that failed to plan
             error: The planning error that occurred
+
             tcp: TCP used for planning
             motion_group: The motion group used for planning
         """
         if not self._bridge:
             return
+
+        # Lazy initialization - setup bridge on first use
+        await self._ensure_bridge_initialized()
 
         # Ensure safety zones are logged for this motion group (only on first use)
         await self._ensure_safety_zones_logged(motion_group)
@@ -270,7 +293,7 @@ class Rerun(Viewer):
         except Exception as e:
             logger.warning("Failed to log planning failure in Rerun viewer: %s", e)
 
-    def get_bridge(self) -> Optional[NovaRerunBridgeProtocol]:
+    def get_bridge(self) -> NovaRerunBridgeProtocol | None:
         """Get the underlying NovaRerunBridge instance.
 
         This allows advanced users to access the full bridge functionality.
@@ -285,7 +308,7 @@ class Rerun(Viewer):
         self._bridge = None
         self._logged_safety_zones.clear()  # Reset safety zone tracking
 
-    def _resolve_tool_asset(self, tcp: str) -> Optional[str]:
+    def _resolve_tool_asset(self, tcp: str) -> str | None:
         """Resolve the tool asset file path for a given TCP.
 
         Args:
