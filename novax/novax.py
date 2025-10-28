@@ -70,8 +70,9 @@ class Novax:
         Stop the currently running program, if any.
         """
         try:
-            if self._program_manager.is_any_program_running:
-                await self._program_manager.stop_program()
+            program_id = self._program_manager.running_program
+            if program_id:
+                await self._program_manager.stop_program(program_id)
         except Exception as e:
             logger.error(f"Failed to stop program: {e}")
 
