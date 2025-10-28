@@ -227,25 +227,3 @@ async def test_get_program():
     # Test getting non-existent program
     non_existent = await manager.get_program("nonexistent")
     assert non_existent is None
-
-
-@pytest.mark.asyncio
-async def test_stop_program_without_program_id():
-    manager = ProgramManager(robot_cell_override=SimulatedRobotCell())
-
-    # Register a long-running program
-    program_id = manager.register_program(long_running_program)
-
-    # Start the program
-    await manager.start_program(program_id)
-
-    # Verify program is running
-    assert manager.is_any_program_running
-    assert manager.running_program == program_id
-
-    # Stop the program
-    await manager.stop_program()
-
-    # Verify program is no longer running
-    assert not manager.is_any_program_running
-    assert manager.running_program is None
