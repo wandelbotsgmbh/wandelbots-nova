@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.5.0 (2025-10-28)
+
+### Features
+
+- Update rerun to 0.26, show rerun only locally, reruse nova instance in rerun NDX-370, NDX-367
+  (#320) ([#320](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/320),
+  [`6bd0c67`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6bd0c676b0e18ba543343bcffaae15151ac38314))
+
+
 ## v3.4.3 (2025-10-27)
 
 ### Bug Fixes
