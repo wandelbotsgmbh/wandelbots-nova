@@ -94,6 +94,7 @@ class Rerun(Viewer):
         self._logged_safety_zones: set[str] = (
             set()
         )  # Track motion groups that already have safety zones logged
+        self._bridge_initialized: bool = False
 
         # Register this viewer as active
         register_viewer(self)
@@ -144,6 +145,11 @@ class Rerun(Viewer):
             )
 
     async def setup_after_preconditions(self) -> None:
+        """Setup async components after preconditions are met.
+
+        This method does nothing as the Rerun viewer uses lazy initialization.
+        The bridge is initialized on first use via _ensure_bridge_initialized().
+        """
         pass
 
     async def _setup_async_components(self) -> None:
@@ -155,10 +161,10 @@ class Rerun(Viewer):
         This ensures the blueprint is set up only when needed, avoiding resource
         conflicts during program startup.
         """
-        if self._bridge and not hasattr(self, "_bridge_initialized"):
+        if self._bridge and not self._bridge_initialized:
             # Initialize the bridge's context manager
             # By now, the Nova instance is fully connected and ready
-            await self._bridge.__aenter__()
+            _ = await self._bridge.__aenter__()
 
             # Setup blueprint using the user's Nova instance
             await self._bridge.setup_blueprint()

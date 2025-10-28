@@ -230,27 +230,22 @@ class TestRerunViewer:
     @patch("nova_rerun_bridge.NovaRerunBridge")
     @pytest.mark.asyncio
     async def test_rerun_viewer_setup_after_preconditions(self, mock_bridge_class):
-        """Should setup async components after preconditions."""
+        """Should do nothing as viewer uses lazy initialization."""
         mock_bridge = AsyncMock()
         mock_bridge_class.return_value = mock_bridge
 
         viewer = Rerun()
         viewer.configure(Mock())
 
-        # Should setup async components
+        # Should do nothing - lazy initialization via _ensure_bridge_initialized
         await viewer.setup_after_preconditions()
 
-        # Should mark as setup to avoid duplicate calls
-        assert hasattr(viewer, "_async_setup_done")
-        assert viewer._async_setup_done is True
+        # Bridge should NOT be initialized yet (lazy loading)
+        mock_bridge.__aenter__.assert_not_called()
+        mock_bridge.setup_blueprint.assert_not_called()
 
-        # Calling again should not duplicate setup
-        mock_bridge.__aenter__.reset_mock()
-        mock_bridge.setup_blueprint.reset_mock()
-
+        # Calling multiple times should still do nothing
         await viewer.setup_after_preconditions()
-
-        # Should not be called again
         mock_bridge.__aenter__.assert_not_called()
         mock_bridge.setup_blueprint.assert_not_called()
 
