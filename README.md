@@ -91,12 +91,13 @@ cp .env.template .env
 
 Open the `.env` file in a text editor and fill in the values. Here's what each variable does:
 
-| Variable            | Description                                                                         | Required | Default | Example                                          |
-| ------------------- | ----------------------------------------------------------------------------------- | -------- | ------- | ------------------------------------------------ |
-| `NOVA_API`          | Base URL or hostname of the Wandelbots NOVA server instance                         | Yes      | None    | `https://nova.example.com` or `http://172.0.0.1` |
-| `NOVA_ACCESS_TOKEN` | Pre-obtained access token for Wandelbots NOVA (cloud or self-hosted deployments)    | Yes\*    | None    | `eyJhbGciOi...`                                  |
+| Variable            | Description                                                                      | Required | Default | Example                                          |
+| ------------------- | -------------------------------------------------------------------------------- | -------- | ------- | ------------------------------------------------ |
+| `NOVA_API`          | Base URL or hostname of the Wandelbots NOVA server instance                      | Yes      | None    | `https://nova.example.com` or `http://172.0.0.1` |
+| `NOVA_ACCESS_TOKEN` | Pre-obtained access token for Wandelbots NOVA (cloud or self-hosted deployments) | Yes\*    | None    | `eyJhbGciOi...`                                  |
 
 > **Note:**
+>
 > - `NOVA_API` is mandatory in every deployment. Always point it to the NOVA base URL you are targeting.
 > - `NOVA_ACCESS_TOKEN` is the supported authentication mechanism. It is mandatory for the Wandelbots Cloud environment; for self-hosted deployments generate and supply a token with the required permissions.
 > - Username/password authentication (`NOVA_USERNAME`/`NOVA_PASSWORD`) is deprecated and no longer supported.
@@ -260,6 +261,7 @@ async def main():
         show_details=True,  # Show detailed analysis panels
         show_safety_zones=True,  # Show robot safety zones
         show_collision_link_chain=True,  # Show collision geometry
+        show_collision_tool=True,  # Show TCP tool collision geometry
         tcp_tools={
             "vacuum": "assets/vacuum_cup.stl",
             "gripper": "assets/parallel_gripper.stl"
@@ -541,9 +543,9 @@ Need a temporary test build? Use GitHub actions:
 3. Select a branch and trigger the job.
 4. After completion, open the [Installation step](#installation) to copy the ready-to-use `pip install` command:
 
-    ```bash
-        pip install "wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@<commit>"
-    ```
+   ```bash
+       pip install "wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@<commit>"
+   ```
 
 ## Additional resources
 

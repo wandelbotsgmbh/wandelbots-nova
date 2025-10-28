@@ -45,7 +45,7 @@ class Rerun(Viewer):
                 show_details=True,
                 show_safety_zones=True,
                 show_collision_link_chain=True,
-                show_safety_link_chain=True,
+                show_collision_tool=True,
                 tcp_tools={
                     "vacuum": "assets/vacuum_cup.stl",
                     "gripper": "assets/parallel_gripper.stl"
@@ -61,6 +61,7 @@ class Rerun(Viewer):
         show_safety_zones: bool = True,
         show_collision_scenes: bool = True,
         show_collision_link_chain: bool = False,
+        show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
         tcp_tools: Optional[dict[str, str]] = None,
         show_details: bool = False,
@@ -74,6 +75,7 @@ class Rerun(Viewer):
             show_safety_zones: Whether to visualize safety zones for motion groups
             show_collision_scenes: Whether to show collision scenes
             show_collision_link_chain: Whether to show robot collision mesh geometry
+            show_collision_tool: Whether to show TCP tool collision geometry
             show_safety_link_chain: Whether to show robot safety geometry (from controller)
             tcp_tools: Optional mapping of TCP IDs to tool asset file paths
             show_details: Whether to show detailed analysis panels with charts and logs (False = 3D view only)
@@ -83,6 +85,7 @@ class Rerun(Viewer):
         self.show_safety_zones: bool = show_safety_zones
         self.show_collision_scenes: bool = show_collision_scenes
         self.show_collision_link_chain: bool = show_collision_link_chain
+        self.show_collision_tool: bool = show_collision_tool
         self.show_safety_link_chain: bool = show_safety_link_chain
         self.tcp_tools: dict[str, str] = tcp_tools or {}
         self.show_details: bool = show_details
@@ -108,6 +111,7 @@ class Rerun(Viewer):
                 recording_id=self.application_id,
                 show_details=self.show_details,
                 show_collision_link_chain=self.show_collision_link_chain,
+                show_collision_tool=self.show_collision_tool,
                 show_safety_link_chain=self.show_safety_link_chain,
             )
             self._bridge = cast(NovaRerunBridgeProtocol, bridge)

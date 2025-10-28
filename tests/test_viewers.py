@@ -53,6 +53,7 @@ class TestRerunViewer:
         viewer = Rerun()
         assert isinstance(viewer, Viewer)
         assert viewer.show_collision_link_chain is False
+        assert viewer.show_collision_tool is True
         assert viewer.show_safety_link_chain is True
         assert viewer.show_details is False
         assert viewer.show_safety_zones is True
@@ -62,12 +63,14 @@ class TestRerunViewer:
         """Should accept custom parameters."""
         viewer = Rerun(
             show_collision_link_chain=True,
+            show_collision_tool=False,
             show_safety_link_chain=False,
             show_details=True,
             show_safety_zones=False,
             tcp_tools={"gripper": "gripper.stl"},
         )
         assert viewer.show_collision_link_chain is True
+        assert viewer.show_collision_tool is False
         assert viewer.show_safety_link_chain is False
         assert viewer.show_details is True
         assert viewer.show_safety_zones is False
@@ -102,6 +105,7 @@ class TestRerunViewer:
             recording_id=None,
             show_details=False,
             show_collision_link_chain=False,
+            show_collision_tool=True,
             show_safety_link_chain=False,
         )
         assert viewer._bridge is mock_bridge

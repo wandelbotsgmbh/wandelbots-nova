@@ -43,8 +43,9 @@ def log_motion(
     collision_scenes: dict[str, models.CollisionScene],
     time_offset: float = 0,
     timing_mode: TimingMode = TimingMode.CONTINUE,  # Deprecated parameter kept for compatibility
-    tool_asset: Optional[str] = None,
+    tool_asset: str | None = None,
     show_collision_link_chain: bool = False,
+    show_collision_tool: bool = True,
     show_safety_link_chain: bool = True,
 ):
     """
@@ -115,6 +116,7 @@ def log_motion(
             collision_link_chain=collision_link_chain,
             collision_tcp=collision_tcp,
             show_collision_link_chain=show_collision_link_chain,
+            show_collision_tool=show_collision_tool,
             show_safety_link_chain=show_safety_link_chain,
         )
 
@@ -217,7 +219,7 @@ def log_tcp_pose(
     trajectory: list[models.TrajectorySample],
     motion_group,
     times_column,
-    tool_asset: Optional[str] = None,
+    tool_asset: str | None = None,
 ):
     """
     Log TCP pose (position + orientation) data.
