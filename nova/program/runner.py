@@ -37,6 +37,12 @@ current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
     "current_execution_context_var"
 )
 
+# Context variable to track if running via operator/novax (for viewer optimization)
+# Set to True when app_name is provided (operator execution), False for local development
+is_operator_execution_var: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "is_operator_execution_var", default=False
+)
+
 
 # needs to change somehow
 class ProgramRun(ApiProgramRun):
@@ -396,6 +402,9 @@ class ProgramRunner(ABC):
 
             # if not self._robot_cell_override and not nova.is_connected():
             #    await nova.connect()
+
+            # Set context variable to indicate if running via operator (for viewer optimization)
+            is_operator_execution_var.set(self._app_name is not None)
 
             self.execution_context = execution_context = ExecutionContext(
                 robot_cell=robot_cell, stop_event=stop_event

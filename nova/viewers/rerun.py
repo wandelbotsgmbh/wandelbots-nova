@@ -99,6 +99,18 @@ class Rerun(Viewer):
 
     def configure(self, nova: Nova) -> None:
         """Configure rerun integration for program execution."""
+        # Skip Rerun viewer entirely when running via operator/novax
+        # to minimize overhead - Rerun is only for local debugging
+        try:
+            from nova.program.runner import is_operator_execution_var
+
+            if is_operator_execution_var.get(False):
+                logger.debug("Skipping Rerun viewer configuration - running via operator/novax")
+                return
+        except (ImportError, LookupError):
+            # If we can't import or get the context var, proceed with configuration
+            pass
+
         # Allow reconfiguration with different Nova instances (e.g., from decorator temp instance to user instance)
         # Only reconfigure if it's a different instance
         if self._bridge is not None:
