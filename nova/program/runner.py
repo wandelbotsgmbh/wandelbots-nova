@@ -37,6 +37,12 @@ current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
     "current_execution_context_var"
 )
 
+# Context variable to track if running via operator/novax (for viewer optimization)
+# Set to True when app_name is provided (operator execution), False for local development
+is_operator_execution_var: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "is_operator_execution_var", default=False
+)
+
 
 # needs to change somehow
 class ProgramRun(ApiProgramRun):
@@ -100,7 +106,7 @@ class ProgramRunner(ABC):
             parameters (dict[str, Any]): The parameters that are passed to the program.
             robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Should only be used for testing purposes. When a robot cell is provided, no Nova instance is created. Defaults to None.
             cell_id (str | None, optional): The cell ID to use for the program. Defaults to None.
-            app_name (str | None, optional): The app name to use for the program. Defaults to None.
+            app_name (str | None, optional): The app name to discover the program. Will be automatically set when executed via NOVAx or API. Does not need to be set by the user. Defaults to None.
             nova_config (NovaConfig | None, optional): The Nova config to use for the program. Defaults to None.
         """
         program_id = program.program_id
@@ -396,6 +402,9 @@ class ProgramRunner(ABC):
 
             # if not self._robot_cell_override and not nova.is_connected():
             #    await nova.connect()
+
+            # Set context variable to indicate if running via operator (for viewer optimization)
+            is_operator_execution_var.set(self._app_name is not None)
 
             self.execution_context = execution_context = ExecutionContext(
                 robot_cell=robot_cell, stop_event=stop_event
