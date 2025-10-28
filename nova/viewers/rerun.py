@@ -46,6 +46,7 @@ class Rerun(Viewer):
                 show_safety_zones=True,
                 show_collision_link_chain=True,
                 show_collision_tool=True,
+                show_safety_link_chain=True,
                 tcp_tools={
                     "vacuum": "assets/vacuum_cup.stl",
                     "gripper": "assets/parallel_gripper.stl"
