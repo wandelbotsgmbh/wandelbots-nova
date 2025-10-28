@@ -62,8 +62,18 @@ class Novax:
 
         yield
         await self._deregister_programs(store)
-        await self._program_manager.stop_program()
+        await self._stop_program()
         await self._nova.close()
+
+    async def _stop_program(self):
+        """
+        Stop the currently running program, if any.
+        """
+        try:
+            if self._program_manager.is_any_program_running:
+                await self._program_manager.stop_program()
+        except Exception as e:
+            logger.error(f"Failed to stop program: {e}")
 
     async def _register_programs(self, program_store: ProgramStore):
         """
@@ -76,7 +86,6 @@ class Novax:
             store_programs = {}
             for program_id, program_details in programs.items():
                 try:
-                    # TODO: schema is not present in ProgramDetails
                     store_program = StoreProgram(
                         program=program_details.program,
                         name=program_details.name,
