@@ -1,6 +1,6 @@
 [project]
 name = "wandelbots-nova"
-version = "3.4.3"
+version = "3.5.0"
 description = "Official Python SDK for the Wandelbots Nova"
 authors = [
     { name = "Wandelbots GmbH" },
@@ -15,7 +15,7 @@ requires-python = ">=3.10, <3.13"
 readme = "README.md"
 dependencies = [
     "httpx>=0.28.0,<0.29",
-    "wandelbots_api_client~=25.8.0",
+    "wandelbots_api_client~=25.9.0",
     "websockets>=14.1.0,<15",
     "loguru>=0.7.2,<0.8",
     "pydantic>=2.11.4,<3",
@@ -50,7 +50,7 @@ dev = [
 
 [project.optional-dependencies]
 nova-rerun-bridge = [
-    "rerun-sdk==0.24.1",
+    "rerun-sdk==0.26.2",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",
@@ -69,7 +69,7 @@ novax = [
     "python-decouple>=3.8",
 ]
 benchmark = [
-    "rerun-sdk==0.24.1",
+    "rerun-sdk==0.26.2",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",
