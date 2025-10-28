@@ -106,7 +106,7 @@ class ProgramRunner(ABC):
             parameters (dict[str, Any]): The parameters that are passed to the program.
             robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Should only be used for testing purposes. When a robot cell is provided, no Nova instance is created. Defaults to None.
             cell_id (str | None, optional): The cell ID to use for the program. Defaults to None.
-            app_name (str | None, optional): The app name to use for the program. Defaults to None.
+            app_name (str | None, optional): The app name to discover the program. Will be automatically set when executed via NOVAx or API. Does not need to be set by the user. Defaults to None.
             nova_config (NovaConfig | None, optional): The Nova config to use for the program. Defaults to None.
         """
         program_id = program.program_id
