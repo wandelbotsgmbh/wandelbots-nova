@@ -701,6 +701,9 @@ class NovaRerunBridge:
         await self.cleanup()
 
     async def cleanup(self) -> None:
-        """Cleanup resources."""
-        # Note: Don't clean up self.nova as it belongs to the caller
-        pass
+        """
+        Cleanup resources.
+
+        This method is intentionally left empty because the Nova instance (`self.nova`)
+        belongs to the caller and should not be cleaned up here.
+        """
