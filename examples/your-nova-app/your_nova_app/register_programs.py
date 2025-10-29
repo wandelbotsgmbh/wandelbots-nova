@@ -79,3 +79,6 @@ def main(host: str = "0.0.0.0", port: int = 3000):
         proxy_headers=True,
         forwarded_allow_ips="*",
     )
+
+if __name__ == "__main__":
+    main()

@@ -35,7 +35,7 @@ jobs:
 
       - name: Run NOVA CLI compatibility test
         run: |
-          ./scripts/test_nova_cli.sh
+          ./scripts/pull_nova_app_template.sh
 
       - name: Upload test artifacts on failure
         if: failure()
