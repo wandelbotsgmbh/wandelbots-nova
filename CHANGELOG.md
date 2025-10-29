@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.5.3 (2025-10-29)
+
+### Bug Fixes
+
+- **NDX-374**: Added missing error info to the program status (#322)
+  ([#322](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/322),
+  [`33279d3`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/33279d353451e8179df60601b4b74895c84cd01d))
+
+
 ## v3.5.2 (2025-10-29)
 
 ### Chores
