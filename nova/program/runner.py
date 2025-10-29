@@ -49,11 +49,22 @@ class ProgramRun(ApiProgramRun):
     output_data: dict[str, Any] = {}
 
 
+# Define maximum length for error messages in ProgramStatus
+# This is a safeguard to prevent malicious users in a cloud environment from sending
+# very large error messages that could lead to performance issues or denial of service.
+PROGRAM_STATUS_ERROR_MAX_LENGTH = 1024 * 2
+
+
 class ProgramStatus(BaseModel):
     run: StrictStr = Field(description="Unique identifier of the program run")
     program: StrictStr = Field(description="Unique identifier of the program")
     app: Optional[StrictStr] = Field(description="The app name where the program is hosted")
     state: ProgramRunState = Field(description="State of the program run")
+    error: Optional[StrictStr] = Field(
+        default=None,
+        description="Error message if the program run failed",
+        max_length=PROGRAM_STATUS_ERROR_MAX_LENGTH,
+    )
     start_time: Optional[datetime] = Field(
         default=None, description="Start time of the program run"
     )
@@ -165,11 +176,15 @@ class ProgramRunner(ABC):
 
     @property
     def program_status(self) -> ProgramStatus:
+        truncated_error = (
+            error[:PROGRAM_STATUS_ERROR_MAX_LENGTH] if (error := self._program_run.error) else None
+        )
         return ProgramStatus(
             run=self._program_run.run,
             program=self._program_run.program,
             app=self._app_name,
             state=self._program_run.state,
+            error=truncated_error,
             start_time=self._program_run.start_time,
             end_time=self._program_run.end_time,
             timestamp=timestamp.now_utc(),
