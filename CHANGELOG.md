@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.5.2 (2025-10-29)
+
+### Chores
+
+- Simplified pull app template script (#323)
+  ([#323](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/323),
+  [`6d38090`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6d3809091a0ffb5acf8029c5449d4405a37c0dd5))
+
+
 ## v3.5.1 (2025-10-28)
 
 ### Chores
