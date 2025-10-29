@@ -54,6 +54,9 @@ class ProgramStatus(BaseModel):
     program: StrictStr = Field(description="Unique identifier of the program")
     app: Optional[StrictStr] = Field(description="The app name where the program is hosted")
     state: ProgramRunState = Field(description="State of the program run")
+    error: Optional[StrictStr] = Field(
+        default=None, description="Error message if the program run failed"
+    )
     start_time: Optional[datetime] = Field(
         default=None, description="Start time of the program run"
     )
@@ -170,6 +173,7 @@ class ProgramRunner(ABC):
             program=self._program_run.program,
             app=self._app_name,
             state=self._program_run.state,
+            error=self._program_run.error,
             start_time=self._program_run.start_time,
             end_time=self._program_run.end_time,
             timestamp=timestamp.now_utc(),
