@@ -3,7 +3,7 @@ import asyncio
 from fastapi.testclient import TestClient
 
 import nova
-from novax.novax import Novax
+from novax import Novax
 
 
 def test_get_programs(novax_app):
