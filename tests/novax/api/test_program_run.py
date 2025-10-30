@@ -293,3 +293,24 @@ async def test_program_run_contains_init_args():
         program_run = ProgramRun.model_validate(start_program.json())
 
         assert program_run.input_data == args
+
+
+@pytest.mark.integration
+@pytest.mark.xdist_group("program-runs")
+@pytest.mark.asyncio
+def test_stop_program_on_lifespan_end():
+    @nova.program(name="endless_program")
+    async def endless_program():
+        while True:
+            await asyncio.sleep(1)
+
+    novax = Novax()
+    novax.register_program(endless_program)
+    app = novax.create_app()
+    novax.include_programs_router(app)
+
+    with TestClient(app) as client:
+        start_response = client.post("/programs/endless_program/start", json={"arguments": {}})
+        assert start_response.status_code == 200
+
+    assert novax.program_manager.is_any_program_running is False
