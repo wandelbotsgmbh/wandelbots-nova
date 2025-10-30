@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.5.4 (2025-10-30)
+
+### Bug Fixes
+
+- Stop programs when lifespan goes down (#321)
+  ([#321](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/321),
+  [`64728b5`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/64728b54196116518b83afe0f9af0b55229c2d50))
+
+
 ## v3.5.3 (2025-10-29)
 
 ### Bug Fixes
