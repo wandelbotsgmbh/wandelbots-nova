@@ -361,6 +361,10 @@ class ProgramRunner(ABC):
             message = Message(subject=subject, data=data)
             await nova.nats.publish_message(message)
 
+            subject = f"nova.v2.cells.{self._cell_id}.apps.{self._app_name}.programs.{self.program_id}.status"
+            message = Message(subject=subject, data=data)
+            await nova.nats.publish_message(message)
+
     async def _run_program(
         self, stop_event: anyio.Event, on_state_change: Callable[[], Awaitable[None]]
     ) -> None:
