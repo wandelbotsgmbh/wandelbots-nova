@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v3.6.0 (2025-11-03)
+
+### Bug Fixes
+
+- Updated secrets for actions in nova release (#328)
+  ([#328](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/328),
+  [`1dcb8c1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1dcb8c1ff344f573866c96fc1573ef6c170c9c5e))
+
+### Features
+
+- **NDX-397**: Introduce MR restrictions (#325)
+  ([#325](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/325),
+  [`1a91615`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1a91615d1f051b3c086fdb081708209b0c87e453))
+
+
 ## v3.5.4 (2025-10-30)
 
 ### Bug Fixes
