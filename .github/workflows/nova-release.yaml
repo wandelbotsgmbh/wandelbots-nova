@@ -4,7 +4,8 @@ on:
   push:
     branches:
       - main
-      - 'release/**'          # release/1.x, release/customer-foo, …
+      - 'release/**'          # release/1.x, release/customer-foo, ...
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -13,13 +14,23 @@ jobs:
       id-token: write
       contents: write
     steps:
+      - name: Generate token for pipeline-version-bumper app
+        id: app-token
+        uses: tibdex/github-app-token@v2.1.0
+        with:
+          app_id: ${{ secrets.PIPELINE_VERSION_BUMPER_APP_ID }}
+          private_key: ${{ secrets.PIPELINE_VERSION_BUMPER_PRIVATE_KEY }}
+
       - name: Checkout repository at workflow SHA
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
+          token: ${{ steps.app-token.outputs.token }}
+
       - name: Force correct branch at workflow SHA
         run: git checkout -B ${{ github.ref_name }} ${{ github.sha }}
+
       - uses: cschleiden/replace-tokens@v1.3
         env:
           NOVA_AUTH0_DOMAIN: ${{ secrets.NOVA_AUTH0_DOMAIN }}
@@ -27,15 +38,19 @@ jobs:
           NOVA_AUTH0_AUDIENCE: ${{ secrets.NOVA_AUTH0_AUDIENCE }}
         with:
           files: '["nova/auth/auth_config.py"]'
+
       - name: Semantic Version Release
         id: semrel
         if: github.ref_name == 'main'
         uses: python-semantic-release/python-semantic-release@v10.2.0
         with:
           build: true
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          git_committer_name: "github-actions"
-          git_committer_email: "actions@users.noreply.github.com"
+          # Use the app token so pushes/tags come from the app actor
+          github_token: ${{ steps.app-token.outputs.token }}
+          # These are cosmetic; the *actor* is determined by the token above
+          git_committer_name: "pipeline-version-bumper[bot]"
+          git_committer_email: "pipeline-version-bumper[bot]@users.noreply.github.com"
+
       - name: Build wheel & bump post-build number (release/*)
         if: startsWith(github.ref_name, 'release/')
         id: build
@@ -56,6 +71,7 @@ jobs:
           python -m build --wheel --outdir dist    # keep default wheel name
 
           echo "wheel=$(ls dist/*.whl)" >> "$GITHUB_OUTPUT"
+
       - name: Publish package to PyPI
         if: |
           (github.ref_name == 'main'  && steps.semrel.outputs.released == 'true') ||
@@ -63,6 +79,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
+
       - name: Upload wheel to GitHub Release assets
         if: steps.semrel.outputs.released == 'true'
         uses: python-semantic-release/publish-action@v10.2.0
