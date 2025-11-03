@@ -18,8 +18,8 @@ jobs:
         id: app-token
         uses: tibdex/github-app-token@v2.1.0
         with:
-          app_id: ${{ secrets.PIPELINE_VERSION_BUMPER_APP_ID }}
-          private_key: ${{ secrets.PIPELINE_VERSION_BUMPER_PRIVATE_KEY }}
+          app_id: ${{ secrets.PIPELINE_VERSION_BUMPER_APPID }}
+          private_key: ${{ secrets.PIPELINE_VERSION_BUMPER_SECRET }}
 
       - name: Checkout repository at workflow SHA
         uses: actions/checkout@v5
