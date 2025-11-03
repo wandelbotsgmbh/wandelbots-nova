@@ -5,7 +5,7 @@ description = ""
 requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
-    "wandelbots-nova[novax,nova-rerun-bridge]~=3.3.0",
+    "wandelbots-nova[novax,nova-rerun-bridge]>=3.5.3,<4",
     "python-decouple~=3.8",
     "requests>=2.32.3,<3",
 ]

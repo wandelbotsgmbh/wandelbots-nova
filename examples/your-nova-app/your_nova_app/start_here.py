@@ -46,7 +46,7 @@ async def start():
     async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.controller("kuka-kr16-r2010")
-        cycle = Cycle(cell=cell, extra={"app": "your_nova_app", "program": "start_here"})
+        cycle = Cycle(cell=cell, extra={"program": "start_here"})
 
         slow = MotionSettings(tcp_velocity_limit=50)
 
@@ -57,7 +57,9 @@ async def start():
 
             # Get current TCP pose and create target poses
             current_pose = await motion_group.tcp_pose(tcp)
+            # Define the target pose based on the current pose with an offset of 100 mm on the x-axis
             target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
+            offset = 200
 
             # Actions define the sequence of movements and other actions to be executed by the robot
             actions = [
@@ -65,16 +67,16 @@ async def start():
                 cartesian_ptp(target_pose),  # Move to target pose
                 joint_ptp(home_joints),  # Return to home
                 cartesian_ptp(
-                    target_pose @ [200, 0, 0, 0, 0, 0]
-                ),  # Move 100mm in target pose's local x-axis
+                    target_pose @ [offset, 0, 0, 0, 0, 0]
+                ),  # Move 200mm in target pose's local x-axis
                 joint_ptp(home_joints),
-                linear(target_pose @ (200, 200, 0, 0, 0, 0)),  # Move 100mm in local x and y axes
+                linear(target_pose @ (offset, offset, 0, 0, 0, 0)),  # Move 200mm in local x and y axes
                 joint_ptp(home_joints, settings=slow),
-                cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0))),
+                cartesian_ptp(target_pose @ Pose((0, offset, 0, 0, 0, 0))),
                 joint_ptp(home_joints),
                 circular(
                     target_pose @ Pose((0, 200, 0, 0, 0, 0)),
-                    intermediate=target_pose @ Pose((0, 200, 0, 0, 0, 0)),
+                    intermediate=target_pose @ Pose((200, 0, 0, 0, 0, 0)),
                 ),
                 joint_ptp(home_joints),
             ]
