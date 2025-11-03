@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Generate token for pipeline-version-bumper app
         id: app-token
-        uses: tibdex/github-app-token@v2
+        uses: tibdex/github-app-token@v2.1.0
         with:
           app_id: ${{ secrets.PIPELINE_VERSION_BUMPER_APP_ID }}
           private_key: ${{ secrets.PIPELINE_VERSION_BUMPER_PRIVATE_KEY }}
