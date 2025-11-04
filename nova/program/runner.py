@@ -3,6 +3,7 @@ import contextlib
 import contextvars
 import inspect
 import io
+import json
 import sys
 import threading
 import traceback as tb
@@ -354,7 +355,20 @@ class ProgramRunner(ABC):
         await on_state_change()
 
         if nova is not None:
-            data = self.program_status.model_dump_json().encode("utf-8")
+            data = self.program_status.model_dump()
+            data["timestamp"] = timestamp.datetime_to_rfc3339(self.program_status.timestamp)
+            data["start_time"] = (
+                timestamp.datetime_to_rfc3339(self.program_status.start_time)
+                if self.program_status.start_time
+                else None
+            )
+            data["end_time"] = (
+                timestamp.datetime_to_rfc3339(self.program_status.end_time)
+                if self.program_status.end_time
+                else None
+            )
+
+            data = json.dumps(data).encode("utf-8")
 
             # publish program run to NATS
             subject = f"nova.v2.cells.{self._cell_id}.programs"
