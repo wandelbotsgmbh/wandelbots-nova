@@ -372,7 +372,7 @@ class ApiGateway:
             cell=cell,
             controller=controller,
             io=io,
-            comparison_type=ComparisonType.COMPARISON_TYPE_EQUAL,
+            comparison_type=ComparisonType.COMPARISON_TYPE_EQUAL.value,
             boolean_value=value,
         )
 
