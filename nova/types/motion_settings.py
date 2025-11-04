@@ -1,5 +1,6 @@
 import pydantic
-import wandelbots_api_client.v2 as wb
+
+from nova import api
 
 
 class MotionSettings(pydantic.BaseModel):
@@ -10,40 +11,48 @@ class MotionSettings(pydantic.BaseModel):
     Motion settings are immutable; if you need to change a setting, create a copy and update the new object.
 
     Attributes:
-        min_blending_velocity:
-            A minimum velocity for blending, in percent. Cannot be used if `blending` is set.
+        blending_auto:
+            Auto-blending is used to keep a constant velocity when blending between two motion commands.
+            It changes the TCP path around the target point of the motion command.
+            The value represents the percentage of the original velocity.
 
-        position_zone_radius:
-            Defines the position zone radius.
+        blending_radius:
+            Specifies the maximum radius in [mm] around the motion command's target point
+            where the TCP path can be altered to blend the motion command into the following one.
+            If auto-blending blends too much of the resulting trajectory, use position-blending to restrict the blending zone radius.
 
         joint_velocity_limits:
-            Maximum joint velocities
+            Maximum joint velocity in [rad/s] for each joint.
+            Either leave this field empty or set a value for each joint.
 
         joint_acceleration_limits:
-            Maximum joint accelerations
+            Maximum joint acceleration in [rad/s^2] for each joint.
+            Either leave this field empty or set a value for each joint.
 
         tcp_velocity_limit:
-            Maximum TCP velocity
+            Maximum allowed TCP velocity in [mm/s].
 
         tcp_acceleration_limit:
-            Maximum TCP acceleration
+            Maximum allowed TCP acceleration in [mm/s^2].
 
         tcp_orientation_velocity_limit:
-            Maximum TCP orientation velocity
+            Maximum allowed TCP rotation velocity in [rad/s].
 
         tcp_orientation_acceleration_limit:
-            Maximum TCP orientation acceleration
+            Maximum allowed TCP rotation acceleration in [rad/s^2].
     """
 
-    min_blending_velocity: int | None = pydantic.Field(default=None)
-    # TODO: rename to blending_radius?
-    position_zone_radius: float | None = pydantic.Field(default=None)
+    blending_radius: float | None = pydantic.Field(default=None)
+    blending_auto: int | None = pydantic.Field(default=None)
     joint_velocity_limits: tuple[float, ...] | None = pydantic.Field(default=None)
     joint_acceleration_limits: tuple[float, ...] | None = pydantic.Field(default=None)
     tcp_velocity_limit: float | None = pydantic.Field(default=50)
     tcp_acceleration_limit: float | None = pydantic.Field(default=None)
     tcp_orientation_velocity_limit: float | None = pydantic.Field(default=None)
     tcp_orientation_acceleration_limit: float | None = pydantic.Field(default=None)
+
+    position_zone_radius: float | None = pydantic.Field(default=None, deprecated=True)
+    min_blending_velocity: int | None = pydantic.Field(default=None, deprecated=True)
 
     class Config:
         frozen = True
@@ -73,8 +82,8 @@ class MotionSettings(pydantic.BaseModel):
             ]
         )
 
-    def as_limits_settings(self) -> wb.models.LimitsOverride:
-        return wb.models.LimitsOverride(
+    def as_limits_settings(self) -> api.models.LimitsOverride:
+        return api.models.LimitsOverride(
             joint_velocity_limits=wb.models.Joints(joints=self.joint_velocity_limits)  # type: ignore
             if self.joint_velocity_limits
             else None,
@@ -87,15 +96,17 @@ class MotionSettings(pydantic.BaseModel):
             tcp_orientation_acceleration_limit=self.tcp_orientation_acceleration_limit,
         )
 
-    def as_blending_setting(self) -> wb.models.MotionCommandBlending:
+    def as_blending_setting(self) -> api.models.MotionCommandBlending:
         if self.position_zone_radius:
-            return wb.models.MotionCommandBlending(
-                wb.models.BlendingPosition(
-                    position_zone_radius=self.position_zone_radius, blending_name="BlendingPosition"
+            return api.models.MotionCommandBlending(
+                api.models.BlendingPosition(
+                    position_zone_radius=self.blending_radius or self.position_zone_radius,
+                    blending_name="BlendingPosition",
                 )
             )
-        return wb.models.MotionCommandBlending(
-            wb.models.BlendingAuto(
-                min_velocity_in_percent=self.min_blending_velocity, blending_name="BlendingAuto"
+        return api.models.MotionCommandBlending(
+            api.models.BlendingAuto(
+                min_velocity_in_percent=self.blending_auto or self.min_blending_velocity,
+                blending_name="BlendingAuto",
             )
         )
