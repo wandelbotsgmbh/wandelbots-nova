@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - 'release/**'          # release/1.x, release/customer-foo, ...
+
 jobs:
   release:
     runs-on: ubuntu-latest
