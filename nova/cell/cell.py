@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-import nova.api as api
+from nova import api
 from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound

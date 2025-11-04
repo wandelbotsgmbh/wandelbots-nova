@@ -1,6 +1,5 @@
 import asyncio
-from enum import StrEnum, auto
-from enum import Enum, auto
+from enum import Enum, StrEnum, auto
 from functools import singledispatch
 from math import ceil, floor
 from typing import AsyncIterator, Optional
