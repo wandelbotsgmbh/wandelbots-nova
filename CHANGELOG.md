@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.6.4 (2025-11-04)
+
+### Bug Fixes
+
+- Update documentation for the program status object (#333)
+  ([#333](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/333),
+  [`3150e77`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3150e773ef1ae63bd246577141315619bf665dfd))
+
+
 ## v3.6.3 (2025-11-04)
 
 ### Bug Fixes
