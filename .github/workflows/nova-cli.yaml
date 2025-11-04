@@ -1,0 +1,48 @@
+---
+name: "Nova SDK: Test CLI Compatibility"
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+concurrency:
+  group: nova-cli-test
+  cancel-in-progress: false
+
+jobs:
+  test-cli-compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install uv
+          uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
+
+      - name: Install Homebrew (for NOVA CLI)
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
+
+      - name: Run NOVA CLI compatibility test
+        run: |
+          ./scripts/pull_nova_app_template.sh
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: nova-cli-test-logs
+          path: |
+            examples/your-nova-app/
+            *.log
+          retention-days: 7

@@ -22,7 +22,7 @@ from nova.types import MotionSettings, Pose
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name="ur10",
+                name="ur10e",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
                 type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
             )
@@ -33,7 +33,7 @@ from nova.types import MotionSettings, Pose
 async def plan_and_execute():
     async with Nova() as nova:
         cell = nova.cell()
-        controller = await cell.controller("ur10")
+        controller = await cell.controller("ur10e")
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
@@ -47,7 +47,7 @@ async def plan_and_execute():
 
             slow = MotionSettings(tcp_velocity_limit=50)
             normal = MotionSettings(tcp_velocity_limit=250)
-            fast = MotionSettings(tcp_velocity_limit=500)
+            fast = MotionSettings(tcp_velocity_limit=500, position_zone_radius=10)
 
             # The trajectory builder is a context manager that can be used to build a trajectory with fine-grained control over the settings
             t = TrajectoryBuilder(settings=normal)

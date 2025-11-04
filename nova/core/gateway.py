@@ -16,6 +16,13 @@ from decouple import config
 from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.cell.robot_cell import ConfigurablePeriphery, Device
+from nova.config import (  # add to the module for backward compatibility
+    INTERNAL_CLUSTER_NOVA_API,  # noqa: F401
+    NOVA_ACCESS_TOKEN,
+    NOVA_API,
+    NOVA_PASSWORD,
+    NOVA_USERNAME,
+)
 from nova.core import logger
 from nova.core.env_handler import set_key
 from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
@@ -31,8 +38,6 @@ def _custom_quote_for_ios(param, safe=""):
 
 
 T = TypeVar("T")
-
-INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 
 
 class ComparisonType(Enum):
@@ -111,17 +116,10 @@ class ApiGateway:
         verify_ssl: bool = True,
         auth0_config: Auth0Config | None = None,
     ):
-        if host is None:
-            host = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
-
-        if username is None:
-            username = config("NOVA_USERNAME", default=None)
-
-        if password is None:
-            password = config("NOVA_PASSWORD", default=None)
-
-        if access_token is None:
-            access_token = config("NOVA_ACCESS_TOKEN", default=None)
+        host = host or NOVA_API
+        access_token = access_token or NOVA_ACCESS_TOKEN
+        username = username or NOVA_USERNAME
+        password = password or NOVA_PASSWORD
 
         self._version = version
         self._verify_ssl = verify_ssl
@@ -205,6 +203,11 @@ class ApiGateway:
         self.trajectory_caching_api: wb.TrajectoryCachingApi = intercept(
             wb.TrajectoryCachingApi(api_client=self._api_client), self
         )
+        self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client), self)
+        self.motion_group_jogging_api = intercept(
+            wb.MotionGroupJoggingApi(api_client=self._api_client), self
+        )
+        self.store_object_api = intercept(wb.StoreObjectApi(api_client=self._api_client), self)
         self.kinematics_api = intercept(wb.KinematicsApi(api_client=self._api_client), self)
 
         # init v2 api client

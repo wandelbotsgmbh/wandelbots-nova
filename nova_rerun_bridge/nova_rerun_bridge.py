@@ -13,7 +13,7 @@ from wandelbots_api_client.models import (
     PlanTrajectoryFailedResponseErrorFeedback,
 )
 
-from nova import MotionGroup, NovaConfig
+from nova import MotionGroup
 from nova.actions import Action
 from nova.actions.io import WriteAction
 from nova.actions.motions import CollisionFreeMotion, Motion
@@ -61,18 +61,18 @@ class NovaRerunBridge:
         recording_id=None,
         show_details: bool = True,
         show_collision_link_chain: bool = False,
+        show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
     ) -> None:
         self._ensure_models_exist()
-        # Store the original nova instance for initial setup and to copy connection parameters
+        # Store the Nova instance for API calls
         self.nova = nova
-        # Create a separate Nova instance for the bridge to use for API calls
-        self._bridge_nova = None
         self._streaming_tasks: dict[MotionGroup, asyncio.Task] = {}
         # Track timing per motion group - each motion group has its own timeline
         self._motion_group_timers: dict[str, float] = {}
         self.show_details = show_details
         self.show_collision_link_chain = show_collision_link_chain
+        self.show_collision_tool = show_collision_tool
         self.show_safety_link_chain = show_safety_link_chain
 
         recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -97,8 +97,7 @@ class NovaRerunBridge:
 
         Fetches motion groups from Nova and configures visualization layout.
         """
-        nova = self._bridge_nova or self.nova
-        cell = nova.cell()
+        cell = self.nova.cell()
 
         controllers = await cell.controllers()
         motion_groups = []
@@ -153,10 +152,9 @@ class NovaRerunBridge:
 
     async def log_collision_scenes(self) -> dict[str, models.CollisionScene]:
         """Fetch and log all collision scenes from Nova to Rerun."""
-        bridge_nova = self._bridge_nova or self.nova
         collision_scenes = (
-            await bridge_nova._api_client.store_collision_setups_api.list_stored_collision_scenes(
-                cell=bridge_nova.cell()._cell_id
+            await self.nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
+                cell=self.nova.cell()._cell_id
             )
         )
         log_collision_scenes(collision_scenes)
@@ -171,10 +169,9 @@ class NovaRerunBridge:
         Raises:
             ValueError: If scene_id is not found in stored collision scenes
         """
-        bridge_nova = self._bridge_nova or self.nova
         collision_scenes = (
-            await bridge_nova._api_client.store_collision_setups_api.list_stored_collision_scenes(
-                cell=bridge_nova.cell()._cell_id
+            await self.nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
+                cell=self.nova.cell()._cell_id
             )
         )
 
@@ -219,31 +216,25 @@ class NovaRerunBridge:
             )
         logger.debug(f"log_motion called with motion_id: {motion_id}")
         try:
-            # Use the bridge's own Nova client for API calls
-            bridge_nova = self._bridge_nova or self.nova
-            logger.debug(
-                f"Using bridge_nova: {bridge_nova is not None}, bridge_nova._api_client: {hasattr(bridge_nova, '_api_client') if bridge_nova else False}"
-            )
-
             # Fetch motion details from api
             logger.debug("Fetching motion details...")
-            motion = await bridge_nova._api_client.motion_api.get_planned_motion(
-                bridge_nova.cell()._cell_id, motion_id
+            motion = await self.nova._api_client.motion_api.get_planned_motion(
+                self.nova.cell()._cell_id, motion_id
             )
             logger.debug("Fetching optimizer config...")
             optimizer_config = (
-                await bridge_nova._api_client.motion_group_infos_api.get_optimizer_configuration(
-                    bridge_nova.cell()._cell_id, motion.motion_group
+                await self.nova._api_client.motion_group_infos_api.get_optimizer_configuration(
+                    self.nova.cell()._cell_id, motion.motion_group
                 )
             )
             logger.debug("Fetching trajectory...")
-            trajectory = await bridge_nova._api_client.motion_api.get_motion_trajectory(
-                bridge_nova.cell()._cell_id, motion_id, int(RECORDING_INTERVAL * 1000)
+            trajectory = await self.nova._api_client.motion_api.get_motion_trajectory(
+                self.nova.cell()._cell_id, motion_id, int(RECORDING_INTERVAL * 1000)
             )
 
             logger.debug("Fetching motion groups...")
-            motion_groups = await bridge_nova._api_client.motion_group_api.list_motion_groups(
-                bridge_nova.cell()._cell_id
+            motion_groups = await self.nova._api_client.motion_group_api.list_motion_groups(
+                self.nova.cell()._cell_id
             )
             motion_motion_group = next(
                 (mg for mg in motion_groups.instances if mg.motion_group == motion.motion_group),
@@ -275,6 +266,7 @@ class NovaRerunBridge:
                 time_offset=current_time + time_offset,
                 tool_asset=tool_asset,
                 show_collision_link_chain=self.show_collision_link_chain,
+                show_collision_tool=self.show_collision_tool,
                 show_safety_link_chain=self.show_safety_link_chain,
             )
             # Update the timer for this motion group based on trajectory duration
@@ -673,43 +665,15 @@ class NovaRerunBridge:
         self._motion_group_timers[motion_group_id] = 0.0
 
     async def __aenter__(self) -> "NovaRerunBridge":
-        """Context manager entry point."""
-        api_client = self.nova._api_client
+        """Context manager entry point.
 
-        # Extract the host without the /api/v1 suffix
-        host = api_client._host
-        if host.endswith("/api/v1"):
-            host = host[:-7]
-        elif host.endswith("/api/"):
-            host = host[:-5]
-
-        # Helper coercers so we never pass Mock() into Pydantic
-        def as_opt_str(value):
-            return value if isinstance(value, str) else None
-
-        def as_opt_bool(value):
-            return value if isinstance(value, bool) else None
-
-        cfg_kwargs = {"host": host}
-
-        # Only include fields if they are the right primitive type;
-        # otherwise, leave them out so Pydantic never sees a Mock.
-        access_token = as_opt_str(getattr(api_client, "_access_token", None))
-        username = as_opt_str(getattr(api_client, "_username", None))
-        password = as_opt_str(getattr(api_client, "_password", None))
-        verify_ssl = as_opt_bool(getattr(api_client, "_verify_ssl", None))
-
-        if access_token is not None:
-            cfg_kwargs["access_token"] = access_token
-        if username is not None:
-            cfg_kwargs["username"] = username
-        if password is not None:
-            cfg_kwargs["password"] = password
-        if verify_ssl is not None:
-            cfg_kwargs["verify_ssl"] = verify_ssl
-
-        self._bridge_nova = Nova(NovaConfig(**cfg_kwargs))
-        await self._bridge_nova.__aenter__()
+        Note: This is primarily for standalone usage of NovaRerunBridge.
+        When used via the viewer integration, the Nova instance is already
+        connected and ready to use.
+        """
+        # For standalone usage, ensure the Nova instance is connected
+        if not self.nova.is_connected():
+            await self.nova.connect()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
@@ -720,10 +684,9 @@ class NovaRerunBridge:
         await self.cleanup()
 
     async def cleanup(self) -> None:
-        """Cleanup resources and close Nova API client connection."""
-        # Clean up the bridge's own Nova instance
-        if self._bridge_nova is not None:
-            await self._bridge_nova.__aexit__(None, None, None)
-            self._bridge_nova = None
+        """
+        Cleanup resources.
 
-        # Note: Don't clean up self.nova as it belongs to the main program
+        This method is intentionally left empty because the Nova instance (`self.nova`)
+        belongs to the caller and should not be cleaned up here.
+        """

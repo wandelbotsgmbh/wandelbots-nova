@@ -3,7 +3,6 @@ import contextlib
 import contextvars
 import inspect
 import io
-import json
 import sys
 import threading
 import traceback as tb
@@ -11,19 +10,21 @@ import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from concurrent.futures import Future
+from datetime import datetime
 from typing import Any, Coroutine, Optional
 
 import anyio
 from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
-from decouple import config
 from exceptiongroup import ExceptionGroup
 from loguru import logger
+from pydantic import BaseModel, Field, StrictStr
 from wandelbots_api_client.v2.models import ProgramRun as ApiProgramRun
 from wandelbots_api_client.v2.models import ProgramRunState
 
 from nova import Nova, NovaConfig, api
 from nova.cell.robot_cell import RobotCell
+from nova.config import CELL_NAME
 from nova.core.exceptions import PlanTrajectoryFailed
 from nova.nats import Message
 from nova.program.exceptions import NotPlannableError
@@ -32,16 +33,43 @@ from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
 from nova.utils import timestamp
 
-_CELL_NAME = config("CELL_NAME", default="")
-
 current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
     "current_execution_context_var"
+)
+
+# Context variable to track if running via operator/novax (for viewer optimization)
+# Set to True when app_name is provided (operator execution), False for local development
+is_operator_execution_var: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "is_operator_execution_var", default=False
 )
 
 
 # needs to change somehow
 class ProgramRun(ApiProgramRun):
     output_data: dict[str, Any] = {}
+
+
+# Define maximum length for error messages in ProgramStatus
+# This is a safeguard to prevent malicious users in a cloud environment from sending
+# very large error messages that could lead to performance issues or denial of service.
+PROGRAM_STATUS_ERROR_MAX_LENGTH = 1024 * 2
+
+
+class ProgramStatus(BaseModel):
+    run: StrictStr = Field(description="Unique identifier of the program run")
+    program: StrictStr = Field(description="Unique identifier of the program")
+    app: Optional[StrictStr] = Field(description="The app name where the program is hosted")
+    state: ProgramRunState = Field(description="State of the program run")
+    error: Optional[StrictStr] = Field(
+        default=None,
+        description="Error message if the program run failed",
+        max_length=PROGRAM_STATUS_ERROR_MAX_LENGTH,
+    )
+    start_time: Optional[datetime] = Field(
+        default=None, description="Start time of the program run"
+    )
+    end_time: Optional[datetime] = Field(default=None, description="End time of the program run")
+    timestamp: datetime = Field(description="The RC3339 timestamp when the message was created")
 
 
 # TODO: should provide a number of tools to the program to control the execution of the program
@@ -89,7 +117,7 @@ class ProgramRunner(ABC):
             parameters (dict[str, Any]): The parameters that are passed to the program.
             robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Should only be used for testing purposes. When a robot cell is provided, no Nova instance is created. Defaults to None.
             cell_id (str | None, optional): The cell ID to use for the program. Defaults to None.
-            app_name (str | None, optional): The app name to use for the program. Defaults to None.
+            app_name (str | None, optional): The app name to discover the program. Will be automatically set when executed via NOVAx or API. Does not need to be set by the user. Defaults to None.
             nova_config (NovaConfig | None, optional): The Nova config to use for the program. Defaults to None.
         """
         program_id = program.program_id
@@ -99,7 +127,7 @@ class ProgramRunner(ABC):
         self._preconditions = program.preconditions
         self._parameters = parameters
         self._robot_cell_override = robot_cell_override
-        self._cell_id = cell_id or _CELL_NAME
+        self._cell_id = cell_id or CELL_NAME
         self._app_name = app_name
         self._nova_config = nova_config
         self._program_run: ProgramRun = ProgramRun(
@@ -145,6 +173,22 @@ class ProgramRunner(ABC):
             Any: The program run object containing execution state and results
         """
         return self._program_run
+
+    @property
+    def program_status(self) -> ProgramStatus:
+        truncated_error = (
+            error[:PROGRAM_STATUS_ERROR_MAX_LENGTH] if (error := self._program_run.error) else None
+        )
+        return ProgramStatus(
+            run=self._program_run.run,
+            program=self._program_run.program,
+            app=self._app_name,
+            state=self._program_run.state,
+            error=truncated_error,
+            start_time=self._program_run.start_time,
+            end_time=self._program_run.end_time,
+            timestamp=timestamp.now_utc(),
+        )
 
     @property
     def state(self) -> ProgramRunState:
@@ -310,24 +354,11 @@ class ProgramRunner(ABC):
         await on_state_change()
 
         if nova is not None:
-            # publish program run to NATS
-            # TODO: also use autogenerated model for NATS
-            data = self._program_run.model_dump()
-            data["timestamp"] = timestamp.now_rfc3339()
-            data["start_time"] = (
-                timestamp.datetime_to_rfc3339(self._program_run.start_time)
-                if self._program_run.start_time
-                else None
-            )
-            data["end_time"] = (
-                timestamp.datetime_to_rfc3339(self._program_run.end_time)
-                if self._program_run.end_time
-                else None
-            )
-            data["app"] = self._app_name
+            data = self.program_status.model_dump_json().encode("utf-8")
 
+            # publish program run to NATS
             subject = f"nova.v2.cells.{self._cell_id}.programs"
-            message = Message(subject=subject, data=json.dumps(data).encode("utf-8"))
+            message = Message(subject=subject, data=data)
             await nova.nats.publish_message(message)
 
     async def _run_program(
@@ -386,6 +417,9 @@ class ProgramRunner(ABC):
 
             # if not self._robot_cell_override and not nova.is_connected():
             #    await nova.connect()
+
+            # Set context variable to indicate if running via operator (for viewer optimization)
+            is_operator_execution_var.set(self._app_name is not None)
 
             self.execution_context = execution_context = ExecutionContext(
                 robot_cell=robot_cell, stop_event=stop_event
@@ -469,12 +503,14 @@ class PythonProgramRunner(ProgramRunner):
         parameters: Optional[dict[str, Any]] = None,
         robot_cell_override: RobotCell | None = None,
         nova_config: NovaConfig | None = None,
+        app_name: str | None = None,
     ):
         super().__init__(
             program,
             parameters=parameters or {},
             robot_cell_override=robot_cell_override,
             nova_config=nova_config,
+            app_name=app_name,
         )
         # TODO: is this still required?
         self.program = program
@@ -541,6 +577,7 @@ def run_program(
     robot_cell_override: RobotCell | None = None,
     on_state_change: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
     nova_config: NovaConfig | None = None,
+    app_name: str | None = None,
 ) -> PythonProgramRunner:
     """Run a program with given parameters.
 
@@ -560,6 +597,7 @@ def run_program(
         parameters=parameters,
         robot_cell_override=robot_cell_override,
         nova_config=nova_config,
+        app_name=app_name,
     )
 
     # Try to grab a caller loop if there is one; otherwise, fall back to None.

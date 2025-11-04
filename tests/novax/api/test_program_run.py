@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 import nova
 from nova.core.nova import Nova
-from nova.program.runner import ProgramRun, ProgramRunState
+from nova.program.runner import ProgramRun, ProgramRunState, ProgramStatus
 from novax.novax import Novax
 
 
@@ -28,12 +28,12 @@ async def test_novax_program_successful_run(novax_app):
     nova = Nova()
     await nova.connect()
 
-    program_run_message = []
+    # subscribe to program run messages
+    program_status_messages = []
 
-    async def cb(msg):
-        program_run_message.append(msg)
-
-    await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
+    await nova.nats.subscribe(
+        "nova.v2.cells.cell.programs", on_message=lambda msg: program_status_messages.append(msg)
+    )
 
     with TestClient(novax_app) as client:
         start_program = client.post("/programs/sucessful_program/start", json={"arguments": {}})
@@ -41,14 +41,20 @@ async def test_novax_program_successful_run(novax_app):
 
         await asyncio.sleep(10)
 
-        assert len(program_run_message) == 3, (
-            f"Expected 3 program run messages, but got {len(program_run_message)}"
+        assert len(program_status_messages) == 3, (
+            f"Expected 3 program status messages, but got {len(program_status_messages)}"
         )
 
-        models = [ProgramRun.model_validate_json(message.data) for message in program_run_message]
+        # verify program run messages
+        models = [
+            ProgramStatus.model_validate_json(message.data) for message in program_status_messages
+        ]
         assert models[0].state == ProgramRunState.PREPARING
         assert models[1].state == ProgramRunState.RUNNING
         assert models[2].state == ProgramRunState.COMPLETED
+
+        for model in models:
+            assert model.app == "novax_test"
 
 
 @nova.program(
@@ -68,12 +74,12 @@ async def test_novax_program_failed_run(novax_app):
     nova = Nova()
     await nova.connect()
 
-    program_run_message = []
+    # subscribe to program run messages
+    program_status_messages = []
 
-    async def cb(msg):
-        program_run_message.append(msg)
-
-    await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
+    await nova.nats.subscribe(
+        "nova.v2.cells.cell.programs", on_message=lambda msg: program_status_messages.append(msg)
+    )
 
     with TestClient(novax_app) as client:
         start_program = client.post("/programs/failing_program/start", json={"arguments": {}})
@@ -81,14 +87,20 @@ async def test_novax_program_failed_run(novax_app):
 
         await asyncio.sleep(8)
 
-        assert len(program_run_message) == 3, (
-            f"Expected 3 program run messages, but got {len(program_run_message)}"
+        assert len(program_status_messages) == 3, (
+            f"Expected 3 program status messages, but got {len(program_status_messages)}"
         )
 
-        models = [ProgramRun.model_validate_json(message.data) for message in program_run_message]
+        # verify program status messages
+        models = [
+            ProgramStatus.model_validate_json(message.data) for message in program_status_messages
+        ]
         assert models[0].state == ProgramRunState.PREPARING
         assert models[1].state == ProgramRunState.RUNNING
         assert models[2].state == ProgramRunState.FAILED
+
+        for model in models:
+            assert model.app == "novax_test"
 
 
 @nova.program(
@@ -109,12 +121,12 @@ async def test_novax_program_stopped_run(novax_app):
     nova = Nova()
     await nova.connect()
 
-    program_run_messages = []
+    # subscribe to program run messages
+    program_status_messages = []
 
-    async def cb(msg):
-        program_run_messages.append(msg)
-
-    await nova.nats.subscribe("nova.v2.cells.cell.programs", on_message=cb)
+    await nova.nats.subscribe(
+        "nova.v2.cells.cell.programs", on_message=lambda msg: program_status_messages.append(msg)
+    )
 
     with TestClient(novax_app) as client:
         start_program = client.post("/programs/long_running_program/start", json={"arguments": {}})
@@ -125,10 +137,12 @@ async def test_novax_program_stopped_run(novax_app):
         await asyncio.sleep(5)
 
         # Verify program is running
-        assert len(program_run_messages) >= 2, (
-            f"Expected at least 2 program run messages, but got {len(program_run_messages)}"
+        assert len(program_status_messages) >= 2, (
+            f"Expected at least 2 program run messages, but got {len(program_status_messages)}"
         )
-        models = [ProgramRun.model_validate_json(message.data) for message in program_run_messages]
+        models = [
+            ProgramStatus.model_validate_json(message.data) for message in program_status_messages
+        ]
         assert models[0].state == ProgramRunState.PREPARING
         assert models[1].state == ProgramRunState.RUNNING
 
@@ -140,16 +154,20 @@ async def test_novax_program_stopped_run(novax_app):
         await asyncio.sleep(5)
 
         # Verify that we received the STOPPED event
-        assert len(program_run_messages) == 3, (
-            f"Expected 3 program run messages, but got {len(program_run_messages)}"
+        assert len(program_status_messages) == 3, (
+            f"Expected 3 program status messages, but got {len(program_status_messages)}"
         )
 
+        # verify program status messages
         final_models = [
-            ProgramRun.model_validate_json(message.data) for message in program_run_messages
+            ProgramStatus.model_validate_json(message.data) for message in program_status_messages
         ]
         assert final_models[0].state == ProgramRunState.PREPARING
         assert final_models[1].state == ProgramRunState.RUNNING
         assert final_models[2].state == ProgramRunState.STOPPED
+
+        for model in final_models:
+            assert model.app == "novax_test"
 
 
 @pytest.mark.integration
@@ -275,3 +293,24 @@ async def test_program_run_contains_init_args():
         program_run = ProgramRun.model_validate(start_program.json())
 
         assert program_run.input_data == args
+
+
+@pytest.mark.integration
+@pytest.mark.xdist_group("program-runs")
+@pytest.mark.asyncio
+def test_stop_program_on_lifespan_end():
+    @nova.program(name="endless_program")
+    async def endless_program():
+        while True:
+            await asyncio.sleep(1)
+
+    novax = Novax()
+    novax.register_program(endless_program)
+    app = novax.create_app()
+    novax.include_programs_router(app)
+
+    with TestClient(app) as client:
+        start_response = client.post("/programs/endless_program/start", json={"arguments": {}})
+        assert start_response.status_code == 200
+
+    assert novax.program_manager.is_any_program_running is False

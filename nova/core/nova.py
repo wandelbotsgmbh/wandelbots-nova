@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-from decouple import config as env_config
-
 from nova.cell.cell import Cell
-from nova.config import NovaConfig
+
+# backward compatibility
+from nova.config import (  # noqa: F401
+    CELL_NAME,
+    LOG_LEVEL,
+    NOVA_ACCESS_TOKEN,
+    NOVA_API,
+    NOVA_PASSWORD,
+    NOVA_USERNAME,
+    NovaConfig,
+    default_config,
+)
 from nova.core.gateway import ApiGateway
 from nova.nats import NatsClient
-
-LOG_LEVEL = env_config("LOG_LEVEL", default="INFO")
-CELL_NAME = env_config("CELL_NAME", default="cell", cast=str)
-NOVA_API = env_config("NOVA_API", default=None)
-NOVA_ACCESS_TOKEN = env_config("NOVA_ACCESS_TOKEN", default=None)
-NOVA_USERNAME = env_config("NOVA_USERNAME", default=None)
-NOVA_PASSWORD = env_config("NOVA_PASSWORD", default=None)
 
 
 class Nova:
@@ -26,27 +28,15 @@ class Nova:
             config (NovaConfig | None): The Nova configuration.
         """
 
-        config = config or NovaConfig(
-            host=NOVA_API,
-            access_token=NOVA_ACCESS_TOKEN,
-            username=NOVA_USERNAME,
-            password=NOVA_PASSWORD,
-        )
-
-        self._config = config
+        self._config = config or default_config
         self._api_client = ApiGateway(
-            host=config.host,
-            access_token=config.access_token,
-            username=config.username,
-            password=config.password,
-            verify_ssl=config.verify_ssl,
+            host=self._config.host,
+            access_token=self._config.access_token,
+            username=self._config.username,
+            password=self._config.password,
+            verify_ssl=self._config.verify_ssl,
         )
-
-        self.nats = NatsClient(
-            host=config.host,
-            access_token=config.access_token,
-            nats_client_config=config.nats_client_config,
-        )
+        self.nats = NatsClient(nats_client_config=self._config.nats_client_config)
 
     @property
     def config(self) -> NovaConfig:

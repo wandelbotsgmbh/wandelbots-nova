@@ -1,6 +1,6 @@
 [project]
 name = "wandelbots-nova"
-version = "3.1.0"
+version = "3.6.2"
 description = "Official Python SDK for the Wandelbots Nova"
 authors = [
     { name = "Wandelbots GmbH" },
@@ -11,12 +11,12 @@ authors = [
     { name = "Stefan Wagner", email = "stefan.wagner@wandelbots.com" },
     { name = "André Kühnert", email = "andre.kuhnert@wandelbots.com" },
 ]
-requires-python = ">=3.11, <3.13"
+requires-python = ">=3.10, <3.13"
 readme = "README.md"
 dependencies = [
     "httpx>=0.28.0,<0.29",
-    "wandelbots-api-client~=25.6",
-    "websockets~=15.0",
+    "wandelbots_api_client~=25.9.0",
+    "websockets>=14.1.0,<15",
     "loguru>=0.7.2,<0.8",
     "pydantic>=2.11.4,<3",
     "python-decouple~=3.8",
@@ -50,7 +50,7 @@ dev = [
 
 [project.optional-dependencies]
 nova-rerun-bridge = [
-    "rerun-sdk==0.24.1",
+    "rerun-sdk==0.26.2",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",
@@ -65,7 +65,7 @@ wandelscript = [
 ]
 novax = ["fastapi>=0.115.6", "uvicorn>=0.34.0", "python-decouple>=3.8"]
 benchmark = [
-    "rerun-sdk==0.24.1",
+    "rerun-sdk==0.26.2",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",
@@ -113,7 +113,7 @@ markers = """
 """
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.10"
 ignore_missing_imports = true
 warn_unreachable = true
 warn_unused_configs = true
