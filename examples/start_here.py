@@ -17,7 +17,7 @@ Key robotics concepts:
 
 import nova
 from nova import api, run_program
-from nova.actions import cartesian_ptp, joint_ptp
+from nova.actions import cartesian_ptp, circular, joint_ptp, linear
 from nova.cell import virtual_controller
 from nova.core.nova import Nova
 from nova.events import Cycle
@@ -48,11 +48,6 @@ async def start():
         controller = await cell.controller("kuka-kr16-r2010")
         cycle = Cycle(cell=cell, extra={"app": "visual-studio-code", "program": "start_here"})
 
-        # await nova._api_client.wait_for_bool_io(
-        #     cell=cell.cell_id, controller=controller.id, io="OUT#1", value=True
-        # )
-        await controller._io_access.wait_for_bool_io(io="OUT#1", value=True)
-
         slow = MotionSettings(tcp_velocity_limit=50)
 
         async with controller[0] as motion_group:
@@ -66,8 +61,21 @@ async def start():
 
             # Actions define the sequence of movements and other actions to be executed by the robot
             actions = [
-                joint_ptp(home_joints),  # Move to home position slowly
+                joint_ptp(home_joints, settings=slow),  # Move to home position slowly
                 cartesian_ptp(target_pose),  # Move to target pose
+                joint_ptp(home_joints),  # Return to home
+                cartesian_ptp(
+                    target_pose @ [200, 0, 0, 0, 0, 0]
+                ),  # Move 100mm in target pose's local x-axis
+                joint_ptp(home_joints),
+                linear(target_pose @ (200, 200, 0, 0, 0, 0)),  # Move 100mm in local x and y axes
+                joint_ptp(home_joints, settings=slow),
+                cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0))),
+                joint_ptp(home_joints),
+                circular(
+                    target_pose @ Pose((0, 200, 0, 0, 0, 0)),
+                    intermediate=target_pose @ Pose((0, 200, 0, 0, 0, 0)),
+                ),
                 joint_ptp(home_joints),
             ]
 
