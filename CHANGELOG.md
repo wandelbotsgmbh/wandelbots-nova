@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v3.6.2 (2025-11-04)
+
+### Chores
+
+- Test MR restrictions (#330) ([#330](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/330),
+  [`1076750`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/10767505df688a4dc2f27a7147fc10db714870a3))
+
+
 ## v3.6.1 (2025-11-03)
 
 ### Chores
