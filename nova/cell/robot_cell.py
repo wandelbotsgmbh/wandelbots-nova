@@ -299,7 +299,7 @@ class AbstractRobot(Device):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
-        start_on_io: api.models.start_on_io.StartOnIO | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
     ) -> AsyncIterable[MovementResponse]:
         """Execute a planned motion
 

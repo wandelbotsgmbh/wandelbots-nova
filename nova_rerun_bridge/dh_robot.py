@@ -1,21 +1,21 @@
 import numpy as np
 
-from nova.api import models
+from nova import api
 
 
 class DHRobot:
     """A class for handling DH parameters and computing joint positions."""
 
-    def __init__(self, dh_parameters: list[models.DHParameter], mounting: models.PlannerPose):
+    def __init__(self, dh_parameters: list[api.models.DHParameter], mounting: api.models.Pose) -> None:
         """
         Initialize the DHRobot with DH parameters and a mounting pose.
         :param dh_parameters: List of DHParameter objects containing all joint configurations.
-        :param mounting: PlannerPose object representing the mounting orientation and position.
+        :param mounting: Pose object representing the mounting orientation and position.
         """
         self.dh_parameters = dh_parameters
         self.mounting = mounting
 
-    def pose_to_matrix(self, pose: models.PlannerPose):
+    def pose_to_matrix(self, pose: api.models.Pose) -> np.ndarray:
         """
         Convert a PlannerPose (with quaternion orientation) into a 4x4 homogeneous transformation matrix.
         :param pose: A PlannerPose object with position: Vector3d and orientation: Quaternion.
@@ -67,7 +67,7 @@ class DHRobot:
 
         return T
 
-    def dh_transform(self, dh_param: models.DHParameter, joint_rotation):
+    def dh_transform(self, dh_param: api.models.DHParameter, joint_rotation: float) -> np.ndarray:
         """
         Compute the homogeneous transformation matrix for a given DH parameter and joint rotation.
         :param dh_param: A single DH parameter.

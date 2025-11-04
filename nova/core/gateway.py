@@ -10,9 +10,7 @@ from enum import Enum
 from typing import AsyncGenerator, TypeVar
 from urllib.parse import quote as original_quote
 
-import wandelbots_api_client.v2 as wb
-from decouple import config
-
+from nova import api
 from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.cell.robot_cell import ConfigurablePeriphery, Device
@@ -103,7 +101,7 @@ def intercept(api_instance: T, gateway: "ApiGateway") -> T:
 
 
 class ApiGateway:
-    _api_client: wb.ApiClient
+    _api_client: api.ApiClient
 
     def __init__(
         self,
@@ -162,67 +160,57 @@ class ApiGateway:
         stripped_host = self._host.rstrip("/")
 
         # init v1 api client
-        api_client_config = wb.Configuration(
+        api_client_config = api.Configuration(
             host=f"{stripped_host}/api/v2",
             username=self._username,
             password=self._password,
             access_token=self._access_token,
         )
         api_client_config.verify_ssl = self._verify_ssl
-        self._api_client = wb.ApiClient(configuration=api_client_config)
+        self._api_client = api.ApiClient(configuration=api_client_config)
         self._api_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
 
         # Use the intercept function to wrap each API client
-        self.system_api = intercept(wb.SystemApi(api_client=self._api_client), self)
-        self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client), self)
+        self.system_api = intercept(api.api.SystemApi(api_client=self._api_client), self)
+        self.controller_api = intercept(api.api.ControllerApi(api_client=self._api_client), self)
         self.controller_ios_api = intercept(
-            wb.ControllerInputsOutputsApi(api_client=self._api_client), self
+            api.api.ControllerInputsOutputsApi(api_client=self._api_client), self
         )
         self.virtual_controller_api = intercept(
-            wb.VirtualControllerApi(api_client=self._api_client), self
+            api.api.VirtualControllerApi(api_client=self._api_client), self
         )
         self.virtual_controller_behavior_api = intercept(
-            wb.VirtualControllerBehaviorApi(api_client=self._api_client), self
+            api.api.VirtualControllerBehaviorApi(api_client=self._api_client), self
         )
         # TODO migrate stuff in rerun bridge and then remove this
         self.virtual_robot_setup_api = self.virtual_controller_api
-        self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client), self)
-        self.motion_group_jogging_api = intercept(wb.JoggingApi(api_client=self._api_client), self)
+        self.motion_group_api = intercept(api.api.MotionGroupApi(api_client=self._api_client), self)
+        self.motion_group_jogging_api = intercept(
+            api.api.JoggingApi(api_client=self._api_client), self
+        )
         self.store_collision_components_api = intercept(
-            wb.StoreCollisionComponentsApi(api_client=self._api_client), self
+            api.api.StoreCollisionComponentsApi(api_client=self._api_client), self
         )
         self.store_collision_setups_api = intercept(
-            wb.StoreCollisionSetupsApi(api_client=self._api_client), self
+            api.api.StoreCollisionSetupsApi(api_client=self._api_client), self
         )
-        self.trajectory_planning_api: wb.TrajectoryPlanningApi = intercept(
-            wb.TrajectoryPlanningApi(api_client=self._api_client), self
+        self.trajectory_planning_api: api.api.TrajectoryPlanningApi = intercept(
+            api.api.TrajectoryPlanningApi(api_client=self._api_client), self
         )
-        self.trajectory_execution_api: wb.TrajectoryExecutionApi = intercept(
-            wb.TrajectoryExecutionApi(api_client=self._api_client), self
+        self.trajectory_execution_api: api.api.TrajectoryExecutionApi = intercept(
+            api.api.TrajectoryExecutionApi(api_client=self._api_client), self
         )
-        self.trajectory_caching_api: wb.TrajectoryCachingApi = intercept(
-            wb.TrajectoryCachingApi(api_client=self._api_client), self
+        self.trajectory_caching_api: api.api.TrajectoryCachingApi = intercept(
+            api.api.TrajectoryCachingApi(api_client=self._api_client), self
         )
-        self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client), self)
-        self.motion_group_jogging_api = intercept(
-            wb.MotionGroupJoggingApi(api_client=self._api_client), self
+        self.controller_inputs_outputs_api = intercept(
+            api.api.ControllerInputsOutputsApi(api_client=self._api_client), self
         )
-        self.store_object_api = intercept(wb.StoreObjectApi(api_client=self._api_client), self)
-        self.kinematics_api = intercept(wb.KinematicsApi(api_client=self._api_client), self)
-
-        # init v2 api client
-        api_v2_client_config = wb.Configuration(
-            host=f"{stripped_host}/api/v2",
-            username=self._username,
-            password=self._password,
-            access_token=self._access_token,
+        self.jogging_api = intercept(
+            api.api.JoggingApi(api_client=self._api_client), self
         )
-        self._api_v2_client = wb.ApiClient(configuration=api_v2_client_config)
-        self._api_v2_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
-
-        self.virtual_robot_api_v2 = intercept(
-            wb.VirtualControllerApi(api_client=self._api_v2_client), self
-        )
+        self.store_object_api = intercept(api.api.StoreObjectApi(api_client=self._api_client), self)
+        self.kinematics_api = intercept(api.api.KinematicsApi(api_client=self._api_client), self)
 
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
@@ -308,7 +296,7 @@ class ApiGateway:
 
     async def stream_robot_controller_state(
         self, cell: str, controller_id: str, response_rate: int = 200
-    ) -> AsyncGenerator[wb.models.RobotControllerState, None]:
+    ) -> AsyncGenerator[api.models.RobotControllerState, None]:
         """
         Stream the robot controller state.
         """
@@ -319,7 +307,7 @@ class ApiGateway:
 
     async def list_controller_io_descriptions(
         self, cell: str, controller: str, ios: list[str]
-    ) -> list[wb.models.IODescription]:
+    ) -> list[api.models.IODescription]:
         if not ios:
             ios = []
 
@@ -336,11 +324,11 @@ class ApiGateway:
 
         found_io = response.io_values[0]
 
-        if isinstance(found_io.actual_instance, wb.models.IOBooleanValue):
+        if isinstance(found_io.actual_instance, api.models.IOBooleanValue):
             return bool(found_io.actual_instance.boolean_value)
-        elif isinstance(found_io.actual_instance, wb.models.IOIntegerValue):
+        elif isinstance(found_io.actual_instance, api.models.IOIntegerValue):
             return int(found_io.actual_instance.integer_value)
-        elif isinstance(found_io.actual_instance, wb.models.IOFloatValue):
+        elif isinstance(found_io.actual_instance, api.models.IOFloatValue):
             return float(found_io.actual_instance.float_value)
 
         raise ValueError(
@@ -350,35 +338,35 @@ class ApiGateway:
     async def write_controller_io(
         self, cell: str, controller: str, io: str, value: bool | int | float
     ):
-        io_value: wb.models.IOBooleanValue | wb.models.IOIntegerValue | wb.models.IOFloatValue
+        io_value: api.models.IOBooleanValue | api.models.IOIntegerValue | api.models.IOFloatValue
 
         if isinstance(value, bool):
-            io_value = wb.models.IOBooleanValue(io=io, boolean_value=value)
+            io_value = api.models.IOBooleanValue(io=io, boolean_value=value)
         elif isinstance(value, int):
-            io_value = wb.models.IOIntegerValue(io=io, integer_value=str(value))
+            io_value = api.models.IOIntegerValue(io=io, integer_value=str(value))
         elif isinstance(value, float):
-            io_value = wb.models.IOFloatValue(io=io, float_value=value)
+            io_value = api.models.IOFloatValue(io=io, float_value=value)
         else:
             raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
 
         await self.controller_ios_api.set_output_values(
             cell=cell,
             controller=controller,
-            set_output_values_request_inner=[wb.models.SetOutputValuesRequestInner(io_value)],
+            set_output_values_request_inner=[api.models.SetOutputValuesRequestInner(io_value)],
         )
 
     async def wait_for_bool_io(self, cell: str, controller: str, io: str, value: bool):
-        io_value = wb.models.IOBooleanValue(io=io, boolean_value=value)
+        io_value = api.models.IOBooleanValue(io=io, boolean_value=value)
 
-        wait_request = wb.models.WaitForIOEventRequest(
-            io=wb.models.SetOutputValuesRequestInner(io_value),
-            comparator=wb.models.Comparator.COMPARATOR_EQUALS,
+        wait_request = api.models.WaitForIOEventRequest(
+            io=api.models.SetOutputValuesRequestInner(io_value),
+            comparator=api.models.Comparator.COMPARATOR_EQUALS,
         )
         await self.controller_ios_api.wait_for_io_event(
             cell=cell, controller=controller, wait_for_io_event_request=wait_request
         )
 
-    async def list_controllers(self, *, cell: str) -> list[wb.models.RobotController]:
+    async def list_controllers(self, *, cell: str) -> list[api.models.RobotController]:
         # TODO The API returns a list of controller names as of v2, should we really offer
         # the instance listing at all?
         controller_names = await self.controller_api.list_robot_controllers(cell=cell)
@@ -394,19 +382,19 @@ class ApiGateway:
 
     async def get_controller_instance(
         self, *, cell: str, name: str
-    ) -> wb.models.RobotController | None:
+    ) -> api.models.RobotController | None:
         controllers = await self.list_controllers(cell=cell)
         return next((c for c in controllers if c.name == name), None)
 
     async def get_current_robot_controller_state(
         self, *, cell: str, controller_id: str
-    ) -> wb.models.RobotControllerState:
+    ) -> api.models.RobotControllerState:
         return await self.controller_api.get_current_robot_controller_state(
             cell=cell, controller=controller_id
         )
 
     async def add_robot_controller(
-        self, cell: str, robot_controller: wb.models.RobotController, timeout: int | None = None
+        self, cell: str, robot_controller: api.models.RobotController, timeout: int | None = None
     ):
         """
         Add a robot controller to the specified cell.
@@ -427,8 +415,8 @@ class ApiGateway:
         )
 
     async def plan_trajectory(
-        self, cell: str, motion_group_id: str, request: wb.models.PlanTrajectoryRequest
-    ) -> wb.models.JointTrajectory:
+        self, cell: str, motion_group_id: str, request: api.models.PlanTrajectoryRequest
+    ) -> api.models.JointTrajectory:
         """
         Plan a trajectory for the given motion group.
         """
@@ -438,7 +426,7 @@ class ApiGateway:
         )
         if isinstance(
             plan_trajectory_response.response.actual_instance,
-            wb.models.PlanTrajectoryFailedResponse,
+            api.models.PlanTrajectoryFailedResponse,
         ):
             # TODO: handle partially executable path
             raise PlanTrajectoryFailed(
@@ -451,14 +439,14 @@ class ApiGateway:
         cell: str,
         controller_id: str,
         motion_group_id: str,
-        joint_trajectory: wb.models.JointTrajectory,
+        joint_trajectory: api.models.JointTrajectory,
         tcp: str,
-    ) -> wb.models.PlanSuccessfulResponse:
-        load_plan_response: wb.models.AddTrajectoryResponse = (
+    ) -> api.models.PlanSuccessfulResponse:
+        load_plan_response: api.models.AddTrajectoryResponse = (
             await self.trajectory_caching_api.add_trajectory(
                 cell=cell,
                 controller=controller_id,
-                add_trajectory_request=wb.models.AddTrajectoryRequest(
+                add_trajectory_request=api.models.AddTrajectoryRequest(
                     motion_group=motion_group_id, trajectory=joint_trajectory, tcp=tcp
                 ),
             )
@@ -474,8 +462,8 @@ class ApiGateway:
         cell: str,
         motion_id: str,
         location_on_trajectory: int,
-        joint_velocity_limits: wb.models.Joints | None = None,
-    ) -> AsyncGenerator[wb.models.StreamMoveResponse, None]:
+        joint_velocity_limits: api.models.Joints | None = None,
+    ) -> AsyncGenerator[api.models.StreamMoveResponse, None]:
         return self.motion_api.stream_move_to_trajectory_via_joint_ptp(
             cell=cell,
             motion=motion_id,
@@ -493,13 +481,15 @@ class ApiGateway:
         return len(spec.mechanical_joint_limits)
 
     async def plan_collision_free_ptp(
-        self, cell: str, motion_group_id: str, request: wb.models.PlanCollisionFreePTPRequest
+        self, cell: str, motion_group_id: str, request: api.models.PlanCollisionFreePTPRequest
     ):
         plan_result = await self.motion_api.plan_collision_free_ptp(
             cell=cell, plan_collision_free_ptp_request=request
         )
 
-        if isinstance(plan_result.response.actual_instance, wb.models.PlanTrajectoryFailedResponse):
+        if isinstance(
+            plan_result.response.actual_instance, api.models.PlanTrajectoryFailedResponse
+        ):
             raise PlanTrajectoryFailed(plan_result.response.actual_instance, motion_group_id)
         return plan_result.response.actual_instance
 
