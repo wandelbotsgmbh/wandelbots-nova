@@ -68,7 +68,9 @@ class ProgramStatus(BaseModel):
     start_time: Optional[datetime] = Field(
         default=None, description="The RFC3339 timestamp of the start time of the program run"
     )
-    end_time: Optional[datetime] = Field(default=None, description="The RFC3339 timestamp of the end time of the program run")
+    end_time: Optional[datetime] = Field(
+        default=None, description="The RFC3339 timestamp of the end time of the program run"
+    )
     timestamp: datetime = Field(description="The RFC3339 timestamp when the message was created")
 
 
