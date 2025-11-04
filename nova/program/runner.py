@@ -368,11 +368,11 @@ class ProgramRunner(ABC):
                 else None
             )
 
-            data = json.dumps(data).encode("utf-8")
+            serialized_data = json.dumps(data).encode("utf-8")
 
             # publish program run to NATS
             subject = f"nova.v2.cells.{self._cell_id}.programs"
-            message = Message(subject=subject, data=data)
+            message = Message(subject=subject, data=serialized_data)
             await nova.nats.publish_message(message)
 
     async def _run_program(
