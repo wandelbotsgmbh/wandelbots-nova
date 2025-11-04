@@ -14,8 +14,8 @@ import wandelbots_api_client.v2 as v2
 from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.cell.robot_cell import ConfigurablePeriphery, Device
+from nova.config import INTERNAL_CLUSTER_NOVA_API  # noqa: F401
 from nova.config import (  # add to the module for backward compatibility
-    INTERNAL_CLUSTER_NOVA_API,  # noqa: F401
     NOVA_ACCESS_TOKEN,
     NOVA_API,
     NOVA_PASSWORD,
@@ -372,7 +372,7 @@ class ApiGateway:
             cell=cell,
             controller=controller,
             io=io,
-            comparison_type=ComparisonType.COMPARISON_TYPE_EQUAL,
+            comparison_type=ComparisonType.COMPARISON_TYPE_EQUAL.value,
             boolean_value=value,
         )
 
