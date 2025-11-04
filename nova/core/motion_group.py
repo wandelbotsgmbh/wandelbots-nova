@@ -11,7 +11,7 @@ from nova.actions.motions import Motion
 from nova.cell.robot_cell import AbstractRobot
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core import logger
-from nova.core.exceptions import InconsistentCollisionScenes
+from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
 from nova.core.tuner import TrajectoryTuner
@@ -169,7 +169,7 @@ class MotionGroup(AbstractRobot):
             cell (str): The name or identifier of the robotic cell.
             motion_group_id (str): The identifier of the motion group.
         """
-        self._api_gateway = api_gateway
+        self._api_client = api_gateway
         self._cell = cell
         self._controller_id = controller_id
         self._motion_group_id = motion_group_id
@@ -420,15 +420,24 @@ class MotionGroup(AbstractRobot):
             ):
                 collision_motion_group = collision_scenes[0].motion_groups[motion_group_type]
 
-        request = api.models.PlanTrajectoryRequest(
-            motion_group_setup=robot_setup,
-            start_joint_position=list(start_joint_position),
-            motion_commands=motion_commands,
+        # Plan the trajectory
+        plan_trajectory_response = await self._api_client.trajectory_planning_api.plan_trajectory(
+            cell=self._cell,
+            plan_trajectory_request=api.models.PlanTrajectoryRequest(
+                motion_group_setup=robot_setup,
+                start_joint_position=list(start_joint_position),
+                motion_commands=motion_commands,
+            ),
         )
 
-        return await self._api_gateway.plan_trajectory(
-            cell=self._cell, motion_group_id=self.motion_group_id, request=request
-        )
+        # If the plan trajectory failed, raise an exception
+        if isinstance(plan_trajectory_response.response, api.models.PlanTrajectoryFailedResponse):
+            # TODO: handle partially executable path
+            raise PlanTrajectoryFailed(
+                error=plan_trajectory_response.response, motion_group_id=self.motion_group_id
+            )
+
+        return plan_trajectory_response.response
 
     async def _plan(
         self,

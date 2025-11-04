@@ -412,26 +412,6 @@ class ApiGateway:
             cell=cell, controller=controller, completion_timeout=completion_timeout
         )
 
-    async def plan_trajectory(
-        self, cell: str, motion_group_id: str, request: api.models.PlanTrajectoryRequest
-    ) -> api.models.JointTrajectory:
-        """
-        Plan a trajectory for the given motion group.
-        """
-
-        plan_trajectory_response = await self.trajectory_planning_api.plan_trajectory(
-            cell=cell, plan_trajectory_request=request
-        )
-        if isinstance(
-            plan_trajectory_response.response.actual_instance,
-            api.models.PlanTrajectoryFailedResponse,
-        ):
-            # TODO: handle partially executable path
-            raise PlanTrajectoryFailed(
-                plan_trajectory_response.response.actual_instance, motion_group_id
-            )
-        return plan_trajectory_response.response.actual_instance
-
     async def load_planned_motion(
         self,
         cell: str,
