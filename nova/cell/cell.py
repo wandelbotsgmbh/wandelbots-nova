@@ -1,6 +1,8 @@
 import asyncio
 import json
 
+from icecream import ic
+
 from nova import api
 from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
@@ -10,10 +12,10 @@ from nova.logging import logger
 from nova.nats import NatsClient
 
 # This is the default value we use to wait for add_controller API call to complete.
-DEFAULT_ADD_CONTROLLER_TIMEOUT = 120
+DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS = 120
 
 # This is the default value we use when we wait for a controller to be ready.
-DEFAULT_WAIT_FOR_READY_TIMEOUT = 120
+DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS = 120
 
 
 class Cell:
@@ -72,8 +74,8 @@ class Cell:
     async def add_controller(
         self,
         robot_controller: api.models.RobotController,
-        add_timeout_secs: int = DEFAULT_ADD_CONTROLLER_TIMEOUT,
-        wait_for_ready_timeout_secs: int = DEFAULT_WAIT_FOR_READY_TIMEOUT,
+        add_timeout_secs: int = DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS,
+        wait_for_ready_timeout_secs: int = DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS,
     ) -> Controller:
         """
         Add a robot controller to the cell and wait for it to get ready.
@@ -92,7 +94,9 @@ class Cell:
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(
                     self._api_gateway.add_robot_controller(
-                        cell=self._cell_id, robot_controller=robot_controller, timeout=None
+                        cell=self._cell_id,
+                        robot_controller=robot_controller,
+                        timeout=add_timeout_secs,
                     )
                 )
                 tg.create_task(
@@ -132,6 +136,8 @@ class Cell:
             Controller: The added Controller object.
         """
         # TODO this makes no sense if we already have the controller instance as in the robot_controller parameter
+        ic(controller_config)
+        ic(self.cell_id)
         controller = await self._api_gateway.get_controller_instance(
             cell=self.cell_id, name=controller_config.name
         )

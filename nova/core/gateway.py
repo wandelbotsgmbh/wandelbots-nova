@@ -206,9 +206,7 @@ class ApiGateway:
         self.controller_inputs_outputs_api = intercept(
             api.api.ControllerInputsOutputsApi(api_client=self._api_client), self
         )
-        self.jogging_api = intercept(
-            api.api.JoggingApi(api_client=self._api_client), self
-        )
+        self.jogging_api = intercept(api.api.JoggingApi(api_client=self._api_client), self)
         self.store_object_api = intercept(api.api.StoreObjectApi(api_client=self._api_client), self)
         self.kinematics_api = intercept(api.api.KinematicsApi(api_client=self._api_client), self)
 

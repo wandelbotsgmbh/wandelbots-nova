@@ -6,7 +6,9 @@ from nova import api
 class DHRobot:
     """A class for handling DH parameters and computing joint positions."""
 
-    def __init__(self, dh_parameters: list[api.models.DHParameter], mounting: api.models.Pose) -> None:
+    def __init__(
+        self, dh_parameters: list[api.models.DHParameter], mounting: api.models.Pose
+    ) -> None:
         """
         Initialize the DHRobot with DH parameters and a mounting pose.
         :param dh_parameters: List of DHParameter objects containing all joint configurations.
