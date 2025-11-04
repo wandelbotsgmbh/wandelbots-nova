@@ -119,8 +119,8 @@ class Cell:
     async def ensure_controller(
         self,
         controller_config: api.models.RobotController,
-        add_timeout: int = DEFAULT_ADD_CONTROLLER_TIMEOUT,
-        wait_for_ready_timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT,
+        add_timeout: int = DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS,
+        wait_for_ready_timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS,
     ) -> Controller:
         """
         Ensure that a robot controller is added to the cell. If it already exists, it will be returned.
@@ -199,7 +199,7 @@ class Cell:
         return RobotCell(timer=None, **{controller.id: controller for controller in controllers})
 
     async def _wait_for_controller_ready(
-        self, cell: str, name: str, timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT
+        self, cell: str, name: str, timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS
     ) -> None:
         """
         Wait until the given controller has finished initializing or until timeout.

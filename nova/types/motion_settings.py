@@ -96,17 +96,13 @@ class MotionSettings(pydantic.BaseModel):
             tcp_orientation_acceleration_limit=self.tcp_orientation_acceleration_limit,
         )
 
-    def as_blending_setting(self) -> api.models.MotionCommandBlending:
+    def as_blending_setting(self) -> api.models.BlendingPosition | api.models.BlendingAuto:
         if self.position_zone_radius:
-            return api.models.MotionCommandBlending(
-                api.models.BlendingPosition(
-                    position_zone_radius=self.blending_radius or self.position_zone_radius,
-                    blending_name="BlendingPosition",
-                )
+            return api.models.BlendingPosition(
+                position_zone_radius=self.blending_radius or self.position_zone_radius,
+                blending_name="BlendingPosition",
             )
-        return api.models.MotionCommandBlending(
-            api.models.BlendingAuto(
-                min_velocity_in_percent=self.blending_auto or self.min_blending_velocity,
-                blending_name="BlendingAuto",
-            )
+        return api.models.BlendingAuto(
+            min_velocity_in_percent=self.blending_auto or self.min_blending_velocity,
+            blending_name="BlendingAuto",
         )
