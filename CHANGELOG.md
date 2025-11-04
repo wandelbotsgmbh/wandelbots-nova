@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.6.3 (2025-11-04)
+
+### Bug Fixes
+
+- **NDX-403**: Wait_for_bool_io() (#332)
+  ([#332](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/332),
+  [`210d772`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/210d7725d49baddc21e3ed23d9a286bded07bf48))
+
+
 ## v3.6.2 (2025-11-04)
 
 ### Chores
