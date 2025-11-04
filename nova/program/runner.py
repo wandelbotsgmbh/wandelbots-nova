@@ -67,10 +67,10 @@ class ProgramStatus(BaseModel):
         max_length=PROGRAM_STATUS_ERROR_MAX_LENGTH,
     )
     start_time: Optional[datetime] = Field(
-        default=None, description="Start time of the program run"
+        default=None, description="The RFC3339 timestamp of the start time of the program run"
     )
-    end_time: Optional[datetime] = Field(default=None, description="End time of the program run")
-    timestamp: datetime = Field(description="The RC3339 timestamp when the message was created")
+    end_time: Optional[datetime] = Field(default=None, description="The RFC3339 timestamp of the end time of the program run")
+    timestamp: datetime = Field(description="The RFC3339 timestamp when the message was created")
 
 
 # TODO: should provide a number of tools to the program to control the execution of the program
