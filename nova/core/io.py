@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from enum import Enum
 
-from nova.api import models
+from nova import api
 from nova.cell.robot_cell import Device, ValueType
 from nova.core.gateway import ApiGateway
 
@@ -28,22 +28,23 @@ class IOAccess(Device):
         - Read and check types based on the description
     """
 
-    io_descriptions_cache: dict[str, dict[str, models.IODescription]] = {}
+    io_descriptions_cache: dict[str, dict[str, api.models.IODescription]] = {}
 
-    def __init__(self, api_gateway: ApiGateway, cell: str, controller_id: str):
+    def __init__(self, api_client: ApiGateway, cell: str, controller_id: str):
         super().__init__()
-        self._api_gateway = api_gateway
+        self._api_client = api_client
         self._cell = cell
         self._controller_id = controller_id
         self._io_operation_in_progress = asyncio.Lock()
 
-    async def get_io_descriptions(self) -> dict[str, models.IODescription]:
+    async def get_io_descriptions(self) -> dict[str, api.models.IODescription]:
         cache = self.__class__.io_descriptions_cache
         if self._controller_id not in cache:
-            # empty list fetches all
-            io_descriptions = await self._api_gateway.list_controller_io_descriptions(
+            response = await self._api_client.controller_ios_api.list_io_descriptions(
                 cell=self._cell, controller=self._controller_id, ios=[]
             )
+            io_descriptions = response.io_descriptions
+
             cache[self._controller_id] = {
                 description.id: description for description in io_descriptions
             }
@@ -51,7 +52,7 @@ class IOAccess(Device):
 
     @staticmethod
     def filter_io_descriptions(
-        io_descriptions: dict[str, models.IODescription],
+        io_descriptions: dict[str, api.models.IODescription],
         filter_value_type: IOValueType | None = None,
         filter_type: IOType | None = None,
     ) -> list[str]:
@@ -64,8 +65,21 @@ class IOAccess(Device):
 
     async def read(self, key: str) -> bool | int | float:
         """Reads a value from a given IO"""
-        return await self._api_gateway.read_controller_io(
-            cell=self._cell, controller=self._controller_id, io=key
+        response = await self.controller_ios_api.list_io_values(
+            cell=self._cell, controller=self._controller_id, ios=[key]
+        )
+
+        found_io = response.io_values[0]
+
+        if isinstance(found_io.actual_instance, api.models.IOBooleanValue):
+            return bool(found_io.actual_instance.boolean_value)
+        elif isinstance(found_io.actual_instance, api.models.IOIntegerValue):
+            return int(found_io.actual_instance.integer_value)
+        elif isinstance(found_io.actual_instance, api.models.IOFloatValue):
+            return float(found_io.actual_instance.float_value)
+
+        raise ValueError(
+            f"IO value for {key} is of an unexpected type. Expected bool, int or float. Got: {type(found_io.actual_instance)}"
         )
 
     async def write(self, key: str, value: ValueType):
@@ -73,11 +87,23 @@ class IOAccess(Device):
         await self._ensure_value_type(key, value)
 
         async with self._io_operation_in_progress:
-            await self._api_gateway.write_controller_io(
+            io_value: (
+                api.models.IOBooleanValue | api.models.IOIntegerValue | api.models.IOFloatValue
+            )
+
+            if isinstance(value, bool):
+                io_value = api.models.IOBooleanValue(io=key, boolean_value=value)
+            elif isinstance(value, int):
+                io_value = api.models.IOIntegerValue(io=key, integer_value=str(value))
+            elif isinstance(value, float):
+                io_value = api.models.IOFloatValue(io=key, float_value=value)
+            else:
+                raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
+
+            await self.controller_ios_api.set_output_values(
                 cell=self._cell,
                 controller=self._controller_id,
-                io=key,
-                value=value,  # type: ignore
+                set_output_values_request_inner=[api.models.SetOutputValuesRequestInner(io_value)],
             )
 
     async def _ensure_value_type(self, key: str, value: ValueType):
@@ -106,6 +132,12 @@ class IOAccess(Device):
     async def wait_for_bool_io(self, io: str, value: bool):
         """Blocks until the requested IO equals the provided value."""
         # TODO proper implementation utilising also the comparison operators
-        await self._api_gateway.wait_for_bool_io(
-            cell=self._cell, controller=self._controller_id, io=io, value=value
+        io_value = api.models.IOBooleanValue(io=io, boolean_value=value)
+
+        wait_request = api.models.WaitForIOEventRequest(
+            io=api.models.SetOutputValuesRequestInner(io_value),
+            comparator=api.models.Comparator.COMPARATOR_EQUALS,
+        )
+        await self._api_client.controller_ios_api.wait_for_io_event(
+            cell=self._cell, controller=self._controller_id, wait_for_io_event_request=wait_request
         )

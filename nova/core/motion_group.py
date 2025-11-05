@@ -158,18 +158,16 @@ def validate_collision_scenes(actions: list[Action]) -> list[api.models.Collisio
 class MotionGroup(AbstractRobot):
     """Manages motion planning and execution within a specified motion group."""
 
-    def __init__(
-        self, api_gateway: ApiGateway, cell: str, controller_id: str, motion_group_id: str
-    ):
+    def __init__(self, api_client: ApiGateway, cell: str, controller_id: str, motion_group_id: str):
         """
         Initializes a new MotionGroup instance.
 
         Args:
-            api_gateway (ApiGateway): The API gateway through which motion commands are sent.
+            api_client (ApiGateway): The API gateway through which motion commands are sent.
             cell (str): The name or identifier of the robotic cell.
             motion_group_id (str): The identifier of the motion group.
         """
-        self._api_client = api_gateway
+        self._api_client = api_client
         self._cell = cell
         self._controller_id = controller_id
         self._motion_group_id = motion_group_id
@@ -206,7 +204,9 @@ class MotionGroup(AbstractRobot):
         try:
             if self._current_motion is None:
                 raise ValueError("No motion to stop")
-            await self._api_gateway.stop_motion(cell=self._cell, motion_id=self._current_motion)
+            await self._api_client.motion_api.stop_execution(
+                cell=self._cell, motion=self._current_motion
+            )
             logger.debug(f"Motion {self.current_motion} stopped.")
         except ValueError as e:
             logger.debug(f"No motion to stop for {self}: {e}")
@@ -357,13 +357,18 @@ class MotionGroup(AbstractRobot):
     async def _load_planned_motion(
         self, joint_trajectory: api.models.JointTrajectory, tcp: str
     ) -> str:
-        return await self._api_gateway.load_planned_motion(
+        load_plan_response = await self._api_client.trajectory_caching_api.add_trajectory(
             cell=self._cell,
-            controller_id=self._controller_id,
-            motion_group_id=self.motion_group_id,
-            joint_trajectory=joint_trajectory,
-            tcp=tcp,
+            controller=self._controller_id,
+            add_trajectory_request=api.models.AddTrajectoryRequest(
+                motion_group=self.motion_group_id, trajectory=joint_trajectory, tcp=tcp
+            ),
         )
+
+        if load_plan_response.trajectory is None or load_plan_response.error is not None:
+            raise LoadPlanFailed(load_plan_response.error)
+
+        return load_plan_response.trajectory
 
     async def _plan_with_collision_check(
         self,

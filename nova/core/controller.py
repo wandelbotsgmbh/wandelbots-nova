@@ -22,7 +22,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         super().__init__(configuration)
         self._motion_group_ids = None
         self._io_access = IOAccess(
-            api_gateway=self._nova_api,
+            api_client=self._nova_api,
             cell=self.configuration.cell_id,
             controller_id=self.configuration.controller_id,
         )
@@ -56,7 +56,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             MotionGroup: A MotionGroup instance corresponding to the given ID.
         """
         return MotionGroup(
-            api_gateway=self._nova_api,
+            api_client=self._nova_api,
             cell=self.configuration.cell_id,
             controller_id=self.configuration.controller_id,
             motion_group_id=motion_group_id,
@@ -116,9 +116,12 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
     async def stream_state(
         self, rate_msecs
     ) -> AsyncGenerator[api.models.RobotControllerState, None]:
-        async for state in self._nova_api.stream_robot_controller_state(
+        """
+        Stream the robot controller state.
+        """
+        async for state in self._nova_api.controller_api.stream_robot_controller_state(
             cell=self.configuration.cell_id,
-            controller_id=self.configuration.controller_id,
+            controller=self.configuration.controller_id,
             response_rate=rate_msecs,
         ):
             yield state

@@ -31,7 +31,7 @@ class Cell:
             cell_id (str): The unique identifier for the cell.
             nats_client (NatsClient | None): The NATS client for publishing events.
         """
-        self._api_gateway = api_gateway
+        self._api_client = api_gateway
         self._cell_id = cell_id
         self._nats_client = nats_client
 
@@ -59,10 +59,10 @@ class Cell:
                 cell_id=self._cell_id,
                 controller_id=controller_id,
                 id=controller_id,
-                nova_api=self._api_gateway._host,
-                nova_access_token=self._api_gateway._access_token,
-                nova_username=self._api_gateway._username,
-                nova_password=self._api_gateway._password,
+                nova_api=self._api_client._host,
+                nova_access_token=self._api_client._access_token,
+                nova_username=self._api_client._username,
+                nova_password=self._api_client._password,
             )
         )
 
@@ -70,6 +70,12 @@ class Cell:
         self, robot_controller: api.models.RobotController
     ) -> Controller:
         return self._create_controller(controller_id=robot_controller.name)
+
+    async def _get_controller_instance(
+        self, *, cell: str, name: str
+    ) -> api.models.RobotController | None:
+        controllers = await self._api_client.controller_api.list_robot_controllers(cell=cell)
+        return next((c for c in controllers if c.name == name), None)
 
     async def add_controller(
         self,
@@ -93,10 +99,10 @@ class Cell:
         try:
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(
-                    self._api_gateway.add_robot_controller(
+                    self._api_client.controller_api.add_robot_controller(
                         cell=self._cell_id,
                         robot_controller=robot_controller,
-                        timeout=add_timeout_secs,
+                        completion_timeout=add_timeout_secs,
                     )
                 )
                 tg.create_task(
@@ -138,7 +144,7 @@ class Cell:
         # TODO this makes no sense if we already have the controller instance as in the robot_controller parameter
         ic(controller_config)
         ic(self.cell_id)
-        controller = await self._api_gateway.get_controller_instance(
+        controller = await self._get_controller_instance(
             cell=self.cell_id, name=controller_config.name
         )
         if controller:
@@ -156,7 +162,7 @@ class Cell:
         Returns:
             list[Controller]: A list of Controller objects associated with this cell.
         """
-        controller_names = await self._api_gateway.controller_api.list_robot_controllers(
+        controller_names = await self._api_client.controller_api.list_robot_controllers(
             cell=self._cell_id
         )
         return [self._create_controller(name) for name in controller_names]
@@ -171,9 +177,7 @@ class Cell:
         Raises:
             ControllerNotFound: If no controller with the specified name exists.
         """
-        controller_instance = await self._api_gateway.get_controller_instance(
-            cell=self._cell_id, name=name
-        )
+        controller_instance = await self._get_controller_instance(cell=self._cell_id, name=name)
         if not controller_instance:
             raise ControllerNotFound(controller=name)
         return self._create_controller(controller_instance.name)
@@ -185,7 +189,7 @@ class Cell:
             name (str): The name of the controller to delete.
             timeout (int): The time to wait for the controller deletion to complete (default: 25).
         """
-        await self._api_gateway.delete_robot_controller(
+        await self._api_client.controller_api.delete_robot_controller(
             cell=self._cell_id, controller=name, completion_timeout=timeout
         )
 

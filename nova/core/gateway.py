@@ -7,7 +7,7 @@ import functools
 import time
 from abc import ABC
 from enum import Enum
-from typing import AsyncGenerator, TypeVar
+from typing import TypeVar
 from urllib.parse import quote as original_quote
 
 from nova import api
@@ -23,7 +23,6 @@ from nova.config import (  # add to the module for backward compatibility
 )
 from nova.core import logger
 from nova.core.env_handler import set_key
-from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.version import version as pkg_version
 
 
@@ -291,185 +290,6 @@ class ApiGateway:
     @property
     def password(self) -> str | None:
         return self._password
-
-    async def stream_robot_controller_state(
-        self, cell: str, controller_id: str, response_rate: int = 200
-    ) -> AsyncGenerator[api.models.RobotControllerState, None]:
-        """
-        Stream the robot controller state.
-        """
-        async for state in self.controller_api.stream_robot_controller_state(
-            cell=cell, controller=controller_id, response_rate=response_rate
-        ):
-            yield state
-
-    async def list_controller_io_descriptions(
-        self, cell: str, controller: str, ios: list[str]
-    ) -> list[api.models.IODescription]:
-        if not ios:
-            ios = []
-
-        response = await self.controller_ios_api.list_io_descriptions(
-            cell=cell, controller=controller, ios=ios
-        )
-        return response.io_descriptions
-
-    # TODO: this is also broken, returns wrong api type
-    async def read_controller_io(self, cell: str, controller: str, io: str) -> float | bool | int:
-        response = await self.controller_ios_api.list_io_values(
-            cell=cell, controller=controller, ios=[io]
-        )
-
-        found_io = response.io_values[0]
-
-        if isinstance(found_io.actual_instance, api.models.IOBooleanValue):
-            return bool(found_io.actual_instance.boolean_value)
-        elif isinstance(found_io.actual_instance, api.models.IOIntegerValue):
-            return int(found_io.actual_instance.integer_value)
-        elif isinstance(found_io.actual_instance, api.models.IOFloatValue):
-            return float(found_io.actual_instance.float_value)
-
-        raise ValueError(
-            f"IO value for {io} is of an unexpected type. Expected bool, int or float. Got: {type(found_io.actual_instance)}"
-        )
-
-    async def write_controller_io(
-        self, cell: str, controller: str, io: str, value: bool | int | float
-    ):
-        io_value: api.models.IOBooleanValue | api.models.IOIntegerValue | api.models.IOFloatValue
-
-        if isinstance(value, bool):
-            io_value = api.models.IOBooleanValue(io=io, boolean_value=value)
-        elif isinstance(value, int):
-            io_value = api.models.IOIntegerValue(io=io, integer_value=str(value))
-        elif isinstance(value, float):
-            io_value = api.models.IOFloatValue(io=io, float_value=value)
-        else:
-            raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
-
-        await self.controller_ios_api.set_output_values(
-            cell=cell,
-            controller=controller,
-            set_output_values_request_inner=[api.models.SetOutputValuesRequestInner(io_value)],
-        )
-
-    async def wait_for_bool_io(self, cell: str, controller: str, io: str, value: bool):
-        io_value = api.models.IOBooleanValue(io=io, boolean_value=value)
-
-        wait_request = api.models.WaitForIOEventRequest(
-            io=api.models.SetOutputValuesRequestInner(io_value),
-            comparator=api.models.Comparator.COMPARATOR_EQUALS,
-        )
-        await self.controller_ios_api.wait_for_io_event(
-            cell=cell, controller=controller, wait_for_io_event_request=wait_request
-        )
-
-    async def list_controllers(self, *, cell: str) -> list[api.models.RobotController]:
-        # TODO The API returns a list of controller names as of v2, should we really offer
-        # the instance listing at all?
-        controller_names = await self.controller_api.list_robot_controllers(cell=cell)
-        # Create tasks to get all controller instances concurrently
-        async with asyncio.TaskGroup() as tg:
-            tasks = [
-                tg.create_task(self.controller_api.get_robot_controller(cell=cell, controller=name))
-                for name in controller_names
-            ]
-
-        # Filter out None results and return the list of controller instances
-        return [result for result in [task.result() for task in tasks]]
-
-    async def get_controller_instance(
-        self, *, cell: str, name: str
-    ) -> api.models.RobotController | None:
-        controllers = await self.list_controllers(cell=cell)
-        return next((c for c in controllers if c.name == name), None)
-
-    async def get_current_robot_controller_state(
-        self, *, cell: str, controller_id: str
-    ) -> api.models.RobotControllerState:
-        return await self.controller_api.get_current_robot_controller_state(
-            cell=cell, controller=controller_id
-        )
-
-    async def add_robot_controller(
-        self, cell: str, robot_controller: api.models.RobotController, timeout: int | None = None
-    ):
-        """
-        Add a robot controller to the specified cell.
-        Args:
-            cell: The cell to add the controller to.
-            robot_controller: The robot controller to add.
-            timeout: The timeout in seconds for the operation.
-        """
-        await self.controller_api.add_robot_controller(
-            cell=cell, robot_controller=robot_controller, completion_timeout=timeout
-        )
-
-    async def delete_robot_controller(
-        self, *, cell: str, controller: str, completion_timeout: int = 25
-    ) -> None:
-        await self.controller_api.delete_robot_controller(
-            cell=cell, controller=controller, completion_timeout=completion_timeout
-        )
-
-    async def load_planned_motion(
-        self,
-        cell: str,
-        controller_id: str,
-        motion_group_id: str,
-        joint_trajectory: api.models.JointTrajectory,
-        tcp: str,
-    ) -> api.models.PlanSuccessfulResponse:
-        load_plan_response: api.models.AddTrajectoryResponse = (
-            await self.trajectory_caching_api.add_trajectory(
-                cell=cell,
-                controller=controller_id,
-                add_trajectory_request=api.models.AddTrajectoryRequest(
-                    motion_group=motion_group_id, trajectory=joint_trajectory, tcp=tcp
-                ),
-            )
-        )
-
-        if load_plan_response.trajectory is None or load_plan_response.error is not None:
-            raise LoadPlanFailed(load_plan_response.error)
-
-        return load_plan_response.trajectory
-
-    def stream_move_to_trajectory_via_join_ptp(
-        self,
-        cell: str,
-        motion_id: str,
-        location_on_trajectory: int,
-        joint_velocity_limits: api.models.Joints | None = None,
-    ) -> AsyncGenerator[api.models.StreamMoveResponse, None]:
-        return self.motion_api.stream_move_to_trajectory_via_joint_ptp(
-            cell=cell,
-            motion=motion_id,
-            location_on_trajectory=location_on_trajectory,
-            # limit_override_joint_velocity_limits_joints=joint_velocity_limits,
-        )
-
-    async def stop_motion(self, cell: str, motion_id: str):
-        await self.motion_api.stop_execution(cell=cell, motion=motion_id)
-
-    async def get_joint_number(self, cell: str, motion_group_id: str) -> int:
-        spec = await self.motion_group_api.get_motion_group_specification(
-            cell=cell, motion_group=motion_group_id
-        )
-        return len(spec.mechanical_joint_limits)
-
-    async def plan_collision_free_ptp(
-        self, cell: str, motion_group_id: str, request: api.models.PlanCollisionFreePTPRequest
-    ):
-        plan_result = await self.motion_api.plan_collision_free_ptp(
-            cell=cell, plan_collision_free_ptp_request=request
-        )
-
-        if isinstance(
-            plan_result.response.actual_instance, api.models.PlanTrajectoryFailedResponse
-        ):
-            raise PlanTrajectoryFailed(plan_result.response.actual_instance, motion_group_id)
-        return plan_result.response.actual_instance
 
 
 class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
