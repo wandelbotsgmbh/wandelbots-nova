@@ -83,18 +83,16 @@ class IOAccess(Device):
             )
 
             if isinstance(value, bool):
-                io_value = api.models.IOBooleanValue(io=key, boolean_value=value)
+                io_value = api.models.IOBooleanValue(io=key, value=value)
             elif isinstance(value, int):
-                io_value = api.models.IOIntegerValue(io=key, integer_value=str(value))
+                io_value = api.models.IOIntegerValue(io=key, value=str(value))
             elif isinstance(value, float):
-                io_value = api.models.IOFloatValue(io=key, float_value=value)
+                io_value = api.models.IOFloatValue(io=key, value=value)
             else:
                 raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
 
-            await self.controller_ios_api.set_output_values(
-                cell=self._cell,
-                controller=self._controller_id,
-                set_output_values_request_inner=[api.models.SetOutputValuesRequestInner(io_value)],
+            await self._api_client.controller_ios_api.set_output_values(
+                cell=self._cell, controller=self._controller_id, io_value=[io_value]
             )
 
     async def _ensure_value_type(self, key: str, value: ValueType):
@@ -123,11 +121,10 @@ class IOAccess(Device):
     async def wait_for_bool_io(self, io: str, value: bool):
         """Blocks until the requested IO equals the provided value."""
         # TODO proper implementation utilising also the comparison operators
-        io_value = api.models.IOBooleanValue(io=io, boolean_value=value)
+        io_value = api.models.IOBooleanValue(io=io, value=value)
 
         wait_request = api.models.WaitForIOEventRequest(
-            io=api.models.SetOutputValuesRequestInner(io_value),
-            comparator=api.models.Comparator.COMPARATOR_EQUALS,
+            io=api.models.IOValue(io_value), comparator=api.models.Comparator.COMPARATOR_EQUALS
         )
         await self._api_client.controller_ios_api.wait_for_io_event(
             cell=self._cell, controller=self._controller_id, wait_for_io_event_request=wait_request
