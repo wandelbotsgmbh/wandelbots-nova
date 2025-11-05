@@ -7,7 +7,6 @@ from typing import Any, AsyncIterable, Literal, SupportsIndex
 
 import numpy as np
 from scipy.spatial.transform import Rotation
-from wandelbots_api_client import models
 
 from nova import api
 from nova.actions import Action, MovementController
@@ -272,11 +271,11 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
 
     async def _execute(
         self,
-        joint_trajectory: models.JointTrajectory,
+        joint_trajectory: api.models.JointTrajectory,
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
-        start_on_io: models.StartOnIO | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
     ) -> AsyncIterable[MovementResponse]:
         """
         Executes the given joint_trajectory by simulating the robot's motion.
