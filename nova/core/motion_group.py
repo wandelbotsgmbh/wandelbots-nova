@@ -574,7 +574,7 @@ class MotionGroup(AbstractRobot):
     async def _stream_jogging(self, tcp, movement_controller):
         controller = movement_controller(
             MovementControllerContext(
-                combined_actions=CombinedActions(),  # type: ignore
+                combined_actions=CombinedActions(),
                 motion_id="DUMMY_MOTION_ID",  # TODO This is a dummy ID, not used in jogging
             )
         )
@@ -621,9 +621,9 @@ class MotionGroup(AbstractRobot):
             # which is not what we want
             joint_trajectory = await self._plan(actions, tcp, start_joints)
             load_planned_motion_response = await self._load_planned_motion(joint_trajectory, tcp)
-            return load_planned_motion_response.motion, joint_trajectory
+            return load_planned_motion_response, joint_trajectory
 
-        execute_fn = partial(self._api_client.motion_api.execute_trajectory, cell=self._cell)
+        execute_fn = partial(self._api_client.motion_group_api.execute_trajectory, cell=self._cell)
         tuner = TrajectoryTuner(actions, plan_fn, execute_fn)
         async for response in tuner.tune():
             yield response

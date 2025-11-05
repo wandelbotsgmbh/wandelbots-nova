@@ -1,5 +1,5 @@
 import pydantic
-import wandelbots_api_client.v2 as wb
+from nova import api
 
 from nova.types.pose import Pose
 
@@ -32,13 +32,13 @@ class MotionState(pydantic.BaseModel):
 # TODO find a better place for this
 # TODO this should return different types of MotionState depending on the fields set in the MotionGroupState
 def motion_group_state_to_motion_state(
-    motion_group_state: wb.models.MotionGroupState,
+    motion_group_state: api.models.MotionGroupState,
 ) -> MotionState:
     if not motion_group_state.execute:
         raise ValueError("There is no trajectory execution going on.")
 
     tcp_pose = Pose(
-        tuple(motion_group_state.tcp_pose.position + motion_group_state.tcp_pose.orientation)
+        tuple(motion_group_state.tcp_pose.position) + tuple(motion_group_state.tcp_pose.orientation)
     )
     joints = tuple(motion_group_state.joint_position)
     # TODO not very clean
@@ -47,7 +47,7 @@ def motion_group_state_to_motion_state(
         if motion_group_state.execute
         and motion_group_state.execute.details
         and isinstance(
-            motion_group_state.execute.details.actual_instance, wb.models.TrajectoryDetails
+            motion_group_state.execute.details.actual_instance, api.models.TrajectoryDetails
         )
         else None
     )

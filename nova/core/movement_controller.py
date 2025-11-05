@@ -49,24 +49,25 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             ready.set()
             async for motion_group_state in motion_group_state_stream:
                 if motion_group_state.execute and isinstance(
-                    motion_group_state.execute.details.actual_instance.state.actual_instance,
-                    api.models.TrajectoryEnded,
+                    motion_group_state.execute.details, api.models.TrajectoryDetails
                 ):
-                    await error_monitor_task_created.wait()
-                    error_monitor_task.cancel()
-                    break
+                    if isinstance(
+                        motion_group_state.execute.details.state, api.models.TrajectoryEnded
+                    ):
+                        await error_monitor_task_created.wait()
+                        error_monitor_task.cancel()
+                        break
 
         async def error_monitor(
             responses: ExecuteTrajectoryResponseStream, to_cancel: list[asyncio.Task]
         ):
             async for execute_trajectory_response in responses:
-                instance = execute_trajectory_response.actual_instance
-                if isinstance(instance, api.models.MovementErrorResponse):
+                if isinstance(execute_trajectory_response, api.models.MovementErrorResponse):
                     for task in to_cancel:
                         task.cancel()
                     # TODO how does this propagate?
                     # TODO what happens to the state consumer?
-                    raise ErrorDuringMovement(instance.message)
+                    raise ErrorDuringMovement(execute_trajectory_response.message)
 
         motion_group_state_stream = context.motion_group_state_stream_gen()
         motion_group_state_monitor_ready = asyncio.Event()
@@ -83,7 +84,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             trajectory=trajectory_request, initial_location=0
         )
         execute_trajectory_response = await anext(response_stream)
-        initialize_movement_response = execute_trajectory_response.actual_instance
+        initialize_movement_response = execute_trajectory_response
         ic(initialize_movement_response)
         assert isinstance(initialize_movement_response, api.models.InitializeMovementResponse)
         # TODO this should actually check for None but currently the API seems to return an empty string instead
@@ -102,7 +103,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             pause_on_io=None,
         )
         execute_trajectory_response = await anext(response_stream)
-        start_movement_response = execute_trajectory_response.actual_instance
+        start_movement_response = execute_trajectory_response
         assert isinstance(start_movement_response, api.models.StartMovementResponse)
 
         error_monitor_task = asyncio.create_task(

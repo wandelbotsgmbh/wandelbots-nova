@@ -109,44 +109,31 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         self.record_of_commands: list[list[Action]] = []
 
     async def get_optimizer_setup(self, tcp_name: str) -> api.models.OptimizerSetup:
-        tcp_pos = api.models.Vector3d(x=0, y=0, z=0)
+        tcp_pos = api.models.Vector3d([0, 0, 0])
         tcp_pos.x, tcp_pos.y, tcp_pos.z = self.configuration.tools[tcp_name].position
-        tcp_ori = api.models.Quaternion(w=1, x=0, y=0, z=0)
+        tcp_ori = api.models.Orientation([0, 0, 0, 1])
         tcp_ori.x, tcp_ori.y, tcp_ori.z, tcp_ori.w = Rotation.from_rotvec(
             self.configuration.tools[tcp_name].orientation
         ).as_quat()
-        joint_position_limits = [
-            api.models.PlanningLimitsLimitRange(lower_limit=-np.pi, upper_limit=np.pi)
-        ] * 6
-        joint_velocity_limits = [1.0] * 6
-        joint_acceleration_limits = [1e8] * 6
-        joint_torque_limits = [200.0] * 6
-        limits = api.models.PlanningLimits(
-            joint_position_limits=joint_position_limits,
-            joint_velocity_limits=joint_velocity_limits,
-            joint_acceleration_limits=joint_acceleration_limits,
-            joint_torque_limits=joint_torque_limits,
-            tcp_velocity_limit=500,
-            tcp_acceleration_limit=1e8,
-            tcp_orientation_velocity_limit=1,
-            tcp_orientation_acceleration_limit=1e8,
-            elbow_velocity_limit=1e8,
-            elbow_acceleration_limit=1e8,
-            elbow_force_limit=1e8,
+        joint_position_limits = [api.models.LimitRange(lower_limit=-np.pi, upper_limit=np.pi)] * 6
+        joint_limits = api.models.JointLimits(
+            position=joint_position_limits, velocity=1, acceleration=1e8, torque=200
         )
-        setup = api.models.SafetyConfiguration(global_limits=limits)
-        tcp = api.models.PlannerPose(position=tcp_pos, orientation=tcp_ori)
-        mounting = api.models.PlannerPose(
-            position=api.models.Vector3d(x=0, y=0, z=0),
-            orientation=api.models.Quaternion(x=0, y=0, z=0, w=1),
+        tcp_limits = api.models.CartesianLimits(
+            velocity=500, acceleration=1e8, orientation_velocity=1, orientation_acceleration=1e8
         )
-        motion_group_type = "FANUC_CRX25iA"
+        global_limits = api.models.LimitSet(joints=[joint_limits], tcp=tcp_limits)
+        tcp = api.models.Pose(position=tcp_pos, orientation=tcp_ori)
+        mounting = api.models.Pose(
+            position=api.models.Vector3d([0, 0, 0]),
+            orientation=api.models.RotationVector([0, 0, 0]),
+        )
         payload = api.models.Payload(name="example", payload=0.0)
-        return api.models.OptimizerSetup(
-            motion_group_type=motion_group_type,
+        return api.models.MotionGroupSetup(
+            motion_group_model=api.models.MotionGroupModel("FANUC_CRX25iA"),
             mounting=mounting,
-            tcp=tcp,
-            safety_setup=setup,
+            tcp_offset=tcp,
+            global_limits=global_limits,
             cycle_time=8,
             payload=payload,
         )
@@ -264,7 +251,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             current_joints = final_joints
 
         return api.models.JointTrajectory(
-            joint_positions=[api.models.Joints(joints=list(j)) for j in joint_positions],
+            joint_positions=[api.models.Joints(list(j)) for j in joint_positions],
             times=times,
             locations=locations,
         )
