@@ -21,8 +21,11 @@ async def build_collision_world(
 
     # define annoying obstacle
     sphere_collider = api.models.Collider(
-        shape=api.models.ColliderShape(api.models.Sphere2(radius=100, shape_type="sphere")),
-        pose=api.models.Pose2(position=[-100, -500, 200]),
+        shape=api.models.Collider(api.models.Sphere(radius=100, shape_type="sphere")),
+        pose=api.models.Pose(
+            position=api.models.Vector3d([-100, -500, 200]),
+            orientation=api.models.RotationVector([0, 0, 0]),
+        ),
     )
     await collision_api.store_collider(
         cell=cell_name, collider="annoying_obstacle", collider2=sphere_collider
@@ -30,8 +33,8 @@ async def build_collision_world(
 
     # define TCP collider geometry
     tool_collider = api.models.Collider(
-        shape=api.models.ColliderShape(
-            api.models.Box2(size_x=100, size_y=100, size_z=100, shape_type="box", box_type="FULL")
+        api.models.Box(
+            size_x=100, size_y=100, size_z=100, shape_type="box", box_type=api.models.BoxType.FULL
         )
     )
     await collision_api.store_collision_tool(
@@ -47,8 +50,8 @@ async def build_collision_world(
     )
 
     # assemble scene
-    scene = api.models.CollisionScene(
-        colliders={"annoying_obstacle": sphere_collider},
+    scene = api.models.CollisionSetup(
+        colliders=api.models.ColliderDictionary({"annoying_obstacle": sphere_collider}),
         motion_groups={
             motion_group_description.motion_group_model: api.models.CollisionMotionGroup(
                 tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
@@ -88,13 +91,11 @@ async def collision_free_p2p() -> None:
             controller=controller.controller_id,
             id=0,
             coordinate_system=api.models.CoordinateSystem(
-                coordinate_system="world",
                 name="mounting",
-                reference_uid="",
-                position=api.models.Vector3d(x=0, y=0, z=0),
-                rotation=api.models.RotationAngles(
-                    angles=[0, 0, 0], type=api.models.RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-                ),
+                coordinate_system="world",
+                position=api.models.Vector3d([0, 0, 0]),
+                orientation=api.models.Orientation([0, 0, 0]),
+                orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
             ),
         )
 

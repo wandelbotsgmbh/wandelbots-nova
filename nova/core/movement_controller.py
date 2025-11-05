@@ -1,5 +1,5 @@
 import asyncio
-from enum import Enum, StrEnum, auto
+from enum import Enum, auto
 from functools import singledispatch
 from math import ceil, floor
 from typing import AsyncIterator, Optional
@@ -308,7 +308,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 #     return TrajectoryCursor(context)
 
 
-class OperationType(StrEnum):
+class OperationType(Enum):
     FORWARD = auto()
     BACKWARD = auto()
     FORWARD_TO = auto()

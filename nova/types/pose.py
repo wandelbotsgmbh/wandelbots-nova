@@ -141,8 +141,10 @@ class Pose(pydantic.BaseModel, Sized):
         Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3), coordinate_system=None)
         """
         return api.models.Pose(
-            position=[self.position.x, self.position.y, self.position.z],
-            orientation=[self.orientation.x, self.orientation.y, self.orientation.z],
+            position=api.models.Vector3d([self.position.x, self.position.y, self.position.z]),
+            orientation=api.models.RotationVector(
+                [self.orientation.x, self.orientation.y, self.orientation.z]
+            ),
         )
 
     def __getitem__(self, item):
