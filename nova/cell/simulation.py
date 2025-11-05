@@ -317,51 +317,46 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
                 pass
 
             # Compute the current Pose from these joint values
-            current_pose = naive_joints_to_pose(tuple(joints.joints))
+            current_pose = naive_joints_to_pose(tuple(joints))
             motion_state = MotionState(
                 motion_group_id=self.id,
                 path_parameter=float(location),
-                state=RobotState(pose=current_pose, joints=tuple(joints.joints)),
+                state=RobotState(pose=current_pose, joints=tuple(joints)),
             )
 
             # Append this Pose to self._trajectory while moving
             self._trajectory.append(motion_state)
 
             yield api.models.ExecuteTrajectoryResponse(
-                api.models.Movement(
-                    movement=api.models.MovementMovement(
-                        time_to_end=0,
-                        current_location=0,
-                        state=api.models.RobotControllerState(
-                            controller="Simulated",
-                            operation_mode="OPERATION_MODE_AUTO",
-                            safety_state="SAFETY_STATE_NORMAL",
-                            timestamp=datetime.now(),
-                            sequence_number="0",
-                            motion_groups=[
-                                api.models.MotionGroupState(
-                                    motion_group="0",
-                                    controller="Simulated",
-                                    tcp_pose=api.models.TcpPose(
-                                        tcp="Flange",
-                                        position=motion_state.state.pose.position.to_api_vector3d(),
-                                        orientation=motion_state.state.pose.orientation.to_api_vector3d(),
+                api.models.StartMovementResponse(
+                    time_to_end=0,
+                    current_location=0,
+                    state=api.models.RobotControllerState(
+                        controller="Simulated",
+                        operation_mode="OPERATION_MODE_AUTO",
+                        safety_state="SAFETY_STATE_NORMAL",
+                        timestamp=datetime.now(),
+                        sequence_number="0",
+                        motion_groups=[
+                            api.models.MotionGroupState(
+                                motion_group="0",
+                                controller="Simulated",
+                                tcp_pose=api.models.Pose(
+                                    position=api.models.Vector3d(
+                                        motion_state.state.pose.position.to_tuple()
                                     ),
-                                    joint_velocity=api.models.Joints(joints=[0.0] * 6),
-                                    velocity=api.models.MotionVector(
-                                        linear=api.models.Vector3d(x=0, y=0, z=0)
+                                    orientation=api.models.RotationVector(
+                                        motion_state.state.pose.orientation.to_tuple()
                                     ),
-                                    joint_limit_reached=api.models.MotionGroupStateJointLimitReached(
-                                        limit_reached=[False]
-                                    ),
-                                    joint_position=api.models.Joints(
-                                        joints=list(motion_state.state.joints)  # type: ignore
-                                    ),
-                                    sequence_number="0",
-                                )
-                            ],
-                        ),
-                    )
+                                ),
+                                joint_limit_reached=api.models.MotionGroupStateJointLimitReached(
+                                    limit_reached=[False]
+                                ),
+                                joint_position=api.models.Joints(list(motion_state.state.joints)),
+                                sequence_number="0",
+                            )
+                        ],
+                    ),
                 )
             )
 

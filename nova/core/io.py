@@ -65,18 +65,18 @@ class IOAccess(Device):
 
     async def read(self, key: str) -> bool | int | float:
         """Reads a value from a given IO"""
-        response = await self.controller_ios_api.list_io_values(
+        response = await self._api_client.controller_ios_api.list_io_values(
             cell=self._cell, controller=self._controller_id, ios=[key]
         )
 
-        found_io = response.io_values[0]
+        input_output = response[0]
 
-        if isinstance(found_io.actual_instance, api.models.IOBooleanValue):
-            return bool(found_io.actual_instance.boolean_value)
-        elif isinstance(found_io.actual_instance, api.models.IOIntegerValue):
-            return int(found_io.actual_instance.integer_value)
-        elif isinstance(found_io.actual_instance, api.models.IOFloatValue):
-            return float(found_io.actual_instance.float_value)
+        if isinstance(input_output, api.models.IOBooleanValue):
+            return bool(input_output.value)
+        elif isinstance(input_output, api.models.IOIntegerValue):
+            return int(input_output.value)
+        elif isinstance(input_output, api.models.IOFloatValue):
+            return float(input_output.value)
 
         raise ValueError(
             f"IO value for {key} is of an unexpected type. Expected bool, int or float. Got: {type(found_io.actual_instance)}"

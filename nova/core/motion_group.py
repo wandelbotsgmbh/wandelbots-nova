@@ -486,7 +486,7 @@ class MotionGroup(AbstractRobot):
                 )
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
-                current_joints = tuple(trajectory.joint_positions[-1].joints)
+                current_joints = tuple(trajectory.joint_positions[-1])
             else:
                 trajectory = await self._plan_with_collision_check(
                     actions=batch,

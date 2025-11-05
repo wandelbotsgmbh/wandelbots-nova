@@ -3,12 +3,6 @@ from typing import cast
 
 import numpy as np
 import rerun as rr
-from wandelbots_api_client.models import (
-    CoordinateSystem,
-    RotationAngles,
-    RotationAngleTypes,
-    Vector3d,
-)
 
 import nova
 from nova import Nova, api, run_program
@@ -93,13 +87,13 @@ async def collision_free_p2p() -> None:
             cell="cell",
             controller=controller.controller_id,
             id=0,
-            coordinate_system=CoordinateSystem(
+            coordinate_system=api.models.CoordinateSystem(
                 coordinate_system="world",
                 name="mounting",
                 reference_uid="",
-                position=Vector3d(x=0, y=0, z=0),
-                rotation=RotationAngles(
-                    angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
+                position=api.models.Vector3d(x=0, y=0, z=0),
+                rotation=api.models.RotationAngles(
+                    angles=[0, 0, 0], type=api.models.RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
                 ),
             ),
         )
