@@ -309,7 +309,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             current_pose = naive_joints_to_pose(tuple(joints))
             motion_state = MotionState(
                 motion_group_id=self.id,
-                path_parameter=float(location),
+                path_parameter=float(location.root),
                 state=RobotState(pose=current_pose, tcp=tcp, joints=tuple(joints)),
             )
 

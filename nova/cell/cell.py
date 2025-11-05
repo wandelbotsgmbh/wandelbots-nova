@@ -213,6 +213,9 @@ class Cell:
             timeout: The timeout in seconds.
         """
         nc = self._nats_client
+        if nc is None:
+            raise ValueError("NATS client is not connected")
+
         nats_subject = f"nova.v2.cells.{cell}.status"
         controller_ready_event = asyncio.Event()
 

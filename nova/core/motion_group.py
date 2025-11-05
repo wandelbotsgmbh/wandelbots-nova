@@ -29,11 +29,32 @@ def motion_group_setup_from_motion_group_description(
     payload: api.models.Payload | None = None,
 ) -> api.models.MotionGroupSetup:
     # TODO the function does multiple things not separated very well
+    tool = (
+        api.models.Tool(
+            {
+                key: value.root
+                for key, value in motion_group_description.safety_tool_colliders.items()
+            }
+        )
+        if motion_group_description.safety_tool_colliders
+        else None
+    )
+    link_chain = (
+        api.models.LinkChain(
+            list(
+                api.models.Link(link.root)
+                for link in motion_group_description.safety_link_colliders
+            )
+        )
+        if motion_group_description.safety_link_colliders
+        else None
+    )
     collision_scene = api.models.CollisionSetup(
         colliders=motion_group_description.safety_zones,
-        link_chain=motion_group_description.safety_link_colliders,
-        tool=motion_group_description.safety_tool_colliders,
-        self_collision_detection=True,  # explicitly set here until we have a better understanding
+        link_chain=link_chain,
+        tool=tool,
+        # Hint: Markus S. said hardcode it to False
+        self_collision_detection=False,  # explicitly set here until we have a better understanding
     )
     # For the time being it is assumed that the auto limits are always present
     # We also assume that the motion player in RAE will scale corretly if the
@@ -54,14 +75,14 @@ def motion_group_setup_from_motion_group_description(
 
 
 def compare_collision_scenes(scene1: api.models.CollisionSetup, scene2: api.models.CollisionSetup):
-    if scene1.colliders != scene2.colliders:
-        return False
+    """Return True if two pydantic CollisionSetup models are equal by value.
 
-    # Compare motion groups
-    if scene1.motion_groups != scene2.motion_groups:
-        return False
-
-    return True
+    Uses model_dump in json mode with exclude_unset/none to avoid differences caused
+    by default/unset fields or None values.
+    """
+    dump1 = scene1.model_dump_json(exclude_unset=True, exclude_none=True)
+    dump2 = scene2.model_dump_json(exclude_unset=True, exclude_none=True)
+    return dump1 == dump2
 
 
 # TODO: when collision scene is different in different motions
@@ -226,7 +247,8 @@ class MotionGroup(AbstractRobot):
             tcp = motion_group_state.tcp
             pose = Pose(motion_group_state.tcp_pose)
         else:
-            tcp_offset = (await self.tcps())[tcp].pose
+            tcps = await self.tcps()
+            tcp_offset = Pose(position=tcps[tcp].position, orientation=tcps[tcp].orientation)
             pose = Pose(motion_group_state.flange_pose) @ tcp_offset
         return RobotState(pose=pose, tcp=tcp, joints=tuple(motion_group_state.joint_position))
 
@@ -277,7 +299,8 @@ class MotionGroup(AbstractRobot):
 
     # TODO names?, ids?, both?, whatever? (probably ids atm)
     async def tcp_names(self) -> list[str]:
-        return list((await self.tcps()).keys())
+        tcps = await self.tcps()
+        return list(tcps.keys())
 
     async def active_tcp(self) -> api.models.RobotTcp:
         return (await self._fetch_state()).tcp
@@ -335,7 +358,8 @@ class MotionGroup(AbstractRobot):
         t = timeout
         while t > 0:
             try:
-                return (await self.tcps())[tcp.id]
+                tcps = await self.tcps()
+                return tcps[tcp.id]
             except KeyError:
                 await asyncio.sleep(1)
                 t -= 1
@@ -370,8 +394,11 @@ class MotionGroup(AbstractRobot):
             ),
         )
 
-        if load_plan_response.trajectory is None or load_plan_response.error is not None:
+        if load_plan_response.error is not None:
             raise LoadPlanFailed(load_plan_response.error)
+
+        if load_plan_response.trajectory is None:
+            raise ValueError("Trajectory is None")
 
         return load_plan_response.trajectory
 
@@ -418,17 +445,17 @@ class MotionGroup(AbstractRobot):
 
         motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
 
-        static_colliders = None
-        collision_motion_group = None
-        if collision_scenes and len(collision_scenes) > 0:
-            static_colliders = collision_scenes[0].colliders
+        # static_colliders = None
+        # collision_motion_group = None
+        # if collision_scenes and len(collision_scenes) > 0:
+        #     static_colliders = collision_scenes[0].colliders
 
-            motion_group_type = robot_setup.motion_group_model
-            if (
-                collision_scenes[0].motion_groups
-                and motion_group_type in collision_scenes[0].motion_groups
-            ):
-                collision_motion_group = collision_scenes[0].motion_groups[motion_group_type]
+        #     motion_group_type = robot_setup.motion_group_model
+        #     if (
+        #         collision_scenes[0].motion_groups
+        #         and motion_group_type in collision_scenes[0].motion_groups
+        #     ):
+        #         collision_motion_group = collision_scenes[0].motion_groups[motion_group_type]
 
         # Plan the trajectory
         plan_trajectory_response = await self._api_client.trajectory_planning_api.plan_trajectory(

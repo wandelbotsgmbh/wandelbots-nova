@@ -178,7 +178,7 @@ class TestCollisionScenes:
     """Test collision scene handling."""
 
     @pytest.mark.asyncio
-    async def test_log_collision_scenes(self):
+    async def test_log_collision_setups(self):
         """Should fetch and log all collision scenes."""
         mock_nova = Mock()
         mock_cell = Mock()
@@ -197,10 +197,10 @@ class TestCollisionScenes:
             patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
             patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
-            patch("nova_rerun_bridge.nova_rerun_bridge.log_collision_scenes") as mock_log,
+            patch("nova_rerun_bridge.nova_rerun_bridge.log_collision_setups") as mock_log,
         ):
             bridge = NovaRerunBridge(mock_nova, spawn=False)
-            result = await bridge.log_collision_scenes()
+            result = await bridge.log_collision_setups()
 
             # Should call API and log collision scenes
             mock_store_api.list_stored_collision_scenes.assert_called_once_with(cell="test_cell")
@@ -230,7 +230,7 @@ class TestCollisionScenes:
             patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
             patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
-            patch("nova_rerun_bridge.nova_rerun_bridge.log_collision_scenes") as mock_log,
+            patch("nova_rerun_bridge.nova_rerun_bridge.log_collision_setups") as mock_log,
         ):
             bridge = NovaRerunBridge(mock_nova, spawn=False)
             result = await bridge.log_collision_scene("scene1")

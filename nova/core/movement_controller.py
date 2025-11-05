@@ -79,7 +79,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
         await motion_group_state_monitor_ready.wait()
         trajectory_id = api.models.TrajectoryId(id=context.motion_id)
-        trajectory_request = api.models.InitializeMovementRequestTrajectory(trajectory_id)
+        trajectory_request = api.models.InitializeMovementRequest(trajectory=trajectory_id)
         yield api.models.InitializeMovementRequest(
             trajectory=trajectory_request, initial_location=0
         )
@@ -98,7 +98,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         set_io_list = context.combined_actions.to_set_io()
         yield api.models.StartMovementRequest(
             direction=api.models.Direction.DIRECTION_FORWARD,
-            set_ios=set_io_list,
+            set_outputs=set_io_list,
             start_on_io=None,
             pause_on_io=None,
         )

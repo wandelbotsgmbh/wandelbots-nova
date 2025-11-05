@@ -190,6 +190,9 @@ class ApiGateway:
         self.store_collision_components_api = intercept(
             api.api.StoreCollisionComponentsApi(api_client=self._api_client), self
         )
+        self.motion_group_models_api: api.api.MotionGroupModelsApi = intercept(
+            api.api.MotionGroupModelsApi(api_client=self._api_client), self
+        )
         self.store_collision_setups_api = intercept(
             api.api.StoreCollisionSetupsApi(api_client=self._api_client), self
         )

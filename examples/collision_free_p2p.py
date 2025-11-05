@@ -16,18 +16,21 @@ from nova.types import MotionSettings, Pose
 async def build_collision_world(
     nova: Nova, cell_name: str, motion_group_description: api.models.MotionGroupDescription
 ) -> str:
-    collision_api = nova._api_client.store_collision_components_api
-    scene_api = nova._api_client.store_collision_setups_api
+    store_collision_components_api = nova._api_client.store_collision_components_api
+    store_collision_setups_api = nova._api_client.store_collision_setups_api
+    motion_group_models_api = nova._api_client.motion_group_models_api
+
+    motion_group_model = motion_group_description.motion_group_model.root
 
     # define annoying obstacle
     sphere_collider = api.models.Collider(
-        shape=api.models.Collider(shape=api.models.Sphere(radius=100, shape_type="sphere")),
+        shape=api.models.Sphere(radius=100, shape_type="sphere"),
         pose=api.models.Pose(
             position=api.models.Vector3d([-100, -500, 200]),
             orientation=api.models.RotationVector([0, 0, 0]),
         ),
     )
-    await collision_api.store_collider(
+    await store_collision_components_api.store_collider(
         cell=cell_name, collider="annoying_obstacle", collider2=sphere_collider
     )
 
@@ -37,30 +40,29 @@ async def build_collision_world(
             size_x=100, size_y=100, size_z=100, shape_type="box", box_type=api.models.BoxType.FULL
         )
     )
-    await collision_api.store_collision_tool(
+    await store_collision_components_api.store_collision_tool(
         cell=cell_name, tool="tool_box", request_body={"tool_collider": tool_collider}
     )
 
     # define robot link geometries
-    robot_link_colliders = await collision_api.get_default_link_chain(
-        cell=cell_name, motion_group_model=motion_group_description.motion_group_model
+    robot_link_colliders = await motion_group_models_api.get_motion_group_collision_model(
+        motion_group_model=motion_group_model
     )
-    await collision_api.store_collision_link_chain(
+    await store_collision_components_api.store_collision_link_chain(
         cell=cell_name, link_chain="robot_links", collider=robot_link_colliders
     )
 
     # assemble scene
-    scene = api.models.CollisionSetup(
+    collision_setup = api.models.CollisionSetup(
         colliders=api.models.ColliderDictionary({"annoying_obstacle": sphere_collider}),
-        motion_groups={
-            motion_group_description.motion_group_model: api.models.CollisionMotionGroup(
-                tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
-            )
-        },
+        tool=api.models.Tool({"tool_geometry": tool_collider}),
+        link_chain=api.models.LinkChain(
+            list(api.models.Link(link) for link in robot_link_colliders)
+        ),
     )
     scene_id = "collision_scene"
-    await scene_api.store_collision_scene(
-        cell_name, scene_id, api.models.CollisionSceneAssembly(scene=scene)
+    await store_collision_setups_api.store_collision_setup(
+        cell=cell_name, setup="collision_scene", collision_setup=collision_setup
     )
     return scene_id
 
