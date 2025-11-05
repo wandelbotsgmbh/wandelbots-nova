@@ -1,6 +1,6 @@
 import pydantic
-from nova import api
 
+from nova import api
 from nova.types.pose import Pose
 
 
@@ -43,12 +43,10 @@ def motion_group_state_to_motion_state(
     joints = tuple(motion_group_state.joint_position)
     # TODO not very clean
     path_parameter = (
-        motion_group_state.execute.details.actual_instance.location
+        motion_group_state.execute.details.location
         if motion_group_state.execute
         and motion_group_state.execute.details
-        and isinstance(
-            motion_group_state.execute.details.actual_instance, api.models.TrajectoryDetails
-        )
+        and isinstance(motion_group_state.execute.details, api.models.TrajectoryDetails)
         else None
     )
     return MotionState(

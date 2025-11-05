@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
-    from nova.actions import Action
     from nova import api
+    from nova.actions import Action
 
 
 def extract_collision_scenes_from_actions(

@@ -15,7 +15,7 @@ from nova.core.exceptions import InconsistentCollisionScenes, LoadPlanFailed, Pl
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
 from nova.core.tuner import TrajectoryTuner
-from nova.types import MovementResponse, Pose, RobotState, RobotTcp
+from nova.types import MovementResponse, Pose, RobotState
 from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.utils import StreamExtractor
 
@@ -44,7 +44,7 @@ def motion_group_setup_from_motion_group_description(
     # TODO maybe we also want to give the user more control over the collision scene
     return api.models.MotionGroupSetup(
         motion_group_model=motion_group_description.motion_group_model,
-        cycle_time=motion_group_description.cycle_time,
+        cycle_time=motion_group_description.cycle_time or 8,
         mounting=motion_group_description.mounting,
         global_limits=limits,
         tcp_offset=motion_group_description.tcps[tcp_name].pose,
@@ -242,7 +242,7 @@ class MotionGroup(AbstractRobot):
             response_rate_msecs (int | None): The rate at which state updates are streamed
                                              in milliseconds. Defaults to None for maximum rate.
         """
-        response_stream = self._api_gateway.motion_group_api.stream_motion_group_state(
+        response_stream = self._api_client.motion_group_api.stream_motion_group_state(
             cell=self._cell,
             controller=self._controller_id,
             motion_group=self.motion_group_id,
@@ -264,9 +264,14 @@ class MotionGroup(AbstractRobot):
         """
         return (await self.get_state(tcp=tcp)).pose
 
-    async def tcps(self) -> dict[str, RobotTcp]:
+    async def tcps(self) -> dict[str, api.models.RobotTcp]:
         return {
-            tcp: RobotTcp(id=tcp, name=tcp_offset.name, pose=Pose(tcp_offset.pose))
+            tcp: api.models.RobotTcp(
+                id=tcp,
+                name=tcp_offset.name,
+                position=tcp_offset.position,
+                orientation=tcp_offset.orientation,
+            )
             for tcp, tcp_offset in (await self._fetch_description()).tcps.items()
         }
 
@@ -274,7 +279,7 @@ class MotionGroup(AbstractRobot):
     async def tcp_names(self) -> list[str]:
         return list((await self.tcps()).keys())
 
-    async def active_tcp(self) -> RobotTcp:
+    async def active_tcp(self) -> api.models.RobotTcp:
         return (await self._fetch_state()).tcp
 
     async def active_tcp_name(self) -> str:
@@ -313,7 +318,7 @@ class MotionGroup(AbstractRobot):
             # if existing_tcp and existing_tcp.pose == Pose(tcp.orientation, tcp.position):
             return existing_tcp
 
-        await self._api_gateway.virtual_controller_api.add_virtual_controller_tcp(
+        await self._api_client.virtual_controller_api.add_virtual_controller_tcp(
             cell=self._cell,
             controller=self._controller_id,
             motion_group=self._motion_group_id,
@@ -345,12 +350,12 @@ class MotionGroup(AbstractRobot):
         )
 
     async def _fetch_description(self) -> api.models.MotionGroupDescription:
-        return await self._api_gateway.motion_group_api.get_motion_group_description(
+        return await self._api_client.motion_group_api.get_motion_group_description(
             cell=self._cell, controller=self._controller_id, motion_group=self.motion_group_id
         )
 
     async def _fetch_state(self) -> api.models.MotionGroupState:
-        return await self._api_gateway.motion_group_api.get_current_motion_group_state(
+        return await self._api_client.motion_group_api.get_current_motion_group_state(
             cell=self._cell, controller=self._controller_id, motion_group=self.motion_group_id
         )
 
@@ -471,7 +476,7 @@ class MotionGroup(AbstractRobot):
 
                 # Create equal-length arrays for positions, times, and locations
                 joint_positions = [
-                    api.models.Joints(joints=list(current_joints)) for _ in range(num_steps)
+                    api.models.Joints(list(current_joints)) for _ in range(num_steps)
                 ]
                 times = [i * timestep for i in range(num_steps)]
                 # Ensure the last timestep is exactly the wait duration
@@ -544,7 +549,7 @@ class MotionGroup(AbstractRobot):
                     states.put_nowait(motion_group_state)
 
         async def execution():
-            await self._api_gateway.trajectory_execution_api.execute_trajectory(
+            await self._api_client.trajectory_execution_api.execute_trajectory(
                 cell=self._cell, controller=self._controller_id, client_request_generator=controller
             )
             states.put_nowait(SENTINEL)
@@ -584,14 +589,14 @@ class MotionGroup(AbstractRobot):
 
         execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
         execution_task = asyncio.create_task(
-            self._api_gateway.motion_group_jogging_api.execute_jogging(
+            self._api_client.motion_group_jogging_api.execute_jogging(
                 cell=self._cell, controller=self._controller_id, client_request_generator=controller
             )
         )
         # BEGIN TODO
         # This has just been copied during the last main merge and needs to be checked
         # MOTION_STATE_STREAM_RATE_MS = 100
-        # motion_state_stream = self._api_gateway.motion_group_api.stream_motion_group_state(
+        # motion_state_stream = self._api_client.motion_group_api.stream_motion_group_state(
         #    cell=self._cell,
         #    controller=self._controller_id,
         #    motion_group=self.motion_group_id,

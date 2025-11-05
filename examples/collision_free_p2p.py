@@ -33,7 +33,7 @@ async def build_collision_world(
 
     # define TCP collider geometry
     tool_collider = api.models.Collider(
-        api.models.Box(
+        shape=api.models.Box(
             size_x=100, size_y=100, size_z=100, shape_type="box", box_type=api.models.BoxType.FULL
         )
     )
@@ -72,7 +72,7 @@ async def build_collision_world(
             virtual_controller(
                 name="ur5",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR5E,
             )
         ],
         cleanup_controllers=False,
