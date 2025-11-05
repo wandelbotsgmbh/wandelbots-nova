@@ -1,4 +1,4 @@
-import wandelbots_api_client.v2 as wb
+from nova import api
 
 
 class ControllerNotFound(Exception):
@@ -7,7 +7,7 @@ class ControllerNotFound(Exception):
 
 
 class PlanTrajectoryFailed(Exception):
-    def __init__(self, error: wb.models.PlanTrajectoryFailedResponse, motion_group_id: str):
+    def __init__(self, error: api.models.PlanTrajectoryFailedResponse, motion_group_id: str):
         """
         Create a PlanTrajectoryFailed exception.
 
@@ -26,18 +26,18 @@ class PlanTrajectoryFailed(Exception):
         return f"Plan trajectory on {self._motion_group_id} failed: {self._error.model_dump_json(indent=2, exclude={'joint_trajectory'})}"
 
     @property
-    def error(self) -> wb.models.PlanTrajectoryFailedResponse:
+    def error(self) -> api.models.PlanTrajectoryFailedResponse:
         """Return the original PlanTrajectoryFailedResponse object."""
         return self._error
 
 
 class InitMovementFailed(Exception):
-    def __init__(self, error: wb.models.InitializeMovementResponse):
+    def __init__(self, error: api.models.InitializeMovementResponse):
         self._error = error
         super().__init__(f"Initial movement failed: {error.model_dump_json(indent=2)}")
 
     @property
-    def error(self) -> wb.models.InitializeMovementResponse:
+    def error(self) -> api.models.InitializeMovementResponse:
         """Return the original InitializeMovementResponseInitResponse object."""
         return self._error
 
@@ -56,12 +56,12 @@ class ErrorDuringMovement(Exception):
 
 
 class LoadPlanFailed(Exception):
-    def __init__(self, error: wb.models.AddTrajectoryError):
+    def __init__(self, error: api.models.AddTrajectoryError):
         self._error = error
         super().__init__(f"Load plan failed: {error.model_dump_json(indent=2)}")
 
     @property
-    def error(self) -> wb.models.AddTrajectoryError:
+    def error(self) -> api.models.AddTrajectoryError:
         """Return the original PlanSuccessfulResponse object."""
         return self._error
 

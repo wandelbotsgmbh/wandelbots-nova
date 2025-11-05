@@ -5,12 +5,14 @@ from math import ceil, floor
 from typing import AsyncIterator, Optional
 
 import pydantic
+
+# TODO: remove this
 import wandelbots_api_client as wb_v1
-import wandelbots_api_client.v2 as wb
 from aiohttp_retry import dataclass
 from blinker import signal
 from icecream import ic
 
+from nova import api
 from nova.actions import MovementControllerContext
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
@@ -23,8 +25,8 @@ from nova.types import (
     MovementControllerFunction,
 )
 
-ExecuteJoggingRequestStream = AsyncIterator[wb.models.ExecuteJoggingRequest]
-ExecuteJoggingResponseStream = AsyncIterator[wb.models.ExecuteJoggingResponse]
+ExecuteJoggingRequestStream = AsyncIterator[api.models.ExecuteJoggingRequest]
+ExecuteJoggingResponseStream = AsyncIterator[api.models.ExecuteJoggingResponse]
 
 
 # TODO: when the message exchange is not working as expected we should gracefully close
@@ -41,14 +43,14 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         # TODO task error handling
 
         async def motion_group_state_monitor(
-            motion_group_state_stream: AsyncIterator[wb.models.MotionGroupState],
+            motion_group_state_stream: AsyncIterator[api.models.MotionGroupState],
             ready: asyncio.Event,
         ) -> AsyncIterator[MotionState]:
             ready.set()
             async for motion_group_state in motion_group_state_stream:
                 if motion_group_state.execute and isinstance(
                     motion_group_state.execute.details.actual_instance.state.actual_instance,
-                    wb.models.TrajectoryEnded,
+                    api.models.TrajectoryEnded,
                 ):
                     await error_monitor_task_created.wait()
                     error_monitor_task.cancel()
@@ -59,7 +61,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         ):
             async for execute_trajectory_response in responses:
                 instance = execute_trajectory_response.actual_instance
-                if isinstance(instance, wb.models.MovementErrorResponse):
+                if isinstance(instance, api.models.MovementErrorResponse):
                     for task in to_cancel:
                         task.cancel()
                     # TODO how does this propagate?
@@ -75,13 +77,15 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         )
 
         await motion_group_state_monitor_ready.wait()
-        trajectory_id = wb.models.TrajectoryId(id=context.motion_id)
-        trajectory_request = wb.models.InitializeMovementRequestTrajectory(trajectory_id)
-        yield wb.models.InitializeMovementRequest(trajectory=trajectory_request, initial_location=0)
+        trajectory_id = api.models.TrajectoryId(id=context.motion_id)
+        trajectory_request = api.models.InitializeMovementRequestTrajectory(trajectory_id)
+        yield api.models.InitializeMovementRequest(
+            trajectory=trajectory_request, initial_location=0
+        )
         execute_trajectory_response = await anext(response_stream)
         initialize_movement_response = execute_trajectory_response.actual_instance
         ic(initialize_movement_response)
-        assert isinstance(initialize_movement_response, wb.models.InitializeMovementResponse)
+        assert isinstance(initialize_movement_response, api.models.InitializeMovementResponse)
         # TODO this should actually check for None but currently the API seems to return an empty string instead
         # create issue with the API to fix this
         if (
@@ -91,15 +95,15 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             raise InitMovementFailed(initialize_movement_response)
 
         set_io_list = context.combined_actions.to_set_io()
-        yield wb.models.StartMovementRequest(
-            direction=wb.models.Direction.DIRECTION_FORWARD,
+        yield api.models.StartMovementRequest(
+            direction=api.models.Direction.DIRECTION_FORWARD,
             set_ios=set_io_list,
             start_on_io=None,
             pause_on_io=None,
         )
         execute_trajectory_response = await anext(response_stream)
         start_movement_response = execute_trajectory_response.actual_instance
-        assert isinstance(start_movement_response, wb.models.StartMovementResponse)
+        assert isinstance(start_movement_response, api.models.StartMovementResponse)
 
         error_monitor_task = asyncio.create_task(
             error_monitor(response_stream, [motion_group_state_monitor_task]), name="error_monitor"
@@ -431,7 +435,7 @@ class TrajectoryCursor:
 
         if playback_speed_in_percent is not None:
             self._command_queue.put_nowait(
-                wb.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
+                api.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
             )
         self._command_queue.put_nowait(
             wb_v1.models.StartMovementRequest(
@@ -478,7 +482,7 @@ class TrajectoryCursor:
 
         if playback_speed_in_percent is not None:
             self._command_queue.put_nowait(
-                wb.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
+                api.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
             )
         self._command_queue.put_nowait(
             wb_v1.models.StartMovementRequest(
