@@ -129,6 +129,6 @@ def virtual_controller(
         manufacturer=manufacturer,
         type=type,
         json_=controller_config_json,
-        position=json.dumps(position),
+        initial_joint_position=json.dumps(position),
     )
     return _build_controller(name=name, configuration=virtual_config)

@@ -100,7 +100,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
                 MotionState(
                     motion_group_id=self.configuration.id,
                     path_parameter=0,
-                    state=RobotState(pose=configuration.initial_pose, joints=None),
+                    state=RobotState(pose=configuration.initial_pose, tcp="Flange", joints=None),
                 )
             ]
         )
@@ -310,7 +310,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             motion_state = MotionState(
                 motion_group_id=self.id,
                 path_parameter=float(location),
-                state=RobotState(pose=current_pose, joints=tuple(joints)),
+                state=RobotState(pose=current_pose, tcp=tcp, joints=tuple(joints)),
             )
 
             # Append this Pose to self._trajectory while moving
@@ -359,7 +359,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
                 id=name,
                 readable_name=name,
                 position=tool_pose.position.model_dump(),
-                rotation=tool_pose.orientation.model_dump(),
+                orientation=tool_pose.orientation.model_dump(),
             )
             for name, tool_pose in self.configuration.tools.items()
         ]

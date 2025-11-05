@@ -24,7 +24,7 @@ from nova.types import MotionSettings, Pose
             virtual_controller(
                 name="ur",
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
-                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                type=models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             )
         ],
         cleanup_controllers=False,

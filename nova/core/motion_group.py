@@ -310,8 +310,8 @@ class MotionGroup(AbstractRobot):
             and api.models.RobotTcp(
                 id=existing_tcp.id,
                 name=existing_tcp.name,
-                position=existing_tcp.pose.position,
-                orientation=existing_tcp.pose.orientation,
+                position=existing_tcp.position,
+                orientation=existing_tcp.orientation,
             )
             == tcp
         ):

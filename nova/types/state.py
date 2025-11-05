@@ -37,6 +37,9 @@ def motion_group_state_to_motion_state(
     if not motion_group_state.execute:
         raise ValueError("There is no trajectory execution going on.")
 
+    if motion_group_state.tcp is None:
+        raise ValueError("There is no TCP attached to the motion group.")
+
     tcp_pose = Pose(
         tuple(motion_group_state.tcp_pose.position) + tuple(motion_group_state.tcp_pose.orientation)
     )

@@ -21,7 +21,7 @@ async def build_collision_world(
 
     # define annoying obstacle
     sphere_collider = api.models.Collider(
-        shape=api.models.Collider(api.models.Sphere(radius=100, shape_type="sphere")),
+        shape=api.models.Collider(shape=api.models.Sphere(radius=100, shape_type="sphere")),
         pose=api.models.Pose(
             position=api.models.Vector3d([-100, -500, 200]),
             orientation=api.models.RotationVector([0, 0, 0]),
