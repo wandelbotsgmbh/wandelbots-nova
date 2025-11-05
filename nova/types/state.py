@@ -41,9 +41,10 @@ def motion_group_state_to_motion_state(
         raise ValueError("There is no TCP attached to the motion group.")
 
     tcp_pose = Pose(
-        tuple(motion_group_state.tcp_pose.position) + tuple(motion_group_state.tcp_pose.orientation)
+        position=motion_group_state.tcp_pose.position,
+        orientation=motion_group_state.tcp_pose.orientation,
     )
-    joints = tuple(motion_group_state.joint_position)
+    joints = motion_group_state.joint_position
     # TODO not very clean
     path_parameter = (
         motion_group_state.execute.details.location

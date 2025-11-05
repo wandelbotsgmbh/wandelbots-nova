@@ -49,18 +49,18 @@ class Pose(pydantic.BaseModel, Sized):
         Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
         >>> Pose((1, 2, 3))
         Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=0, y=0, z=0))
-        >>> Pose(wb.models.Pose(position=wb.models.Vector3d(x=1, y=2, z=3), orientation=wb.models.Vector3d(x=4, y=5, z=6)))
-        Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
-        >>> Pose(wb.models.TcpPose(position=wb.models.Vector3d(x=1, y=2, z=3), orientation=wb.models.Vector3d(x=4, y=5, z=6), coordinate_system=None, tcp='Flange'))
-        Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
-        >>> Pose(wb.models.Pose2(position=[1, 2, 3], orientation=[4, 5, 6]))
-        Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
+        >>> Pose(api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.Vector3d([4, 5, 6])))
+        Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0))
+        >>> Pose(api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([4, 5, 6])))
+        Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0))
         >>> pose = Pose((1, 2, 3, 4, 5, 6))
         >>> new_pose = Pose.model_validate(pose.model_dump())
         >>> pose == new_pose
         True
 
         """
+        # >>> Pose(api.models.TcpOffset(name='Flange', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.Vector3d([4, 5, 6]))))
+        # Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
         if args:
             values = _parse_args(*args)
             super().__init__(**values)
@@ -137,8 +137,8 @@ class Pose(pydantic.BaseModel, Sized):
         """Convert to wandelbots_api_client Pose
 
         Examples:
-        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3))._to_wb_pose()
-        Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3), coordinate_system=None)
+        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).to_api_pose()
+        Pose(position=Vector3d(root=[10.0, 20.0, 30.0]), orientation=RotationVector(root=[1.0, 2.0, 3.0]))
         """
         return api.models.Pose(
             position=api.models.Vector3d([self.position.x, self.position.y, self.position.z]),
@@ -205,7 +205,7 @@ class Pose(pydantic.BaseModel, Sized):
         """
         Examples:
         >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).model_dump()
-        {'position': [10, 20, 30], 'orientation': [1, 2, 3]}
+        {'position': [10.0, 20.0, 30.0], 'orientation': [1.0, 2.0, 3.0]}
         """
         return self.to_api_pose().model_dump()
 

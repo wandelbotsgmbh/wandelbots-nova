@@ -357,7 +357,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         return [
             api.models.RobotTcp(
                 id=name,
-                readable_name=name,
+                name=name,
                 position=tool_pose.position.model_dump(),
                 orientation=tool_pose.orientation.model_dump(),
             )
