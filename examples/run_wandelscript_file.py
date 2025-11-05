@@ -1,7 +1,8 @@
 import asyncio
 from pathlib import Path
 
-from nova import Nova
+from nova import Nova, api
+from nova.cell import virtual_controller
 from nova.types import Pose
 from wandelscript import run_wandelscript_program
 
@@ -14,6 +15,14 @@ async def main():
         program_code = f.read()
 
     nova = Nova()
+    cell = nova.cell()
+    await cell.ensure_controller(
+        virtual_controller(
+            name="ur10e",
+            manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+            type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+        )
+    )
 
     await run_wandelscript_program(
         program_id=path.stem,

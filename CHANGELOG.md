@@ -1,6 +1,174 @@
 # CHANGELOG
 
 
+## v3.6.2 (2025-11-04)
+
+### Chores
+
+- Test MR restrictions (#330) ([#330](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/330),
+  [`1076750`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/10767505df688a4dc2f27a7147fc10db714870a3))
+
+
+## v3.6.1 (2025-11-03)
+
+### Chores
+
+- Check MR restrictions (#329) ([#329](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/329),
+  [`3a7230d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3a7230d738900242315c19d9ba357dc698b6e81c))
+
+
+## v3.6.0 (2025-11-03)
+
+### Bug Fixes
+
+- Updated secrets for actions in nova release (#328)
+  ([#328](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/328),
+  [`1dcb8c1`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1dcb8c1ff344f573866c96fc1573ef6c170c9c5e))
+
+### Features
+
+- **NDX-397**: Introduce MR restrictions (#325)
+  ([#325](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/325),
+  [`1a91615`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1a91615d1f051b3c086fdb081708209b0c87e453))
+
+
+## v3.5.4 (2025-10-30)
+
+### Bug Fixes
+
+- Stop programs when lifespan goes down (#321)
+  ([#321](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/321),
+  [`64728b5`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/64728b54196116518b83afe0f9af0b55229c2d50))
+
+
+## v3.5.3 (2025-10-29)
+
+### Bug Fixes
+
+- **NDX-374**: Added missing error info to the program status (#322)
+  ([#322](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/322),
+  [`33279d3`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/33279d353451e8179df60601b4b74895c84cd01d))
+
+
+## v3.5.2 (2025-10-29)
+
+### Chores
+
+- Simplified pull app template script (#323)
+  ([#323](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/323),
+  [`6d38090`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6d3809091a0ffb5acf8029c5449d4405a37c0dd5))
+
+
+## v3.5.1 (2025-10-28)
+
+### Chores
+
+- **deps**: Bump actions/upload-artifact from 4 to 5 (#319)
+  ([#319](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/319),
+  [`e98e26e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e98e26e56dd3ca4017b0db4cc08732aa02ed055d))
+
+
+## v3.5.0 (2025-10-28)
+
+### Features
+
+- Update rerun to 0.26, show rerun only locally, reruse nova instance in rerun NDX-370, NDX-367
+  (#320) ([#320](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/320),
+  [`6bd0c67`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6bd0c676b0e18ba543343bcffaae15151ac38314))
+
+
+## v3.4.3 (2025-10-27)
+
+### Bug Fixes
+
+- Expose raw nats client (#316) ([#316](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/316),
+  [`95f7c3b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/95f7c3b5fa16720af9cf16ce0fbf437f260aa106))
+
+
+## v3.4.2 (2025-10-27)
+
+### Bug Fixes
+
+- Update python sdk min version to 3.10 (#313)
+  ([#313](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/313),
+  [`c808e85`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c808e852dc95410ac752fa9af5990f828a9dd403))
+
+
+## v3.4.1 (2025-10-27)
+
+### Bug Fixes
+
+- Add docs folder and getting started guideline (#314)
+  ([#314](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/314),
+  [`5466e9b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5466e9b089154209d76539efca0a051285fa2be9))
+
+
+## v3.4.0 (2025-10-27)
+
+### Features
+
+- Add store object API interception to ApiGateway (#315)
+  ([#315](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/315),
+  [`49fea77`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/49fea77d4ff79c7c765b052137bfaa32431849dd))
+
+
+## v3.3.4 (2025-10-24)
+
+### Bug Fixes
+
+- Move nats logic to the config module (#310)
+  ([#310](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/310),
+  [`f714943`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f7149433cfc75594971d185da815beb379a14eec))
+
+
+## v3.3.3 (2025-10-23)
+
+### Bug Fixes
+
+- Update homejoints (#311) ([#311](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/311),
+  [`36b1623`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/36b16233e49b36ddcaf26e94fd446a13f3e26c23))
+
+
+## v3.3.2 (2025-10-22)
+
+### Chores
+
+- Add NOVAx program registration example to README (#307)
+  ([#307](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/307),
+  [`c05beba`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c05beba6d570d384abdbb9551cd022a81cbecf82))
+
+
+## v3.3.1 (2025-10-21)
+
+### Chores
+
+- **deps**: Bump axios from 1.11.0 to 1.12.2 in /vscode-ext (#308)
+  ([#308](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/308),
+  [`fcaf66c`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fcaf66caf138fd524f8b07ceb548afaf45719fc0))
+
+- **deps-dev**: Bump vite from 7.1.7 to 7.1.11 in /vscode-ext/app (#309)
+  ([#309](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/309),
+  [`637320d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/637320dd2b9cd8b3cf5b0297d9b208b863acf54a))
+
+
+## v3.3.0 (2025-10-20)
+
+### Features
+
+- **NDX-358**: Publish program status messages with app name over NATS (#300)
+  ([#300](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/300),
+  [`bd80432`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bd8043293554d623511204b33b0593a6453f7654))
+
+
+## v3.2.0 (2025-10-17)
+
+### Features
+
+- **NDX-338**: Added start_here example (#304)
+  ([#304](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/304),
+  [`81ba1f2`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/81ba1f2b64cfd06ca546239f0b5f7af21b5db508))
+
+
 ## v3.1.0 (2025-10-17)
 
 ### Features

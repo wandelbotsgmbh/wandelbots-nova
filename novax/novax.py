@@ -13,12 +13,20 @@ from novax.program_manager import ProgramDetails, ProgramManager
 
 
 class Novax:
-    def __init__(self):
+    def __init__(self, *, app_name: str | None = None):
+        """Initialize the Novax class.
+
+        Args:
+            app_name (str | None, optional): This one is read from the environment variable APP_NAME. Only change it for development purposes. Defaults to None.
+        """
+        app_name = app_name or APP_NAME
+
         nova = Nova()
         self._nova = nova
         self._cell = self._nova.cell(cell_id=CELL_NAME)
+
         self._program_manager: ProgramManager = ProgramManager(
-            cell_id=CELL_NAME, app_name=APP_NAME, nova_config=nova.config
+            cell_id=CELL_NAME, app_name=app_name, nova_config=nova.config
         )
         self._app: FastAPI | None = None
 
@@ -62,7 +70,19 @@ class Novax:
 
         yield
         await self._deregister_programs(store)
+        await self._stop_program()
         await self._nova.close()
+
+    async def _stop_program(self):
+        """
+        Stop the currently running program, if any.
+        """
+        try:
+            program_id = self._program_manager.running_program
+            if program_id:
+                await self._program_manager.stop_program(program_id)
+        except Exception as e:
+            logger.error(f"Failed to stop program: {e}")
 
     async def _register_programs(self, program_store: ProgramStore):
         """

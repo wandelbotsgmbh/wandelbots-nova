@@ -1,24 +1,7 @@
-import os
-
 import pytest
 
+import nova.core.gateway as gateway_module
 from nova.core.gateway import ApiGateway
-
-
-@pytest.fixture
-def nova_api_env():
-    """Cleanup env vars after test"""
-    original_value = os.environ.get("NOVA_API")
-
-    def _set_nova_api(value: str):
-        os.environ["NOVA_API"] = value
-
-    yield _set_nova_api
-
-    if original_value is None:
-        os.environ.pop("NOVA_API", None)
-    else:
-        os.environ["NOVA_API"] = original_value
 
 
 @pytest.mark.asyncio
@@ -36,17 +19,16 @@ def nova_api_env():
         ("172.30.1.2", "http://172.30.1.2"),
     ],
 )
-async def test_api_gateway_host(nova_api_env, given, expected):
+async def test_api_gateway_host(monkeypatch, given, expected):
     """
     NOVA_API env might not provide any prefix,
     thus ApiGateway should make sure to use the prefix depending on the environment.
 
     https://wandelbots.atlassian.net/browse/RPS-1208
     """
+    monkeypatch.setattr(gateway_module, "NOVA_API", given)
     gateway = ApiGateway(host=given)
     assert gateway._host == expected
-
-    nova_api_env(given)
     gateway = ApiGateway()
     assert gateway._host == expected
 

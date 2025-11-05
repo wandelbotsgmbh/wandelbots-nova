@@ -1,7 +1,9 @@
 import asyncio
 import json
 
-import nova.api as api
+from icecream import ic
+
+from nova import api
 from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
@@ -10,10 +12,10 @@ from nova.logging import logger
 from nova.nats import NatsClient
 
 # This is the default value we use to wait for add_controller API call to complete.
-DEFAULT_ADD_CONTROLLER_TIMEOUT = 120
+DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS = 120
 
 # This is the default value we use when we wait for a controller to be ready.
-DEFAULT_WAIT_FOR_READY_TIMEOUT = 120
+DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS = 120
 
 
 class Cell:
@@ -29,7 +31,7 @@ class Cell:
             cell_id (str): The unique identifier for the cell.
             nats_client (NatsClient | None): The NATS client for publishing events.
         """
-        self._api_gateway = api_gateway
+        self._api_client = api_gateway
         self._cell_id = cell_id
         self._nats_client = nats_client
 
@@ -57,10 +59,10 @@ class Cell:
                 cell_id=self._cell_id,
                 controller_id=controller_id,
                 id=controller_id,
-                nova_api=self._api_gateway._host,
-                nova_access_token=self._api_gateway._access_token,
-                nova_username=self._api_gateway._username,
-                nova_password=self._api_gateway._password,
+                nova_api=self._api_client._host,
+                nova_access_token=self._api_client._access_token,
+                nova_username=self._api_client._username,
+                nova_password=self._api_client._password,
             )
         )
 
@@ -69,11 +71,17 @@ class Cell:
     ) -> Controller:
         return self._create_controller(controller_id=robot_controller.name)
 
+    async def _get_controller_instance(
+        self, *, cell: str, name: str
+    ) -> api.models.RobotController | None:
+        controllers = await self._api_client.controller_api.list_robot_controllers(cell=cell)
+        return next((c for c in controllers if c.name == name), None)
+
     async def add_controller(
         self,
         robot_controller: api.models.RobotController,
-        add_timeout_secs: int = DEFAULT_ADD_CONTROLLER_TIMEOUT,
-        wait_for_ready_timeout_secs: int = DEFAULT_WAIT_FOR_READY_TIMEOUT,
+        add_timeout_secs: int = DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS,
+        wait_for_ready_timeout_secs: int = DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS,
     ) -> Controller:
         """
         Add a robot controller to the cell and wait for it to get ready.
@@ -91,8 +99,10 @@ class Cell:
         try:
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(
-                    self._api_gateway.add_robot_controller(
-                        cell=self._cell_id, robot_controller=robot_controller, timeout=None
+                    self._api_client.controller_api.add_robot_controller(
+                        cell=self._cell_id,
+                        robot_controller=robot_controller,
+                        completion_timeout=add_timeout_secs,
                     )
                 )
                 tg.create_task(
@@ -115,8 +125,8 @@ class Cell:
     async def ensure_controller(
         self,
         controller_config: api.models.RobotController,
-        add_timeout: int = DEFAULT_ADD_CONTROLLER_TIMEOUT,
-        wait_for_ready_timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT,
+        add_timeout: int = DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS,
+        wait_for_ready_timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS,
     ) -> Controller:
         """
         Ensure that a robot controller is added to the cell. If it already exists, it will be returned.
@@ -132,7 +142,9 @@ class Cell:
             Controller: The added Controller object.
         """
         # TODO this makes no sense if we already have the controller instance as in the robot_controller parameter
-        controller = await self._api_gateway.get_controller_instance(
+        ic(controller_config)
+        ic(self.cell_id)
+        controller = await self._get_controller_instance(
             cell=self.cell_id, name=controller_config.name
         )
         if controller:
@@ -150,7 +162,7 @@ class Cell:
         Returns:
             list[Controller]: A list of Controller objects associated with this cell.
         """
-        controller_names = await self._api_gateway.controller_api.list_robot_controllers(
+        controller_names = await self._api_client.controller_api.list_robot_controllers(
             cell=self._cell_id
         )
         return [self._create_controller(name) for name in controller_names]
@@ -165,9 +177,7 @@ class Cell:
         Raises:
             ControllerNotFound: If no controller with the specified name exists.
         """
-        controller_instance = await self._api_gateway.get_controller_instance(
-            cell=self._cell_id, name=name
-        )
+        controller_instance = await self._get_controller_instance(cell=self._cell_id, name=name)
         if not controller_instance:
             raise ControllerNotFound(controller=name)
         return self._create_controller(controller_instance.name)
@@ -179,7 +189,7 @@ class Cell:
             name (str): The name of the controller to delete.
             timeout (int): The time to wait for the controller deletion to complete (default: 25).
         """
-        await self._api_gateway.delete_robot_controller(
+        await self._api_client.controller_api.delete_robot_controller(
             cell=self._cell_id, controller=name, completion_timeout=timeout
         )
 
@@ -193,7 +203,7 @@ class Cell:
         return RobotCell(timer=None, **{controller.id: controller for controller in controllers})
 
     async def _wait_for_controller_ready(
-        self, cell: str, name: str, timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT
+        self, cell: str, name: str, timeout: int = DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS
     ) -> None:
         """
         Wait until the given controller has finished initializing or until timeout.

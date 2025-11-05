@@ -4,15 +4,15 @@ from typing import Iterable, Sized
 
 import numpy as np
 import pydantic
-import wandelbots_api_client.v2 as wb
 from scipy.spatial.transform import Rotation
 
+from nova import api
 from nova.types.vector3d import Vector3d
 
 
 def _parse_args(*args):
     """Parse the arguments and return a dictionary that pydanctic can validate"""
-    if len(args) == 1 and isinstance(args[0], wb.models.Pose):
+    if len(args) == 1 and isinstance(args[0], api.models.Pose):
         pos = args[0].position
         ori = args[0].orientation
         return {
@@ -133,14 +133,14 @@ class Pose(pydantic.BaseModel, Sized):
         """
         return self.position.to_tuple() + self.orientation.to_tuple()
 
-    def to_api_pose(self) -> wb.models.Pose:
+    def to_api_pose(self) -> api.models.Pose:
         """Convert to wandelbots_api_client Pose
 
         Examples:
         >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3))._to_wb_pose()
         Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3), coordinate_system=None)
         """
-        return wb.models.Pose(
+        return api.models.Pose(
             position=[self.position.x, self.position.y, self.position.z],
             orientation=[self.orientation.x, self.orientation.y, self.orientation.z],
         )

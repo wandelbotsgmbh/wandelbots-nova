@@ -31,6 +31,7 @@ class RobotVisualizer:
         collision_tcp=None,
         model_from_controller="",
         show_collision_link_chain: bool = False,
+        show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
     ):
         """
@@ -44,6 +45,7 @@ class RobotVisualizer:
         :param collision_tcp: Collision TCP geometries
         :param model_from_controller: Model name from controller for loading robot mesh
         :param show_collision_link_chain: Whether to render robot collision mesh geometry
+        :param show_collision_tool: Whether to render TCP tool collision geometry
         :param show_safety_link_chain: Whether to render robot safety geometry (from controller)
         """
         self.robot = robot
@@ -57,6 +59,7 @@ class RobotVisualizer:
         self.collision_link_geometries = {}
         self.collision_tcp_geometries = collision_tcp
         self.show_collision_link_chain = show_collision_link_chain
+        self.show_collision_tool = show_collision_tool
         self.show_safety_link_chain = show_safety_link_chain
 
         # This will hold the names of discovered joints (e.g. ["robot_J00", "robot_J01", ...])
@@ -775,7 +778,7 @@ class RobotVisualizer:
                         collect_geometry_data(entity_path, final_transform)
 
             # Collect data for collision TCP geometries (only if enabled)
-            if self.show_collision_link_chain and self.collision_tcp_geometries:
+            if self.show_collision_tool and self.collision_tcp_geometries:
                 tcp_transform = transforms[-1]  # End-effector transform
                 for i, geom_id in enumerate(self.collision_tcp_geometries):
                     entity_path = f"{self.base_entity_path}/collision/tcp/geometry_{geom_id}"
