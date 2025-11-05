@@ -97,22 +97,22 @@ class Cell:
         """
 
         try:
-            async with asyncio.TaskGroup() as tg:
-                tg.create_task(
-                    self._api_client.controller_api.add_robot_controller(
-                        cell=self._cell_id,
-                        robot_controller=robot_controller,
-                        completion_timeout=add_timeout_secs,
-                    )
+            add_task = asyncio.create_task(
+                self._api_client.controller_api.add_robot_controller(
+                    cell=self._cell_id,
+                    robot_controller=robot_controller,
+                    completion_timeout=add_timeout_secs,
                 )
-                tg.create_task(
-                    self._wait_for_controller_ready(
-                        cell=self._cell_id,
-                        name=robot_controller.name,
-                        timeout=wait_for_ready_timeout_secs,
-                    )
+            )
+            wait_ready_task = asyncio.create_task(
+                self._wait_for_controller_ready(
+                    cell=self._cell_id,
+                    name=robot_controller.name,
+                    timeout=wait_for_ready_timeout_secs,
                 )
-        except* asyncio.TimeoutError:
+            )
+            await asyncio.gather(add_task, wait_ready_task)
+        except (asyncio.TimeoutError, TimeoutError):
             logger.error(
                 f"Timeout while adding controller {robot_controller.name} to cell {self._cell_id}"
             )
