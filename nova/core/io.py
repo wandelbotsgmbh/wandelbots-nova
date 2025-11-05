@@ -1,22 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from enum import Enum
 
 from nova import api
 from nova.cell.robot_cell import Device, ValueType
 from nova.core.gateway import ApiGateway
-
-
-class IOType(Enum):
-    IO_TYPE_INPUT = "IO_TYPE_INPUT"
-    IO_TYPE_OUTPUT = "IO_TYPE_OUTPUT"
-
-
-class IOValueType(Enum):
-    IO_VALUE_ANALOG_INTEGER = "IO_VALUE_ANALOG_INTEGER"
-    IO_VALUE_ANALOG_FLOATING = "IO_VALUE_ANALOG_FLOAT"
-    IO_VALUE_DIGITAL = "IO_VALUE_BOOLEAN"
 
 
 class IOAccess(Device):
@@ -53,14 +41,17 @@ class IOAccess(Device):
     @staticmethod
     def filter_io_descriptions(
         io_descriptions: dict[str, api.models.IODescription],
-        filter_value_type: IOValueType | None = None,
-        filter_type: IOType | None = None,
+        filter_value_type: api.models.IOValueType | None = None,
+        filter_io_direction: api.models.IODirection | None = None,
     ) -> list[str]:
         return [
-            io.id
-            for io in io_descriptions.values()
+            io_description.io
+            for io_description in io_descriptions.values()
             if filter_value_type is None
-            or (IOValueType(io.value_type) == filter_value_type and IOType(io.type) == filter_type)
+            or (
+                api.models.IOValueType(io_description.value_type) == filter_value_type
+                and api.models.IODirection(io_description.direction) == filter_io_direction
+            )
         ]
 
     async def read(self, key: str) -> bool | int | float:
@@ -79,7 +70,7 @@ class IOAccess(Device):
             return float(input_output.value)
 
         raise ValueError(
-            f"IO value for {key} is of an unexpected type. Expected bool, int or float. Got: {type(found_io.actual_instance)}"
+            f"IO value for {key} is of an unexpected type. Expected bool, int or float. Got: {type(input_output)}"
         )
 
     async def write(self, key: str, value: ValueType):
@@ -110,21 +101,21 @@ class IOAccess(Device):
         """Checks if the provided value matches the expected type of the IO"""
         io_descriptions = await self.get_io_descriptions()
         io_description = io_descriptions[key]
-        io_value_type = IOValueType(io_description.value_type)
+        io_value_type = api.models.IOValueType(io_description.value_type)
         if isinstance(value, bool):
-            if io_value_type is not IOValueType.IO_VALUE_DIGITAL:
+            if io_value_type is not api.models.IOValueType.IO_VALUE_BOOLEAN:
                 raise ValueError(
-                    f"Boolean value can only be set at an IO_VALUE_DIGITAL IO and not to {io_value_type}"
+                    f"Boolean value can only be set at an IO_VALUE_BOOLEAN IO and not to {io_value_type}"
                 )
         elif isinstance(value, int):
-            if io_value_type is not IOValueType.IO_VALUE_ANALOG_INTEGER:
+            if io_value_type is not api.models.IOValueType.IO_VALUE_ANALOG_INTEGER:
                 raise ValueError(
                     f"Integer value can only be set at an IO_VALUE_ANALOG_INTEGER IO and not to {io_value_type}"
                 )
         elif isinstance(value, float):
-            if io_value_type is not IOValueType.IO_VALUE_ANALOG_FLOATING:
+            if io_value_type is not api.models.IOValueType.IO_VALUE_ANALOG_FLOAT:
                 raise ValueError(
-                    f"Float value can only be set at an IO_VALUE_ANALOG_FLOATING IO and not to {io_value_type}"
+                    f"Float value can only be set at an IO_VALUE_ANALOG_FLOAT IO and not to {io_value_type}"
                 )
         else:
             raise ValueError(f"Unexpected type {type(value)}")

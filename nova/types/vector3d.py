@@ -117,10 +117,10 @@ class Vector3d(pydantic.BaseModel):
         return np.concatenate([np.cos(half_angle)[None], values * np.sinc(half_angle / np.pi) / 2])
 
     @pydantic.model_serializer
-    def serialize_model(self) -> dict:
+    def serialize_model(self) -> tuple:
         """
         Examples:
         >>> Vector3d.from_tuple((1, 2, 3)).model_dump()
-        {'x': 1, 'y': 2, 'z': 3}
+        (1, 2, 3)
         """
-        return self.to_api_vector3d()
+        return self.to_tuple()

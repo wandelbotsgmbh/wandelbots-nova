@@ -623,7 +623,7 @@ class MotionGroup(AbstractRobot):
             load_planned_motion_response = await self._load_planned_motion(joint_trajectory, tcp)
             return load_planned_motion_response.motion, joint_trajectory
 
-        execute_fn = partial(self._api_gateway.motion_api.execute_trajectory, cell=self._cell)
+        execute_fn = partial(self._api_client.motion_api.execute_trajectory, cell=self._cell)
         tuner = TrajectoryTuner(actions, plan_fn, execute_fn)
         async for response in tuner.tune():
             yield response
