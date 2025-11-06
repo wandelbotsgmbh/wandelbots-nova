@@ -100,7 +100,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
                 MotionState(
                     motion_group_id=self.configuration.id,
                     path_parameter=0,
-                    state=RobotState(pose=configuration.initial_pose, tcp="Flange", joints=None),
+                    state=RobotState(pose=configuration.initial_pose, tcp="Flange", joints=(0, 0, 0, 0, 0, 0)),
                 )
             ]
         )
