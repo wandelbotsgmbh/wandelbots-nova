@@ -11,13 +11,13 @@ class RobotState(pydantic.BaseModel):
 
     Attributes:
         pose (Pose): The current pose (position and orientation) of the robot.
-        tcp (str): The TCP name .
+        tcp (str | None): The TCP name.
         joints (tuple[float, ...]): A tuple of joint angles in radians for each
             joint of the robot.
     """
 
     pose: Pose
-    tcp: str
+    tcp: str | None
     joints: tuple[float, ...]
 
 
