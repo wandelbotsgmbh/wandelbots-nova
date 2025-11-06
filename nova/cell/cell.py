@@ -74,8 +74,15 @@ class Cell:
     async def _get_controller_instance(
         self, *, cell: str, name: str
     ) -> api.models.RobotController | None:
-        controllers = await self._api_client.controller_api.list_robot_controllers(cell=cell)
-        return next((c for c in controllers if c.name == name), None)
+        controller_names = await self._api_client.controller_api.list_robot_controllers(
+            cell=self._cell_id
+        )
+        if name in controller_names:
+            return await self._api_client.controller_api.get_robot_controller(
+                cell=self._cell_id, controller=name
+            )
+
+        return None
 
     async def add_controller(
         self,
@@ -157,6 +164,8 @@ class Cell:
         )
 
     async def controllers(self) -> list[Controller]:
+        # TODO The API returns a list of controller names as of v2, should we really offer
+        # the instance listing at all?
         """
         List all controllers for this cell.
         Returns:
@@ -165,7 +174,21 @@ class Cell:
         controller_names = await self._api_client.controller_api.list_robot_controllers(
             cell=self._cell_id
         )
-        return [self._create_controller(name) for name in controller_names]
+        # Create tasks to get all controller instances concurrently
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(
+                    self._api_client.controller_api.get_robot_controller(
+                        cell=self._cell_id, controller=name
+                    )
+                )
+                for name in controller_names
+            ]
+
+        # Filter out None results and return the list of controller instances
+        return [
+            self._create_controller(result.name) for result in [task.result() for task in tasks]
+        ]
 
     async def controller(self, name: str) -> Controller:
         """
