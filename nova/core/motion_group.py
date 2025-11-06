@@ -287,14 +287,18 @@ class MotionGroup(AbstractRobot):
         return (await self.get_state(tcp=tcp)).pose
 
     async def tcps(self) -> dict[str, api.models.RobotTcp]:
+        motion_group_description = await self._fetch_description()
+        tcps = motion_group_description.tcps
+        if tcps is None:
+            return {}
         return {
             tcp: api.models.RobotTcp(
                 id=tcp,
                 name=tcp_offset.name,
-                position=tcp_offset.position,
-                orientation=tcp_offset.orientation,
+                position=tcp_offset.pose.position,
+                orientation=tcp_offset.pose.orientation,
             )
-            for tcp, tcp_offset in (await self._fetch_description()).tcps.items()
+            for tcp, tcp_offset in tcps.items()
         }
 
     # TODO names?, ids?, both?, whatever? (probably ids atm)
@@ -302,11 +306,15 @@ class MotionGroup(AbstractRobot):
         tcps = await self.tcps()
         return list(tcps.keys())
 
-    async def active_tcp(self) -> api.models.RobotTcp:
+    async def active_tcp_name(self) -> str | None:
         return (await self._fetch_state()).tcp
 
-    async def active_tcp_name(self) -> str:
-        return (await self.active_tcp()).name
+    async def active_tcp(self) -> api.models.RobotTcp | None:
+        active_tcp_name = await self.active_tcp_name()
+        if active_tcp_name is None:
+            return None
+        tcps = await self.tcps()
+        return tcps.get(active_tcp_name)
 
     async def ensure_virtual_tcp(
         self, tcp: api.models.RobotTcp, timeout: int = 12
@@ -330,13 +338,8 @@ class MotionGroup(AbstractRobot):
         ic(existing_tcp, tcp)
         if (
             existing_tcp
-            and api.models.RobotTcp(
-                id=existing_tcp.id,
-                name=existing_tcp.name,
-                position=existing_tcp.position,
-                orientation=existing_tcp.orientation,
-            )
-            == tcp
+            and existing_tcp.position == tcp.position
+            and existing_tcp.orientation == tcp.orientation
         ):
             # if existing_tcp and existing_tcp.pose == Pose(tcp.orientation, tcp.position):
             return existing_tcp
@@ -514,7 +517,7 @@ class MotionGroup(AbstractRobot):
                 trajectory = api.models.JointTrajectory(
                     joint_positions=joint_positions,
                     times=times,
-                    locations=[float(loc) for loc in locations],
+                    locations=[api.models.Location(float(loc)) for loc in locations],
                 )
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one

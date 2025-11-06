@@ -160,7 +160,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        optimizer_setup: api.models.OptimizerSetup | None = None,
+        optimizer_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
         """
         A simple example planner that:

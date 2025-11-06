@@ -79,10 +79,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
         await motion_group_state_monitor_ready.wait()
         trajectory_id = api.models.TrajectoryId(id=context.motion_id)
-        trajectory_request = api.models.InitializeMovementRequest(trajectory=trajectory_id)
-        yield api.models.InitializeMovementRequest(
-            trajectory=trajectory_request, initial_location=0
-        )
+        yield api.models.InitializeMovementRequest(trajectory=trajectory_id, initial_location=0)
         execute_trajectory_response = await anext(response_stream)
         initialize_movement_response = execute_trajectory_response
         ic(initialize_movement_response)
