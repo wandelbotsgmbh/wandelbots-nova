@@ -455,18 +455,18 @@ class AbstractRobot(Device):
         """
 
     @abstractmethod
-    async def active_tcp(self) -> api.models.RobotTcp:
+    async def active_tcp(self) -> api.models.RobotTcp | None:
         """Return the active TCP of the robot
 
-        Returns: the active TCP
+        Returns: the active TCP or None if no TCP is active or the robot has no TCPs configured
 
         """
 
     @abstractmethod
-    async def active_tcp_name(self) -> str:
+    async def active_tcp_name(self) -> str | None:
         """Return the name of the active TCP of the robot
 
-        Returns: the name of the active TCP
+        Returns: the name of the active TCP or None if no TCP is active or the robot has no TCPs configured
 
         """
 
