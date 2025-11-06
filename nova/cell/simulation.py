@@ -345,16 +345,16 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             #     )
             # )
 
-    async def tcps(self) -> list[api.models.RobotTcp]:
-        return [
-            api.models.RobotTcp(
+    async def tcps(self) -> dict[str, api.models.RobotTcp]:
+        return {
+            name: api.models.RobotTcp(
                 id=name,
                 name=name,
                 position=tool_pose.position.model_dump(),
                 orientation=tool_pose.orientation.model_dump(),
             )
             for name, tool_pose in self.configuration.tools.items()
-        ]
+        }
 
     async def tcp_names(self) -> list[str]:
         return list(self.configuration.tools.keys())

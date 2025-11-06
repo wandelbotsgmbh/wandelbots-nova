@@ -296,7 +296,10 @@ class MotionGroup(AbstractRobot):
                 id=tcp,
                 name=tcp_offset.name,
                 position=tcp_offset.pose.position,
-                orientation=tcp_offset.pose.orientation or None,
+                # TODO: what is the correct rotation type here then?
+                orientation=api.models.Orientation(tcp_offset.pose.orientation.root)
+                if tcp_offset.pose.orientation is not None
+                else None,
             )
             for tcp, tcp_offset in tcps.items()
             if tcp_offset.pose.position is not None
