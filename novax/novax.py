@@ -3,6 +3,7 @@ from typing import AsyncIterator, Optional
 
 from fastapi import APIRouter, FastAPI
 
+from nova import api
 from nova.core.nova import Nova
 from nova.logging import logger
 from nova.program.function import Program
@@ -10,7 +11,6 @@ from nova.program.store import Program as StoreProgram
 from nova.program.store import ProgramStore
 from novax.config import APP_NAME, CELL_NAME
 from novax.program_manager import ProgramManager
-from nova import api
 
 
 class Novax:

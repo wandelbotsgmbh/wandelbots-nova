@@ -44,7 +44,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
 
     def __len__(self) -> int:
         # TODO What is this for? Is it still needed when motion group activation is gone?
-        return len(self._motion_group_ids)
+        return len(self._motion_group_ids) if self._motion_group_ids is not None else 0
 
     def motion_group(self, motion_group_id: str) -> MotionGroup:
         """Returns motion group with specific id.

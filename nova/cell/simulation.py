@@ -108,12 +108,12 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         # this list. Every motion trajectory corresponds to blocs of wandelscript code between sync commands.
         self.record_of_commands: list[list[Action]] = []
 
-    async def get_optimizer_setup(self, tcp_name: str) -> api.models.OptimizerSetup:
+    async def get_optimizer_setup(self, tcp_name: str) -> api.models.MotionGroupSetup:
         tcp_pose = self.configuration.tools[tcp_name]
         tcp_pos = api.models.Vector3d(tcp_pose.position.to_tuple())
         tcp_ori = api.models.RotationVector([0, 0, 0])
-        quat = Rotation.from_rotvec(self.configuration.tools[tcp_name].orientation).as_quat()
-        tcp_ori.x, tcp_ori.y, tcp_ori.z, tcp_ori.w = quat[0], quat[1], quat[2], quat[3]
+        # quat = Rotation.from_rotvec(self.configuration.tools[tcp_name].orientation)
+        # tcp_ori.x, tcp_ori.y, tcp_ori.z, tcp_ori.w = quat[0], quat[1], quat[2], quat[3]
         joint_limits = api.models.JointLimits(
             position=api.models.LimitRange(lower_limit=-np.pi, upper_limit=np.pi),
             velocity=1,
@@ -141,18 +141,9 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
 
     async def get_mounting(self) -> Pose:
         mounting = (await self.get_optimizer_setup((await self.tcp_names())[0])).mounting
-        if mounting is None or mounting.position is None or mounting.orientation is None:
+        if mounting is None:
             raise ValueError("Mounting is None")
-
-        return Pose.from_position_and_quaternion(  # type: ignore
-            [mounting.position.x, mounting.position.y, mounting.position.z],
-            [
-                mounting.orientation.w,
-                mounting.orientation.x,
-                mounting.orientation.y,
-                mounting.orientation.z,
-            ],
-        )
+        return Pose(mounting)
 
     async def _plan(
         self,
