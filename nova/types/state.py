@@ -60,5 +60,5 @@ def motion_group_state_to_motion_state(
     return MotionState(
         motion_group_id=motion_group_state.motion_group,
         path_parameter=path_parameter.root,
-        state=RobotState(pose=Pose(tcp_pose), tcp=tcp_name, joints=joints),
+        state=RobotState(pose=Pose(tcp_pose), tcp=tcp_name, joints=tuple(joints.root)),
     )
