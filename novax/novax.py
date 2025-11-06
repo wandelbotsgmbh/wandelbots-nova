@@ -9,7 +9,8 @@ from nova.program.function import Program
 from nova.program.store import Program as StoreProgram
 from nova.program.store import ProgramStore
 from novax.config import APP_NAME, CELL_NAME
-from novax.program_manager import ProgramDetails, ProgramManager
+from novax.program_manager import ProgramManager
+from nova import api
 
 
 class Novax:
@@ -145,11 +146,11 @@ class Novax:
         except Exception as e:
             logger.error(f"Novax shutdown error: {e}")
 
-    async def get_programs(self) -> dict[str, ProgramDetails]:
+    async def get_programs(self) -> dict[str, api.models.Program]:
         """Get all registered programs"""
         return await self._program_manager.get_programs()
 
-    async def get_program(self, program_id: str) -> Optional[ProgramDetails]:
+    async def get_program(self, program_id: str) -> Optional[api.models.Program]:
         """Get a specific program by ID"""
         return await self._program_manager.get_program(program_id)
 

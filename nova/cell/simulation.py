@@ -109,12 +109,11 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         self.record_of_commands: list[list[Action]] = []
 
     async def get_optimizer_setup(self, tcp_name: str) -> api.models.OptimizerSetup:
-        tcp_pos = api.models.Vector3d([0, 0, 0])
-        tcp_pos.x, tcp_pos.y, tcp_pos.z = self.configuration.tools[tcp_name].position
-        tcp_ori = api.models.Orientation([0, 0, 0, 1])
-        tcp_ori.x, tcp_ori.y, tcp_ori.z, tcp_ori.w = Rotation.from_rotvec(
-            self.configuration.tools[tcp_name].orientation
-        ).as_quat()
+        tcp_pose = self.configuration.tools[tcp_name]
+        tcp_pos = api.models.Vector3d(tcp_pose.position.to_tuple())
+        tcp_ori = api.models.RotationVector([0, 0, 0])
+        quat = Rotation.from_rotvec(self.configuration.tools[tcp_name].orientation).as_quat()
+        tcp_ori.x, tcp_ori.y, tcp_ori.z, tcp_ori.w = quat[0], quat[1], quat[2], quat[3]
         joint_limits = api.models.JointLimits(
             position=api.models.LimitRange(lower_limit=-np.pi, upper_limit=np.pi),
             velocity=1,
