@@ -296,9 +296,10 @@ class MotionGroup(AbstractRobot):
                 id=tcp,
                 name=tcp_offset.name,
                 position=tcp_offset.pose.position,
-                orientation=tcp_offset.pose.orientation,
+                orientation=tcp_offset.pose.orientation or None,
             )
             for tcp, tcp_offset in tcps.items()
+            if tcp_offset.pose.position is not None
         }
 
     # TODO names?, ids?, both?, whatever? (probably ids atm)
