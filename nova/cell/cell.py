@@ -1,8 +1,6 @@
 import asyncio
 import json
 
-from icecream import ic
-
 from nova import api
 from nova.cell.robot_cell import RobotCell
 from nova.core.controller import Controller
@@ -67,33 +65,23 @@ class Cell:
         )
 
     def _create_controller_from_config(
-        self, robot_controller: api.models.RobotController
+        self, controller_config: api.models.RobotController
     ) -> Controller:
-        return self._create_controller(controller_id=robot_controller.name)
+        return self._create_controller(controller_id=controller_config.name)
 
-    async def _get_controller_instance(
-        self, *, cell: str, name: str
-    ) -> api.models.RobotController | None:
-        controller_names = await self._api_client.controller_api.list_robot_controllers(
-            cell=self._cell_id
-        )
-        if name in controller_names:
-            return await self._api_client.controller_api.get_robot_controller(
-                cell=self._cell_id, controller=name
-            )
-
-        return None
+    async def _fetch_controller_names(self) -> list[str]:
+        return await self._api_client.controller_api.list_robot_controllers(cell=self._cell_id)
 
     async def add_controller(
         self,
-        robot_controller: api.models.RobotController,
+        controller_config: api.models.RobotController,
         add_timeout_secs: int = DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS,
         wait_for_ready_timeout_secs: int = DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS,
     ) -> Controller:
         """
         Add a robot controller to the cell and wait for it to get ready.
         Args:
-            robot_controller (api.models.RobotController): The robot controller to add. You can use helper functions from nova to create these configs easily,
+            controller_config (api.models.RobotController): The robot controller to add. You can use helper functions from nova to create these configs easily,
                 see :func:`nova.cell.abb_controller`, :func:`nova.cell.fanuc_controller`, :func:`nova.cell.kuka_controller`,
                 :func:`nova.cell.universal_robots_controller`, :func:`nova.cell.virtual_controller`, :func:`nova.cell.yaskawa_controller`.
             add_timeout (int): The time to wait for the controller to be added (default: 25).
@@ -107,27 +95,27 @@ class Cell:
             add_task = asyncio.create_task(
                 self._api_client.controller_api.add_robot_controller(
                     cell=self._cell_id,
-                    robot_controller=robot_controller,
+                    robot_controller=controller_config,
                     completion_timeout=add_timeout_secs,
                 )
             )
             wait_ready_task = asyncio.create_task(
                 self._wait_for_controller_ready(
                     cell=self._cell_id,
-                    name=robot_controller.name,
+                    name=controller_config.name,
                     timeout=wait_for_ready_timeout_secs,
                 )
             )
             await asyncio.gather(add_task, wait_ready_task)
         except (asyncio.TimeoutError, TimeoutError):
             logger.error(
-                f"Timeout while adding controller {robot_controller.name} to cell {self._cell_id}"
+                f"Timeout while adding controller {controller_config.name} to cell {self._cell_id}"
             )
             raise TimeoutError(
-                f"Timeout while adding controller {robot_controller.name} to cell {self._cell_id}"
+                f"Timeout while adding controller {controller_config.name} to cell {self._cell_id}"
             )
 
-        return self._create_controller_from_config(robot_controller)
+        return self._create_controller_from_config(controller_config)
 
     async def ensure_controller(
         self,
@@ -139,7 +127,7 @@ class Cell:
         Ensure that a robot controller is added to the cell. If it already exists, it will be returned.
         If it doesn't exist, it will be added and waited for to be ready.
         Args:
-            robot_controller (api.models.RobotController): The robot controller to add. You can use helper functions from nova to create these configs easily,
+            controller_config (api.models.RobotController): The robot controller to add. You can use helper functions from nova to create these configs easily,
                 see :func:`nova.abb_controller`, :func:`nova.fanuc_controller`, :func:`nova.kuka_controller`,
                 :func:`nova.universal_robots_controller`, :func:`nova.virtual_controller`, :func:`nova.yaskawa_controller`.
             add_timeout (int): The time to wait for the controller to be added (default: 25).
@@ -148,14 +136,8 @@ class Cell:
         Returns:
             Controller: The added Controller object.
         """
-        # TODO this makes no sense if we already have the controller instance as in the robot_controller parameter
-        ic(controller_config)
-        ic(self.cell_id)
-        controller = await self._get_controller_instance(
-            cell=self.cell_id, name=controller_config.name
-        )
-        if controller:
-            return self._create_controller(controller.name)
+        if controller_config.name in await self._fetch_controller_names():
+            return self._create_controller(controller_config.name)
 
         return await self.add_controller(
             controller_config,
@@ -171,9 +153,7 @@ class Cell:
         Returns:
             list[Controller]: A list of Controller objects associated with this cell.
         """
-        controller_names = await self._api_client.controller_api.list_robot_controllers(
-            cell=self._cell_id
-        )
+        controller_names = await self._fetch_controller_names()
         # Create tasks to get all controller instances concurrently
         async with asyncio.TaskGroup() as tg:
             tasks = [
@@ -200,10 +180,9 @@ class Cell:
         Raises:
             ControllerNotFound: If no controller with the specified name exists.
         """
-        controller_instance = await self._get_controller_instance(cell=self._cell_id, name=name)
-        if not controller_instance:
+        if name not in await self._fetch_controller_names():
             raise ControllerNotFound(controller=name)
-        return self._create_controller(controller_instance.name)
+        return self._create_controller(name)
 
     async def delete_robot_controller(self, name: str, timeout: int = 25):
         """
