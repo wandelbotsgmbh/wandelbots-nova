@@ -49,7 +49,7 @@ def motion_group_setup_from_motion_group_description(
         if motion_group_description.safety_link_colliders
         else None
     )
-    collision_scene = api.models.CollisionSetup(
+    collision_setup = api.models.CollisionSetup(
         colliders=motion_group_description.safety_zones,
         link_chain=link_chain,
         tool=tool,
@@ -70,7 +70,7 @@ def motion_group_setup_from_motion_group_description(
         global_limits=limits,
         tcp_offset=motion_group_description.tcps[tcp_name].pose,
         payload=payload,
-        collision_scene=collision_scene,
+        collision_setups=api.models.CollisionSetups({"default": collision_setup}),
     )
 
 
@@ -121,7 +121,7 @@ def combine_trajectories(
         # Shift times and locations to continue from last endpoint
         shifted_times = [t + current_end_time for t in trajectory.times[1:]]  # Skip first point
         shifted_locations = [
-            location + current_end_location for location in trajectory.locations[1:]
+            location.root + current_end_location.root for location in trajectory.locations[1:]
         ]  # Skip first point
 
         final_trajectory.times.extend(shifted_times)
@@ -466,7 +466,7 @@ class MotionGroup(AbstractRobot):
             cell=self._cell,
             plan_trajectory_request=api.models.PlanTrajectoryRequest(
                 motion_group_setup=robot_setup,
-                start_joint_position=list(start_joint_position),
+                start_joint_position=api.models.DoubleArray(list(start_joint_position)),
                 motion_commands=motion_commands,
             ),
         )

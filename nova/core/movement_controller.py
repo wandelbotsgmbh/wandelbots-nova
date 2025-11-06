@@ -79,7 +79,9 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
         await motion_group_state_monitor_ready.wait()
         trajectory_id = api.models.TrajectoryId(id=context.motion_id)
-        yield api.models.InitializeMovementRequest(trajectory=trajectory_id, initial_location=0)
+        yield api.models.InitializeMovementRequest(
+            trajectory=trajectory_id, initial_location=api.models.Location(0)
+        )
         execute_trajectory_response = await anext(response_stream)
         initialize_movement_response = execute_trajectory_response
         ic(initialize_movement_response)
@@ -647,7 +649,7 @@ class TrajectoryCursor:
         try:
             async for response in self._response_stream:
                 self._in_queue.put_nowait(response)
-                instance = response.actual_instance
+                instance = response
                 if isinstance(instance, wb_v1.models.Movement):
                     if last_movement is None:
                         last_movement = instance.movement
