@@ -3,8 +3,8 @@ from datetime import datetime
 
 from icecream import ic
 
+from nova import api
 from nova.cell.simulation import SimulatedRobotCell, get_robot_controller
-from nova.program.runner import ProgramRunState
 from wandelscript import run
 from wandelscript.utils.runtime import Tee
 
@@ -25,6 +25,6 @@ move via line() to (0, 100, 400, 0, pi, 0)
             program_id="test", code=code, robot_cell_override=robot_cell, default_tcp="Flange"
         )
         assert runner.program_run.output_data["a"] == 9
-        assert runner.program_run.state is ProgramRunState.COMPLETED
+        assert runner.program_run.state is api.models.ProgramRunState.COMPLETED
         assert "print something" in runner.program_run.logs
         assert not isinstance(sys.stdout, Tee)

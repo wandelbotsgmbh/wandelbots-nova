@@ -1,6 +1,6 @@
 import pydantic
-import wandelbots_api_client.v2 as wb
 
+from nova import api
 from nova.types.pose import Pose
 
 
@@ -29,30 +29,36 @@ class MotionState(pydantic.BaseModel):
     state: RobotState
 
 
-# TODO find a better place for this
 # TODO this should return different types of MotionState depending on the fields set in the MotionGroupState
 def motion_group_state_to_motion_state(
-    motion_group_state: wb.models.MotionGroupState,
+    motion_group_state: api.models.MotionGroupState,
 ) -> MotionState:
+    """Convert a motion group state to a motion state. Should only be used when the motion group is executing a trajectory.
+
+    Args:
+        motion_group_state (api.models.MotionGroupState): The motion group state to convert.
+
+    Returns:
+        MotionState: The motion state.
+    """
     if not motion_group_state.execute:
         raise ValueError("There is no trajectory execution going on.")
 
-    tcp_pose = Pose(
-        tuple(motion_group_state.tcp_pose.position + motion_group_state.tcp_pose.orientation)
-    )
-    joints = tuple(motion_group_state.joint_position)
-    # TODO not very clean
-    path_parameter = (
-        motion_group_state.execute.details.actual_instance.location
-        if motion_group_state.execute
-        and motion_group_state.execute.details
-        and isinstance(
-            motion_group_state.execute.details.actual_instance, wb.models.TrajectoryDetails
-        )
-        else None
-    )
+    if not isinstance(motion_group_state.execute.details, api.models.TrajectoryDetails):
+        raise ValueError("The trajectory execution details are not a trajectory details.")
+
+    tcp_name = motion_group_state.tcp
+    if tcp_name is None:
+        raise ValueError("There is no TCP attached to the motion group.")
+
+    tcp_pose = motion_group_state.tcp_pose
+    if tcp_pose is None:
+        raise ValueError("There is no TCP pose attached to the motion group.")
+
+    joints = motion_group_state.joint_position
+    path_parameter = motion_group_state.execute.details.location
     return MotionState(
         motion_group_id=motion_group_state.motion_group,
-        path_parameter=path_parameter,
-        state=RobotState(pose=tcp_pose, tcp=motion_group_state.tcp, joints=joints),
+        path_parameter=path_parameter.root,
+        state=RobotState(pose=Pose(tcp_pose), tcp=tcp_name, joints=joints),
     )

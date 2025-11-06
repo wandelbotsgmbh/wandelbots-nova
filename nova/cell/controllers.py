@@ -42,9 +42,9 @@ def abb_controller(
         controller_port (int): The port of the ABB controller
     """
     abb_config = api.models.AbbController(
-        controllerIp=controller_ip,
-        egmServer=api.models.AbbControllerEgmServer(ip=egm_server_ip, port=egm_server_port),
-        controllerPort=controller_port,
+        controller_ip=controller_ip,
+        egm_server=api.models.EgmServer(ip=egm_server_ip, port=egm_server_port),
+        controller_port=controller_port,
     )
     return _build_controller(name=name, configuration=abb_config)
 
@@ -56,7 +56,7 @@ def universal_robots_controller(name: str, controller_ip: str) -> api.models.Rob
         name (str): The name of the controller.
         controller_ip (str): The IP address of the Universal Robots robot.
     """
-    universal_config = api.models.UniversalrobotsController(controllerIp=controller_ip)
+    universal_config = api.models.UniversalrobotsController(controller_ip=controller_ip)
     return _build_controller(name=name, configuration=universal_config)
 
 
@@ -73,9 +73,9 @@ def kuka_controller(
         rsi_server_port (str): The port of the RSI server.
     """
     kuka_config = api.models.KukaController(
-        controllerIp=controller_ip,
-        controllerPort=controller_port,
-        rsiServer=api.models.KukaControllerRsiServer(ip=rsi_server_ip, port=rsi_server_port),
+        controller_ip=controller_ip,
+        controller_port=controller_port,
+        rsi_server=api.models.RsiServer(ip=rsi_server_ip, port=rsi_server_port),
     )
     return _build_controller(name=name, configuration=kuka_config)
 
@@ -87,7 +87,7 @@ def fanuc_controller(name: str, controller_ip: str) -> api.models.RobotControlle
         name (str): The name of the controller.
         controller_ip (str): The IP address of the FANUC robot.
     """
-    fanuc_config = api.models.FanucController(controllerIp=controller_ip)
+    fanuc_config = api.models.FanucController(controller_ip=controller_ip)
     return _build_controller(name=name, configuration=fanuc_config)
 
 
@@ -98,7 +98,7 @@ def yaskawa_controller(name: str, controller_ip: str) -> api.models.RobotControl
         name (str): The name of the controller.
         controller_ip (str): The IP address of the Yaskawa robot.
     """
-    yaskawa_config = api.models.YaskawaController(controllerIp=controller_ip)
+    yaskawa_config = api.models.YaskawaController(controller_ip=controller_ip)
     return _build_controller(name=name, configuration=yaskawa_config)
 
 
@@ -128,7 +128,7 @@ def virtual_controller(
     virtual_config = api.models.VirtualController(
         manufacturer=manufacturer,
         type=type,
-        json=controller_config_json,
-        position=json.dumps(position),
+        json_=controller_config_json,
+        initial_joint_position=json.dumps(position),
     )
     return _build_controller(name=name, configuration=virtual_config)

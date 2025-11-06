@@ -21,5 +21,4 @@ __all__ = [
     "MovementController",
     "MovementControllerContext",
     "TrajectoryBuilder",
-    "TrajectoryMacher",
 ]

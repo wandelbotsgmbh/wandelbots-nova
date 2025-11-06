@@ -305,7 +305,7 @@ class Spline(Motion):
 
 def spline(
     target: PoseOrVectorTuple,
-    settings: MotionSettings | None = None,
+    settings: MotionSettings = MotionSettings(),
     path_parameter: float = 1,
     time=None,
     collision_scene: api.models.CollisionSetup | None = None,

@@ -71,11 +71,13 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         Returns:
             list[MotionGroup]: All motion groups as `MotionGroup` objects.
         """
-        raise NotImplementedError(
-            "This can be implemented when the new controllers/{controller}/description endpoint is available."
+        motion_group_description = await self._nova_api.controller_api.get_controller_description(
+            cell=self.configuration.cell_id, controller=self.configuration.controller_id
         )
-        motion_group_ids = await self._nova_api.controller_description_api
-        return [self.motion_group(motion_group_id) for motion_group_id in motion_group_ids]
+        return [
+            self.motion_group(motion_group_id)
+            for motion_group_id in motion_group_description.connected_motion_groups
+        ]
 
     def get_motion_groups(self) -> dict[str, AbstractRobot]:
         """Retrieves a dictionary of motion group IDs to their corresponding robots.

@@ -1,7 +1,7 @@
 import pytest
 
-from nova import Nova
-from nova.core.io import IOAccess, IOType, IOValueType
+from nova import Nova, api
+from nova.core.io import IOAccess
 
 
 @pytest.mark.skip("TODO: Setup integration tests")
@@ -14,7 +14,9 @@ async def test_get_io_descriptions():
         io_descriptions = await io.get_io_descriptions()
         assert len(io_descriptions) > 0
         filtered_io_descriptions = IOAccess.filter_io_descriptions(
-            io_descriptions, IOValueType.IO_VALUE_DIGITAL, IOType.IO_TYPE_INPUT
+            io_descriptions,
+            api.models.IOValueType.IO_VALUE_BOOLEAN,
+            api.models.IODirection.IO_TYPE_INPUT,
         )
         assert len(filtered_io_descriptions) < len(io_descriptions)
 

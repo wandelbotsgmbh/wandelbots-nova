@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
+    from nova import api
     from nova.actions import Action
-    from nova.api import models
 
 
 def extract_collision_scenes_from_actions(
     actions: Sequence[Action],
-) -> dict[str, models.CollisionScene]:
+) -> dict[str, api.models.CollisionSetup]:
     """Extract unique collision scenes from a list of actions.
 
     Args:
@@ -22,7 +22,7 @@ def extract_collision_scenes_from_actions(
     """
     from nova.actions.motions import CollisionFreeMotion, Motion
 
-    collision_scenes: dict[str, models.CollisionScene] = {}
+    collision_scenes: dict[str, api.models.CollisionSetup] = {}
 
     for i, action in enumerate(actions):
         # Check if action is a motion with collision_scene attribute

@@ -1,22 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from enum import Enum
 
 from nova import api
 from nova.cell.robot_cell import Device, ValueType
 from nova.core.gateway import ApiGateway
-
-
-class IOType(Enum):
-    IO_TYPE_INPUT = "IO_TYPE_INPUT"
-    IO_TYPE_OUTPUT = "IO_TYPE_OUTPUT"
-
-
-class IOValueType(Enum):
-    IO_VALUE_ANALOG_INTEGER = "IO_VALUE_ANALOG_INTEGER"
-    IO_VALUE_ANALOG_FLOATING = "IO_VALUE_ANALOG_FLOAT"
-    IO_VALUE_DIGITAL = "IO_VALUE_BOOLEAN"
 
 
 class IOAccess(Device):
@@ -53,33 +41,36 @@ class IOAccess(Device):
     @staticmethod
     def filter_io_descriptions(
         io_descriptions: dict[str, api.models.IODescription],
-        filter_value_type: IOValueType | None = None,
-        filter_type: IOType | None = None,
+        filter_value_type: api.models.IOValueType | None = None,
+        filter_io_direction: api.models.IODirection | None = None,
     ) -> list[str]:
         return [
-            io.id
-            for io in io_descriptions.values()
+            io_description.io
+            for io_description in io_descriptions.values()
             if filter_value_type is None
-            or (IOValueType(io.value_type) == filter_value_type and IOType(io.type) == filter_type)
+            or (
+                api.models.IOValueType(io_description.value_type) == filter_value_type
+                and api.models.IODirection(io_description.direction) == filter_io_direction
+            )
         ]
 
     async def read(self, key: str) -> bool | int | float:
         """Reads a value from a given IO"""
-        response = await self.controller_ios_api.list_io_values(
+        response = await self._api_client.controller_ios_api.list_io_values(
             cell=self._cell, controller=self._controller_id, ios=[key]
         )
 
-        found_io = response.io_values[0]
+        input_output = response[0]
 
-        if isinstance(found_io.actual_instance, api.models.IOBooleanValue):
-            return bool(found_io.actual_instance.boolean_value)
-        elif isinstance(found_io.actual_instance, api.models.IOIntegerValue):
-            return int(found_io.actual_instance.integer_value)
-        elif isinstance(found_io.actual_instance, api.models.IOFloatValue):
-            return float(found_io.actual_instance.float_value)
+        if isinstance(input_output, api.models.IOBooleanValue):
+            return bool(input_output.value)
+        elif isinstance(input_output, api.models.IOIntegerValue):
+            return int(input_output.value)
+        elif isinstance(input_output, api.models.IOFloatValue):
+            return float(input_output.value)
 
         raise ValueError(
-            f"IO value for {key} is of an unexpected type. Expected bool, int or float. Got: {type(found_io.actual_instance)}"
+            f"IO value for {key} is of an unexpected type. Expected bool, int or float. Got: {type(input_output)}"
         )
 
     async def write(self, key: str, value: ValueType):
@@ -92,39 +83,37 @@ class IOAccess(Device):
             )
 
             if isinstance(value, bool):
-                io_value = api.models.IOBooleanValue(io=key, boolean_value=value)
+                io_value = api.models.IOBooleanValue(io=key, value=value)
             elif isinstance(value, int):
-                io_value = api.models.IOIntegerValue(io=key, integer_value=str(value))
+                io_value = api.models.IOIntegerValue(io=key, value=str(value))
             elif isinstance(value, float):
-                io_value = api.models.IOFloatValue(io=key, float_value=value)
+                io_value = api.models.IOFloatValue(io=key, value=value)
             else:
                 raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
 
-            await self.controller_ios_api.set_output_values(
-                cell=self._cell,
-                controller=self._controller_id,
-                set_output_values_request_inner=[api.models.SetOutputValuesRequestInner(io_value)],
+            await self._api_client.controller_ios_api.set_output_values(
+                cell=self._cell, controller=self._controller_id, io_value=[io_value]
             )
 
     async def _ensure_value_type(self, key: str, value: ValueType):
         """Checks if the provided value matches the expected type of the IO"""
         io_descriptions = await self.get_io_descriptions()
         io_description = io_descriptions[key]
-        io_value_type = IOValueType(io_description.value_type)
+        io_value_type = api.models.IOValueType(io_description.value_type)
         if isinstance(value, bool):
-            if io_value_type is not IOValueType.IO_VALUE_DIGITAL:
+            if io_value_type is not api.models.IOValueType.IO_VALUE_BOOLEAN:
                 raise ValueError(
-                    f"Boolean value can only be set at an IO_VALUE_DIGITAL IO and not to {io_value_type}"
+                    f"Boolean value can only be set at an IO_VALUE_BOOLEAN IO and not to {io_value_type}"
                 )
         elif isinstance(value, int):
-            if io_value_type is not IOValueType.IO_VALUE_ANALOG_INTEGER:
+            if io_value_type is not api.models.IOValueType.IO_VALUE_ANALOG_INTEGER:
                 raise ValueError(
                     f"Integer value can only be set at an IO_VALUE_ANALOG_INTEGER IO and not to {io_value_type}"
                 )
         elif isinstance(value, float):
-            if io_value_type is not IOValueType.IO_VALUE_ANALOG_FLOATING:
+            if io_value_type is not api.models.IOValueType.IO_VALUE_ANALOG_FLOAT:
                 raise ValueError(
-                    f"Float value can only be set at an IO_VALUE_ANALOG_FLOATING IO and not to {io_value_type}"
+                    f"Float value can only be set at an IO_VALUE_ANALOG_FLOAT IO and not to {io_value_type}"
                 )
         else:
             raise ValueError(f"Unexpected type {type(value)}")
@@ -132,11 +121,10 @@ class IOAccess(Device):
     async def wait_for_bool_io(self, io: str, value: bool):
         """Blocks until the requested IO equals the provided value."""
         # TODO proper implementation utilising also the comparison operators
-        io_value = api.models.IOBooleanValue(io=io, boolean_value=value)
+        io_value = api.models.IOBooleanValue(io=io, value=value)
 
         wait_request = api.models.WaitForIOEventRequest(
-            io=api.models.SetOutputValuesRequestInner(io_value),
-            comparator=api.models.Comparator.COMPARATOR_EQUALS,
+            io=api.models.IOValue(io_value), comparator=api.models.Comparator.COMPARATOR_EQUALS
         )
         await self._api_client.controller_ios_api.wait_for_io_event(
             cell=self._cell, controller=self._controller_id, wait_for_io_event_request=wait_request
