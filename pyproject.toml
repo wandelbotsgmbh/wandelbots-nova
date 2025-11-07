@@ -1,6 +1,6 @@
 [project]
 name = "wandelbots-nova"
-version = "3.6.4"
+version = "3.6.5"
 description = "Official Python SDK for the Wandelbots Nova"
 authors = [
     { name = "Wandelbots GmbH" },

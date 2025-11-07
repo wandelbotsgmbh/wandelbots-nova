@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.6.5 (2025-11-07)
+
+### Bug Fixes
+
+- Update log level from warning to debug (#334)
+  ([#334](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/334),
+  [`3d44612`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3d446123311f2e541ea4a96b9fcb93dbd171fc42))
+
+
 ## v3.6.4 (2025-11-04)
 
 ### Bug Fixes
