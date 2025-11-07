@@ -361,7 +361,8 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
 
     async def active_tcp(self) -> api.models.RobotTcp:
         tcps = await self.tcps()
-        return next(iter(tcps))
+        # TODO: not sure if this is the correct way to get the active TCP
+        return next(iter(tcps.values()))
 
     async def active_tcp_name(self) -> str:
         return next(iter(self.configuration.tools))
