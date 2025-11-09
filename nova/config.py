@@ -24,7 +24,7 @@ K8S_NAMESPACE = config("K8S_NAMESPACE", default="cell")
 # Log configuration
 LOG_LEVEL: str = config("LOG_LEVEL", default="INFO").upper()
 LOG_FORMAT: str = config("LOG_FORMAT", default="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-LOG_DATETIME_FORMAT: str = config("LOG_DATETIME_FORMAT", default="%Y-%m-%d %H:%M:%S")
+LOG_DATETIME_FORMAT: str = config("LOG_DATETIME_FORMAT", default="%Y-%m-%d %H:%M:%S.%f")
 LOGGER_NAME: str = config("LOGGER_NAME", default="wandelbots-nova")
 
 # Feature flags
