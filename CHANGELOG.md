@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v3.6.5 (2025-11-07)
+
+### Bug Fixes
+
+- Update log level from warning to debug (#334)
+  ([#334](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/334),
+  [`3d44612`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3d446123311f2e541ea4a96b9fcb93dbd171fc42))
+
+
+## v3.6.4 (2025-11-04)
+
+### Bug Fixes
+
+- Update documentation for the program status object (#333)
+  ([#333](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/333),
+  [`3150e77`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3150e773ef1ae63bd246577141315619bf665dfd))
+
+
+## v3.6.3 (2025-11-04)
+
+### Bug Fixes
+
+- **NDX-403**: Wait_for_bool_io() (#332)
+  ([#332](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/332),
+  [`210d772`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/210d7725d49baddc21e3ed23d9a286bded07bf48))
+
+
 ## v3.6.2 (2025-11-04)
 
 ### Chores

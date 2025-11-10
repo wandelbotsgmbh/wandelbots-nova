@@ -25,11 +25,11 @@ class Action(pydantic.BaseModel, ABC):
         action_type = getattr(cls, "type", None)
         # when no type is found -> skip
         if not isinstance(action_type, str):
-            logger.warning(f"Action class '{cls.__name__}' does not have a valid type")
+            logger.debug(f"Action class '{cls.__name__}' does not have a valid type")
             return
 
         if action_type in Action._registry:
-            logger.warning(f"Duplicate action type '{action_type}'")
+            logger.debug(f"Duplicate action type '{action_type}'")
             return
         Action._registry[action_type] = cls
 

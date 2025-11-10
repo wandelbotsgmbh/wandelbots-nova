@@ -133,17 +133,14 @@ class CombinedActions(pydantic.BaseModel):
         motion_commands = []
         for motion in self.motions:
             settings = motion.settings or MotionSettings()
+            blending = settings.as_blending_setting() if settings.has_blending_settings() else None
+            limits_override = (
+                settings.as_limits_settings() if settings.has_limits_override() else None
+            )
             motion_command = api.models.MotionCommand(
-                path=motion.to_api_model(),
-                blending=settings.as_blending_setting()
-                if settings.has_blending_settings()
-                else None,
-                limits_override=settings.as_limits_settings()
-                if settings.has_limits_override()
-                else None,
+                path=motion.to_api_model(), blending=blending, limits_override=limits_override
             )
             motion_commands.append(motion_command)
-            # path = api.models.MotionCommandPath.from_dict(motion.to_api_model().model_dump())
         return motion_commands
 
     def to_set_io(self) -> list[api.models.SetIO]:
