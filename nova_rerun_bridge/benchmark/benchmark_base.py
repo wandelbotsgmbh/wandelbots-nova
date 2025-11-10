@@ -5,8 +5,8 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from nova import api
 import nova
+from nova import api
 from nova.cell import virtual_controller
 from nova.core.motion_group import MotionGroup, motion_group_setup_from_motion_group_description
 from nova.core.nova import Nova

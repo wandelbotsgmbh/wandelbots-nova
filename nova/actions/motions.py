@@ -269,6 +269,8 @@ def joint_ptp(
     Args:
         target: the target joint configuration
         settings: the motion settings
+        collision_setup: the collision setup. If collision_setup is provided, the motion will be a collision free motion.
+            If collision_setup is not provided, the motion will be a normal joint PTP motion.
 
     Returns: the joint PTP motion
 
