@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 from .base import Viewer
 from .manager import register_viewer
 from .protocol import NovaRerunBridgeProtocol
-from .utils import extract_collision_scenes_from_actions
+from .utils import extract_collision_setups_from_actions
 
 logger = logging.getLogger(__name__)
 
@@ -225,10 +225,10 @@ class Rerun(Viewer):
 
             # Log collision scenes from actions if configured
             if self.show_collision_scenes:
-                collision_scenes = extract_collision_scenes_from_actions(actions)
-                if collision_scenes:
+                collision_setups = extract_collision_setups_from_actions(actions)
+                if collision_setups:
                     # Log collision scenes using the sync method
-                    self._bridge._log_collision_scene(collision_scenes)
+                    self._bridge._log_collision_scene(collision_setups)
 
         except Exception as e:
             logger.warning("Failed to log planning results in Rerun viewer: %s", e)
@@ -304,7 +304,7 @@ class Rerun(Viewer):
 
             # Log collision scenes from actions if configured (they might be relevant to the failure)
             if self.show_collision_scenes:
-                collision_scenes = extract_collision_scenes_from_actions(actions)
+                collision_scenes = extract_collision_setups_from_actions(actions)
                 if collision_scenes:
                     # Log collision scenes using the sync method
                     self._bridge._log_collision_scene(collision_scenes)

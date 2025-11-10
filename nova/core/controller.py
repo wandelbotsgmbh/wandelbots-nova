@@ -89,6 +89,8 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         Returns:
             dict[str, AbstractRobot]: A mapping of motion group ID to `MotionGroup` instance.
         """
+        if self._motion_group_ids is None:
+            raise ValueError("Controller is not opened")
         return {
             motion_group_id: self.motion_group(motion_group_id)
             for motion_group_id in self._motion_group_ids

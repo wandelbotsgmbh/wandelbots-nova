@@ -247,7 +247,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         return api.models.JointTrajectory(
             joint_positions=[api.models.Joints(list(j)) for j in joint_positions],
             times=times,
-            locations=locations,
+            locations=list(api.models.Location(float(location)) for location in locations),
         )
 
     async def _execute(
