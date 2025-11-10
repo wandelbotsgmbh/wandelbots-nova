@@ -594,9 +594,9 @@ class TestViewerUtilities:
 
     def test_extract_collision_scenes_import(self):
         """Should be able to import collision scene utility."""
-        from nova.viewers.utils import extract_collision_scenes_from_actions
+        from nova.viewers.utils import extract_collision_setups_from_actions
 
-        assert extract_collision_scenes_from_actions is not None
+        assert extract_collision_setups_from_actions is not None
 
     def test_register_viewer_function(self):
         """Should be able to register viewers through utility function."""
@@ -617,9 +617,9 @@ class TestViewerUtilities:
 
     def test_extract_collision_scenes_empty_actions(self):
         """Should handle empty actions list."""
-        from nova.viewers.utils import extract_collision_scenes_from_actions
+        from nova.viewers.utils import extract_collision_setups_from_actions
 
-        result = extract_collision_scenes_from_actions([])
+        result = extract_collision_setups_from_actions([])
         assert result == {}
 
     def test_global_viewer_manager_isolation(self):

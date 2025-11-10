@@ -100,7 +100,9 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
                 MotionState(
                     motion_group_id=self.configuration.id,
                     path_parameter=0,
-                    state=RobotState(pose=configuration.initial_pose, tcp="Flange", joints=(0, 0, 0, 0, 0, 0)),
+                    state=RobotState(
+                        pose=configuration.initial_pose, tcp="Flange", joints=(0, 0, 0, 0, 0, 0)
+                    ),
                 )
             ]
         )
@@ -245,7 +247,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         return api.models.JointTrajectory(
             joint_positions=[api.models.Joints(list(j)) for j in joint_positions],
             times=times,
-            locations=locations,
+            locations=list(api.models.Location(float(location)) for location in locations),
         )
 
     async def _execute(
@@ -343,23 +345,24 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             #     )
             # )
 
-    async def tcps(self) -> list[api.models.RobotTcp]:
-        return [
-            api.models.RobotTcp(
+    async def tcps(self) -> dict[str, api.models.RobotTcp]:
+        return {
+            name: api.models.RobotTcp(
                 id=name,
                 name=name,
                 position=tool_pose.position.model_dump(),
                 orientation=tool_pose.orientation.model_dump(),
             )
             for name, tool_pose in self.configuration.tools.items()
-        ]
+        }
 
     async def tcp_names(self) -> list[str]:
         return list(self.configuration.tools.keys())
 
     async def active_tcp(self) -> api.models.RobotTcp:
         tcps = await self.tcps()
-        return next(iter(tcps))
+        # TODO: not sure if this is the correct way to get the active TCP
+        return next(iter(tcps.values()))
 
     async def active_tcp_name(self) -> str:
         return next(iter(self.configuration.tools))

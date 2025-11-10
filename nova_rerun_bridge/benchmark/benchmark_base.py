@@ -4,14 +4,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import numpy as np
-from wandelbots_api_client.v2 import models
-from wandelbots_api_client.v2.models import (
-    CoordinateSystem,
-    RotationAngles,
-    RotationAngleTypes,
-    Vector3d,
-)
 
+from nova import api
 import nova
 from nova.cell import virtual_controller
 from nova.core.motion_group import MotionGroup, motion_group_setup_from_motion_group_description
@@ -50,9 +44,9 @@ class BenchmarkStrategy(Protocol):
         self,
         motion_group: MotionGroup,
         target: Pose,
-        collision_scene: models.CollisionScene,
+        collision_setup: api.models.CollisionSetup,
         tcp: str,
-        motion_group_setup: models.OptimizerSetup,
+        motion_group_setup: api.models.MotionGroupSetup,
         nova: Nova,
         start_joint_position: tuple[float, ...],
     ) -> Any: ...
@@ -63,12 +57,12 @@ async def setup_collision_scene(
     obstacles: dict[str, Any],
     cell_name: str,
     motion_group_type: str,
-    motion_group_description: models.OptimizerSetup,
+    motion_group_description: api.models.MotionGroupSetup,
     scene_key: str,
 ) -> str:
     """Convert robometrics obstacles to Nova collision world format."""
     collision_api = nova._api_client.store_collision_components_api
-    scene_api = nova._api_client.store_collision_setups_api
+    store_collision_setups_api = nova._api_client.store_collision_setups_api
 
     colliders = {}
 
@@ -85,15 +79,13 @@ async def setup_collision_scene(
             colliders[name] = collider
 
     # Define TCP collider geometry
-    tool_collider = models.Collider(
-        shape=models.ColliderShape(
-            models.Box2(
-                size_x=0.1,  # 10cm box for TCP
-                size_y=0.1,
-                size_z=0.1,
-                shape_type="box",
-                box_type="FULL",
-            )
+    tool_collider = api.models.Collider(
+        shape=api.models.Box(
+            size_x=0.1,  # 10cm box for TCP
+            size_y=0.1,
+            size_z=0.1,
+            shape_type="box",
+            box_type="FULL",
         )
     )
     await collision_api.store_collision_tool(
@@ -109,17 +101,16 @@ async def setup_collision_scene(
     )
 
     # Create and store collision scene with motion group
-    scene = models.CollisionScene(
-        colliders=colliders,
-        motion_groups={
-            motion_group_type: models.CollisionMotionGroup(
-                tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
-            )
-        },
+    collision_setup = api.models.CollisionSetup(
+        colliders=api.models.ColliderDictionary({"annoying_obstacle": colliders}),
+        tool=api.models.Tool({"tool_geometry": tool_collider}),
+        link_chain=api.models.LinkChain(
+            list(api.models.Link(link) for link in robot_link_colliders)
+        ),
     )
-    scene_id = f"benchmark_scene_{scene_key}"
-    await scene_api.store_collision_scene(
-        cell_name, scene_id, models.CollisionSceneAssembly(scene=scene)
+    scene_id = "collision_scene"
+    await store_collision_setups_api.store_collision_setup(
+        cell=cell_name, setup=scene_id, collision_setup=collision_setup
     )
 
     return scene_id
@@ -198,8 +189,8 @@ def print_progressive_statistics(
     ProgramPreconditions(
         virtual_controller(
             "ur10",
-            models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-            models.Manufacturer.UNIVERSALROBOTS,
+            api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+            api.models.Manufacturer.UNIVERSALROBOTS,
         )
     )
 )
@@ -214,14 +205,13 @@ async def run_single_benchmark(strategy: BenchmarkStrategy):
             cell="cell",
             controller=controller.controller_id,
             id=0,
-            coordinate_system=CoordinateSystem(
+            coordinate_system=api.models.CoordinateSystem(
                 coordinate_system="world",
                 name="mounting",
                 reference_uid="",
-                position=Vector3d(x=0, y=0, z=10),
-                rotation=RotationAngles(
-                    angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-                ),
+                position=api.models.Vector3d([0, 0, 10]),
+                orientation=api.models.Orientation([0, 0, 0]),
+                orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
             ),
         )
 
@@ -250,7 +240,7 @@ async def run_single_benchmark(strategy: BenchmarkStrategy):
                         tcp = "Flange"
 
                         # Get robot setup for collision scene
-                        motion_group_description: models.MotionGroupDescription = (
+                        motion_group_description: api.models.MotionGroupDescription = (
                             await motion_group.get_description(tcp=tcp)
                         )
 

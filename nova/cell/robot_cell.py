@@ -439,10 +439,10 @@ class AbstractRobot(Device):
         """
 
     @abstractmethod
-    async def tcps(self) -> list[api.models.RobotTcp]:
+    async def tcps(self) -> dict[str, api.models.RobotTcp]:
         """Return all TCPs that are configured on the robot with corresponding offset from flange as pose
 
-        Returns: the TCPs of the robot
+        Returns: a dict with {tcp_name: tcp_offset}
 
         """
 
