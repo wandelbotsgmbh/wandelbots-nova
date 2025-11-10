@@ -399,7 +399,7 @@ class TrajectoryCursor:
         return {option for option, available in options.items() if available}
 
     def forward(
-        self, location: float | None = None, playback_speed_in_percent: int | None = None
+        self, target_location: float | None = None, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
         # should idempotently move forward
         future = self._start_operation(OperationType.FORWARD)
@@ -415,6 +415,11 @@ class TrajectoryCursor:
         self._command_queue.put_nowait(
             api.models.StartMovementRequest(
                 direction=api.models.Direction.DIRECTION_FORWARD,
+                target_location=(
+                    api.models.Location(root=target_location)
+                    if target_location is not None
+                    else None
+                ),
                 # set_ios=self.context.combined_actions.to_set_io(),  # somehow gets called before self.context is set
                 start_on_io=None,
                 pause_on_io=None,
@@ -435,7 +440,9 @@ class TrajectoryCursor:
             )
             return future
         self._target_location = location
-        return self.forward(playback_speed_in_percent=playback_speed_in_percent)
+        return self.forward(
+            target_location=location, playback_speed_in_percent=playback_speed_in_percent
+        )
 
     def forward_to_next_action(
         self, playback_speed_in_percent: int | None = None
@@ -451,7 +458,7 @@ class TrajectoryCursor:
             # return future
 
     def backward(
-        self, playback_speed_in_percent: int | None = None
+        self, target_location: float | None = None, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
         future = self._start_operation(OperationType.BACKWARD)
 
@@ -462,6 +469,11 @@ class TrajectoryCursor:
         self._command_queue.put_nowait(
             api.models.StartMovementRequest(
                 direction=api.models.Direction.DIRECTION_BACKWARD,
+                target_location=(
+                    api.models.Location(root=target_location)
+                    if target_location is not None
+                    else None
+                ),
                 # set_ios=self.context.combined_actions.to_set_io(),
                 start_on_io=None,
                 pause_on_io=None,
@@ -629,7 +641,6 @@ class TrajectoryCursor:
 
     async def _combined_response_consumer(self, ready_event: asyncio.Event):
         ready_event.set()
-        last_movement = None
         last_motion_state = None
 
         try:
@@ -638,12 +649,20 @@ class TrajectoryCursor:
                 self._in_queue.put_nowait(response)
                 if isinstance(response, api.models.MotionGroupState):
                     motion_group_state = response
+                    motion_state = motion_group_state_to_motion_state(motion_group_state)
+                    if last_motion_state is None:
+                        last_motion_state = motion_state
+                    self._current_location = motion_state.path_parameter
+                    self._deprecated_handle_motion_state(motion_state, last_motion_state)
+                    last_motion_state = motion_state
                     if motion_group_state.execute and isinstance(
                         motion_group_state.execute.details, api.models.TrajectoryDetails
                     ):
                         match motion_group_state.execute.details.state:
                             case api.models.TrajectoryPausedByUser():
                                 self._overshoot = self._current_location - self._target_location
+                                assert self._overshoot == 0.0
+                                # self._overshoot = 0.0  # because the RAE takes care of that
                                 self._complete_operation()
                                 if self._detach_on_standstill:
                                     break
@@ -655,40 +674,7 @@ class TrajectoryCursor:
                                 if self._detach_on_standstill:
                                     break
 
-                    motion_state = motion_group_state_to_motion_state(response)
-                    if last_motion_state is None:
-                        last_motion_state = motion_state
-                    self._current_location = motion_state.path_parameter
-                    self._handle_motion_state(motion_state, last_motion_state)
-                    last_motion_state = motion_state
                     self._response_queue.task_done()
-
-                # OLD
-                instance = response.root
-                if isinstance(instance, api.models.Movement):
-                    if last_movement is None:
-                        last_movement = instance.movement
-                    self._current_location = instance.movement.current_location
-                    self._handle_movement(instance.movement, last_movement)
-                    last_movement = instance.movement
-
-                elif isinstance(instance, api.models.Standstill):
-                    self._current_location = instance.standstill.location
-                    match instance.standstill.reason:
-                        case api.models.StandstillReason.REASON_USER_PAUSED_MOTION:
-                            self._overshoot = self._current_location - self._target_location
-                            self._complete_operation()
-                            if self._detach_on_standstill:
-                                break
-                        case api.models.StandstillReason.REASON_MOTION_ENDED:
-                            self._overshoot = self._current_location - self._target_location
-                            assert self._overshoot == 0.0
-                            # self._overshoot = 0.0  # because the RAE takes care of that
-                            self._complete_operation()
-                            if self._detach_on_standstill:
-                                break
-                            # self.context.movement_consumer(None)
-                            # break
         except asyncio.CancelledError:
             logger.debug("Response consumer was cancelled, cleaning up trajectory cursor")
             raise
@@ -698,7 +684,9 @@ class TrajectoryCursor:
             # stop the cursor iterator (TODO is this the right place?)
             self._in_queue.put_nowait(None)  # TODO make sentinel more explicit
 
-    def _handle_motion_state(self, curr_motion_state: MotionState, last_motion_state: MotionState):
+    def _deprecated_handle_motion_state(
+        self, curr_motion_state: MotionState, last_motion_state: MotionState
+    ):
         if not 0.0 <= self._target_location <= self.end_location:
             return
         curr_location = curr_motion_state.path_parameter
@@ -708,10 +696,12 @@ class TrajectoryCursor:
         if curr_location > last_location:
             # moving forwards
             if last_location <= self._target_location < curr_location:
+                assert False, "Should not reach here, RAE handles exact stopping"
                 self._pause()
         else:
             # moving backwards
             if last_location > self._target_location >= curr_location:
+                assert False, "Should not reach here, RAE handles exact stopping"
                 self._pause()
 
     async def motion_event_updater(self, interval=0.2):
@@ -760,12 +750,10 @@ async def init_movement_gen(
     )
     yield init_request  # type: ignore
 
-    # then we get the response
-    initialize_movement_response = await anext(response_stream)
-    # TODO handle error response here (MovementError)
-    if isinstance(
-        initialize_movement_response.actual_instance, api.models.InitializeMovementResponse
-    ):
-        r1 = initialize_movement_response.actual_instance
-        if not r1.init_response.succeeded:  # TODO we don't come here if there was an error response
-            raise InitMovementFailed(r1.init_response)
+    execute_trajectory_response = await anext(response_stream)
+    initialize_movement_response = execute_trajectory_response.root
+    assert isinstance(initialize_movement_response, api.models.InitializeMovementResponse)
+    # TODO this should actually check for None but currently the API seems to return an empty string instead
+    # create issue with the API to fix this
+    if initialize_movement_response.message or initialize_movement_response.add_trajectory_error:
+        raise InitMovementFailed(initialize_movement_response)
