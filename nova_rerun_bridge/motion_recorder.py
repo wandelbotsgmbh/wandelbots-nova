@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from nova.api import models
+from nova import api
 
 
 def _convert_sets_to_lists(obj: Any) -> Any:
@@ -20,9 +20,9 @@ def record_motion_data(
     motion_id: str,
     model_from_controller: str,
     motion_group: str,
-    optimizer_config: models.OptimizerSetup,
-    trajectory: list[models.TrajectorySample],
-    collision_scenes: dict[str, models.CollisionScene],
+    motion_group_setup: api.models.MotionGroupSetup,
+    trajectory: list[api.models.TrajectorySample],
+    collision_setups: dict[str, api.models.CollisionSetup],
     output_file: Path,
 ) -> None:
     """Record motion data to a JSON file for testing."""
@@ -30,10 +30,10 @@ def record_motion_data(
         "motion_id": motion_id,
         "model_from_controller": model_from_controller,
         "motion_group": motion_group,
-        "optimizer_config": _convert_sets_to_lists(optimizer_config.model_dump()),
+        "motion_group_setup": _convert_sets_to_lists(motion_group_setup.model_dump()),
         "trajectory": [_convert_sets_to_lists(t.model_dump()) for t in trajectory],
         "collision_scenes": {
-            k: _convert_sets_to_lists(v.model_dump()) for k, v in collision_scenes.items()
+            k: _convert_sets_to_lists(v.model_dump()) for k, v in collision_setups.items()
         },
     }
 

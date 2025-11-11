@@ -1,6 +1,6 @@
 import asyncio
 from functools import partial
-from typing import AsyncIterable
+from typing import AsyncIterable, AsyncIterator
 
 from icecream import ic
 
@@ -57,13 +57,18 @@ def motion_group_setup_from_motion_group_description(
     # than the one used for planning
     assert motion_group_description.operation_limits.auto_limits is not None
     limits = motion_group_description.operation_limits.auto_limits
+    tcp_offset = (
+        motion_group_description.tcps[tcp_name].pose
+        if motion_group_description.tcps is not None
+        else None
+    )
     # TODO maybe we also want to give the user more control over the collision scene
     return api.models.MotionGroupSetup(
         motion_group_model=motion_group_description.motion_group_model,
         cycle_time=motion_group_description.cycle_time or 8,
         mounting=motion_group_description.mounting,
         global_limits=limits,
-        tcp_offset=motion_group_description.tcps[tcp_name].pose,
+        tcp_offset=tcp_offset,
         payload=payload,
         collision_setups=api.models.CollisionSetups({"default": collision_setup}),
     )
@@ -105,7 +110,8 @@ def combine_trajectories(
         # Shift times and locations to continue from last endpoint
         shifted_times = [t + current_end_time for t in trajectory.times[1:]]  # Skip first point
         shifted_locations = [
-            location.root + current_end_location.root for location in trajectory.locations[1:]
+            api.models.Location(location.root + current_end_location.root)
+            for location in trajectory.locations[1:]
         ]  # Skip first point
 
         final_trajectory.times.extend(shifted_times)
@@ -196,7 +202,7 @@ class MotionGroup(AbstractRobot):
 
     async def stream_state(
         self, response_rate_msecs: int | None = None
-    ) -> AsyncIterable[api.models.MotionGroupState]:
+    ) -> AsyncIterator[api.models.MotionGroupState]:
         """
         Streams the motion group state continuously.
 
@@ -356,7 +362,7 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        robot_setup: api.models.MotionGroupSetup | None = None,
+        motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
         """
         This method plans a trajectory and checks for collisions.
@@ -382,7 +388,7 @@ class MotionGroup(AbstractRobot):
                      Please check execute_trajectory.motion_command.set_io for more information.
             tcp:     The tool to use
             start_joint_position: The starting joint position, if none provided, current position of the robot is used
-            robot_setup: The robot setup
+            motion_group_setup: The motion group setup
 
         Returns: planned joint trajectory
 
@@ -390,7 +396,7 @@ class MotionGroup(AbstractRobot):
         # PREPARE THE REQUEST
         collision_setups = validate_collision_setups(actions)
         start_joint_position = start_joint_position or await self.joints()
-        robot_setup = robot_setup or await self._get_setup(tcp=tcp)
+        motion_group_setup = motion_group_setup or await self._get_setup(tcp=tcp)
 
         motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
 
@@ -399,7 +405,7 @@ class MotionGroup(AbstractRobot):
         # if collision_setups and len(collision_scenes) > 0:
         #     static_colliders = collision_setups[0].colliders
 
-        #     motion_group_type = robot_setup.motion_group_model
+        #     motion_group_type = motion_group_setup.motion_group_model
         #     if (
         #         collision_setups[0].motion_groups
         #         and motion_group_type in collision_setups[0].motion_groups
@@ -410,7 +416,7 @@ class MotionGroup(AbstractRobot):
         plan_trajectory_response = await self._api_client.trajectory_planning_api.plan_trajectory(
             cell=self._cell,
             plan_trajectory_request=api.models.PlanTrajectoryRequest(
-                motion_group_setup=robot_setup,
+                motion_group_setup=motion_group_setup,
                 start_joint_position=api.models.DoubleArray(list(start_joint_position)),
                 motion_commands=motion_commands,
             ),
@@ -430,13 +436,13 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        robot_setup: api.models.MotionGroupSetup | None = None,
+        motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
         if not actions:
             raise ValueError("No actions provided")
 
         current_joints = start_joint_position or await self.joints()
-        robot_setup = robot_setup or await self._get_setup(tcp=tcp)
+        motion_group_setup = motion_group_setup or await self._get_setup(tcp=tcp)
 
         all_trajectories = []
         for batch in split_actions_into_batches(actions):
@@ -473,7 +479,7 @@ class MotionGroup(AbstractRobot):
                     actions=batch,
                     tcp=tcp,
                     start_joint_position=current_joints,
-                    robot_setup=robot_setup,
+                    motion_group_setup=motion_group_setup,
                 )
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
@@ -491,7 +497,7 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
-    ) -> AsyncIterable[MotionState]:
+    ) -> AsyncIterator[MotionState]:
         # This is the entrypoint for the trajectory tuning mode
         if ENABLE_TRAJECTORY_TUNING:
             logger.info("Entering trajectory tuning mode...")

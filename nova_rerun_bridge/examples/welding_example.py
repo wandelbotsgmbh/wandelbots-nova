@@ -23,13 +23,13 @@ Simple example to demonstrate how to add a welding part to the collision world a
 """
 
 
-async def load_and_transform_mesh(filepath: str, pose: api.models.Pose2) -> trimesh.Geometry:
+async def load_and_transform_mesh(filepath: str, pose: api.models.Pose) -> trimesh.Geometry:
     """Load mesh and transform to desired position."""
     scene = trimesh.load_mesh(filepath, file_type="stl")
 
-    # Create transformation matrix from Pose2
+    # Create transformation matrix from Pose
     transform = np.eye(4)
-    transform[:3, 3] = pose.position
+    transform[:3, 3] = pose.position.root
     scene.apply_transform(transform)
     return scene
 

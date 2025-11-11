@@ -6,7 +6,7 @@ import rerun as rr
 import rerun.archetypes as ra
 from scipy.spatial.transform import Rotation
 
-from nova.api import models
+from nova import api
 from nova_rerun_bridge.collision_scene import extract_link_chain_and_tcp
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
@@ -38,9 +38,9 @@ def log_motion(
     motion_id: str,
     model_from_controller: str,
     motion_group: str,
-    optimizer_config: models.OptimizerSetup,
-    trajectory: list[models.TrajectorySample],
-    collision_scenes: dict[str, models.CollisionScene],
+    motion_group_setup: api.models.MotionGroupSetup,
+    trajectory: list[api.models.TrajectorySample],
+    collision_setups: dict[str, api.models.CollisionSetup],
     time_offset: float = 0,
     timing_mode: TimingMode = TimingMode.CONTINUE,  # Deprecated parameter kept for compatibility
     tool_asset: str | None = None,
@@ -77,24 +77,24 @@ def log_motion(
 
     # Initialize DHRobot and Visualizer
     if model_from_controller == "Yaskawa_TURN2":
-        if optimizer_config.dh_parameters is not None:
-            optimizer_config.dh_parameters[0].a = 0
-            optimizer_config.dh_parameters[0].d = 360
-            optimizer_config.dh_parameters[0].alpha = np.pi / 2
-            optimizer_config.dh_parameters[0].theta = 0
+        if motion_group_setup.dh_parameters is not None:
+            motion_group_setup.dh_parameters[0].a = 0
+            motion_group_setup.dh_parameters[0].d = 360
+            motion_group_setup.dh_parameters[0].alpha = np.pi / 2
+            motion_group_setup.dh_parameters[0].theta = 0
 
-            optimizer_config.dh_parameters[1].a = 0
-            optimizer_config.dh_parameters[1].d = 0
-            optimizer_config.dh_parameters[1].alpha = 0
-            optimizer_config.dh_parameters[1].theta = np.pi / 2
+            motion_group_setup.dh_parameters[1].a = 0
+            motion_group_setup.dh_parameters[1].d = 0
+            motion_group_setup.dh_parameters[1].alpha = 0
+            motion_group_setup.dh_parameters[1].theta = np.pi / 2
 
-    if optimizer_config.dh_parameters is None:
+    if motion_group_setup.dh_parameters is None:
         raise ValueError("DH parameters cannot be None")
 
-    robot = DHRobot(optimizer_config.dh_parameters, optimizer_config.mounting)
+    robot = DHRobot(motion_group_setup.dh_parameters, motion_group_setup.mounting)
 
     collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
-        collision_scenes, optimizer_config.motion_group_type
+        collision_setups, motion_group_setup.motion_group_type
     )
 
     rr.reset_time()
@@ -103,13 +103,13 @@ def log_motion(
     # Get or create visualizer from cache
     if motion_group not in _visualizer_cache:
         collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
-            collision_scenes, optimizer_config.motion_group_type
+            collision_setups, motion_group_setup.motion_group_type
         )
 
         _visualizer_cache[motion_group] = RobotVisualizer(
             robot=robot,
-            robot_model_geometries=optimizer_config.safety_setup.robot_model_geometries or [],
-            tcp_geometries=optimizer_config.safety_setup.tcp_geometries or [],
+            robot_model_geometries=motion_group_setup.safety_setup.robot_model_geometries or [],
+            tcp_geometries=motion_group_setup.safety_setup.tcp_geometries or [],
             static_transform=False,
             base_entity_path=f"motion/{motion_group}",
             model_from_controller=model_from_controller,
@@ -129,7 +129,7 @@ def log_motion(
         robot=robot,
         visualizer=visualizer,
         trajectory=trajectory,
-        optimizer_config=optimizer_config,
+        motion_group_setup=motion_group_setup,
         timer_offset=time_offset,
         tool_asset=tool_asset,
     )
@@ -140,7 +140,7 @@ def log_motion(
 
 
 def log_trajectory_path(
-    motion_id: str, trajectory: list[models.TrajectorySample], motion_group: str
+    motion_id: str, trajectory: list[api.models.TrajectorySample], motion_group: str
 ):
     if not all(p.tcp_pose is not None for p in trajectory):
         raise ValueError("All trajectory points must have a tcp_pose")
@@ -159,7 +159,7 @@ def log_trajectory_path(
 
 
 def get_times_column(
-    trajectory: list[models.TrajectorySample], timer_offset: float = 0
+    trajectory: list[api.models.TrajectorySample], timer_offset: float = 0
 ) -> rr.TimeColumn:
     times = np.array([timer_offset + point.time for point in trajectory])
     times_column = rr.TimeColumn(TIME_INTERVAL_NAME, duration=times)
@@ -171,8 +171,8 @@ def log_trajectory(
     motion_group: str,
     robot: DHRobot,
     visualizer: RobotVisualizer,
-    trajectory: list[models.TrajectorySample],
-    optimizer_config: models.OptimizerSetup,
+    trajectory: list[api.models.TrajectorySample],
+    motion_group_setup: api.models.MotionGroupSetup,
     timer_offset: float,
     tool_asset: Optional[str] = None,
 ):
@@ -209,14 +209,14 @@ def log_trajectory(
     log_tcp_pose(trajectory, motion_group, times_column, tool_asset)
 
     # Log joint data
-    log_joint_data(trajectory, motion_group, times_column, optimizer_config)
+    log_joint_data(trajectory, motion_group, times_column, motion_group_setup)
 
     # Log scalar data
-    log_scalar_values(trajectory, motion_group, times_column, optimizer_config)
+    log_scalar_values(trajectory, motion_group, times_column, motion_group_setup)
 
 
 def log_tcp_pose(
-    trajectory: list[models.TrajectorySample],
+    trajectory: list[api.models.TrajectorySample],
     motion_group,
     times_column,
     tool_asset: str | None = None,
@@ -250,19 +250,19 @@ def log_tcp_pose(
 
 
 def log_joint_data(
-    trajectory: list[models.TrajectorySample],
+    trajectory: list[api.models.TrajectorySample],
     motion_group,
     times_column,
-    optimizer_config: models.OptimizerSetup,
+    motion_group_setup: api.models.MotionGroupSetup,
 ) -> None:
     """
     Log joint-related data (position, velocity, acceleration, torques) from a trajectory as columns.
     """
     # Initialize lists for each joint and each data type
-    if optimizer_config.dh_parameters is None:
+    if motion_group_setup.dh_parameters is None:
         raise ValueError("DH parameters cannot be None")
 
-    num_joints = len(optimizer_config.dh_parameters)
+    num_joints = len(motion_group_setup.dh_parameters)
     joint_data: dict[str, list[list[float]]] = {
         "velocity": [[] for _ in range(num_joints)],
         "acceleration": [[] for _ in range(num_joints)],
@@ -288,26 +288,26 @@ def log_joint_data(
 
             # Collect joint limits
             joint_data["velocity_lower_limit"][i].append(
-                -optimizer_config.safety_setup.global_limits.joint_velocity_limits[i]
+                -motion_group_setup.global_limits.joint_velocity_limits[i]
             )
             joint_data["velocity_upper_limit"][i].append(
-                optimizer_config.safety_setup.global_limits.joint_velocity_limits[i]
+                motion_group_setup.global_limits.joint_velocity_limits[i]
             )
             joint_data["acceleration_lower_limit"][i].append(
-                -optimizer_config.safety_setup.global_limits.joint_acceleration_limits[i]
+                -motion_group_setup.global_limits.joint_acceleration_limits[i]
             )
             joint_data["acceleration_upper_limit"][i].append(
-                optimizer_config.safety_setup.global_limits.joint_acceleration_limits[i]
+                motion_group_setup.global_limits.joint_acceleration_limits[i]
             )
             joint_data["position_lower_limit"][i].append(
-                optimizer_config.safety_setup.global_limits.joint_position_limits[i].lower_limit
+                motion_group_setup.global_limits.joint_position_limits[i].lower_limit
             )
             joint_data["position_upper_limit"][i].append(
-                optimizer_config.safety_setup.global_limits.joint_position_limits[i].upper_limit
+                motion_group_setup.global_limits.joint_position_limits[i].upper_limit
             )
             if point.joint_torques and len(point.joint_torques.joints) > i:
                 joint_data["torque_limit"][i].append(
-                    optimizer_config.safety_setup.global_limits.joint_torque_limits[i]
+                    motion_group_setup.global_limits.joint_torque_limits[i]
                 )
 
     # Send columns if data is not empty
@@ -322,10 +322,10 @@ def log_joint_data(
 
 
 def log_scalar_values(
-    trajectory: list[models.TrajectorySample],
+    trajectory: list[api.models.TrajectorySample],
     motion_group,
     times_column,
-    optimizer_config: models.OptimizerSetup,
+    motion_group_setup: api.models.MotionGroupSetup,
 ):
     """
     Log scalar values such as TCP velocity, acceleration, orientation velocity/acceleration, time, and location.
@@ -360,33 +360,30 @@ def log_scalar_values(
             scalar_data["time"].append(point.time)
         if point.location_on_trajectory is not None:
             scalar_data["location_on_trajectory"].append(point.location_on_trajectory)
-        if optimizer_config.safety_setup.global_limits.tcp_velocity_limit is not None:
+        if motion_group_setup.global_limits.tcp_velocity_limit is not None:
             scalar_data["tcp_velocity_limit"].append(
-                optimizer_config.safety_setup.global_limits.tcp_velocity_limit
+                motion_group_setup.global_limits.tcp_velocity_limit
             )
-        if optimizer_config.safety_setup.global_limits.tcp_orientation_velocity_limit is not None:
+        if motion_group_setup.global_limits.tcp_orientation_velocity_limit is not None:
             scalar_data["tcp_orientation_velocity_lower_limit"].append(
-                -optimizer_config.safety_setup.global_limits.tcp_orientation_velocity_limit
+                -motion_group_setup.global_limits.tcp_orientation_velocity_limit
             )
             scalar_data["tcp_orientation_velocity_upper_limit"].append(
-                optimizer_config.safety_setup.global_limits.tcp_orientation_velocity_limit
+                motion_group_setup.global_limits.tcp_orientation_velocity_limit
             )
-        if optimizer_config.safety_setup.global_limits.tcp_acceleration_limit is not None:
+        if motion_group_setup.global_limits.tcp_acceleration_limit is not None:
             scalar_data["tcp_acceleration_lower_limit"].append(
-                -optimizer_config.safety_setup.global_limits.tcp_acceleration_limit
+                -motion_group_setup.global_limits.tcp_acceleration_limit
             )
             scalar_data["tcp_acceleration_upper_limit"].append(
-                optimizer_config.safety_setup.global_limits.tcp_acceleration_limit
+                motion_group_setup.global_limits.tcp_acceleration_limit
             )
-        if (
-            optimizer_config.safety_setup.global_limits.tcp_orientation_acceleration_limit
-            is not None
-        ):
+        if motion_group_setup.global_limits.tcp_orientation_acceleration_limit is not None:
             scalar_data["tcp_orientation_acceleration_lower_limit"].append(
-                -optimizer_config.safety_setup.global_limits.tcp_orientation_acceleration_limit
+                -motion_group_setup.global_limits.tcp_orientation_acceleration_limit
             )
             scalar_data["tcp_orientation_acceleration_upper_limit"].append(
-                optimizer_config.safety_setup.global_limits.tcp_orientation_acceleration_limit
+                motion_group_setup.global_limits.tcp_orientation_acceleration_limit
             )
 
     # Send columns if data is not empty
@@ -399,11 +396,11 @@ def log_scalar_values(
             )
 
 
-def to_trajectory_samples(self) -> list[models.TrajectorySample]:
+def to_trajectory_samples(self) -> list[api.models.TrajectorySample]:
     """Convert JointTrajectory to list of TrajectorySample objects."""
     samples = []
     for joint_pos, time, location in zip(self.joint_positions, self.times, self.locations):
-        sample = models.TrajectorySample(
+        sample = api.models.TrajectorySample(
             joint_position=joint_pos, time=time, location_on_trajectory=location
         )
         samples.append(sample)

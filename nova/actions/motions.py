@@ -22,7 +22,7 @@ class Motion(Action, ABC):
 
     """
 
-    type: Literal["linear", "cartesian_ptp", "circular", "joint_ptp", "spline"]
+    type: Literal["linear", "cartesian_ptp", "circular", "joint_ptp", "spline", "collision_free"]
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     collision_setup: api.models.CollisionSetup | None = None
@@ -52,7 +52,7 @@ class Linear(Motion):
 
         Examples:
         >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10)).to_api_model()
-        PathLine(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathLine')
+        PathLine(target_pose=Pose(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathLine')
         """
         return api.models.PathLine(
             target_pose=self.target.to_api_pose(), path_definition_name="PathLine"
@@ -110,7 +110,7 @@ class CartesianPTP(Motion):
 
         Examples:
         >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
-        PathCartesianPTP(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCartesianPTP')
+        PathCartesianPTP(target_pose=Pose(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCartesianPTP')
         """
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
@@ -172,7 +172,7 @@ class Circular(Motion):
 
         Examples:
         >>> Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((10, 20, 30, 40, 50, 60)), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
-        PathCircle(via_pose=Pose2(position=[10, 20, 30], orientation=[40, 50, 60]), target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCircle')
+        PathCircle(via_pose=Pose(position=[10, 20, 30], orientation=[40, 50, 60]), target_pose=Pose(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCircle')
         """
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
@@ -348,3 +348,62 @@ def spline(
 
 
 spl = spline
+
+
+class CollisionFreeMotion(Motion):
+    """A collision free motion
+
+    Examples:
+    >>> CollisionFreeMotion(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))
+    CollisionFreeMotion(metas={}, type='collision_free', target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None)
+    """
+
+    type: Literal["collision_free"] = "collision_free"
+    target: tuple[float, ...]
+    settings: MotionSettings = MotionSettings()
+    collision_setup: api.models.CollisionSetup
+
+    def to_api_model(self) -> api.models.PlanCollisionFreeRequest:
+        """Serialize the model to the API model
+
+        Examples:
+        >>> CollisionFreeMotion(target=(1, 2, 3, 4, 5, 6), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
+        PathCollisionFree(target_joint_position=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], path_definition_name='PathCollisionFree')
+        """
+        return api.models.PlanCollisionFreeRequest(
+            # TODO: where to get this? -> motion group can insert it from the outside
+            motion_group_setup=api.models.MotionGroupSetup(
+                motion_group_model=api.models.MotionGroupModel(""), cycle_time=8
+            ),
+            # TODO: where to get this? -> motion group can insert it from the outside
+            start_joint_position=api.models.DoubleArray([]),
+            target=api.models.DoubleArray(list(self.target)),
+            algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
+        )
+
+
+def collision_free(
+    target: tuple[float, ...],
+    collision_setup: api.models.CollisionSetup,
+    settings: MotionSettings = MotionSettings(),
+    **kwargs: dict[str, Any],
+) -> CollisionFreeMotion:
+    """Convenience function to create a collision free motion
+
+    Args:
+        target: the target joint configuration
+        settings: the motion settings
+        collision_setup: the collision setup
+
+    Returns: the collision free motion
+
+    Examples:
+    >>> ms = MotionSettings(tcp_acceleration_limit=10)
+    >>> assert collision_free((1, 2, 3, 4, 5, 6), settings=ms) == CollisionFreeMotion(target=(1, 2, 3, 4, 5, 6), settings=ms, metas={'line_number': 1})
+    >>> Action.from_dict(collision_free((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
+    CollisionFreeMotion(metas={'line_number': 1}, type='collision_free', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None)
+    """
+    kwargs.update(line_number=utils.get_caller_linenumber())
+    return CollisionFreeMotion(
+        target=target, settings=settings, collision_setup=collision_setup, metas=kwargs
+    )

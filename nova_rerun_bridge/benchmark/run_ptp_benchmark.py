@@ -9,14 +9,14 @@ class PtpStrategy(BenchmarkStrategy):
         self,
         motion_group,
         target,
-        collision_scene,
+        collision_setup,
         tcp,
-        optimizer_setup,
+        motion_group_setup,
         nova,
         start_joint_position,
     ):
         return await motion_group.plan(
-            [cartesian_ptp(target=target, collision_scene=collision_scene)], tcp=tcp
+            [cartesian_ptp(target=target, collision_setup=collision_setup)], tcp=tcp
         )
 
 
