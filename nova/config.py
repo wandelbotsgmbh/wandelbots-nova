@@ -45,7 +45,7 @@ class NovaConfig(BaseModel):
         nats_client_config (dict | None): Configuration dictionary for NATS client.
     """
 
-    host: str | None = Field(default=None, description="Nova API host.")
+    host: str = Field(..., description="Nova API host.")
     access_token: str | None = Field(default=None, description="Access token for Nova API.")
     username: str | None = Field(default=None, deprecated=True)
     password: str | None = Field(default=None, deprecated=True)
