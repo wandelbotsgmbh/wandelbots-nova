@@ -228,7 +228,7 @@ class Rerun(Viewer):
                 collision_setups = extract_collision_setups_from_actions(actions)
                 if collision_setups:
                     # Log collision scenes using the sync method
-                    self._bridge._log_collision_scene(collision_setups)
+                    self._bridge._log_collision_setups(collision_setups)
 
         except Exception as e:
             logger.warning("Failed to log planning results in Rerun viewer: %s", e)
@@ -304,10 +304,10 @@ class Rerun(Viewer):
 
             # Log collision scenes from actions if configured (they might be relevant to the failure)
             if self.show_collision_scenes:
-                collision_scenes = extract_collision_setups_from_actions(actions)
-                if collision_scenes:
+                collision_setups = extract_collision_setups_from_actions(actions)
+                if collision_setups:
                     # Log collision scenes using the sync method
-                    self._bridge._log_collision_scene(collision_scenes)
+                    self._bridge._log_collision_setups(collision_setups)
 
         except Exception as e:
             logger.warning("Failed to log planning failure in Rerun viewer: %s", e)
