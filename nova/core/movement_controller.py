@@ -82,14 +82,14 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         execute_trajectory_response = await anext(response_stream)
         initialize_movement_response = execute_trajectory_response.root
         ic(initialize_movement_response)
-        assert isinstance(initialize_movement_response, api.models.InitializeMovementResponse)
+        assert isinstance(initialize_movement_response.root, api.models.InitializeMovementResponse)
         # TODO this should actually check for None but currently the API seems to return an empty string instead
         # create issue with the API to fix this
         if (
-            initialize_movement_response.message
-            or initialize_movement_response.add_trajectory_error
+            initialize_movement_response.root.message
+            or initialize_movement_response.root.add_trajectory_error
         ):
-            raise InitMovementFailed(initialize_movement_response)
+            raise InitMovementFailed(initialize_movement_response.root)
 
         set_io_list = context.combined_actions.to_set_io()
         yield api.models.StartMovementRequest(
@@ -100,7 +100,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         )
         execute_trajectory_response = await anext(response_stream)
         start_movement_response = execute_trajectory_response
-        assert isinstance(start_movement_response, api.models.StartMovementResponse)
+        assert isinstance(start_movement_response.root, api.models.StartMovementResponse)
 
         error_monitor_task = asyncio.create_task(
             error_monitor(response_stream, [motion_group_state_monitor_task]), name="error_monitor"

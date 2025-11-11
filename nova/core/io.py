@@ -28,13 +28,12 @@ class IOAccess(Device):
     async def get_io_descriptions(self) -> dict[str, api.models.IODescription]:
         cache = self.__class__.io_descriptions_cache
         if self._controller_id not in cache:
-            response = await self._api_client.controller_ios_api.list_io_descriptions(
+            io_descriptions = await self._api_client.controller_ios_api.list_io_descriptions(
                 cell=self._cell, controller=self._controller_id, ios=[]
             )
-            io_descriptions = response.io_descriptions
 
             cache[self._controller_id] = {
-                description.id: description for description in io_descriptions
+                description.io: description for description in io_descriptions
             }
         return cache[self._controller_id]
 
@@ -62,12 +61,12 @@ class IOAccess(Device):
 
         input_output = response[0]
 
-        if isinstance(input_output, api.models.IOBooleanValue):
-            return bool(input_output.value)
-        elif isinstance(input_output, api.models.IOIntegerValue):
-            return int(input_output.value)
-        elif isinstance(input_output, api.models.IOFloatValue):
-            return float(input_output.value)
+        if isinstance(input_output.root, api.models.IOBooleanValue):
+            return bool(input_output.root.value)
+        elif isinstance(input_output.root, api.models.IOIntegerValue):
+            return int(input_output.root.value)
+        elif isinstance(input_output.root, api.models.IOFloatValue):
+            return float(input_output.root.value)
 
         raise ValueError(
             f"IO value for {key} is of an unexpected type. Expected bool, int or float. Got: {type(input_output)}"

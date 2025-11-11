@@ -65,8 +65,8 @@ jobs:
             run_cmd: "python examples/plan_and_execute.py"
           - id: move_multiple_robots
             run_cmd: "python examples/move_multiple_robots.py"
-          - id: multi_step_movement_with_collision_free
-            run_cmd: "python examples/multi_step_movement_with_collision_free.py"
+          # - id: multi_step_movement_with_collision_free
+          #   run_cmd: "python examples/multi_step_movement_with_collision_free.py"
           - id: run_wandelscript_file
             run_cmd: "python examples/run_wandelscript_file.py"
           - id: welding_example

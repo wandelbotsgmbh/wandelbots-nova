@@ -28,10 +28,11 @@ def motion_group_setup_from_motion_group_description(
     tcp_name: str,
     payload: api.models.Payload | None = None,
 ) -> api.models.MotionGroupSetup:
-    # TODO the function does multiple things not separated very well
-    # use only tool from tcp_name
-
-    tool_colliders = motion_group_description.safety_tool_colliders.get(tcp_name)
+    tool_colliders = (
+        motion_group_description.safety_tool_colliders.get(tcp_name)
+        if motion_group_description.safety_tool_colliders is not None
+        else None
+    )
     tool = api.models.Tool(tool_colliders.root) if tool_colliders is not None else None
     link_chain = (
         api.models.LinkChain(
