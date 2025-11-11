@@ -2,9 +2,9 @@ import asyncio
 import logging
 
 import requests
-from nova import api, Nova
 from pydantic import BaseModel, Field
 
+from nova import Nova, api
 from nova_rerun_bridge.benchmark.benchmark_base import BenchmarkStrategy, run_benchmark
 
 logger = logging.getLogger(__name__)

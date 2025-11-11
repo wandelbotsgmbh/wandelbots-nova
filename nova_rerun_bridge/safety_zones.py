@@ -1,13 +1,13 @@
 import numpy as np
 import rerun as rr
 
-from nova.api import models
+from nova import api
 from nova_rerun_bridge.dh_robot import DHRobot
 from nova_rerun_bridge.hull_visualizer import HullVisualizer
 
 
 def log_safety_zones(
-    motion_group: str, motion_group_description: models.MotionGroupDescription
+    motion_group: str, motion_group_description: api.models.MotionGroupDescription
 ) -> None:
     """
     Log hull outlines for the safety zones defined in the optimizer configuration.

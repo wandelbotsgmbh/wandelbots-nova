@@ -1,8 +1,8 @@
 import json
 
+from nova import api
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.actions.base import Action
-from nova import api
 from nova.types import MotionSettings, Pose
 
 

@@ -2,6 +2,7 @@ from typing import Any
 
 import numpy as np
 from scipy.spatial.transform import Rotation
+
 from nova import api
 
 
@@ -77,12 +78,16 @@ def create_box_collider(name: str, cube: dict[str, Any]) -> tuple[str, api.model
         shape=api.models.ConvexHull(vertices=rotated_vertices, shape_type="convex_hull"),
         pose=api.models.Pose(
             position=api.models.Vector3d(position),
-            orientation=api.models.RotationVector([0, 0, 0]),  # Orientation already applied to vertices
+            orientation=api.models.RotationVector(
+                [0, 0, 0]
+            ),  # Orientation already applied to vertices
         ),
     )
 
 
-def create_cylinder_collider(name: str, cylinder: dict[str, Any]) -> tuple[str, api.models.Collider]:
+def create_cylinder_collider(
+    name: str, cylinder: dict[str, Any]
+) -> tuple[str, api.models.Collider]:
     """Create a cylinder collider with mm dimensions using ConvexHull2."""
     position, orientation = convert_pose_quaternion(cylinder["pose"])
     radius = m_to_mm(cylinder["radius"])
@@ -105,6 +110,8 @@ def create_cylinder_collider(name: str, cylinder: dict[str, Any]) -> tuple[str, 
         shape=api.models.ConvexHull(vertices=rotated_vertices, shape_type="convex_hull"),
         pose=api.models.Pose(
             position=api.models.Vector3d(position),
-            orientation=api.models.RotationVector([0, 0, 0]),  # Orientation already applied to vertices
+            orientation=api.models.RotationVector(
+                [0, 0, 0]
+            ),  # Orientation already applied to vertices
         ),
     )
