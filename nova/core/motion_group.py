@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import suppress
 from functools import partial
 from typing import AsyncIterable, cast
 
@@ -11,11 +12,11 @@ from nova.api import models
 from nova.cell.robot_cell import AbstractRobot
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core import logger
-from nova.core.exceptions import InconsistentCollisionScenes
+from nova.core.exceptions import InconsistentCollisionScenes, InitMovementFailed
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
 from nova.core.tuner import TrajectoryTuner
-from nova.types import InitialMovementStream, LoadPlanResponse, MovementResponse, Pose, RobotState
+from nova.types import ExecuteTrajectoryRequestStream, ExecuteTrajectoryResponseStream, InitialMovementStream, LoadPlanResponse, MovementControllerFunction, MovementResponse, Pose, RobotState
 from nova.utils import StreamExtractor
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
@@ -429,13 +430,39 @@ class MotionGroup(AbstractRobot):
                 cell=self._cell, client_request_generator=execute_response_streaming_controller
             )
         )
+        
+        def on_done_callback(task: asyncio.Task):
+            execute_response_streaming_controller.stop()
+                
+        execution_task.add_done_callback(on_done_callback)
 
+        should_propagate_cancelation = True
         try:
             async for execute_response in execute_response_streaming_controller:
                 yield execute_response
-        finally:
+        except GeneratorExit as e:
+            logger.error(f"Execution generator exit: {e}")
             execution_task.cancel()
-            await execution_task
+            should_propagate_cancelation = False
+            raise e
+        except asyncio.CancelledError:
+            logger.error("Execution cancelled error.")
+            execution_task.cancel()
+            should_propagate_cancelation = False
+            raise
+        except Exception as e:
+            logger.error(f"Execution exception: {e}")
+            execution_task.cancel()
+            should_propagate_cancelation = False
+            raise e
+        finally:
+            try:
+                await execution_task
+            except asyncio.CancelledError as e:
+                # don't propagate cancelation from 
+                logger.info("Execution task was cancelled.")
+                if should_propagate_cancelation:
+                    raise e
 
 
     async def _tune_trajectory(

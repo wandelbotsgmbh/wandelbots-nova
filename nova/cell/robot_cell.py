@@ -368,7 +368,6 @@ class AbstractRobot(Device):
 
         async with motion_states.stream() as motion_states_stream:
             async for motion_state in motion_states_stream:
-                logger.warning(f"[AbstractRobot-stream_execute] reporting")
                 yield motion_state
 
     async def execute(

@@ -52,7 +52,7 @@ async def test_async_generators():
             for i in range(10):
                 yield i * 2
                 await asyncio.sleep(0.1)
-        except Exception as e:
+        except GeneratorExit as e:
             print(f"Error in square generator: {e}")
         finally:
             print("Square generator is closing.")
