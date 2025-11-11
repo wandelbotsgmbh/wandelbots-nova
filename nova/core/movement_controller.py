@@ -152,7 +152,7 @@ class TrajectoryCursor_V2:
         )
 
     def pause(self):
-        self._command_queue.put_nowait(wb.models.PauseMovementRequest())
+        self._command_queue.put_nowait(api.models.PauseMovementRequest())
 
     def pause_at(self, location: float):
         # How to pause at an exact location?
@@ -199,7 +199,7 @@ class TrajectoryCursor_V2:
                     motion_group_state = response
                     if motion_group_state.execute and isinstance(
                         motion_group_state.execute.details.actual_instance.state.actual_instance,
-                        wb.models.TrajectoryEnded,
+                        api.models.TrajectoryEnded,
                     ):
                         # TODO this is not always the intended end of the movement, but how do we know?
                         ic()
@@ -211,8 +211,8 @@ class TrajectoryCursor_V2:
                     self._handle_motion_state(motion_state, last_motion_state)
                     last_motion_state = motion_state
                     self._response_queue.task_done()
-                elif isinstance(response, wb.models.ExecuteTrajectoryResponse):
-                    if isinstance(response.actual_instance, wb.models.MovementErrorResponse):
+                elif isinstance(response, api.models.ExecuteTrajectoryResponse):
+                    if isinstance(response.actual_instance, api.models.MovementErrorResponse):
                         ic()
                         self._response_queue.task_done()
                         # TODO propagate the error
@@ -253,9 +253,9 @@ class TrajectoryCursor_V2:
 
 async def init_movement_gen(motion_id, response_stream) -> ExecuteTrajectoryRequestStream:
     # The first request is to initialize the movement
-    yield wb.models.InitializeMovementRequest(
-        trajectory=wb.models.InitializeMovementRequestTrajectory(
-            wb.models.TrajectoryId(id=motion_id)
+    yield api.models.InitializeMovementRequest(
+        trajectory=api.models.InitializeMovementRequestTrajectory(
+            api.models.TrajectoryId(id=motion_id)
         ),
         initial_location=0,
     )  # type: ignore
@@ -264,7 +264,7 @@ async def init_movement_gen(motion_id, response_stream) -> ExecuteTrajectoryRequ
     execute_trajectory_response = await anext(response_stream)
     initialize_movement_response = execute_trajectory_response.actual_instance
     ic(initialize_movement_response)
-    assert isinstance(initialize_movement_response, wb.models.InitializeMovementResponse)
+    assert isinstance(initialize_movement_response, api.models.InitializeMovementResponse)
     ic()
     # TODO this should actually check for None but currently the API seems to return an empty string instead
     if initialize_movement_response.message or initialize_movement_response.add_trajectory_error:

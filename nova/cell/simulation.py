@@ -2,7 +2,6 @@ import asyncio
 import math
 import time
 from collections import defaultdict
-from datetime import datetime
 from typing import Any, AsyncIterable, Literal, SupportsIndex
 
 import numpy as np
@@ -110,7 +109,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         # this list. Every motion trajectory corresponds to blocs of wandelscript code between sync commands.
         self.record_of_commands: list[list[Action]] = []
 
-    async def get_optimizer_setup(self, tcp_name: str) -> api.models.MotionGroupSetup:
+    async def get_motion_group_setup(self, tcp_name: str) -> api.models.MotionGroupSetup:
         tcp_pose = self.configuration.tools[tcp_name]
         tcp_pos = api.models.Vector3d(tcp_pose.position.to_tuple())
         tcp_ori = api.models.RotationVector([0, 0, 0])
@@ -142,7 +141,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         )
 
     async def get_mounting(self) -> Pose:
-        mounting = (await self.get_optimizer_setup((await self.tcp_names())[0])).mounting
+        mounting = (await self.get_motion_group_setup((await self.tcp_names())[0])).mounting
         if mounting is None:
             raise ValueError("Mounting is None")
         return Pose(mounting)
@@ -152,7 +151,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        optimizer_setup: api.models.MotionGroupSetup | None = None,
+        motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
         """
         A simple example planner that:
@@ -400,6 +399,11 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
 
     def set_status(self, active: bool) -> None:
         print(f"set status: {active}")
+
+    def _stream_jogging(
+        self, tcp: str, movement_controller: MovementController
+    ) -> AsyncIterable[MovementResponse]:
+        raise NotImplementedError("Jogging is not supported for simulated robot cell")
 
 
 class SimulatedIO(ConfigurablePeriphery, Device, IODevice):

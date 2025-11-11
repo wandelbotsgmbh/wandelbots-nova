@@ -205,7 +205,7 @@ class AbstractRobot(Device):
         actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        robot_setup: api.models.MotionGroupSetup | None = None,
+        motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -224,21 +224,21 @@ class AbstractRobot(Device):
         actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        robot_setup: api.models.MotionGroupSetup | None = None,
+        motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
-               Args:
-                   actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
-                       Only motion actions are considered for planning.
-                   tcp (str): The id of the tool center point (TCP)
-                   start_joint_position: the initial position of the robot
-                   start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
-                   robot_setup (api.models.MotionGroupSetup
-        | None): The robot setup to be used for planning
+        Args:
+            actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
+                Only motion actions are considered for planning.
+            tcp (str): The id of the tool center point (TCP)
+            start_joint_position: the initial position of the robot
+            start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
+            motion_group_setup (api.models.MotionGroupSetup | None): The motion group setup to be used for planning.
+                 If None, the motion group setup will be fetched from the robot.
 
-               Returns:
-                   api.models.JointTrajectory: The planned joint trajectory
+        Returns:
+            api.models.JointTrajectory: The planned joint trajectory
         """
         if not isinstance(actions, list):
             actions = [actions]
@@ -251,7 +251,7 @@ class AbstractRobot(Device):
                 actions=actions,
                 tcp=tcp,
                 start_joint_position=start_joint_position,
-                robot_setup=robot_setup,
+                motion_group_setup=motion_group_setup,
             )
 
             # Automatic viewer integration - log planning results if viewers are active

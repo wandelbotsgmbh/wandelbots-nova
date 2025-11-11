@@ -2,12 +2,9 @@ import asyncio
 import logging
 
 import requests
-import wandelbots_api_client as wb
+from nova import api, Nova
 from pydantic import BaseModel, Field
-from wandelbots_api_client.models.all_joint_positions_request import AllJointPositionsRequest
-from wandelbots_api_client.models.all_joint_positions_response import AllJointPositionsResponse
 
-from nova.api import models
 from nova_rerun_bridge.benchmark.benchmark_base import BenchmarkStrategy, run_benchmark
 
 logger = logging.getLogger(__name__)
@@ -16,7 +13,7 @@ logger = logging.getLogger(__name__)
 class CollisionFreeP2PRequest(BaseModel):
     """Request model for collision-free point-to-point movement planning."""
 
-    plan: wb.models.PlanCollisionFreePTPRequest = Field(
+    plan: api.models.PlanCollisionFreeRequest = Field(
         ..., description="NOVA plan request for collision-free p2p movement"
     )
     n_control_points: int = Field(
@@ -40,32 +37,36 @@ class CollisionFreeMagmaStrategy(BenchmarkStrategy):
     name = "collision_free_magma"
 
     async def _get_valid_configurations(
-        self, nova, motion_group, target, tcp
+        self, nova: Nova, motion_group, target, tcp
     ) -> list[AllJointPositionsResponse] | None:
         """Calculate valid inverse kinematic configurations."""
         try:
-            response = (
-                await nova._api_client.motion_group_kinematic_api.calculate_all_inverse_kinematic(
-                    cell=nova.cell().cell_id,
+            response = await nova._api_client.kinematics_api.inverse_kinematics(
+                cell=nova.cell().cell_id,
+                inverse_kinematics_request=api.models.InverseKinematicsRequest(
                     motion_group=motion_group.motion_group_id,
-                    all_joint_positions_request=AllJointPositionsRequest(
-                        motion_group=motion_group.motion_group_id,
-                        tcp_pose=models.TcpPose(
-                            position=models.Vector3d(
-                                x=target.position[0], y=target.position[1], z=target.position[2]
-                            ),
-                            orientation=models.Vector3d(
-                                x=target.orientation[0],
-                                y=target.orientation[1],
-                                z=target.orientation[2],
-                            ),
-                            tcp=tcp,
-                        ),
+                    tcp_pose=api.models.Pose(
+                        position=api.models.Vector3d(target.position.to_tuple()),
+                        orientation=api.models.RotationVector(target.orientation.to_tuple()),
                     ),
-                )
+                ),
             )
-            return response.joint_positions
-        except (wb.ApiException, requests.RequestException, ValueError, Exception) as e:
+
+            # response = (
+            #     await nova._api_client.motion_group_kinematic_api.calculate_all_inverse_kinematic(
+            #         cell=nova.cell().cell_id,
+            #         motion_group=motion_group.motion_group_id,
+            #         all_joint_positions_request=api.models. AllJointPositionsRequest(
+            #             motion_group=motion_group.motion_group_id,
+            #             tcp_pose=api.models.Pose(
+            #                 position=api.models.Vector3d(target.position.to_tuple()),
+            #                 orientation=api.models.RotationVector(target.orientation.to_tuple()),
+            #             ),
+            #         ),
+            #     )
+            # )
+            return response.joints
+        except (api.ApiException, requests.RequestException, ValueError, Exception) as e:
             logger.exception("Failed to calculate inverse kinematics: %s", e)
             return None
 
@@ -75,7 +76,7 @@ class CollisionFreeMagmaStrategy(BenchmarkStrategy):
         target,
         collision_scene,
         tcp,
-        optimizer_setup,
+        motion_group_setup,
         nova,
         start_joint_position,
     ):
@@ -88,22 +89,23 @@ class CollisionFreeMagmaStrategy(BenchmarkStrategy):
         if collision_scene and collision_scene.colliders:
             if (
                 collision_scene.motion_groups
-                and optimizer_setup.motion_group_type in collision_scene.motion_groups
+                and motion_group_setup.motion_group_model in collision_scene.motion_groups
             ):
                 collision_motion_group = collision_scene.motion_groups[
-                    optimizer_setup.motion_group_type
+                    motion_group_setup.motion_group_model
                 ]
 
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
         for config in valid_configs:
             try:
-                plan_request = wb.models.PlanCollisionFreePTPRequest(
-                    robot_setup=optimizer_setup.model_dump(),
+                plan_request = api.models.PlanCollisionFreeRequest(
+                    motion_group_setup=motion_group_setup,
                     start_joint_position=start_joint_position,
-                    static_colliders=collision_scene.colliders,
-                    collision_motion_group=collision_motion_group,
-                    target=wb.models.PlanCollisionFreePTPRequestTarget(config.joints),
+                    # static_colliders=collision_scene.colliders,
+                    # collision_motion_group=collision_motion_group,
+                    target=api.models.DoubleArray(list(config.joints)),
+                    algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
                 )
 
                 request = CollisionFreeP2PRequest(
@@ -122,12 +124,12 @@ class CollisionFreeMagmaStrategy(BenchmarkStrategy):
                 )
 
                 if response.status_code == 200:
-                    return wb.models.PlanTrajectoryResponse.model_validate(
+                    return api.models.PlanCollisionFreeResponse.model_validate(
                         response.json()
                     ).response.actual_instance
 
                 logger.error(f"Planning failed with status {response.status_code}: {response.text}")
-            except (wb.ApiException, requests.RequestException, ValueError, Exception) as e:
+            except (api.ApiException, requests.RequestException, ValueError, Exception) as e:
                 logger.exception("Error during planning: %s", e)
                 continue
 

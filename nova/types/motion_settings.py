@@ -68,7 +68,14 @@ class MotionSettings(pydantic.BaseModel):
         return self
 
     def has_blending_settings(self) -> bool:
-        return any([self.min_blending_velocity, self.position_zone_radius])
+        return any(
+            [
+                self.blending_auto,
+                self.blending_radius,
+                self.min_blending_velocity,
+                self.position_zone_radius,
+            ]
+        )
 
     def has_limits_override(self) -> bool:
         return any(

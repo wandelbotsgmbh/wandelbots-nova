@@ -78,7 +78,7 @@ async def process_motions():
                         motion = await nova._api_client.motion_api.get_planned_motion(
                             nova.cell()._cell_id, motion_id
                         )
-                        optimizer_config = (
+                        motion_group_setup = (
                             await nova._api_client.motion_group_api.get_optimizer_configuration(
                                 nova.cell()._cell_id, motion.motion_group
                             )
@@ -99,7 +99,8 @@ async def process_motions():
                             raise ValueError(f"Motion group {motion.motion_group} not found")
 
                         nova_bridge.log_saftey_zones_(
-                            motion_group_id=motion.motion_group, optimizer_setup=optimizer_config
+                            motion_group_id=motion.motion_group,
+                            motion_group_setup=motion_group_setup,
                         )
                         await nova_bridge.log_motion(motion_id=motion_id, time_offset=time_offset)
 
