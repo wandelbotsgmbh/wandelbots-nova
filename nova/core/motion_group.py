@@ -391,9 +391,7 @@ class MotionGroup(AbstractRobot):
             cell=self._cell, motion_group_id=self.motion_group_id
         )
         joints_velocities = [MAX_JOINT_VELOCITY_PREPARE_MOVE] * number_of_joints
-        logger.error("moving to start position...")
         movement_stream = await self.move_to_start_position(joints_velocities, load_plan_response)
-        logger.error("moving to start position done...")
 
         # If there's an initial consumer, feed it the data
         async for move_to_response in movement_stream:
@@ -408,7 +406,6 @@ class MotionGroup(AbstractRobot):
                 continue
 
             yield move_to_response
-        logger.error("state consuming for initial movement stream done...")
 
         controller = movement_controller(
             MovementControllerContext(
@@ -433,15 +430,13 @@ class MotionGroup(AbstractRobot):
             )
         )
 
-        async for execute_response in execute_response_streaming_controller:
-            try:
+        try:
+            async for execute_response in execute_response_streaming_controller:
                 yield execute_response
-            except Exception as e:
-                logger.error(f"Error occurred during trajectory execution: {e}")
-                execution_task.cancel()
-                raise e
-            finally:
-                await execution_task
+        finally:
+            execution_task.cancel()
+            await execution_task
+
 
     async def _tune_trajectory(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str, actions: list[Action]
