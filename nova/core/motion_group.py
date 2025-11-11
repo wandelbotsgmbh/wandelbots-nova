@@ -1,6 +1,6 @@
 import asyncio
 from functools import partial
-from typing import AsyncIterable
+from typing import AsyncIterable, AsyncIterator
 
 from icecream import ic
 
@@ -57,13 +57,18 @@ def motion_group_setup_from_motion_group_description(
     # than the one used for planning
     assert motion_group_description.operation_limits.auto_limits is not None
     limits = motion_group_description.operation_limits.auto_limits
+    tcp_offset = (
+        motion_group_description.tcps[tcp_name].pose
+        if motion_group_description.tcps is not None
+        else None
+    )
     # TODO maybe we also want to give the user more control over the collision scene
     return api.models.MotionGroupSetup(
         motion_group_model=motion_group_description.motion_group_model,
         cycle_time=motion_group_description.cycle_time or 8,
         mounting=motion_group_description.mounting,
         global_limits=limits,
-        tcp_offset=motion_group_description.tcps[tcp_name].pose,
+        tcp_offset=tcp_offset,
         payload=payload,
         collision_setups=api.models.CollisionSetups({"default": collision_setup}),
     )
@@ -105,7 +110,8 @@ def combine_trajectories(
         # Shift times and locations to continue from last endpoint
         shifted_times = [t + current_end_time for t in trajectory.times[1:]]  # Skip first point
         shifted_locations = [
-            location.root + current_end_location.root for location in trajectory.locations[1:]
+            api.models.Location(location.root + current_end_location.root)
+            for location in trajectory.locations[1:]
         ]  # Skip first point
 
         final_trajectory.times.extend(shifted_times)
@@ -196,7 +202,7 @@ class MotionGroup(AbstractRobot):
 
     async def stream_state(
         self, response_rate_msecs: int | None = None
-    ) -> AsyncIterable[api.models.MotionGroupState]:
+    ) -> AsyncIterator[api.models.MotionGroupState]:
         """
         Streams the motion group state continuously.
 

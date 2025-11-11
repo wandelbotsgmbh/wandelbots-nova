@@ -294,7 +294,7 @@ class Rerun(Viewer):
 
                 # Log error feedback if available
                 if hasattr(error.error, "error_feedback") and error.error.error_feedback:
-                    await self._bridge.log_error_feedback(error.error.error_feedback)
+                    await self._bridge.log_error_feedback(error.error)
 
             # Log error information as text
             import rerun as rr

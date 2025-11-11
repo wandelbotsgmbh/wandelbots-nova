@@ -155,8 +155,8 @@ async def collision_free_p2p() -> None:
 
             welding_actions: list[Action] = [
                 collision_free(
-                    target=Pose((-500, -400, 200, np.pi, 0, 0)),
-                    collision_scene=collision_scene,
+                    target=(-500, -400, 200, np.pi, 0, 0),
+                    collision_setup=collision_scene,
                     settings=MotionSettings(tcp_velocity_limit=30),
                 )
             ]
