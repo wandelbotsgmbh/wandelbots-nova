@@ -577,7 +577,28 @@ class TrajectoryCursor:
         ):
             yield request
 
-        respons_consumer_ready_event = asyncio.Event()
+        combined_response_consumer_ready_event = asyncio.Event()
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(self._effect_consumer(), name="effect_consumer")
+            tg.create_task(self._response_consumer(), name="response_consumer")
+            tg.create_task(
+                self._combined_response_consumer(
+                    ready_event=combined_response_consumer_ready_event
+                ),
+                name="combined_response_consumer",
+            )
+            tg.create_task(self.motion_event_updater(), name="motion_event_updater")
+            # we need to wait until the response consumer is ready because it stops the
+            # response stream iterator by enquing the sentinel
+            # if we cancel immediately due to the first command being a detach the response consumer might get
+            # cancelled before it has even started and thus will not react to the cancellation properly
+            await combined_response_consumer_ready_event.wait()
+            async for request in self._request_loop():
+                yield request
+            self._response_consumer_task.cancel()
+            motion_event_updater_task.cancel()
+
+        # OLD
         self._response_consumer_task: asyncio.Task[None] = asyncio.create_task(
             self._response_consumer(ready_event=respons_consumer_ready_event),
             name="response_consumer",
