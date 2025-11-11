@@ -1,11 +1,14 @@
 import asyncio
-from nova.utils import StreamExtractor
+
 import pytest
+
+from nova.utils import StreamExtractor
 
 # TODO: these test are not complete and don't test the stream extractor fully
 # currently there are used to trouble shoot issues with async generators and
 # stream extractor behavior
 # keeping them here even when they are not complete because writing this from scratch is time consuming
+
 
 @pytest.fixture
 async def stream_extractor():
@@ -13,10 +16,12 @@ async def stream_extractor():
         async def out_stream(input_stream):
             async for value in input_stream:
                 yield value * 2
+
         return out_stream
 
     extractor = StreamExtractor(wrapper(), stop_selector=lambda x: x >= 5)
     return extractor
+
 
 @pytest.mark.asyncio
 async def test_stream_extractor_drive_input_stream(stream_extractor):
@@ -24,7 +29,6 @@ async def test_stream_extractor_drive_input_stream(stream_extractor):
         for i in range(10):
             print(f":Producing input stream data {i}")
             yield i
-
 
     async def run():
         async for value in stream_extractor(in_stream()):
@@ -38,7 +42,7 @@ async def test_stream_extractor_drive_input_stream(stream_extractor):
             print(f"Consuming input stream: {value}")
             if value >= 5:
                 raise Exception("Stream extractor send more data than expected.")
-    except Exception as e:
+    except Exception:
         execution_task.cancel()
     finally:
         await execution_task
@@ -46,7 +50,6 @@ async def test_stream_extractor_drive_input_stream(stream_extractor):
 
 @pytest.mark.asyncio
 async def test_async_generators():
-
     async def square():
         try:
             for i in range(10):
@@ -64,7 +67,7 @@ async def test_async_generators():
                 await asyncio.sleep(0.1)
         except Exception as e:
             print(f"Error in numbers generator: {e}")
-    
+
     async for n in numbers():
         if n > 10:
             raise Exception("Stopping numbers generator")

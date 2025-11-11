@@ -1,24 +1,29 @@
+import asyncio
+
+import pytest
+import wandelbots_api_client as wb
+
 from nova import Nova
-from nova.actions import lin, ptp, jnt
+from nova.actions import jnt, lin
 from nova.actions.container import MovementControllerContext
+from nova.api import models
 from nova.cell.controllers import virtual_controller
 from nova.core.exceptions import InitMovementFailed
-from nova.core.motion_group import MotionGroup
-from nova.types import ExecuteTrajectoryRequestStream, ExecuteTrajectoryResponseStream, MovementControllerFunction
-import wandelbots_api_client  as wb
+from nova.logging import logger
+from nova.types import (
+    ExecuteTrajectoryRequestStream,
+    ExecuteTrajectoryResponseStream,
+    MovementControllerFunction,
+)
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
-from nova.api import models
-from nova.logging import logger
-import asyncio
-import pytest
 
 
 @pytest.fixture
 async def ur_mg():
     """
     Fixture that sets up a robot with virtual controller at a specific start position.
-    
+
     Yields:
         MotionGroup: Motion group ready for task cancellation tests
     """
@@ -32,25 +37,25 @@ async def ur_mg():
                 name=controller_name,
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
                 type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
-                position=initial_joint_positions
+                position=initial_joint_positions,
             )
         )
 
         ur = await cell.controller(controller_name)
         async with ur[0] as mg:
-
             try:
                 yield mg
             finally:
                 # Move back to the initial position
                 await mg.plan_and_execute(
                     actions=[
-                        jnt(initial_joint_positions[:6], settings=MotionSettings(tcp_velocity_limit=250)),
+                        jnt(
+                            initial_joint_positions[:6],
+                            settings=MotionSettings(tcp_velocity_limit=250),
+                        )
                     ],
-                    tcp="Flange"
+                    tcp="Flange",
                 )
-            
-
 
 
 @pytest.mark.asyncio
@@ -61,18 +66,16 @@ async def test_movement_stops_when_canceling_task_with_execute(ur_mg):
     the robot stops moving.
     """
     movement_in_x = 800
-    initial_pose = await ur_mg.tcp_pose()    
+    initial_pose = await ur_mg.tcp_pose()
     final_pose = initial_pose @ Pose((movement_in_x, 0, 0))
     actions = [
         # move 800 mm in X direction with 50 mm/s
         # should give us enough time to cancel the task
-        lin(final_pose, settings=MotionSettings(tcp_velocity_limit=50)),
+        lin(final_pose, settings=MotionSettings(tcp_velocity_limit=50))
     ]
     trajectory = await ur_mg.plan(actions=actions, tcp="Flange")
-    
-    movement_task = asyncio.create_task(
-        ur_mg.execute(trajectory, actions=actions, tcp="Flange")
-    )
+
+    movement_task = asyncio.create_task(ur_mg.execute(trajectory, actions=actions, tcp="Flange"))
 
     await asyncio.sleep(2)
 
@@ -84,32 +87,33 @@ async def test_movement_stops_when_canceling_task_with_execute(ur_mg):
         logger.info(f"Task was cancelled: {e}")
 
     # time for deceleration
-    await asyncio.sleep(1)    
+    await asyncio.sleep(1)
     pose = await ur_mg.tcp_pose()
     assert pose.position.x > initial_pose.position.x, "Robot did not move at all."
-    assert pose.position.x < final_pose.position.x, "Robot completed the full movement despite cancelation."
-
+    assert pose.position.x < final_pose.position.x, (
+        "Robot completed the full movement despite cancelation."
+    )
 
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
     assert pose.position.x == new_pose.position.x, "Robot moved after task was cancelled."
-    
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_movement_stops_when_async_generator_raises_exception(ur_mg):
     """
-    Test that when you move a robot by motion_group.stream_execute and 
+    Test that when you move a robot by motion_group.stream_execute and
     raise an exception in the state consuming async generator,
     the robot stops moving.
     """
     movement_in_x = 800
-    initial_pose = await ur_mg.tcp_pose()    
+    initial_pose = await ur_mg.tcp_pose()
     final_pose = initial_pose @ Pose((movement_in_x, 0, 0))
     actions = [
         # move 800 mm in X direction with 50 mm/s
         # should give us enough time to cancel the task
-        lin(final_pose, settings=MotionSettings(tcp_velocity_limit=50)),
+        lin(final_pose, settings=MotionSettings(tcp_velocity_limit=50))
     ]
     trajectory = await ur_mg.plan(actions=actions, tcp="Flange")
 
@@ -121,20 +125,18 @@ async def test_movement_stops_when_async_generator_raises_exception(ur_mg):
                 raise Exception("Intentional exception to test movement stop on exception.")
     except Exception as e:
         logger.info(f"Caught expected exception: {e}")
-    
-
 
     # time for deceleration
-    await asyncio.sleep(1)    
+    await asyncio.sleep(1)
     pose = await ur_mg.tcp_pose()
     assert pose.position.x > initial_pose.position.x, "Robot did not move at all."
-    assert pose.position.x <= final_pose.position.x, "Robot completed the full movement despite cancelation."
-
+    assert pose.position.x <= final_pose.position.x, (
+        "Robot completed the full movement despite cancelation."
+    )
 
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
     assert pose.position.x == new_pose.position.x, "Robot moved after task was cancelled."
-
 
 
 # yes this is very very ugly
@@ -144,7 +146,9 @@ def create_movement_controller(exception: BaseException):
             response_stream: ExecuteTrajectoryResponseStream,
         ) -> ExecuteTrajectoryRequestStream:
             # The first request is to initialize the movement
-            yield wb.models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)  # type: ignore
+            yield wb.models.InitializeMovementRequest(
+                trajectory=context.motion_id, initial_location=0
+            )  # type: ignore
 
             # then we get the response
             initialize_movement_response = await anext(response_stream)
@@ -167,7 +171,7 @@ def create_movement_controller(exception: BaseException):
                 number_of_states_to_consume -= 1
                 if number_of_states_to_consume == 0:
                     raise exception
-                
+
                 instance = execute_trajectory_response.actual_instance
                 # Stop when standstill indicates motion ended
                 if isinstance(instance, wb.models.Standstill):
@@ -175,6 +179,7 @@ def create_movement_controller(exception: BaseException):
                         return
 
         return movement_controller
+
     return _test_movement_controller
 
 
@@ -182,33 +187,33 @@ def create_movement_controller(exception: BaseException):
 @pytest.mark.integration
 async def test_movement_stops_when_custom_controller_raies(ur_mg):
     movement_in_x = 800
-    initial_pose = await ur_mg.tcp_pose()    
+    initial_pose = await ur_mg.tcp_pose()
     final_pose = initial_pose @ Pose((movement_in_x, 0, 0))
     actions = [
         # move 800 mm in X direction with 50 mm/s
         # should give us enough time to cancel the task
-        lin(final_pose, settings=MotionSettings(tcp_velocity_limit=50)),
+        lin(final_pose, settings=MotionSettings(tcp_velocity_limit=50))
     ]
     trajectory = await ur_mg.plan(actions=actions, tcp="Flange")
 
     try:
         exception = Exception("Intentional exception to test movement stop on exception.")
         await ur_mg.execute(
-            trajectory, 
-            actions=actions, 
-            tcp="Flange", 
-            movement_controller=create_movement_controller(exception)
+            trajectory,
+            actions=actions,
+            tcp="Flange",
+            movement_controller=create_movement_controller(exception),
         )
     except Exception as e:
-        logger.info(f"Caught expected exception: {e}")    
-
+        logger.info(f"Caught expected exception: {e}")
 
     # time for deceleration
     await asyncio.sleep(1)
     pose = await ur_mg.tcp_pose()
     assert pose.position.x > initial_pose.position.x, "Robot did not move at all."
-    assert pose.position.x <= final_pose.position.x, "Robot completed the full movement despite cancelation."
-
+    assert pose.position.x <= final_pose.position.x, (
+        "Robot completed the full movement despite cancelation."
+    )
 
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
@@ -223,32 +228,32 @@ async def test_task_cancelation_when_movement_controller_cancels_we_should_propa
     the cancelation is properly propagated and the robot stops moving.
     """
     movement_in_x = 800
-    initial_pose = await ur_mg.tcp_pose()    
+    initial_pose = await ur_mg.tcp_pose()
     final_pose = initial_pose @ Pose((movement_in_x, 0, 0))
     actions = [
         # move 800 mm in X direction with 50 mm/s
         # should give us enough time to cancel the task
-        lin(final_pose, settings=MotionSettings(tcp_velocity_limit=50)),
+        lin(final_pose, settings=MotionSettings(tcp_velocity_limit=50))
     ]
     trajectory = await ur_mg.plan(actions=actions, tcp="Flange")
 
     try:
         await ur_mg.execute(
-            trajectory, 
-            actions=actions, 
-            tcp="Flange", 
-            movement_controller=create_movement_controller(asyncio.CancelledError())
+            trajectory,
+            actions=actions,
+            tcp="Flange",
+            movement_controller=create_movement_controller(asyncio.CancelledError()),
         )
     except asyncio.CancelledError as e:
-        logger.info(f"Caught expected exception: {e}")    
-
+        logger.info(f"Caught expected exception: {e}")
 
     # time for deceleration
     await asyncio.sleep(1)
     pose = await ur_mg.tcp_pose()
     assert pose.position.x > initial_pose.position.x, "Robot did not move at all."
-    assert pose.position.x <= final_pose.position.x, "Robot completed the full movement despite cancelation."
-
+    assert pose.position.x <= final_pose.position.x, (
+        "Robot completed the full movement despite cancelation."
+    )
 
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()

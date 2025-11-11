@@ -25,7 +25,6 @@ class StreamExtractor(Generic[In, Out]):
                     self._in_queue.put_nowait(in_value)
                 yield in_value
 
-
         return self._wrapped(in_wrapper(in_stream))
 
     def __aiter__(self) -> AsyncIterator[In]:
