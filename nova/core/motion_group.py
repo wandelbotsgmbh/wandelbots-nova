@@ -445,18 +445,8 @@ class MotionGroup(AbstractRobot):
         try:
             async for execute_response in execute_response_streaming_controller:
                 yield execute_response
-        except GeneratorExit as e:
-            logger.error(f"Execution generator exit: {e}")
-            execution_task.cancel()
-            should_propagate_cancelation = False
-            raise e
-        except asyncio.CancelledError:
-            logger.error("Execution cancelled error.")
-            execution_task.cancel()
-            should_propagate_cancelation = False
-            raise
-        except Exception as e:
-            logger.error(f"Execution exception: {e}")
+        except BaseException as e:
+            logger.error(f"Exception while consuming execution responses: {e}")
             execution_task.cancel()
             should_propagate_cancelation = False
             raise e
@@ -464,8 +454,8 @@ class MotionGroup(AbstractRobot):
             try:
                 await execution_task
             except asyncio.CancelledError as e:
-                # if we canceled the execution, don't propagate 
-                # the cancelation but the exception that caused the cancelation
+                # if we canceled the execution
+                # don't propagate the cancelation but the original exception
                 logger.info("Execution task was cancelled.")
                 if should_propagate_cancelation:
                     raise e
