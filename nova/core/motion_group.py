@@ -497,7 +497,7 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
-    ) -> AsyncIterable[MotionState]:
+    ) -> AsyncIterator[MotionState]:
         # This is the entrypoint for the trajectory tuning mode
         if ENABLE_TRAJECTORY_TUNING:
             logger.info("Entering trajectory tuning mode...")

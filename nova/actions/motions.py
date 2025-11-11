@@ -52,7 +52,7 @@ class Linear(Motion):
 
         Examples:
         >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10)).to_api_model()
-        PathLine(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathLine')
+        PathLine(target_pose=Pose(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathLine')
         """
         return api.models.PathLine(
             target_pose=self.target.to_api_pose(), path_definition_name="PathLine"
@@ -110,7 +110,7 @@ class CartesianPTP(Motion):
 
         Examples:
         >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
-        PathCartesianPTP(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCartesianPTP')
+        PathCartesianPTP(target_pose=Pose(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCartesianPTP')
         """
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
@@ -172,7 +172,7 @@ class Circular(Motion):
 
         Examples:
         >>> Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((10, 20, 30, 40, 50, 60)), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
-        PathCircle(via_pose=Pose2(position=[10, 20, 30], orientation=[40, 50, 60]), target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCircle')
+        PathCircle(via_pose=Pose(position=[10, 20, 30], orientation=[40, 50, 60]), target_pose=Pose(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCircle')
         """
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
