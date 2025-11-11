@@ -604,7 +604,11 @@ class MotionGroup(AbstractRobot):
             load_planned_motion_response = await self._load_planned_motion(joint_trajectory, tcp)
             return load_planned_motion_response, joint_trajectory
 
-        execute_fn = partial(self._api_client.motion_group_api.execute_trajectory, cell=self._cell)
-        tuner = TrajectoryTuner(actions, plan_fn, execute_fn)
-        async for response in tuner.tune():
+        execute_fn = partial(
+            self._api_client.trajectory_execution_api.execute_trajectory,
+            cell=self._cell,
+            controller=self._controller_id,
+        )
+        tuner = TrajectoryTuner(plan_fn, execute_fn)
+        async for response in tuner.tune(actions, self.stream_state()):
             yield response
