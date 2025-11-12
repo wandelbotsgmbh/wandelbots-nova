@@ -8,11 +8,12 @@ import numpy as np
 import nova
 from nova import api
 from nova.cell import virtual_controller
-from nova.core.motion_group import MotionGroup, motion_group_setup_from_motion_group_description
+from nova.core.motion_group import MotionGroup
 from nova.core.nova import Nova
 from nova.program import ProgramPreconditions
 from nova.types import Pose
 from nova.types.vector3d import Vector3d as Vector3d_nova
+from nova.utils.collision_setup import motion_group_setup_from_motion_group_description
 from nova_rerun_bridge import NovaRerunBridge
 from nova_rerun_bridge.benchmark.datasets import motion_benchmaker_raw
 from nova_rerun_bridge.benchmark.log_successful_planning import log_successful_planning

@@ -29,7 +29,7 @@ from nova.types import MotionSettings, Pose
 @nova.program(
     id="start_here",  # Unique identifier of the program. If not provided, the function name will be used.
     name="Start Here",  # Readable name of the program
-    viewer=nova.viewers.Rerun(),  # add this line for a 3D visualization
+    # viewer=nova.viewers.Rerun(),  # add this line for a 3D visualization
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(

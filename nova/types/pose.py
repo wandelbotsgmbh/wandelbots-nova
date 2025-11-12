@@ -133,11 +133,11 @@ class Pose(pydantic.BaseModel, Sized):
         """
         return self.position.to_tuple() + self.orientation.to_tuple()
 
-    def to_api_pose(self) -> api.models.Pose:
+    def to_api_model(self) -> api.models.Pose:
         """Convert to wandelbots_api_client Pose
 
         Examples:
-        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).to_api_pose()
+        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).to_api_model()
         Pose(position=Vector3d(root=[10.0, 20.0, 30.0]), orientation=RotationVector(root=[1.0, 2.0, 3.0]))
         """
         return api.models.Pose(
@@ -207,7 +207,7 @@ class Pose(pydantic.BaseModel, Sized):
         >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).model_dump()
         {'position': [10.0, 20.0, 30.0], 'orientation': [1.0, 2.0, 3.0]}
         """
-        return self.to_api_pose().model_dump()
+        return self.to_api_model().model_dump()
 
     @pydantic.model_validator(mode="before")
     @classmethod

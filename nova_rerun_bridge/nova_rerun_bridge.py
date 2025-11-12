@@ -605,32 +605,7 @@ class NovaRerunBridge:
         try:
             # Use Nova's forward kinematics API to get TCP pose from joint configuration
             # Create a joint position object
-            joint_position = api.models.Joints(list(joint_config))
-
-            # Create TcpPoseRequest for forward kinematics calculation
-            tcp_pose_request = api.models.TcpPoseRequest(
-                motion_group=motion_group.motion_group_id, joint_position=joint_position, tcp=tcp
-            )
-
-            # Use Nova's API to calculate the TCP pose from joint configuration
-            api_pose = await motion_group._api_gateway.motion_group_kinematic_api.calculate_forward_kinematic(
-                cell=motion_group._cell,
-                motion_group=motion_group.motion_group_id,
-                tcp_pose_request=tcp_pose_request,
-            )
-
-            # Convert API pose to Nova Pose
-            orientation = api_pose.orientation
-            return Pose(
-                (
-                    api_pose.position.x,
-                    api_pose.position.y,
-                    api_pose.position.z,
-                    orientation.x if orientation else 0.0,
-                    orientation.y if orientation else 0.0,
-                    orientation.z if orientation else 0.0,
-                )
-            )
+            return await motion_group.forward_kinematics([joint_config], tcp)
 
         except Exception as e:
             logger.warning(f"Failed to convert joints to pose using forward kinematics: {e}")

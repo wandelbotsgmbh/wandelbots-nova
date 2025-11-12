@@ -78,7 +78,7 @@ async def build_collision_world(
             )
         ],
         cleanup_controllers=False,
-    ),
+    )
 )
 async def collision_free_p2p() -> None:
     """
@@ -88,10 +88,10 @@ async def collision_free_p2p() -> None:
         cell = nova.cell()
         controller = await cell.controller("ur5")
 
-        await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
+        await nova._api_client.virtual_robot_setup_api.set_virtual_controller_mounting(
             cell="cell",
             controller=controller.controller_id,
-            id=0,
+            motion_group=f"0@{controller.controller_id}",
             coordinate_system=api.models.CoordinateSystem(
                 name="mounting",
                 coordinate_system="world",
@@ -144,19 +144,19 @@ async def collision_free_p2p() -> None:
             await motion_group.plan(
                 collision_actions,
                 tcp,
-                start_joint_position=joint_trajectory.joint_positions[-1].joints,
+                start_joint_position=joint_trajectory.joint_positions[-1].root,
             )
 
             # Plan collision free PTP motion around the sphere
-            scene_api = nova._api_client.store_collision_setups_api
-            collision_scene = await scene_api.get_stored_collision_scene(
-                cell="cell", scene=collision_scene_id
+            store_collision_setups_api = nova._api_client.store_collision_setups_api
+            collision_setup = await store_collision_setups_api.get_stored_collision_setup(
+                cell="cell", setup=collision_scene_id
             )
 
             welding_actions: list[Action] = [
                 collision_free(
                     target=(-500, -400, 200, np.pi, 0, 0),
-                    collision_setup=collision_scene,
+                    collision_setup=collision_setup,
                     settings=MotionSettings(tcp_velocity_limit=30),
                 )
             ]
@@ -164,7 +164,7 @@ async def collision_free_p2p() -> None:
             await motion_group.plan(
                 welding_actions,
                 tcp=tcp,
-                start_joint_position=joint_trajectory.joint_positions[-1].joints,
+                start_joint_position=joint_trajectory.joint_positions[-1].root,
             )
 
 

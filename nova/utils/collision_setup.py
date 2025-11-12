@@ -55,3 +55,54 @@ def validate_collision_setups(actions: list[Action]) -> list[api.models.Collisio
             )
 
     return collision_setups
+
+
+def motion_group_setup_from_motion_group_description(
+    motion_group_description: api.models.MotionGroupDescription,
+    tcp_name: str,
+    payload: api.models.Payload | None = None,
+) -> api.models.MotionGroupSetup:
+    tool_colliders = (
+        motion_group_description.safety_tool_colliders.get(tcp_name)
+        if motion_group_description.safety_tool_colliders is not None
+        else None
+    )
+    tool = api.models.Tool(tool_colliders.root) if tool_colliders is not None else None
+    link_chain = (
+        api.models.LinkChain(
+            list(
+                api.models.Link(link.root)
+                for link in motion_group_description.safety_link_colliders
+            )
+        )
+        if motion_group_description.safety_link_colliders
+        else None
+    )
+    collision_setup = api.models.CollisionSetup(
+        colliders=motion_group_description.safety_zones,
+        link_chain=link_chain,
+        tool=tool,
+        # Hint: Markus S. said hardcode it to False
+        self_collision_detection=False,  # explicitly set here until we have a better understanding
+    )
+    # For the time being it is assumed that the auto limits are always present
+    # We also assume that the motion player in RAE will scale corretly if the
+    # planned trajectory is played back with different limits (due to a different robot mode)
+    # than the one used for planning
+    assert motion_group_description.operation_limits.auto_limits is not None
+    limits = motion_group_description.operation_limits.auto_limits
+    tcp_offset = (
+        motion_group_description.tcps[tcp_name].pose
+        if motion_group_description.tcps is not None
+        else None
+    )
+    # TODO maybe we also want to give the user more control over the collision scene
+    return api.models.MotionGroupSetup(
+        motion_group_model=motion_group_description.motion_group_model,
+        cycle_time=motion_group_description.cycle_time or 8,
+        mounting=motion_group_description.mounting,
+        global_limits=limits,
+        tcp_offset=tcp_offset,
+        payload=payload,
+        collision_setups=api.models.CollisionSetups({"default": collision_setup}),
+    )

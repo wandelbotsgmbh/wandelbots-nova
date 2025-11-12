@@ -55,7 +55,7 @@ class Linear(Motion):
         PathLine(target_pose=Pose(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathLine')
         """
         return api.models.PathLine(
-            target_pose=self.target.to_api_pose(), path_definition_name="PathLine"
+            target_pose=self.target.to_api_model(), path_definition_name="PathLine"
         )
 
 
@@ -115,7 +115,7 @@ class CartesianPTP(Motion):
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
         return api.models.PathCartesianPTP(
-            target_pose=self.target.to_api_pose(), path_definition_name="PathCartesianPTP"
+            target_pose=self.target.to_api_model(), path_definition_name="PathCartesianPTP"
         )
 
 
@@ -179,8 +179,8 @@ class Circular(Motion):
         if not isinstance(self.intermediate, Pose):
             raise ValueError("Intermediate must be a Pose object")
         return api.models.PathCircle(
-            target_pose=self.target.to_api_pose(),
-            via_pose=self.intermediate.to_api_pose(),
+            target_pose=self.target.to_api_model(),
+            via_pose=self.intermediate.to_api_model(),
             path_definition_name="PathCircle",
         )
 
