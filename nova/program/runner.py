@@ -3,6 +3,7 @@ import contextlib
 import contextvars
 import inspect
 import io
+import signal
 import sys
 import threading
 import traceback as tb
@@ -17,6 +18,7 @@ import anyio
 from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
 from exceptiongroup import ExceptionGroup
+from icecream import ic
 from loguru import logger
 from pydantic import BaseModel, Field, StrictStr
 
@@ -613,10 +615,21 @@ def run_program(
         app_name=app_name,
     )
 
+    def sigint_handler(sig, frame):
+        print("Received SIGINT, stopping program...")
+        ic(sig, frame)
+        runner.stop()
+        # program_stop_evt.set()
+
+    ic(signal.default_int_handler, signal.Handlers)
+    # signal.signal(signal.SIGINT, sigint_handler)
+
     # Try to grab a caller loop if there is one; otherwise, fall back to None.
     try:
         loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+        ic(loop)
     except RuntimeError:
+        ic()
         loop = None
 
     on_state_change_listener = (

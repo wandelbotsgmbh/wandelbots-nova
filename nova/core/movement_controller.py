@@ -44,27 +44,35 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             ready: asyncio.Event,
         ):
             ready.set()
-            async for motion_group_state in motion_group_state_stream:
-                if motion_group_state.execute and isinstance(
-                    motion_group_state.execute.details, api.models.TrajectoryDetails
-                ):
-                    if isinstance(
-                        motion_group_state.execute.details.state, api.models.TrajectoryEnded
+            try:
+                async for motion_group_state in motion_group_state_stream:
+                    if motion_group_state.execute and isinstance(
+                        motion_group_state.execute.details, api.models.TrajectoryDetails
                     ):
-                        await error_monitor_task_created.wait()
-                        error_monitor_task.cancel()
-                        break
+                        if isinstance(
+                            motion_group_state.execute.details.state, api.models.TrajectoryEnded
+                        ):
+                            await error_monitor_task_created.wait()
+                            error_monitor_task.cancel()
+                            break
+            except asyncio.CancelledError:
+                ic()
+                raise
 
         async def error_monitor(
             responses: ExecuteTrajectoryResponseStream, to_cancel: list[asyncio.Task]
         ):
-            async for execute_trajectory_response in responses:
-                if isinstance(execute_trajectory_response, api.models.MovementErrorResponse):
-                    for task in to_cancel:
-                        task.cancel()
-                    # TODO how does this propagate?
-                    # TODO what happens to the state consumer?
-                    raise ErrorDuringMovement(execute_trajectory_response.message)
+            try:
+                async for execute_trajectory_response in responses:
+                    if isinstance(execute_trajectory_response, api.models.MovementErrorResponse):
+                        for task in to_cancel:
+                            task.cancel()
+                        # TODO how does this propagate?
+                        # TODO what happens to the state consumer?
+                        raise ErrorDuringMovement(execute_trajectory_response.message)
+            except asyncio.CancelledError:
+                ic()
+                raise
 
         motion_group_state_stream = context.motion_group_state_stream_gen()
         motion_group_state_monitor_ready = asyncio.Event()

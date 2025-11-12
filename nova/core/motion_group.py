@@ -525,7 +525,7 @@ class MotionGroup(AbstractRobot):
 
         async def monitor_motion_group_state():
             async for motion_group_state in self.stream_state():
-                ic()
+                # ic()
                 # ic(motion_group_state)
                 if motion_group_state.execute:
                     states.put_nowait(motion_group_state)
