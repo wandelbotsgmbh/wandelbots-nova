@@ -5,6 +5,7 @@ from contextlib import AsyncExitStack
 from functools import reduce
 from typing import (
     AsyncIterable,
+    AsyncIterator,
     Awaitable,
     ClassVar,
     Generic,
@@ -300,7 +301,7 @@ class AbstractRobot(Device):
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
-    ) -> AsyncIterable[MovementResponse]:
+    ) -> AsyncIterator[MovementResponse]:
         """Execute a planned motion
 
         Args:

@@ -285,7 +285,7 @@ class NovaRerunBridge:
 
     async def log_trajectory(
         self,
-        joint_trajectory: api.models.JointTrajectory,
+        joint_trajectory: api.models.JointTrajectory,  # TrajectorySample
         tcp: str,
         motion_group: MotionGroup,
         timing_mode=TimingMode.CONTINUE,

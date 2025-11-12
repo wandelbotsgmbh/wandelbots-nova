@@ -243,7 +243,7 @@ class MotionGroup(AbstractRobot):
         return (await self.get_state(tcp=tcp)).pose
 
     async def tcps(self) -> dict[str, api.models.RobotTcp]:
-        motion_group_description = await self._get_motion_group_description()
+        motion_group_description = await self._fetch_motion_group_description()
         tcps = motion_group_description.tcps
         if tcps is None:
             return {}

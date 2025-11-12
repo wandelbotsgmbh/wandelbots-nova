@@ -46,7 +46,6 @@ class TestLogMotionParameterValidation:
             patch("nova_rerun_bridge.trajectory._visualizer_cache", {}),
             patch("nova_rerun_bridge.trajectory.log_joint_data") as mock_log_joint,
             patch("nova_rerun_bridge.trajectory.log_tcp_pose") as mock_log_tcp,
-            patch("nova_rerun_bridge.trajectory.log_scalar_values") as mock_log_scalar,
         ):
             # Configure the extract function to return expected tuple
             mock_extract.return_value = ([], Mock())  # (link_chain, tcp)
@@ -65,7 +64,6 @@ class TestLogMotionParameterValidation:
             # Verify that the sub-functions were called
             mock_log_joint.assert_called_once()
             mock_log_tcp.assert_called_once()
-            mock_log_scalar.assert_called_once()
 
     def test_handles_empty_trajectory(self):
         """Should handle empty trajectory list."""

@@ -6,7 +6,7 @@ import rerun as rr
 import rerun.archetypes as ra
 from scipy.spatial.transform import Rotation
 
-from nova import api
+from nova import MotionGroup, api
 from nova_rerun_bridge.collision_scene import extract_link_chain_and_tcp
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
@@ -37,9 +37,9 @@ _visualizer_cache: dict[str, RobotVisualizer] = {}
 def log_motion(
     motion_id: str,
     model_from_controller: str,
-    motion_group: str,
+    motion_group: MotionGroup,
     motion_group_setup: api.models.MotionGroupSetup,
-    trajectory: list[api.models.TrajectorySample],
+    trajectory: list[api.models.TrajectoryData],
     collision_setups: dict[str, api.models.CollisionSetup],
     time_offset: float = 0,
     timing_mode: TimingMode = TimingMode.CONTINUE,  # Deprecated parameter kept for compatibility
@@ -140,13 +140,17 @@ def log_motion(
 
 
 def log_trajectory_path(
-    motion_id: str, trajectory: list[api.models.TrajectorySample], motion_group: str
+    motion_id: str, trajectory: api.models.JointTrajectory, motion_group: MotionGroup
 ):
-    if not all(p.tcp_pose is not None for p in trajectory):
+    if not all(p.tcp is not None for p in trajectory):
         raise ValueError("All trajectory points must have a tcp_pose")
 
+    # TODO: calculate tcp pose from joint positions
+    joint_positions = [tuple(p.root) for p in trajectory.joint_positions]
+    tcp_poses = await motion_group.forward_kinematics(joint_positions, tcp=trajectory.tcp)
+
     points = [
-        [p.tcp_pose.position.x, p.tcp_pose.position.y, p.tcp_pose.position.z]
+        [p.data.tcp_pose.position.x, p.data.tcp_pose.position.y, p.data.tcp_pose.position.z]
         for p in trajectory
         if p.tcp_pose and p.tcp_pose.position
     ]
@@ -168,10 +172,10 @@ def get_times_column(
 
 def log_trajectory(
     motion_id: str,
-    motion_group: str,
+    motion_group: MotionGroup,
     robot: DHRobot,
     visualizer: RobotVisualizer,
-    trajectory: list[api.models.TrajectorySample],
+    trajectory: api.models.JointTrajectory,
     motion_group_setup: api.models.MotionGroupSetup,
     timer_offset: float,
     tool_asset: Optional[str] = None,
@@ -210,9 +214,6 @@ def log_trajectory(
 
     # Log joint data
     log_joint_data(trajectory, motion_group, times_column, motion_group_setup)
-
-    # Log scalar data
-    log_scalar_values(trajectory, motion_group, times_column, motion_group_setup)
 
 
 def log_tcp_pose(
@@ -319,81 +320,6 @@ def log_joint_data(
                     indexes=[times_column],
                     columns=[*ra.Scalars.columns(scalars=data[i])],
                 )
-
-
-def log_scalar_values(
-    trajectory: list[api.models.TrajectorySample],
-    motion_group,
-    times_column,
-    motion_group_setup: api.models.MotionGroupSetup,
-):
-    """
-    Log scalar values such as TCP velocity, acceleration, orientation velocity/acceleration, time, and location.
-    """
-    scalar_data: dict[str, list[float]] = {
-        "tcp_velocity": [],
-        "tcp_acceleration": [],
-        "tcp_orientation_velocity": [],
-        "tcp_orientation_acceleration": [],
-        "time": [],
-        "location_on_trajectory": [],
-        "tcp_velocity_limit": [],
-        "tcp_orientation_velocity_lower_limit": [],
-        "tcp_orientation_velocity_upper_limit": [],
-        "tcp_acceleration_lower_limit": [],
-        "tcp_acceleration_upper_limit": [],
-        "tcp_orientation_acceleration_lower_limit": [],
-        "tcp_orientation_acceleration_upper_limit": [],
-    }
-
-    # Collect data from the trajectory
-    for point in trajectory:
-        if point.tcp_velocity is not None:
-            scalar_data["tcp_velocity"].append(point.tcp_velocity)
-        if point.tcp_acceleration is not None:
-            scalar_data["tcp_acceleration"].append(point.tcp_acceleration)
-        if point.tcp_orientation_velocity is not None:
-            scalar_data["tcp_orientation_velocity"].append(point.tcp_orientation_velocity)
-        if point.tcp_orientation_acceleration is not None:
-            scalar_data["tcp_orientation_acceleration"].append(point.tcp_orientation_acceleration)
-        if point.time is not None:
-            scalar_data["time"].append(point.time)
-        if point.location_on_trajectory is not None:
-            scalar_data["location_on_trajectory"].append(point.location_on_trajectory)
-        if motion_group_setup.global_limits.tcp_velocity_limit is not None:
-            scalar_data["tcp_velocity_limit"].append(
-                motion_group_setup.global_limits.tcp_velocity_limit
-            )
-        if motion_group_setup.global_limits.tcp_orientation_velocity_limit is not None:
-            scalar_data["tcp_orientation_velocity_lower_limit"].append(
-                -motion_group_setup.global_limits.tcp_orientation_velocity_limit
-            )
-            scalar_data["tcp_orientation_velocity_upper_limit"].append(
-                motion_group_setup.global_limits.tcp_orientation_velocity_limit
-            )
-        if motion_group_setup.global_limits.tcp_acceleration_limit is not None:
-            scalar_data["tcp_acceleration_lower_limit"].append(
-                -motion_group_setup.global_limits.tcp_acceleration_limit
-            )
-            scalar_data["tcp_acceleration_upper_limit"].append(
-                motion_group_setup.global_limits.tcp_acceleration_limit
-            )
-        if motion_group_setup.global_limits.tcp_orientation_acceleration_limit is not None:
-            scalar_data["tcp_orientation_acceleration_lower_limit"].append(
-                -motion_group_setup.global_limits.tcp_orientation_acceleration_limit
-            )
-            scalar_data["tcp_orientation_acceleration_upper_limit"].append(
-                motion_group_setup.global_limits.tcp_orientation_acceleration_limit
-            )
-
-    # Send columns if data is not empty
-    for key, values in scalar_data.items():
-        if values:
-            rr.send_columns(
-                f"motion/{motion_group}/{key}",
-                indexes=[times_column],
-                columns=[*ra.Scalars.columns(scalars=values)],
-            )
 
 
 def to_trajectory_samples(self) -> list[api.models.TrajectorySample]:

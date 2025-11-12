@@ -18,7 +18,7 @@ from nova.types import MotionSettings, Pose
 
 @nova.program(
     name="Plan and Execute",
-    # viewer=viewers.Rerun(),
+    viewer=viewers.Rerun(),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
