@@ -186,7 +186,9 @@ class NovaRerunBridge:
 
     async def log_motion(
         self,
-        motion_id: str,
+        trajectory: api.models.JointTrajectory,
+        tcp: str,
+        motion_group: MotionGroup,
         timing_mode=TimingMode.CONTINUE,
         time_offset: float = 0,
         tool_asset: Optional[str] = None,
@@ -208,53 +210,23 @@ class NovaRerunBridge:
                 DeprecationWarning,
                 stacklevel=2,
             )
-        logger.debug(f"log_motion called with motion_id: {motion_id}")
         try:
-            # Fetch motion details from api
-            logger.debug("Fetching motion details...")
-            motion = await self.nova._api_client.motion_api.get_planned_motion(
-                self.nova.cell()._cell_id, motion_id
-            )
-            logger.debug("Fetching optimizer config...")
-            motion_group_setup = (
-                await self.nova._api_client.motion_group_infos_api.get_optimizer_configuration(
-                    self.nova.cell()._cell_id, motion.motion_group
-                )
-            )
-            logger.debug("Fetching trajectory...")
-            trajectory = await self.nova._api_client.motion_api.get_motion_trajectory(
-                self.nova.cell()._cell_id, motion_id, int(RECORDING_INTERVAL * 1000)
-            )
-
-            logger.debug("Fetching motion groups...")
-            motion_groups = await self.nova._api_client.motion_group_api.list_motion_groups(
-                self.nova.cell()._cell_id
-            )
-            motion_motion_group = next(
-                (mg for mg in motion_groups.instances if mg.motion_group == motion.motion_group),
-                None,
-            )
-
             logger.debug("Fetching collision scenes...")
             collision_scenes = await bridge_nova._api_client.store_collision_setups_api.list_stored_collision_scenes(
                 cell=bridge_nova.cell()._cell_id
             )
 
-            if motion_motion_group is None:
-                raise ValueError(f"Motion group {motion.motion_group} not found")
-
             # Get or initialize the timer for this motion group
-            motion_group_id = motion.motion_group
+            motion_group_id = motion_group.motion_group_id
             current_time = self._motion_group_timers.get(motion_group_id, 0.0)
 
             logger.debug(
                 f"Calling log_motion function with trajectory points: {len(trajectory.trajectory or [])}"
             )
             log_motion(
-                motion_id=motion_id,
-                model_from_controller=motion_motion_group.model_from_controller,
-                motion_group=motion.motion_group,
-                motion_group_setup=motion_group_setup,
+                trajectory=trajectory,
+                tcp=tcp,
+                motion_group=motion_group,
                 trajectory=trajectory.trajectory or [],
                 collision_scenes=collision_scenes,
                 time_offset=current_time + time_offset,
@@ -285,7 +257,7 @@ class NovaRerunBridge:
 
     async def log_trajectory(
         self,
-        joint_trajectory: api.models.JointTrajectory,  # TrajectorySample
+        trajectory: api.models.JointTrajectory,
         tcp: str,
         motion_group: MotionGroup,
         timing_mode=TimingMode.CONTINUE,
@@ -312,13 +284,18 @@ class NovaRerunBridge:
                 stacklevel=2,
             )
 
-        if len(joint_trajectory.joint_positions) == 0:
+        if len(trajectory.joint_positions) == 0:
             raise ValueError("No joint trajectory provided")
 
-        load_plan_response = await motion_group._load_planned_motion(joint_trajectory, tcp)
+        # TODO: this is not needed anymore since we pass the data directly
+        # load_plan_response = await motion_group._load_planned_motion(trajectory=trajectory, tcp=tcp)
 
         await self.log_motion(
-            load_plan_response.motion, time_offset=time_offset, tool_asset=tool_asset
+            trajectory=trajectory,
+            tcp=tcp,
+            motion_group=motion_group,
+            time_offset=time_offset,
+            tool_asset=tool_asset,
         )
 
     def continue_after_sync(self) -> None:

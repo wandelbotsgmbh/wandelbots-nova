@@ -53,7 +53,9 @@ class ViewerManager:
         """Log successful planning results to all active viewers."""
         for viewer in self._viewers:
             try:
-                await viewer.log_planning_success(actions, trajectory, tcp, motion_group)
+                await viewer.log_planning_success(
+                    actions=actions, trajectory=trajectory, tcp=tcp, motion_group=motion_group
+                )
             except Exception as e:
                 # Don't fail planning if logging fails
                 logger.warning("Failed to log planning results to viewer: %s", e)

@@ -221,7 +221,9 @@ class Rerun(Viewer):
 
             # Log trajectory with tool asset if configured for this TCP
             tool_asset = self._resolve_tool_asset(tcp)
-            await self._bridge.log_trajectory(trajectory, tcp, motion_group, tool_asset=tool_asset)
+            await self._bridge.log_trajectory(
+                trajectory=trajectory, tcp=tcp, motion_group=motion_group, tool_asset=tool_asset
+            )
 
             # Log collision scenes from actions if configured
             if self.show_collision_scenes:
@@ -255,7 +257,9 @@ class Rerun(Viewer):
         await self._ensure_safety_zones_logged(motion_group)
 
         # Log the planning results
-        await self._log_planning_results(actions, trajectory, tcp, motion_group)
+        await self._log_planning_results(
+            actions=actions, trajectory=trajectory, tcp=tcp, motion_group=motion_group
+        )
 
     async def log_planning_failure(
         self, actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
@@ -289,7 +293,7 @@ class Rerun(Viewer):
                 # Log the trajectory from the failed plan
                 if hasattr(error.error, "joint_trajectory") and error.error.joint_trajectory:
                     await self._bridge.log_trajectory(
-                        error.error.joint_trajectory, tcp, motion_group
+                        trajectory=error.error.joint_trajectory, tcp=tcp, motion_group=motion_group
                     )
 
                 # Log error feedback if available

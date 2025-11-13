@@ -1,4 +1,5 @@
 from enum import Enum, auto
+import uuid
 from typing import Optional
 
 import numpy as np
@@ -34,12 +35,10 @@ _last_offset = 0.0
 _visualizer_cache: dict[str, RobotVisualizer] = {}
 
 
-def log_motion(
-    motion_id: str,
-    model_from_controller: str,
+async def log_motion(
+    trajectory: api.models.JointTrajectory,
+    tcp: str,
     motion_group: MotionGroup,
-    motion_group_setup: api.models.MotionGroupSetup,
-    trajectory: list[api.models.TrajectoryData],
     collision_setups: dict[str, api.models.CollisionSetup],
     time_offset: float = 0,
     timing_mode: TimingMode = TimingMode.CONTINUE,  # Deprecated parameter kept for compatibility
@@ -52,12 +51,10 @@ def log_motion(
     Fetch and process a single motion for visualization.
 
     Args:
-        motion_id: Unique identifier for the motion
-        model_from_controller: Robot model identifier
-        motion_group: Motion group identifier
-        optimizer_config: Configuration for the motion optimizer
-        trajectory: List of trajectory sample points
-        collision_scenes: Dictionary of collision scenes
+        trajectory: Joint trajectory to log
+        tcp: TCP to log
+        motion_group: Motion group to log
+        collision_setups: Dictionary of collision setups
         time_offset: Time offset for visualization
         timing_mode: DEPRECATED - Timing mode control (ignored in new implementation)
         tool_asset: Optional tool asset file path
@@ -75,8 +72,13 @@ def log_motion(
             stacklevel=2,
         )
 
+    motion_group_setup = await motion_group.get_setup(tcp)
+    motion_group_model = (await motion_group.get_model()).root
+    motion_group_id = motion_group.motion_group_id
+    motion_id = str(uuid.uuid4())
+
     # Initialize DHRobot and Visualizer
-    if model_from_controller == "Yaskawa_TURN2":
+    if motion_group_model == "Yaskawa_TURN2":
         if motion_group_setup.dh_parameters is not None:
             motion_group_setup.dh_parameters[0].a = 0
             motion_group_setup.dh_parameters[0].d = 360
@@ -111,8 +113,8 @@ def log_motion(
             robot_model_geometries=motion_group_setup.safety_setup.robot_model_geometries or [],
             tcp_geometries=motion_group_setup.safety_setup.tcp_geometries or [],
             static_transform=False,
-            base_entity_path=f"motion/{motion_group}",
-            model_from_controller=model_from_controller,
+            base_entity_path=f"motion/{motion_group_id}",
+            model_from_controller=motion_group_model,
             collision_link_chain=collision_link_chain,
             collision_tcp=collision_tcp,
             show_collision_link_chain=show_collision_link_chain,
@@ -125,6 +127,7 @@ def log_motion(
     # Process trajectory points
     log_trajectory(
         motion_id=motion_id,
+        trajectory=trajectory,
         motion_group=motion_group,
         robot=robot,
         visualizer=visualizer,
@@ -139,29 +142,6 @@ def log_motion(
     del visualizer
 
 
-def log_trajectory_path(
-    motion_id: str, trajectory: api.models.JointTrajectory, motion_group: MotionGroup
-):
-    if not all(p.tcp is not None for p in trajectory):
-        raise ValueError("All trajectory points must have a tcp_pose")
-
-    # TODO: calculate tcp pose from joint positions
-    joint_positions = [tuple(p.root) for p in trajectory.joint_positions]
-    tcp_poses = await motion_group.forward_kinematics(joint_positions, tcp=trajectory.tcp)
-
-    points = [
-        [p.data.tcp_pose.position.x, p.data.tcp_pose.position.y, p.data.tcp_pose.position.z]
-        for p in trajectory
-        if p.tcp_pose and p.tcp_pose.position
-    ]
-    rr.log(
-        f"motion/{motion_group}/trajectory",
-        rr.LineStrips3D([points], colors=[[1.0, 1.0, 1.0, 1.0]]),
-    )
-
-    rr.log("logs/motion", rr.TextLog(f"{motion_group}/{motion_id}", level=rr.TextLogLevel.INFO))
-
-
 def get_times_column(
     trajectory: list[api.models.TrajectorySample], timer_offset: float = 0
 ) -> rr.TimeColumn:
@@ -170,12 +150,12 @@ def get_times_column(
     return times_column
 
 
-def log_trajectory(
+async def log_trajectory(
     motion_id: str,
+    trajectory: api.models.JointTrajectory,
     motion_group: MotionGroup,
     robot: DHRobot,
     visualizer: RobotVisualizer,
-    trajectory: api.models.JointTrajectory,
     motion_group_setup: api.models.MotionGroupSetup,
     timer_offset: float,
     tool_asset: Optional[str] = None,
@@ -187,8 +167,19 @@ def log_trajectory(
     rr.set_time(TIME_INTERVAL_NAME, duration=timer_offset)
 
     times_column = get_times_column(trajectory, timer_offset)
+    motion_group_id = motion_group.motion_group_id
 
-    log_trajectory_path(motion_id, trajectory, motion_group)
+    # TODO: calculate tcp pose from joint positions
+    joint_positions = [tuple(p.root) for p in trajectory.joint_positions]
+    tcp_poses = await motion_group.forward_kinematics(joints=joint_positions, tcp=trajectory.tcp)
+    points = [[p.position.x, p.position.y, p.position.z] for p in tcp_poses]
+
+    rr.log(
+        f"motion/{motion_group_id}/trajectory",
+        rr.LineStrips3D([points], colors=[[1.0, 1.0, 1.0, 1.0]]),
+    )
+
+    rr.log("logs/motion", rr.TextLog(f"{motion_group_id}/{motion_id}", level=rr.TextLogLevel.INFO))
 
     # Calculate and log joint positions
     line_segments_batch = []
@@ -197,12 +188,12 @@ def log_trajectory(
         line_segments_batch.append([joint_positions])  # Wrap each as a line strip
 
     rr.send_columns(
-        f"motion/{motion_group}/dh_parameters",
+        f"motion/{motion_group_id}/dh_parameters",
         indexes=[times_column],
         columns=rr.LineStrips3D.columns(strips=line_segments_batch),
     )
     rr.log(
-        f"motion/{motion_group}/dh_parameters",
+        f"motion/{motion_group_id}/dh_parameters",
         rr.LineStrips3D.from_fields(clear_unset=True, colors=[0.5, 0.5, 0.5, 1.0]),
     )
 
@@ -210,35 +201,30 @@ def log_trajectory(
     visualizer.log_robot_geometries(trajectory, times_column)
 
     # Log TCP pose/orientation
-    log_tcp_pose(trajectory, motion_group, times_column, tool_asset)
+    log_tcp_pose(tcp_poses=[], motion_group_id=motion_group_id, times_column=times_column, tool_asset=tool_asset)
 
     # Log joint data
-    log_joint_data(trajectory, motion_group, times_column, motion_group_setup)
+    log_joint_data(trajectory=trajectory, motion_group=motion_group, times_column=times_column, motion_group_setup=motion_group_setup)
 
 
 def log_tcp_pose(
-    trajectory: list[api.models.TrajectorySample],
-    motion_group,
+    tcp_poses: list[api.models.Pose],
+    motion_group_id: str,
     times_column,
     tool_asset: str | None = None,
 ):
     """
     Log TCP pose (position + orientation) data.
     """
-
-    # Handle empty trajectory
-    if not trajectory:
-        return
-
+    # TODO: correct parsing here.
     # Extract positions and orientations from the trajectory
-    poses = [t.tcp_pose for t in trajectory]
-    positions = [[p.position.x, p.position.y, p.position.z] for p in poses]
+    positions = [[p.position.x, p.position.y, p.position.z] for p in tcp_poses]
     orientations = Rotation.from_rotvec(
-        [[p.orientation.x, p.orientation.y, p.orientation.z] for p in poses]
+        [[p.orientation.x, p.orientation.y, p.orientation.z] for p in tcp_poses]
     ).as_quat()
 
     # Log TCP and tool asset
-    tcp_entity_path = f"/motion/{motion_group}/tcp_position"
+    tcp_entity_path = f"/motion/{motion_group_id}/tcp_position"
     rr.log(tcp_entity_path, rr.Transform3D(clear=False, axis_length=100))
     if tool_asset:
         rr.log(tcp_entity_path, rr.Asset3D(path=tool_asset), static=True)

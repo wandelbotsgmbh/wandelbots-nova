@@ -273,12 +273,15 @@ class AbstractRobot(Device):
         from nova.viewers import get_viewer_manager
 
         # Only log for motion groups
+        # TODO: does it make sense to move the log planning directly to the MotionGroup?
         if not isinstance(self, MotionGroup):
             return
 
         viewer_manager = get_viewer_manager()
         if viewer_manager.has_active_viewers:
-            await viewer_manager.log_planning_success(actions, trajectory, tcp, self)
+            await viewer_manager.log_planning_success(
+                actions=actions, trajectory=trajectory, tcp=tcp, motion_group=self
+            )
 
     async def _log_planning_error(self, actions: list[Action], error: Exception, tcp: str) -> None:
         """Log planning error to active viewers if any are configured."""
