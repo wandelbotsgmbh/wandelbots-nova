@@ -18,7 +18,15 @@ from typing import (
 
 from docstring_parser import Docstring
 from docstring_parser import parse as parse_docstring
-from pydantic import BaseModel, Field, PrivateAttr, RootModel, create_model, validate_call
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    RootModel,
+    create_model,
+    validate_call,
+)
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
@@ -261,7 +269,12 @@ def input_and_output_types(
                 default.description = param_doc.description
 
         input_field_definitions[name] = (parameter.annotation, default)  # type: ignore
-    input = create_model("Input", **input_field_definitions, __module__=func.__module__)
+    input = create_model(
+        "Input",
+        **input_field_definitions,
+        __module__=func.__module__,
+        __config__=ConfigDict(extra="forbid"),
+    )
 
     if output_type and isinstance(output_type, type) and issubclass(output_type, BaseModel):
         output = output_type
