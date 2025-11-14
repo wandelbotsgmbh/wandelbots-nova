@@ -16,7 +16,7 @@ from nova.core.nova import Nova
 from nova.types.pose import Pose
 from nova_rerun_bridge.blueprint import send_blueprint
 from nova_rerun_bridge.collision_scene import log_collision_scenes
-from nova_rerun_bridge.consts import RECORDING_INTERVAL, TIME_INTERVAL_NAME
+from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.helper_scripts.code_server_helpers import get_rerun_address
 from nova_rerun_bridge.helper_scripts.download_models import get_project_root
 from nova_rerun_bridge.safety_zones import log_safety_zones
@@ -212,8 +212,10 @@ class NovaRerunBridge:
             )
         try:
             logger.debug("Fetching collision scenes...")
-            collision_scenes = await bridge_nova._api_client.store_collision_setups_api.list_stored_collision_scenes(
-                cell=bridge_nova.cell()._cell_id
+            collision_scenes = (
+                await self.nova._api_client.store_collision_setups_api.list_stored_collision_setups(
+                    cell=self.nova.cell()._cell_id
+                )
             )
 
             # Get or initialize the timer for this motion group
@@ -227,7 +229,6 @@ class NovaRerunBridge:
                 trajectory=trajectory,
                 tcp=tcp,
                 motion_group=motion_group,
-                trajectory=trajectory.trajectory or [],
                 collision_scenes=collision_scenes,
                 time_offset=current_time + time_offset,
                 tool_asset=tool_asset,

@@ -5,7 +5,6 @@ from collections import defaultdict
 from typing import Any, AsyncIterable, Literal, SupportsIndex
 
 import numpy as np
-from scipy.spatial.transform import Rotation
 
 from nova import api
 from nova.actions import Action, MovementController

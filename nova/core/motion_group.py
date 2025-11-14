@@ -390,7 +390,7 @@ class MotionGroup(AbstractRobot):
 
         """
         # PREPARE THE REQUEST
-        collision_setups = validate_collision_setups(actions)
+        # collision_setups = validate_collision_setups(actions)
         start_joint_position = start_joint_position or await self.joints()
         motion_group_setup = motion_group_setup or await self.get_setup(tcp)
 

@@ -232,8 +232,8 @@ class ApiGateway:
         try:
             # Test token with a direct API call without interception
             self._validating_token = True
-            async with wb.ApiClient(self._api_client.configuration) as client:
-                api = wb.SystemApi(client)
+            async with api.ApiClient(self._api_client.configuration) as client:
+                api = api.SystemApi(client)
                 await api.get_system_version()
                 self._has_valid_token = True
         except Exception as e:

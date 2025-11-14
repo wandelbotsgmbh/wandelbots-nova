@@ -91,10 +91,10 @@ class MotionSettings(pydantic.BaseModel):
 
     def as_limits_settings(self) -> api.models.LimitsOverride:
         return api.models.LimitsOverride(
-            joint_velocity_limits=wb.models.Joints(joints=self.joint_velocity_limits)  # type: ignore
+            joint_velocity_limits=api.models.Joints(list(self.joint_velocity_limits))
             if self.joint_velocity_limits
             else None,
-            joint_acceleration_limits=wb.models.Joints(joints=self.joint_acceleration_limits)  # type: ignore
+            joint_acceleration_limits=api.models.Joints(list(self.joint_acceleration_limits))
             if self.joint_acceleration_limits
             else None,
             tcp_velocity_limit=self.tcp_velocity_limit,

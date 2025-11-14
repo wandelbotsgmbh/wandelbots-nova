@@ -1,10 +1,9 @@
-from enum import Enum, auto
 import uuid
+from enum import Enum, auto
 from typing import Optional
 
 import numpy as np
 import rerun as rr
-import rerun.archetypes as ra
 from scipy.spatial.transform import Rotation
 
 from nova import MotionGroup, api
@@ -131,7 +130,6 @@ async def log_motion(
         motion_group=motion_group,
         robot=robot,
         visualizer=visualizer,
-        trajectory=trajectory,
         motion_group_setup=motion_group_setup,
         timer_offset=time_offset,
         tool_asset=tool_asset,
@@ -143,9 +141,9 @@ async def log_motion(
 
 
 def get_times_column(
-    trajectory: list[api.models.TrajectorySample], timer_offset: float = 0
+    trajectory: api.models.JointTrajectory, timer_offset: float = 0
 ) -> rr.TimeColumn:
-    times = np.array([timer_offset + point.time for point in trajectory])
+    times = np.array([timer_offset + time for time in trajectory.times])
     times_column = rr.TimeColumn(TIME_INTERVAL_NAME, duration=times)
     return times_column
 
@@ -201,10 +199,12 @@ async def log_trajectory(
     visualizer.log_robot_geometries(trajectory, times_column)
 
     # Log TCP pose/orientation
-    log_tcp_pose(tcp_poses=[], motion_group_id=motion_group_id, times_column=times_column, tool_asset=tool_asset)
-
-    # Log joint data
-    log_joint_data(trajectory=trajectory, motion_group=motion_group, times_column=times_column, motion_group_setup=motion_group_setup)
+    log_tcp_pose(
+        tcp_poses=[],
+        motion_group_id=motion_group_id,
+        times_column=times_column,
+        tool_asset=tool_asset,
+    )
 
 
 def log_tcp_pose(
@@ -234,89 +234,6 @@ def log_tcp_pose(
         indexes=[times_column],
         columns=rr.Transform3D.columns(translation=positions, quaternion=orientations),
     )
-
-
-def log_joint_data(
-    trajectory: list[api.models.TrajectorySample],
-    motion_group,
-    times_column,
-    motion_group_setup: api.models.MotionGroupSetup,
-) -> None:
-    """
-    Log joint-related data (position, velocity, acceleration, torques) from a trajectory as columns.
-    """
-    # Initialize lists for each joint and each data type
-    if motion_group_setup.dh_parameters is None:
-        raise ValueError("DH parameters cannot be None")
-
-    num_joints = len(motion_group_setup.dh_parameters)
-    joint_data: dict[str, list[list[float]]] = {
-        "velocity": [[] for _ in range(num_joints)],
-        "acceleration": [[] for _ in range(num_joints)],
-        "position": [[] for _ in range(num_joints)],
-        "torque": [[] for _ in range(num_joints)],
-        "velocity_lower_limit": [[] for _ in range(num_joints)],
-        "velocity_upper_limit": [[] for _ in range(num_joints)],
-        "acceleration_lower_limit": [[] for _ in range(num_joints)],
-        "acceleration_upper_limit": [[] for _ in range(num_joints)],
-        "position_lower_limit": [[] for _ in range(num_joints)],
-        "position_upper_limit": [[] for _ in range(num_joints)],
-        "torque_limit": [[] for _ in range(num_joints)],
-    }
-
-    # Collect data from the trajectory
-    for point in trajectory:
-        for i in range(num_joints):
-            joint_data["velocity"][i].append(point.joint_velocity.joints[i])
-            joint_data["acceleration"][i].append(point.joint_acceleration.joints[i])
-            joint_data["position"][i].append(point.joint_position.joints[i])
-            if point.joint_torques and len(point.joint_torques.joints) > i:
-                joint_data["torque"][i].append(point.joint_torques.joints[i])
-
-            # Collect joint limits
-            joint_data["velocity_lower_limit"][i].append(
-                -motion_group_setup.global_limits.joint_velocity_limits[i]
-            )
-            joint_data["velocity_upper_limit"][i].append(
-                motion_group_setup.global_limits.joint_velocity_limits[i]
-            )
-            joint_data["acceleration_lower_limit"][i].append(
-                -motion_group_setup.global_limits.joint_acceleration_limits[i]
-            )
-            joint_data["acceleration_upper_limit"][i].append(
-                motion_group_setup.global_limits.joint_acceleration_limits[i]
-            )
-            joint_data["position_lower_limit"][i].append(
-                motion_group_setup.global_limits.joint_position_limits[i].lower_limit
-            )
-            joint_data["position_upper_limit"][i].append(
-                motion_group_setup.global_limits.joint_position_limits[i].upper_limit
-            )
-            if point.joint_torques and len(point.joint_torques.joints) > i:
-                joint_data["torque_limit"][i].append(
-                    motion_group_setup.global_limits.joint_torque_limits[i]
-                )
-
-    # Send columns if data is not empty
-    for data_type, data in joint_data.items():
-        for i in range(num_joints):
-            if data[i]:
-                rr.send_columns(
-                    f"motion/{motion_group}/joint_{data_type}_{i + 1}",
-                    indexes=[times_column],
-                    columns=[*ra.Scalars.columns(scalars=data[i])],
-                )
-
-
-def to_trajectory_samples(self) -> list[api.models.TrajectorySample]:
-    """Convert JointTrajectory to list of TrajectorySample objects."""
-    samples = []
-    for joint_pos, time, location in zip(self.joint_positions, self.times, self.locations):
-        sample = api.models.TrajectorySample(
-            joint_position=joint_pos, time=time, location_on_trajectory=location
-        )
-        samples.append(sample)
-    return samples
 
 
 def continue_after_sync():

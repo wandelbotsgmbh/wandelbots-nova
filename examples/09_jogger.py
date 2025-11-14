@@ -43,8 +43,6 @@ async def main():
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
-            # Move to home position first
-            home_joints = [-pi, -pi / 2, pi / 2, -pi / 2, -pi / 2, 0]
             # tcp_names = await motion_group.tcp_names()
             # tcp = tcp_names[0]
             tcp = "Flange"

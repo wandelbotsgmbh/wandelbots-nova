@@ -28,6 +28,7 @@ async def process_motions():
     # use http://api-gateway:8080 on prod instances
     async with Nova(config=NovaConfig(host="http://api-gateway:8080")) as nova:
         motion_api = nova._api_client.motion_api
+        nova._api_client.moti
 
         try:
             motions = await motion_api.list_motions("cell")
