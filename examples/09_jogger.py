@@ -1,6 +1,4 @@
 import asyncio
-from datetime import datetime
-from math import pi
 
 from icecream import ic
 
@@ -19,8 +17,6 @@ Prerequisites:
     - NOVA_API=<api>
     - NOVA_ACCESS_TOKEN=<token>
 """
-
-ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
 
 
 @nova.program(

@@ -291,11 +291,8 @@ class MotionGroup(AbstractRobot):
             models.RobotTcp: The TCP configuration
         """
         existing_tcps = await self.tcps()
-
-        from icecream import ic
-
+        print(existing_tcps)
         existing_tcp = existing_tcps.get(tcp.id)
-        ic(existing_tcp, tcp)
         if (
             existing_tcp
             and existing_tcp.position == tcp.position

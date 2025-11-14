@@ -205,10 +205,13 @@ async def test_split_and_verify_collision_setup():
 @pytest.fixture
 def mock_motion_group():
     """Create a MotionGroup instance for testing."""
-    mock_api_gateway = MagicMock(spec=ApiGateway)
-    mock_api_gateway.virtual_robot_setup_api = AsyncMock()
+    mock_api_client = MagicMock(spec=ApiGateway)
+    mock_api_client.virtual_robot_setup_api = AsyncMock()
     return MotionGroup(
-        api_gateway=mock_api_gateway, cell="test_cell", motion_group_id="0@test-controller"
+        api_client=mock_api_client,
+        cell="test_cell",
+        controller_id="test-controller",
+        motion_group_id="0@test-controller",
     )
 
 
@@ -218,7 +221,7 @@ async def test_ensure_virtual_tcp_creates_new_tcp(mock_motion_group):
     tcp = api.models.RobotTcp(
         id="test_tcp",
         position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation(angles=[0, 0, 0]),
+        orientation=api.models.Orientation([0, 0, 0]),
         orientation_type=api.models.OrientationType.ROTATION_VECTOR,
     )
 
@@ -227,7 +230,7 @@ async def test_ensure_virtual_tcp_creates_new_tcp(mock_motion_group):
     result = await mock_motion_group.ensure_virtual_tcp(tcp)
 
     assert result == tcp
-    mock_motion_group._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp.assert_called_once_with(
+    mock_motion_group._api_client.virtual_robot_setup_api.add_virtual_robot_tcp.assert_called_once_with(
         cell="test_cell", controller="test-controller", id=0, robot_tcp=tcp
     )
 
@@ -238,14 +241,14 @@ async def test_ensure_virtual_tcp_returns_existing_identical_tcp(mock_motion_gro
     tcp = api.models.RobotTcp(
         id="test_tcp",
         position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation(angles=[0, 0, 0]),
+        orientation=api.models.Orientation([0, 0, 0]),
         orientation_type=api.models.OrientationType.ROTATION_VECTOR,
     )
 
     existing_tcp = api.models.RobotTcp(
         id="test_tcp",
         position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation(angles=[0, 0, 0]),
+        orientation=api.models.Orientation([0, 0, 0]),
         orientation_type=api.models.OrientationType.ROTATION_VECTOR,
     )
 
@@ -254,7 +257,7 @@ async def test_ensure_virtual_tcp_returns_existing_identical_tcp(mock_motion_gro
     result = await mock_motion_group.ensure_virtual_tcp(tcp)
 
     assert result == existing_tcp
-    mock_motion_group._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp.assert_not_called()
+    mock_motion_group._api_client.virtual_robot_setup_api.add_virtual_robot_tcp.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -263,14 +266,14 @@ async def test_ensure_virtual_tcp_updates_different_tcp(mock_motion_group):
     tcp = api.models.RobotTcp(
         id="test_tcp",
         position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation(angles=[0, 0, 0]),
+        orientation=api.models.Orientation([0, 0, 0]),
         orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
     )
 
     existing_tcp = api.models.RobotTcp(
         id="test_tcp",
         position=api.models.Vector3d([10, 0, 150]),
-        orientation=api.models.Orientation(angles=[0, 0, 0]),
+        orientation=api.models.Orientation([0, 0, 0]),
         orientation_type=api.models.OrientationType.ROTATION_VECTOR,
     )
 
@@ -279,7 +282,7 @@ async def test_ensure_virtual_tcp_updates_different_tcp(mock_motion_group):
     result = await mock_motion_group.ensure_virtual_tcp(tcp)
 
     assert result == tcp
-    mock_motion_group._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp.assert_called_once_with(
+    mock_motion_group._api_client.virtual_robot_setup_api.add_virtual_robot_tcp.assert_called_once_with(
         cell="test_cell", controller="test-controller", id=0, robot_tcp=tcp
     )
 
@@ -303,7 +306,7 @@ async def test_ensure_virtual_tcp_different_rotation_types(mock_motion_group, or
     tcp = api.models.RobotTcp(
         id="test_tcp",
         position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation(angles=angles),
+        orientation=api.models.Orientation(angles),
         orientation_type=orientation_type,
     )
 
@@ -312,7 +315,7 @@ async def test_ensure_virtual_tcp_different_rotation_types(mock_motion_group, or
     result = await mock_motion_group.ensure_virtual_tcp(tcp)
 
     assert result == tcp
-    mock_motion_group._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp.assert_called_once_with(
+    mock_motion_group._api_client.virtual_robot_setup_api.add_virtual_robot_tcp.assert_called_once_with(
         cell="test_cell", controller="test-controller", id=0, robot_tcp=tcp
     )
 
@@ -323,14 +326,14 @@ async def test_ensure_virtual_tcp_different_rotation_types_not_equal(mock_motion
     tcp = api.models.RobotTcp(
         id="test_tcp",
         position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation(angles=[0, 0, 0]),
+        orientation=api.models.Orientation([0, 0, 0]),
         orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
     )
 
     existing_tcp = api.models.RobotTcp(
         id="test_tcp",
         position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation(angles=[0, 0, 0]),
+        orientation=api.models.Orientation([0, 0, 0]),
         orientation_type=api.models.OrientationType.EULER_ANGLES_INTRINSIC_XYZ,
     )
 
@@ -339,6 +342,6 @@ async def test_ensure_virtual_tcp_different_rotation_types_not_equal(mock_motion
     result = await mock_motion_group.ensure_virtual_tcp(tcp)
 
     assert result == tcp
-    mock_motion_group._api_gateway.virtual_robot_setup_api.add_virtual_robot_tcp.assert_called_once_with(
+    mock_motion_group._api_client.virtual_robot_setup_api.add_virtual_robot_tcp.assert_called_once_with(
         cell="test_cell", controller="test-controller", id=0, robot_tcp=tcp
     )

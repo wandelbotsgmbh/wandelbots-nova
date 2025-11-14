@@ -174,12 +174,12 @@ class TestSetupBlueprint:
             mock_send.assert_called_once_with(["group1", "group2", "group3"], True)
 
 
-class TestCollisionScenes:
-    """Test collision scene handling."""
+class TestCollisionSetups:
+    """Test collision setup handling."""
 
     @pytest.mark.asyncio
     async def test_log_collision_setups(self):
-        """Should fetch and log all collision scenes."""
+        """Should fetch and log all collision setups."""
         mock_nova = Mock()
         mock_cell = Mock()
         mock_cell._cell_id = "test_cell"
@@ -187,10 +187,10 @@ class TestCollisionScenes:
 
         mock_api_client = Mock()
         mock_store_api = Mock()
-        mock_collision_scenes = {"scene1": {"data": "test"}}
+        mock_collision_setups = {"setup1": {"data": "test"}}
 
-        mock_store_api.list_stored_collision_scenes = AsyncMock(return_value=mock_collision_scenes)
-        mock_api_client.store_collision_scenes_api = mock_store_api
+        mock_store_api.list_stored_collision_setups = AsyncMock(return_value=mock_collision_setups)
+        mock_api_client.store_collision_setups_api = mock_store_api
         mock_nova._api_client = mock_api_client
 
         with (
@@ -202,14 +202,14 @@ class TestCollisionScenes:
             bridge = NovaRerunBridge(mock_nova, spawn=False)
             result = await bridge.log_collision_setups()
 
-            # Should call API and log collision scenes
-            mock_store_api.list_stored_collision_scenes.assert_called_once_with(cell="test_cell")
-            mock_log.assert_called_once_with(mock_collision_scenes)
-            assert result == mock_collision_scenes
+            # Should call API and log collision setups
+            mock_store_api.list_stored_collision_setups.assert_called_once_with(cell="test_cell")
+            mock_log.assert_called_once_with(mock_collision_setups)
+            assert result == mock_collision_setups
 
     @pytest.mark.asyncio
-    async def test_log_specific_collision_scene(self):
-        """Should log only the requested collision scene."""
+    async def test_log_specific_collision_setup(self):
+        """Should log only the requested collision setup."""
         mock_nova = Mock()
         mock_cell = Mock()
         mock_cell._cell_id = "test_cell"
@@ -217,13 +217,13 @@ class TestCollisionScenes:
 
         mock_api_client = Mock()
         mock_store_api = Mock()
-        mock_collision_scenes = {
-            "scene1": {"data": "scene1_data"},
-            "scene2": {"data": "scene2_data"},
+        mock_collision_setups = {
+            "setup1": {"data": "setup1_data"},
+            "setup2": {"data": "setup2_data"},
         }
 
-        mock_store_api.list_stored_collision_scenes = AsyncMock(return_value=mock_collision_scenes)
-        mock_api_client.store_collision_scenes_api = mock_store_api
+        mock_store_api.list_stored_collision_setups = AsyncMock(return_value=mock_collision_setups)
+        mock_api_client.store_collision_setups_api = mock_store_api
         mock_nova._api_client = mock_api_client
 
         with (
@@ -233,16 +233,16 @@ class TestCollisionScenes:
             patch("nova_rerun_bridge.nova_rerun_bridge.log_collision_setups") as mock_log,
         ):
             bridge = NovaRerunBridge(mock_nova, spawn=False)
-            result = await bridge.log_collision_scene("scene1")
+            result = await bridge.log_collision_setup("setup1")
 
-            # Should log only the specific scene
-            expected_scene = {"scene1": {"data": "scene1_data"}}
-            mock_log.assert_called_once_with(expected_scene)
-            assert result == expected_scene
+            # Should log only the specific setup
+            expected_setup = {"setup1": {"data": "setup1_data"}}
+            mock_log.assert_called_once_with(expected_setup)
+            assert result == expected_setup
 
     @pytest.mark.asyncio
-    async def test_log_nonexistent_collision_scene(self):
-        """Should raise ValueError for nonexistent collision scene."""
+    async def test_log_nonexistent_collision_setup(self):
+        """Should raise ValueError for nonexistent collision setup."""
         mock_nova = Mock()
         mock_cell = Mock()
         mock_cell._cell_id = "test_cell"
@@ -250,10 +250,10 @@ class TestCollisionScenes:
 
         mock_api_client = Mock()
         mock_store_api = Mock()
-        mock_collision_scenes = {"scene1": {"data": "scene1_data"}}
+        mock_collision_setups = {"setup1": {"data": "setup1_data"}}
 
-        mock_store_api.list_stored_collision_scenes = AsyncMock(return_value=mock_collision_scenes)
-        mock_api_client.store_collision_scenes_api = mock_store_api
+        mock_store_api.list_stored_collision_setups = AsyncMock(return_value=mock_collision_setups)
+        mock_api_client.store_collision_setups_api = mock_store_api
         mock_nova._api_client = mock_api_client
 
         with (
@@ -263,9 +263,9 @@ class TestCollisionScenes:
         ):
             bridge = NovaRerunBridge(mock_nova, spawn=False)
 
-            # Should raise ValueError for non-existent scene
-            with pytest.raises(ValueError, match="Collision scene with ID nonexistent not found"):
-                await bridge.log_collision_scene("nonexistent")
+            # Should raise ValueError for non-existent setup
+            with pytest.raises(ValueError, match="Collision setup with ID nonexistent not found"):
+                await bridge.log_collision_setup("nonexistent")
 
 
 class TestSafetyZones:
