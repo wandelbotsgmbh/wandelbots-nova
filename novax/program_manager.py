@@ -1,7 +1,6 @@
 from typing import Any, Callable, Coroutine, Optional
 
-from wandelbots_api_client.v2.models.program import Program as ProgramDetails
-
+from nova import api
 from nova.cell.robot_cell import RobotCell
 from nova.config import NovaConfig
 from nova.program import Program, PythonProgramRunner, run_program
@@ -29,7 +28,7 @@ class ProgramManager:
 
         self._cell_id = cell_id or CELL_NAME
         self._app_name = app_name or APP_NAME
-        self._programs: dict[str, ProgramDetails] = {}
+        self._programs: dict[str, api.models.Program] = {}
         self._program_functions: dict[str, Program] = {}
         self._runner: PythonProgramRunner | None = None
         self._nova_config: NovaConfig | None = nova_config
@@ -61,7 +60,7 @@ class ProgramManager:
         program_id = func.program_id
 
         # Create ProgramDetails instance
-        program_details = ProgramDetails(
+        program_details = api.models.Program(
             app=self._app_name,
             program=program_id,
             name=program.name,
@@ -90,11 +89,11 @@ class ProgramManager:
         del self._programs[program_id]
         del self._program_functions[program_id]
 
-    async def get_programs(self) -> dict[str, ProgramDetails]:
+    async def get_programs(self) -> dict[str, api.models.Program]:
         """Get all registered programs"""
         return self._programs.copy()
 
-    async def get_program(self, program_id: str) -> Optional[ProgramDetails]:
+    async def get_program(self, program_id: str) -> Optional[api.models.Program]:
         """Get a specific program by ID"""
         return self._programs.get(program_id)
 

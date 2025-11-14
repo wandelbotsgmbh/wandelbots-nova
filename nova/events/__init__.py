@@ -79,7 +79,7 @@ class Cycle:
 
     Example usage:
         ```python
-        async with Cycle(cell) as cycle:
+        async with Cycle(cell_id) as cycle:
             # Your automation logic here
             await perform_task()
             # On successful completion, finish() is called automatically
@@ -88,7 +88,7 @@ class Cycle:
 
     Alternative manual usage:
         ```python
-        cycle = Cycle(cell)
+        cycle = Cycle(cell_id)
         try:
             await cycle.start()
             # Your automation logic here

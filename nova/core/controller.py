@@ -2,7 +2,6 @@ from typing import AsyncGenerator, Literal, Sized
 
 from nova import api
 from nova.cell.robot_cell import AbstractController, AbstractRobot, IODevice, ValueType
-from nova.core import logger
 from nova.core.gateway import NovaDevice
 from nova.core.io import IOAccess
 from nova.core.motion_group import MotionGroup
@@ -21,16 +20,12 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
 
     def __init__(self, configuration: Configuration):
         super().__init__(configuration)
-        self._activated_motion_group_ids: list[str] = []
+        self._motion_group_ids = None
         self._io_access = IOAccess(
-            api_gateway=self._nova_api,
+            api_client=self._nova_api,
             cell=self.configuration.cell_id,
             controller_id=self.configuration.controller_id,
         )
-
-    @property
-    def cell_id(self) -> str:
-        return self.configuration.cell_id
 
     @property
     def controller_id(self) -> str:
@@ -38,10 +33,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         return self.configuration.controller_id
 
     async def open(self):
-        """Activates all motion groups."""
-        motion_group_ids = await self.activated_motion_group_ids()
-        self._activated_motion_group_ids = motion_group_ids
-        logger.info(f"Found motion group {motion_group_ids}")
+        self._motion_group_ids = (await self._fetch_description()).connected_motion_groups
         return self
 
     async def close(self):
@@ -51,7 +43,8 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         pass
 
     def __len__(self) -> int:
-        return len(self._activated_motion_group_ids)
+        # TODO What is this for? Is it still needed when motion group activation is gone?
+        return len(self._motion_group_ids) if self._motion_group_ids is not None else 0
 
     def motion_group(self, motion_group_id: str) -> MotionGroup:
         """Returns motion group with specific id.
@@ -63,34 +56,28 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             MotionGroup: A MotionGroup instance corresponding to the given ID.
         """
         return MotionGroup(
-            api_gateway=self._nova_api,
+            api_client=self._nova_api,
             cell=self.configuration.cell_id,
+            controller_id=self.configuration.controller_id,
             motion_group_id=motion_group_id,
         )
 
     def __getitem__(self, motion_group_id: int) -> MotionGroup:
         return self.motion_group(f"{motion_group_id}@{self.configuration.controller_id}")
 
-    async def activated_motion_group_ids(self) -> list[str]:
-        """Activates and retrieves the list of motion group IDs available on this controller.
-
-        The system automatically activates all motion groups on the associated controller.
+    async def motion_groups(self) -> list[MotionGroup]:
+        """Retrieves a list of `MotionGroup` instances for all motion groups attached to this controller.
 
         Returns:
-            list[str]: A list of activated motion group IDs (e.g., ["0@controller_id"]).
+            list[MotionGroup]: All motion groups as `MotionGroup` objects.
         """
-        return await self._nova_api.activate_all_motion_groups(
+        motion_group_description = await self._nova_api.controller_api.get_controller_description(
             cell=self.configuration.cell_id, controller=self.configuration.controller_id
         )
-
-    async def activated_motion_groups(self) -> list[MotionGroup]:
-        """Retrieves a list of `MotionGroup` instances for all activated motion groups.
-
-        Returns:
-            list[MotionGroup]: All activated motion groups as `MotionGroup` objects.
-        """
-        motion_group_ids = await self.activated_motion_group_ids()
-        return [self.motion_group(motion_group_id) for motion_group_id in motion_group_ids]
+        return [
+            self.motion_group(motion_group_id)
+            for motion_group_id in motion_group_description.connected_motion_groups
+        ]
 
     def get_motion_groups(self) -> dict[str, AbstractRobot]:
         """Retrieves a dictionary of motion group IDs to their corresponding robots.
@@ -102,9 +89,11 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         Returns:
             dict[str, AbstractRobot]: A mapping of motion group ID to `MotionGroup` instance.
         """
+        if self._motion_group_ids is None:
+            raise ValueError("Controller is not opened")
         return {
             motion_group_id: self.motion_group(motion_group_id)
-            for motion_group_id in self._activated_motion_group_ids
+            for motion_group_id in self._motion_group_ids
         }
 
     async def read(self, key: str) -> ValueType:
@@ -130,35 +119,17 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
     async def stream_state(
         self, rate_msecs
     ) -> AsyncGenerator[api.models.RobotControllerState, None]:
-        async for state in self._nova_api.stream_robot_controller_state(
+        """
+        Stream the robot controller state.
+        """
+        async for state in self._nova_api.controller_api.stream_robot_controller_state(
             cell=self.configuration.cell_id,
-            controller_id=self.configuration.controller_id,
+            controller=self.configuration.controller_id,
             response_rate=rate_msecs,
         ):
             yield state
 
-    async def get_estop(self) -> bool:
-        """Get the emergency stop state for the controller. Works on virtual controllers only.
-
-        Returns:
-            bool: Whether the emergency stop is active (True) or not (False).
-
-        Raises:
-            NotImplementedError: If called on a non-virtual controller.
-        """
-        return await self._nova_api.virtual_robot_api_v2.get_emergency_stop(
-            cell=self.cell_id, controller=self.controller_id
-        )
-
-    async def set_estop(self, active: bool):
-        """Set the emergency stop state for the controller. Works on virtual controllers only.
-
-        Args:
-            active (bool): Whether to activate (True) or deactivate (False) the emergency stop.
-
-        Raises:
-            NotImplementedError: If called on a non-virtual controller.
-        """
-        await self._nova_api.virtual_robot_api_v2.set_emergency_stop(
-            cell=self.cell_id, controller=self.controller_id, active=active
+    async def _fetch_description(self):
+        return await self._nova_api.controller_api.get_controller_description(
+            self.configuration.cell_id, self.configuration.controller_id
         )

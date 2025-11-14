@@ -7,22 +7,16 @@ from typing import Optional
 import numpy as np
 import rerun as rr
 from loguru import logger
-from wandelbots_api_client.models import (
-    FeedbackCollision,
-    FeedbackOutOfWorkspace,
-    PlanTrajectoryFailedResponseErrorFeedback,
-)
 
-from nova import MotionGroup
+from nova import MotionGroup, api
 from nova.actions import Action
 from nova.actions.io import WriteAction
 from nova.actions.motions import CollisionFreeMotion, Motion
-from nova.api import models
 from nova.core.nova import Nova
 from nova.types.pose import Pose
 from nova_rerun_bridge.blueprint import send_blueprint
 from nova_rerun_bridge.collision_scene import log_collision_scenes
-from nova_rerun_bridge.consts import RECORDING_INTERVAL, TIME_INTERVAL_NAME
+from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.helper_scripts.code_server_helpers import get_rerun_address
 from nova_rerun_bridge.helper_scripts.download_models import get_project_root
 from nova_rerun_bridge.safety_zones import log_safety_zones
@@ -107,7 +101,7 @@ class NovaRerunBridge:
             return
 
         for controller in controllers:
-            for motion_group in await controller.activated_motion_groups():
+            for motion_group in await controller.motion_groups():
                 motion_groups.append(motion_group.motion_group_id)
 
         rr.reset_time()
@@ -150,7 +144,7 @@ class NovaRerunBridge:
             static=True,
         )
 
-    async def log_collision_scenes(self) -> dict[str, models.CollisionScene]:
+    async def log_collision_setup(self) -> dict[str, api.models.CollisionSetup]:
         """Fetch and log all collision scenes from Nova to Rerun."""
         collision_scenes = (
             await self.nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
@@ -160,54 +154,41 @@ class NovaRerunBridge:
         log_collision_scenes(collision_scenes)
         return collision_scenes
 
-    async def log_collision_scene(self, scene_id: str) -> dict[str, models.CollisionScene]:
+    async def log_collision_setup(self, setup_id: str) -> dict[str, api.models.CollisionSetup]:
         """Log a specific collision scene by its ID.
 
         Args:
-            scene_id (str): The ID of the collision scene to log
+            setup_id (str): The ID of the collision setup to log
 
         Raises:
             ValueError: If scene_id is not found in stored collision scenes
         """
-        collision_scenes = (
+        collision_setups = (
             await self.nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
                 cell=self.nova.cell()._cell_id
             )
         )
 
-        if scene_id not in collision_scenes:
-            raise ValueError(f"Collision scene with ID {scene_id} not found")
+        if setup_id not in collision_setups:
+            raise ValueError(f"Collision setup with ID {setup_id} not found")
 
-        log_collision_scenes({scene_id: collision_scenes[scene_id]})
-        return {scene_id: collision_scenes[scene_id]}
+        log_collision_scenes({setup_id: collision_setups[setup_id]})
+        return {setup_id: collision_setups[setup_id]}
 
-    def _log_collision_scene(self, collision_scenes: dict[str, models.CollisionScene]) -> None:
-        log_collision_scenes(collision_scenes=collision_scenes)
+    def _log_collision_setup(self, collision_setups: dict[str, api.models.CollisionSetup]) -> None:
+        log_collision_scenes(collision_setups=collision_setups)
 
     async def log_safety_zones(self, motion_group: MotionGroup) -> None:
-        tcp_names = await motion_group.tcp_names()
-        tcp = tcp_names[0]
-
         rr.reset_time()
         rr.set_time(TIME_INTERVAL_NAME, duration=0)
 
-        log_safety_zones(
-            motion_group.motion_group_id, await motion_group._get_optimizer_setup(tcp=tcp)
-        )
-
-    # Backward compatibility method (deprecated)
-    async def log_saftey_zones(self, motion_group: MotionGroup) -> None:
-        """Deprecated: Use log_safety_zones instead."""
-        await self.log_safety_zones(motion_group)
-
-    def log_safety_zones_(
-        self, motion_group_id: str, optimizer_setup: models.OptimizerSetup
-    ) -> None:
-        log_safety_zones(motion_group_id, optimizer_setup)
+        log_safety_zones(motion_group.motion_group_id, await motion_group.get_description())
 
     async def log_motion(
         self,
-        motion_id: str,
+        trajectory: api.models.JointTrajectory,
+        tcp: str,
+        motion_group: MotionGroup,
         timing_mode=TimingMode.CONTINUE,
         time_offset: float = 0,
         tool_asset: Optional[str] = None,
@@ -229,56 +210,25 @@ class NovaRerunBridge:
                 DeprecationWarning,
                 stacklevel=2,
             )
-        logger.debug(f"log_motion called with motion_id: {motion_id}")
         try:
-            # Fetch motion details from api
-            logger.debug("Fetching motion details...")
-            motion = await self.nova._api_client.motion_api.get_planned_motion(
-                self.nova.cell()._cell_id, motion_id
-            )
-            logger.debug("Fetching optimizer config...")
-            optimizer_config = (
-                await self.nova._api_client.motion_group_infos_api.get_optimizer_configuration(
-                    self.nova.cell()._cell_id, motion.motion_group
-                )
-            )
-            logger.debug("Fetching trajectory...")
-            trajectory = await self.nova._api_client.motion_api.get_motion_trajectory(
-                self.nova.cell()._cell_id, motion_id, int(RECORDING_INTERVAL * 1000)
-            )
-
-            logger.debug("Fetching motion groups...")
-            motion_groups = await self.nova._api_client.motion_group_api.list_motion_groups(
-                self.nova.cell()._cell_id
-            )
-            motion_motion_group = next(
-                (mg for mg in motion_groups.instances if mg.motion_group == motion.motion_group),
-                None,
-            )
-
             logger.debug("Fetching collision scenes...")
             collision_scenes = (
-                await self.nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
+                await self.nova._api_client.store_collision_setups_api.list_stored_collision_setups(
                     cell=self.nova.cell()._cell_id
                 )
             )
 
-            if motion_motion_group is None:
-                raise ValueError(f"Motion group {motion.motion_group} not found")
-
             # Get or initialize the timer for this motion group
-            motion_group_id = motion.motion_group
+            motion_group_id = motion_group.motion_group_id
             current_time = self._motion_group_timers.get(motion_group_id, 0.0)
 
             logger.debug(
                 f"Calling log_motion function with trajectory points: {len(trajectory.trajectory or [])}"
             )
             log_motion(
-                motion_id=motion_id,
-                model_from_controller=motion_motion_group.model_from_controller,
-                motion_group=motion.motion_group,
-                optimizer_config=optimizer_config,
-                trajectory=trajectory.trajectory or [],
+                trajectory=trajectory,
+                tcp=tcp,
+                motion_group=motion_group,
                 collision_scenes=collision_scenes,
                 time_offset=current_time + time_offset,
                 tool_asset=tool_asset,
@@ -308,7 +258,7 @@ class NovaRerunBridge:
 
     async def log_trajectory(
         self,
-        joint_trajectory: models.JointTrajectory,
+        trajectory: api.models.JointTrajectory,
         tcp: str,
         motion_group: MotionGroup,
         timing_mode=TimingMode.CONTINUE,
@@ -335,13 +285,18 @@ class NovaRerunBridge:
                 stacklevel=2,
             )
 
-        if len(joint_trajectory.joint_positions) == 0:
+        if len(trajectory.joint_positions) == 0:
             raise ValueError("No joint trajectory provided")
 
-        load_plan_response = await motion_group._load_planned_motion(joint_trajectory, tcp)
+        # TODO: this is not needed anymore since we pass the data directly
+        # load_plan_response = await motion_group._load_planned_motion(trajectory=trajectory, tcp=tcp)
 
         await self.log_motion(
-            load_plan_response.motion, time_offset=time_offset, tool_asset=tool_asset
+            trajectory=trajectory,
+            tcp=tcp,
+            motion_group=motion_group,
+            time_offset=time_offset,
+            tool_asset=tool_asset,
         )
 
     def continue_after_sync(self) -> None:
@@ -364,9 +319,9 @@ class NovaRerunBridge:
         )
 
     async def log_error_feedback(
-        self, error_feedback: PlanTrajectoryFailedResponseErrorFeedback
+        self, error_feedback: api.models.PlanTrajectoryFailedResponse
     ) -> None:
-        if isinstance(error_feedback.actual_instance, FeedbackOutOfWorkspace):
+        if isinstance(error_feedback.actual_instance, api.models.FeedbackOutOfWorkspace):
             if (
                 error_feedback.actual_instance.invalid_tcp_pose
                 and error_feedback.actual_instance.invalid_tcp_pose.position
@@ -383,7 +338,7 @@ class NovaRerunBridge:
                     static=True,
                 )
 
-        if isinstance(error_feedback.actual_instance, FeedbackCollision):
+        if isinstance(error_feedback.actual_instance, api.models.FeedbackCollision):
             collisions = error_feedback.actual_instance.collisions
             if not collisions:
                 return
@@ -627,35 +582,8 @@ class NovaRerunBridge:
         """
         try:
             # Use Nova's forward kinematics API to get TCP pose from joint configuration
-            from nova.api import models
-
             # Create a joint position object
-            joint_position = models.Joints(joints=list(joint_config))
-
-            # Create TcpPoseRequest for forward kinematics calculation
-            tcp_pose_request = models.TcpPoseRequest(
-                motion_group=motion_group.motion_group_id, joint_position=joint_position, tcp=tcp
-            )
-
-            # Use Nova's API to calculate the TCP pose from joint configuration
-            api_pose = await motion_group._api_gateway.motion_group_kinematic_api.calculate_forward_kinematic(
-                cell=motion_group._cell,
-                motion_group=motion_group.motion_group_id,
-                tcp_pose_request=tcp_pose_request,
-            )
-
-            # Convert API pose to Nova Pose
-            orientation = api_pose.orientation
-            return Pose(
-                (
-                    api_pose.position.x,
-                    api_pose.position.y,
-                    api_pose.position.z,
-                    orientation.x if orientation else 0.0,
-                    orientation.y if orientation else 0.0,
-                    orientation.z if orientation else 0.0,
-                )
-            )
+            return await motion_group.forward_kinematics([joint_config], tcp)
 
         except Exception as e:
             logger.warning(f"Failed to convert joints to pose using forward kinematics: {e}")

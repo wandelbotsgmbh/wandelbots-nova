@@ -2,7 +2,6 @@ from abc import ABC
 from typing import Any, Literal
 
 import pydantic
-import wandelbots_api_client as wb
 
 from nova import api, utils
 from nova.actions.base import Action
@@ -14,31 +13,6 @@ PoseOrVectorTuple = (
 )
 
 
-class CollisionFreeMotion(Action):
-    """A motion that is collision free"""
-
-    type: Literal["collision_free_ptp"] = "collision_free_ptp"
-    target: Pose | tuple[float, ...]
-    settings: MotionSettings | None = None
-    collision_scene: wb.models.CollisionScene | None = None
-
-    def to_api_model(self) -> api.models.PlanCollisionFreePTPRequestTarget:
-        return wb.models.PlanCollisionFreePTPRequestTarget(
-            self.target._to_wb_pose2() if isinstance(self.target, Pose) else list(self.target)
-        )
-
-    def is_motion(self) -> bool:
-        return True
-
-
-def collision_free(
-    target: Pose | tuple[float, ...],
-    settings: MotionSettings | None = None,
-    collision_scene: wb.models.CollisionScene | None = None,
-) -> CollisionFreeMotion:
-    return CollisionFreeMotion(target=target, settings=settings, collision_scene=collision_scene)
-
-
 class Motion(Action, ABC):
     """Base model of a motion
 
@@ -48,10 +22,10 @@ class Motion(Action, ABC):
 
     """
 
-    type: Literal["linear", "cartesian_ptp", "circular", "joint_ptp", "spline"]
+    type: Literal["linear", "cartesian_ptp", "circular", "joint_ptp", "spline", "collision_free"]
     target: Pose | tuple[float, ...]
-    settings: MotionSettings | None = None
-    collision_scene: wb.models.CollisionScene | None = None
+    settings: MotionSettings = MotionSettings()
+    collision_setup: api.models.CollisionSetup | None = None
 
     @property
     def is_cartesian(self):
@@ -66,7 +40,7 @@ class Linear(Motion):
 
     Examples:
     >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10))
-    Linear(metas={}, type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=10.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
+    Linear(metas={}, type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=10.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None)
 
     """
 
@@ -78,18 +52,17 @@ class Linear(Motion):
 
         Examples:
         >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10)).to_api_model()
-        PathLine(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathLine')
+        PathLine(target_pose=Pose(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathLine')
         """
         return api.models.PathLine(
-            target_pose=api.models.Pose2(**self.target.model_dump()),
-            path_definition_name="PathLine",
+            target_pose=self.target.to_api_model(), path_definition_name="PathLine"
         )
 
 
 def linear(
     target: PoseOrVectorTuple,
-    settings: MotionSettings | None = None,
-    collision_scene: wb.models.CollisionScene | None = None,
+    settings: MotionSettings = MotionSettings(),
+    collision_setup: api.models.CollisionSetup | None = None,
     **kwargs: dict[str, Any],
 ) -> Linear:
     """Convenience function to create a linear motion
@@ -106,7 +79,7 @@ def linear(
     >>> assert linear((1, 2, 3)) == linear((1, 2, 3, 0, 0, 0))
     >>> assert linear(Pose((1, 2, 3, 4, 5, 6)), settings=ms) == linear((1, 2, 3, 4, 5, 6), settings=ms)
     >>> Action.from_dict(linear((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
-    Linear(metas={'line_number': 1}, type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
+    Linear(metas={'line_number': 1}, type='linear', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None)
 
     """
     if not isinstance(target, Pose):
@@ -115,7 +88,7 @@ def linear(
 
     kwargs.update(line_number=utils.get_caller_linenumber())
 
-    return Linear(target=target, settings=settings, collision_scene=collision_scene, metas=kwargs)
+    return Linear(target=target, settings=settings, collision_setup=collision_setup, metas=kwargs)
 
 
 lin = linear
@@ -126,7 +99,7 @@ class CartesianPTP(Motion):
 
     Examples:
     >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))
-    CartesianPTP(metas={}, type='cartesian_ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
+    CartesianPTP(metas={}, type='cartesian_ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None)
 
     """
 
@@ -137,20 +110,19 @@ class CartesianPTP(Motion):
 
         Examples:
         >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
-        PathCartesianPTP(target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCartesianPTP')
+        PathCartesianPTP(target_pose=Pose(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCartesianPTP')
         """
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
         return api.models.PathCartesianPTP(
-            target_pose=api.models.Pose2(**self.target.model_dump()),
-            path_definition_name="PathCartesianPTP",
+            target_pose=self.target.to_api_model(), path_definition_name="PathCartesianPTP"
         )
 
 
 def cartesian_ptp(
     target: PoseOrVectorTuple,
-    settings: MotionSettings | None = None,
-    collision_scene: wb.models.CollisionScene | None = None,
+    settings: MotionSettings = MotionSettings(),
+    collision_setup: api.models.CollisionSetup | None = None,
     **kwargs: dict[str, Any],
 ) -> CartesianPTP:
     """Convenience function to create a point-to-point motion
@@ -167,7 +139,7 @@ def cartesian_ptp(
     >>> assert cartesian_ptp((1, 2, 3)) == cartesian_ptp((1, 2, 3, 0, 0, 0))
     >>> assert cartesian_ptp(Pose((1, 2, 3, 4, 5, 6)), settings=ms) == cartesian_ptp((1, 2, 3, 4, 5, 6), settings=ms)
     >>> Action.from_dict(cartesian_ptp((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
-    CartesianPTP(metas={'line_number': 1}, type='cartesian_ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
+    CartesianPTP(metas={'line_number': 1}, type='cartesian_ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None)
 
     """
     if not isinstance(target, Pose):
@@ -177,7 +149,7 @@ def cartesian_ptp(
     kwargs.update(line_number=utils.get_caller_linenumber())
 
     return CartesianPTP(
-        target=target, settings=settings, collision_scene=collision_scene, metas=kwargs
+        target=target, settings=settings, collision_setup=collision_setup, metas=kwargs
     )
 
 
@@ -200,15 +172,15 @@ class Circular(Motion):
 
         Examples:
         >>> Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((10, 20, 30, 40, 50, 60)), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
-        PathCircle(via_pose=Pose2(position=[10, 20, 30], orientation=[40, 50, 60]), target_pose=Pose2(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCircle')
+        PathCircle(via_pose=Pose(position=[10, 20, 30], orientation=[40, 50, 60]), target_pose=Pose(position=[1, 2, 3], orientation=[4, 5, 6]), path_definition_name='PathCircle')
         """
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
         if not isinstance(self.intermediate, Pose):
             raise ValueError("Intermediate must be a Pose object")
         return api.models.PathCircle(
-            target_pose=api.models.Pose2(**self.target.model_dump()),
-            via_pose=api.models.Pose2(**self.intermediate.model_dump()),
+            target_pose=self.target.to_api_model(),
+            via_pose=self.intermediate.to_api_model(),
             path_definition_name="PathCircle",
         )
 
@@ -216,8 +188,8 @@ class Circular(Motion):
 def circular(
     target: PoseOrVectorTuple,
     intermediate: PoseOrVectorTuple,
-    settings: MotionSettings | None = None,
-    collision_scene: wb.models.CollisionScene | None = None,
+    settings: MotionSettings = MotionSettings(),
+    collision_setup: api.models.CollisionSetup | None = None,
     **kwargs: dict[str, Any],
 ) -> Circular:
     """Convenience function to create a circular motion
@@ -235,7 +207,7 @@ def circular(
     >>> assert circular((1, 2, 3, 4, 5, 6), (7, 8, 9, 10, 11, 12), settings=ms) == Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((7, 8, 9, 10, 11, 12)), settings=ms, metas={'line_number': 1})
     >>> assert circular((1, 2, 3), (4, 5, 6)) == circular((1, 2, 3, 0, 0, 0), (4, 5, 6, 0, 0, 0))
     >>> Action.from_dict(circular((1, 2, 3, 4, 5, 6), (7, 8, 9, 10, 11, 12), MotionSettings()).model_dump())
-    Circular(metas={'line_number': 1}, type='circular', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None, intermediate=Pose(position=Vector3d(x=7, y=8, z=9), orientation=Vector3d(x=10, y=11, z=12)))
+    Circular(metas={'line_number': 1}, type='circular', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None, intermediate=Pose(position=Vector3d(x=7, y=8, z=9), orientation=Vector3d(x=10, y=11, z=12)))
 
     """
     if not isinstance(target, Pose):
@@ -252,7 +224,7 @@ def circular(
         target=target,
         intermediate=intermediate,
         settings=settings,
-        collision_scene=collision_scene,
+        collision_setup=collision_setup,
         metas=kwargs,
     )
 
@@ -265,7 +237,7 @@ class JointPTP(Motion):
 
     Examples:
     >>> JointPTP(target=(1, 2, 3, 4, 5, 6), settings=MotionSettings(tcp_velocity_limit=30))
-    JointPTP(metas={}, type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
+    JointPTP(metas={}, type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None)
 
     """
 
@@ -281,14 +253,15 @@ class JointPTP(Motion):
         if not isinstance(self.target, tuple):
             raise ValueError("Target must be a tuple object")
         return api.models.PathJointPTP(
-            target_joint_position=list(self.target), path_definition_name="PathJointPTP"
+            target_joint_position=api.models.DoubleArray(list(self.target)),
+            path_definition_name="PathJointPTP",
         )
 
 
 def joint_ptp(
     target: tuple[float, ...],
-    settings: MotionSettings | None = None,
-    collision_scene: wb.models.CollisionScene | None = None,
+    settings: MotionSettings = MotionSettings(),
+    collision_setup: api.models.CollisionSetup | None = None,
     **kwargs: dict[str, Any],
 ) -> JointPTP:
     """Convenience function to create a joint PTP motion
@@ -296,6 +269,8 @@ def joint_ptp(
     Args:
         target: the target joint configuration
         settings: the motion settings
+        collision_setup: the collision setup. If collision_setup is provided, the motion will be a collision free motion.
+            If collision_setup is not provided, the motion will be a normal joint PTP motion.
 
     Returns: the joint PTP motion
 
@@ -303,12 +278,12 @@ def joint_ptp(
     >>> ms = MotionSettings(tcp_acceleration_limit=10)
     >>> assert joint_ptp((1, 2, 3, 4, 5, 6), settings=ms) == JointPTP(target=(1, 2, 3, 4, 5, 6), settings=ms, metas={'line_number': 1})
     >>> Action.from_dict(joint_ptp((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
-    JointPTP(metas={'line_number': 1}, type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None)
+    JointPTP(metas={'line_number': 1}, type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None)
 
     """
 
     kwargs.update(line_number=utils.get_caller_linenumber())
-    return JointPTP(target=target, settings=settings, collision_scene=collision_scene, metas=kwargs)
+    return JointPTP(target=target, settings=settings, collision_setup=collision_setup, metas=kwargs)
 
 
 jnt = joint_ptp
@@ -333,10 +308,10 @@ class Spline(Motion):
 
 def spline(
     target: PoseOrVectorTuple,
-    settings: MotionSettings | None = None,
+    settings: MotionSettings = MotionSettings(),
     path_parameter: float = 1,
     time=None,
-    collision_scene: wb.models.CollisionScene | None = None,
+    collision_setup: api.models.CollisionSetup | None = None,
     **kwargs: dict[str, Any],
 ) -> Spline:
     """Convenience function to create a spline motion
@@ -354,7 +329,7 @@ def spline(
     >>> assert spline((1, 2, 3, 4, 5, 6), settings=ms) == Spline(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms, metas={'line_number': 1})
     >>> assert spline((1, 2, 3)) == spline((1, 2, 3, 0, 0, 0))
     >>> Action.from_dict(spline((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
-    Spline(metas={'line_number': 1}, type='spline', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(min_blending_velocity=None, position_zone_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_scene=None, path_parameter=1.0, time=None)
+    Spline(metas={'line_number': 1}, type='spline', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None, path_parameter=1.0, time=None)
 
     """
     if not isinstance(target, Pose):
@@ -367,9 +342,68 @@ def spline(
         settings=settings,
         path_parameter=path_parameter,
         time=time,
-        collision_scene=collision_scene,
+        collision_setup=collision_setup,
         metas=kwargs,
     )
 
 
 spl = spline
+
+
+class CollisionFreeMotion(Motion):
+    """A collision free motion
+
+    Examples:
+    >>> CollisionFreeMotion(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))
+    CollisionFreeMotion(metas={}, type='collision_free', target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None)
+    """
+
+    type: Literal["collision_free"] = "collision_free"
+    target: tuple[float, ...]
+    settings: MotionSettings = MotionSettings()
+    collision_setup: api.models.CollisionSetup
+
+    def to_api_model(self) -> api.models.PlanCollisionFreeRequest:
+        """Serialize the model to the API model
+
+        Examples:
+        >>> CollisionFreeMotion(target=(1, 2, 3, 4, 5, 6), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
+        PathCollisionFree(target_joint_position=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], path_definition_name='PathCollisionFree')
+        """
+        return api.models.PlanCollisionFreeRequest(
+            # TODO: where to get this? -> motion group can insert it from the outside
+            motion_group_setup=api.models.MotionGroupSetup(
+                motion_group_model=api.models.MotionGroupModel(""), cycle_time=8
+            ),
+            # TODO: where to get this? -> motion group can insert it from the outside
+            start_joint_position=api.models.DoubleArray([]),
+            target=api.models.DoubleArray(list(self.target)),
+            algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
+        )
+
+
+def collision_free(
+    target: tuple[float, ...],
+    collision_setup: api.models.CollisionSetup,
+    settings: MotionSettings = MotionSettings(),
+    **kwargs: dict[str, Any],
+) -> CollisionFreeMotion:
+    """Convenience function to create a collision free motion
+
+    Args:
+        target: the target joint configuration
+        settings: the motion settings
+        collision_setup: the collision setup
+
+    Returns: the collision free motion
+
+    Examples:
+    >>> ms = MotionSettings(tcp_acceleration_limit=10)
+    >>> assert collision_free((1, 2, 3, 4, 5, 6), settings=ms) == CollisionFreeMotion(target=(1, 2, 3, 4, 5, 6), settings=ms, metas={'line_number': 1})
+    >>> Action.from_dict(collision_free((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
+    CollisionFreeMotion(metas={'line_number': 1}, type='collision_free', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None)
+    """
+    kwargs.update(line_number=utils.get_caller_linenumber())
+    return CollisionFreeMotion(
+        target=target, settings=settings, collision_setup=collision_setup, metas=kwargs
+    )

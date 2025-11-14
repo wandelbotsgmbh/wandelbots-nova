@@ -3,9 +3,9 @@ import builtins
 import pytest
 
 import wandelscript
+from nova import api
 from nova.cell.robot_cell import AbstractController, RobotCellKeyError
 from nova.cell.simulation import SimulatedRobotCell
-from nova.program.runner import ProgramRunState
 
 
 @pytest.mark.parametrize(
@@ -29,7 +29,7 @@ print(a)
     robot_cell = SimulatedRobotCell()
     if exception is None:
         runner = wandelscript.run(program_id="test", code=code, robot_cell_override=robot_cell)
-        assert runner.state is ProgramRunState.COMPLETED
+        assert runner.state is api.models.ProgramRunState.COMPLETED
     else:
         with pytest.raises(exception):
             wandelscript.run(program_id="test", code=code, robot_cell_override=robot_cell)
@@ -54,7 +54,7 @@ new_pose = assoc(pose, {index}, 42)
     robot_cell = SimulatedRobotCell()
     with pytest.raises(exception):
         runner = wandelscript.run(program_id="test", code=code, robot_cell_override=robot_cell)
-        assert runner.state is ProgramRunState.FAILED
+        assert runner.state is api.models.ProgramRunState.FAILED
 
 
 @pytest.mark.asyncio

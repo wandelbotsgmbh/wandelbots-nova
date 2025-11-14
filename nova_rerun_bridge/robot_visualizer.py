@@ -5,7 +5,7 @@ import rerun as rr
 import trimesh
 from scipy.spatial.transform import Rotation
 
-from nova.api import models
+from nova import api
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.conversion_helpers import normalize_pose
 from nova_rerun_bridge.dh_robot import DHRobot
@@ -22,8 +22,8 @@ class RobotVisualizer:
     def __init__(
         self,
         robot: DHRobot,
-        robot_model_geometries: list[models.RobotLinkGeometry],
-        tcp_geometries: list[models.Geometry],
+        robot_model_geometries: list[api.models.LinkChain],
+        tcp_geometries: list[api.models.Collider],
         static_transform: bool = True,
         base_entity_path: str = "robot",
         albedo_factor: list = [255, 255, 255],
@@ -49,8 +49,8 @@ class RobotVisualizer:
         :param show_safety_link_chain: Whether to render robot safety geometry (from controller)
         """
         self.robot = robot
-        self.link_geometries: dict[int, list[models.Geometry]] = {}
-        self.tcp_geometries: list[models.Geometry] = tcp_geometries
+        self.link_geometries: dict[int, list[api.models.Collider]] = {}
+        self.tcp_geometries: list[api.models.Collider] = tcp_geometries
         self.logged_meshes: set[str] = set()
         self.static_transform = static_transform
         self.base_entity_path = base_entity_path.rstrip("/")
@@ -151,7 +151,7 @@ class RobotVisualizer:
         self.layer_nodes_dict[joint] = same_layer
         return same_layer
 
-    def geometry_pose_to_matrix(self, init_pose: models.PlannerPose):
+    def geometry_pose_to_matrix(self, init_pose: api.models.Pose):
         return self.robot.pose_to_matrix(init_pose)
 
     def compute_forward_kinematics(self, joint_values):
@@ -255,20 +255,16 @@ class RobotVisualizer:
             self.logged_meshes.add(entity_path)
 
     def init_collision_geometry(
-        self, entity_path: str, collider: models.Collider, pose: models.PlannerPose
+        self, entity_path: str, collider: api.models.Collider, pose: api.models.Pose
     ):
         if entity_path in self.logged_meshes:
             return
 
-        if isinstance(collider.shape.actual_instance, models.Sphere2):
+        if isinstance(collider.shape, api.models.Sphere):
             rr.log(
                 f"{entity_path}",
                 rr.Ellipsoids3D(
-                    radii=[
-                        collider.shape.actual_instance.radius,
-                        collider.shape.actual_instance.radius,
-                        collider.shape.actual_instance.radius,
-                    ],
+                    radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
                     centers=[[pose.position.x, pose.position.y, pose.position.z]]
                     if pose.position
                     else [0, 0, 0],
@@ -276,25 +272,21 @@ class RobotVisualizer:
                 ),
             )
 
-        elif isinstance(collider.shape.actual_instance, models.Box2):
+        elif isinstance(collider.shape, api.models.Box):
             rr.log(
                 f"{entity_path}",
                 rr.Boxes3D(
                     centers=[[pose.position.x, pose.position.y, pose.position.z]]
                     if pose.position
                     else [0, 0, 0],
-                    sizes=[
-                        collider.shape.actual_instance.size_x,
-                        collider.shape.actual_instance.size_y,
-                        collider.shape.actual_instance.size_z,
-                    ],
+                    sizes=[collider.shape.size_x, collider.shape.size_y, collider.shape.size_z],
                     colors=[(221, 193, 193, 255)],
                 ),
             )
 
-        elif isinstance(collider.shape.actual_instance, models.Capsule2):
-            height = collider.shape.actual_instance.cylinder_height
-            radius = collider.shape.actual_instance.radius
+        elif isinstance(collider.shape, api.models.Capsule):
+            height = collider.shape.cylinder_height
+            radius = collider.shape.radius
 
             # Generate trimesh capsule
             capsule = trimesh.creation.capsule(height=height, radius=radius, count=[6, 8])
@@ -336,10 +328,8 @@ class RobotVisualizer:
                     static=True,
                 )
 
-        elif isinstance(collider.shape.actual_instance, models.ConvexHull2):
-            polygons = HullVisualizer.compute_hull_outlines_from_points(
-                collider.shape.actual_instance.vertices
-            )
+        elif isinstance(collider.shape, api.models.ConvexHull):
+            polygons = HullVisualizer.compute_hull_outlines_from_points(collider.shape.vertices)
 
             if polygons:
                 line_segments = [p.tolist() for p in polygons]
@@ -366,15 +356,15 @@ class RobotVisualizer:
 
         self.logged_meshes.add(entity_path)
 
-    def init_geometry(self, entity_path: str, geometry: models.Geometry):
+    def init_geometry(self, entity_path: str, geometry: api.models.Collider):
         """Generic method to log a single geometry, either capsule or box."""
 
         if entity_path in self.logged_meshes:
             return
 
         # Sphere geometry
-        if geometry.sphere:
-            radius = geometry.sphere.radius
+        if isinstance(geometry.shape, api.models.Sphere):
+            radius = geometry.shape.radius
             rr.log(
                 entity_path,
                 rr.Ellipsoids3D(
@@ -385,20 +375,19 @@ class RobotVisualizer:
                 ),
             )
 
-        # Box geometry
-        elif geometry.box:
+        elif isinstance(geometry.shape, api.models.Box):
             rr.log(
                 entity_path,
                 rr.Boxes3D(
                     centers=[0, 0, 0],
                     fill_mode=rr.components.FillMode.Solid,
-                    sizes=[geometry.box.size_x, geometry.box.size_y, geometry.box.size_z],
+                    sizes=[geometry.shape.size_x, geometry.shape.size_y, geometry.shape.size_z],
                     colors=[(221, 193, 193, 255) if self.static_transform else self.albedo_factor],
                 ),
             )
 
         # Rectangle geometry
-        elif geometry.rectangle:
+        elif isinstance(geometry.shape, api.models.Rectangle):
             # Create a flat box with minimal height
             rr.log(
                 entity_path,
@@ -406,8 +395,8 @@ class RobotVisualizer:
                     fill_mode=rr.components.FillMode.Solid,
                     centers=[0, 0, 0],
                     sizes=[
-                        geometry.rectangle.size_x,
-                        geometry.rectangle.size_y,
+                        geometry.shape.size_x,
+                        geometry.shape.size_y,
                         1.0,  # Minimal height for visibility
                     ],
                     colors=[(221, 193, 193, 255) if self.static_transform else self.albedo_factor],
@@ -415,9 +404,9 @@ class RobotVisualizer:
             )
 
         # Cylinder geometry
-        elif geometry.cylinder:
-            radius = geometry.cylinder.radius
-            height = geometry.cylinder.height
+        elif isinstance(geometry.shape, api.models.Cylinder):
+            radius = geometry.shape.radius
+            height = geometry.shape.height
 
             # Create cylinder mesh
             cylinder = trimesh.creation.cylinder(radius=radius, height=height, sections=16)
@@ -434,9 +423,9 @@ class RobotVisualizer:
             )
 
         # Convex hull geometry
-        elif geometry.convex_hull:
+        elif isinstance(geometry.shape, api.models.ConvexHull):
             polygons = HullVisualizer.compute_hull_outlines_from_points(
-                [[v.x, v.y, v.z] for v in geometry.convex_hull.vertices]
+                [[v.x, v.y, v.z] for v in geometry.shape.vertices]
             )
 
             if polygons:
@@ -467,9 +456,9 @@ class RobotVisualizer:
                 )
 
         # Capsule geometry
-        elif geometry.capsule:
-            radius = geometry.capsule.radius
-            height = geometry.capsule.cylinder_height
+        elif isinstance(geometry.shape, api.models.Capsule):
+            radius = geometry.shape.radius
+            height = geometry.shape.cylinder_height
 
             # Slightly shrink the capsule if static to reduce z-fighting
             if self.static_transform:
@@ -491,10 +480,10 @@ class RobotVisualizer:
             )
 
         # Rectangular capsule geometry
-        elif geometry.rectangular_capsule:
-            radius = geometry.rectangular_capsule.radius
-            distance_x = geometry.rectangular_capsule.sphere_center_distance_x
-            distance_y = geometry.rectangular_capsule.sphere_center_distance_y
+        elif isinstance(geometry.shape, api.models.RectangularCapsule):
+            radius = geometry.shape.radius
+            distance_x = geometry.shape.sphere_center_distance_x
+            distance_y = geometry.shape.sphere_center_distance_y
 
             # Create a rectangular capsule from its definition - a hull around 4 spheres
             # First, create the four spheres at the corners
@@ -554,7 +543,7 @@ class RobotVisualizer:
                 )
 
         # Plane geometry (simplified as a large, thin rectangle)
-        elif geometry.plane:
+        elif isinstance(geometry.shape, api.models.Plane):
             # Create a large, thin rectangle to represent an infinite plane
             size = 5000  # Large enough to seem infinite in the visualization
             rr.log(
@@ -670,12 +659,12 @@ class RobotVisualizer:
                 self.init_geometry(entity_path, geom)
                 log_geometry(entity_path, final_transform)
 
-    def log_robot_geometries(self, trajectory: list[models.TrajectorySample], times_column):
+    def log_robot_geometries(self, trajectory: list[api.models.TrajectoryData], times_column):
         """
         Log the robot geometries for each link and TCP as separate entities.
 
         Args:
-            trajectory (List[wb.models.TrajectorySample]): The list of trajectory sample points.
+            trajectory (list[api.models.TrajectoryData]): The list of trajectory sample points.
             times_column (rr.TimeColumn): The time column associated with the trajectory points.
         """
         link_positions = {}
@@ -693,7 +682,7 @@ class RobotVisualizer:
             link_rotations[entity_path].append(rr.RotationAxisAngle(axis=axis, angle=angle))
 
         for point in trajectory:
-            transforms = self.compute_forward_kinematics(point.joint_position)
+            transforms = self.compute_forward_kinematics(point.data.joint_positions)
 
             # Log robot joint geometries
             if self.mesh_loaded:
@@ -787,9 +776,9 @@ class RobotVisualizer:
                     final_transform = tcp_transform @ self.geometry_pose_to_matrix(pose)
 
                     # tcp collision geometries are defined in flange frame
-                    identity_pose = models.PlannerPose(
-                        position=models.Vector3d(x=0, y=0, z=0),
-                        orientation=models.Quaternion(x=0, y=0, z=0, w=1),
+                    identity_pose = api.models.Pose(
+                        position=api.models.Vector3d([0, 0, 0]),
+                        orientation=api.models.RotationVector([0, 0, 0]),
                     )
                     self.init_collision_geometry(
                         entity_path, self.collision_tcp_geometries[geom_id], identity_pose

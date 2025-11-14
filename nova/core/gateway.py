@@ -1,3 +1,5 @@
+# TODO parameter naming convention (controller -> controller_id)
+
 from __future__ import annotations
 
 import asyncio
@@ -5,12 +7,10 @@ import functools
 import time
 from abc import ABC
 from enum import Enum
-from typing import AsyncGenerator, TypeVar
+from typing import TypeVar
 from urllib.parse import quote as original_quote
 
-import wandelbots_api_client as wb
-import wandelbots_api_client.v2 as v2
-
+from nova import api
 from nova.auth.auth_config import Auth0Config
 from nova.auth.authorization import Auth0DeviceAuthorization
 from nova.cell.robot_cell import ConfigurablePeriphery, Device
@@ -23,7 +23,6 @@ from nova.config import (  # add to the module for backward compatibility
 )
 from nova.core import logger
 from nova.core.env_handler import set_key
-from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.version import version as pkg_version
 
 
@@ -39,9 +38,9 @@ T = TypeVar("T")
 
 
 class ComparisonType(Enum):
-    COMPARISON_TYPE_EQUAL = "COMPARISON_TYPE_EQUAL"
-    COMPARISON_TYPE_GREATER = "COMPARISON_TYPE_GREATER"
-    COMPARISON_TYPE_LESS = "COMPARISON_TYPE_LESS"
+    COMPARISON_TYPE_EQUAL = "COMPARATOR_EQUALS"
+    COMPARISON_TYPE_GREATER = "COMPARATOR_GREATER"
+    COMPARISON_TYPE_LESS = "COMPARATOR_LESS"
 
 
 def intercept(api_instance: T, gateway: "ApiGateway") -> T:
@@ -101,8 +100,7 @@ def intercept(api_instance: T, gateway: "ApiGateway") -> T:
 
 
 class ApiGateway:
-    _api_client: wb.ApiClient
-    _api_v2_client: v2.ApiClient
+    _api_client: api.ApiClient
 
     def __init__(
         self,
@@ -111,7 +109,7 @@ class ApiGateway:
         username: str | None = None,
         password: str | None = None,
         access_token: str | None = None,
-        version: str = "v1",
+        version: str = "v2",
         verify_ssl: bool = True,
         auth0_config: Auth0Config | None = None,
     ):
@@ -161,66 +159,63 @@ class ApiGateway:
         stripped_host = self._host.rstrip("/")
 
         # init v1 api client
-        api_client_config = wb.Configuration(
-            host=f"{stripped_host}/api/v1",
-            username=self._username,
-            password=self._password,
-            access_token=self._access_token,
-        )
-        api_client_config.verify_ssl = self._verify_ssl
-        self._api_client = wb.ApiClient(configuration=api_client_config)
-        self._api_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
-
-        # Use the intercept function to wrap each API client
-        self.system_api = intercept(wb.SystemApi(api_client=self._api_client), self)
-        self.controller_api = intercept(wb.ControllerApi(api_client=self._api_client), self)
-        self.motion_group_api = intercept(wb.MotionGroupApi(api_client=self._api_client), self)
-        self.motion_api = intercept(wb.MotionApi(api_client=self._api_client), self)
-        self.motion_group_infos_api = intercept(
-            wb.MotionGroupInfosApi(api_client=self._api_client), self
-        )
-        self.motion_group_kinematic_api = intercept(
-            wb.MotionGroupKinematicApi(api_client=self._api_client), self
-        )
-        self.store_collision_components_api = intercept(
-            wb.StoreCollisionComponentsApi(api_client=self._api_client), self
-        )
-        self.store_collision_scenes_api = intercept(
-            wb.StoreCollisionScenesApi(api_client=self._api_client), self
-        )
-        self.virtual_robot_api = intercept(wb.VirtualRobotApi(api_client=self._api_client), self)
-        self.virtual_robot_behavior_api = intercept(
-            wb.VirtualRobotBehaviorApi(api_client=self._api_client), self
-        )
-        self.virtual_robot_mode_api = intercept(
-            wb.VirtualRobotModeApi(api_client=self._api_client), self
-        )
-        self.virtual_robot_setup_api = intercept(
-            wb.VirtualRobotSetupApi(api_client=self._api_client), self
-        )
-        self.controller_ios_api = intercept(wb.ControllerIOsApi(api_client=self._api_client), self)
-        self.motion_group_jogging_api = intercept(
-            wb.MotionGroupJoggingApi(api_client=self._api_client), self
-        )
-        self.store_object_api = intercept(wb.StoreObjectApi(api_client=self._api_client), self)
-
-        # init v2 api client
-        api_v2_client_config = v2.Configuration(
+        api_client_config = api.Configuration(
             host=f"{stripped_host}/api/v2",
             username=self._username,
             password=self._password,
             access_token=self._access_token,
         )
-        self._api_v2_client = v2.ApiClient(configuration=api_v2_client_config)
-        self._api_v2_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
+        api_client_config.verify_ssl = self._verify_ssl
+        self._api_client = api.ApiClient(configuration=api_client_config)
+        self._api_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
 
-        self.virtual_robot_api_v2 = intercept(
-            v2.VirtualControllerApi(api_client=self._api_v2_client), self
+        # Use the intercept function to wrap each API client
+        self.system_api = intercept(api.api.SystemApi(api_client=self._api_client), self)
+        self.controller_api = intercept(api.api.ControllerApi(api_client=self._api_client), self)
+        self.controller_ios_api = intercept(
+            api.api.ControllerInputsOutputsApi(api_client=self._api_client), self
         )
+        self.virtual_controller_api = intercept(
+            api.api.VirtualControllerApi(api_client=self._api_client), self
+        )
+        self.virtual_controller_behavior_api = intercept(
+            api.api.VirtualControllerBehaviorApi(api_client=self._api_client), self
+        )
+        # TODO migrate stuff in rerun bridge and then remove this
+        self.virtual_robot_setup_api = self.virtual_controller_api
+        self.motion_group_api = intercept(api.api.MotionGroupApi(api_client=self._api_client), self)
+        self.motion_group_jogging_api = intercept(
+            api.api.JoggingApi(api_client=self._api_client), self
+        )
+        self.store_collision_components_api = intercept(
+            api.api.StoreCollisionComponentsApi(api_client=self._api_client), self
+        )
+        self.motion_group_models_api: api.api.MotionGroupModelsApi = intercept(
+            api.api.MotionGroupModelsApi(api_client=self._api_client), self
+        )
+        self.store_collision_setups_api = intercept(
+            api.api.StoreCollisionSetupsApi(api_client=self._api_client), self
+        )
+        self.trajectory_planning_api: api.api.TrajectoryPlanningApi = intercept(
+            api.api.TrajectoryPlanningApi(api_client=self._api_client), self
+        )
+        self.trajectory_execution_api: api.api.TrajectoryExecutionApi = intercept(
+            api.api.TrajectoryExecutionApi(api_client=self._api_client), self
+        )
+        self.trajectory_caching_api: api.api.TrajectoryCachingApi = intercept(
+            api.api.TrajectoryCachingApi(api_client=self._api_client), self
+        )
+        self.controller_inputs_outputs_api = intercept(
+            api.api.ControllerInputsOutputsApi(api_client=self._api_client), self
+        )
+        self.jogging_api = intercept(api.api.JoggingApi(api_client=self._api_client), self)
+        self.store_object_api = intercept(api.api.StoreObjectApi(api_client=self._api_client), self)
+        self.kinematics_api = intercept(api.api.KinematicsApi(api_client=self._api_client), self)
 
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
     async def close(self):
+        # TODO: what is this ?
         # Restore the original quote function
         if hasattr(self, "_original_quote_func"):
             import wandelbots_api_client.api.controller_ios_api as ios_api_module
@@ -237,8 +232,8 @@ class ApiGateway:
         try:
             # Test token with a direct API call without interception
             self._validating_token = True
-            async with wb.ApiClient(self._api_client.configuration) as client:
-                api = wb.SystemApi(client)
+            async with api.ApiClient(self._api_client.configuration) as client:
+                api = api.SystemApi(client)
                 await api.get_system_version()
                 self._has_valid_token = True
         except Exception as e:
@@ -298,243 +293,6 @@ class ApiGateway:
     @property
     def password(self) -> str | None:
         return self._password
-
-    async def stream_robot_controller_state(
-        self, cell: str, controller_id: str, response_rate: int = 200
-    ) -> AsyncGenerator[wb.models.RobotControllerState, None]:
-        """
-        Stream the robot controller state.
-        """
-        async for state in self.controller_api.stream_robot_controller_state(
-            cell=cell, controller=controller_id, response_rate=response_rate
-        ):
-            yield state
-
-    async def activate_motion_group(self, cell: str, motion_group_id: str):
-        await self.motion_group_api.activate_motion_group(cell=cell, motion_group=motion_group_id)
-
-    async def activate_all_motion_groups(self, cell: str, controller: str) -> list[str]:
-        """
-        Activate all motion groups for the given cell and controller.
-        Returns the id of the activated motion groups.
-        """
-        activate_all_motion_groups_response = (
-            await self.motion_group_api.activate_all_motion_groups(cell=cell, controller=controller)
-        )
-        motion_groups = activate_all_motion_groups_response.instances
-        return [mg.motion_group for mg in motion_groups]
-
-    async def list_controller_io_descriptions(
-        self, cell: str, controller: str, ios: list[str]
-    ) -> list[wb.models.IODescription]:
-        if not ios:
-            ios = []
-
-        response = await self.controller_ios_api.list_io_descriptions(
-            cell=cell, controller=controller, ios=ios
-        )
-        return response.io_descriptions
-
-    async def read_controller_io(self, cell: str, controller: str, io: str) -> float | bool | int:
-        response = await self.controller_ios_api.list_io_values(
-            cell=cell, controller=controller, ios=[io]
-        )
-
-        found_io = response.io_values[0]
-        if found_io.boolean_value is not None:
-            return bool(found_io.boolean_value)
-        if found_io.integer_value is not None:
-            return int(found_io.integer_value)
-        if found_io.floating_value is not None:
-            return float(found_io.floating_value)
-        raise ValueError(
-            f"IO value for {io} is of an unexpected type. Expected bool, int or float."
-        )
-
-    async def write_controller_io(
-        self, cell: str, controller: str, io: str, value: bool | int | float
-    ):
-        if isinstance(value, bool):
-            io_value = wb.models.IOValue(io=io, boolean_value=value)
-        elif isinstance(value, int):
-            io_value = wb.models.IOValue(io=io, integer_value=str(value))
-        elif isinstance(value, float):
-            io_value = wb.models.IOValue(io=io, floating_value=value)
-        else:
-            raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
-
-        await self.controller_ios_api.set_output_values(
-            cell=cell, controller=controller, io_value=[io_value]
-        )
-
-    async def wait_for_bool_io(self, cell: str, controller: str, io: str, value: bool):
-        await self.controller_ios_api.wait_for_io_event(
-            cell=cell,
-            controller=controller,
-            io=io,
-            comparison_type=ComparisonType.COMPARISON_TYPE_EQUAL.value,
-            boolean_value=value,
-        )
-
-    async def list_controllers(self, *, cell: str) -> list[wb.models.ControllerInstance]:
-        response = await self.controller_api.list_controllers(cell=cell)
-        return response.instances
-
-    async def get_controller_instance(
-        self, *, cell: str, name: str
-    ) -> wb.models.ControllerInstance | None:
-        controllers = await self.list_controllers(cell=cell)
-        return next((c for c in controllers if c.controller == name), None)
-
-    async def get_current_robot_controller_state(
-        self, *, cell: str, controller_id: str
-    ) -> wb.models.RobotControllerState:
-        return await self.controller_api.get_current_robot_controller_state(
-            cell=cell, controller=controller_id
-        )
-
-    async def add_robot_controller(
-        self, cell: str, robot_controller: wb.models.RobotController, timeout: int = 25
-    ):
-        """
-        Add a robot controller to the specified cell.
-        Args:
-            cell: The cell to add the controller to.
-            robot_controller: The robot controller to add.
-            timeout: The timeout in seconds for the operation.
-        """
-        await self.controller_api.add_robot_controller(
-            cell=cell, robot_controller=robot_controller, completion_timeout=timeout
-        )
-
-    async def delete_robot_controller(
-        self, *, cell: str, controller: str, completion_timeout: int = 25
-    ) -> None:
-        await self.controller_api.delete_robot_controller(
-            cell=cell, controller=controller, completion_timeout=completion_timeout
-        )
-
-    async def wait_for_controller_ready(self, cell: str, name: str, timeout: int = 25) -> None:
-        """
-        Wait until the given controller has finished initializing or until timeout.
-        Args:
-            cell: The cell to check.
-            name: The name of the controller.
-            timeout: The timeout in seconds.
-        """
-        iteration = 0
-        while iteration < timeout:
-            controller = await self.get_controller_instance(cell=cell, name=name)
-            if controller is None:
-                logger.info(f"Controller not found: {cell}/{name}")
-            elif controller.has_error:
-                logger.error(f"Controller {cell}/{name} has error: {controller.error_details}")
-            else:
-                logger.info(f"Controller {cell}/{name} is ready")
-                return
-
-            await asyncio.sleep(1)
-            iteration += 1
-
-        raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")
-
-    async def plan_trajectory(
-        self, cell: str, motion_group_id: str, request: wb.models.PlanTrajectoryRequest
-    ) -> wb.models.JointTrajectory:
-        """
-        Plan a trajectory for the given motion group.
-        """
-
-        plan_trajectory_response = await self.motion_api.plan_trajectory(
-            cell=cell, plan_trajectory_request=request
-        )
-        if isinstance(
-            plan_trajectory_response.response.actual_instance,
-            wb.models.PlanTrajectoryFailedResponse,
-        ):
-            # TODO: handle partially executable path
-            raise PlanTrajectoryFailed(
-                plan_trajectory_response.response.actual_instance, motion_group_id
-            )
-        return plan_trajectory_response.response.actual_instance
-
-    async def load_planned_motion(
-        self, cell: str, motion_group_id: str, joint_trajectory: wb.models.JointTrajectory, tcp: str
-    ) -> wb.models.PlanSuccessfulResponse:
-        load_plan_response = await self.motion_api.load_planned_motion(
-            cell=cell,
-            planned_motion=wb.models.PlannedMotion(
-                motion_group=motion_group_id,
-                times=joint_trajectory.times,
-                joint_positions=joint_trajectory.joint_positions,
-                locations=joint_trajectory.locations,
-                tcp=tcp,
-            ),
-        )
-
-        if (
-            load_plan_response.plan_failed_on_trajectory_response is not None
-            or load_plan_response.plan_failed_on_trajectory_response is not None
-        ):
-            raise LoadPlanFailed(load_plan_response)
-
-        return load_plan_response.plan_successful_response
-
-    def stream_move_to_trajectory_via_join_ptp(
-        self,
-        cell: str,
-        motion_id: str,
-        location_on_trajectory: int,
-        joint_velocity_limits: wb.models.Joints | None = None,
-    ) -> AsyncGenerator[wb.models.StreamMoveResponse, None]:
-        return self.motion_api.stream_move_to_trajectory_via_joint_ptp(
-            cell=cell,
-            motion=motion_id,
-            location_on_trajectory=location_on_trajectory,
-            # limit_override_joint_velocity_limits_joints=joint_velocity_limits,
-        )
-
-    async def stop_motion(self, cell: str, motion_id: str):
-        await self.motion_api.stop_execution(cell=cell, motion=motion_id)
-
-    async def get_motion_group_state(
-        self, cell: str, motion_group_id: str, tcp: str | None = None
-    ) -> wb.models.MotionGroupStateResponse:
-        return await self.motion_group_infos_api.get_current_motion_group_state(
-            cell=cell, motion_group=motion_group_id, tcp=tcp
-        )
-
-    async def list_tcps(self, cell: str, motion_group_id: str) -> wb.models.ListTcpsResponse:
-        return await self.motion_group_infos_api.list_tcps(cell=cell, motion_group=motion_group_id)
-
-    async def get_active_tcp(self, cell: str, motion_group_id: str) -> wb.models.RobotTcp:
-        return await self.motion_group_infos_api.get_active_tcp(
-            cell=cell, motion_group=motion_group_id
-        )
-
-    async def get_optimizer_config(
-        self, cell: str, motion_group_id: str, tcp: str
-    ) -> wb.models.OptimizerSetup:
-        return await self.motion_group_infos_api.get_optimizer_configuration(
-            cell=cell, motion_group=motion_group_id, tcp=tcp
-        )
-
-    async def get_joint_number(self, cell: str, motion_group_id: str) -> int:
-        spec = await self.motion_group_infos_api.get_motion_group_specification(
-            cell=cell, motion_group=motion_group_id
-        )
-        return len(spec.mechanical_joint_limits)
-
-    async def plan_collision_free_ptp(
-        self, cell: str, motion_group_id: str, request: wb.models.PlanCollisionFreePTPRequest
-    ):
-        plan_result = await self.motion_api.plan_collision_free_ptp(
-            cell=cell, plan_collision_free_ptp_request=request
-        )
-
-        if isinstance(plan_result.response.actual_instance, wb.models.PlanTrajectoryFailedResponse):
-            raise PlanTrajectoryFailed(plan_result.response.actual_instance, motion_group_id)
-        return plan_result.response.actual_instance
 
 
 class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):

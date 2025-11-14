@@ -5,6 +5,7 @@ from contextlib import AsyncExitStack
 from functools import reduce
 from typing import (
     AsyncIterable,
+    AsyncIterator,
     Awaitable,
     ClassVar,
     Generic,
@@ -21,12 +22,11 @@ from typing import (
 import anyio
 import asyncstdlib
 import pydantic
-from aiostream import pipe, stream
+from aiostream import stream
 
 from nova import api
 from nova.actions import Action, MovementController
 from nova.core import logger
-from nova.core.movement_controller import movement_to_motion_state
 from nova.types import MotionState, MovementResponse, Pose, RobotState
 
 
@@ -206,7 +206,7 @@ class AbstractRobot(Device):
         actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        optimizer_setup: api.models.OptimizerSetup | None = None,
+        motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -225,7 +225,7 @@ class AbstractRobot(Device):
         actions: list[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
-        optimizer_setup: api.models.OptimizerSetup | None = None,
+        motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -235,7 +235,8 @@ class AbstractRobot(Device):
             tcp (str): The id of the tool center point (TCP)
             start_joint_position: the initial position of the robot
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
-            optimizer_setup (api.models.OptimizerSetup | None): The optimizer setup to be used for planning
+            motion_group_setup (api.models.MotionGroupSetup | None): The motion group setup to be used for planning.
+                 If None, the motion group setup will be fetched from the robot.
 
         Returns:
             api.models.JointTrajectory: The planned joint trajectory
@@ -246,13 +247,12 @@ class AbstractRobot(Device):
         if len(actions) == 0:
             raise ValueError("No actions provided")
 
-        # Execute planning
         try:
             trajectory = await self._plan(
                 actions=actions,
                 tcp=tcp,
                 start_joint_position=start_joint_position,
-                optimizer_setup=optimizer_setup,
+                motion_group_setup=motion_group_setup,
             )
 
             # Automatic viewer integration - log planning results if viewers are active
@@ -273,12 +273,15 @@ class AbstractRobot(Device):
         from nova.viewers import get_viewer_manager
 
         # Only log for motion groups
+        # TODO: does it make sense to move the log planning directly to the MotionGroup?
         if not isinstance(self, MotionGroup):
             return
 
         viewer_manager = get_viewer_manager()
         if viewer_manager.has_active_viewers:
-            await viewer_manager.log_planning_success(actions, trajectory, tcp, self)
+            await viewer_manager.log_planning_success(
+                actions=actions, trajectory=trajectory, tcp=tcp, motion_group=self
+            )
 
     async def _log_planning_error(self, actions: list[Action], error: Exception, tcp: str) -> None:
         """Log planning error to active viewers if any are configured."""
@@ -300,8 +303,8 @@ class AbstractRobot(Device):
         tcp: str,
         actions: list[Action],
         movement_controller: MovementController | None,
-        start_on_io: api.models.start_on_io.StartOnIO | None = None,
-    ) -> AsyncIterable[MovementResponse]:
+        start_on_io: api.models.StartOnIO | None = None,
+    ) -> AsyncIterator[MovementResponse]:
         """Execute a planned motion
 
         Args:
@@ -332,40 +335,12 @@ class AbstractRobot(Device):
         if not isinstance(actions, list):
             actions = [actions]
 
-        def is_movement(movement_response: MovementResponse) -> bool:
-            return any(
-                (
-                    isinstance(movement_response, api.models.ExecuteTrajectoryResponse)
-                    and isinstance(movement_response.actual_instance, api.models.Movement),
-                    isinstance(movement_response, api.models.StreamMoveResponse),
-                )
-            )
-
-        def movement_response_to_motion_state(
-            movement_response: MovementResponse, *_
-        ) -> MotionState:
-            if isinstance(movement_response, api.models.ExecuteTrajectoryResponse):
-                return movement_to_motion_state(movement_response.actual_instance)
-            if isinstance(movement_response, api.models.StreamMoveResponse):
-                return movement_to_motion_state(movement_response)
-            assert False, f"Unexpected movement response: {movement_response}"
-
-        execute_response_stream = self._execute(
-            joint_trajectory,
-            tcp,
-            actions,
-            movement_controller=movement_controller,
-            start_on_io=start_on_io,
+        motion_state_stream = self._execute(
+            joint_trajectory, tcp, actions, movement_controller=movement_controller
         )
-        motion_states = (
-            stream.iterate(execute_response_stream)
-            | pipe.filter(is_movement)
-            | pipe.map(movement_response_to_motion_state)
-        )
-
-        async with motion_states.stream() as motion_states_stream:
-            async for motion_state in motion_states_stream:
-                yield motion_state
+        async for motion_state in motion_state_stream:
+            # ic()
+            yield motion_state
 
     async def execute(
         self,
@@ -412,6 +387,29 @@ class AbstractRobot(Device):
         joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
         await self.execute(joint_trajectory, tcp, actions, movement_controller=None)
 
+    def stream_jogging(
+        self, tcp: str, movement_controller: MovementController
+    ) -> AsyncIterable[MotionState]:
+        """Stream the jogging motion of the robot
+
+        Args:
+            tcp (str): The id of the tool center point (TCP)
+            movement_controller (MovementController): The movement controller to be used for jogging
+        """
+        return self._stream_jogging(tcp=tcp, movement_controller=movement_controller)
+
+    @abstractmethod
+    def _stream_jogging(
+        self, tcp: str, movement_controller: MovementController
+    ) -> AsyncIterable[MovementResponse]:
+        """Stream the jogging motion of the robot
+
+        Args:
+            tcp (str): The id of the tool center point (TCP)
+            movement_controller (MovementController): The movement controller to be used for jogging
+        """
+        raise NotImplementedError("This method should be implemented in a subclass")
+
     @abstractmethod
     async def get_state(self, tcp: str | None = None) -> RobotState:
         """Current state (pose, joints) of the robot based on the tcp.
@@ -445,10 +443,10 @@ class AbstractRobot(Device):
         """
 
     @abstractmethod
-    async def tcps(self) -> list[api.models.RobotTcp]:
+    async def tcps(self) -> dict[str, api.models.RobotTcp]:
         """Return all TCPs that are configured on the robot with corresponding offset from flange as pose
 
-        Returns: the TCPs of the robot
+        Returns: a dict with {tcp_name: tcp_offset}
 
         """
 
@@ -461,18 +459,18 @@ class AbstractRobot(Device):
         """
 
     @abstractmethod
-    async def active_tcp(self) -> api.models.RobotTcp:
+    async def active_tcp(self) -> api.models.RobotTcp | None:
         """Return the active TCP of the robot
 
-        Returns: the active TCP
+        Returns: the active TCP or None if no TCP is active or the robot has no TCPs configured
 
         """
 
     @abstractmethod
-    async def active_tcp_name(self) -> str:
+    async def active_tcp_name(self) -> str | None:
         """Return the name of the active TCP of the robot
 
-        Returns: the name of the active TCP
+        Returns: the name of the active TCP or None if no TCP is active or the robot has no TCPs configured
 
         """
 
@@ -523,7 +521,7 @@ class RobotCell:
         devices = {"timer": timer, **kwargs}
         # TODO: if "timer" has not the same id it cannot correctly be serialized/deserialized currently
         for device_name, device in devices.items():
-            if device and device_name != device.id:
+            if device is not None and device_name != device.id:
                 raise ValueError(
                     f"The device name should match its name in the robotcell but are '{device_name}' and '{device.id}'"
                 )

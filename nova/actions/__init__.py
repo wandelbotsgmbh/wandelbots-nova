@@ -15,15 +15,12 @@ from nova.actions.motions import (
 )
 from nova.actions.trajectory_builder import TrajectoryBuilder
 
-TrajectoryMacher = TrajectoryBuilder
-
 __all__ = [
     "Action",
     "cartesian_ptp",
     "ptp",
     "circular",
     "cir",
-    "collision_free",
     "CombinedActions",
     "io_write",
     "joint_ptp",
@@ -31,8 +28,8 @@ __all__ = [
     "linear",
     "lin",
     "wait",
+    "collision_free",
     "MovementController",
     "MovementControllerContext",
     "TrajectoryBuilder",
-    "TrajectoryMacher",
 ]
