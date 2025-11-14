@@ -234,3 +234,18 @@ async def test_function_repr():
     assert "x: int" in func_repr
     assert "y: str" in func_repr
     assert "output=float" in func_repr
+
+
+def test_input_schema_should_include_additional_fields_false():
+    """
+    Input schema for functions decorated with @nova.program
+    should include "additionalProperties": false
+    to prevent extra fields in input.
+    """
+
+    @nova.program
+    async def sample_function(param1: int, param2: str):
+        pass
+
+    input_schema = sample_function.input_schema
+    assert input_schema.get("additionalProperties") is False
