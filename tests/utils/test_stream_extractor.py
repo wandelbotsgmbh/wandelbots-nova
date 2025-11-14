@@ -48,14 +48,17 @@ async def test_stream_extractor_drive_input_stream(stream_extractor):
         await execution_task
 
 
+# if the async generator was in sleep it gets canceled
+
+
 @pytest.mark.asyncio
 async def test_async_generators():
     async def square():
         try:
             for i in range(10):
                 yield i * 2
-                await asyncio.sleep(0.1)
-        except GeneratorExit as e:
+                # await asyncio.sleep(0.1)
+        except BaseException as e:
             print(f"Error in square generator: {e}")
         finally:
             print("Square generator is closing.")
@@ -64,8 +67,8 @@ async def test_async_generators():
         try:
             async for i in square():
                 yield i * 2
-                await asyncio.sleep(0.1)
-        except Exception as e:
+                # await asyncio.sleep(0.1)
+        except BaseException as e:
             print(f"Error in numbers generator: {e}")
 
     async for n in numbers():

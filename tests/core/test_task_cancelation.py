@@ -258,3 +258,70 @@ async def test_task_cancelation_when_movement_controller_cancels_we_should_propa
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
     assert pose.position.x == new_pose.position.x, "Robot moved after task was cancelled."
+
+
+
+from multiprocessing import Process, Event
+
+
+
+def process_worker(controller_name: str):
+    async def some_function():
+        async with Nova() as nova:
+            cell = nova.cell()
+            controller = await cell.controller(controller_name)
+            async with controller[0] as ur_mg:
+                movement_in_x = 800
+                initial_pose = await ur_mg.tcp_pose()
+                final_pose = initial_pose @ Pose((movement_in_x, 0, 0))
+                actions = [
+                    # move 800 mm in X direction with 50 mm/s
+                    # should give us enough time to cancel the task
+                    lin(final_pose, settings=MotionSettings(tcp_velocity_limit=50))
+                ]
+                trajectory = await ur_mg.plan(actions=actions, tcp="Flange")
+
+                await ur_mg.execute(
+                    trajectory,
+                    actions=actions,
+                    tcp="Flange",
+                )
+
+    asyncio.run(some_function())
+
+
+# python -m pytest -s ./tests/core/test_task_cancelation.py::test_task_cancelation_when_process_is_killed
+# run like this from top level directory
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_task_cancelation_when_process_is_killed(ur_mg):
+    movement_in_x = 800
+    initial_pose = await ur_mg.tcp_pose()
+    final_pose = initial_pose @ Pose((movement_in_x, 0, 0))
+
+    # is this same as running a process with python script_name.py?
+    # probably not
+    p = Process(target=process_worker, args=("ur-movement-test"))
+    p.start()
+
+    # let the robot move a little
+    await asyncio.sleep(5)
+
+    p.kill()
+
+    # time for deceleration
+    await asyncio.sleep(1)
+    pose = await ur_mg.tcp_pose()
+    assert pose.position.x > initial_pose.position.x, "Robot did not move at all."
+    assert pose.position.x <= final_pose.position.x, (
+        "Robot completed the full movement despite cancelation."
+    )
+
+    # wait a little to and check that position not changed
+    await asyncio.sleep(2)
+    new_pose = await ur_mg.tcp_pose()
+    assert pose.position.x == new_pose.position.x, "Robot moved after task was cancelled."
+
+
+# send sigint ctrl + c
+# send ctrl + c to 
