@@ -323,7 +323,7 @@ class AbstractRobot(Device):
         """Execute a planned motion
 
         Note that if an error happens during the consuming of states from the returned async generator,
-        it is not guaranteed that the last state repored to you is the final state of the robot.
+        it is not guaranteed that the last state reported to you is the final state of the robot.
 
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory

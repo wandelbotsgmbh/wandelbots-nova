@@ -185,7 +185,7 @@ def create_movement_controller(exception: BaseException):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_movement_stops_when_custom_controller_raies(ur_mg):
+async def test_movement_stops_when_custom_controller_raises(ur_mg):
     movement_in_x = 800
     initial_pose = await ur_mg.tcp_pose()
     final_pose = initial_pose @ Pose((movement_in_x, 0, 0))
