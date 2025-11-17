@@ -430,9 +430,29 @@ class MotionGroup(AbstractRobot):
             )
         )
 
-        async for execute_response in execute_response_streaming_controller:
-            yield execute_response
-        await execution_task
+        def on_done_callback(task: asyncio.Task):
+            execute_response_streaming_controller.stop()
+
+        execution_task.add_done_callback(on_done_callback)
+
+        should_propagate_cancelation = True
+        try:
+            async for execute_response in execute_response_streaming_controller:
+                yield execute_response
+        except BaseException as e:
+            logger.error(f"Exception while consuming execution responses: {e}")
+            execution_task.cancel()
+            should_propagate_cancelation = False
+            raise e
+        finally:
+            try:
+                await execution_task
+            except asyncio.CancelledError as e:
+                # if we canceled the execution
+                # don't propagate the cancelation but the original exception
+                logger.info("Execution task was cancelled.")
+                if should_propagate_cancelation:
+                    raise e
 
     async def _tune_trajectory(
         self, joint_trajectory: wb.models.JointTrajectory, tcp: str, actions: list[Action]
