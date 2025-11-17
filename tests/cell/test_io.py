@@ -1,7 +1,7 @@
 import pytest
-from nova.core.io import IOAccess
 
 from nova import Nova, api
+from nova.cell.io import IOAccess
 
 
 @pytest.mark.skip("TODO: Setup integration tests")

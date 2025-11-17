@@ -99,7 +99,7 @@ class TestSetupBlueprint:
         # Setup mock chain
         mock_nova.cell.return_value = mock_cell
         mock_cell.controllers = AsyncMock(return_value=[mock_controller])
-        mock_controller.activated_motion_groups = AsyncMock(return_value=[mock_motion_group])
+        mock_controller.motion_groups = AsyncMock(return_value=[mock_motion_group])
 
         with (
             patch.object(NovaRerunBridge, "_ensure_models_exist"),
@@ -155,10 +155,8 @@ class TestSetupBlueprint:
         # Setup mock chain
         mock_nova.cell.return_value = mock_cell
         mock_cell.controllers = AsyncMock(return_value=[mock_controller1, mock_controller2])
-        mock_controller1.activated_motion_groups = AsyncMock(
-            return_value=[mock_group1, mock_group2]
-        )
-        mock_controller2.activated_motion_groups = AsyncMock(return_value=[mock_group3])
+        mock_controller1.motion_groups = AsyncMock(return_value=[mock_group1, mock_group2])
+        mock_controller2.motion_groups = AsyncMock(return_value=[mock_group3])
 
         with (
             patch.object(NovaRerunBridge, "_ensure_models_exist"),
@@ -278,11 +276,8 @@ class TestSafetyZones:
         mock_motion_group = Mock()
         mock_motion_group.motion_group_id = "test_group"
 
-        mock_tcp_names = ["tcp1"]
-        mock_motion_group.tcp_names = AsyncMock(return_value=mock_tcp_names)
-
-        mock_optimizer_setup = {"setup": "data"}
-        mock_motion_group._get_optimizer_setup = AsyncMock(return_value=mock_optimizer_setup)
+        mock_motion_group_description = {"description": "data"}
+        mock_motion_group.get_description = AsyncMock(return_value=mock_motion_group_description)
 
         with (
             patch.object(NovaRerunBridge, "_ensure_models_exist"),
@@ -291,12 +286,14 @@ class TestSafetyZones:
             patch("nova_rerun_bridge.nova_rerun_bridge.log_safety_zones") as mock_log,
         ):
             bridge = NovaRerunBridge(mock_nova, spawn=False)
-            await bridge.log_saftey_zones(mock_motion_group)  # Note: keeping original typo
+            await bridge.log_safety_zones(mock_motion_group)
 
             # Should reset time and log safety zones
             mock_rr.reset_time.assert_called_once()
             mock_rr.set_time.assert_called_once()
-            mock_log.assert_called_once_with("test_group", mock_optimizer_setup)
+            mock_log.assert_called_once_with(
+                motion_group_id="test_group", motion_group_description=mock_motion_group_description
+            )
 
     def test_log_safety_zones_direct(self):
         """Should log safety zones directly with parameters."""

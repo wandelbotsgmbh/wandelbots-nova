@@ -7,7 +7,6 @@ from icecream import ic
 from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
-from nova.actions.motions import Motion
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core import logger
 from nova.core.gateway import ApiGateway

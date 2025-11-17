@@ -7,7 +7,7 @@ from nova_rerun_bridge.hull_visualizer import HullVisualizer
 
 
 def log_safety_zones(
-    motion_group: str, motion_group_description: api.models.MotionGroupDescription
+    motion_group_id: str, motion_group_description: api.models.MotionGroupDescription
 ) -> None:
     """
     Log hull outlines for the safety zones defined in the optimizer configuration.
@@ -24,7 +24,7 @@ def log_safety_zones(
     for zone in motion_group_description.safety_zones:
         geom = zone.geometry
         zone_id = zone.id
-        entity_path = f"{motion_group}/zones/zone_{zone_id}"
+        entity_path = f"{motion_group_id}/zones/zone_{zone_id}"
 
         if geom.compound is not None:
             child_geoms = geom.compound.child_geometries

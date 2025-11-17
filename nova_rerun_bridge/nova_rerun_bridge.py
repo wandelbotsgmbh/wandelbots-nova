@@ -15,7 +15,7 @@ from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.core.nova import Nova
 from nova.types.pose import Pose
 from nova_rerun_bridge.blueprint import send_blueprint
-from nova_rerun_bridge.collision_scene import log_collision_scenes
+from nova_rerun_bridge.collision_scene import log_collision_setups
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.helper_scripts.code_server_helpers import get_rerun_address
 from nova_rerun_bridge.helper_scripts.download_models import get_project_root
@@ -29,19 +29,6 @@ class NovaRerunBridge:
 
     This class provides functionality to visualize Nova data in Rerun.
     It handles trajectoy, collision scenes, blueprints and proper cleanup of resources.
-
-    Example:
-        ```python
-        from nova.core.nova import Nova
-        from nova_rerun_bridge import NovaRerunBridge
-
-        async def main():
-            nova = Nova()
-            async with NovaRerunBridge(nova) as bridge:
-                await bridge.setup_blueprint()
-                await bridge.log_collision_scenes()
-
-        ```
 
     Args:
         nova (Nova): Instance of Nova client
@@ -144,15 +131,15 @@ class NovaRerunBridge:
             static=True,
         )
 
-    async def log_collision_setup(self) -> dict[str, api.models.CollisionSetup]:
-        """Fetch and log all collision scenes from Nova to Rerun."""
-        collision_scenes = (
-            await self.nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
+    async def log_collision_setups(self) -> dict[str, api.models.CollisionSetup]:
+        """Fetch and log all collision setups from Nova to Rerun."""
+        collision_setups = (
+            await self.nova._api_client.store_collision_setups_api.list_stored_collision_setups(
                 cell=self.nova.cell()._cell_id
             )
         )
-        log_collision_scenes(collision_scenes)
-        return collision_scenes
+        log_collision_setups(collision_setups)
+        return collision_setups
 
     async def log_collision_setup(self, setup_id: str) -> dict[str, api.models.CollisionSetup]:
         """Log a specific collision scene by its ID.
@@ -164,7 +151,7 @@ class NovaRerunBridge:
             ValueError: If scene_id is not found in stored collision scenes
         """
         collision_setups = (
-            await self.nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
+            await self.nova._api_client.store_collision_setups_api.list_stored_collision_setups(
                 cell=self.nova.cell()._cell_id
             )
         )
@@ -172,17 +159,21 @@ class NovaRerunBridge:
         if setup_id not in collision_setups:
             raise ValueError(f"Collision setup with ID {setup_id} not found")
 
-        log_collision_scenes({setup_id: collision_setups[setup_id]})
+        log_collision_setups({setup_id: collision_setups[setup_id]})
         return {setup_id: collision_setups[setup_id]}
 
     def _log_collision_setup(self, collision_setups: dict[str, api.models.CollisionSetup]) -> None:
-        log_collision_scenes(collision_setups=collision_setups)
+        log_collision_setups(collision_setups)
 
     async def log_safety_zones(self, motion_group: MotionGroup) -> None:
         rr.reset_time()
         rr.set_time(TIME_INTERVAL_NAME, duration=0)
 
-        log_safety_zones(motion_group.motion_group_id, await motion_group.get_description())
+        motion_group_description = await motion_group.get_description()
+        log_safety_zones(
+            motion_group_id=motion_group.motion_group_id,
+            motion_group_description=motion_group_description,
+        )
 
     async def log_motion(
         self,

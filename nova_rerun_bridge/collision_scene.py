@@ -11,11 +11,11 @@ from nova_rerun_bridge.conversion_helpers import normalize_pose
 from nova_rerun_bridge.hull_visualizer import HullVisualizer
 
 
-def log_collision_scenes(collision_scenes: dict[str, api.models.CollisionSetup]):
-    for scene_id, scene in collision_scenes.items():
-        entity_path = f"collision_scenes/{scene_id}"
-        if scene.colliders:
-            for collider_id, collider in scene.colliders.items():
+def log_collision_setups(collision_setups: dict[str, api.models.CollisionSetup]):
+    for setup_id, setup in collision_setups.items():
+        entity_path = f"collision_setups/{setup_id}"
+        if setup.colliders:
+            for collider_id, collider in setup.colliders.items():
                 log_colliders_once(entity_path, {collider_id: collider})
 
 
@@ -42,7 +42,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                 f"{entity_path}/{collider_id}",
                 rr.Ellipsoids3D(
                     radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
-                    centers=[[pose.position.x, pose.position.y, pose.position.z]],
+                    centers=[pose.position.root],
                     rotation_axis_angles=[rr.RotationAxisAngle(axis=axis, angle=angle)],
                     colors=[(221, 193, 193, 255)],
                 ),

@@ -27,7 +27,7 @@ class DHRobot:
         if pose.position is None:
             x, y, z = 0.0, 0.0, 0.0
         else:
-            x, y, z = pose.position.x, pose.position.y, pose.position.z
+            x, y, z = pose.position.root[0], pose.position.root[1], pose.position.root[2]
 
         # Extract quaternion
         if pose.orientation is None:
@@ -35,9 +35,9 @@ class DHRobot:
             w, qx, qy, qz = 1.0, 0.0, 0.0, 0.0
         else:
             w = pose.orientation.w
-            qx = pose.orientation.x
-            qy = pose.orientation.y
-            qz = pose.orientation.z
+            qx = pose.orientation.root[0]
+            qy = pose.orientation.root[1]
+            qz = pose.orientation.root[2]
 
         # Compute rotation matrix from quaternion
         # R = [[1 - 2(y²+z²), 2(xy - zw),     2(xz + yw)    ],

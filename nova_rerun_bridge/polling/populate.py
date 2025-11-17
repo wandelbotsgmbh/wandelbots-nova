@@ -59,7 +59,7 @@ async def process_motions():
                         print(f"Processing motion {motion_id}.", flush=True)
                         rr.set_time(TIME_INTERVAL_NAME, duration=time_offset)
 
-                        await nova_bridge.log_collision_scenes()
+                        await nova_bridge.log_collision_setups()
 
                         await nova_bridge.setup_blueprint()
 

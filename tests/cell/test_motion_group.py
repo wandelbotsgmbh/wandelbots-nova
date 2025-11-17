@@ -7,6 +7,7 @@ from nova.actions import cartesian_ptp, io_write, joint_ptp, linear, wait
 from nova.actions.base import Action
 from nova.cell.motion_group import MotionGroup, split_actions_into_batches
 from nova.core.gateway import ApiGateway
+from nova.exceptions import InconsistentCollisionScenes
 from nova.types import Pose
 from nova.utils.collision_setup import compare_collision_setups, validate_collision_setups
 
@@ -140,9 +141,9 @@ async def test_split_and_verify_collision_setup():
 
     # A complex mixture of actions
     collision_scene_1 = create_collision_setup(radius=1)
-    collision_scene_2 = create_collision_setup(radius=2)
-    collision_scene_3 = create_collision_setup(radius=3)
-    collision_scene_4 = create_collision_setup(radius=4)
+    collision_scene_2 = create_collision_setup(radius=1)
+    collision_scene_3 = create_collision_setup(radius=1)
+    collision_scene_4 = create_collision_setup(radius=1)
     split_and_verify(
         [
             linear(target=(0, 0, 0, 0, 0, 0), collision_setup=collision_scene_1),
@@ -158,7 +159,7 @@ async def test_split_and_verify_collision_setup():
     )
 
     # This should fail because two consecutive linear motions should't have different collision scenes
-    with pytest.raises(Exception):
+    with pytest.raises(InconsistentCollisionScenes):
         split_and_verify(
             [
                 linear(target=(0, 0, 0, 0, 0, 0), collision_setup=create_collision_setup(radius=5)),
