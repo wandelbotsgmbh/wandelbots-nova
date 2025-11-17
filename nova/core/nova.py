@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from nova.cell.cell import Cell
-
 from nova.config import CELL_NAME, NovaConfig, default_config
 from nova.core.gateway import ApiGateway
 from nova.nats import NatsClient

@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from nova_rerun_bridge.trajectory import log_motion
 from nova import api
+from nova_rerun_bridge.trajectory import log_motion
 
 
 class TestLogMotionParameterValidation:

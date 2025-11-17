@@ -2,12 +2,13 @@ import asyncio
 import json
 
 from nova import api
-from nova.cell.robot_cell import RobotCell
-from nova.core.controller import Controller
 from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
 from nova.logging import logger
 from nova.nats import NatsClient
+
+from .controller import Controller
+from .robot_cell import RobotCell
 
 # This is the default value we use to wait for add_controller API call to complete.
 DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS = 120

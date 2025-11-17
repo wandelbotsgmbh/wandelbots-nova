@@ -1,11 +1,11 @@
 import asyncio
 
 from icecream import ic
+from nova.core.movement_controller import Jogger
 
 import nova
 from nova import Nova, api
 from nova.cell.controllers import virtual_controller
-from nova.core.movement_controller import Jogger
 from nova.program.function import ProgramPreconditions
 
 """
