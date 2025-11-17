@@ -1,4 +1,5 @@
 import asyncio
+from multiprocessing import Process
 
 import pytest
 import wandelbots_api_client as wb
@@ -260,9 +261,6 @@ async def test_task_cancelation_when_movement_controller_cancels_we_should_propa
     assert pose.position.x == new_pose.position.x, "Robot moved after task was cancelled."
 
 
-from multiprocessing import Process, Event
-
-
 def process_worker(controller_name: str):
     async def some_function():
         async with Nova() as nova:
@@ -284,11 +282,11 @@ def process_worker(controller_name: str):
     asyncio.run(some_function())
 
 
+# this test is added for making RAE integration tests easier for v2
+# it is not integrated to ci/cd yet
+# you can run it with the command below from the top level directory
 # python -m pytest -s ./tests/core/test_task_cancelation.py::test_task_cancelation_when_process_is_killed
-# run like this from top level directory
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_task_cancelation_when_process_is_killed(ur_mg):
+async def _test_task_cancelation_when_process_is_killed(ur_mg):
     movement_in_x = 800
     initial_pose = await ur_mg.tcp_pose()
     final_pose = initial_pose @ Pose((movement_in_x, 0, 0))
