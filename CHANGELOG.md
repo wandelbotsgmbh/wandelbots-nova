@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.6.6 (2025-11-17)
+
+### Bug Fixes
+
+- Ndx-160-task-cancelation (#337)
+  ([#337](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/337),
+  [`c283185`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c2831857460b7b31552d1155e1167613ab2735f2))
+
+
 ## v3.6.5 (2025-11-07)
 
 ### Bug Fixes
