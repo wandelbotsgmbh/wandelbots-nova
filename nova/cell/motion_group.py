@@ -7,6 +7,7 @@ from icecream import ic
 from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
+from nova.actions.motions import Motion
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core import logger
 from nova.core.gateway import ApiGateway
@@ -243,6 +244,14 @@ class MotionGroup(AbstractRobot):
         """
         return (await self.get_state(tcp=tcp)).pose
 
+    @staticmethod
+    def _tcps_as_dict(
+        tcps: dict[str, api.models.RobotTcp] | list[api.models.RobotTcp],
+    ) -> dict[str, api.models.RobotTcp]:
+        if isinstance(tcps, dict):
+            return tcps
+        return {tcp.id: tcp for tcp in tcps}
+
     async def tcps(self) -> dict[str, api.models.RobotTcp]:
         motion_group_description = await self._fetch_motion_group_description()
         tcps = motion_group_description.tcps
@@ -291,13 +300,14 @@ class MotionGroup(AbstractRobot):
         Returns:
             models.RobotTcp: The TCP configuration
         """
-        existing_tcps = await self.tcps()
-        print(existing_tcps)
+        existing_tcps = self._tcps_as_dict(await self.tcps())
+
         existing_tcp = existing_tcps.get(tcp.id)
         if (
             existing_tcp
             and existing_tcp.position == tcp.position
             and existing_tcp.orientation == tcp.orientation
+            and existing_tcp.orientation_type == tcp.orientation_type
         ):
             # if existing_tcp and existing_tcp.pose == Pose(tcp.orientation, tcp.position):
             return existing_tcp
@@ -319,7 +329,7 @@ class MotionGroup(AbstractRobot):
         t = timeout
         while t > 0:
             try:
-                tcps = await self.tcps()
+                tcps = self._tcps_as_dict(await self.tcps())
                 return tcps[tcp.id]
             except KeyError:
                 await asyncio.sleep(1)
