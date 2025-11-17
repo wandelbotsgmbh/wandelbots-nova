@@ -260,9 +260,7 @@ async def test_task_cancelation_when_movement_controller_cancels_we_should_propa
     assert pose.position.x == new_pose.position.x, "Robot moved after task was cancelled."
 
 
-
 from multiprocessing import Process, Event
-
 
 
 def process_worker(controller_name: str):
@@ -281,11 +279,7 @@ def process_worker(controller_name: str):
                 ]
                 trajectory = await ur_mg.plan(actions=actions, tcp="Flange")
 
-                await ur_mg.execute(
-                    trajectory,
-                    actions=actions,
-                    tcp="Flange",
-                )
+                await ur_mg.execute(trajectory, actions=actions, tcp="Flange")
 
     asyncio.run(some_function())
 
@@ -321,7 +315,3 @@ async def test_task_cancelation_when_process_is_killed(ur_mg):
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
     assert pose.position.x == new_pose.position.x, "Robot moved after task was cancelled."
-
-
-# send sigint ctrl + c
-# send ctrl + c to 

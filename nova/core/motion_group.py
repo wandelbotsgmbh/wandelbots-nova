@@ -15,13 +15,7 @@ from nova.core.exceptions import InconsistentCollisionScenes
 from nova.core.gateway import ApiGateway
 from nova.core.movement_controller import move_forward
 from nova.core.tuner import TrajectoryTuner
-from nova.types import (
-    InitialMovementStream,
-    LoadPlanResponse,
-    MovementResponse,
-    Pose,
-    RobotState,
-)
+from nova.types import InitialMovementStream, LoadPlanResponse, MovementResponse, Pose, RobotState
 from nova.utils import StreamExtractor
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
