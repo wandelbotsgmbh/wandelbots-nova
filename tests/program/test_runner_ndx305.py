@@ -5,7 +5,6 @@ from nova import Nova, api, run_program
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
-from nova.program.runner import ProgramRunState
 from nova.types import Pose
 
 
@@ -16,7 +15,7 @@ async def test_program_runner_with_unrelated_controller_in_estop():
             virtual_controller(
                 name="kuka-no-estop",
                 manufacturer=api.models.Manufacturer.KUKA,
-                type=api.models.VirtualControllerTypes.KUKA_MINUS_KR16_R1610_2,
+                type=api.models.VirtualControllerTypes.KUKA_KR16_R1610_2,
             )
         ],
         cleanup_controllers=False,
@@ -49,7 +48,7 @@ async def test_program_runner_with_unrelated_controller_in_estop():
         virtual_controller(
             name="ur10e-estop",
             manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-            type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+            type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
         )
     )
     # Set the controller in estop
@@ -57,7 +56,7 @@ async def test_program_runner_with_unrelated_controller_in_estop():
 
     # Check if the program starts even if one (unused) controller is in estop
     runner = run_program(test_program)
-    assert runner.state == ProgramRunState.COMPLETED
+    assert runner.state == api.models.ProgramRunState.COMPLETED
     assert runner.program_run.error is None
 
     # Check if the program runner has the correct preconditions & robot cell

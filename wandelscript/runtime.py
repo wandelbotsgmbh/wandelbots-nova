@@ -394,9 +394,6 @@ class ActionQueue:
     async def _run(self):
         """The collected queue gets executed"""
 
-        # get current collision setup
-        # collision_scene = await self._execution_context.robot_cell.get_current_collision_scene()
-
         # plan & move
         planned_motions = {}
         for motion_group_id in self._record:  # pylint: disable=consider-using-dict-items
@@ -414,7 +411,7 @@ class ActionQueue:
                     actions=container.motions,
                     tcp=tcp,
                     start_joint_position=None,
-                    optimizer_setup=None,
+                    motion_group_setup=None,
                 )
                 motion_iter = motion_group.stream_execute(
                     joint_trajectory=joint_trajectory, tcp=tcp, actions=container.motions

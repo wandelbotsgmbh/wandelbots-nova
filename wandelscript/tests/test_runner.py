@@ -8,9 +8,10 @@ import numpy as np
 import pytest
 from icecream import ic
 
+from nova import api
 from nova.cell.robot_cell import RobotCell
 from nova.cell.simulation import SimulatedRobotCell, get_robot_controller
-from nova.program.runner import ProgramRun, ProgramRunState
+from nova.program.runner import ProgramRun
 from wandelscript import WandelscriptProgramRunner, run
 from wandelscript.exception import NameError_, ProgramSyntaxError
 from wandelscript.ffi import ForeignFunction
@@ -24,7 +25,9 @@ ic.configureOutput(prefix=f"{datetime.now().time()} | ", includeContext=True)
 
 
 def check_program_state(
-    program_runner: WandelscriptProgramRunner, expected_state: ProgramRunState, timeout: int
+    program_runner: WandelscriptProgramRunner,
+    expected_state: api.models.ProgramRunState,
+    timeout: int,
 ) -> bool:
     """Checks a specific program state after a certain period of time
 
@@ -90,7 +93,7 @@ move via line() to home :: (0, 100, 0, 0, 0, 0)
     store = runner.program_run.output_data
     assert "home" in store
     assert store["a"] == 9
-    assert runner.program_run.state is ProgramRunState.COMPLETED
+    assert runner.program_run.state is api.models.ProgramRunState.COMPLETED
 
     stdout = runner.program_run.stdout
     assert "print something" in stdout
@@ -132,7 +135,7 @@ def test_program_runner():
     )
     assert program_runner.program_run.run is not None
     assert program_runner.program_run.program is not None
-    assert program_runner.state is ProgramRunState.PREPARING
+    assert program_runner.state is api.models.ProgramRunState.PREPARING
 
 
 # TODO andreasl 2024-08-20: flaky
@@ -167,14 +170,14 @@ move via line() to (0, 100, 300, 0, pi, 0)
     assert isinstance(program_runner.program_run, ProgramRun)
     program_runner.start()
 
-    assert check_program_state(program_runner, ProgramRunState.RUNNING, 4)
+    assert check_program_state(program_runner, api.models.ProgramRunState.RUNNING, 4)
     assert program_runner.is_running()
     # It should not be possible to start the runner when it is already running
     with pytest.raises(RuntimeError):
         program_runner.start()
     ic(program_runner.program_run)
 
-    assert check_program_state(program_runner, ProgramRunState.COMPLETED, 10)
+    assert check_program_state(program_runner, api.models.ProgramRunState.COMPLETED, 10)
     assert isinstance(program_runner.program_run.start_time, datetime)
     assert program_runner.program_run.end_time > program_runner.program_run.start_time
     # It should not be possible to start the runner after the runner was completed
@@ -219,11 +222,11 @@ def test_program_runner_stop(code):
     )
     assert not program_runner.is_running()
     program_runner.start()
-    assert check_program_state(program_runner, ProgramRunState.RUNNING, 4)
+    assert check_program_state(program_runner, api.models.ProgramRunState.RUNNING, 4)
     assert program_runner.is_running()
     program_runner.stop(sync=True)
-    assert check_program_state(program_runner, ProgramRunState.STOPPED, 10)
-    assert program_runner.program_run.state is ProgramRunState.STOPPED
+    assert check_program_state(program_runner, api.models.ProgramRunState.STOPPED, 10)
+    assert program_runner.program_run.state is api.models.ProgramRunState.STOPPED
     assert not program_runner.is_running()
     assert not isinstance(sys.stdout, Tee)
 
@@ -252,7 +255,7 @@ def test_program_runner_failed(code, exception):
         runner = run(
             program_id="test", code=code, parameters={}, robot_cell_override=SimulatedRobotCell()
         )
-        assert runner.program_run.state is ProgramRunState.FAILED
+        assert runner.program_run.state is api.models.ProgramRunState.FAILED
         assert runner.program_run.error is not None
         assert runner.program_run.traceback is not None
         assert not runner.is_running()
@@ -270,4 +273,4 @@ move via p2p() to home :: (0, 0, 100)
         runner = run(
             program_id="test", code=code, parameters={}, robot_cell_override=raising_robot_cell
         )
-        assert runner.program_run.state is ProgramRunState.FAILED
+        assert runner.program_run.state is api.models.ProgramRunState.FAILED

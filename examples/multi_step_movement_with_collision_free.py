@@ -10,7 +10,7 @@ Prerequisites:
 
 import nova
 from nova import Nova, run_program
-from nova.actions import cartesian_ptp, collision_free, io_write, joint_ptp
+from nova.actions import cartesian_ptp, io_write, joint_ptp
 from nova.api import models
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -24,7 +24,7 @@ from nova.types import MotionSettings, Pose
             virtual_controller(
                 name="ur",
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
-                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                type=models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             )
         ],
         cleanup_controllers=False,
@@ -38,7 +38,6 @@ async def multi_step_movement_with_collision_free():
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
             home_joints = await motion_group.joints()
-            home_pose = await motion_group.tcp_pose()
 
             tcp_names = await motion_group.tcp_names()
             tcp = tcp_names[0]
@@ -49,12 +48,12 @@ async def multi_step_movement_with_collision_free():
 
             actions = [
                 cartesian_ptp(target_pose),
-                collision_free(home_joints),
+                # collision_free(home_joints),
                 cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
                 io_write(key="digital_out[0]", value=True),
                 joint_ptp(home_joints),
                 cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
-                collision_free(home_pose),
+                # collision_free(home_pose),
                 cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
                 joint_ptp(home_joints),
             ]

@@ -5,13 +5,13 @@ import rerun as rr
 import trimesh
 from scipy.spatial.transform import Rotation
 
-from nova.api import models
+from nova import api
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.conversion_helpers import normalize_pose
 from nova_rerun_bridge.hull_visualizer import HullVisualizer
 
 
-def log_collision_scenes(collision_scenes: dict[str, models.CollisionScene]):
+def log_collision_scenes(collision_scenes: dict[str, api.models.CollisionSetup]):
     for scene_id, scene in collision_scenes.items():
         entity_path = f"collision_scenes/{scene_id}"
         if scene.colliders:
@@ -19,14 +19,14 @@ def log_collision_scenes(collision_scenes: dict[str, models.CollisionScene]):
                 log_colliders_once(entity_path, {collider_id: collider})
 
 
-def log_colliders_once(entity_path: str, colliders: dict[str, models.Collider]):
+def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collider]):
     for collider_id, collider in colliders.items():
         pose = normalize_pose(collider.pose)
 
-        if collider.shape.actual_instance is None:
+        if collider.shape is None:
             return
 
-        if isinstance(collider.shape.actual_instance, models.Sphere2):
+        if isinstance(collider.shape, api.models.Sphere):
             # Convert rotation vector to axis-angle format
             if pose.orientation is None:
                 continue
@@ -41,11 +41,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, models.Collider]):
             rr.log(
                 f"{entity_path}/{collider_id}",
                 rr.Ellipsoids3D(
-                    radii=[
-                        collider.shape.actual_instance.radius,
-                        collider.shape.actual_instance.radius,
-                        collider.shape.actual_instance.radius,
-                    ],
+                    radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
                     centers=[[pose.position.x, pose.position.y, pose.position.z]],
                     rotation_axis_angles=[rr.RotationAxisAngle(axis=axis, angle=angle)],
                     colors=[(221, 193, 193, 255)],
@@ -53,11 +49,11 @@ def log_colliders_once(entity_path: str, colliders: dict[str, models.Collider]):
                 static=True,
             )
 
-        elif isinstance(collider.shape.actual_instance, models.RectangularCapsule2):
+        elif isinstance(collider.shape, api.models.RectangularCapsule):
             # Get parameters from the capsule
-            radius = collider.shape.actual_instance.radius
-            size_x = collider.shape.actual_instance.sphere_center_distance_x
-            size_y = collider.shape.actual_instance.sphere_center_distance_y
+            radius = collider.shape.radius
+            size_x = collider.shape.sphere_center_distance_x
+            size_y = collider.shape.sphere_center_distance_y
 
             # Create sphere centers at the corners
             sphere_centers = np.array(
@@ -104,10 +100,10 @@ def log_colliders_once(entity_path: str, colliders: dict[str, models.Collider]):
                     static=True,
                 )
 
-        elif isinstance(collider.shape.actual_instance, models.Rectangle2):
+        elif isinstance(collider.shape, api.models.Rectangle):
             # Create vertices for a rectangle in XY plane
-            half_x = collider.shape.actual_instance.size_x / 2
-            half_y = collider.shape.actual_instance.size_y / 2
+            half_x = collider.shape.size_x / 2
+            half_y = collider.shape.size_y / 2
             vertices = np.array(
                 [
                     [-half_x, -half_y, 0],  # bottom left
@@ -142,7 +138,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, models.Collider]):
                 static=True,
             )
 
-        elif isinstance(collider.shape.actual_instance, models.Box2):
+        elif isinstance(collider.shape, api.models.Box):
             # Create rotation matrix from orientation
             rot_mat = Rotation.from_rotvec(
                 np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
@@ -150,9 +146,9 @@ def log_colliders_once(entity_path: str, colliders: dict[str, models.Collider]):
 
             # Create box vertices
             half_sizes = [
-                collider.shape.actual_instance.size_x / 2,
-                collider.shape.actual_instance.size_y / 2,
-                collider.shape.actual_instance.size_z / 2,
+                collider.shape.size_x / 2,
+                collider.shape.size_y / 2,
+                collider.shape.size_z / 2,
             ]
             box = trimesh.creation.box(extents=[s * 2 for s in half_sizes])
             vertices = np.array(box.vertices)
@@ -178,9 +174,9 @@ def log_colliders_once(entity_path: str, colliders: dict[str, models.Collider]):
                     static=True,
                 )
 
-        elif isinstance(collider.shape.actual_instance, models.Cylinder2):
-            height = collider.shape.actual_instance.height
-            radius = collider.shape.actual_instance.radius
+        elif isinstance(collider.shape, api.models.Cylinder):
+            height = collider.shape.height
+            radius = collider.shape.radius
 
             # Generate trimesh capsule
             cylinder = trimesh.creation.cylinder(height=height, radius=radius)
@@ -212,9 +208,9 @@ def log_colliders_once(entity_path: str, colliders: dict[str, models.Collider]):
                     static=True,
                 )
 
-        elif isinstance(collider.shape.actual_instance, models.Capsule2):
-            height = collider.shape.actual_instance.cylinder_height
-            radius = collider.shape.actual_instance.radius
+        elif isinstance(collider.shape, api.models.Capsule):
+            height = collider.shape.cylinder_height
+            radius = collider.shape.radius
 
             # Generate trimesh capsule
             capsule = trimesh.creation.capsule(height=height, radius=radius, count=[6, 8])
@@ -246,9 +242,9 @@ def log_colliders_once(entity_path: str, colliders: dict[str, models.Collider]):
                     static=True,
                 )
 
-        elif isinstance(collider.shape.actual_instance, models.ConvexHull2):
+        elif isinstance(collider.shape, api.models.ConvexHull):
             # Transform vertices to world position
-            vertices = np.array(collider.shape.actual_instance.vertices)
+            vertices = np.array(collider.shape.vertices)
             transform = np.eye(4)
             transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z]
             rot_mat = Rotation.from_rotvec(

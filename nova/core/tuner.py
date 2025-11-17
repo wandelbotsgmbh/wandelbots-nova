@@ -2,6 +2,7 @@ import asyncio
 from typing import Optional
 
 import pydantic
+from decouple import config
 from faststream import FastStream
 from faststream.nats import NatsBroker
 
@@ -9,20 +10,23 @@ from nova.core import logger
 
 from .movement_controller import MotionEvent, TrajectoryCursor, motion_started
 
+# TODO use nova nats client config
+NATS_BROKER_URL = config("NATS_BROKER", default="nats://localhost:4222")
+
 
 class TrajectoryTuner:
-    def __init__(self, actions, plan_fn, execute_fn):
-        self.actions = actions
+    def __init__(self, plan_fn, execute_fn):
         self.plan_fn = plan_fn
         self.execute_fn = execute_fn
 
-    async def tune(self):
+    async def tune(self, actions, motion_group_state_stream):
         finished_tuning = False
         continue_tuning_event = asyncio.Event()
         faststream_app_ready_event = asyncio.Event()
         last_operation_result = None  # TODO implement this feature
 
-        broker = NatsBroker()
+        # TODO use nova nats client config
+        broker = NatsBroker(NATS_BROKER_URL)
 
         @broker.subscriber("trajectory-cursor")
         async def controller_handler(command: str, speed: Optional[pydantic.PositiveInt] = None):
@@ -91,11 +95,12 @@ class TrajectoryTuner:
             while not finished_tuning:
                 # TODO this plans the second time for the same actions when we get here because
                 # the initial joint trajectory was already planned before the MotionGroup._execute call
-                motion_id, joint_trajectory = await self.plan_fn(self.actions)
+                motion_id, joint_trajectory = await self.plan_fn(actions)
                 current_cursor = TrajectoryCursor(
                     motion_id,
+                    motion_group_state_stream,
                     joint_trajectory,
-                    self.actions,
+                    actions,
                     initial_location=current_location,
                     detach_on_standstill=True,
                 )

@@ -3,7 +3,6 @@ import asyncio
 import numpy as np
 import rerun as rr
 import trimesh
-from wandelbots_api_client.models.all_joint_positions_request import AllJointPositionsRequest
 from wandelbots_api_client.models.all_joint_positions_response import AllJointPositionsResponse
 
 import nova
@@ -87,19 +86,17 @@ async def test():
 
                 tested_points.append(point)
                 try:
-                    response: AllJointPositionsResponse = await nova._api_client.motion_group_kinematic_api.calculate_all_inverse_kinematic(
-                        cell=cell.cell_id,
-                        motion_group=motion_group.motion_group_id,
-                        all_joint_positions_request=AllJointPositionsRequest(
+                    response: AllJointPositionsResponse = (
+                        await nova._api_client.kinematics_api.calculate_all_inverse_kinematic(
+                            cell=cell.cell_id,
                             motion_group=motion_group.motion_group_id,
                             tcp_pose=api.models.TcpPose(
                                 position=api.models.Vector3d(x=point[0], y=point[1], z=point[2]),
                                 orientation=api.models.Vector3d(
                                     x=rotation[0], y=rotation[1], z=rotation[2]
                                 ),
-                                tcp=tcp,
                             ),
-                        ),
+                        )
                     )
                     valid_configs = len(response.joint_positions)
                 except Exception:

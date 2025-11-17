@@ -2,11 +2,46 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Debug Tests",
-      "type": "python",
+      "name": "Python: Current File",
+      "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/.venv/bin/pytest",
-      "args": ["tests", "--maxfail=1", "--disable-warnings"],
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+   {
+      "name": "Minimal Example",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/minimal.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+   {
+      "name": "Basic Example",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/basic.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+   {
+      "name": "Plan and Execute Example",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/plan_and_execute.py",
       "console": "integratedTerminal",
       "justMyCode": false,
       "envFile": "${workspaceFolder}/.env",
@@ -15,11 +50,12 @@
       }
     },
     {
-      "name": "Python: Current File",
+      "name": "Trajectory Cursor Example",
       "type": "debugpy",
       "request": "launch",
-      "program": "${file}",
+      "program": "${workspaceFolder}/examples/09_trajectory_cursor.py",
       "console": "integratedTerminal",
+      "justMyCode": false,
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}"

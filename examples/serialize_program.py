@@ -10,7 +10,7 @@ Prerequisites:
 
 import json
 
-from wandelbots_api_client.models.joint_trajectory import JointTrajectory
+from wandelbots_api_client.v2.models import JointTrajectory
 
 import nova
 from nova import Nova, run_program
@@ -29,7 +29,7 @@ from nova.types import Pose
             virtual_controller(
                 name="ur10e",
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
-                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                type=models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             )
         ],
         cleanup_controllers=False,
@@ -63,7 +63,7 @@ async def main():
 
         # Create a complete serializable representation
         serialized_program = {
-            "joint_trajectory": joint_trajectory.to_json(),
+            "joint_trajectory": joint_trajectory.model_dump_json(),
             "tcp": tcp,
             "actions": serialized_actions,
         }

@@ -1,6 +1,4 @@
-import json
-
-import wandelbots_api_client as wb
+from nova import api
 
 
 class ControllerNotFound(Exception):
@@ -9,7 +7,7 @@ class ControllerNotFound(Exception):
 
 
 class PlanTrajectoryFailed(Exception):
-    def __init__(self, error: wb.models.PlanTrajectoryFailedResponse, motion_group_id: str):
+    def __init__(self, error: api.models.PlanTrajectoryFailedResponse, motion_group_id: str):
         """
         Create a PlanTrajectoryFailed exception.
 
@@ -20,41 +18,50 @@ class PlanTrajectoryFailed(Exception):
         self._error = error
         self._motion_group_id = motion_group_id
         super().__init__(
-            f"Plan trajectory on {motion_group_id} failed: {json.dumps(error.to_dict(), indent=2)}"
+            f"Plan trajectory on {motion_group_id} failed: {error.model_dump_json(indent=2)}"
         )
 
     def to_pretty_string(self) -> str:
         """Give a more lightweight representation of the error, omitting some gritty details."""
-        error_dict = self._error.to_dict()
-        del error_dict["joint_trajectory"]
-        return (
-            f"Plan trajectory on {self._motion_group_id} failed: {json.dumps(error_dict, indent=2)}"
-        )
+        return f"Plan trajectory on {self._motion_group_id} failed: {self._error.model_dump_json(indent=2, exclude={'joint_trajectory'})}"
 
     @property
-    def error(self) -> wb.models.PlanTrajectoryFailedResponse:
+    def error(self) -> api.models.PlanTrajectoryFailedResponse:
         """Return the original PlanTrajectoryFailedResponse object."""
         return self._error
 
 
 class InitMovementFailed(Exception):
-    def __init__(self, error: wb.models.InitializeMovementResponseInitResponse):
+    def __init__(self, error: api.models.InitializeMovementResponse):
         self._error = error
-        super().__init__(f"Initial movement failed: {json.dumps(error.to_dict(), indent=2)}")
+        super().__init__(f"Initial movement failed: {error.model_dump_json(indent=2)}")
 
     @property
-    def error(self) -> wb.models.InitializeMovementResponseInitResponse:
+    def error(self) -> api.models.InitializeMovementResponse:
         """Return the original InitializeMovementResponseInitResponse object."""
         return self._error
 
 
-class LoadPlanFailed(Exception):
-    def __init__(self, error: wb.models.PlanSuccessfulResponse):
-        self._error = error
-        super().__init__(f"Load plan failed: {json.dumps(error.to_dict(), indent=2)}")
+class ErrorDuringMovement(Exception):
+    """Raised when an error occurs during movement execution."""
+
+    def __init__(self, message: str):
+        self._message = message
+        super().__init__(f"Error during movement: {message}")
 
     @property
-    def error(self) -> wb.models.PlanSuccessfulResponse:
+    def message(self) -> str:
+        """Return the error message."""
+        return self._message
+
+
+class LoadPlanFailed(Exception):
+    def __init__(self, error: api.models.AddTrajectoryError):
+        self._error = error
+        super().__init__(f"Load plan failed: {error.model_dump_json(indent=2)}")
+
+    @property
+    def error(self) -> api.models.AddTrajectoryError:
         """Return the original PlanSuccessfulResponse object."""
         return self._error
 

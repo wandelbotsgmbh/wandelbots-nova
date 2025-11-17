@@ -3,6 +3,7 @@ import contextlib
 import contextvars
 import inspect
 import io
+import signal
 import sys
 import threading
 import traceback as tb
@@ -17,10 +18,9 @@ import anyio
 from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
 from exceptiongroup import ExceptionGroup
+from icecream import ic
 from loguru import logger
 from pydantic import BaseModel, Field, StrictStr
-from wandelbots_api_client.v2.models import ProgramRun as ApiProgramRun
-from wandelbots_api_client.v2.models import ProgramRunState
 
 from nova import Nova, NovaConfig, api
 from nova.cell.robot_cell import RobotCell
@@ -45,7 +45,7 @@ is_operator_execution_var: contextvars.ContextVar[bool] = contextvars.ContextVar
 
 
 # needs to change somehow
-class ProgramRun(ApiProgramRun):
+class ProgramRun(api.models.ProgramRun):
     output_data: dict[str, Any] = {}
 
 
@@ -59,7 +59,7 @@ class ProgramStatus(BaseModel):
     run: StrictStr = Field(description="Unique identifier of the program run")
     program: StrictStr = Field(description="Unique identifier of the program")
     app: Optional[StrictStr] = Field(description="The app name where the program is hosted")
-    state: ProgramRunState = Field(description="State of the program run")
+    state: api.models.ProgramRunState = Field(description="State of the program run")
     error: Optional[StrictStr] = Field(
         default=None,
         description="Error message if the program run failed",
@@ -135,7 +135,7 @@ class ProgramRunner(ABC):
         self._program_run: ProgramRun = ProgramRun(
             run=self._run_id,
             program=program_id,
-            state=ProgramRunState.PREPARING,
+            state=api.models.ProgramRunState.PREPARING,
             logs=None,
             stdout=None,
             error=None,
@@ -193,7 +193,7 @@ class ProgramRunner(ABC):
         )
 
     @property
-    def state(self) -> ProgramRunState:
+    def state(self) -> api.models.ProgramRunState:
         """Get the current state of the program run.
 
         Returns:
@@ -219,8 +219,8 @@ class ProgramRunner(ABC):
             bool: True if a program is running, False otherwise
         """
         return self._thread is not None and self.state in (
-            ProgramRunState.PREPARING,
-            ProgramRunState.RUNNING,
+            api.models.ProgramRunState.PREPARING,
+            api.models.ProgramRunState.RUNNING,
         )
 
     def join(self):
@@ -263,7 +263,7 @@ class ProgramRunner(ABC):
         """
         # Check if another program execution is already in progress
         # TODO: introduce real state machine to manage the program run states
-        if self.state is not ProgramRunState.PREPARING:
+        if self.state is not api.models.ProgramRunState.PREPARING:
             raise RuntimeError(
                 "The runner is not in the not_started state. Create a new runner to execute again."
             )
@@ -313,7 +313,10 @@ class ProgramRunner(ABC):
 
         def state_is_estop(state_: api.models.RobotControllerState):
             # See: models.RobotControllerState.safety_state
-            acceptable_safety_states = ["SAFETY_STATE_NORMAL", "SAFETY_STATE_REDUCED"]
+            acceptable_safety_states = [
+                api.models.SafetyStateType.SAFETY_STATE_NORMAL,
+                api.models.SafetyStateType.SAFETY_STATE_REDUCED,
+            ]
             return (
                 isinstance(state_, api.models.RobotControllerState)
                 and state_.safety_state not in acceptable_safety_states
@@ -347,7 +350,7 @@ class ProgramRunner(ABC):
 
     async def _set_program_state(
         self,
-        state: ProgramRunState,
+        state: api.models.ProgramRunState,
         on_state_change: Callable[[], Awaitable[None]],
         nova: Nova | None = None,
     ):
@@ -427,7 +430,9 @@ class ProgramRunner(ABC):
                 robot_cell=robot_cell, stop_event=stop_event
             )
             current_execution_context_var.set(execution_context)
-            await self._set_program_state(ProgramRunState.PREPARING, on_state_change, nova)
+            await self._set_program_state(
+                api.models.ProgramRunState.PREPARING, on_state_change, nova
+            )
 
             monitoring_scope = anyio.CancelScope()
             async with robot_cell, anyio.create_task_group() as tg:
@@ -435,7 +440,9 @@ class ProgramRunner(ABC):
 
                 try:
                     self._program_run.start_time = timestamp.now_utc()
-                    await self._set_program_state(ProgramRunState.RUNNING, on_state_change, nova)
+                    await self._set_program_state(
+                        api.models.ProgramRunState.RUNNING, on_state_change, nova
+                    )
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
                     # Program was stopped
@@ -449,25 +456,31 @@ class ProgramRunner(ABC):
                         )
                         raise
 
-                    await self._set_program_state(ProgramRunState.STOPPED, on_state_change, nova)
+                    await self._set_program_state(
+                        api.models.ProgramRunState.STOPPED, on_state_change, nova
+                    )
                     raise
                 except NotPlannableError as exc:
                     # Program was not plannable (aka. /plan/ endpoint)
                     self._handle_general_exception(exc)
-                    await self._set_program_state(ProgramRunState.FAILED, on_state_change, nova)
+                    await self._set_program_state(
+                        api.models.ProgramRunState.FAILED, on_state_change, nova
+                    )
                 except Exception as exc:  # pylint: disable=broad-except
                     self._handle_general_exception(exc)
-                    await self._set_program_state(ProgramRunState.FAILED, on_state_change, nova)
+                    await self._set_program_state(
+                        api.models.ProgramRunState.FAILED, on_state_change, nova
+                    )
                 else:
                     if self.stopped:
                         # Program was stopped
                         await self._set_program_state(
-                            ProgramRunState.STOPPED, on_state_change, nova
+                            api.models.ProgramRunState.STOPPED, on_state_change, nova
                         )
-                    elif self._program_run.state is ProgramRunState.RUNNING:
+                    elif self._program_run.state is api.models.ProgramRunState.RUNNING:
                         # Program was completed
                         await self._set_program_state(
-                            ProgramRunState.COMPLETED, on_state_change, nova
+                            api.models.ProgramRunState.COMPLETED, on_state_change, nova
                         )
                 finally:
                     # get program output data
@@ -486,7 +499,7 @@ class ProgramRunner(ABC):
         except Exception as exc:  # pylint: disable=broad-except
             # Handle any exceptions raised during entering the robot cell context
             self._handle_general_exception(exc)
-            await self._set_program_state(ProgramRunState.FAILED, on_state_change, nova)
+            await self._set_program_state(api.models.ProgramRunState.FAILED, on_state_change, nova)
 
     @abstractmethod
     async def _run(self, execution_context: ExecutionContext):
@@ -602,10 +615,21 @@ def run_program(
         app_name=app_name,
     )
 
+    def sigint_handler(sig, frame):
+        print("Received SIGINT, stopping program...")
+        ic(sig, frame)
+        runner.stop()
+        # program_stop_evt.set()
+
+    ic(signal.default_int_handler, signal.Handlers)
+    # signal.signal(signal.SIGINT, sigint_handler)
+
     # Try to grab a caller loop if there is one; otherwise, fall back to None.
     try:
         loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+        ic(loop)
     except RuntimeError:
+        ic()
         loop = None
 
     on_state_change_listener = (

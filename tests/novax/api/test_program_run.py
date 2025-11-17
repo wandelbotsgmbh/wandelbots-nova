@@ -6,8 +6,9 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 import nova
+from nova import api
 from nova.core.nova import Nova
-from nova.program.runner import ProgramRun, ProgramRunState, ProgramStatus
+from nova.program.runner import ProgramRun, ProgramStatus
 from novax.novax import Novax
 
 
@@ -49,9 +50,9 @@ async def test_novax_program_successful_run(novax_app):
         models = [
             ProgramStatus.model_validate_json(message.data) for message in program_status_messages
         ]
-        assert models[0].state == ProgramRunState.PREPARING
-        assert models[1].state == ProgramRunState.RUNNING
-        assert models[2].state == ProgramRunState.COMPLETED
+        assert models[0].state == api.models.ProgramRunState.PREPARING
+        assert models[1].state == api.models.ProgramRunState.RUNNING
+        assert models[2].state == api.models.ProgramRunState.COMPLETED
 
         for model in models:
             assert model.app == "novax_test"
@@ -95,9 +96,9 @@ async def test_novax_program_failed_run(novax_app):
         models = [
             ProgramStatus.model_validate_json(message.data) for message in program_status_messages
         ]
-        assert models[0].state == ProgramRunState.PREPARING
-        assert models[1].state == ProgramRunState.RUNNING
-        assert models[2].state == ProgramRunState.FAILED
+        assert models[0].state == api.models.ProgramRunState.PREPARING
+        assert models[1].state == api.models.ProgramRunState.RUNNING
+        assert models[2].state == api.models.ProgramRunState.FAILED
 
         for model in models:
             assert model.app == "novax_test"
@@ -143,8 +144,8 @@ async def test_novax_program_stopped_run(novax_app):
         models = [
             ProgramStatus.model_validate_json(message.data) for message in program_status_messages
         ]
-        assert models[0].state == ProgramRunState.PREPARING
-        assert models[1].state == ProgramRunState.RUNNING
+        assert models[0].state == api.models.ProgramRunState.PREPARING
+        assert models[1].state == api.models.ProgramRunState.RUNNING
 
         # Stop the program
         stop_program = client.post("/programs/long_running_program/stop")
@@ -162,9 +163,9 @@ async def test_novax_program_stopped_run(novax_app):
         final_models = [
             ProgramStatus.model_validate_json(message.data) for message in program_status_messages
         ]
-        assert final_models[0].state == ProgramRunState.PREPARING
-        assert final_models[1].state == ProgramRunState.RUNNING
-        assert final_models[2].state == ProgramRunState.STOPPED
+        assert final_models[0].state == api.models.ProgramRunState.PREPARING
+        assert final_models[1].state == api.models.ProgramRunState.RUNNING
+        assert final_models[2].state == api.models.ProgramRunState.STOPPED
 
         for model in final_models:
             assert model.app == "novax_test"

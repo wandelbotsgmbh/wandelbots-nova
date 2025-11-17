@@ -1,83 +1,32 @@
 import asyncio
 from enum import Enum, auto
-from functools import singledispatch
 from math import ceil, floor
-from typing import Any, AsyncIterator, Optional
+from typing import AsyncIterator, Optional
 
 import pydantic
-import wandelbots_api_client as wb
 from aiohttp_retry import dataclass
 from blinker import signal
+from icecream import ic
 
+from nova import api
 from nova.actions import MovementControllerContext
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
 from nova.core import logger
-from nova.core.exceptions import InitMovementFailed
+from nova.core.exceptions import ErrorDuringMovement, InitMovementFailed
 from nova.types import (
     ExecuteTrajectoryRequestStream,
     ExecuteTrajectoryResponseStream,
     MotionState,
     MovementControllerFunction,
-    Pose,
-    RobotState,
 )
+from nova.types.state import motion_group_state_to_motion_state
+
+ExecuteJoggingRequestStream = AsyncIterator[api.models.ExecuteJoggingRequest]
+ExecuteJoggingResponseStream = AsyncIterator[api.models.ExecuteJoggingResponse]
 
 
-@singledispatch
-def movement_to_motion_state(movement: Any) -> MotionState:
-    raise NotImplementedError(f"Unsupported movement type: {type(movement)}")
-
-
-@movement_to_motion_state.register
-def _(movement: wb.models.Movement) -> MotionState:
-    """Convert a wb.models.Movement to a MotionState."""
-    if (
-        movement.movement.state is None
-        or movement.movement.current_location is None
-        or len(movement.movement.state.motion_groups) == 0
-    ):
-        assert False, "This should not happen"  # depending on NC-1105
-
-    # TODO: in which cases do we have more than one motion group here?
-    motion_group = movement.movement.state.motion_groups[0]
-    return motion_group_state_to_motion_state(
-        motion_group, float(movement.movement.current_location)
-    )
-
-
-@movement_to_motion_state.register
-def _(movement: wb.models.StreamMoveResponse) -> MotionState:
-    """Convert a wb.models.Movement to a MotionState."""
-    if (
-        movement.move_response is None
-        or movement.state is None
-        or movement.move_response.current_location_on_trajectory is None
-        or len(movement.state.motion_groups) == 0
-    ):
-        assert False, "This should not happen"  # depending on NC-1105
-
-    # TODO: in which cases do we have more than one motion group here?
-    motion_group = movement.state.motion_groups[0]
-    return motion_group_state_to_motion_state(
-        motion_group, float(movement.move_response.current_location_on_trajectory)
-    )
-
-
-def motion_group_state_to_motion_state(
-    motion_group_state: wb.models.MotionGroupState, path_parameter: float
-) -> MotionState:
-    tcp_pose = Pose(motion_group_state.tcp_pose)
-    joints = (
-        tuple(motion_group_state.joint_current.joints) if motion_group_state.joint_current else None
-    )
-    return MotionState(
-        motion_group_id=motion_group_state.motion_group,
-        path_parameter=path_parameter,
-        state=RobotState(pose=tcp_pose, joints=joints),
-    )
-
-
+# TODO: when the message exchange is not working as expected we should gracefully close
 def move_forward(context: MovementControllerContext) -> MovementControllerFunction:
     """
     movement_controller is an async function that yields requests to the server.
@@ -88,33 +37,258 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
-        # The first request is to initialize the movement
-        yield wb.models.InitializeMovementRequest(trajectory=context.motion_id, initial_location=0)  # type: ignore
+        # TODO task error handling
 
-        # then we get the response
-        initialize_movement_response = await anext(response_stream)
-        if isinstance(
-            initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
+        async def motion_group_state_monitor(
+            motion_group_state_stream: AsyncIterator[api.models.MotionGroupState],
+            ready: asyncio.Event,
         ):
-            r1 = initialize_movement_response.actual_instance
-            if not r1.init_response.succeeded:
-                raise InitMovementFailed(r1.init_response)
+            ready.set()
+            try:
+                async for motion_group_state in motion_group_state_stream:
+                    if motion_group_state.execute and isinstance(
+                        motion_group_state.execute.details, api.models.TrajectoryDetails
+                    ):
+                        if isinstance(
+                            motion_group_state.execute.details.state, api.models.TrajectoryEnded
+                        ):
+                            await error_monitor_task_created.wait()
+                            error_monitor_task.cancel()
+                            break
+            except asyncio.CancelledError:
+                ic()
+                raise
 
-        # The second request is to start the movement
-        set_io_list = context.combined_actions.to_set_io()
-        yield wb.models.StartMovementRequest(  # type: ignore
-            set_ios=set_io_list, start_on_io=context.start_on_io, pause_on_io=None
+        async def error_monitor(
+            responses: ExecuteTrajectoryResponseStream, to_cancel: list[asyncio.Task]
+        ):
+            try:
+                async for execute_trajectory_response in responses:
+                    if isinstance(execute_trajectory_response, api.models.MovementErrorResponse):
+                        for task in to_cancel:
+                            task.cancel()
+                        # TODO how does this propagate?
+                        # TODO what happens to the state consumer?
+                        raise ErrorDuringMovement(execute_trajectory_response.message)
+            except asyncio.CancelledError:
+                ic()
+                raise
+
+        motion_group_state_stream = context.motion_group_state_stream_gen()
+        motion_group_state_monitor_ready = asyncio.Event()
+        error_monitor_task_created = asyncio.Event()
+        motion_group_state_monitor_task = asyncio.create_task(
+            motion_group_state_monitor(motion_group_state_stream, motion_group_state_monitor_ready),
+            name="state_consumer",
         )
 
-        # then we wait until the movement is finished
-        async for execute_trajectory_response in response_stream:
-            instance = execute_trajectory_response.actual_instance
-            # Stop when standstill indicates motion ended
-            if isinstance(instance, wb.models.Standstill):
-                if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
-                    return
+        await motion_group_state_monitor_ready.wait()
+        trajectory_id = api.models.TrajectoryId(id=context.motion_id)
+        yield api.models.InitializeMovementRequest(
+            trajectory=trajectory_id, initial_location=api.models.Location(0)
+        )
+        execute_trajectory_response = await anext(response_stream)
+        initialize_movement_response = execute_trajectory_response.root
+        ic(initialize_movement_response)
+        assert isinstance(initialize_movement_response, api.models.InitializeMovementResponse)
+        # TODO this should actually check for None but currently the API seems to return an empty string instead
+        # create issue with the API to fix this
+        if (
+            initialize_movement_response.message
+            or initialize_movement_response.add_trajectory_error
+        ):
+            raise InitMovementFailed(initialize_movement_response)
+
+        set_io_list = context.combined_actions.to_set_io()
+        yield api.models.StartMovementRequest(
+            direction=api.models.Direction.DIRECTION_FORWARD,
+            set_outputs=set_io_list,
+            start_on_io=None,
+            pause_on_io=None,
+        )
+        execute_trajectory_response = await anext(response_stream)
+        start_movement_response = execute_trajectory_response
+        assert isinstance(start_movement_response.root, api.models.StartMovementResponse)
+
+        error_monitor_task = asyncio.create_task(
+            error_monitor(response_stream, [motion_group_state_monitor_task]), name="error_monitor"
+        )
+        error_monitor_task_created.set()
+        try:
+            await error_monitor_task
+        except asyncio.CancelledError:
+            ic()
+        await motion_group_state_monitor_task
 
     return movement_controller
+
+
+class TrajectoryCursor_V2:
+    def __init__(
+        self,
+        effect_stream: AsyncIterator[api.models.MotionGroupState],
+        joint_trajectory: api.models.JointTrajectory,
+    ):
+        self.joint_trajectory = joint_trajectory
+        self._command_queue = asyncio.Queue()
+        self._response_queue = asyncio.Queue()
+        self._effect_stream: AsyncIterator[api.models.MotionGroupState] = effect_stream
+        self._breakpoints = []
+
+    def __call__(self, context: MovementControllerContext):
+        self.context = context
+        return self.cntrl
+
+    def forward(self):
+        self._command_queue.put_nowait(
+            api.models.StartMovementRequest(
+                direction=api.models.Direction.DIRECTION_FORWARD,
+                # set_ios=self.context.combined_actions.to_set_io(),  # somehow gets called before self.context is set
+                start_on_io=None,
+                pause_on_io=None,
+            )
+        )
+
+    def backward(self):
+        self._command_queue.put_nowait(
+            api.models.StartMovementRequest(
+                direction=api.models.Direction.DIRECTION_BACKWARD,
+                # set_ios=self.context.combined_actions.to_set_io(),
+                start_on_io=None,
+                pause_on_io=None,
+            )
+        )
+
+    def pause(self):
+        self._command_queue.put_nowait(api.models.PauseMovementRequest())
+
+    def pause_at(self, location: float):
+        # How to pause at an exact location?
+        bisect.insort(self._breakpoints, location)
+
+    async def cntrl(
+        self, response_stream: ExecuteTrajectoryResponseStream
+    ) -> ExecuteTrajectoryRequestStream:
+        self._response_stream = response_stream
+        async for request in init_movement_gen(self.context.motion_id, response_stream):
+            yield request
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(self._effect_consumer(), name="effect_consumer")
+            tg.create_task(self._response_consumer(), name="request_consumer")
+            tg.create_task(self._combined_response_consumer(), name="combined_response_consumer")
+
+            async for request in self._request_loop():
+                yield request
+
+    async def _request_loop(self):
+        while True:
+            yield await self._command_queue.get()
+            self._command_queue.task_done()
+
+    async def _effect_consumer(self):
+        async for effect in self._effect_stream:
+            # ic(effect)
+            self._response_queue.put_nowait(effect)
+
+    async def _response_consumer(self):
+        async for response in self._response_stream:
+            ic(response)
+            self._response_queue.put_nowait(response)
+
+    async def _combined_response_consumer(self):
+        last_motion_state = None
+
+        try:
+            while True:
+                response = await self._response_queue.get()
+                # ic(response)
+                if isinstance(response, api.models.MotionGroupState):
+                    motion_group_state = response
+                    if motion_group_state.execute and isinstance(
+                        motion_group_state.execute.details.actual_instance.state.actual_instance,
+                        api.models.TrajectoryEnded,
+                    ):
+                        # TODO this is not always the intended end of the movement, but how do we know?
+                        ic()
+                        break
+
+                    motion_state = motion_group_state_to_motion_state(response)
+                    if last_motion_state is None:
+                        last_motion_state = motion_state
+                    self._handle_motion_state(motion_state, last_motion_state)
+                    last_motion_state = motion_state
+                    self._response_queue.task_done()
+                elif isinstance(response, api.models.ExecuteTrajectoryResponse):
+                    if isinstance(response.actual_instance, api.models.MovementErrorResponse):
+                        ic()
+                        self._response_queue.task_done()
+                        # TODO propagate the error
+                        break
+                else:
+                    ic(f"Unexpected response type: {type(response)}")
+                    self._response_queue.task_done()
+        except asyncio.CancelledError:
+            ic()
+            raise
+        except Exception as e:
+            ic(e)
+            raise
+        ic()
+
+    def _handle_motion_state(self, curr_motion_state: MotionState, last_motion_state: MotionState):
+        if not self._breakpoints:
+            return
+        curr_location = curr_motion_state.path_parameter
+        last_location = last_motion_state.path_parameter
+        if curr_location == last_location:
+            return
+        if curr_location > last_location:
+            # moving forwards
+            for breakpoint in self._breakpoints:
+                if last_location <= breakpoint < curr_location:
+                    ic(last_location, breakpoint, curr_location)
+                    self.pause()
+                    # disable the breakpoint so it doesn't trigger again for the location window
+        else:
+            # moving backwards
+            for breakpoint in self._breakpoints:
+                if last_location > breakpoint >= curr_location:
+                    ic()
+                    self.pause()
+                    # disable the breakpoint so it doesn't trigger again for the location window
+
+
+async def init_movement_gen(motion_id, response_stream) -> ExecuteTrajectoryRequestStream:
+    # The first request is to initialize the movement
+    yield api.models.InitializeMovementRequest(
+        trajectory=api.models.InitializeMovementRequestTrajectory(
+            api.models.TrajectoryId(id=motion_id)
+        ),
+        initial_location=0,
+    )  # type: ignore
+
+    # then we get the response
+    execute_trajectory_response = await anext(response_stream)
+    initialize_movement_response = execute_trajectory_response.actual_instance
+    ic(initialize_movement_response)
+    assert isinstance(initialize_movement_response, api.models.InitializeMovementResponse)
+    ic()
+    # TODO this should actually check for None but currently the API seems to return an empty string instead
+    if initialize_movement_response.message or initialize_movement_response.add_trajectory_error:
+        raise InitMovementFailed(initialize_movement_response)
+
+    # assert isinstance(
+    #     initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
+    # ), "Expected InitializeMovementResponse, got: " + str(
+    #     initialize_movement_response.actual_instance
+    # )
+    # if isinstance(
+    #     initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
+    # ):
+    #     r1 = initialize_movement_response.actual_instance
+    #     if not r1.init_response.succeeded:
+    #         raise InitMovementFailed(r1.init_response)
 
 
 class OperationType(Enum):
@@ -164,7 +338,8 @@ class TrajectoryCursor:
     def __init__(
         self,
         motion_id: str,
-        joint_trajectory: wb.models.JointTrajectory,
+        effect_stream: AsyncIterator[api.models.MotionGroupState],
+        joint_trajectory: api.models.JointTrajectory,
         actions: list[Action],
         initial_location: float,
         detach_on_standstill: bool = False,
@@ -174,7 +349,10 @@ class TrajectoryCursor:
         self.actions = CombinedActions(items=actions)  # type: ignore
         self._command_queue: asyncio.Queue = asyncio.Queue()
         self._COMMAND_QUEUE_SENTINAL = object()
-        self._in_queue: asyncio.Queue[wb.models.ExecuteTrajectoryResponse | None] = asyncio.Queue()
+        self._response_queue: asyncio.Queue[api.models.ExecuteTrajectoryResponse] = asyncio.Queue()
+        self._in_queue: asyncio.Queue[api.models.ExecuteTrajectoryResponse | None] = asyncio.Queue()
+        self._effect_stream: AsyncIterator[api.models.MotionGroupState] = effect_stream
+
         self._current_location = initial_location
         self._overshoot = 0.0
         self._target_location = self.next_action_index + 1.0
@@ -195,7 +373,7 @@ class TrajectoryCursor:
     def end_location(self) -> float:
         # The assert ensures that we not accidentally use it in __init__ before it is set.
         assert getattr(self, "joint_trajectory", None) is not None
-        return self.joint_trajectory.locations[-1]
+        return self.joint_trajectory.locations[-1].root
 
     @property
     def current_action(self) -> Action:
@@ -231,7 +409,7 @@ class TrajectoryCursor:
         return {option for option, available in options.items() if available}
 
     def forward(
-        self, location: float | None = None, playback_speed_in_percent: int | None = None
+        self, target_location: float | None = None, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
         # should idempotently move forward
         future = self._start_operation(OperationType.FORWARD)
@@ -242,11 +420,16 @@ class TrajectoryCursor:
 
         if playback_speed_in_percent is not None:
             self._command_queue.put_nowait(
-                wb.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
+                api.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
             )
         self._command_queue.put_nowait(
-            wb.models.StartMovementRequest(
-                direction=wb.models.Direction.DIRECTION_FORWARD,
+            api.models.StartMovementRequest(
+                direction=api.models.Direction.DIRECTION_FORWARD,
+                target_location=(
+                    api.models.Location(root=target_location)
+                    if target_location is not None
+                    else None
+                ),
                 # set_ios=self.context.combined_actions.to_set_io(),  # somehow gets called before self.context is set
                 start_on_io=None,
                 pause_on_io=None,
@@ -267,7 +450,9 @@ class TrajectoryCursor:
             )
             return future
         self._target_location = location
-        return self.forward(playback_speed_in_percent=playback_speed_in_percent)
+        return self.forward(
+            target_location=location, playback_speed_in_percent=playback_speed_in_percent
+        )
 
     def forward_to_next_action(
         self, playback_speed_in_percent: int | None = None
@@ -283,17 +468,22 @@ class TrajectoryCursor:
             # return future
 
     def backward(
-        self, playback_speed_in_percent: int | None = None
+        self, target_location: float | None = None, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
         future = self._start_operation(OperationType.BACKWARD)
 
         if playback_speed_in_percent is not None:
             self._command_queue.put_nowait(
-                wb.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
+                api.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
             )
         self._command_queue.put_nowait(
-            wb.models.StartMovementRequest(
-                direction=wb.models.Direction.DIRECTION_BACKWARD,
+            api.models.StartMovementRequest(
+                direction=api.models.Direction.DIRECTION_BACKWARD,
+                target_location=(
+                    api.models.Location(root=target_location)
+                    if target_location is not None
+                    else None
+                ),
                 # set_ios=self.context.combined_actions.to_set_io(),
                 start_on_io=None,
                 pause_on_io=None,
@@ -331,7 +521,7 @@ class TrajectoryCursor:
             return future
 
     def _pause(self):
-        self._command_queue.put_nowait(wb.models.PauseMovementRequest())
+        self._command_queue.put_nowait(api.models.PauseMovementRequest())
 
     def pause(self) -> asyncio.Future[OperationResult] | None:
         self._pause()
@@ -395,33 +585,59 @@ class TrajectoryCursor:
         ):
             yield request
 
-        respons_consumer_ready_event = asyncio.Event()
-        self._response_consumer_task: asyncio.Task[None] = asyncio.create_task(
-            self._response_consumer(ready_event=respons_consumer_ready_event),
-            name="response_consumer",
-        )
-        motion_event_updater_task = asyncio.create_task(
-            self.motion_event_updater(), name="motion_event_updater"
-        )
-        # we need to wait until the response consumer is ready because it stops the
-        # response stream iterator by enquing the sentinel
-        # if we cancel immediately due to the first command being a detach the response consumer might get
-        # cancelled before it has even started and thus will not react to the cancellation properly
-        await respons_consumer_ready_event.wait()
-        async for request in self._request_loop():
-            yield request
-        self._response_consumer_task.cancel()
-        try:
-            await self._response_consumer_task  # Where to put?
-        except asyncio.CancelledError:
-            logger.debug("Response consumer task was cancelled during trajectory cursor cleanup")
-            pass
-        motion_event_updater_task.cancel()
-        try:
-            await motion_event_updater_task
-        except asyncio.CancelledError:
-            logger.debug("Motion event updater task was cancelled during trajectory cursor cleanup")
-            pass
+        combined_response_consumer_ready_event = asyncio.Event()
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(self._effect_consumer(), name="effect_consumer")
+            response_consumer_task = tg.create_task(
+                self._response_consumer(), name="response_consumer"
+            )
+            tg.create_task(
+                self._combined_response_consumer(
+                    ready_event=combined_response_consumer_ready_event
+                ),
+                name="combined_response_consumer",
+            )
+            motion_event_updater_task = tg.create_task(
+                self.motion_event_updater(), name="motion_event_updater"
+            )
+            # we need to wait until the response consumer is ready because it stops the
+            # response stream iterator by enquing the sentinel
+            # if we cancel immediately due to the first command being a detach the response consumer might get
+            # cancelled before it has even started and thus will not react to the cancellation properly
+            await combined_response_consumer_ready_event.wait()
+            async for request in self._request_loop():
+                yield request
+            response_consumer_task.cancel()
+            motion_event_updater_task.cancel()
+
+        # # OLD
+        # self._response_consumer_task: asyncio.Task[None] = asyncio.create_task(
+        #     self._response_consumer(ready_event=respons_consumer_ready_event),
+        #     name="response_consumer",
+        # )
+        # motion_event_updater_task = asyncio.create_task(
+        #     self.motion_event_updater(), name="motion_event_updater"
+        # )
+        # # we need to wait until the response consumer is ready because it stops the
+        # # response stream iterator by enquing the sentinel
+        # # if we cancel immediately due to the first command being a detach the response consumer might get
+        # # cancelled before it has even started and thus will not react to the cancellation properly
+        # await respons_consumer_ready_event.wait()
+        # async for request in self._request_loop():
+        #     yield request
+        # self._response_consumer_task.cancel()
+        # try:
+        #     await self._response_consumer_task  # Where to put?
+        # except asyncio.CancelledError:
+        #     logger.debug("Response consumer task was cancelled during trajectory cursor cleanup")
+        #     pass
+        # motion_event_updater_task.cancel()
+        # try:
+        #     await motion_event_updater_task
+        # except asyncio.CancelledError:
+        #     logger.debug("Motion event updater task was cancelled during trajectory cursor cleanup")
+        #     pass
+
         # stopping the external response stream iterator to be sure, but this is a smell
         self._in_queue.put_nowait(None)
 
@@ -433,14 +649,14 @@ class TrajectoryCursor:
                 break
             yield command
 
-            if isinstance(command, wb.models.StartMovementRequest):
+            if isinstance(command, api.models.StartMovementRequest):
                 match command.direction:
-                    case wb.models.Direction.DIRECTION_FORWARD:
+                    case api.models.Direction.DIRECTION_FORWARD:
                         target_action = self.actions[self.next_action_index]
                         await motion_started.send_async(
                             self, event=self._get_motion_event(target_action)
                         )
-                    case wb.models.Direction.DIRECTION_BACKWARD:
+                    case api.models.Direction.DIRECTION_BACKWARD:
                         target_action = self.actions[self.previous_action_index]
                         await motion_started.send_async(
                             self, event=self._get_motion_event(target_action)
@@ -449,38 +665,52 @@ class TrajectoryCursor:
             # yield await self._command_queue.get()
             self._command_queue.task_done()
 
-    async def _response_consumer(self, ready_event: asyncio.Event):
+    async def _effect_consumer(self):
+        async for effect in self._effect_stream:
+            # ic(effect)
+            self._in_queue.put_nowait(effect)
+
+    async def _response_consumer(self):
+        async for response in self._response_stream:
+            ic(response)
+            self._response_queue.put_nowait(response)
+
+    async def _combined_response_consumer(self, ready_event: asyncio.Event):
         ready_event.set()
-        last_movement = None
+        last_motion_state = None
 
         try:
-            async for response in self._response_stream:
+            while True:
+                response = await self._response_queue.get()
                 self._in_queue.put_nowait(response)
-                instance = response.actual_instance
-                if isinstance(instance, wb.models.Movement):
-                    if last_movement is None:
-                        last_movement = instance.movement
-                    self._current_location = instance.movement.current_location
-                    self._handle_movement(instance.movement, last_movement)
-                    last_movement = instance.movement
+                if isinstance(response, api.models.MotionGroupState):
+                    motion_group_state = response
+                    motion_state = motion_group_state_to_motion_state(motion_group_state)
+                    if last_motion_state is None:
+                        last_motion_state = motion_state
+                    self._current_location = motion_state.path_parameter
+                    self._deprecated_handle_motion_state(motion_state, last_motion_state)
+                    last_motion_state = motion_state
+                    if motion_group_state.execute and isinstance(
+                        motion_group_state.execute.details, api.models.TrajectoryDetails
+                    ):
+                        match motion_group_state.execute.details.state:
+                            case api.models.TrajectoryPausedByUser():
+                                self._overshoot = self._current_location - self._target_location
+                                assert self._overshoot == 0.0
+                                # self._overshoot = 0.0  # because the RAE takes care of that
+                                self._complete_operation()
+                                if self._detach_on_standstill:
+                                    break
+                            case api.models.TrajectoryEnded():
+                                self._overshoot = self._current_location - self._target_location
+                                assert self._overshoot == 0.0
+                                # self._overshoot = 0.0  # because the RAE takes care of that
+                                self._complete_operation()
+                                if self._detach_on_standstill:
+                                    break
 
-                elif isinstance(instance, wb.models.Standstill):
-                    self._current_location = instance.standstill.location
-                    match instance.standstill.reason:
-                        case wb.models.StandstillReason.REASON_USER_PAUSED_MOTION:
-                            self._overshoot = self._current_location - self._target_location
-                            self._complete_operation()
-                            if self._detach_on_standstill:
-                                break
-                        case wb.models.StandstillReason.REASON_MOTION_ENDED:
-                            self._overshoot = self._current_location - self._target_location
-                            assert self._overshoot == 0.0
-                            # self._overshoot = 0.0  # because the RAE takes care of that
-                            self._complete_operation()
-                            if self._detach_on_standstill:
-                                break
-                            # self.context.movement_consumer(None)
-                            # break
+                    self._response_queue.task_done()
         except asyncio.CancelledError:
             logger.debug("Response consumer was cancelled, cleaning up trajectory cursor")
             raise
@@ -490,22 +720,24 @@ class TrajectoryCursor:
             # stop the cursor iterator (TODO is this the right place?)
             self._in_queue.put_nowait(None)  # TODO make sentinel more explicit
 
-    def _handle_movement(
-        self, curr_movement: wb.models.MovementMovement, last_movement: wb.models.MovementMovement
+    def _deprecated_handle_motion_state(
+        self, curr_motion_state: MotionState, last_motion_state: MotionState
     ):
         if not 0.0 <= self._target_location <= self.end_location:
             return
-        curr_location = curr_movement.current_location
-        last_location = last_movement.current_location
+        curr_location = curr_motion_state.path_parameter
+        last_location = last_motion_state.path_parameter
         if curr_location == last_location:
             return
         if curr_location > last_location:
             # moving forwards
             if last_location <= self._target_location < curr_location:
+                assert False, "Should not reach here, RAE handles exact stopping"
                 self._pause()
         else:
             # moving backwards
             if last_location > self._target_location >= curr_location:
+                assert False, "Should not reach here, RAE handles exact stopping"
                 self._pause()
 
     async def motion_event_updater(self, interval=0.2):
@@ -534,10 +766,10 @@ class TrajectoryCursor:
             target_action=target_action,
         )
 
-    def __aiter__(self) -> AsyncIterator[wb.models.ExecuteTrajectoryResponse]:
+    def __aiter__(self) -> AsyncIterator[api.models.ExecuteTrajectoryResponse]:
         return self
 
-    async def __anext__(self) -> wb.models.ExecuteTrajectoryResponse:
+    async def __anext__(self) -> api.models.ExecuteTrajectoryResponse:
         value = await self._in_queue.get()
         self._in_queue.task_done()
         if value is None:
@@ -549,17 +781,16 @@ async def init_movement_gen(
     motion_id, response_stream, initial_location
 ) -> ExecuteTrajectoryRequestStream:
     # The first request is to initialize the movement
-    init_request = wb.models.InitializeMovementRequest(
-        trajectory=motion_id, initial_location=initial_location
+    trajectory_id = api.models.TrajectoryId(id=motion_id)
+    init_request = api.models.InitializeMovementRequest(
+        trajectory=trajectory_id, initial_location=initial_location
     )
     yield init_request  # type: ignore
 
-    # then we get the response
-    initialize_movement_response = await anext(response_stream)
-    # TODO handle error response here (MovementError)
-    if isinstance(
-        initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
-    ):
-        r1 = initialize_movement_response.actual_instance
-        if not r1.init_response.succeeded:  # TODO we don't come here if there was an error response
-            raise InitMovementFailed(r1.init_response)
+    execute_trajectory_response = await anext(response_stream)
+    initialize_movement_response = execute_trajectory_response.root
+    assert isinstance(initialize_movement_response, api.models.InitializeMovementResponse)
+    # TODO this should actually check for None but currently the API seems to return an empty string instead
+    # create issue with the API to fix this
+    if initialize_movement_response.message or initialize_movement_response.add_trajectory_error:
+        raise InitMovementFailed(initialize_movement_response)

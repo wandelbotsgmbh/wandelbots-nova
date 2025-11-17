@@ -1,6 +1,6 @@
 import pytest
 
-from nova.actions import TrajectoryMacher, cartesian_ptp, io_write, joint_ptp, linear
+from nova.actions import TrajectoryBuilder, cartesian_ptp, io_write, joint_ptp, linear
 from nova.types import MotionSettings, Pose
 
 # Move motion settings to module level
@@ -14,7 +14,7 @@ def trajectory():
     home_joints = Pose((0, 0, 0, 0, 0, 0))
     target_pose = Pose((1, 2, 3, 0, 0, 0))
 
-    with TrajectoryMacher(settings=slow) as t:
+    with TrajectoryBuilder(settings=slow) as t:
         # all actions use the slow settings
         t.move(joint_ptp(home_joints))  # 0
         t.move(cartesian_ptp(target_pose))  # 1
@@ -99,7 +99,7 @@ def test_trajectory_builder_without_settings():
     from nova.actions.motions import joint_ptp
     from nova.types import Pose
 
-    tb = TrajectoryMacher()
+    tb = TrajectoryBuilder()
 
     tb.move(joint_ptp(Pose((0, 0, 0, 0, 0, 0))))
 

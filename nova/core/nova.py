@@ -2,17 +2,7 @@ from __future__ import annotations
 
 from nova.cell.cell import Cell
 
-# backward compatibility
-from nova.config import (  # noqa: F401
-    CELL_NAME,
-    LOG_LEVEL,
-    NOVA_ACCESS_TOKEN,
-    NOVA_API,
-    NOVA_PASSWORD,
-    NOVA_USERNAME,
-    NovaConfig,
-    default_config,
-)
+from nova.config import CELL_NAME, NovaConfig, default_config
 from nova.core.gateway import ApiGateway
 from nova.nats import NatsClient
 
@@ -41,6 +31,10 @@ class Nova:
     @property
     def config(self) -> NovaConfig:
         return self._config
+
+    @property
+    def api(self) -> ApiGateway:
+        return self._api_client
 
     def cell(self, cell_id: str = CELL_NAME) -> Cell:
         """Returns the cell object with the given ID."""

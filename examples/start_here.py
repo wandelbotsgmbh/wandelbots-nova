@@ -29,13 +29,13 @@ from nova.types import MotionSettings, Pose
 @nova.program(
     id="start_here",  # Unique identifier of the program. If not provided, the function name will be used.
     name="Start Here",  # Readable name of the program
-    viewer=nova.viewers.Rerun(),  # add this line for a 3D visualization
+    # viewer=nova.viewers.Rerun(),  # add this line for a 3D visualization
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name="kuka-kr16-r2010",
                 manufacturer=api.models.Manufacturer.KUKA,
-                type=api.models.VirtualControllerTypes.KUKA_MINUS_KR16_R2010_2,
+                type=api.models.VirtualControllerTypes.KUKA_KR16_R2010_2,
             )
         ],
         cleanup_controllers=False,

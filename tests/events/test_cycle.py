@@ -23,7 +23,7 @@ class TestCycle:
         """Test initialization of the Cycle class."""
         cycle = Cycle(mock_cell)
         assert cycle.cycle_id is None
-        assert cycle._cell_id == "test-cell-1"
+        assert cycle._cell_id == mock_cell
 
     @pytest.mark.asyncio
     async def test_start(self, mock_cell):
