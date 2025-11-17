@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v3.6.7 (2025-11-17)
+
+### Bug Fixes
+
+- Prevent additional fields in program input schema (#338)
+  ([#338](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/338),
+  [`97d1a3d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/97d1a3d8638096acd13368428d534d17574c12a1))
+
+
 ## v3.6.6 (2025-11-17)
 
 ### Bug Fixes
