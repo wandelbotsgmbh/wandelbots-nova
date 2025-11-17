@@ -2,8 +2,8 @@ import asyncio
 import json
 
 from nova import api
-from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
+from nova.exceptions import ControllerNotFound
 from nova.logging import logger
 from nova.nats import NatsClient
 

@@ -10,8 +10,8 @@ import rerun as rr
 from nova import MotionSettings, api
 from nova.actions import cartesian_ptp, collision_free
 from nova.cell import virtual_controller
-from nova.core.exceptions import PlanTrajectoryFailed
 from nova.core.nova import Nova
+from nova.exceptions import PlanTrajectoryFailed
 from nova.program import ProgramPreconditions
 from nova.types import Pose
 from nova_rerun_bridge import NovaRerunBridge

@@ -287,7 +287,7 @@ class Rerun(Viewer):
             await self._bridge.log_actions(list(actions), motion_group=motion_group)
 
             # Handle specific PlanTrajectoryFailed errors which have additional data
-            from nova.core.exceptions import PlanTrajectoryFailed
+            from nova.exceptions import PlanTrajectoryFailed
 
             if isinstance(error, PlanTrajectoryFailed):
                 # Log the trajectory from the failed plan

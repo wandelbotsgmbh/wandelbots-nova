@@ -23,7 +23,7 @@ from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
-from nova.core.exceptions import ControllerCreationFailed
+from nova.exceptions import ControllerCreationFailed
 from nova.logging import logger
 
 Parameters = ParamSpec("Parameters")

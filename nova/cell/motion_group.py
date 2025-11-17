@@ -9,8 +9,8 @@ from nova.actions import Action, CombinedActions, MovementController, MovementCo
 from nova.actions.mock import WaitAction
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core import logger
-from nova.core.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.core.gateway import ApiGateway
+from nova.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.types import MovementResponse, Pose, RobotState
 from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.utils import StreamExtractor

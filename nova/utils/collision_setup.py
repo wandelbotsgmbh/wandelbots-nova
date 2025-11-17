@@ -1,7 +1,7 @@
 from nova import api
 from nova.actions.base import Action
 from nova.actions.motions import Motion
-from nova.core.exceptions import InconsistentCollisionScenes
+from nova.exceptions import InconsistentCollisionScenes
 
 
 def compare_collision_setups(setup1: api.models.CollisionSetup, setup2: api.models.CollisionSetup):

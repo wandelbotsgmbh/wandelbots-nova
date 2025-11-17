@@ -4,7 +4,7 @@ import nova
 from nova import Nova, api
 from nova.actions import cartesian_ptp, linear
 from nova.cell import virtual_controller
-from nova.core.exceptions import PlanTrajectoryFailed
+from nova.exceptions import PlanTrajectoryFailed
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 from nova_rerun_bridge import NovaRerunBridge
