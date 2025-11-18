@@ -32,12 +32,12 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
             if pose.orientation is None:
                 continue
             rot_vec = np.array(pose.orientation.to_tuple())
-            angle = np.linalg.norm(rot_vec)
+            angle: float = np.linalg.norm(rot_vec)
             if angle > 0:
                 axis = rot_vec / angle
             else:
                 axis = np.array([0.0, 0.0, 1.0])
-                angle: float = 0.0
+                angle = 0.0
 
             rr.log(
                 f"{entity_path}/{collider_id}",
@@ -271,13 +271,13 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
 
 
 def extract_link_chain_and_tcp(
-    collision_scenes: dict, motion_group_type: str
+    collision_setups: dict, motion_group_type: str
 ) -> tuple[list[Any], list[Any]]:
     """Extract link chain and TCP from collision scenes.
     Searches through all scenes for a matching motion group.
     """
     # Iterate through all scenes
-    for scene_name, scene in collision_scenes.items():
+    for scene_name, scene in collision_setups.items():
         # Check if this scene has the motion group we're looking for
         motion_group = scene.motion_groups.get(motion_group_type)
         if motion_group:

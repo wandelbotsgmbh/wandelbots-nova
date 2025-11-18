@@ -269,7 +269,7 @@ class AbstractRobot(Device):
         self, actions: list[Action], trajectory: api.models.JointTrajectory, tcp: str
     ) -> None:
         """Log planning results to active viewers if any are configured."""
-        from nova.core.motion_group import MotionGroup
+        from nova.cell.motion_group import MotionGroup
         from nova.viewers import get_viewer_manager
 
         # Only log for motion groups
@@ -285,7 +285,7 @@ class AbstractRobot(Device):
 
     async def _log_planning_error(self, actions: list[Action], error: Exception, tcp: str) -> None:
         """Log planning error to active viewers if any are configured."""
-        from nova.core.motion_group import MotionGroup
+        from nova.cell.motion_group import MotionGroup
         from nova.viewers import get_viewer_manager
 
         # Only log for motion groups

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Sequence
 if TYPE_CHECKING:
     from nova.actions import Action
     from nova.api import models
-    from nova.core.motion_group import MotionGroup
+    from nova.cell.motion_group import MotionGroup
     from nova.core.nova import Nova
 
 

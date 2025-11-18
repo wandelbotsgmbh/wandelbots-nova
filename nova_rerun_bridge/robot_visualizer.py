@@ -293,7 +293,7 @@ class RobotVisualizer:
             # Transform vertices to world position
             transform = np.eye(4)
             if pose.position:
-                transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z - height / 2]
+                transform[:3, 3] = pose.position.root + [0, 0, -height / 2]
             else:
                 transform[:3, 3] = [0, 0, -height / 2]
 
@@ -734,9 +734,7 @@ class RobotVisualizer:
                     link_transform = transforms[link_index]
                     for i, geom in enumerate(geometries):
                         entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
-                        final_transform = link_transform @ self.geometry_pose_to_matrix(
-                            geom.init_pose
-                        )
+                        final_transform = link_transform @ self.geometry_pose_to_matrix(geom.pose)
                         self.init_geometry(entity_path, geom)
                         collect_geometry_data(entity_path, final_transform)
 

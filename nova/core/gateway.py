@@ -218,6 +218,7 @@ class ApiGateway:
         # TODO: what is this ?
         # Restore the original quote function
         if hasattr(self, "_original_quote_func"):
+            # TODO: use v2 api
             import wandelbots_api_client.api.controller_ios_api as ios_api_module
 
             ios_api_module.quote = self._original_quote_func
@@ -233,8 +234,8 @@ class ApiGateway:
             # Test token with a direct API call without interception
             self._validating_token = True
             async with api.ApiClient(self._api_client.configuration) as client:
-                api = api.SystemApi(client)
-                await api.get_system_version()
+                system_api = api.SystemApi(client)
+                await system_api.get_system_version()
                 self._has_valid_token = True
         except Exception as e:
             if "401" in str(e) or "403" in str(e):

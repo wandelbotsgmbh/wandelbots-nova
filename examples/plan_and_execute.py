@@ -83,7 +83,8 @@ async def plan_and_execute():
         joint_trajectory = await motion_group.plan(t.actions, tcp)
         motion_iter = motion_group.stream_execute(joint_trajectory, tcp, actions=t.actions)
         async for motion_state in motion_iter:
-            print(motion_state)
+            pass
+            # print(motion_state)
 
         # Read and write IO values
         io_value = await controller.read("tool_out[0]")

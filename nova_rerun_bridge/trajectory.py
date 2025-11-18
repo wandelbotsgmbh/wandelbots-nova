@@ -73,29 +73,46 @@ async def log_motion(
 
     motion_group_setup = await motion_group.get_setup(tcp)
     motion_group_model = (await motion_group.get_model()).root
+    motion_group_description = await motion_group.get_description()
     motion_group_id = motion_group.motion_group_id
     motion_id = str(uuid.uuid4())
 
-    # Initialize DHRobot and Visualizer
-    if motion_group_model == "Yaskawa_TURN2":
-        if motion_group_setup.dh_parameters is not None:
-            motion_group_setup.dh_parameters[0].a = 0
-            motion_group_setup.dh_parameters[0].d = 360
-            motion_group_setup.dh_parameters[0].alpha = np.pi / 2
-            motion_group_setup.dh_parameters[0].theta = 0
+    if motion_group_description.dh_parameters is not None:
+        motion_group_description.dh_parameters[0].a = (
+            motion_group_description.dh_parameters[0].a or 0
+        )
+        motion_group_description.dh_parameters[0].d = (
+            motion_group_description.dh_parameters[0].d or 0
+        )
+        motion_group_description.dh_parameters[0].alpha = (
+            motion_group_description.dh_parameters[0].alpha or 0
+        )
+        motion_group_description.dh_parameters[0].theta = (
+            motion_group_description.dh_parameters[0].theta or 0
+        )
 
-            motion_group_setup.dh_parameters[1].a = 0
-            motion_group_setup.dh_parameters[1].d = 0
-            motion_group_setup.dh_parameters[1].alpha = 0
-            motion_group_setup.dh_parameters[1].theta = np.pi / 2
+        motion_group_description.dh_parameters[1].a = (
+            motion_group_description.dh_parameters[1].a or 0
+        )
+        motion_group_description.dh_parameters[1].d = (
+            motion_group_description.dh_parameters[1].d or 0
+        )
+        motion_group_description.dh_parameters[1].alpha = (
+            motion_group_description.dh_parameters[1].alpha or 0
+        )
+        motion_group_description.dh_parameters[1].theta = (
+            motion_group_description.dh_parameters[1].theta or 0
+        )
 
-    if motion_group_setup.dh_parameters is None:
+    if motion_group_description.dh_parameters is None:
         raise ValueError("DH parameters cannot be None")
 
-    robot = DHRobot(motion_group_setup.dh_parameters, motion_group_setup.mounting)
+    robot = DHRobot(
+        dh_parameters=motion_group_description.dh_parameters, mounting=motion_group_setup.mounting
+    )
 
     collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
-        collision_setups, motion_group_setup.motion_group_type
+        collision_setups=collision_setups, motion_group_type=motion_group_model
     )
 
     rr.reset_time()
@@ -104,13 +121,22 @@ async def log_motion(
     # Get or create visualizer from cache
     if motion_group not in _visualizer_cache:
         collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
-            collision_setups, motion_group_setup.motion_group_type
+            collision_setups=collision_setups, motion_group_type=motion_group_model
+        )
+        tcp_geometries = []
+        if motion_group_description.safety_tool_colliders is not None:
+            tcp_geometries = [
+                api.models.Collider(root=tool_collider.root)
+                for tool_collider in motion_group_description.safety_tool_colliders[tcp]
+            ]
+        safety_link_chain = api.models.LinkChain(
+            [api.models.Link(link.root) for link in motion_group_description.safety_link_colliders]
         )
 
         _visualizer_cache[motion_group] = RobotVisualizer(
             robot=robot,
-            robot_model_geometries=motion_group_setup.safety_setup.robot_model_geometries or [],
-            tcp_geometries=motion_group_setup.safety_setup.tcp_geometries or [],
+            robot_model_geometries=[safety_link_chain] or [],
+            tcp_geometries=tcp_geometries,
             static_transform=False,
             base_entity_path=f"motion/{motion_group_id}",
             model_from_controller=motion_group_model,

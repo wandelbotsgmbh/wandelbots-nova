@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Optional, Protocol, Union, runtime_checkable
 if TYPE_CHECKING:
     from nova import api
     from nova.actions import Action
-    from nova.core.motion_group import MotionGroup
+    from nova.cell.motion_group import MotionGroup
     from nova.core.nova import Nova
 
 

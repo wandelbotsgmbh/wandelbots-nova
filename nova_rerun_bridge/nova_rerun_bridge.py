@@ -203,7 +203,7 @@ class NovaRerunBridge:
             )
         try:
             logger.debug("Fetching collision scenes...")
-            collision_scenes = (
+            collision_setups = (
                 await self.nova._api_client.store_collision_setups_api.list_stored_collision_setups(
                     cell=self.nova.cell()._cell_id
                 )
@@ -216,11 +216,11 @@ class NovaRerunBridge:
             logger.debug(
                 f"Calling log_motion function with trajectory points: {len(trajectory.joint_positions or [])}"
             )
-            log_motion(
+            await log_motion(
                 trajectory=trajectory,
                 tcp=tcp,
                 motion_group=motion_group,
-                collision_scenes=collision_scenes,
+                collision_setups=collision_setups,
                 time_offset=current_time + time_offset,
                 tool_asset=tool_asset,
                 show_collision_link_chain=self.show_collision_link_chain,
@@ -243,6 +243,7 @@ class NovaRerunBridge:
                 raise
         except Exception as e:
             # Log other errors but don't fail
+            # TODO: why is the error not highlighted?
             logger.error(f"Failed to log motion trajectory: {e}")
             raise
 
@@ -574,7 +575,8 @@ class NovaRerunBridge:
         try:
             # Use Nova's forward kinematics API to get TCP pose from joint configuration
             # Create a joint position object
-            return await motion_group.forward_kinematics([joint_config], tcp)
+            poses = await motion_group.forward_kinematics([joint_config], tcp)
+            return poses[0]
 
         except Exception as e:
             logger.warning(f"Failed to convert joints to pose using forward kinematics: {e}")

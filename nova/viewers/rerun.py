@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Sequence, cast
 if TYPE_CHECKING:
     from nova.actions import Action
     from nova.api import models
-    from nova.core.motion_group import MotionGroup
+    from nova.cell.motion_group import MotionGroup
     from nova.core.nova import Nova
 
 from .base import Viewer
@@ -217,7 +217,7 @@ class Rerun(Viewer):
 
         try:
             # Log actions
-            await self._bridge.log_actions(list(actions), motion_group=motion_group)
+            await self._bridge.log_actions(actions=list(actions), motion_group=motion_group)
 
             # Log trajectory with tool asset if configured for this TCP
             tool_asset = self._resolve_tool_asset(tcp)
@@ -233,7 +233,7 @@ class Rerun(Viewer):
                     self._bridge._log_collision_setups(collision_setups)
 
         except Exception as e:
-            logger.warning("Failed to log planning results in Rerun viewer: %s", e)
+            logger.error("Failed to log planning results in Rerun viewer: %s", e)
 
     async def log_planning_success(
         self,
