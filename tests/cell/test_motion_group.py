@@ -22,8 +22,7 @@ def create_collision_setup(
 ) -> api.models.CollisionSetup:
     collider_id = collider_id or f"test_collider_{radius}"
     collider = api.models.Collider(
-        id=collider_id,
-        shape=api.models.Sphere(radius=radius, position=api.models.Vector3d([radius, 0, 0])),
+        shape=api.models.Sphere(radius=radius, position=api.models.Vector3d([radius, 0, 0]))
     )
     return api.models.CollisionSetup(
         colliders=api.models.ColliderDictionary({collider_id: collider})

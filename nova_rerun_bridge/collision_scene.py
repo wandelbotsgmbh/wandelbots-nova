@@ -21,6 +21,7 @@ def log_collision_setups(collision_setups: dict[str, api.models.CollisionSetup])
 
 def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collider]):
     for collider_id, collider in colliders.items():
+        # TODO: use our Pose here.
         pose = normalize_pose(collider.pose)
 
         if collider.shape is None:
@@ -30,7 +31,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
             # Convert rotation vector to axis-angle format
             if pose.orientation is None:
                 continue
-            rot_vec = np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
+            rot_vec = np.array(pose.orientation.to_tuple())
             angle = np.linalg.norm(rot_vec)
             if angle > 0:
                 axis = rot_vec / angle
@@ -42,7 +43,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                 f"{entity_path}/{collider_id}",
                 rr.Ellipsoids3D(
                     radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
-                    centers=[pose.position.root],
+                    centers=[pose.position.to_tuple()],
                     rotation_axis_angles=[rr.RotationAxisAngle(axis=axis, angle=angle)],
                     colors=[(221, 193, 193, 255)],
                 ),
@@ -78,10 +79,8 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
 
             # Transform vertices to world position
             transform = np.eye(4)
-            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z]
-            rot_mat = Rotation.from_rotvec(
-                np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
-            ).as_matrix()
+            transform[:3, 3] = pose.position.to_tuple()
+            rot_mat = Rotation.from_rotvec(np.array(pose.orientation.to_tuple())).as_matrix()
             transform[:3, :3] = rot_mat
             vertices = np.array([transform @ np.append(v, 1) for v in vertices])[:, :3]
 
@@ -115,10 +114,8 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
 
             # Transform vertices
             transform = np.eye(4)
-            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z]
-            rot_mat = Rotation.from_rotvec(
-                np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
-            ).as_matrix()
+            transform[:3, 3] = pose.position.to_tuple()
+            rot_mat = Rotation.from_rotvec(np.array(pose.orientation.to_tuple())).as_matrix()
             transform[:3, :3] = rot_mat
             vertices = np.array([transform @ np.append(v, 1) for v in vertices])[:, :3]
 
@@ -140,9 +137,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
 
         elif isinstance(collider.shape, api.models.Box):
             # Create rotation matrix from orientation
-            rot_mat = Rotation.from_rotvec(
-                np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
-            ).as_matrix()
+            rot_mat = Rotation.from_rotvec(np.array(pose.orientation.to_tuple())).as_matrix()
 
             # Create box vertices
             half_sizes = [
@@ -155,7 +150,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
 
             # Transform vertices
             transform = np.eye(4)
-            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z]
+            transform[:3, 3] = pose.position.to_tuple()
             transform[:3, :3] = rot_mat
             vertices = np.array([transform @ np.append(v, 1) for v in vertices])[:, :3]
 
@@ -186,10 +181,8 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
 
             # Transform vertices to world position
             transform = np.eye(4)
-            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z]
-            rot_mat = Rotation.from_rotvec(
-                np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
-            )
+            transform[:3, 3] = pose.position.to_tuple()
+            rot_mat = Rotation.from_rotvec(np.array(pose.orientation.to_tuple()))
             transform[:3, :3] = rot_mat.as_matrix()
 
             vertices = np.array([transform @ np.append(v, 1) for v in vertices])[:, :3]
@@ -220,10 +213,8 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
 
             # Transform vertices to world position
             transform = np.eye(4)
-            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z]
-            rot_mat = Rotation.from_rotvec(
-                np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
-            )
+            transform[:3, 3] = pose.position.to_tuple()
+            rot_mat = Rotation.from_rotvec(np.array(pose.orientation.to_tuple()))
             transform[:3, :3] = rot_mat.as_matrix()
 
             vertices = np.array([transform @ np.append(v, 1) for v in vertices])[:, :3]
@@ -246,10 +237,8 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
             # Transform vertices to world position
             vertices = np.array(collider.shape.vertices)
             transform = np.eye(4)
-            transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z]
-            rot_mat = Rotation.from_rotvec(
-                np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z])
-            ).as_matrix()
+            transform[:3, 3] = pose.position.to_tuple()
+            rot_mat = Rotation.from_rotvec(np.array(pose.orientation.to_tuple())).as_matrix()
             transform[:3, :3] = rot_mat
 
             # Apply transformation

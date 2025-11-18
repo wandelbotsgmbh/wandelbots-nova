@@ -214,7 +214,7 @@ class NovaRerunBridge:
             current_time = self._motion_group_timers.get(motion_group_id, 0.0)
 
             logger.debug(
-                f"Calling log_motion function with trajectory points: {len(trajectory.trajectory or [])}"
+                f"Calling log_motion function with trajectory points: {len(trajectory.joint_positions or [])}"
             )
             log_motion(
                 trajectory=trajectory,
@@ -228,12 +228,11 @@ class NovaRerunBridge:
                 show_safety_link_chain=self.show_safety_link_chain,
             )
             # Update the timer for this motion group based on trajectory duration
-            if trajectory.trajectory:
-                last_trajectory_point = trajectory.trajectory[-1]
-                if last_trajectory_point.time is not None:
-                    self._motion_group_timers[motion_group_id] = (
-                        current_time + time_offset + last_trajectory_point.time
-                    )
+            if trajectory and trajectory.times:
+                last_trajectory_time = trajectory.times[-1]
+                self._motion_group_timers[motion_group_id] = (
+                    current_time + time_offset + last_trajectory_time
+                )
             logger.debug("log_motion completed successfully")
         except RuntimeError as e:
             if "Session is closed" in str(e):
@@ -312,12 +311,12 @@ class NovaRerunBridge:
     async def log_error_feedback(
         self, error_feedback: api.models.PlanTrajectoryFailedResponse
     ) -> None:
-        if isinstance(error_feedback.actual_instance, api.models.FeedbackOutOfWorkspace):
+        if isinstance(error_feedback.error_feedback, api.models.FeedbackOutOfWorkspace):
             if (
-                error_feedback.actual_instance.invalid_tcp_pose
-                and error_feedback.actual_instance.invalid_tcp_pose.position
+                error_feedback.error_feedback.invalid_tcp_pose
+                and error_feedback.error_feedback.invalid_tcp_pose.position
             ):
-                position = error_feedback.actual_instance.invalid_tcp_pose.position
+                position = error_feedback.error_feedback.invalid_tcp_pose.position
                 rr.log(
                     "motion/errors/FeedbackOutOfWorkspace",
                     rr.Points3D(
@@ -329,8 +328,8 @@ class NovaRerunBridge:
                     static=True,
                 )
 
-        if isinstance(error_feedback.actual_instance, api.models.FeedbackCollision):
-            collisions = error_feedback.actual_instance.collisions
+        if isinstance(error_feedback.error_feedback, api.models.FeedbackCollision):
+            collisions = error_feedback.error_feedback.collisions
             if not collisions:
                 return
 
@@ -343,6 +342,7 @@ class NovaRerunBridge:
                     continue
 
                 # Extract positions
+                # TODO: is it local or root?
                 pos_a = collision.position_on_a.world
                 pos_b = collision.position_on_b.world
                 normal = collision.normal_world_on_b

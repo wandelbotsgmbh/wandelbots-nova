@@ -216,12 +216,9 @@ def log_tcp_pose(
     """
     Log TCP pose (position + orientation) data.
     """
-    # TODO: correct parsing here.
     # Extract positions and orientations from the trajectory
-    positions = [[p.position.x, p.position.y, p.position.z] for p in tcp_poses]
-    orientations = Rotation.from_rotvec(
-        [[p.orientation.x, p.orientation.y, p.orientation.z] for p in tcp_poses]
-    ).as_quat()
+    positions = [p.position.root for p in tcp_poses]
+    orientations = [p.orientation.root for p in tcp_poses]
 
     # Log TCP and tool asset
     tcp_entity_path = f"/motion/{motion_group_id}/tcp_position"
@@ -232,7 +229,7 @@ def log_tcp_pose(
     rr.send_columns(
         tcp_entity_path,
         indexes=[times_column],
-        columns=rr.Transform3D.columns(translation=positions, quaternion=orientations),
+        columns=rr.Transform3D.columns(translation=positions, rotation_axis_angle=orientations),
     )
 
 

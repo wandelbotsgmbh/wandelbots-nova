@@ -265,9 +265,7 @@ class RobotVisualizer:
                 f"{entity_path}",
                 rr.Ellipsoids3D(
                     radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
-                    centers=[[pose.position.x, pose.position.y, pose.position.z]]
-                    if pose.position
-                    else [0, 0, 0],
+                    centers=[pose.position.root] if pose.position else [0, 0, 0],
                     colors=[(221, 193, 193, 255)],
                 ),
             )
@@ -276,9 +274,7 @@ class RobotVisualizer:
             rr.log(
                 f"{entity_path}",
                 rr.Boxes3D(
-                    centers=[[pose.position.x, pose.position.y, pose.position.z]]
-                    if pose.position
-                    else [0, 0, 0],
+                    centers=[pose.position.root] if pose.position else [0, 0, 0],
                     sizes=[collider.shape.size_x, collider.shape.size_y, collider.shape.size_z],
                     colors=[(221, 193, 193, 255)],
                 ),
@@ -425,7 +421,7 @@ class RobotVisualizer:
         # Convex hull geometry
         elif isinstance(geometry.shape, api.models.ConvexHull):
             polygons = HullVisualizer.compute_hull_outlines_from_points(
-                [[v.x, v.y, v.z] for v in geometry.shape.vertices]
+                [v.root for v in geometry.shape.vertices]
             )
 
             if polygons:
