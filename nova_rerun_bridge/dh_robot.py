@@ -103,7 +103,7 @@ class DHRobot:
         )
         return transformation
 
-    def calculate_joint_positions(self, joint_values):
+    def calculate_joint_positions(self, joint_positions: list[float]) -> list[list[float]]:
         """
         Compute joint positions based on joint values.
         :param joint_values: Object containing joint rotation values as a list in joint_values.joints.
@@ -116,7 +116,7 @@ class DHRobot:
             accumulated_matrix[:3, 3].tolist()
         ]  # Base position after mounting is applied
 
-        for dh_param, joint_rotation in zip(self.dh_parameters, joint_values.joints, strict=False):
+        for dh_param, joint_rotation in zip(self.dh_parameters, joint_positions, strict=False):
             transform = self.dh_transform(dh_param, joint_rotation)
             accumulated_matrix = accumulated_matrix @ transform
             position = accumulated_matrix[:3, 3]  # Extract translation (x, y, z)
