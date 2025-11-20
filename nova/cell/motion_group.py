@@ -7,6 +7,7 @@ from icecream import ic
 from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
+from nova.actions.motions import CollisionFreeMotion
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core import logger
 from nova.core.gateway import ApiGateway
@@ -15,10 +16,12 @@ from nova.types import MovementResponse, Pose, RobotState
 from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.utils import StreamExtractor
 from nova.utils.collision_setup import (
+    get_joint_position_limits_from_motion_group_setup,
     motion_group_setup_from_motion_group_description,
     validate_collision_setups,
 )
 from nova.utils.joint_trajectory import combine_trajectories
+from typing import cast
 
 from .movement_controller import move_forward
 from .robot_cell import AbstractRobot
@@ -26,6 +29,7 @@ from .tuner import TrajectoryTuner
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
+
 
 
 # TODO: when collision scene is different in different motions
@@ -41,6 +45,8 @@ def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
         if (
             # Start a new batch if:
             not batches  # first action no batches yet
+            or isinstance(action, CollisionFreeMotion)
+            or isinstance(batches[-1][-1], CollisionFreeMotion)
             or isinstance(action, WaitAction)
             or isinstance(batches[-1][-1], WaitAction)
         ):
@@ -117,8 +123,15 @@ class MotionGroup(AbstractRobot):
         """
         # TODO allow to specify payload
         motion_group_description = await self._fetch_motion_group_description()
+        motion_group_collision_model = await self.get_collision_model()
         return motion_group_setup_from_motion_group_description(
-            motion_group_description=motion_group_description, tcp_name=tcp
+            motion_group_description=motion_group_description, tcp_name=tcp, collision_model=motion_group_collision_model
+        )
+
+    async def get_collision_model(self) -> list[dict[str, api.models.Collider]]:
+        motion_group_description = await self._fetch_motion_group_description()
+        return await self._api_client.motion_group_models_api.get_motion_group_collision_model(
+            motion_group_model=motion_group_description.motion_group_model.root
         )
 
     async def get_mounting(self) -> Pose | None:
@@ -133,6 +146,70 @@ class MotionGroup(AbstractRobot):
             if motion_group_description.mounting is not None
             else None
         )
+
+
+    # TODO: check the response type, it is not easy to use
+    # API returns list of list of list of float ( 3 inner lists )
+
+    # TODO: is sending joint position limits from motion group setup correct?
+
+    # TODO: should we get a whole collision layer from user just additional colliders to add to the default layer?
+
+    # Joint Position Limit is not exposed to the user, this limits can be done on the user side, after getting the IK solutions
+    # if we want to provide this API future, we need to create data mapping because creating api.models.JointPositionLimits is not pytonic
+    # we might need to create a helper data structure for this (maybe list of tuples [(min, max), (min, max), ...])
+    async def inverse_kinematics(
+        self, 
+        poses: list[Pose],
+        tcp: str,
+        colliders: dict[str, api.models.Collider] | None = None,
+    ) -> list[list[tuple[float, ...]]]:
+        """Inverse kinematics is the process of finding joint positions that achieve a desired end-effector pose.
+        Mathematically, there can be multiple or no solutions for a given pose.
+
+        This API will return all found solutions for each requested pose in a list.
+        This list can contain multiple joint positions for each pose or be empty if no solution is found.
+
+
+        Args:
+            poses (list[Pose]): The target poses for which to calculate joint positions.
+            tcp (str): The TCP to use for the calculations. 
+            colliders (dict[str, api.models.Collider] | None): List of colliders to add to default collision setup motion group has.
+                When a collision setup is provided, the inverse kinematics calculation will avoid configurations that lead to collisions.
+                Check `nova.utils.collision_setup.motion_group_setup_from_motion_group_description` for default collision setups used for the inverse kinematics calculation.
+
+        Returns:
+            list[list[tuple[float, ...]]]: Calculated joint positions for each pose.
+        """
+
+        # Update the collision setup with user data
+        motion_group_setup = await self.get_setup(tcp)
+        # TODO: this creates dependency with the collision setup utils
+        default_layer = motion_group_setup.collision_setups.root["default"]
+        if default_layer.colliders is None:
+            default_layer.colliders = {}
+        default_layer.colliders.update(colliders or {})
+
+
+        motion_group_description = await self._fetch_motion_group_description()
+        tcp_offset = motion_group_description.tcps[tcp]
+        motion_group_model = await self.get_model()
+        mounting = await self.get_mounting()
+
+        joint_position_limits = get_joint_position_limits_from_motion_group_setup(motion_group_setup)
+
+        response = await self._api_client.kinematics_api.inverse_kinematics(
+            cell=self._cell,
+            inverse_kinematics_request=api.models.InverseKinematicsRequest(
+                motion_group_model=motion_group_model,
+                tcp_poses=[pose.to_api_model() for pose in poses],
+                tcp_offset=tcp_offset.pose,
+                mounting=mounting.to_api_model() if mounting is not None else None,
+                joint_position_limits=joint_position_limits,
+                collision_setups=motion_group_setup.collision_setups,
+            )
+        )
+        return response.joints
 
     async def forward_kinematics(self, joints: list[tuple[float, ...]], tcp: str) -> list[Pose]:
         """Get the forward kinematics of the motion group.
@@ -441,6 +518,82 @@ class MotionGroup(AbstractRobot):
 
         return plan_trajectory_response.response
 
+
+    async def _plan_collision_free(
+        self,
+        action: CollisionFreeMotion,
+        tcp: str,
+        start_joint_position: tuple[float, ...] | None = None,
+        motion_group_setup: api.models.MotionGroupSetup | None = None,
+    ) -> api.models.JointTrajectory:
+        """
+        This method plans a trajectory and avoids collisions.
+        This means if there is a collision along the way to the target pose or joint positions,
+        It will adjust the trajectory to avoid the collision.
+
+        The collision check only happens if the action have collision scene data.
+
+        For more information about this API, please refer to the plan_collision_free_ptp in the API documentation.
+
+        Args:
+            action: The target pose or joint positions to reach
+            tcp:     The tool to use
+            start_joint_position: The starting joint position, if none provided, current position of the robot is used
+            optimizer_setup: The optimizer setup
+
+        Returns: planned joint trajectory
+
+
+        """
+        if isinstance(action.target, Pose):
+            # to inverse kinematics to get the joint positions
+            target_joint_positions = (await self.inverse_kinematics(
+                poses=[action.target],
+                tcp=tcp,
+                colliders=action.colliders,
+            ))[0][0] # first solution of the first pose
+        elif isinstance(action.target, tuple):
+            target_joint_positions = action.target
+        else:
+            raise ValueError("Invalid target type for CollisionFreeMotion")
+
+
+
+        # Update the collision setup with user data
+        motion_group_setup = motion_group_setup or await self.get_setup(tcp=tcp)
+        if motion_group_setup.collision_setups is None:
+            motion_group_setup.collision_setups = api.models.CollisionSetups()
+
+        if motion_group_setup.collision_setups.root is None:
+            motion_group_setup.collision_setups.root = {}
+
+        if action.collision_setup is not None:
+            motion_group_setup.collision_setups.root.update(action.collision_setup)
+
+
+
+        request: api.models.PlanCollisionFreeRequest = api.models.PlanCollisionFreeRequest(
+            motion_group_setup=motion_group_setup,
+            start_joint_position=api.models.DoubleArray(start_joint_position),
+            target=api.models.DoubleArray(list(target_joint_positions)),
+            algorithm=action.algorithm,
+        )
+
+        response: api.models.PlanCollisionFreeResponse = await self._api_client.trajectory_planning_api.plan_collision_free(
+            cell=self._cell, plan_collision_free_request=request
+        )
+
+        if isinstance(response.response, api.models.PlanCollisionFreeFailedResponse):
+            raise PlanTrajectoryFailed(
+                error=response.response, motion_group_id=self.motion_group_id
+            )
+        
+        if isinstance(response.response, api.models.JointTrajectory):
+            return response.response
+        
+        raise ValueError("Unexpected response type from plan_collision_free API")
+
+
     async def _plan(
         self,
         actions: list[Action],
@@ -459,6 +612,18 @@ class MotionGroup(AbstractRobot):
             if len(batch) == 0:
                 raise ValueError("Empty batch of actions")
 
+            if isinstance(batch[0], CollisionFreeMotion):
+                motion: CollisionFreeMotion = cast(CollisionFreeMotion, batch[0])
+                trajectory = await self._plan_collision_free(
+                    action=motion,
+                    tcp=tcp,
+                    start_joint_position=list(current_joints),
+                    motion_group_setup=motion_group_setup,
+                )
+                all_trajectories.append(trajectory)
+                # the last joint position of this trajectory is the starting point for the next one
+                
+                current_joints = tuple(trajectory.joint_positions[-1].root)
             elif isinstance(batch[0], WaitAction):
                 # Waits generate a trajectory with the same joint position at each timestep
                 # Use 50ms timesteps from 0 to wait_for_in_seconds

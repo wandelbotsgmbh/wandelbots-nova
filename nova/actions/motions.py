@@ -359,32 +359,31 @@ class CollisionFreeMotion(Motion):
     """
 
     type: Literal["collision_free"] = "collision_free"
-    target: tuple[float, ...]
+    # TODO: check with team, user can't pass pose anymore
+    target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
-    collision_setup: api.models.CollisionSetup
+    colliders: dict[str, api.models.Collider] | None = None
+    # check with team, user will not get auto completion support while writing this
+    algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(algorithm_name="RRTConnectAlgorithm"),
+
+    # TODO:
+    # maybe, when a new algorithm is added, we need to add it here as well
+    # algorithm : api.models.RRTConnectAlgorithm | api.models.MidpointInsertionAlgorithm
 
     def to_api_model(self) -> api.models.PlanCollisionFreeRequest:
-        """Serialize the model to the API model
-
-        Examples:
-        >>> CollisionFreeMotion(target=(1, 2, 3, 4, 5, 6), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
-        PathCollisionFree(target_joint_position=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], path_definition_name='PathCollisionFree')
-        """
-        return api.models.PlanCollisionFreeRequest(
-            # TODO: where to get this? -> motion group can insert it from the outside
-            motion_group_setup=api.models.MotionGroupSetup(
-                motion_group_model=api.models.MotionGroupModel(""), cycle_time=8
-            ),
-            # TODO: where to get this? -> motion group can insert it from the outside
-            start_joint_position=api.models.DoubleArray([]),
-            target=api.models.DoubleArray(list(self.target)),
-            algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
-        )
+        """"""
+        # TODO: use data structure and API model are too different.
+        # don't return the API model here
+        raise NotImplementedError("CollisionFreeMotion.to_api_model is not implemented yet")
 
 
+
+# settings have no meaning in the collision free API
+# cycle time is required in the API but is not always persistent in the getMotionGroupDescription API response
 def collision_free(
-    target: tuple[float, ...],
-    collision_setup: api.models.CollisionSetup,
+    target: Pose | tuple[float, ...],
+    colliders: dict[str, api.models.Collider] | None = None,
+    algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(algorithm_name="RRTConnectAlgorithm"),
     settings: MotionSettings = MotionSettings(),
     **kwargs: dict[str, Any],
 ) -> CollisionFreeMotion:
@@ -405,5 +404,5 @@ def collision_free(
     """
     kwargs.update(line_number=utils.get_caller_linenumber())
     return CollisionFreeMotion(
-        target=target, settings=settings, collision_setup=collision_setup, metas=kwargs
+        target=target, settings=settings, colliders=colliders, algorithm=algorithm, metas=kwargs
     )

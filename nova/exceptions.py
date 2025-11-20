@@ -7,7 +7,7 @@ class ControllerNotFound(Exception):
 
 
 class PlanTrajectoryFailed(Exception):
-    def __init__(self, error: api.models.PlanTrajectoryFailedResponse, motion_group_id: str):
+    def __init__(self, error: api.models.PlanTrajectoryFailedResponse | api.models.PlanCollisionFreeFailedResponse, motion_group_id: str):
         """
         Create a PlanTrajectoryFailed exception.
 
