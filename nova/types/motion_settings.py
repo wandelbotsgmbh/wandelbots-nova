@@ -3,6 +3,7 @@ import pydantic
 from nova import api
 
 
+# TODO: can this be removed and instead use LimitsOverride from api.models directly?
 class MotionSettings(pydantic.BaseModel):
     """
     Settings for an action. This is closely related to the `MotionCommand` in the API.

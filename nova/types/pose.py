@@ -9,6 +9,8 @@ from scipy.spatial.transform import Rotation
 from nova import api
 from nova.types.vector3d import Vector3d
 
+_POSE_EQUALITY_PRECISION = 6
+
 
 def _parse_args(*args):
     """Parse the arguments and return a dictionary that pydanctic can validate"""
@@ -73,7 +75,11 @@ class Pose(pydantic.BaseModel, Sized):
     def __eq__(self, other):
         if not isinstance(other, Pose):
             return NotImplemented
-        return self.position == other.position and self.orientation == other.orientation
+
+
+        first_val = tuple(round(val, _POSE_EQUALITY_PRECISION) for val in self.to_tuple())
+        second_val = tuple(round(val, _POSE_EQUALITY_PRECISION) for val in other.to_tuple())
+        return first_val == second_val
 
     def __round__(self, n=None):
         if n is not None:
