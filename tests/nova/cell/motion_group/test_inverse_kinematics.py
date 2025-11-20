@@ -5,6 +5,7 @@ from nova.api import models
 from nova.types import Pose
 from math import pi
 
+
 @pytest.fixture
 async def ur_mg():
     """
@@ -45,8 +46,12 @@ async def test_inverse_kinematics_not_reachable_pose(ur_mg):
         tcp="Flange",
     )
 
-    assert len(solutions) == 1, "Inverse kinematics did not return a solution for the unreachable pose"
-    assert len(solutions[0]) == 0, "Inverse kinematics should return no solutions for unreachable pose"
+    assert len(solutions) == 1, (
+        "Inverse kinematics did not return a solution for the unreachable pose"
+    )
+    assert len(solutions[0]) == 0, (
+        "Inverse kinematics should return no solutions for unreachable pose"
+    )
 
 
 @pytest.mark.asyncio
@@ -54,17 +59,15 @@ async def test_inverse_kinematics_reachable_pose(ur_mg):
     """
     Test a pose that is within the robot's reach.
     """
-    solutions = await ur_mg.inverse_kinematics(
-        poses=[
-            Pose(700, 0, 700, 0, 0, 0)
-        ],
-        tcp="Flange",
+    solutions = await ur_mg.inverse_kinematics(poses=[Pose(700, 0, 700, 0, 0, 0)], tcp="Flange")
+
+    assert len(solutions) == 1, (
+        "Inverse kinematics did not return a solution for the unreachable pose"
     )
-
-    assert len(solutions) == 1, "Inverse kinematics did not return a solution for the unreachable pose"
-    assert len(solutions[0]) == 8, "Inverse kinematics should return no solutions for unreachable pose"
+    assert len(solutions[0]) == 8, (
+        "Inverse kinematics should return no solutions for unreachable pose"
+    )
     assert len(solutions[0][0]) == 6, "Inverse kinematics solution does not have 6 joint values"
-
 
 
 @pytest.mark.asyncio
@@ -74,16 +77,14 @@ async def test_inverse_kinematics_mixed_pose_list(ur_mg):
     Verify that reachable poses return solutions and unreachable poses do not.
     """
     solutions = await ur_mg.inverse_kinematics(
-        poses=[
-            Pose(700, 0, 700, 0, 0, 0),          
-            Pose(10000, 0, 10000, 0, 0, 0)
-        ],
-        tcp="Flange",
+        poses=[Pose(700, 0, 700, 0, 0, 0), Pose(10000, 0, 10000, 0, 0, 0)], tcp="Flange"
     )
 
     assert len(solutions) == 2, "Inverse kinematics did not return solutions for all poses"
     assert len(solutions[0]) == 8, "Inverse kinematics should return solutions for reachable pose"
-    assert len(solutions[1]) == 0, "Inverse kinematics should return no solutions for unreachable pose"
+    assert len(solutions[1]) == 0, (
+        "Inverse kinematics should return no solutions for unreachable pose"
+    )
 
     for solution in solutions[0]:
         assert len(solution) == 6, "Inverse kinematics solution does not have 6 joint values"
@@ -97,24 +98,18 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup(ur_mg)
     plane = models.Collider(
         shape=models.Plane(),
         pose=models.Pose(
-            position=models.Vector3d(root=[0, 0, 0]), 
-            orientation=models.RotationVector(root=[0, 0, 0])
+            position=models.Vector3d(root=[0, 0, 0]),
+            orientation=models.RotationVector(root=[0, 0, 0]),
         ),
     )
-
 
     # this orientation is important
     # with this orientation, the body of the end effector stays on top of the plane
     # if you change the orientation, IK will find no solution
-    orientation = ((120/360) * 2 * pi, (-135/360) * 2 * pi, 0)
+    orientation = ((120 / 360) * 2 * pi, (-135 / 360) * 2 * pi, 0)
     solutions = await ur_mg.inverse_kinematics(
-        poses=[
-            Pose(700, 0, 1, *orientation)
-        ],
-        tcp="Flange",
-        colliders={"plane": plane},
+        poses=[Pose(700, 0, 1, *orientation)], tcp="Flange", colliders={"plane": plane}
     )
-
 
     assert len(solutions) == 1, "Inverse kinematics did not return solutions for all poses"
     assert len(solutions[0]) != 0, "Inverse kinametics found solutions that should be in collision"
@@ -129,27 +124,16 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup_2(ur_m
     Cut solution space with a box collider and test that IK respects the collision setup.
     """
     box = models.Collider(
-        shape=models.Box(
-            size_x=100,
-            size_y=100,
-            size_z=100,
-            box_type=models.BoxType.FULL
-        ),
+        shape=models.Box(size_x=100, size_y=100, size_z=100, box_type=models.BoxType.FULL),
         pose=models.Pose(
-            position=models.Vector3d(root=[700, 0, 700]), 
-            orientation=models.RotationVector(root=[0, 0, 0])
+            position=models.Vector3d(root=[700, 0, 700]),
+            orientation=models.RotationVector(root=[0, 0, 0]),
         ),
     )
-
 
     solutions = await ur_mg.inverse_kinematics(
-        poses=[
-            Pose(700, 0, 700, 0, 0, 0)
-        ],
-        tcp="Flange",
-        colliders={"box": box},
+        poses=[Pose(700, 0, 700, 0, 0, 0)], tcp="Flange", colliders={"box": box}
     )
-
 
     assert len(solutions) == 1, "Inverse kinematics did not return solutions for all poses"
     assert len(solutions[0]) == 0, "Inverse kinametics found solutions that should be in collision"

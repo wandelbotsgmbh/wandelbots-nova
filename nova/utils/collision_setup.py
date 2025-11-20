@@ -63,11 +63,9 @@ def motion_group_setup_from_motion_group_description(
     collision_model: list[dict[str, api.models.Collider]],
     payload: api.models.Payload | None = None,
 ) -> api.models.MotionGroupSetup:
-
-    # TODO: why motion group description doesn't include this in the first place and we have to patch it here?    
+    # TODO: why motion group description doesn't include this in the first place and we have to patch it here?
     if motion_group_description.safety_link_colliders is None:
         motion_group_description.safety_link_colliders = collision_model
-         
 
     tool_colliders = (
         motion_group_description.safety_tool_colliders.get(tcp_name)
@@ -77,10 +75,7 @@ def motion_group_setup_from_motion_group_description(
     tool = api.models.Tool(tool_colliders.root) if tool_colliders is not None else None
     link_chain = (
         api.models.LinkChain(
-            list(
-                api.models.Link(link)
-                for link in motion_group_description.safety_link_colliders
-            )
+            list(api.models.Link(link) for link in motion_group_description.safety_link_colliders)
         )
         if motion_group_description.safety_link_colliders
         else None
@@ -119,14 +114,15 @@ def motion_group_setup_from_motion_group_description(
 def get_joint_position_limits_from_motion_group_setup(
     motion_group_setup: api.models.MotionGroupSetup,
 ) -> api.models.JointPositionLimits | None:
-        """Extract joint position limits from motion group description, if available."""
-        if motion_group_setup.global_limits is None or motion_group_setup.global_limits.joints is None:
-            return None
+    """Extract joint position limits from motion group description, if available."""
+    if motion_group_setup.global_limits is None or motion_group_setup.global_limits.joints is None:
+        return None
 
-        # TODO: does optional mean no limit applied for that joint?
-        # will joint.position is not None cause issues by skipping joints without limits?
-        joint_limit_range_list = [
-            joint.position for joint in motion_group_setup.global_limits.joints
-            if joint.position is not None
-        ]
-        return api.models.JointPositionLimits(root=joint_limit_range_list)
+    # TODO: does optional mean no limit applied for that joint?
+    # will joint.position is not None cause issues by skipping joints without limits?
+    joint_limit_range_list = [
+        joint.position
+        for joint in motion_group_setup.global_limits.joints
+        if joint.position is not None
+    ]
+    return api.models.JointPositionLimits(root=joint_limit_range_list)
