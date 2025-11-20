@@ -3,7 +3,9 @@ import pydantic
 from nova import api
 
 
-# TODO: can this be removed and instead use LimitsOverride from api.models directly?
+DEFAULT_TCP_VELOCITY_LIMIT = 50.0  # mm/s
+
+
 class MotionSettings(pydantic.BaseModel):
     """
     Settings for an action. This is closely related to the `MotionCommand` in the API.
@@ -47,7 +49,7 @@ class MotionSettings(pydantic.BaseModel):
     blending_auto: int | None = pydantic.Field(default=None)
     joint_velocity_limits: tuple[float, ...] | None = pydantic.Field(default=None)
     joint_acceleration_limits: tuple[float, ...] | None = pydantic.Field(default=None)
-    tcp_velocity_limit: float | None = pydantic.Field(default=50)
+    tcp_velocity_limit: float | None = pydantic.Field(default=DEFAULT_TCP_VELOCITY_LIMIT)
     tcp_acceleration_limit: float | None = pydantic.Field(default=None)
     tcp_orientation_velocity_limit: float | None = pydantic.Field(default=None)
     tcp_orientation_acceleration_limit: float | None = pydantic.Field(default=None)
@@ -66,6 +68,12 @@ class MotionSettings(pydantic.BaseModel):
     def validate_blending_settings(self) -> "MotionSettings":
         if self.min_blending_velocity and self.position_zone_radius:
             raise ValueError("Can't set both min_blending_velocity and blending")
+
+        if self.joint_acceleration_limits is not None and self.joint_velocity_limits is not None:
+            if len(self.joint_acceleration_limits) != len(self.joint_velocity_limits):
+                raise ValueError(
+                    "joint_acceleration_limits and joint_velocity_limits must have the same length."
+                )
         return self
 
     def has_blending_settings(self) -> bool:
@@ -114,3 +122,36 @@ class MotionSettings(pydantic.BaseModel):
             min_velocity_in_percent=self.blending_auto or self.min_blending_velocity,
             blending_name="BlendingAuto",
         )
+
+    def as_tcp_cartesian_limits(self) -> api.models.CartesianLimits:
+        return api.models.CartesianLimits(
+            velocity=self.tcp_velocity_limit,
+            acceleration=self.tcp_acceleration_limit,
+            orientation_velocity=self.tcp_orientation_velocity_limit,
+            orientation_acceleration=self.tcp_orientation_acceleration_limit,
+        )
+
+    def as_joint_limits(self) -> list[api.models.JointLimits] | None:
+        if self.joint_velocity_limits is None and self.joint_acceleration_limits is None:
+            return None
+
+        length = (
+            len(self.joint_velocity_limits)
+            if self.joint_velocity_limits is not None
+            else len(self.joint_acceleration_limits)
+        )
+        limits = []
+        for i in range(length):
+            # we assume self.joint_velocity_limits and self.joint_acceleration_limits have the same length
+            # check the validator
+            limit = api.models.JointLimits(
+                velocity=self.joint_velocity_limits[i]
+                if self.joint_velocity_limits is not None
+                else None,
+                acceleration=self.joint_acceleration_limits[i]
+                if self.joint_acceleration_limits is not None
+                else None,
+            )
+            limits.append(limit)
+
+        return limits

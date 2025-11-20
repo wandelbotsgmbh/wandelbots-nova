@@ -76,7 +76,6 @@ class Pose(pydantic.BaseModel, Sized):
         if not isinstance(other, Pose):
             return NotImplemented
 
-
         first_val = tuple(round(val, _POSE_EQUALITY_PRECISION) for val in self.to_tuple())
         second_val = tuple(round(val, _POSE_EQUALITY_PRECISION) for val in other.to_tuple())
         return first_val == second_val

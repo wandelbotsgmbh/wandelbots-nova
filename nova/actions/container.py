@@ -133,8 +133,8 @@ class CombinedActions(pydantic.BaseModel):
         motion_commands = []
         for motion in self.motions:
             if isinstance(motion, CollisionFreeMotion):
-                continue  
-            
+                continue
+
             settings = motion.settings or MotionSettings()
             blending = settings.as_blending_setting() if settings.has_blending_settings() else None
             limits_override = (

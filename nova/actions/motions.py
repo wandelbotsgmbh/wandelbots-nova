@@ -364,7 +364,9 @@ class CollisionFreeMotion(Motion):
     settings: MotionSettings = MotionSettings()
     colliders: dict[str, api.models.Collider] | None = None
     # check with team, user will not get auto completion support while writing this
-    algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(algorithm_name="RRTConnectAlgorithm"),
+    algorithm: api.models.CollisionFreeAlgorithm = (
+        api.models.CollisionFreeAlgorithm(algorithm_name="RRTConnectAlgorithm"),
+    )
 
     # TODO:
     # maybe, when a new algorithm is added, we need to add it here as well
@@ -377,13 +379,14 @@ class CollisionFreeMotion(Motion):
         raise NotImplementedError("CollisionFreeMotion.to_api_model is not implemented yet")
 
 
-
 # settings have no meaning in the collision free API
 # cycle time is required in the API but is not always persistent in the getMotionGroupDescription API response
 def collision_free(
     target: Pose | tuple[float, ...],
     colliders: dict[str, api.models.Collider] | None = None,
-    algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(algorithm_name="RRTConnectAlgorithm"),
+    algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(
+        algorithm_name="RRTConnectAlgorithm"
+    ),
     settings: MotionSettings = MotionSettings(),
     **kwargs: dict[str, Any],
 ) -> CollisionFreeMotion:
