@@ -12,7 +12,6 @@ from nova import api
 from nova.actions import MovementControllerContext
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
-from nova.core import logger
 from nova.exceptions import ErrorDuringMovement, InitMovementFailed
 from nova.types import (
     ExecuteTrajectoryRequestStream,
@@ -21,6 +20,9 @@ from nova.types import (
     MovementControllerFunction,
 )
 from nova.types.state import motion_group_state_to_motion_state
+import logging
+
+logger = logging.getLogger(__name__)
 
 ExecuteJoggingRequestStream = AsyncIterator[api.models.ExecuteJoggingRequest]
 ExecuteJoggingResponseStream = AsyncIterator[api.models.ExecuteJoggingResponse]

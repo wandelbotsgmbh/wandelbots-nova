@@ -4,8 +4,7 @@ import json
 from nova import api
 from nova.core.gateway import ApiGateway
 from nova.exceptions import ControllerNotFound
-from nova.logging import logger
-from nova.nats import NatsClient
+import nats
 
 from .controller import Controller
 from .robot_cell import RobotCell
@@ -17,11 +16,14 @@ DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS = 120
 DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS = 120
 
 
+import logging
+logger = logging.getLogger(__name__)
+
 class Cell:
     """A representation of a robot cell, providing high-level operations on controllers."""
 
     def __init__(
-        self, api_gateway: ApiGateway, cell_id: str, nats_client: NatsClient | None = None
+        self, api_gateway: ApiGateway, cell_id: str, nats_client: nats.NATS | None = None
     ):
         """
         Initializes a Cell instance.
@@ -44,7 +46,7 @@ class Cell:
         return self._cell_id
 
     @property
-    def nats(self) -> NatsClient | None:
+    def nats(self) -> nats.NATS | None:
         """
         Returns the NATS client for this cell.
         Returns:
@@ -58,10 +60,7 @@ class Cell:
                 cell_id=self._cell_id,
                 controller_id=controller_id,
                 id=controller_id,
-                nova_api=self._api_client._host,
-                nova_access_token=self._api_client._access_token,
-                nova_username=self._api_client._username,
-                nova_password=self._api_client._password,
+                config=self._api_client.config
             )
         )
 

@@ -3,7 +3,6 @@ import asyncio
 import pytest
 
 from nova.core.nova import Nova
-from nova.nats import Message
 
 
 @pytest.mark.integration
@@ -21,7 +20,7 @@ async def test_nats_pub_sub():
         collected_message = msg
 
     await nova.nats.subscribe("nova.test.subject", on_message=cb)
-    await nova.nats.publish_message(Message(subject="nova.test.subject", data=b"test message"))
+    await nova.nats.publish(subject="nova.test.subject", payload=b"test message")
 
     await asyncio.sleep(2)
 
@@ -49,7 +48,7 @@ async def test_nats_message_order():
     await nova.nats.subscribe("nova.test.order", on_message=collect_message)
 
     for i in range(1, 11):
-        await nova.nats.publish_message(Message(subject="nova.test.order", data=str(i).encode()))
+        await nova.nats.publish(subject="nova.test.order", payload=str(i).encode())
 
     await asyncio.sleep(3)
 
@@ -77,8 +76,8 @@ async def test_nats_message_order_two_instances():
 
         # Publish with the publisher instance
         for i in range(1, 11):
-            await nova_publisher.nats.publish_message(
-                Message(subject="nova.test.order.two_instances", data=str(i).encode())
+            await nova_publisher.nats.publish(
+                subject="nova.test.order.two_instances", payload=str(i).encode()
             )
 
         await asyncio.sleep(5)
