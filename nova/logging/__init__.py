@@ -15,7 +15,7 @@ _handler.setFormatter(_formatter)
 # the logger name is specifically set to "nova" so that other modules can do:
 # import logging
 # logger = logging.getLogger(__name__)
-# and get a logger that is already configured by nova module
+# and use this logger as parent
 logger: logging.Logger = logging.getLogger("nova")
 logger.setLevel(LOG_LEVEL)
 logger.addHandler(_handler)
