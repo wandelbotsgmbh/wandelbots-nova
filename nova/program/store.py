@@ -8,8 +8,6 @@ from nats.js.errors import KeyNotFoundError as KvKeyError
 from nats.js.errors import NoKeysError, NotFoundError
 from pydantic import BaseModel, ValidationError
 
-from nova import api
-from nova.logging import logger as nova_logger
 from nova.nats import NatsClient
 
 _T = TypeVar("_T", bound=BaseModel)

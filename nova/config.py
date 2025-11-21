@@ -25,7 +25,6 @@ K8S_NAMESPACE = config("K8S_NAMESPACE", default="cell")
 LOG_LEVEL: str = config("LOG_LEVEL", default="INFO").upper()
 LOG_FORMAT: str = config("LOG_FORMAT", default="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 LOG_DATETIME_FORMAT: str = config("LOG_DATETIME_FORMAT", default="%Y-%m-%d %H:%M:%S")
-LOGGER_NAME: str = config("LOGGER_NAME", default="wandelbots-nova")
 
 # Feature flags
 ENABLE_TRAJECTORY_TUNING = config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False)
@@ -38,8 +37,6 @@ class NovaConfig(BaseModel):
     Args:
         host (str | None): The Nova API host.
         access_token (str | None): An access token for the Nova API.
-        username (str | None): [Deprecated] Username to authenticate with the Nova API.
-        password (str | None): [Deprecated] Password to authenticate with the Nova API.
         version (str): The API version to use (default: "v1").
         verify_ssl (bool): Whether or not to verify SSL certificates (default: True).
         nats_client_config (dict | None): Configuration dictionary for NATS client.
@@ -47,13 +44,39 @@ class NovaConfig(BaseModel):
 
     host: str = Field(..., description="Nova API host.")
     access_token: str | None = Field(default=None, description="Access token for Nova API.")
-    username: str | None = Field(default=None, deprecated=True)
-    password: str | None = Field(default=None, deprecated=True)
     verify_ssl: bool = Field(default=True)
+    enable_token_refresh: bool = Field(
+        default=False, description="Enable automatic token refresh when access token expires."
+    )
     nats_client_config: dict | None = Field(
         default=None,
         description="Client configuration to pass to the nats library. See: https://nats-io.github.io/nats.py/modules.html#nats.aio.client.Client.connect",
     )
+
+
+    # TODO: this is coming from v1 gateway implementation
+    # check if this is still needed or we can get rid of it
+    @model_validator(mode="after")
+    def _normalize_host_prefix(self) -> "NovaConfig":
+        if not self.host:
+            return self
+            
+        is_wabo_host = "wandelbots.io" in self.host
+        if self.host.startswith("http") and not is_wabo_host:
+            # Already has protocol prefix and not a wandelbots.io host
+            pass
+        elif self.host.startswith("http") and is_wabo_host:
+            # Force https for wandelbots.io hosts
+            self.host = self.host.replace("http://", "https://")
+        elif is_wabo_host:
+            # Add https prefix for wandelbots.io hosts
+            self.host = f"https://{self.host}"
+        else:
+            # Add http prefix for other hosts
+            self.host = f"http://{self.host}"
+            
+        self.host = self.host.rstrip("/")
+        return self
 
     @model_validator(mode="after")
     def _derive_nats_connection_string(self) -> "NovaConfig":

@@ -19,13 +19,11 @@ class Nova:
         """
 
         self._config = config or default_config
-        self._api_client = ApiGateway(
-            host=self._config.host,
-            access_token=self._config.access_token,
-            username=self._config.username,
-            password=self._config.password,
-            verify_ssl=self._config.verify_ssl,
-        )
+
+        # many users rely on this private field, we will remove that after some time in v2
+        self._api_client = ApiGateway(self._config)
+        self.apis = self._api_client
+        
         self.nats = NatsClient(nats_client_config=self._config.nats_client_config)
 
     @property

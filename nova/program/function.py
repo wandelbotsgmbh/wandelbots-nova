@@ -24,7 +24,9 @@ from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
 from nova.exceptions import ControllerCreationFailed
-from nova.logging import logger
+
+import logging
+logger = logging.getLogger(__name__)
 
 Parameters = ParamSpec("Parameters")
 Return = TypeVar("Return")

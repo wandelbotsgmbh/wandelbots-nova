@@ -4,6 +4,9 @@ import httpx
 import pydantic
 
 from nova.auth.auth_config import Auth0Config
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Auth0DeviceCodeInfo(pydantic.BaseModel):
@@ -129,6 +132,9 @@ class Auth0DeviceAuthorization:
         """
         return self.device_code_info
 
+    # TODO: check with Lars
+    # this function relies on showing a print message to user
+    # instead should return the data as string and let the caller handle displaying it
     def display_user_instructions(self) -> None:
         """
         Displays instructions for the user to authenticate.
@@ -139,7 +145,7 @@ class Auth0DeviceAuthorization:
         if self.device_code_info:
             verification_uri = f"{self.device_code_info.verification_uri}?user_code={self.device_code_info.user_code}"
             user_code = self.device_code_info.user_code
-            print(
+            logging.info(
                 f"Please visit {verification_uri} and validate the code {user_code} to authenticate."
             )
         else:
