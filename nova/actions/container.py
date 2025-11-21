@@ -7,7 +7,7 @@ import pydantic
 from nova import api
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
-from nova.actions.motions import Motion
+from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.types import MotionSettings, MovementControllerFunction, Pose
 
 
@@ -132,6 +132,9 @@ class CombinedActions(pydantic.BaseModel):
     def to_motion_command(self) -> list[api.models.MotionCommand]:
         motion_commands = []
         for motion in self.motions:
+            if isinstance(motion, CollisionFreeMotion):
+                continue
+
             settings = motion.settings or MotionSettings()
             blending = settings.as_blending_setting() if settings.has_blending_settings() else None
             limits_override = (
@@ -152,6 +155,7 @@ class CombinedActions(pydantic.BaseModel):
                 io_origin=api.models.IOOrigin.CONTROLLER,
             )
             for action in self.actions
+            if isinstance(action.action, WriteAction)
         ]
 
 
