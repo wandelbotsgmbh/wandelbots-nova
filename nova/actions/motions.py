@@ -359,18 +359,13 @@ class CollisionFreeMotion(Motion):
     """
 
     type: Literal["collision_free"] = "collision_free"
-    # TODO: check with team, user can't pass pose anymore
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
+    # TODO: should we take whole collision layer or just colliders?
     colliders: dict[str, api.models.Collider] | None = None
-    # check with team, user will not get auto completion support while writing this
     algorithm: api.models.CollisionFreeAlgorithm = (
         api.models.CollisionFreeAlgorithm(algorithm_name="RRTConnectAlgorithm"),
     )
-
-    # TODO:
-    # maybe, when a new algorithm is added, we need to add it here as well
-    # algorithm : api.models.RRTConnectAlgorithm | api.models.MidpointInsertionAlgorithm
 
     def to_api_model(self) -> api.models.PlanCollisionFreeRequest:
         """"""
@@ -379,8 +374,6 @@ class CollisionFreeMotion(Motion):
         raise NotImplementedError("CollisionFreeMotion.to_api_model is not implemented yet")
 
 
-# settings have no meaning in the collision free API
-# cycle time is required in the API but is not always persistent in the getMotionGroupDescription API response
 def collision_free(
     target: Pose | tuple[float, ...],
     colliders: dict[str, api.models.Collider] | None = None,
