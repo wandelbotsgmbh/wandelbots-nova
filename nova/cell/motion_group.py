@@ -202,7 +202,7 @@ class MotionGroup(AbstractRobot):
     # if we want to provide this API future, we need to create data mapping because creating api.models.JointPositionLimits is not pytonic
     # we might need to create a helper data structure for this (maybe list of tuples [(min, max), (min, max), ...])
     async def inverse_kinematics(
-        self, poses: list[Pose], tcp: str, colliders: dict[str, api.models.Collider] | None = None
+        self, poses: list[Pose], tcp: str, collision_setup: api.models.CollisionSetup | None = None
     ) -> list[list[tuple[float, ...]]]:
         """Inverse kinematics is the process of finding joint positions that achieve a desired end-effector pose.
         Mathematically, there can be multiple or no solutions for a given pose.
@@ -224,11 +224,11 @@ class MotionGroup(AbstractRobot):
 
         # Update the collision setup with user data
         motion_group_setup = await self.get_setup(tcp)
-        # TODO: this creates dependency with the collision setup utils
-        default_layer = motion_group_setup.collision_setups.root["default"]
-        if default_layer.colliders is None:
-            default_layer.colliders = {}
-        default_layer.colliders.update(colliders or {})
+        # TODO: this doesn't look correct, if we create a new layer, what should be part of this layer?
+        if collision_setup is not None:
+            collision_setup.link_chain = motion_group_setup.collision_setups.root["default"].link_chain
+            collision_setup.tool = motion_group_setup.collision_setups.root["default"].tool
+            motion_group_setup.collision_setups.root["user"] = collision_setup
 
         motion_group_description = await self._fetch_motion_group_description()
         tcp_offset = motion_group_description.tcps[tcp]
@@ -589,7 +589,7 @@ class MotionGroup(AbstractRobot):
             # to inverse kinematics to get the joint positions
             target_joint_positions = (
                 await self.inverse_kinematics(
-                    poses=[action.target], tcp=tcp, colliders=action.colliders
+                    poses=[action.target], tcp=tcp, collision_setup=action.collision_setup
                 )
             )[0][0]  # first solution of the first pose
         elif isinstance(action.target, tuple):

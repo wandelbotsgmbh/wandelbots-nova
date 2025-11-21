@@ -362,7 +362,7 @@ class CollisionFreeMotion(Motion):
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     # TODO: should we take whole collision layer or just colliders?
-    colliders: dict[str, api.models.Collider] | None = None
+    collision_setup: api.models.CollisionSetup | None = None
     algorithm: api.models.CollisionFreeAlgorithm = (
         api.models.CollisionFreeAlgorithm(algorithm_name="RRTConnectAlgorithm"),
     )
@@ -376,7 +376,7 @@ class CollisionFreeMotion(Motion):
 
 def collision_free(
     target: Pose | tuple[float, ...],
-    colliders: dict[str, api.models.Collider] | None = None,
+    collision_setup: api.models.CollisionSetup | None = None,
     algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(
         algorithm_name="RRTConnectAlgorithm"
     ),
@@ -400,5 +400,5 @@ def collision_free(
     """
     kwargs.update(line_number=utils.get_caller_linenumber())
     return CollisionFreeMotion(
-        target=target, settings=settings, colliders=colliders, algorithm=algorithm, metas=kwargs
+        target=target, settings=settings, collision_setup=collision_setup, algorithm=algorithm, metas=kwargs
     )

@@ -102,13 +102,14 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup(ur_mg)
             orientation=models.RotationVector(root=[0, 0, 0]),
         ),
     )
+    collision_setup = models.CollisionSetup(colliders={"plane": plane})
 
     # this orientation is important
     # with this orientation, the body of the end effector stays on top of the plane
     # if you change the orientation, IK will find no solution
     orientation = ((120 / 360) * 2 * pi, (-135 / 360) * 2 * pi, 0)
     solutions = await ur_mg.inverse_kinematics(
-        poses=[Pose(700, 0, 1, *orientation)], tcp="Flange", colliders={"plane": plane}
+        poses=[Pose(700, 0, 1, *orientation)], tcp="Flange", collision_setup=collision_setup
     )
 
     assert len(solutions) == 1, "Inverse kinematics did not return solutions for all poses"
@@ -130,9 +131,10 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup_2(ur_m
             orientation=models.RotationVector(root=[0, 0, 0]),
         ),
     )
+    collision_setup = models.CollisionSetup(colliders={"box": box})
 
     solutions = await ur_mg.inverse_kinematics(
-        poses=[Pose(700, 0, 700, 0, 0, 0)], tcp="Flange", colliders={"box": box}
+        poses=[Pose(700, 0, 700, 0, 0, 0)], tcp="Flange", collision_setup=collision_setup
     )
 
     assert len(solutions) == 1, "Inverse kinematics did not return solutions for all poses"
