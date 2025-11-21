@@ -25,7 +25,6 @@ from nova import Nova, NovaConfig, api
 from nova.cell.robot_cell import RobotCell
 from nova.config import CELL_NAME
 from nova.exceptions import PlanTrajectoryFailed
-from nova.nats import Message
 from nova.program.exceptions import NotPlannableError
 from nova.program.function import Program
 from nova.program.utils import Tee, stoppable_run
@@ -364,8 +363,7 @@ class ProgramRunner(ABC):
 
             # publish program run to NATS
             subject = f"nova.v2.cells.{self._cell_id}.programs"
-            message = Message(subject=subject, data=data)
-            await nova.nats.publish_message(message)
+            await nova.nats.publish(subject=subject, payload=data)
 
     async def _run_program(
         self, stop_event: anyio.Event, on_state_change: Callable[[], Awaitable[None]]
