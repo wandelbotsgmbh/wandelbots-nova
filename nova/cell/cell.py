@@ -4,7 +4,7 @@ import json
 from nova import api
 from nova.core.gateway import ApiGateway
 from nova.exceptions import ControllerNotFound
-from nova.nats import NatsClient
+import nats
 
 from .controller import Controller
 from .robot_cell import RobotCell
@@ -23,7 +23,7 @@ class Cell:
     """A representation of a robot cell, providing high-level operations on controllers."""
 
     def __init__(
-        self, api_gateway: ApiGateway, cell_id: str, nats_client: NatsClient | None = None
+        self, api_gateway: ApiGateway, cell_id: str, nats_client: nats.NATS | None = None
     ):
         """
         Initializes a Cell instance.
@@ -46,7 +46,7 @@ class Cell:
         return self._cell_id
 
     @property
-    def nats(self) -> NatsClient | None:
+    def nats(self) -> nats.NATS | None:
         """
         Returns the NATS client for this cell.
         Returns:

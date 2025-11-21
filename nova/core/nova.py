@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from nova.cell.cell import Cell
 from nova.config import CELL_NAME, NovaConfig, default_config
-from nova.nats import NatsClient
+import nats
 
 from .gateway import ApiGateway
 
@@ -24,7 +24,7 @@ class Nova:
         self._api_client = ApiGateway(self._config)
         self.apis = self._api_client
         
-        self.nats = NatsClient(nats_client_config=self._config.nats_client_config)
+        self.nats = nats.NATS()
 
     @property
     def config(self) -> NovaConfig:
@@ -43,11 +43,11 @@ class Nova:
 
     async def connect(self):
         # ApiGateway doesn't need an explicit connect call, it's initialized in constructor
-        await self.nats.connect()
+        await self.nats.connect(**(self._config.nats_client_config or {}))
 
     async def close(self):
         """Closes the underlying API client session and NATS client."""
-        await self.nats.close()
+        await self.nats.drain()
         return await self._api_client.close()
 
     async def __aenter__(self):
