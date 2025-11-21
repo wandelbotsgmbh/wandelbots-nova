@@ -106,11 +106,12 @@ async def test_collision_free_planning_finds_no_solution(ur_mg):
             orientation=models.RotationVector(root=[0, 0, 0]),
         ),
     )
+    collision_setup = models.CollisionSetup(colliders={"plane": plane})
 
     with pytest.raises(Exception):
         await ur_mg.plan(
             start_joint_position=tuple(initial_joint_positions),
-            actions=[collision_free(target=Pose(700, 0, -10, 0, 0, 0), colliders={"plane": plane})],
+            actions=[collision_free(target=Pose(700, 0, -10, 0, 0, 0), collision_setup=collision_setup)],
             tcp="Flange",
         )
 
