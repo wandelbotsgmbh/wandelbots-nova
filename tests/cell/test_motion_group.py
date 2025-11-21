@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from nova import api
-from nova.actions import cartesian_ptp, io_write, joint_ptp, linear, wait
+from nova.actions import cartesian_ptp, io_write, joint_ptp, linear, wait, collision_free
 from nova.actions.base import Action
 from nova.cell.motion_group import MotionGroup, split_actions_into_batches
 from nova.core.gateway import ApiGateway
@@ -47,8 +47,8 @@ async def test_only_actions():
 @pytest.mark.asyncio
 async def test_only_collision_free(collision_setup):
     # Create only collision free motions.
-    cfm1 = joint_ptp((1, 2, 3, 4, 5, 6), collision_setup=collision_setup)
-    cfm2 = joint_ptp((7, 8, 9, 10, 11, 12), collision_setup=collision_setup)
+    cfm1 = collision_free((1, 2, 3, 4, 5, 6), collision_setup=collision_setup)
+    cfm2 = collision_free((7, 8, 9, 10, 11, 12), collision_setup=collision_setup)
     # Each collision free motion should be yielded immediately.
     assert split_actions_into_batches([cfm1, cfm2]) == [[cfm1], [cfm2]]
 
@@ -56,7 +56,7 @@ async def test_only_collision_free(collision_setup):
 @pytest.mark.asyncio
 async def test_collision_free_first(collision_setup):
     # Collision free motion comes first.
-    cfm1 = joint_ptp((1, 2, 3, 4, 5, 6), collision_setup=collision_setup)
+    cfm1 = collision_free((1, 2, 3, 4, 5, 6), collision_setup=collision_setup)
     a1 = linear((0, 0, 0, 0, 0, 0))
     a2 = cartesian_ptp((1, 1, 1, 1, 1, 1))
     # Expect: first the collision free motion, then the batch of actions.
@@ -68,7 +68,7 @@ async def test_collision_free_last(collision_setup):
     # Collision free motion comes last.
     a1 = linear((0, 0, 0, 0, 0, 0))
     a2 = cartesian_ptp((1, 1, 1, 1, 1, 1))
-    cfm1 = joint_ptp((1, 2, 3, 4, 5, 6), collision_setup=collision_setup)
+    cfm1 = collision_free((1, 2, 3, 4, 5, 6), collision_setup=collision_setup)
     # Expect: first a batch of actions, then the collision free motion.
     assert split_actions_into_batches([a1, a2, cfm1]) == [[a1, a2], [cfm1]]
 
@@ -79,8 +79,8 @@ async def test_interleaved(collision_setup):
     a1 = linear((0, 0, 0, 0, 0, 0))
     a2 = cartesian_ptp((1, 1, 1, 1, 1, 1))
     a3 = linear((2, 2, 2, 2, 2, 2))
-    cfm1 = joint_ptp((10, 20, 30, 40, 50, 60), collision_setup=collision_setup)
-    cfm2 = joint_ptp((70, 80, 90, 100, 110, 120), collision_setup=collision_setup)
+    cfm1 = collision_free((10, 20, 30, 40, 50, 60), collision_setup=collision_setup)
+    cfm2 = collision_free((70, 80, 90, 100, 110, 120), collision_setup=collision_setup)
 
     actions = [a1, cfm1, a2, cfm2, a3]
     expected = [[a1], [cfm1], [a2], [cfm2], [a3]]
@@ -92,8 +92,8 @@ async def test_multiple_collision_free_in_row(collision_setup):
     # Sequence: [action, collision free, collision free, action]
     a1 = linear((0, 0, 0, 0, 0, 0))
     a2 = cartesian_ptp((1, 1, 1, 1, 1, 1))
-    cfm1 = joint_ptp((10, 20, 30, 40, 50, 60), collision_setup=collision_setup)
-    cfm2 = joint_ptp((70, 80, 90, 100, 110, 120), collision_setup=collision_setup)
+    cfm1 = collision_free((10, 20, 30, 40, 50, 60), collision_setup=collision_setup)
+    cfm2 = collision_free((70, 80, 90, 100, 110, 120), collision_setup=collision_setup)
     # Simulation:
     # - a1 → batch = [a1]
     # - cfm1 with non-empty batch → yield [a1], defer cfm1.
@@ -113,9 +113,9 @@ async def test_complex_sequence(collision_setup):
     a1 = linear((0, 0, 0, 0, 0, 0))
     a2 = cartesian_ptp((1, 1, 1, 1, 1, 1))
     a3 = linear((2, 2, 2, 2, 2, 2))
-    cfm1 = joint_ptp((10, 20, 30, 40, 50, 60), collision_setup=collision_setup)
-    cfm2 = joint_ptp((70, 80, 90, 100, 110, 120), collision_setup=collision_setup)
-    cfm3 = joint_ptp((130, 140, 150, 160, 170, 180), collision_setup=collision_setup)
+    cfm1 = collision_free((10, 20, 30, 40, 50, 60), collision_setup=collision_setup)
+    cfm2 = collision_free((70, 80, 90, 100, 110, 120), collision_setup=collision_setup)
+    cfm3 = collision_free((130, 140, 150, 160, 170, 180), collision_setup=collision_setup)
 
     actions = [a1, cfm1, cfm2, a2, a3, cfm3]
     expected = [[a1], [cfm1], [cfm2], [a2, a3], [cfm3]]
@@ -148,12 +148,12 @@ async def test_split_and_verify_collision_setup():
             linear(target=(0, 0, 0, 0, 0, 0), collision_setup=collision_scene_1),
             io_write("digital", 0),
             linear(target=(0, 0, 0, 0, 0, 0), collision_setup=collision_scene_1),
-            joint_ptp((1, 2, 3, 4, 5, 6), collision_setup=collision_scene_2),
+            collision_free((1, 2, 3, 4, 5, 6), collision_setup=collision_scene_1),
             wait(1),
-            linear(Pose((1, 2, 3, 4, 5, 6))),
-            joint_ptp((7, 8, 9, 10, 11, 12), collision_setup=collision_scene_3),
+            linear(Pose((1, 2, 3, 4, 5, 6)), collision_setup=collision_scene_1),
+            collision_free((7, 8, 9, 10, 11, 12), collision_setup=collision_scene_1),
             linear(target=(0, 0, 0, 0, 0, 0)),
-            joint_ptp((7, 8, 9, 10, 11, 12), collision_setup=collision_scene_4),
+            collision_free((7, 8, 9, 10, 11, 12), collision_setup=collision_scene_4),
         ]
     )
 
