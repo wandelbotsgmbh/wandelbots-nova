@@ -4,7 +4,6 @@ import json
 from nova import api
 from nova.core.gateway import ApiGateway
 from nova.exceptions import ControllerNotFound
-from nova.logging import logger
 from nova.nats import NatsClient
 
 from .controller import Controller
@@ -16,6 +15,9 @@ DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS = 120
 # This is the default value we use when we wait for a controller to be ready.
 DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS = 120
 
+
+import logging
+logger = logging.getLogger(__name__)
 
 class Cell:
     """A representation of a robot cell, providing high-level operations on controllers."""
@@ -58,10 +60,7 @@ class Cell:
                 cell_id=self._cell_id,
                 controller_id=controller_id,
                 id=controller_id,
-                nova_api=self._api_client._host,
-                nova_access_token=self._api_client._access_token,
-                nova_username=self._api_client._username,
-                nova_password=self._api_client._password,
+                config=self._api_client.config
             )
         )
 

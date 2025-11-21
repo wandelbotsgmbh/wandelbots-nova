@@ -8,7 +8,6 @@ from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
 from nova.config import ENABLE_TRAJECTORY_TUNING
-from nova.core import logger
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.types import MovementResponse, Pose, RobotState
@@ -27,6 +26,10 @@ from .tuner import TrajectoryTuner
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 # TODO: when collision scene is different in different motions
 #  , we should plan them separately

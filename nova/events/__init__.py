@@ -8,8 +8,10 @@ from pydantic import BaseModel, Field
 from nova.cell.cell import Cell
 from nova.cell.robot_cell import Device, OutputDevice
 from nova.config import BASE_PATH
-from nova.logging import logger
 from nova.nats import Message as NatsMessage
+
+import logging
+logger = logging.getLogger(__name__)
 
 # Read BASE_PATH environment variable and extract app name
 # TODO: make a util and move the logic there

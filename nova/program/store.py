@@ -9,7 +9,7 @@ from nats.js.errors import NoKeysError, NotFoundError
 from pydantic import BaseModel, ValidationError
 from wandelbots_api_client.v2.models.program import Program
 
-from nova.logging import logger as nova_logger
+
 from nova.nats import NatsClient
 
 _T = TypeVar("_T", bound=BaseModel)

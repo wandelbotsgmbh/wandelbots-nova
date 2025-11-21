@@ -26,8 +26,10 @@ from aiostream import stream
 
 from nova import api
 from nova.actions import Action, MovementController
-from nova.core import logger
 from nova.types import MotionState, MovementResponse, Pose, RobotState
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 class RobotCellError(Exception):

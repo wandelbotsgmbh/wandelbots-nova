@@ -8,9 +8,10 @@ from typing import Awaitable, Callable
 import nats
 from nats.aio.msg import Msg as NatsLibMessage
 
-from nova.logging import logger
 from nova.nats.message import Message
 
+import logging
+logger = logging.getLogger(__name__)
 
 class NatsClient:
     """NATS client for Nova with connection management and publishing capabilities."""
