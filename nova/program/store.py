@@ -7,14 +7,19 @@ from nats.js.client import KeyValue
 from nats.js.errors import KeyNotFoundError as KvKeyError
 from nats.js.errors import NoKeysError, NotFoundError
 from pydantic import BaseModel, ValidationError
+from nova import api
 
-from nova.nats import NatsClient
+from nova.cell.cell import Cell
+
 
 _T = TypeVar("_T", bound=BaseModel)
 _NATS_PROGRAMS_BUCKET_TEMPLATE = "nova_cells_{cell}_programs"
 _NATS_PROGRAMS_MESSAGE_SIZE = 128 * 1024
 _NATS_PROGRAMS_BUCKET_SIZE = _NATS_PROGRAMS_MESSAGE_SIZE * 100
 
+
+import logging
+logger = logging.getLogger(__name__)
 
 # We don't want to expose this to public usage until the jetstream concept gets more mature
 class _KeyValueStore(Generic[_T]):
@@ -61,7 +66,7 @@ class _KeyValueStore(Generic[_T]):
         self,
         model_class: type[_T],
         nats_bucket_name: str,
-        nats_client: NatsClient,
+        nats_client: nats.NATS,
         nats_kv_config: KeyValueConfig | None = None,
     ):
         """Initialize the KeyValueStore.
@@ -87,7 +92,6 @@ class _KeyValueStore(Generic[_T]):
 
         self._nats_client = nats_client
         self._bucket_lock = asyncio.Lock()
-        self._logger = nova_logger.getChild("ProgramStore")
         self._kv_bucket: KeyValue | None = None
 
     def _get_nats_client(self) -> "nats.NATS | None":
@@ -176,9 +180,9 @@ class _KeyValueStore(Generic[_T]):
                 model = self._model_class.model_validate_json(entry.value.decode())
                 models.append(model)
             except KvKeyError:
-                self._logger.error(f"Key {key} not found in KV store")
+                logger.error(f"Key {key} not found in KV store")
             except ValidationError:
-                self._logger.error(f"Validation error for key {key}, skipping")
+                logger.error(f"Validation error for key {key}, skipping")
                 continue
 
         return models
@@ -189,8 +193,8 @@ class ProgramStore(_KeyValueStore[api.models.Program]):
     Program store manages all the programs registered in a cell.
     """
 
-    def __init__(self, cell_id: str, nats_client: NatsClient, create_bucket: bool = False):
-        self._nats_bucket_name = _NATS_PROGRAMS_BUCKET_TEMPLATE.format(cell=cell_id)
+    def __init__(self, cell: Cell, create_bucket: bool = False):
+        self._nats_bucket_name = _NATS_PROGRAMS_BUCKET_TEMPLATE.format(cell=cell.cell_id)
         self._kv_config = KeyValueConfig(
             bucket=self._nats_bucket_name,
             max_value_size=_NATS_PROGRAMS_MESSAGE_SIZE,
@@ -200,6 +204,6 @@ class ProgramStore(_KeyValueStore[api.models.Program]):
         super().__init__(
             api.models.Program,
             nats_bucket_name=self._nats_bucket_name,
-            nats_client=nats_client,
+            nats_client=cell.nats,
             nats_kv_config=self._kv_config if create_bucket else None,
         )

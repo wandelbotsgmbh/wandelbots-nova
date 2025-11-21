@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 from nova.cell.cell import Cell
 from nova.cell.robot_cell import Device, OutputDevice
 from nova.config import BASE_PATH
-from nova.nats import Message as NatsMessage
 
 import logging
 logger = logging.getLogger(__name__)
@@ -139,13 +138,13 @@ class Cycle:
             event: The cycle event to publish
         """
         if self._cell.nats is None:
-            logger.debug("No NATS client available, skipping event publication")
-            return
+            raise RuntimeError("NATS client is not available in the cell")
+
+        if not self._cell.nats.is_connected:
+            raise RuntimeError("NATS client is not connected")
 
         try:
-            await self._cell.nats.connect()
-            nats_message = NatsMessage(subject=self._subject, data=event.model_dump_json().encode())
-            await self._cell.nats.publish_message(nats_message)
+            await self._cell.nats.publish(subject=self._subject, payload=event.model_dump_json().encode())
             logger.debug(f"Published {event.event_type} event to NATS subject: {self._subject}")
         except Exception as e:
             logger.error(f"Failed to publish {event.event_type} event to NATS: {e}")
