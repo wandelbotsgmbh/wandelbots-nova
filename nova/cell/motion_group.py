@@ -127,17 +127,16 @@ class MotionGroup(AbstractRobot):
         """
         # TODO allow to specify payload
         motion_group_description = await self._fetch_motion_group_description()
-        motion_group_collision_model = await self.get_collision_model()
+        if motion_group_description.safety_link_colliders is None:
+            link_chain = await self._api_client.motion_group_models_api.get_motion_group_collision_model(
+                motion_group_model=motion_group_description.motion_group_model.root
+            )
+            motion_group_description.safety_link_colliders = link_chain
+        
         return motion_group_setup_from_motion_group_description(
             motion_group_description=motion_group_description,
             tcp_name=tcp,
-            collision_model=motion_group_collision_model,
-        )
-
-    async def get_collision_model(self) -> list[dict[str, api.models.Collider]]:
-        model = await self.get_model()
-        return await self._api_client.motion_group_models_api.get_motion_group_collision_model(
-            motion_group_model=model.root
+            collision_model=link_chain,
         )
 
     async def get_mounting(self) -> Pose | None:
@@ -151,27 +150,7 @@ class MotionGroup(AbstractRobot):
             Pose(motion_group_description.mounting)
             if motion_group_description.mounting is not None
             else None
-        )
-
-    # TODO: we can't rely on default collision setup
-    # motion_group_setup can be provided by the user as well
-    def _update_user_collision_setup(
-        self,
-        motion_group_setup: api.models.MotionGroupSetup,
-        user_collision_setup: api.models.CollisionSetup,
-    ):
-        """
-        Updates a collision setup taken from user.
-        Assumes that motion_group_setup already has a 'default' collision setup
-        and the collision setup has robot geometry in link_chain and tool geometry in tool field.
-        """
-        default_collision_setup = motion_group_setup.collision_setups.root["default"]
-
-        if user_collision_setup.link_chain is None:
-            user_collision_setup.link_chain = default_collision_setup.link_chain
-
-        if user_collision_setup.tool is None:  
-            user_collision_setup.tool = default_collision_setup.tool
+        )    
 
 
     # TODO: check the response type, it is not easy to use
@@ -199,7 +178,6 @@ class MotionGroup(AbstractRobot):
         """
         motion_group_setup = await self.get_setup(tcp)
         if collision_setup is not None:
-            self._update_user_collision_setup(motion_group_setup, collision_setup)
             motion_group_setup.collision_setups.root["user"] = collision_setup
 
         motion_group_description = await self._fetch_motion_group_description()
@@ -574,9 +552,10 @@ class MotionGroup(AbstractRobot):
             self._update_user_collision_setup(motion_group_setup, action.collision_setup)
             motion_group_setup.collision_setups.root["user"] = action.collision_setup
 
-        update_motion_group_setup_with_motion_settings(
-            motion_group_setup=motion_group_setup, settings=action.settings
-        )
+        if action.settings is not None:
+            update_motion_group_setup_with_motion_settings(
+                motion_group_setup=motion_group_setup, settings=action.settings
+            )
 
         request: api.models.PlanCollisionFreeRequest = api.models.PlanCollisionFreeRequest(
             motion_group_setup=motion_group_setup,
@@ -671,8 +650,6 @@ class MotionGroup(AbstractRobot):
         return combine_trajectories(all_trajectories)
 
     # TODO: refactor and simplify code, tests are already there
-    # TODO: split into batches when the collision scene changes in a batch of collision free motions
-
     async def _execute(
         self,
         joint_trajectory: api.models.JointTrajectory,

@@ -5,10 +5,9 @@ from nova.types.motion_settings import MotionSettings
 def update_motion_group_setup_with_motion_settings(
     motion_group_setup: api.models.MotionGroupSetup, settings: MotionSettings
 ):
-    """Update motion group setup with action settings for collision-free planning.
+    """Update motion group setup with motion settings.
 
-    This function patches the motion group setup with TCP and joint limits from the provided
-    motion settings. It handles cases where the setup may or may not have existing limits.
+    This function patches the motion group setup with TCP and joint limits from the provided motion settings.
 
     Args:
         motion_group_setup: The motion group setup to update

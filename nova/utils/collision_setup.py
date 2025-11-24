@@ -60,13 +60,8 @@ def validate_collision_setups(actions: list[Action]) -> list[api.models.Collisio
 def motion_group_setup_from_motion_group_description(
     motion_group_description: api.models.MotionGroupDescription,
     tcp_name: str,
-    collision_model: list[dict[str, api.models.Collider]],
     payload: api.models.Payload | None = None,
 ) -> api.models.MotionGroupSetup:
-    # TODO: why motion group description doesn't include this in the first place and we have to patch it here?
-    if motion_group_description.safety_link_colliders is None:
-        motion_group_description.safety_link_colliders = collision_model
-
     tool_colliders = (
         motion_group_description.safety_tool_colliders.get(tcp_name)
         if motion_group_description.safety_tool_colliders is not None
