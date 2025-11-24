@@ -94,16 +94,9 @@ async def test_multiple_collision_free_in_row(collision_setup):
     a2 = cartesian_ptp((1, 1, 1, 1, 1, 1))
     cfm1 = collision_free((10, 20, 30, 40, 50, 60), collision_setup=collision_setup)
     cfm2 = collision_free((70, 80, 90, 100, 110, 120), collision_setup=collision_setup)
-    # Simulation:
-    # - a1 → batch = [a1]
-    # - cfm1 with non-empty batch → yield [a1], defer cfm1.
-    # - Next, before processing cfm2, yield deferred cfm1.
-    # - Process cfm2 (batch empty) → yield it immediately.
-    # - a2 → batch = [a2]
-    # - End → yield remaining batch [a2]
-    actions = [a1, cfm1, cfm2, a2]
+
     expected = [[a1], [cfm1], [cfm2], [a2]]
-    assert split_actions_into_batches(actions) == expected
+    assert split_actions_into_batches([a1, cfm1, cfm2, a2]) == expected
 
 
 @pytest.mark.asyncio
@@ -122,14 +115,53 @@ async def test_complex_sequence(collision_setup):
     assert split_actions_into_batches(actions) == expected
 
 
+def mock_collision_setup():
+    colliders = MagicMock(spec=dict)
+    colliders.__eq__.side_effect = lambda other, self=colliders: other is self
+    colliders.__ne__.side_effect = lambda other, self=colliders: other is not self
+
+    motion_groups = MagicMock(spec=dict)
+    motion_groups.__eq__.side_effect = lambda other, self=motion_groups: other is self
+    motion_groups.__ne__.side_effect = lambda other, self=motion_groups: other is not self
+
+    return api.models.CollisionSetup.model_construct(
+        colliders=api.models.ColliderDictionary(
+            {
+                "test_collider": api.models.Collider(
+                    shape=api.models.Sphere(radius=1, position=api.models.Vector3d([0, 0, 0]))
+                )
+            }
+        )
+        # link_chain=api.models.LinkChain(
+        #    list(api.models.Link(link) for link in robot_link_colliders)
+        # ),
+        # tool=api.models.Tool(
+        #    {"tool_geometry": tool_collider}
+        # ),
+    )
+
+
+def _test_collider(position: list[float]) -> api.models.CollisionSetup:
+    return api.models.CollisionSetup.model_construct(
+        colliders=api.models.ColliderDictionary(
+            {
+                "test_collider": api.models.Collider(
+                    shape=api.models.Sphere(radius=1),
+                    pose=api.models.Pose(
+                        position=api.models.Vector3d(position)
+                    )
+                )
+            }
+        )
+    )
+
 @pytest.mark.asyncio
 async def test_compare_collision_setup():
-    collision_setup_1 = create_collision_setup(radius=1)
-    collision_setup_2 = create_collision_setup(radius=1)
-    collision_setup_3 = create_collision_setup(radius=2)
+    collision_setup_1 = _test_collider([0, 0, 0])
+    collision_setup_2 = _test_collider([0, 10, 0])
 
-    assert compare_collision_setups(collision_setup_1, collision_setup_2) is True
-    assert compare_collision_setups(collision_setup_1, collision_setup_3) is False
+    assert compare_collision_setups(collision_setup_1, collision_setup_1) is True
+    assert compare_collision_setups(collision_setup_1, collision_setup_2) is False
 
 
 @pytest.mark.asyncio
@@ -139,21 +171,20 @@ async def test_split_and_verify_collision_setup():
             validate_collision_setups(actions=batch)
 
     # A complex mixture of actions
-    collision_scene_1 = create_collision_setup(radius=1)
-    collision_scene_2 = create_collision_setup(radius=1)
-    collision_scene_3 = create_collision_setup(radius=1)
-    collision_scene_4 = create_collision_setup(radius=1)
+    collision_scene_1 = _test_collider([0, 0, 0])
+    collision_scene_2 = _test_collider([0, 10, 0])
+    collision_scene_3 = _test_collider([0, 20, 0])
     split_and_verify(
         [
             linear(target=(0, 0, 0, 0, 0, 0), collision_setup=collision_scene_1),
             io_write("digital", 0),
             linear(target=(0, 0, 0, 0, 0, 0), collision_setup=collision_scene_1),
-            collision_free((1, 2, 3, 4, 5, 6), collision_setup=collision_scene_1),
+            collision_free((1, 2, 3, 4, 5, 6), collision_setup=collision_scene_2),
             wait(1),
             linear(Pose((1, 2, 3, 4, 5, 6)), collision_setup=collision_scene_1),
-            collision_free((7, 8, 9, 10, 11, 12), collision_setup=collision_scene_1),
+            collision_free((7, 8, 9, 10, 11, 12), collision_setup=collision_scene_2),
             linear(target=(0, 0, 0, 0, 0, 0)),
-            collision_free((7, 8, 9, 10, 11, 12), collision_setup=collision_scene_4),
+            collision_free((7, 8, 9, 10, 11, 12), collision_setup=collision_scene_3),
         ]
     )
 
@@ -161,15 +192,15 @@ async def test_split_and_verify_collision_setup():
     with pytest.raises(InconsistentCollisionScenes):
         split_and_verify(
             [
-                linear(target=(0, 0, 0, 0, 0, 0), collision_setup=create_collision_setup(radius=5)),
-                linear(target=(1, 2, 3, 4, 5, 6), collision_setup=create_collision_setup(radius=6)),
+                linear(target=(0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0])),
+                linear(target=(1, 2, 3, 4, 5, 6), collision_setup=_test_collider([1, 2, 3])),
             ]
         )
 
     with pytest.raises(Exception):
         split_and_verify(
             [
-                linear(target=(0, 0, 0, 0, 0, 0), collision_setup=create_collision_setup(radius=7)),
+                linear(target=(0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0])),
                 linear(target=(1, 2, 3, 4, 5, 6)),
             ]
         )
@@ -194,12 +225,13 @@ async def test_ensure_virtual_tcp_creates_new_tcp(mock_motion_group):
     """Test that ensure_virtual_tcp creates a new TCP when it doesn't exist."""
     tcp = api.models.RobotTcp(
         id="test_tcp",
+        name="Test TCP",
         position=api.models.Vector3d([0, 0, 150]),
         orientation=api.models.Orientation([0, 0, 0]),
         orientation_type=api.models.OrientationType.ROTATION_VECTOR,
     )
 
-    mock_motion_group.tcps = AsyncMock(side_effect=[[], [tcp]])
+    mock_motion_group.tcps = AsyncMock(side_effect=[{}, {"test_tcp": tcp}])
 
     result = await mock_motion_group.ensure_virtual_tcp(tcp)
 
@@ -207,8 +239,8 @@ async def test_ensure_virtual_tcp_creates_new_tcp(mock_motion_group):
     mock_motion_group._api_client.virtual_controller_api.add_virtual_controller_tcp.assert_called_once_with(
         cell="test_cell",
         controller="test-controller",
-        motion_group="0@test-controller",
-        tcp="test_tcp",
+        motion_group=mock_motion_group.id,
+        tcp=tcp.id,
         robot_tcp_data=api.models.RobotTcpData(
             name=tcp.name,
             position=tcp.position,
@@ -265,7 +297,17 @@ async def test_ensure_virtual_tcp_updates_different_tcp(mock_motion_group):
     result = await mock_motion_group.ensure_virtual_tcp(tcp)
 
     assert result == tcp
-    mock_motion_group._api_client.virtual_controller_api.add_virtual_controller_tcp.assert_called_once()
+    mock_motion_group._api_client.virtual_controller_api.add_virtual_controller_tcp.assert_called_once_with(
+        cell="test_cell", 
+        controller="test-controller", 
+        motion_group=mock_motion_group.id,
+        tcp=tcp.id, 
+        robot_tcp_data=api.models.RobotTcpData(
+            position=tcp.position,
+            orientation=tcp.orientation,
+            orientation_type=tcp.orientation_type,
+        ),
+    )
 
 
 @pytest.mark.parametrize(
@@ -291,12 +333,23 @@ async def test_ensure_virtual_tcp_different_rotation_types(mock_motion_group, or
         orientation_type=orientation_type,
     )
 
-    mock_motion_group.tcps = AsyncMock(side_effect=[[], [tcp]])
+    mock_motion_group.tcps = AsyncMock(side_effect=[{}, {"test_tcp": tcp}])
 
     result = await mock_motion_group.ensure_virtual_tcp(tcp)
 
     assert result == tcp
-    mock_motion_group._api_client.virtual_controller_api.add_virtual_controller_tcp.assert_called_once()
+    mock_motion_group._api_client.virtual_controller_api.add_virtual_controller_tcp.assert_called_once_with(
+        cell="test_cell", 
+        controller="test-controller", 
+        motion_group=mock_motion_group.id,
+        tcp=tcp.id, 
+        robot_tcp_data=api.models.RobotTcpData(
+            name=tcp.name,
+            position=tcp.position,
+            orientation=tcp.orientation,
+            orientation_type=tcp.orientation_type,
+        ),
+    )
 
 
 @pytest.mark.asyncio
@@ -316,9 +369,20 @@ async def test_ensure_virtual_tcp_different_rotation_types_not_equal(mock_motion
         orientation_type=api.models.OrientationType.EULER_ANGLES_INTRINSIC_XYZ,
     )
 
-    mock_motion_group.tcps = AsyncMock(side_effect=[[existing_tcp], [tcp]])
+    mock_motion_group.tcps = AsyncMock(side_effect=[{"test_tcp": existing_tcp}, {"test_tcp": tcp}])
 
     result = await mock_motion_group.ensure_virtual_tcp(tcp)
 
     assert result == tcp
-    mock_motion_group._api_client.virtual_controller_api.add_virtual_controller_tcp.assert_called_once()
+    mock_motion_group._api_client.virtual_controller_api.add_virtual_controller_tcp.assert_called_once_with(
+        cell="test_cell", 
+        controller="test-controller", 
+        motion_group=mock_motion_group.id,
+        tcp=tcp.id, 
+        robot_tcp_data=api.models.RobotTcpData(
+            name=tcp.name,
+            position=tcp.position,
+            orientation=tcp.orientation,
+            orientation_type=tcp.orientation_type,
+        ),
+    )

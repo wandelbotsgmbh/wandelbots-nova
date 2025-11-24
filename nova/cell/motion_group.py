@@ -191,21 +191,31 @@ class MotionGroup(AbstractRobot):
             else None
         )
 
+    def _update_user_collision_setup(
+        self,
+        motion_group_setup: api.models.MotionGroupSetup,
+        user_collision_setup: api.models.CollisionSetup,
+    ):
+        """
+        Updates a collision setup takes from user.
+        Assumes that motion_group_setup already has a 'default' collision setup
+        and the collision setup has robot geometry in link_chain and tool geometry in tool field.
+        """
+        default_collision_setup = motion_group_setup.collision_setups.root["default"]
+
+        if user_collision_setup.link_chain is None:
+            user_collision_setup.link_chain = default_collision_setup.link_chain
+
+        if user_collision_setup.tool is None:  
+            user_collision_setup.tool = default_collision_setup.tool
+
+
     # TODO: check the response type, it is not easy to use
     # API returns list of list of list of float ( 3 inner lists )
-
-    # TODO: is sending joint position limits from motion group setup correct?
-
-    # TODO: should we get a whole collision layer from user just additional colliders to add to the default layer?
-
-    # Joint Position Limit is not exposed to the user, this limits can be done on the user side, after getting the IK solutions
-    # if we want to provide this API future, we need to create data mapping because creating api.models.JointPositionLimits is not pytonic
-    # we might need to create a helper data structure for this (maybe list of tuples [(min, max), (min, max), ...])
     async def inverse_kinematics(
         self, poses: list[Pose], tcp: str, collision_setup: api.models.CollisionSetup | None = None
     ) -> list[list[tuple[float, ...]]]:
-        """Inverse kinematics is the process of finding joint positions that achieve a desired end-effector pose.
-        Mathematically, there can be multiple or no solutions for a given pose.
+        """Do inverse kinematics for the given poses for the motion group.
 
         This API will return all found solutions for each requested pose in a list.
         This list can contain multiple joint positions for each pose or be empty if no solution is found.
@@ -214,20 +224,18 @@ class MotionGroup(AbstractRobot):
         Args:
             poses (list[Pose]): The target poses for which to calculate joint positions.
             tcp (str): The TCP to use for the calculations.
-            colliders (dict[str, api.models.Collider] | None): List of colliders to add to default collision setup motion group has.
-                When a collision setup is provided, the inverse kinematics calculation will avoid configurations that lead to collisions.
+            collision_setup (api.models.CollisionSetup | None): Collision setup to use for the inverse kinematics calculation.
+                When provided, the calculation will avoid configurations that lead to collisions.
+                If link_chain or tool are not specified in the collision setup, they will be automatically populated
+                from the motion group's default collision setup to ensure robot and tool geometry are included.
                 Check `nova.utils.collision_setup.motion_group_setup_from_motion_group_description` for default collision setups used for the inverse kinematics calculation.
 
         Returns:
             list[list[tuple[float, ...]]]: Calculated joint positions for each pose.
         """
-
-        # Update the collision setup with user data
         motion_group_setup = await self.get_setup(tcp)
-        # TODO: this doesn't look correct, if we create a new layer, what should be part of this layer?
         if collision_setup is not None:
-            collision_setup.link_chain = motion_group_setup.collision_setups.root["default"].link_chain
-            collision_setup.tool = motion_group_setup.collision_setups.root["default"].tool
+            self._update_user_collision_setup(motion_group_setup, collision_setup)
             motion_group_setup.collision_setups.root["user"] = collision_setup
 
         motion_group_description = await self._fetch_motion_group_description()
@@ -563,8 +571,8 @@ class MotionGroup(AbstractRobot):
         self,
         action: CollisionFreeMotion,
         tcp: str,
+        motion_group_setup: api.models.MotionGroupSetup,
         start_joint_position: tuple[float, ...] | None = None,
-        motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
         """
         This method plans a trajectory and avoids collisions.
@@ -586,27 +594,22 @@ class MotionGroup(AbstractRobot):
 
         """
         if isinstance(action.target, Pose):
-            # to inverse kinematics to get the joint positions
             target_joint_positions = (
                 await self.inverse_kinematics(
                     poses=[action.target], tcp=tcp, collision_setup=action.collision_setup
                 )
-            )[0][0]  # first solution of the first pose
+            )[0][0]  # use the first found solution
         elif isinstance(action.target, tuple):
             target_joint_positions = action.target
         else:
             raise ValueError("Invalid target type for CollisionFreeMotion")
 
         # Update the collision setup with user data
-        motion_group_setup = motion_group_setup or await self.get_setup(tcp=tcp)
-        if motion_group_setup.collision_setups is None:
-            motion_group_setup.collision_setups = api.models.CollisionSetups()
-
-        if motion_group_setup.collision_setups.root is None:
-            motion_group_setup.collision_setups.root = {}
-
+        motion_group_setup = motion_group_setup.model_copy()
         if action.collision_setup is not None:
-            motion_group_setup.collision_setups.root.update(action.collision_setup)
+            _update_collision_free_motion_group_setup_with_action_settings(
+                motion_group_setup=motion_group_setup, settings=action.settings
+            )
 
         _update_collision_free_motion_group_setup_with_action_settings(
             motion_group_setup=motion_group_setup, settings=action.settings
@@ -648,6 +651,7 @@ class MotionGroup(AbstractRobot):
         current_joints = start_joint_position or await self.joints()
         motion_group_setup = motion_group_setup or await self.get_setup(tcp)
 
+        # TODO: can be done in parallel, would be a big performance boost
         all_trajectories = []
         for batch in split_actions_into_batches(actions):
             if len(batch) == 0:
