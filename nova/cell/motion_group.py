@@ -21,6 +21,7 @@ from nova.utils.collision_setup import (
     motion_group_setup_from_motion_group_description,
     validate_collision_setups,
 )
+from nova.utils.motion_group_settings import update_motion_group_setup_with_motion_settings
 from nova.utils.joint_trajectory import combine_trajectories
 from typing import cast
 
@@ -56,46 +57,7 @@ def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
     return batches
 
 
-# TODO: we have too much logic on top of motion group description and setup
-# probably needs to go into their own modules
-# until we do this, they are tested here
-def _update_collision_free_motion_group_setup_with_action_settings(
-    motion_group_setup: api.models.MotionGroupSetup, settings: MotionSettings
-):
-    tcp_settings = settings.as_tcp_cartesian_limits()
-    
-    if motion_group_setup.global_limits is None:
-        motion_group_setup.global_limits = api.models.LimitSet()
-    
-    setup_settings = motion_group_setup.global_limits.tcp
-    if setup_settings is None:
-        motion_group_setup.global_limits.tcp = tcp_settings
-    else:
-        # do patching
-        motion_group_setup.global_limits.tcp.velocity = (
-            settings.tcp_velocity_limit
-            if settings.tcp_velocity_limit is not None
-            else setup_settings.velocity
-        )
-        motion_group_setup.global_limits.tcp.acceleration = (
-            settings.tcp_acceleration_limit
-            if settings.tcp_acceleration_limit is not None
-            else setup_settings.acceleration
-        )
-        motion_group_setup.global_limits.tcp.orientation_velocity = (
-            settings.tcp_orientation_velocity_limit
-            if settings.tcp_orientation_velocity_limit is not None
-            else setup_settings.orientation_velocity
-        )
-        motion_group_setup.global_limits.tcp.orientation_acceleration = (
-            settings.tcp_orientation_acceleration_limit
-            if settings.tcp_orientation_acceleration_limit is not None
-            else setup_settings.orientation_acceleration
-        )
 
-    joint_limits_from_settings = settings.as_joint_limits()
-    if joint_limits_from_settings is not None:
-        motion_group_setup.global_limits.joints = joint_limits_from_settings
 
 
 class MotionGroup(AbstractRobot):
@@ -173,9 +135,9 @@ class MotionGroup(AbstractRobot):
         )
 
     async def get_collision_model(self) -> list[dict[str, api.models.Collider]]:
-        motion_group_description = await self._fetch_motion_group_description()
+        model = await self.get_model()
         return await self._api_client.motion_group_models_api.get_motion_group_collision_model(
-            motion_group_model=motion_group_description.motion_group_model.root
+            motion_group_model=model.root
         )
 
     async def get_mounting(self) -> Pose | None:
@@ -191,13 +153,15 @@ class MotionGroup(AbstractRobot):
             else None
         )
 
+    # TODO: we can't rely on default collision setup
+    # motion_group_setup can be provided by the user as well
     def _update_user_collision_setup(
         self,
         motion_group_setup: api.models.MotionGroupSetup,
         user_collision_setup: api.models.CollisionSetup,
     ):
         """
-        Updates a collision setup takes from user.
+        Updates a collision setup taken from user.
         Assumes that motion_group_setup already has a 'default' collision setup
         and the collision setup has robot geometry in link_chain and tool geometry in tool field.
         """
@@ -607,11 +571,10 @@ class MotionGroup(AbstractRobot):
         # Update the collision setup with user data
         motion_group_setup = motion_group_setup.model_copy()
         if action.collision_setup is not None:
-            _update_collision_free_motion_group_setup_with_action_settings(
-                motion_group_setup=motion_group_setup, settings=action.settings
-            )
+            self._update_user_collision_setup(motion_group_setup, action.collision_setup)
+            motion_group_setup.collision_setups.root["user"] = action.collision_setup
 
-        _update_collision_free_motion_group_setup_with_action_settings(
+        update_motion_group_setup_with_motion_settings(
             motion_group_setup=motion_group_setup, settings=action.settings
         )
 

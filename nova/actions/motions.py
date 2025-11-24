@@ -361,7 +361,6 @@ class CollisionFreeMotion(Motion):
     type: Literal["collision_free"] = "collision_free"
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
-    # TODO: should we take whole collision layer or just colliders?
     collision_setup: api.models.CollisionSetup | None = None
     algorithm: api.models.CollisionFreeAlgorithm = (
         api.models.CollisionFreeAlgorithm(algorithm_name="RRTConnectAlgorithm"),
