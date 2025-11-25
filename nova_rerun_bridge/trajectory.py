@@ -172,7 +172,6 @@ async def log_motion(
         motion_group=motion_group,
         robot=robot,
         visualizer=visualizer,
-        motion_group_setup=motion_group_setup,
         timer_offset=time_offset,
         tool_asset=tool_asset,
     )
@@ -197,7 +196,6 @@ async def log_trajectory(
     motion_group: MotionGroup,
     robot: DHRobot,
     visualizer: RobotVisualizer,
-    motion_group_setup: api.models.MotionGroupSetup,
     timer_offset: float,
     tool_asset: Optional[str] = None,
 ):
@@ -239,7 +237,7 @@ async def log_trajectory(
     )
 
     # Log the robot geometries
-    visualizer.log_robot_geometries(trajectory, times_column)
+    visualizer.log_robot_geometries(trajectory=trajectory, times_column=times_column)
 
     # Log TCP pose/orientation
     log_tcp_pose(

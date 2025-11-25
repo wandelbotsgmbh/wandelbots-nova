@@ -154,21 +154,34 @@ class RobotVisualizer:
     def geometry_pose_to_matrix(self, init_pose: api.models.Pose):
         return self.robot.pose_to_matrix(init_pose)
 
-    def compute_forward_kinematics(self, joint_values):
+    # TODO: this will not work yet
+    def compute_forward_kinematics(self, joint_positions: list[float]):
         """Compute link transforms using the robot's methods."""
         accumulated = self.robot.pose_to_matrix(self.robot.mounting)
         transforms = [accumulated.copy()]
-        for dh_param, joint_rot in zip(self.robot.dh_parameters, joint_values.joints, strict=False):
-            transform = self.robot.dh_transform(dh_param, joint_rot)
+        for dh_param, joint_position in zip(
+            self.robot.dh_parameters, joint_positions, strict=False
+        ):
+            transform = self.robot.dh_transform(dh_param=dh_param, joint_position=joint_position)
             accumulated = accumulated @ transform
             transforms.append(accumulated.copy())
         return transforms
 
     def rotation_matrix_to_axis_angle(self, Rm):
-        """Use scipy for cleaner axis-angle extraction."""
-        rot = Rotation.from_matrix(Rm)
+        """Derive an axis-angle representation while being resilient to scaling/noise."""
+        try:
+            U, _, Vt = np.linalg.svd(Rm)
+            Rm_orth = U @ Vt
+            if np.linalg.det(Rm_orth) < 0:
+                U[:, -1] *= -1
+                Rm_orth = U @ Vt
+        except (np.linalg.LinAlgError, ValueError, RuntimeError):
+            Rm_orth = np.eye(3)
+
+        rot = Rotation.from_matrix(Rm_orth)
         angle = rot.magnitude()
-        axis = rot.as_rotvec() / angle if angle > 1e-8 else np.array([1.0, 0.0, 0.0])
+        axis = rot.as_rotvec()
+        axis = axis / angle if angle > 1e-8 else np.array([1.0, 0.0, 0.0])
         return axis, angle
 
     def gamma_lift_single_color(self, color: np.ndarray, gamma: float = 0.8) -> np.ndarray:
@@ -570,8 +583,8 @@ class RobotVisualizer:
 
         self.logged_meshes.add(entity_path)
 
-    def log_robot_geometry(self, joint_position):
-        transforms = self.compute_forward_kinematics(joint_position)
+    def log_robot_geometry(self, joint_position: list[float]):
+        transforms = self.compute_forward_kinematics(joint_positions=joint_position)
 
         def log_geometry(entity_path, transform):
             translation = transform[:3, 3]
@@ -655,7 +668,7 @@ class RobotVisualizer:
                 self.init_geometry(entity_path, geom)
                 log_geometry(entity_path, final_transform)
 
-    def log_robot_geometries(self, trajectory: list[api.models.TrajectoryData], times_column):
+    def log_robot_geometries(self, trajectory: api.models.JointTrajectory, times_column):
         """
         Log the robot geometries for each link and TCP as separate entities.
 
@@ -677,8 +690,8 @@ class RobotVisualizer:
             link_positions[entity_path].append(translation)
             link_rotations[entity_path].append(rr.RotationAxisAngle(axis=axis, angle=angle))
 
-        for point in trajectory:
-            transforms = self.compute_forward_kinematics(point.data.joint_positions)
+        for joint_position in trajectory.joint_positions:
+            transforms = self.compute_forward_kinematics(joint_positions=joint_position.root)
 
             # Log robot joint geometries
             if self.mesh_loaded:
