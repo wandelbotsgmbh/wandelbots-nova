@@ -62,8 +62,8 @@ async def add_mesh_to_collision_world(
 
     # Create collider from convex hull vertices
     mesh_collider = api.models.Collider(
-        shape=api.models.ColliderShape(
-            api.models.ConvexHull2(vertices=convex_hull.vertices.tolist(), shape_type="convex_hull")
+        shape=api.models.ConvexHull(
+            vertices=convex_hull.vertices.tolist(), shape_type="convex_hull"
         ),
         margin=10,  # add 10mm margin to the convex hull
     )
@@ -104,7 +104,7 @@ async def build_collision_world(
     # define floor
     floor_collider = api.models.Collider(
         shape=api.models.Box(
-            size_x=2000, size_y=2000, size_z=10, shape_type="box", box_type="FULL"
+            size_x=2000, size_y=2000, size_z=10, shape_type="box", box_type=api.models.BoxType.FULL
         ),
         pose=api.models.Pose(
             position=api.models.Vector3d([0, 0, -310]),
@@ -115,7 +115,9 @@ async def build_collision_world(
 
     # define TCP collider geometry
     tool_collider = api.models.Collider(
-        shape=api.models.Box(size_x=5, size_y=5, size_z=100, shape_type="box", box_type="FULL"),
+        shape=api.models.Box(
+            size_x=5, size_y=5, size_z=100, shape_type="box", box_type=api.models.BoxType.FULL
+        ),
         pose=api.models.Pose(
             position=api.models.Vector3d([0, 0, 50]),
             orientation=api.models.RotationVector([0, 0, 0]),
@@ -123,14 +125,6 @@ async def build_collision_world(
     )
     await collision_api.store_collision_tool(
         cell=cell_name, tool="tool_box", request_body={"tool_collider": tool_collider}
-    )
-
-    # define robot link geometries
-    robot_link_colliders = await collision_api.get_default_link_chain(
-        cell=cell_name, motion_group_model=motion_group_description.motion_group_model
-    )
-    await collision_api.store_collision_link_chain(
-        cell=cell_name, link_chain="robot_links", collider=robot_link_colliders
     )
 
     # Prepare colliders dictionary
@@ -150,7 +144,7 @@ async def build_collision_world(
     robot_tool = api.models.Tool({"tool_geometry": tool_collider})
 
     collision_setup = api.models.CollisionSetup(
-        colliders=colliders, tool=robot_tool, link_chain=link_chain
+        colliders=api.models.ColliderDictionary(colliders), tool=robot_tool, link_chain=link_chain
     )
     setup_id = "collision_scene"
     await scene_api.store_collision_setup(

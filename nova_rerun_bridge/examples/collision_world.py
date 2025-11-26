@@ -21,7 +21,9 @@ async def build_collision_world(
 
     # Box collider
     box_collider = api.models.Collider(
-        shape=api.models.Box(size_x=100, size_y=50, size_z=200, shape_type="box", box_type="FULL"),
+        shape=api.models.Box(
+            size_x=100, size_y=50, size_z=200, shape_type="box", box_type=api.models.BoxType.FULL
+        ),
         pose=api.models.Pose(
             position=api.models.Vector3d([0, 400, 0]),
             orientation=api.models.RotationVector([0, 0, 0]),
@@ -137,7 +139,9 @@ async def build_collision_world(
 
     # Define TCP collider geometry
     tool_collider = api.models.Collider(
-        shape=api.models.Box(size_x=100, size_y=100, size_z=100, shape_type="box", box_type="FULL")
+        shape=api.models.Box(
+            size_x=100, size_y=100, size_z=100, shape_type="box", box_type=api.models.BoxType.FULL
+        )
     )
     await collision_api.store_collision_tool(
         cell=cell_name, tool="tool_box", request_body={"tool_collider": tool_collider}
@@ -154,7 +158,7 @@ async def build_collision_world(
 
     # Assemble scene with all colliders
     collision_setup = api.models.CollisionSetup(
-        colliders=colliders, tool=robot_tool, link_chain=link_chain
+        colliders=api.models.ColliderDictionary(colliders), tool=robot_tool, link_chain=link_chain
     )
     setup_id = "collision_scene"
     await scene_api.store_collision_setup(
