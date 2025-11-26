@@ -549,7 +549,6 @@ class MotionGroup(AbstractRobot):
         # Update the collision setup with user data
         motion_group_setup = motion_group_setup.model_copy()
         if action.collision_setup is not None:
-            self._update_user_collision_setup(motion_group_setup, action.collision_setup)
             motion_group_setup.collision_setups.root["user"] = action.collision_setup
 
         if action.settings is not None:
