@@ -134,7 +134,7 @@ class NovaRerunBridge:
     async def log_collision_setups(self) -> dict[str, api.models.CollisionSetup]:
         """Fetch and log all collision setups from Nova to Rerun."""
         collision_setups = (
-            await self.nova._api_client.store_collision_setups_api.list_stored_collision_setups(
+            await self.nova.api.store_collision_setups_api.list_stored_collision_setups(
                 cell=self.nova.cell()._cell_id
             )
         )
@@ -179,6 +179,7 @@ class NovaRerunBridge:
         self,
         trajectory: api.models.JointTrajectory,
         tcp: str,
+        collision_setups: dict[str, api.models.CollisionSetup],
         motion_group: MotionGroup,
         timing_mode=TimingMode.CONTINUE,
         time_offset: float = 0,
@@ -202,13 +203,6 @@ class NovaRerunBridge:
                 stacklevel=2,
             )
         try:
-            logger.debug("Fetching collision scenes...")
-            collision_setups = (
-                await self.nova._api_client.store_collision_setups_api.list_stored_collision_setups(
-                    cell=self.nova.cell()._cell_id
-                )
-            )
-
             # Get or initialize the timer for this motion group
             motion_group_id = motion_group.motion_group_id
             current_time = self._motion_group_timers.get(motion_group_id, 0.0)
@@ -252,6 +246,7 @@ class NovaRerunBridge:
         trajectory: api.models.JointTrajectory,
         tcp: str,
         motion_group: MotionGroup,
+        collision_setups: dict[str, api.models.CollisionSetup],
         timing_mode=TimingMode.CONTINUE,
         time_offset: float = 0,
         tool_asset: Optional[str] = None,
@@ -286,6 +281,7 @@ class NovaRerunBridge:
             trajectory=trajectory,
             tcp=tcp,
             motion_group=motion_group,
+            collision_setups=collision_setups,
             time_offset=time_offset,
             tool_asset=tool_asset,
         )

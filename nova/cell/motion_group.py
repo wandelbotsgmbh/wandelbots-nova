@@ -145,7 +145,7 @@ class MotionGroup(AbstractRobot):
 
         joint_positions = [api.models.DoubleArray(list(joint_config)) for joint_config in joints]
 
-        tcp_offset = (await self.tcp_pose(tcp)).to_api_model()
+        tcp_offset = await self.tcp_offset(tcp)
         motion_group_model = await self.get_model()
         mounting = await self.get_mounting()
 
@@ -154,7 +154,7 @@ class MotionGroup(AbstractRobot):
             forward_kinematics_request=api.models.ForwardKinematicsRequest(
                 motion_group_model=motion_group_model,
                 joint_positions=joint_positions,
-                tcp_offset=tcp_offset,
+                tcp_offset=tcp_offset.to_api_model(),
                 mounting=mounting.to_api_model() if mounting is not None else None,
             ),
         )
@@ -250,6 +250,13 @@ class MotionGroup(AbstractRobot):
         if isinstance(tcps, dict):
             return tcps
         return {tcp.id: tcp for tcp in tcps}
+
+    async def tcp_offset(self, tcp: str) -> Pose:
+        motion_group_description = await self._fetch_motion_group_description()
+        tcps = motion_group_description.tcps
+        if tcps is None:
+            raise ValueError("No TCPs found in motion group description")
+        return Pose(tcps[tcp].pose)
 
     async def tcps(self) -> dict[str, api.models.RobotTcp]:
         motion_group_description = await self._fetch_motion_group_description()

@@ -124,6 +124,9 @@ class Pose(pydantic.BaseModel, Sized):
         # Convert back to a Pose
         return self._matrix_to_pose(inv_matrix)
 
+    def __getitem__(self, item):
+        return self.to_tuple()[item]
+
     def to_tuple(self) -> tuple[float, float, float, float, float, float]:
         """Return the pose as a tuple
 

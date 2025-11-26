@@ -15,7 +15,7 @@ def log_collision_setups(collision_setups: dict[str, api.models.CollisionSetup])
     for setup_id, setup in collision_setups.items():
         entity_path = f"collision_setups/{setup_id}"
         if setup.colliders:
-            for collider_id, collider in setup.colliders.items():
+            for collider_id, collider in setup.colliders.root.items():
                 log_colliders_once(entity_path, {collider_id: collider})
 
 
@@ -271,17 +271,15 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
 
 
 def extract_link_chain_and_tcp(
-    collision_setups: dict, motion_group_type: str
-) -> tuple[list[Any], list[Any]]:
+    collision_setups: dict[str, api.models.CollisionSetup],
+) -> tuple[api.models.LinkChain | None, api.models.Tool | None]:
     """Extract link chain and TCP from collision scenes.
     Searches through all scenes for a matching motion group.
     """
     # Iterate through all scenes
-    for scene_name, scene in collision_setups.items():
+    for setup_name, setup in collision_setups.items():
         # Check if this scene has the motion group we're looking for
-        motion_group = scene.motion_groups.get(motion_group_type)
-        if motion_group:
-            return (getattr(motion_group, "link_chain", []), getattr(motion_group, "tool", []))
+        return setup.link_chain, setup.tool
 
     # If no matching motion group is found in any scene
-    return [], []
+    return None, None

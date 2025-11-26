@@ -27,8 +27,8 @@ class RobotVisualizer:
         static_transform: bool = True,
         base_entity_path: str = "robot",
         albedo_factor: list = [255, 255, 255],
-        collision_link_chain=None,
-        collision_tcp=None,
+        collision_link_chain: api.models.LinkChain | None = None,
+        collision_tcp: api.models.Tool | None = None,
         model_from_controller="",
         show_collision_link_chain: bool = False,
         show_collision_tool: bool = True,
@@ -57,7 +57,7 @@ class RobotVisualizer:
         self.albedo_factor = albedo_factor
         self.mesh_loaded = False
         self.collision_link_geometries = {}
-        self.collision_tcp_geometries = collision_tcp
+        self.collision_tcp_geometries = collision_tcp.root or {}
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool
         self.show_safety_link_chain = show_safety_link_chain
@@ -84,7 +84,7 @@ class RobotVisualizer:
             self.link_geometries.setdefault(gm.link_index, []).append(gm.geometry)
 
         # Group geometries by link
-        self.collision_link_geometries = collision_link_chain
+        self.collision_link_geometries = collision_link_chain.root or {}
 
     def discover_joints(self):
         """
@@ -630,8 +630,9 @@ class RobotVisualizer:
                     # DH theta is rotated, rotate mesh around z in direction of theta
                     rotation_matrix_z_4x4 = np.eye(4)
                     if len(self.robot.dh_parameters) > link_index:
+                        theta = self.robot.dh_parameters[link_index].theta or 0.0
                         rotation_z_minus_90 = Rotation.from_euler(
-                            "z", self.robot.dh_parameters[link_index].theta, degrees=False
+                            "z", theta, degrees=False
                         ).as_matrix()
                         rotation_matrix_z_4x4[:3, :3] = rotation_z_minus_90
 
@@ -724,8 +725,9 @@ class RobotVisualizer:
                         # DH theta is rotated, rotate mesh around z in direction of theta
                         rotation_matrix_z_4x4 = np.eye(4)
                         if len(self.robot.dh_parameters) > link_index:
+                            theta = self.robot.dh_parameters[link_index].theta or 0.0
                             rotation_z_minus_90 = Rotation.from_euler(
-                                "z", self.robot.dh_parameters[link_index].theta, degrees=False
+                                "z", theta, degrees=False
                             ).as_matrix()
                             rotation_matrix_z_4x4[:3, :3] = rotation_z_minus_90
 
@@ -764,7 +766,7 @@ class RobotVisualizer:
             if self.show_collision_link_chain and self.collision_link_geometries:
                 for link_index, geometries in enumerate(self.collision_link_geometries):
                     link_transform = transforms[link_index]
-                    for i, geom_id in enumerate(geometries):
+                    for i, geom_id in enumerate(geometries.root):
                         entity_path = f"{self.base_entity_path}/collision/links/link_{link_index}/geometry_{geom_id}"
 
                         pose = normalize_pose(geometries[geom_id].pose)

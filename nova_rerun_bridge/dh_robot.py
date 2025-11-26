@@ -27,13 +27,13 @@ class DHRobot:
         if pose.position is None:
             x, y, z = 0.0, 0.0, 0.0
         else:
-            x, y, z = pose.position.root[0], pose.position.root[1], pose.position.root[2]
+            x, y, z = pose.position[0], pose.position[1], pose.position[2]
 
         # Extract rotation vector (axis * angle)
         if pose.orientation is None:
             R = np.eye(3)
         else:
-            rx, ry, rz = pose.orientation.root
+            rx, ry, rz = pose.orientation[0], pose.orientation[1], pose.orientation[2]
             theta = np.linalg.norm([rx, ry, rz])
 
             if theta < 1e-12:

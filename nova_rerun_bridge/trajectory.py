@@ -54,7 +54,7 @@ async def log_motion(
         trajectory: Joint trajectory to log
         tcp: TCP to log
         motion_group: Motion group to log
-        collision_setups: Dictionary of collision setups
+        collision_setups: Collision setups to log [setup_name: collision_setup]
         time_offset: Time offset for visualization
         timing_mode: DEPRECATED - Timing mode control (ignored in new implementation)
         tool_asset: Optional tool asset file path
@@ -112,8 +112,9 @@ async def log_motion(
         dh_parameters=motion_group_description.dh_parameters, mounting=motion_group_setup.mounting
     )
 
+    # TODO: merge collision_setups
     collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
-        collision_setups=collision_setups, motion_group_type=motion_group_model
+        collision_setups=collision_setups
     )
 
     rr.reset_time()
@@ -122,7 +123,7 @@ async def log_motion(
     # Get or create visualizer from cache
     if motion_group not in _visualizer_cache:
         collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
-            collision_setups=collision_setups, motion_group_type=motion_group_model
+            collision_setups=collision_setups
         )
 
         # Build tcp geometries
