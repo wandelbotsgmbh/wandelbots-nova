@@ -170,7 +170,8 @@ class MotionGroup(AbstractRobot):
                 Check `nova.utils.collision_setup.motion_group_setup_from_motion_group_description` for default collision setups used for the inverse kinematics calculation.
 
         Returns:
-            list[list[tuple[float, ...]]]: Calculated joint positions for each pose.
+            list[list[tuple[float, ...]]]: All found joint position solutions for each pose. The outer list corresponds to each pose,
+                                            and the inner list contains each valid joint configuration solution found for that pose.
         """
         motion_group_setup = await self.get_setup(tcp)
         if collision_setup is not None and motion_group_setup.collision_setups is not None:
