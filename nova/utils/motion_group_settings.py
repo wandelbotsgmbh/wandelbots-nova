@@ -18,10 +18,10 @@ def update_motion_group_setup_with_motion_settings(
     if motion_group_setup.global_limits is None:
         motion_group_setup.global_limits = api.models.LimitSet()
 
-    setup_settings = motion_group_setup.global_limits.tcp
-    if setup_settings is None:
+    if motion_group_setup.global_limits.tcp is None:
         motion_group_setup.global_limits.tcp = tcp_settings
     else:
+        setup_settings = motion_group_setup.global_limits.tcp
         # do patching
         motion_group_setup.global_limits.tcp.velocity = (
             settings.tcp_velocity_limit

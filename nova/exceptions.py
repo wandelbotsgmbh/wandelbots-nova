@@ -30,7 +30,9 @@ class PlanTrajectoryFailed(Exception):
         return f"Plan trajectory on {self._motion_group_id} failed: {self._error.model_dump_json(indent=2, exclude={'joint_trajectory'})}"
 
     @property
-    def error(self) -> api.models.PlanTrajectoryFailedResponse:
+    def error(
+        self,
+    ) -> api.models.PlanTrajectoryFailedResponse | api.models.PlanCollisionFreeFailedResponse:
         """Return the original PlanTrajectoryFailedResponse object."""
         return self._error
 

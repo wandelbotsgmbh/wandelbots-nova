@@ -399,5 +399,9 @@ def collision_free(
     """
     kwargs.update(line_number=utils.get_caller_linenumber())
     return CollisionFreeMotion(
-        target=target, settings=settings, collision_setup=collision_setup, algorithm=algorithm, metas=kwargs
+        target=target,
+        settings=settings,
+        collision_setup=collision_setup,
+        algorithm=algorithm,
+        metas=kwargs,
     )

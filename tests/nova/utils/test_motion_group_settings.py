@@ -8,8 +8,7 @@ def test_tcp_limits_patching_with_none_setup():
     """Test TCP limits patching when setup has no existing TCP limits."""
     # Arrange
     motion_group_setup = models.MotionGroupSetup(
-        motion_group_model=models.MotionGroupModel("test"),
-        cycle_time=8,
+        motion_group_model=models.MotionGroupModel("test"), cycle_time=8
     )
     settings = MotionSettings(
         tcp_velocity_limit=100.0,
@@ -33,10 +32,7 @@ def test_tcp_limits_patching_with_existing_setup():
     """Test TCP limits patching when setup has existing TCP limits."""
     # Arrange
     existing_tcp_limits = models.CartesianLimits(
-        velocity=50.0,
-        acceleration=100.0,
-        orientation_velocity=1.0,
-        orientation_acceleration=2.0,
+        velocity=50.0, acceleration=100.0, orientation_velocity=1.0, orientation_acceleration=2.0
     )
     motion_group_setup = models.MotionGroupSetup(
         motion_group_model=models.MotionGroupModel("test"),
@@ -44,10 +40,7 @@ def test_tcp_limits_patching_with_existing_setup():
         global_limits=models.LimitSet(tcp=existing_tcp_limits),
         collision_setups=None,
     )
-    settings = MotionSettings(
-        tcp_velocity_limit=200.0,
-        tcp_orientation_acceleration_limit=5.0,
-    )
+    settings = MotionSettings(tcp_velocity_limit=200.0, tcp_orientation_acceleration_limit=5.0)
 
     # Act
     update_motion_group_setup_with_motion_settings(motion_group_setup, settings)
@@ -66,10 +59,7 @@ def test_tcp_limits_patching_all_none_in_settings():
     """Test TCP limits patching when all settings values are None."""
     # Arrange
     existing_tcp_limits = models.CartesianLimits(
-        velocity=50.0,
-        acceleration=100.0,
-        orientation_velocity=1.0,
-        orientation_acceleration=2.0,
+        velocity=50.0, acceleration=100.0, orientation_velocity=1.0, orientation_acceleration=2.0
     )
     motion_group_setup = models.MotionGroupSetup(
         motion_group_model="test",
@@ -95,13 +85,10 @@ def test_joint_limits_replacement_with_none_setup():
     """Test joint limits replacement when setup has no existing joint limits."""
     # Arrange
     motion_group_setup = models.MotionGroupSetup(
-        motion_group_model="test",
-        cycle_time=8,
-        collision_setups=None,
+        motion_group_model="test", cycle_time=8, collision_setups=None
     )
     settings = MotionSettings(
-        joint_velocity_limits=(1.0, 2.0, 3.0),
-        joint_acceleration_limits=(4.0, 5.0, 6.0),
+        joint_velocity_limits=(1.0, 2.0, 3.0), joint_acceleration_limits=(4.0, 5.0, 6.0)
     )
 
     # Act
@@ -132,8 +119,7 @@ def test_joint_limits_replacement_with_existing_setup():
         global_limits=models.LimitSet(joints=existing_joint_limits),
     )
     settings = MotionSettings(
-        joint_velocity_limits=(1.0, 2.0, 3.0),
-        joint_acceleration_limits=(4.0, 5.0, 6.0),
+        joint_velocity_limits=(1.0, 2.0, 3.0), joint_acceleration_limits=(4.0, 5.0, 6.0)
     )
 
     # Act

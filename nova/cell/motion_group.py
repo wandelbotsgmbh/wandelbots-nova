@@ -57,9 +57,6 @@ def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
     return batches
 
 
-
-
-
 class MotionGroup(AbstractRobot):
     """Manages motion planning and execution within a specified motion group."""
 
@@ -128,15 +125,15 @@ class MotionGroup(AbstractRobot):
         # TODO allow to specify payload
         motion_group_description = await self._fetch_motion_group_description()
         if motion_group_description.safety_link_colliders is None:
-            link_chain = await self._api_client.motion_group_models_api.get_motion_group_collision_model(
-                motion_group_model=motion_group_description.motion_group_model.root
+            link_chain = (
+                await self._api_client.motion_group_models_api.get_motion_group_collision_model(
+                    motion_group_model=motion_group_description.motion_group_model.root
+                )
             )
             motion_group_description.safety_link_colliders = link_chain
-        
+
         return motion_group_setup_from_motion_group_description(
-            motion_group_description=motion_group_description,
-            tcp_name=tcp,
-            collision_model=link_chain,
+            motion_group_description=motion_group_description, tcp_name=tcp
         )
 
     async def get_mounting(self) -> Pose | None:
@@ -150,8 +147,7 @@ class MotionGroup(AbstractRobot):
             Pose(motion_group_description.mounting)
             if motion_group_description.mounting is not None
             else None
-        )    
-
+        )
 
     # TODO: check the response type, it is not easy to use
     # API returns list of list of list of float ( 3 inner lists )
@@ -177,11 +173,15 @@ class MotionGroup(AbstractRobot):
             list[list[tuple[float, ...]]]: Calculated joint positions for each pose.
         """
         motion_group_setup = await self.get_setup(tcp)
-        if collision_setup is not None:
+        if collision_setup is not None and motion_group_setup.collision_setups is not None:
             motion_group_setup.collision_setups.root["user"] = collision_setup
 
         motion_group_description = await self._fetch_motion_group_description()
-        tcp_offset = motion_group_description.tcps[tcp]
+        tcp_offset = (
+            motion_group_description.tcps[tcp]
+            if motion_group_description.tcps is not None
+            else None
+        )
         motion_group_model = await self.get_model()
         mounting = await self.get_mounting()
 
@@ -194,7 +194,7 @@ class MotionGroup(AbstractRobot):
             inverse_kinematics_request=api.models.InverseKinematicsRequest(
                 motion_group_model=motion_group_model,
                 tcp_poses=[pose.to_api_model() for pose in poses],
-                tcp_offset=tcp_offset.pose,
+                tcp_offset=tcp_offset.pose if tcp_offset is not None else None,
                 mounting=mounting.to_api_model() if mounting is not None else None,
                 joint_position_limits=joint_position_limits,
                 collision_setups=motion_group_setup.collision_setups,
@@ -548,6 +548,9 @@ class MotionGroup(AbstractRobot):
 
         # Update the collision setup with user data
         motion_group_setup = motion_group_setup.model_copy()
+        if motion_group_setup.collision_setups is None:
+            motion_group_setup.collision_setups = api.models.CollisionSetups({})
+
         if action.collision_setup is not None:
             motion_group_setup.collision_setups.root["user"] = action.collision_setup
 

@@ -135,23 +135,25 @@ class MotionSettings(pydantic.BaseModel):
         if self.joint_velocity_limits is None and self.joint_acceleration_limits is None:
             return None
 
-        length = (
-            len(self.joint_velocity_limits)
-            if self.joint_velocity_limits is not None
-            else len(self.joint_acceleration_limits)
-        )
+        if self.joint_velocity_limits is not None:
+            length = len(self.joint_velocity_limits)
+
+        if self.joint_acceleration_limits is not None:
+            length = len(self.joint_acceleration_limits)
+
         limits = []
         for i in range(length):
             # we assume self.joint_velocity_limits and self.joint_acceleration_limits have the same length
             # check the validator
-            limit = api.models.JointLimits(
-                velocity=self.joint_velocity_limits[i]
-                if self.joint_velocity_limits is not None
-                else None,
-                acceleration=self.joint_acceleration_limits[i]
-                if self.joint_acceleration_limits is not None
-                else None,
+            velocity = (
+                self.joint_velocity_limits[i] if self.joint_velocity_limits is not None else None
             )
+            acceleration = (
+                self.joint_acceleration_limits[i]
+                if self.joint_acceleration_limits is not None
+                else None
+            )
+            limit = api.models.JointLimits(velocity=velocity, acceleration=acceleration)
             limits.append(limit)
 
         return limits

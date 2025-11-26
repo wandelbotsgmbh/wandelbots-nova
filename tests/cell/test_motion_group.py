@@ -147,13 +147,12 @@ def _test_collider(position: list[float]) -> api.models.CollisionSetup:
             {
                 "test_collider": api.models.Collider(
                     shape=api.models.Sphere(radius=1),
-                    pose=api.models.Pose(
-                        position=api.models.Vector3d(position)
-                    )
+                    pose=api.models.Pose(position=api.models.Vector3d(position)),
                 )
             }
         )
     )
+
 
 @pytest.mark.asyncio
 async def test_compare_collision_setup():
@@ -181,8 +180,8 @@ async def test_split_and_verify_collision_setup():
             linear(target=(0, 0, 0, 0, 0, 0), collision_setup=collision_scene_1),
             collision_free((1, 2, 3, 4, 5, 6), collision_setup=collision_scene_2),
             wait(1),
-            linear(Pose((1, 2, 3, 4, 5, 6)), collision_setup=collision_scene_1),
-            collision_free((7, 8, 9, 10, 11, 12), collision_setup=collision_scene_2),
+            linear(Pose((1, 2, 3, 4, 5, 6))),
+            collision_free((7, 8, 9, 10, 11, 12), collision_setup=collision_scene_1),
             linear(target=(0, 0, 0, 0, 0, 0)),
             collision_free((7, 8, 9, 10, 11, 12), collision_setup=collision_scene_3),
         ]
@@ -298,10 +297,10 @@ async def test_ensure_virtual_tcp_updates_different_tcp(mock_motion_group):
 
     assert result == tcp
     mock_motion_group._api_client.virtual_controller_api.add_virtual_controller_tcp.assert_called_once_with(
-        cell="test_cell", 
-        controller="test-controller", 
+        cell="test_cell",
+        controller="test-controller",
         motion_group=mock_motion_group.id,
-        tcp=tcp.id, 
+        tcp=tcp.id,
         robot_tcp_data=api.models.RobotTcpData(
             position=tcp.position,
             orientation=tcp.orientation,
@@ -339,10 +338,10 @@ async def test_ensure_virtual_tcp_different_rotation_types(mock_motion_group, or
 
     assert result == tcp
     mock_motion_group._api_client.virtual_controller_api.add_virtual_controller_tcp.assert_called_once_with(
-        cell="test_cell", 
-        controller="test-controller", 
+        cell="test_cell",
+        controller="test-controller",
         motion_group=mock_motion_group.id,
-        tcp=tcp.id, 
+        tcp=tcp.id,
         robot_tcp_data=api.models.RobotTcpData(
             name=tcp.name,
             position=tcp.position,
@@ -375,10 +374,10 @@ async def test_ensure_virtual_tcp_different_rotation_types_not_equal(mock_motion
 
     assert result == tcp
     mock_motion_group._api_client.virtual_controller_api.add_virtual_controller_tcp.assert_called_once_with(
-        cell="test_cell", 
-        controller="test-controller", 
+        cell="test_cell",
+        controller="test-controller",
         motion_group=mock_motion_group.id,
-        tcp=tcp.id, 
+        tcp=tcp.id,
         robot_tcp_data=api.models.RobotTcpData(
             name=tcp.name,
             position=tcp.position,
