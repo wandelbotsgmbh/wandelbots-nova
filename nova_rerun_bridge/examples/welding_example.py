@@ -3,13 +3,6 @@ import asyncio
 import numpy as np
 import rerun as rr
 import trimesh
-from wandelbots_api_client.models import (
-    CoordinateSystem,
-    RobotTcp,
-    RotationAngles,
-    RotationAngleTypes,
-    Vector3d,
-)
 
 import nova
 from nova import Nova, api
@@ -216,14 +209,13 @@ async def test():
             cell="cell",
             controller=controller.controller_id,
             motion_group=f"0@{controller.controller_id}",
-            coordinate_system=CoordinateSystem(
+            coordinate_system=api.models.CoordinateSystem(
                 coordinate_system="world",
                 name="mounting",
                 reference_uid="",
-                position=Vector3d(x=0, y=0, z=0),
-                rotation=RotationAngles(
-                    angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-                ),
+                position=api.models.Vector3d([0, 0, 0]),
+                orientation=api.models.Orientation([0, 0, 0]),
+                orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
             ),
         )
 
@@ -231,12 +223,11 @@ async def test():
             cell="cell",
             controller="ur10",
             motion_group=f"0@{controller.controller_id}",
-            robot_tcp=RobotTcp(
+            robot_tcp=api.models.RobotTcp(
                 id="torch",
-                position=Vector3d(x=0, y=0, z=100),
-                rotation=RotationAngles(
-                    angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-                ),
+                position=api.models.Vector3d([0, 0, 100]),
+                orientation=api.models.Orientation([0, 0, 0]),
+                orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
             ),
         )
 
@@ -262,7 +253,7 @@ async def test():
                 motion_group_description,
                 additional_colliders={"welding_part": mesh_collider},
             )
-            scene_api = nova._api_client.store_collision_setups_api
+            scene_api = nova.api.store_collision_setups_api
             collision_setup = await scene_api.get_stored_collision_setup(
                 cell="cell", setup=collision_setup_id
             )
@@ -282,7 +273,7 @@ async def test():
                 # First seam
                 collision_free(
                     target=seam1_approach,
-                    collision_scene=collision_scene,
+                    collision_setup=collision_setup,
                     settings=MotionSettings(tcp_velocity_limit=30),
                 ),
                 linear(
@@ -300,7 +291,7 @@ async def test():
                 # Move to second seam
                 collision_free(
                     target=seam2_approach,
-                    collision_scene=collision_scene,
+                    collision_setup=collision_setup,
                     settings=MotionSettings(tcp_velocity_limit=30),
                 ),
                 # Second seam with collision checking
