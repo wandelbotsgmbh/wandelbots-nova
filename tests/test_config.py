@@ -38,3 +38,13 @@ def test_when_everything_prioritize_user_input(monkeypatch):
         nats_client_config={"servers": "nats://custom-server:4222"},
     )
     assert config.nats_client_config["servers"] == "nats://custom-server:4222"
+
+
+def test_when_host_has_trailing_slash_it_is_normalized():
+    config = NovaConfig(host="https://api.example.com/")
+    assert config.host == "https://api.example.com"
+
+
+def test_host_is_trimmed():
+    config = NovaConfig(host=" https://api.example.com/   ")
+    assert config.host == "https://api.example.com"

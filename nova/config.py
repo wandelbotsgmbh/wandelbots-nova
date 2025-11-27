@@ -56,6 +56,7 @@ class NovaConfig(BaseModel):
 
     @model_validator(mode="after")
     def _normalize_host_prefix(self) -> "NovaConfig":
+        self.host = self.host.strip()
         self.host = self.host.rstrip("/")
         return self
 
