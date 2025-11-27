@@ -3,6 +3,10 @@ from urllib.parse import urlparse
 from decouple import config
 from pydantic import BaseModel, Field, model_validator
 
+
+#TODO: current app store provides api-gateway:8080
+# we should do special handling because schema is missing
+
 # Configuration for accessing the Nova platform
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 NOVA_API = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
@@ -45,35 +49,13 @@ class NovaConfig(BaseModel):
     host: str = Field(..., description="Nova API host.")
     access_token: str | None = Field(default=None, description="Access token for Nova API.")
     verify_ssl: bool = Field(default=True)
-    enable_token_refresh: bool = Field(
-        default=False, description="Enable automatic token refresh when access token expires."
-    )
     nats_client_config: dict | None = Field(
         default=None,
         description="Client configuration to pass to the nats library. See: https://nats-io.github.io/nats.py/modules.html#nats.aio.client.Client.connect",
     )
 
-    # TODO: this is coming from v1 gateway implementation
-    # check if this is still needed or we can get rid of it
     @model_validator(mode="after")
     def _normalize_host_prefix(self) -> "NovaConfig":
-        if not self.host:
-            return self
-
-        is_wabo_host = "wandelbots.io" in self.host
-        if self.host.startswith("http") and not is_wabo_host:
-            # Already has protocol prefix and not a wandelbots.io host
-            pass
-        elif self.host.startswith("http") and is_wabo_host:
-            # Force https for wandelbots.io hosts
-            self.host = self.host.replace("http://", "https://")
-        elif is_wabo_host:
-            # Add https prefix for wandelbots.io hosts
-            self.host = f"https://{self.host}"
-        else:
-            # Add http prefix for other hosts
-            self.host = f"http://{self.host}"
-
         self.host = self.host.rstrip("/")
         return self
 
@@ -109,12 +91,6 @@ class NovaConfig(BaseModel):
                 f"wss://{self.access_token}@{parsed_host.hostname}:{parsed_host.port or 443}/api/nats"
             )
             return self
-
-        # for backward compatiblity
-        if self.host and self.access_token and not parsed_host.scheme:
-            self.nats_client_config["servers"] = (
-                f"wss://{self.access_token}@{self.host}:{443}/api/nats"
-            )
 
         return self
 
