@@ -397,6 +397,10 @@ def collision_free(
     >>> Action.from_dict(collision_free((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
     CollisionFreeMotion(metas={'line_number': 1}, type='collision_free', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None)
     """
+    if not isinstance(target, Pose):
+        t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
+        target = Pose(t)
+
     kwargs.update(line_number=utils.get_caller_linenumber())
     return CollisionFreeMotion(
         target=target,

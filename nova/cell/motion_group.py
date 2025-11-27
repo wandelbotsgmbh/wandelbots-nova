@@ -503,6 +503,7 @@ class MotionGroup(AbstractRobot):
         # If the plan trajectory failed, raise an exception
         if isinstance(plan_trajectory_response.response, api.models.PlanTrajectoryFailedResponse):
             # TODO: handle partially executable path
+
             raise PlanTrajectoryFailed(
                 error=plan_trajectory_response.response, motion_group_id=self.motion_group_id
             )

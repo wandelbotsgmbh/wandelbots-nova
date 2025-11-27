@@ -6,8 +6,8 @@ import logging
 from typing import TYPE_CHECKING, Sequence, cast
 
 if TYPE_CHECKING:
+    from nova import api
     from nova.actions import Action
-    from nova.api import models
     from nova.cell.motion_group import MotionGroup
     from nova.core.nova import Nova
 
@@ -197,7 +197,7 @@ class Rerun(Viewer):
     async def _log_planning_results(
         self,
         actions: Sequence[Action],
-        trajectory: models.JointTrajectory,
+        trajectory: api.models.JointTrajectory,
         tcp: str,
         motion_group: MotionGroup,
     ) -> None:
@@ -298,7 +298,12 @@ class Rerun(Viewer):
 
                 # Log error feedback if available
                 if hasattr(error.error, "error_feedback") and error.error.error_feedback:
-                    await self._bridge.log_error_feedback(error.error)
+                    if isinstance(error.error, api.models.PlanTrajectoryFailedResponse):
+                        await self._bridge.log_error_feedback(error.error.error_feedback)
+                    else:
+                        # TODO: handle collision free failed response
+                        logger.warning("Collision free failed response not supported yet")
+                        pass
 
             # Log error information as text
             import rerun as rr
