@@ -69,8 +69,10 @@ jobs:
           #   run_cmd: "python examples/multi_step_movement_with_collision_free.py"
           - id: run_wandelscript_file
             run_cmd: "python examples/run_wandelscript_file.py"
-          - id: welding_example
-            run_cmd: "python nova_rerun_bridge/examples/welding_example.py"
+          - id: welding
+            run_cmd: "python examples/welding.py"
+          - id: collision_setup
+            run_cmd: "python examples/collision_setup.py"
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
