@@ -2,6 +2,7 @@ import pytest
 from nova import Nova
 from nova.cell import virtual_controller
 from nova.api import models
+from nova.cell.motion_group import MotionGroup
 from nova.types import Pose
 from nova.actions import collision_free
 from math import pi
@@ -93,7 +94,7 @@ async def test_collision_free_planning_with_pose_as_target(ur_mg):
 
 
 @pytest.mark.asyncio
-async def test_collision_free_planning_finds_no_solution(ur_mg):
+async def test_collision_free_planning_finds_no_solution(ur_mg: MotionGroup):
     """
     Tests that collision-free planning correctly identifies when no solution is possible.
     """
@@ -103,14 +104,17 @@ async def test_collision_free_planning_finds_no_solution(ur_mg):
             position=models.Vector3d(root=[0, 0, 0]),
             orientation=models.RotationVector(root=[0, 0, 0]),
         ),
+    
     )
-    collision_setup = models.CollisionSetup(colliders={"plane": plane})
+    setup = await ur_mg.get_setup("Flange")
+    default_collision_setup = setup.collision_setups.root["default"].model_copy()
+    default_collision_setup.colliders = {"plane": plane}
 
     with pytest.raises(Exception):
         await ur_mg.plan(
             start_joint_position=tuple(initial_joint_positions),
             actions=[
-                collision_free(target=Pose(700, 0, -10, 0, 0, 0), collision_setup=collision_setup)
+                collision_free(target=Pose(700, 0, -10, 0, 0, 0), collision_setup=default_collision_setup)
             ],
             tcp="Flange",
         )
