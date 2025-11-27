@@ -17,14 +17,14 @@ DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS = 120
 
 
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 class Cell:
     """A representation of a robot cell, providing high-level operations on controllers."""
 
-    def __init__(
-        self, api_gateway: ApiGateway, cell_id: str, nats_client: nats.NATS | None = None
-    ):
+    def __init__(self, api_gateway: ApiGateway, cell_id: str, nats_client: nats.NATS | None = None):
         """
         Initializes a Cell instance.
         Args:
@@ -60,7 +60,7 @@ class Cell:
                 cell_id=self._cell_id,
                 controller_id=controller_id,
                 id=controller_id,
-                config=self._api_client.config
+                config=self._api_client.config,
             )
         )
 
@@ -240,7 +240,7 @@ class Cell:
 
         # TODO currently the NotsClient does not support unsubscribing from a subject, keeping the code
         # code like this for when it is supported.
-        sub = await nc.subscribe(subject=nats_subject, on_message=on_cell_status_message)
+        sub = await nc.subscribe(subject=nats_subject, cb=on_cell_status_message)
         try:
             await asyncio.wait_for(controller_ready_event.wait(), timeout=timeout)
         except asyncio.TimeoutError:

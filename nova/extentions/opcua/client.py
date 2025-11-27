@@ -16,6 +16,7 @@ from asyncua.ua import CreateSubscriptionParameters, DataValue, Variant, Variant
 
 from nova.config import K8S_NAMESPACE
 import logging
+
 logger = logging.getLogger(__name__)
 
 

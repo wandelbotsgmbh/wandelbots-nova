@@ -36,6 +36,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 # TODO: when collision scene is different in different motions
 #  , we should plan them separately
 def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:

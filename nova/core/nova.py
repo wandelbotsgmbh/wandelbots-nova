@@ -23,7 +23,7 @@ class Nova:
         # many users rely on this private field, we will remove that after some time in v2
         self._api_client = ApiGateway(self._config)
         self.apis = self._api_client
-        
+
         self.nats = nats.NATS()
 
     @property

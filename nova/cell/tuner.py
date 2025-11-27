@@ -7,6 +7,7 @@ from faststream import FastStream
 from faststream.nats import NatsBroker
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 from .movement_controller import MotionEvent, TrajectoryCursor, motion_started

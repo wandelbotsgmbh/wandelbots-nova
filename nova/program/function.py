@@ -26,6 +26,7 @@ from nova import Nova, api
 from nova.exceptions import ControllerCreationFailed
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 Parameters = ParamSpec("Parameters")

@@ -31,6 +31,7 @@ from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
 from nova.utils import timestamp
 import logging
+
 logger = logging.getLogger(__name__)
 
 current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(

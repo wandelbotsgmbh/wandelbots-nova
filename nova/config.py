@@ -53,14 +53,13 @@ class NovaConfig(BaseModel):
         description="Client configuration to pass to the nats library. See: https://nats-io.github.io/nats.py/modules.html#nats.aio.client.Client.connect",
     )
 
-
     # TODO: this is coming from v1 gateway implementation
     # check if this is still needed or we can get rid of it
     @model_validator(mode="after")
     def _normalize_host_prefix(self) -> "NovaConfig":
         if not self.host:
             return self
-            
+
         is_wabo_host = "wandelbots.io" in self.host
         if self.host.startswith("http") and not is_wabo_host:
             # Already has protocol prefix and not a wandelbots.io host
@@ -74,7 +73,7 @@ class NovaConfig(BaseModel):
         else:
             # Add http prefix for other hosts
             self.host = f"http://{self.host}"
-            
+
         self.host = self.host.rstrip("/")
         return self
 

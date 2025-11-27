@@ -10,6 +10,7 @@ from nova.cell.robot_cell import Device, OutputDevice
 from nova.config import BASE_PATH
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 # Read BASE_PATH environment variable and extract app name
@@ -144,7 +145,9 @@ class Cycle:
             raise RuntimeError("NATS client is not connected")
 
         try:
-            await self._cell.nats.publish(subject=self._subject, payload=event.model_dump_json().encode())
+            await self._cell.nats.publish(
+                subject=self._subject, payload=event.model_dump_json().encode()
+            )
             logger.debug(f"Published {event.event_type} event to NATS subject: {self._subject}")
         except Exception as e:
             logger.error(f"Failed to publish {event.event_type} event to NATS: {e}")
