@@ -1,11 +1,13 @@
+from math import pi
+
 import pytest
+
 from nova import Nova
-from nova.cell import virtual_controller
+from nova.actions import collision_free
 from nova.api import models
+from nova.cell import virtual_controller
 from nova.cell.motion_group import MotionGroup
 from nova.types import Pose
-from nova.actions import collision_free
-from math import pi
 
 initial_joint_positions = [pi / 2, -pi / 2, pi / 2, 0, 0, 0]
 
@@ -104,7 +106,6 @@ async def test_collision_free_planning_finds_no_solution(ur_mg: MotionGroup):
             position=models.Vector3d(root=[0, 0, 0]),
             orientation=models.RotationVector(root=[0, 0, 0]),
         ),
-    
     )
     setup = await ur_mg.get_setup("Flange")
     default_collision_setup = setup.collision_setups.root["default"].model_copy()
@@ -114,7 +115,9 @@ async def test_collision_free_planning_finds_no_solution(ur_mg: MotionGroup):
         await ur_mg.plan(
             start_joint_position=tuple(initial_joint_positions),
             actions=[
-                collision_free(target=Pose(700, 0, -10, 0, 0, 0), collision_setup=default_collision_setup)
+                collision_free(
+                    target=Pose(700, 0, -10, 0, 0, 0), collision_setup=default_collision_setup
+                )
             ],
             tcp="Flange",
         )

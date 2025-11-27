@@ -1,6 +1,6 @@
 import asyncio
 from functools import partial
-from typing import AsyncIterable, AsyncIterator
+from typing import AsyncIterable, AsyncIterator, cast
 
 from icecream import ic
 
@@ -21,9 +21,8 @@ from nova.utils.collision_setup import (
     motion_group_setup_from_motion_group_description,
     validate_collision_setups,
 )
-from nova.utils.motion_group_settings import update_motion_group_setup_with_motion_settings
 from nova.utils.joint_trajectory import combine_trajectories
-from typing import cast
+from nova.utils.motion_group_settings import update_motion_group_setup_with_motion_settings
 
 from .movement_controller import move_forward
 from .robot_cell import AbstractRobot

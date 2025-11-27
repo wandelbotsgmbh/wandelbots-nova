@@ -757,7 +757,7 @@ class RobotVisualizer:
                 tcp_transform = transforms[-1]  # End-effector transform
                 for i, geom in enumerate(self.tcp_geometries):
                     entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
-                    final_transform = tcp_transform @ self.geometry_pose_to_matrix(geom.init_pose)
+                    final_transform = tcp_transform @ self.geometry_pose_to_matrix(geom.pose)
                     self.init_geometry(entity_path, geom)
                     collect_geometry_data(entity_path, final_transform)
 
