@@ -333,16 +333,16 @@ class NovaRerunBridge:
             for i, collision in enumerate(collisions):
                 if collision.position_on_a is None or collision.position_on_b is None:
                     continue
-                if collision.position_on_a.world is None or collision.position_on_b.world is None:
+                if collision.position_on_a.root is None or collision.position_on_b.root is None:
                     continue
-                if collision.normal_world_on_b is None:
+                if collision.normal_root_on_b is None:
                     continue
 
                 # Extract positions
-                # TODO: is it local or root?
-                pos_a = collision.position_on_a.world
-                pos_b = collision.position_on_b.world
-                normal = collision.normal_world_on_b
+                # TODO: is it local or root? (world)
+                pos_a = collision.position_on_a.root
+                pos_b = collision.position_on_b.root
+                normal = collision.normal_root_on_b
 
                 # Scale normal for visibility
                 arrow_length = 50

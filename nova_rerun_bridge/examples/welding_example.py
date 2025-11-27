@@ -22,7 +22,7 @@ async def load_and_transform_mesh(filepath: str, pose: api.models.Pose) -> trime
 
     # Create transformation matrix from Pose
     transform = np.eye(4)
-    transform[:3, 3] = pose.position.root
+    transform[:3, 3] = pose.position.root if pose.position else [0, 0, 0]
     scene.apply_transform(transform)
     return scene
 
@@ -204,6 +204,7 @@ async def test():
 
         cell = nova.cell()
         controller = await cell.controller("ur10")
+        tcp_name = "torch"
 
         await nova.api.virtual_controller_api.set_virtual_controller_mounting(
             cell="cell",
@@ -212,7 +213,6 @@ async def test():
             coordinate_system=api.models.CoordinateSystem(
                 coordinate_system="world",
                 name="mounting",
-                reference_uid="",
                 position=api.models.Vector3d([0, 0, 0]),
                 orientation=api.models.Orientation([0, 0, 0]),
                 orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
@@ -223,8 +223,9 @@ async def test():
             cell="cell",
             controller="ur10",
             motion_group=f"0@{controller.controller_id}",
-            robot_tcp=api.models.RobotTcp(
-                id="torch",
+            tcp=tcp_name,
+            robot_tcp_data=api.models.RobotTcpData(
+                name="torch",
                 position=api.models.Vector3d([0, 0, 100]),
                 orientation=api.models.Orientation([0, 0, 0]),
                 orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
@@ -235,11 +236,7 @@ async def test():
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
-            tcp = "torch"
-
-            motion_group_description: api.models.MotionGroupDescription = (
-                await motion_group.get_description(tcp=tcp)
-            )
+            motion_group_description = await motion_group.get_description()
 
             # Add mesh to collision world
             mesh_collider = await add_mesh_to_collision_world(
@@ -315,7 +312,9 @@ async def test():
             ]
 
             await motion_group.plan(
-                welding_actions, tcp=tcp, start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0)
+                welding_actions,
+                tcp=tcp_name,
+                start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
             )
 
 

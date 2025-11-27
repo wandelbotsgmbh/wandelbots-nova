@@ -7,7 +7,6 @@ from nova import api
 from nova.core.nova import Nova
 from nova.logging import logger
 from nova.program.function import Program
-from nova.program.store import Program as StoreProgram
 from nova.program.store import ProgramStore
 from novax.config import APP_NAME, CELL_NAME
 from novax.program_manager import ProgramManager
@@ -97,7 +96,7 @@ class Novax:
             for program_id, program_details in programs.items():
                 try:
                     # TODO: schema is not present in ProgramDetails
-                    store_program = StoreProgram(
+                    store_program = api.models.Program(
                         program=program_details.program,
                         name=program_details.name,
                         description=program_details.description,

@@ -150,9 +150,6 @@ class Pose(pydantic.BaseModel, Sized):
             ),
         )
 
-    def __getitem__(self, item):
-        return self.to_tuple()[item]
-
     def __matmul__(self, other):
         """
         Pose concatenation combines two poses into a single pose that represents the cumulative effect of both

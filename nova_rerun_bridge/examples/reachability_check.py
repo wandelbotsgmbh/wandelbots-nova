@@ -3,7 +3,6 @@ import asyncio
 import numpy as np
 import rerun as rr
 import trimesh
-from wandelbots_api_client.models.all_joint_positions_response import AllJointPositionsResponse
 
 import nova
 from nova import Nova, api
@@ -40,7 +39,7 @@ def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
             virtual_controller(
                 name="ur10",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             )
         ],
         cleanup_controllers=False,
@@ -86,8 +85,8 @@ async def test():
 
                 tested_points.append(point)
                 try:
-                    response: AllJointPositionsResponse = (
-                        await nova._api_client.kinematics_api.calculate_all_inverse_kinematic(
+                    response: api.models.AllJointPositionsResponse = (
+                        await nova.api.kinematics_api.calculate_all_inverse_kinematic(
                             cell=cell.cell_id,
                             motion_group=motion_group.motion_group_id,
                             tcp_pose=api.models.TcpPose(

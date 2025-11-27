@@ -136,7 +136,7 @@ class HullVisualizer:
         return HullVisualizer._compute_hull_from_points(np.array(all_points))
 
     @staticmethod
-    def compute_hull_outlines_from_points(points: list[list[float]]) -> list[np.ndarray]:
+    def compute_hull_outlines_from_points(points: np.ndarray) -> list[np.ndarray]:
         """Compute polygon outlines directly from point coordinates.
 
         Args:

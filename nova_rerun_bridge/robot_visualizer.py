@@ -57,7 +57,7 @@ class RobotVisualizer:
         self.albedo_factor = albedo_factor
         self.mesh_loaded = False
         self.collision_link_geometries = {}
-        self.collision_tcp_geometries = collision_tcp.root or {}
+        self.collision_tcp_geometries = collision_tcp.root if collision_tcp else {}
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool
         self.show_safety_link_chain = show_safety_link_chain
@@ -79,12 +79,13 @@ class RobotVisualizer:
         except Exception as e:
             print(f"Failed to load mesh: {e}")
 
-        # Group geometries by link
-        for gm in robot_model_geometries:
-            self.link_geometries.setdefault(gm.link_index, []).append(gm.geometry)
+        # Group safety geometries by link index for easier lookup later on
+        for link_chain in robot_model_geometries:
+            for link_index, link in enumerate(link_chain.root or []):
+                self.link_geometries.setdefault(link_index, []).extend(link.root.values())
 
-        # Group geometries by link
-        self.collision_link_geometries = collision_link_chain.root or {}
+        # Group collision geometries by link
+        self.collision_link_geometries = collision_link_chain.root if collision_link_chain else {}
 
     def discover_joints(self):
         """
@@ -151,7 +152,9 @@ class RobotVisualizer:
         self.layer_nodes_dict[joint] = same_layer
         return same_layer
 
-    def geometry_pose_to_matrix(self, init_pose: api.models.Pose):
+    def geometry_pose_to_matrix(self, init_pose: api.models.Pose | None):
+        if init_pose is None:
+            return np.eye(4)
         return self.robot.pose_to_matrix(init_pose)
 
     # TODO: this will not work yet
@@ -278,7 +281,7 @@ class RobotVisualizer:
                 f"{entity_path}",
                 rr.Ellipsoids3D(
                     radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
-                    centers=[pose.position.root] if pose.position else [0, 0, 0],
+                    centers=[pose.position.root] if pose.position else [0, 0, 0],  # type: ignore
                     colors=[(221, 193, 193, 255)],
                 ),
             )
@@ -287,7 +290,7 @@ class RobotVisualizer:
             rr.log(
                 f"{entity_path}",
                 rr.Boxes3D(
-                    centers=[pose.position.root] if pose.position else [0, 0, 0],
+                    centers=pose.position.root if pose.position else [0, 0, 0],
                     sizes=[collider.shape.size_x, collider.shape.size_y, collider.shape.size_z],
                     colors=[(221, 193, 193, 255)],
                 ),
@@ -338,7 +341,9 @@ class RobotVisualizer:
                 )
 
         elif isinstance(collider.shape, api.models.ConvexHull):
-            polygons = HullVisualizer.compute_hull_outlines_from_points(collider.shape.vertices)
+            polygons = HullVisualizer.compute_hull_outlines_from_points(
+                np.array(collider.shape.vertices)
+            )
 
             if polygons:
                 line_segments = [p.tolist() for p in polygons]
@@ -434,7 +439,7 @@ class RobotVisualizer:
         # Convex hull geometry
         elif isinstance(geometry.shape, api.models.ConvexHull):
             polygons = HullVisualizer.compute_hull_outlines_from_points(
-                [v.root for v in geometry.shape.vertices]
+                np.array([v.root for v in geometry.shape.vertices])
             )
 
             if polygons:
@@ -564,12 +569,6 @@ class RobotVisualizer:
                 ),
             )
 
-        # Compound geometry - recursively process child geometries
-        elif geometry.compound and geometry.compound.child_geometries:
-            for i, child_geom in enumerate(geometry.compound.child_geometries):
-                child_path = f"{entity_path}/child_{i}"
-                self.init_geometry(child_path, child_geom)
-
         # Default fallback for unsupported geometry types
         else:
             # Fallback to a box
@@ -654,7 +653,7 @@ class RobotVisualizer:
                 link_transform = transforms[link_index]
                 for i, geom in enumerate(geometries):
                     entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
-                    final_transform = link_transform @ self.geometry_pose_to_matrix(geom.init_pose)
+                    final_transform = link_transform @ self.geometry_pose_to_matrix(geom.pose)
 
                     self.init_geometry(entity_path, geom)
                     log_geometry(entity_path, final_transform)
@@ -664,7 +663,7 @@ class RobotVisualizer:
             tcp_transform = transforms[-1]  # the final frame transform
             for i, geom in enumerate(self.tcp_geometries):
                 entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
-                final_transform = tcp_transform @ self.geometry_pose_to_matrix(geom.init_pose)
+                final_transform = tcp_transform @ self.geometry_pose_to_matrix(geom.pose)
 
                 self.init_geometry(entity_path, geom)
                 log_geometry(entity_path, final_transform)

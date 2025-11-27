@@ -3,7 +3,6 @@ import asyncio
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
-from wandelbots_api_client.v2.models.program import Program
 
 import nova
 from nova import api
@@ -14,7 +13,7 @@ from nova.program.function import ProgramPreconditions
 from novax import Novax
 
 
-async def get_from_nats(program_id: str, cell_id: str = "cell") -> Program:
+async def get_from_nats(program_id: str, cell_id: str = "cell") -> api.models.Program:
     """Get a single program from NATS using ProgramStore."""
     from nova.program.store import ProgramStore
 
@@ -26,7 +25,7 @@ async def get_from_nats(program_id: str, cell_id: str = "cell") -> Program:
         return program
 
 
-async def get_all_from_nats(cell_id: str = "cell") -> list[Program]:
+async def get_all_from_nats(cell_id: str = "cell") -> list[api.models.Program]:
     """Get all programs from NATS using ProgramStore."""
     from nova.program.store import ProgramStore
 
@@ -36,61 +35,58 @@ async def get_all_from_nats(cell_id: str = "cell") -> list[Program]:
         return programs
 
 
-async def get_from_novax(client: TestClient, program_id: str) -> Program | None:
+async def get_from_novax(client: TestClient, program_id: str) -> api.models.Program | None:
     """Get a single program from Novax REST API using FastAPI TestClient."""
     loop = asyncio.get_running_loop()
     response = await loop.run_in_executor(None, lambda: client.get(f"/programs/{program_id}"))
     if response.status_code != 200:
         return None
-    return Program(**response.json())
+    return api.models.Program(**response.json())
 
 
-async def get_all_from_novax(client: TestClient) -> list[Program]:
+async def get_all_from_novax(client: TestClient) -> list[api.models.Program]:
     """Get all programs from Novax REST API using FastAPI TestClient."""
     loop = asyncio.get_running_loop()
     response = await loop.run_in_executor(None, lambda: client.get("/programs"))
     if response.status_code == 200:
-        return [Program(**program) for program in response.json()]
+        return [api.models.Program(**program) for program in response.json()]
     return []
 
 
-async def get_from_discovery_service(program_id: str, cell: str = "cell") -> Program:
+async def get_from_discovery_service(program_id: str, cell: str = "cell") -> api.models.Program:
     """Get a single program from Discovery Service using Wandelbots API client."""
-    import wandelbots_api_client.v2 as wb
-    from wandelbots_api_client.v2.api import ProgramApi
 
     async with Nova() as nova:
         v1_api_client = nova._api_client._api_client
-        config = wb.Configuration(
+        config = api.Configuration(
             host=v1_api_client.configuration.host.replace("/v1", "/v2"),
             username=v1_api_client.configuration.username,
             password=v1_api_client.configuration.password,
             access_token=v1_api_client.configuration.access_token,
         )
 
-        program_discovery_api = ProgramApi(wb.ApiClient(configuration=config))
+        program_discovery_api = api.api.ProgramApi(api.ApiClient(configuration=config))
         return await program_discovery_api.get_program(cell=cell, program=f"novax.{program_id}")
 
 
-async def get_all_from_discovery_service(cell: str = "cell") -> list[Program]:
+async def get_all_from_discovery_service(cell: str = "cell") -> list[api.models.Program]:
     """Get all programs from Discovery Service using Wandelbots API client."""
-    import wandelbots_api_client.v2 as wb
-    from wandelbots_api_client.v2.api import ProgramApi
-
     async with Nova() as nova:
         v1_api_client = nova._api_client._api_client
-        config = wb.Configuration(
+        config = api.Configuration(
             host=v1_api_client.configuration.host.replace("/v1", "/v2"),
             username=v1_api_client.configuration.username,
             password=v1_api_client.configuration.password,
             access_token=v1_api_client.configuration.access_token,
         )
 
-        program_discovery_api = ProgramApi(wb.ApiClient(configuration=config))
+        program_discovery_api = api.api.ProgramApi(api.ApiClient(configuration=config))
         return await program_discovery_api.list_programs(cell=cell)
 
 
-def filter_programs_by_name(programs: list[Program], id: str, app: str) -> Program | None:
+def filter_programs_by_name(
+    programs: list[api.models.Program], id: str, app: str
+) -> api.models.Program | None:
     """Filter a list of programs by name and app."""
     for program in programs:
         if program.program == id and program.app == app:
@@ -99,7 +95,7 @@ def filter_programs_by_name(programs: list[Program], id: str, app: str) -> Progr
 
 
 def assert_program_definition_matches(
-    expected_program: DecoratedProgram | None, found_program: Program | None
+    expected_program: DecoratedProgram | None, found_program: api.models.Program | None
 ) -> None:
     """Helper function to assert that a program definition matches the expected program."""
     if expected_program is None:

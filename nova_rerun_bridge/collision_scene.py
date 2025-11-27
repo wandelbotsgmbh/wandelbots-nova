@@ -21,18 +21,14 @@ def log_collision_setups(collision_setups: dict[str, api.models.CollisionSetup])
 
 def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collider]):
     for collider_id, collider in colliders.items():
-        # TODO: use our Pose here.
         pose = normalize_pose(collider.pose)
-
-        if collider.shape is None:
-            return
 
         if isinstance(collider.shape, api.models.Sphere):
             # Convert rotation vector to axis-angle format
             if pose.orientation is None:
                 continue
             rot_vec = np.array(pose.orientation.to_tuple())
-            angle: float = np.linalg.norm(rot_vec)
+            angle = np.linalg.norm(rot_vec)
             if angle > 0:
                 axis = rot_vec / angle
             else:
@@ -67,12 +63,12 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
             )
 
             # Create vertices for spheres at each corner
-            vertices = []
+            vertices = np.empty((0, 3))
             for center in sphere_centers:
                 # Create a low-poly sphere at each corner
                 sphere = trimesh.creation.icosphere(radius=radius, subdivisions=2)
                 sphere_verts = sphere.vertices + center
-                vertices.extend(sphere_verts)
+                vertices = np.concatenate([vertices, sphere_verts])
 
             # Convert to numpy array for transformation
             vertices = np.array(vertices)

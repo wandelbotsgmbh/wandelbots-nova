@@ -7,8 +7,8 @@ from nats.js.client import KeyValue
 from nats.js.errors import KeyNotFoundError as KvKeyError
 from nats.js.errors import NoKeysError, NotFoundError
 from pydantic import BaseModel, ValidationError
-from wandelbots_api_client.v2.models.program import Program
 
+from nova import api
 from nova.logging import logger as nova_logger
 from nova.nats import NatsClient
 
@@ -186,7 +186,7 @@ class _KeyValueStore(Generic[_T]):
         return models
 
 
-class ProgramStore(_KeyValueStore[Program]):
+class ProgramStore(_KeyValueStore[api.models.Program]):
     """
     Program store manages all the programs registered in a cell.
     """
@@ -200,7 +200,7 @@ class ProgramStore(_KeyValueStore[Program]):
         )
 
         super().__init__(
-            Program,
+            api.models.Program,
             nats_bucket_name=self._nats_bucket_name,
             nats_client=nats_client,
             nats_kv_config=self._kv_config if create_bucket else None,

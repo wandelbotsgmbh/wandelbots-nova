@@ -108,9 +108,10 @@ async def log_motion(
     if motion_group_description.dh_parameters is None:
         raise ValueError("DH parameters cannot be None")
 
-    robot = DHRobot(
-        dh_parameters=motion_group_description.dh_parameters, mounting=motion_group_setup.mounting
+    mounting = motion_group_setup.mounting or api.models.Pose(
+        position=api.models.Vector3d([0, 0, 0]), orientation=api.models.RotationVector([0, 0, 0])
     )
+    robot = DHRobot(dh_parameters=motion_group_description.dh_parameters, mounting=mounting)
 
     # TODO: merge collision_setups
     collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
@@ -133,7 +134,7 @@ async def log_motion(
             and tcp in motion_group_description.safety_tool_colliders
         ):
             tcp_geometries = [
-                api.models.Collider(root=tool_collider.root)
+                api.models.Collider(tool_collider.root)
                 for tool_collider in motion_group_description.safety_tool_colliders[tcp]
             ]
 
