@@ -106,7 +106,6 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup(ur_mg)
     default_collision_setup = setup.collision_setups.root["default"].model_copy()
     default_collision_setup.colliders = {"plane": plane}
 
-
     # this orientation is important
     # with this orientation, the body of the end effector stays on top of the plane
     # if you change the orientation, IK will find no solution
@@ -137,7 +136,6 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup_2(ur_m
     setup = await ur_mg.get_setup("Flange")
     default_collision_setup = setup.collision_setups.root["default"].model_copy()
     default_collision_setup.colliders = {"box": box}
-
 
     solutions = await ur_mg.inverse_kinematics(
         poses=[Pose(700, 0, 700, 0, 0, 0)], tcp="Flange", collision_setup=default_collision_setup

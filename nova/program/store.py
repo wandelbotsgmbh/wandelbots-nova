@@ -19,7 +19,9 @@ _NATS_PROGRAMS_BUCKET_SIZE = _NATS_PROGRAMS_MESSAGE_SIZE * 100
 
 
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 # We don't want to expose this to public usage until the jetstream concept gets more mature
 class _KeyValueStore(Generic[_T]):
