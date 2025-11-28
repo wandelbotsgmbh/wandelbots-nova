@@ -168,12 +168,12 @@ async def test_program_definition_for_program_with_preconditions():
                 virtual_controller(
                     name="controller1",
                     manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                    type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                    type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
                 ),
                 virtual_controller(
                     name="controller2",
                     manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                    type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
+                    type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR5E,
                 ),
             ],
             cleanup_controllers=False,
@@ -253,12 +253,12 @@ async def test_program_definition_for_program_with_input_schema_and_precondition
                 virtual_controller(
                     name="controller1",
                     manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                    type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                    type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
                 ),
                 virtual_controller(
                     name="controller2",
                     manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                    type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
+                    type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR5E,
                 ),
             ],
             cleanup_controllers=False,

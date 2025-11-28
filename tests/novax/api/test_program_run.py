@@ -32,8 +32,11 @@ async def test_novax_program_successful_run(novax_app):
     # subscribe to program run messages
     program_status_messages = []
 
+    async def cb(msg):
+        program_status_messages.append(msg)
+
     await nova.nats.subscribe(
-        "nova.v2.cells.cell.programs", on_message=lambda msg: program_status_messages.append(msg)
+        "nova.v2.cells.cell.programs", cb=cb
     )
 
     with TestClient(novax_app) as client:
@@ -77,9 +80,11 @@ async def test_novax_program_failed_run(novax_app):
 
     # subscribe to program run messages
     program_status_messages = []
+    async def cb(msg):
+        program_status_messages.append(msg)
 
     await nova.nats.subscribe(
-        "nova.v2.cells.cell.programs", on_message=lambda msg: program_status_messages.append(msg)
+        "nova.v2.cells.cell.programs", cb=cb
     )
 
     with TestClient(novax_app) as client:
@@ -124,9 +129,11 @@ async def test_novax_program_stopped_run(novax_app):
 
     # subscribe to program run messages
     program_status_messages = []
+    async def cb(msg):
+        program_status_messages.append(msg)
 
     await nova.nats.subscribe(
-        "nova.v2.cells.cell.programs", on_message=lambda msg: program_status_messages.append(msg)
+        "nova.v2.cells.cell.programs", cb=cb
     )
 
     with TestClient(novax_app) as client:

@@ -64,7 +64,7 @@ class Novax:
         """
         await self._nova.connect()
         logger.info("Novax: Connected to Nova API")
-        store = ProgramStore(cell_id=self._cell.cell_id, nats_client=self._nova.nats)
+        store = ProgramStore(cell=self._cell)
         await self._register_programs(store)
         logger.info("Novax: Programs registered to store on startup")
 
