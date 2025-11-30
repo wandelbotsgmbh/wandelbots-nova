@@ -6,9 +6,10 @@ import wandelbots_api_client as wb
 
 from nova import Nova
 from nova.actions import jnt, lin
-from nova.actions.container import MovementControllerContext
+from nova.actions.container import MovementController, MovementControllerContext
 from nova.api import models
 from nova.cell.controllers import virtual_controller
+from nova.cell.movement_controller import move_forward
 from nova.exceptions import InitMovementFailed
 from nova.logging import logger
 from nova.types import (
@@ -37,7 +38,7 @@ async def ur_mg():
             virtual_controller(
                 name=controller_name,
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
-                type=models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                type=models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
                 position=initial_joint_positions,
             )
         )
@@ -140,45 +141,20 @@ async def test_movement_stops_when_async_generator_raises_exception(ur_mg):
     assert pose.position.x == new_pose.position.x, "Robot moved after task was cancelled."
 
 
-# yes this is very very ugly
-def create_movement_controller(exception: BaseException):
+def create_movement_controller(exception: BaseException) -> MovementController:
     def _test_movement_controller(context: MovementControllerContext) -> MovementControllerFunction:
+        controller = move_forward(context)
+
         async def movement_controller(
             response_stream: ExecuteTrajectoryResponseStream,
         ) -> ExecuteTrajectoryRequestStream:
-            # The first request is to initialize the movement
-            yield wb.models.InitializeMovementRequest(
-                trajectory=context.motion_id, initial_location=0
-            )  # type: ignore
-
-            # then we get the response
-            initialize_movement_response = await anext(response_stream)
-            if isinstance(
-                initialize_movement_response.actual_instance, wb.models.InitializeMovementResponse
-            ):
-                r1 = initialize_movement_response.actual_instance
-                if not r1.init_response.succeeded:
-                    raise InitMovementFailed(r1.init_response)
-
-            # The second request is to start the movement
-            set_io_list = context.combined_actions.to_set_io()
-            yield wb.models.StartMovementRequest(  # type: ignore
-                set_ios=set_io_list, start_on_io=context.start_on_io, pause_on_io=None
-            )
-
-            number_of_states_to_consume = 200
-            # then we wait until the movement is finished
-            async for execute_trajectory_response in response_stream:
-                number_of_states_to_consume -= 1
-                if number_of_states_to_consume == 0:
+            count = 0 
+            async for response in controller(response_stream):
+                yield response
+                count += 1
+                if count == 200:
                     raise exception
-
-                instance = execute_trajectory_response.actual_instance
-                # Stop when standstill indicates motion ended
-                if isinstance(instance, wb.models.Standstill):
-                    if instance.standstill.reason == wb.models.StandstillReason.REASON_MOTION_ENDED:
-                        return
-
+                
         return movement_controller
 
     return _test_movement_controller

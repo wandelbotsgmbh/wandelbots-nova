@@ -542,6 +542,9 @@ class MotionGroup(AbstractRobot):
 
 
         """
+        if start_joint_position is None:
+            raise RuntimeError("start_joint_position must be provided for CollisionFreeMotion")
+
         if isinstance(action.target, Pose):
             target_joint_positions = (
                 await self.inverse_kinematics(
