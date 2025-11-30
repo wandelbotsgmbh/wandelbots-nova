@@ -6,7 +6,9 @@ from decouple import config
 from faststream import FastStream
 from faststream.nats import NatsBroker
 
-from nova.core import logger
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .movement_controller import MotionEvent, TrajectoryCursor, motion_started
 

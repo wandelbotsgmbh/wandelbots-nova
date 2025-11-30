@@ -19,7 +19,7 @@ from nova.cell.robot_cell import (
     RobotCell,
     Timer,
 )
-from nova.core.io import ValueType
+from nova.cell.io import ValueType
 from nova.types import MotionState, MovementResponse, Pose, RobotState
 
 

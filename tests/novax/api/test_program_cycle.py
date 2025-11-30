@@ -35,7 +35,7 @@ async def test_novax_program_cycle_data(novax_app):
         async def cb(msg):
             cycle_messages.append(msg)
 
-        await nova.nats.subscribe("nova.v2.cells.cell.cycle", on_message=cb)
+        await nova.nats.subscribe("nova.v2.cells.cell.cycle", cb=cb)
 
         with TestClient(novax_app) as client:
             start_program = client.post(
@@ -81,7 +81,7 @@ async def test_novax_program_cycle_failure(novax_app):
     async def cb(msg):
         cycle_messages.append(msg)
 
-    await nova.nats.subscribe("nova.v2.cells.cell.cycle", on_message=cb)
+    await nova.nats.subscribe("nova.v2.cells.cell.cycle", cb=cb)
 
     with TestClient(novax_app) as client:
         start_program = client.post(
@@ -126,7 +126,7 @@ async def test_novax_program_cycle_with_extra(novax_app):
         async def cb(msg):
             cycle_messages.append(msg)
 
-        await nova.nats.subscribe("nova.v2.cells.cell.cycle", on_message=cb)
+        await nova.nats.subscribe("nova.v2.cells.cell.cycle", cb=cb)
 
         with TestClient(novax_app) as client:
             start_program = client.post(

@@ -57,7 +57,7 @@ async def test_collision_free_planning_with_joint_position_as_target(ur_mg):
         "Initial joint positions do not match start"
     )
     assert trajectory.joint_positions[-1].root == [pi / 4, -pi / 2, pi / 2, 0, 0, 0], (
-        "Final joint positions do not match target" @ pytest.mark.asyncio
+        "Final joint positions do not match target"
     )
 
 
@@ -108,7 +108,7 @@ async def test_collision_free_planning_finds_no_solution(ur_mg: MotionGroup):
         ),
     )
     setup = await ur_mg.get_setup("Flange")
-    default_collision_setup = setup.collision_setups.root["default"].model_copy()
+    default_collision_setup = setup.collision_setups.root["default"].model_copy()  # type: ignore
     default_collision_setup.colliders = {"plane": plane}
 
     with pytest.raises(Exception):
