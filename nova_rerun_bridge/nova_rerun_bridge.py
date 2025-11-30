@@ -495,10 +495,6 @@ class NovaRerunBridge:
                 # Skip other action types that we don't know how to handle
                 continue
 
-            # If we reach here, we should have a valid pose or we need to skip
-            if pose is None:
-                continue
-
             logger.debug(f"Action {i}: {action_type}, Pose: {pose}")
             positions.append([pose.position.x, pose.position.y, pose.position.z])
 

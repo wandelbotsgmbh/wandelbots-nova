@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from nova import api
-from nova.actions import cartesian_ptp, io_write, joint_ptp, linear, wait, collision_free
+from nova.actions import cartesian_ptp, collision_free, io_write, joint_ptp, linear, wait
 from nova.actions.base import Action
 from nova.cell.motion_group import MotionGroup, split_actions_into_batches
 from nova.core.gateway import ApiGateway

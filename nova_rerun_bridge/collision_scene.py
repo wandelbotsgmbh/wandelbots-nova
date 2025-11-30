@@ -25,8 +25,6 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
 
         if isinstance(collider.shape, api.models.Sphere):
             # Convert rotation vector to axis-angle format
-            if pose.orientation is None:
-                continue
             rot_vec = np.array(pose.orientation.to_tuple())
             angle = np.linalg.norm(rot_vec)
             if angle > 0:

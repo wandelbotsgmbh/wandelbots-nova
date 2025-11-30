@@ -17,7 +17,7 @@ from nova_rerun_bridge import NovaRerunBridge
             virtual_controller(
                 name="ur10",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             )
         ],
         cleanup_controllers=False,

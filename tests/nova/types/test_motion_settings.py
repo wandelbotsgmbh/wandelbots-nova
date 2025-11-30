@@ -1,4 +1,5 @@
 import pytest
+
 from nova.types.motion_settings import DEFAULT_TCP_VELOCITY_LIMIT, MotionSettings
 
 

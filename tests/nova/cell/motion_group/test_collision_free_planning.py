@@ -1,11 +1,13 @@
+from math import pi
+
 import pytest
+
 from nova import Nova
-from nova.cell import virtual_controller
+from nova.actions import collision_free
 from nova.api import models
+from nova.cell import virtual_controller
 from nova.cell.motion_group import MotionGroup
 from nova.types import Pose
-from nova.actions import collision_free
-from math import pi
 
 initial_joint_positions = [pi / 2, -pi / 2, pi / 2, 0, 0, 0]
 

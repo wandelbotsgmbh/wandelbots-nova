@@ -6,6 +6,7 @@ import trimesh
 from scipy.spatial.transform import Rotation
 
 from nova import api
+from nova.types import Pose
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.conversion_helpers import normalize_pose
 from nova_rerun_bridge.dh_robot import DHRobot
@@ -152,7 +153,7 @@ class RobotVisualizer:
         self.layer_nodes_dict[joint] = same_layer
         return same_layer
 
-    def geometry_pose_to_matrix(self, init_pose: api.models.Pose | None):
+    def geometry_pose_to_matrix(self, init_pose: Pose | None):
         if init_pose is None:
             return np.eye(4)
         return self.robot.pose_to_matrix(init_pose)
@@ -653,7 +654,9 @@ class RobotVisualizer:
                 link_transform = transforms[link_index]
                 for i, geom in enumerate(geometries):
                     entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
-                    final_transform = link_transform @ self.geometry_pose_to_matrix(geom.pose)
+                    final_transform = link_transform @ self.geometry_pose_to_matrix(
+                        normalize_pose(geom.pose)
+                    )
 
                     self.init_geometry(entity_path, geom)
                     log_geometry(entity_path, final_transform)
@@ -663,7 +666,9 @@ class RobotVisualizer:
             tcp_transform = transforms[-1]  # the final frame transform
             for i, geom in enumerate(self.tcp_geometries):
                 entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
-                final_transform = tcp_transform @ self.geometry_pose_to_matrix(geom.pose)
+                final_transform = tcp_transform @ self.geometry_pose_to_matrix(
+                    normalize_pose(geom.pose)
+                )
 
                 self.init_geometry(entity_path, geom)
                 log_geometry(entity_path, final_transform)
@@ -748,7 +753,9 @@ class RobotVisualizer:
                     link_transform = transforms[link_index]
                     for i, geom in enumerate(geometries):
                         entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
-                        final_transform = link_transform @ self.geometry_pose_to_matrix(geom.pose)
+                        final_transform = link_transform @ self.geometry_pose_to_matrix(
+                            normalize_pose(geom.pose)
+                        )
                         self.init_geometry(entity_path, geom)
                         collect_geometry_data(entity_path, final_transform)
 
@@ -757,7 +764,9 @@ class RobotVisualizer:
                 tcp_transform = transforms[-1]  # End-effector transform
                 for i, geom in enumerate(self.tcp_geometries):
                     entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
-                    final_transform = tcp_transform @ self.geometry_pose_to_matrix(geom.init_pose)
+                    final_transform = tcp_transform @ self.geometry_pose_to_matrix(
+                        normalize_pose(geom.pose)
+                    )
                     self.init_geometry(entity_path, geom)
                     collect_geometry_data(entity_path, final_transform)
 
@@ -769,7 +778,6 @@ class RobotVisualizer:
                         entity_path = f"{self.base_entity_path}/collision/links/link_{link_index}/geometry_{geom_id}"
 
                         pose = normalize_pose(geometries[geom_id].pose)
-
                         final_transform = link_transform @ self.geometry_pose_to_matrix(pose)
                         self.init_collision_geometry(entity_path, geometries[geom_id], pose)
                         collect_geometry_data(entity_path, final_transform)

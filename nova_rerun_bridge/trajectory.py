@@ -150,7 +150,7 @@ async def log_motion(
                 )
             ]
 
-        _visualizer_cache[motion_group] = RobotVisualizer(
+        _visualizer_cache[motion_group.motion_group_id] = RobotVisualizer(
             robot=robot,
             robot_model_geometries=safety_link_chain,
             tcp_geometries=tcp_geometries,
@@ -164,7 +164,7 @@ async def log_motion(
             show_safety_link_chain=show_safety_link_chain,
         )
 
-    visualizer = _visualizer_cache[motion_group]
+    visualizer = _visualizer_cache[motion_group.motion_group_id]
 
     # Process trajectory points
     await log_trajectory(

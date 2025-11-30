@@ -70,10 +70,7 @@ def motion_group_setup_from_motion_group_description(
     tool = api.models.Tool(tool_colliders.root) if tool_colliders is not None else None
     link_chain = (
         api.models.LinkChain(
-            list(
-                api.models.Link(link.root)
-                for link in motion_group_description.safety_link_colliders
-            )
+            [api.models.Link(link.root) for link in motion_group_description.safety_link_colliders]
         )
         if motion_group_description.safety_link_colliders
         else None
