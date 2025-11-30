@@ -102,7 +102,7 @@ class _KeyValueStore(Generic[_T]):
     @property
     def is_connected(self) -> bool:
         """Check if client is connected"""
-        return self._nats_client.is_connected()
+        return self._nats_client.is_connected
 
     async def _key_value(self) -> KeyValue:
         """Get the KeyValue store.
@@ -118,8 +118,8 @@ class _KeyValueStore(Generic[_T]):
             if self._kv_bucket is not None:
                 return self._kv_bucket
 
-            if not self._nats_client.is_connected():
-                await self._nats_client.connect()
+            if not self._nats_client.is_connected:
+                raise RuntimeError("NATS client is not connected")
 
             # create jetstream client
             nats_client = self._get_nats_client()

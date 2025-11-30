@@ -134,7 +134,9 @@ class MotionGroup(AbstractRobot):
                     motion_group_model=motion_group_description.motion_group_model.root
                 )
             )
-            motion_group_description.safety_link_colliders = link_chain
+            motion_group_description.safety_link_colliders = [
+                api.models.ColliderDictionary(a_chain) for a_chain in link_chain
+            ]
 
         return motion_group_setup_from_motion_group_description(
             motion_group_description=motion_group_description, tcp_name=tcp
@@ -566,7 +568,7 @@ class MotionGroup(AbstractRobot):
 
         request: api.models.PlanCollisionFreeRequest = api.models.PlanCollisionFreeRequest(
             motion_group_setup=motion_group_setup,
-            start_joint_position=api.models.DoubleArray(start_joint_position),
+            start_joint_position=api.models.DoubleArray(list(start_joint_position)),
             target=api.models.DoubleArray(list(target_joint_positions)),
             algorithm=action.algorithm,
         )
@@ -611,7 +613,7 @@ class MotionGroup(AbstractRobot):
                 trajectory = await self._plan_collision_free(
                     action=motion,
                     tcp=tcp,
-                    start_joint_position=list(current_joints),
+                    start_joint_position=current_joints,
                     motion_group_setup=motion_group_setup,
                 )
                 all_trajectories.append(trajectory)

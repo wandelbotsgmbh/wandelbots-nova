@@ -19,7 +19,7 @@ async def test_nats_pub_sub():
         nonlocal collected_message
         collected_message = msg
 
-    await nova.nats.subscribe("nova.test.subject", on_message=cb)
+    await nova.nats.subscribe("nova.test.subject", cb=cb)
     await nova.nats.publish(subject="nova.test.subject", payload=b"test message")
 
     await asyncio.sleep(2)
@@ -45,7 +45,7 @@ async def test_nats_message_order():
     async def collect_message(msg):
         messages.append(msg.data.decode())
 
-    await nova.nats.subscribe("nova.test.order", on_message=collect_message)
+    await nova.nats.subscribe("nova.test.order", cb=collect_message)
 
     for i in range(1, 11):
         await nova.nats.publish(subject="nova.test.order", payload=str(i).encode())
@@ -71,7 +71,7 @@ async def test_nats_message_order_two_instances():
 
         # Subscribe with the listener instance
         await nova_listener.nats.subscribe(
-            "nova.test.order.two_instances", on_message=collect_message
+            "nova.test.order.two_instances", cb=collect_message
         )
 
         # Publish with the publisher instance
@@ -79,6 +79,8 @@ async def test_nats_message_order_two_instances():
             await nova_publisher.nats.publish(
                 subject="nova.test.order.two_instances", payload=str(i).encode()
             )
+            await nova_publisher.nats.flush()
+        
 
         await asyncio.sleep(5)
 

@@ -11,8 +11,6 @@ from pydantic import BaseModel, Field, model_validator
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 NOVA_API = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
 NOVA_ACCESS_TOKEN = config("NOVA_ACCESS_TOKEN", default=None)
-NOVA_USERNAME = config("NOVA_USERNAME", default=None)
-NOVA_PASSWORD = config("NOVA_PASSWORD", default=None)
 
 # Auth0 config
 NOVA_AUTH0_DOMAIN = config("NOVA_AUTH0_DOMAIN", default="#{NOVA_AUTH0_DOMAIN}#")
@@ -97,6 +95,4 @@ class NovaConfig(BaseModel):
 
 
 # default config to be used by the SDK if no other explict config is provided
-default_config = NovaConfig(
-    host=NOVA_API, access_token=NOVA_ACCESS_TOKEN, username=NOVA_USERNAME, password=NOVA_PASSWORD
-)
+default_config = NovaConfig(host=NOVA_API, access_token=NOVA_ACCESS_TOKEN)

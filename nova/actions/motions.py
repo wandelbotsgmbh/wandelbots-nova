@@ -362,9 +362,11 @@ class CollisionFreeMotion(Motion):
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     collision_setup: api.models.CollisionSetup | None = None
-    algorithm: api.models.CollisionFreeAlgorithm = (
-        api.models.CollisionFreeAlgorithm(algorithm_name="RRTConnectAlgorithm"),
-    )
+
+    # mypy unable to see algorithm_name field being used as discriminator
+    algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(
+        algorithm_name="RRTConnectAlgorithm"
+    )  # type: ignore
 
     def to_api_model(self) -> api.models.PlanCollisionFreeRequest:
         """"""
@@ -376,9 +378,10 @@ class CollisionFreeMotion(Motion):
 def collision_free(
     target: Pose | tuple[float, ...],
     collision_setup: api.models.CollisionSetup | None = None,
+    # mypy unable to see algorithm_name field being used as discriminator
     algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(
         algorithm_name="RRTConnectAlgorithm"
-    ),
+    ),  # type: ignore
     settings: MotionSettings = MotionSettings(),
     **kwargs: dict[str, Any],
 ) -> CollisionFreeMotion:

@@ -106,7 +106,7 @@ async def test_collision_free_planning_finds_no_solution(ur_mg: MotionGroup):
         ),
     )
     setup = await ur_mg.get_setup("Flange")
-    default_collision_setup = setup.collision_setups.root["default"].model_copy()
+    default_collision_setup = setup.collision_setups.root["default"].model_copy()  # type: ignore
     default_collision_setup.colliders = {"plane": plane}
 
     with pytest.raises(Exception):

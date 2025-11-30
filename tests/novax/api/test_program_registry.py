@@ -18,7 +18,8 @@ async def get_from_nats(program_id: str, cell_id: str = "cell") -> api.models.Pr
     from nova.program.store import ProgramStore
 
     async with Nova() as nova:
-        store = ProgramStore(cell_id=cell_id, nats_client=nova.nats)
+        cell = nova.cell(cell_id)
+        store = ProgramStore(cell=cell)
         program = await store.get(f"novax.{program_id}")
         if program is None:
             raise ValueError(f"Program {program_id} not found in NATS")
@@ -30,7 +31,8 @@ async def get_all_from_nats(cell_id: str = "cell") -> list[api.models.Program]:
     from nova.program.store import ProgramStore
 
     async with Nova() as nova:
-        store = ProgramStore(cell_id=cell_id, nats_client=nova.nats)
+        cell = nova.cell(cell_id)
+        store = ProgramStore(cell=cell)
         programs = await store.get_all()
         return programs
 

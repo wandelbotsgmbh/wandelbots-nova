@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class Cell:
     """A representation of a robot cell, providing high-level operations on controllers."""
 
-    def __init__(self, api_gateway: ApiGateway, cell_id: str, nats_client: nats.NATS | None = None):
+    def __init__(self, api_gateway: ApiGateway, cell_id: str, nats_client: nats.NATS):
         """
         Initializes a Cell instance.
         Args:
@@ -46,7 +46,7 @@ class Cell:
         return self._cell_id
 
     @property
-    def nats(self) -> nats.NATS | None:
+    def nats(self) -> nats.NATS:
         """
         Returns the NATS client for this cell.
         Returns:

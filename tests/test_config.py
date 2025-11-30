@@ -3,14 +3,14 @@ from nova.config import NovaConfig
 
 
 def test_when_user_provides_nats_config_explicitly():
-    config = NovaConfig(nats_client_config={"servers": "nats://custom-server:4222"})
+    config = NovaConfig(host="", nats_client_config={"servers": "nats://custom-server:4222"})
 
     assert config.nats_client_config["servers"] == "nats://custom-server:4222"
 
 
 def test_when_no_user_input_use_env_var(monkeypatch):
     monkeypatch.setattr(config_module, "NATS_BROKER", "nats://env-broker:4222")
-    config = NovaConfig()
+    config = NovaConfig(host="")
     assert config.nats_client_config["servers"] == "nats://env-broker:4222"
 
 
