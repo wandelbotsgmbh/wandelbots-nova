@@ -76,7 +76,6 @@ def motion_group_setup_from_motion_group_description(
         else None
     )
     collision_setup = api.models.CollisionSetup(
-        # Question to Dirk: does this mean safety zones are forbidden areas? Is it possible to enter but with low speed?
         colliders=motion_group_description.safety_zones,
         link_chain=link_chain,
         tool=tool,
@@ -94,7 +93,6 @@ def motion_group_setup_from_motion_group_description(
         if motion_group_description.tcps is not None
         else None
     )
-    # TODO maybe we also want to give the user more control over the collision scene
     return api.models.MotionGroupSetup(
         motion_group_model=motion_group_description.motion_group_model,
         cycle_time=motion_group_description.cycle_time or 8,
@@ -102,7 +100,7 @@ def motion_group_setup_from_motion_group_description(
         global_limits=limits,
         tcp_offset=tcp_offset,
         payload=payload,
-        collision_setups=api.models.CollisionSetups({"default": collision_setup}),
+        collision_setups=api.models.CollisionSetups({"safety": collision_setup}),
     )
 
 

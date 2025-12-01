@@ -229,7 +229,7 @@ class AbstractRobot(Device):
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
-        """Plan a trajectory for the given actions
+        """Plan a trajectory for the given actions.
 
         Args:
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
