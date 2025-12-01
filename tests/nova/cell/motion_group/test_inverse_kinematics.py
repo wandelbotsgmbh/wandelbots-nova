@@ -41,7 +41,7 @@ async def test_inverse_kinematics_not_reachable_pose(ur_mg):
     Test a pose that is beyond the robot's reach.
     Verify no solution found.
     """
-    solutions = await ur_mg.inverse_kinematics(
+    solutions = await ur_mg._inverse_kinematics(
         poses=[
             Pose(10000, 0, 10000, 0, 0, 0)  # An unreachable pose
         ],
@@ -61,7 +61,7 @@ async def test_inverse_kinematics_reachable_pose(ur_mg):
     """
     Test a pose that is within the robot's reach.
     """
-    solutions = await ur_mg.inverse_kinematics(poses=[Pose(700, 0, 700, 0, 0, 0)], tcp="Flange")
+    solutions = await ur_mg._inverse_kinematics(poses=[Pose(700, 0, 700, 0, 0, 0)], tcp="Flange")
 
     assert len(solutions) == 1, (
         "Inverse kinematics did not return a solution for the unreachable pose"
@@ -78,7 +78,7 @@ async def test_inverse_kinematics_mixed_pose_list(ur_mg):
     Test sending a list of poses for IK calculation.
     Verify that reachable poses return solutions and unreachable poses do not.
     """
-    solutions = await ur_mg.inverse_kinematics(
+    solutions = await ur_mg._inverse_kinematics(
         poses=[Pose(700, 0, 700, 0, 0, 0), Pose(10000, 0, 10000, 0, 0, 0)], tcp="Flange"
     )
 
@@ -105,15 +105,21 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup(ur_mg)
         ),
     )
     setup = await ur_mg.get_setup("Flange")
-    default_collision_setup = setup.collision_setups.root["default"].model_copy()
-    default_collision_setup.colliders = {"plane": plane}
+
+    # create a collsion setup
+    # UR doesn't include safety link chain
+    collision_setup = await ur_mg.get_safety_collision_setup("Flange")
+    collision_setup.colliders = {"plane": plane}
+    collision_setup.link_chain = await ur_mg.get_default_collision_link_chain()
+
+    setup.collision_setups.root = {"test": collision_setup}
 
     # this orientation is important
     # with this orientation, the body of the end effector stays on top of the plane
     # if you change the orientation, IK will find no solution
     orientation = ((120 / 360) * 2 * pi, (-135 / 360) * 2 * pi, 0)
-    solutions = await ur_mg.inverse_kinematics(
-        poses=[Pose(700, 0, 1, *orientation)], tcp="Flange", collision_setup=default_collision_setup
+    solutions = await ur_mg._inverse_kinematics(
+        poses=[Pose(700, 0, 1, *orientation)], tcp="Flange", motion_group_setup=setup
     )
 
     assert len(solutions) == 1, "Inverse kinematics did not return solutions for all poses"
@@ -135,12 +141,19 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup_2(ur_m
             orientation=models.RotationVector(root=[0, 0, 0]),
         ),
     )
-    setup = await ur_mg.get_setup("Flange")
-    default_collision_setup = setup.collision_setups.root["default"].model_copy()
-    default_collision_setup.colliders = {"box": box}
 
-    solutions = await ur_mg.inverse_kinematics(
-        poses=[Pose(700, 0, 700, 0, 0, 0)], tcp="Flange", collision_setup=default_collision_setup
+    setup = await ur_mg.get_setup("Flange")
+
+    # create a collsion setup
+    # UR doesn't include safety link chain
+    collision_setup = await ur_mg.get_safety_collision_setup("Flange")
+    collision_setup.colliders = {"box": box}
+    collision_setup.link_chain = await ur_mg.get_default_collision_link_chain()
+
+    setup.collision_setups.root = {"test": collision_setup}
+
+    solutions = await ur_mg._inverse_kinematics(
+        poses=[Pose(700, 0, 700, 0, 0, 0)], tcp="Flange", motion_group_setup=setup
     )
 
     assert len(solutions) == 1, "Inverse kinematics did not return solutions for all poses"

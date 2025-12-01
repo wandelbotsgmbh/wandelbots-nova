@@ -156,6 +156,17 @@ class MotionGroup(AbstractRobot):
             motion_group_description=motion_group_description, tcp=tcp
         )
 
+    async def get_default_collision_link_chain(self) -> api.models.LinkChain:
+        description = await self._fetch_motion_group_description()
+        collision_model = await self._api_client.motion_group_models_api.get_motion_group_collision_model(
+            motion_group_model=description.motion_group_model.root
+        )
+
+        return api.models.LinkChain(
+            [api.models.Link(link) for link in collision_model]
+        )
+        
+
     # TODO: check the response type, it is not easy to use
     # API returns list of list of list of float ( 3 inner lists )
     async def _inverse_kinematics(
