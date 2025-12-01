@@ -96,7 +96,7 @@ async def test_collision_free_planning_with_pose_as_target(ur_mg):
 
 
 @pytest.mark.asyncio
-async def test_collision_free_planning_finds_no_solution(ur_mg: MotionGroup):
+async def test_collision_free_planning_finds_no_solution_pose_as_target(ur_mg: MotionGroup):
     """
     Tests that collision-free planning correctly identifies when no solution is possible.
     """
@@ -107,16 +107,55 @@ async def test_collision_free_planning_finds_no_solution(ur_mg: MotionGroup):
             orientation=models.RotationVector(root=[0, 0, 0]),
         ),
     )
-    setup = await ur_mg.get_setup("Flange")
     collision_setup = await ur_mg.get_safety_collision_setup("Flange")
+    collision_setup.link_chain = await ur_mg.get_default_collision_link_chain()
     collision_setup.colliders = {"plane": plane}
+
 
     with pytest.raises(Exception):
         await ur_mg.plan(
             start_joint_position=tuple(initial_joint_positions),
             actions=[
                 collision_free(
-                    target=Pose(700, 0, -10, 0, 0, 0), collision_setup=default_collision_setup
+                    target=Pose(700, 0, -10, 0, 0, 0), collision_setup=collision_setup
+                )
+            ],
+            tcp="Flange",
+        )
+
+
+@pytest.mark.asyncio
+async def test_collision_free_planning_finds_no_solution_joints_as_target(ur_mg: MotionGroup):
+    """
+    Tests that collision-free planning correctly identifies when no solution is possible.
+    """
+    # calcualte IK to use in collision free planning
+    target_pose = Pose(700, 0, -10, 0, 0, 0)
+    ik_solutions = await ur_mg._inverse_kinematics([target_pose], tcp="Flange")
+    target_as_joints = ik_solutions[0][0]
+
+    # create a collision scene to make the point unreachable
+    plane = models.Collider(
+        shape=models.Plane(),
+        pose=models.Pose(
+            position=models.Vector3d(root=[0, 0, 0]),
+            orientation=models.RotationVector(root=[0, 0, 0]),
+        ),
+    )
+    collision_setup = await ur_mg.get_safety_collision_setup("Flange")
+    collision_setup.link_chain = await ur_mg.get_default_collision_link_chain()
+    collision_setup.colliders = {"plane": plane}
+
+    # plan and expect no solution
+    # TODO
+    # current API returns 422 when there is a collision
+    # this is hard to build login on top, check with core team for a different error mechanism
+    with pytest.raises(Exception):
+        await ur_mg.plan(
+            start_joint_position=tuple(initial_joint_positions),
+            actions=[
+                collision_free(
+                    target=target_as_joints, collision_setup=collision_setup
                 )
             ],
             tcp="Flange",
