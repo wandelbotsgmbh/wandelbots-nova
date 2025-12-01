@@ -222,7 +222,11 @@ class Rerun(Viewer):
             # Log trajectory with tool asset if configured for this TCP
             tool_asset = self._resolve_tool_asset(tcp)
             await self._bridge.log_trajectory(
-                trajectory=trajectory, tcp=tcp, motion_group=motion_group, tool_asset=tool_asset
+                trajectory=trajectory,
+                tcp=tcp,
+                motion_group=motion_group,
+                collision_setups=extract_collision_setups_from_actions(actions),
+                tool_asset=tool_asset,
             )
 
             # Log collision scenes from actions if configured
@@ -230,7 +234,7 @@ class Rerun(Viewer):
                 collision_setups = extract_collision_setups_from_actions(actions)
                 if collision_setups:
                     # Log collision scenes using the sync method
-                    self._bridge._log_collision_setups(collision_setups)
+                    self._bridge.log_collision_setups(collision_setups=collision_setups)
 
         except Exception as e:
             logger.error("Failed to log planning results in Rerun viewer: %s", e)
@@ -287,13 +291,17 @@ class Rerun(Viewer):
             await self._bridge.log_actions(list(actions), motion_group=motion_group)
 
             # Handle specific PlanTrajectoryFailed errors which have additional data
+            from nova import api
             from nova.exceptions import PlanTrajectoryFailed
 
             if isinstance(error, PlanTrajectoryFailed):
                 # Log the trajectory from the failed plan
                 if hasattr(error.error, "joint_trajectory") and error.error.joint_trajectory:
                     await self._bridge.log_trajectory(
-                        trajectory=error.error.joint_trajectory, tcp=tcp, motion_group=motion_group
+                        trajectory=error.error.joint_trajectory,
+                        tcp=tcp,
+                        motion_group=motion_group,
+                        collision_setups=extract_collision_setups_from_actions(actions),
                     )
 
                 # Log error feedback if available
@@ -316,7 +324,7 @@ class Rerun(Viewer):
                 collision_setups = extract_collision_setups_from_actions(actions)
                 if collision_setups:
                     # Log collision scenes using the sync method
-                    self._bridge._log_collision_setups(collision_setups)
+                    self._bridge.log_collision_setups(collision_setups=collision_setups)
 
         except Exception as e:
             logger.warning("Failed to log planning failure in Rerun viewer: %s", e)

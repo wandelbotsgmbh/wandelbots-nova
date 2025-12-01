@@ -50,13 +50,14 @@ class NovaRerunBridgeProtocol(Protocol):
         trajectory: api.models.JointTrajectory,
         tcp: str,
         motion_group: MotionGroup,
+        collision_setups: dict[str, api.models.CollisionSetup],
         time_offset: float = 0,
         tool_asset: Optional[str] = None,
     ) -> None:
         """Log trajectory to the viewer."""
         ...
 
-    def _log_collision_setups(self, collision_setups: dict[str, api.models.CollisionSetup]) -> None:
+    def log_collision_setups(self, collision_setups: dict[str, api.models.CollisionSetup]) -> None:
         """Log collision scenes to the viewer."""
         ...
 
