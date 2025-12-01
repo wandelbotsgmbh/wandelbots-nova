@@ -272,6 +272,9 @@ async def test():
                     target=seam1_approach,
                     collision_setup=collision_setup,
                     settings=MotionSettings(tcp_velocity_limit=30),
+                    algorithm=api.models.CollisionFreeAlgorithm(
+                        api.models.MidpointInsertionAlgorithm()
+                    ),
                 ),
                 linear(
                     target=seam1_start,
@@ -290,6 +293,9 @@ async def test():
                     target=seam2_approach,
                     collision_setup=collision_setup,
                     settings=MotionSettings(tcp_velocity_limit=30),
+                    algorithm=api.models.CollisionFreeAlgorithm(
+                        api.models.MidpointInsertionAlgorithm()
+                    ),
                 ),
                 # Second seam with collision checking
                 linear(
@@ -308,6 +314,9 @@ async def test():
                     target=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
                     collision_setup=collision_setup,
                     settings=MotionSettings(tcp_velocity_limit=30),
+                    algorithm=api.models.CollisionFreeAlgorithm(
+                        api.models.MidpointInsertionAlgorithm()
+                    ),
                 ),
             ]
 
