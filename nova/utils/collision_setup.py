@@ -62,25 +62,9 @@ def motion_group_setup_from_motion_group_description(
     tcp_name: str,
     payload: api.models.Payload | None = None,
 ) -> api.models.MotionGroupSetup:
-    tool_colliders = (
-        motion_group_description.safety_tool_colliders.get(tcp_name)
-        if motion_group_description.safety_tool_colliders is not None
-        else None
-    )
-    tool = api.models.Tool(tool_colliders.root) if tool_colliders is not None else None
-    link_chain = (
-        api.models.LinkChain(
-            [api.models.Link(link.root) for link in motion_group_description.safety_link_colliders]
-        )
-        if motion_group_description.safety_link_colliders
-        else None
-    )
-    collision_setup = api.models.CollisionSetup(
-        colliders=motion_group_description.safety_zones,
-        link_chain=link_chain,
-        tool=tool,
-        # Hint: Markus S. said hardcode it to False
-        self_collision_detection=False,  # explicitly set here until we have a better understanding
+
+    collision_setup = get_safety_collision_setup_from_motion_group_description(
+        motion_group_description, tcp_name
     )
     # For the time being it is assumed that the auto limits are always present
     # We also assume that the motion player in RAE will scale corretly if the
@@ -101,6 +85,31 @@ def motion_group_setup_from_motion_group_description(
         tcp_offset=tcp_offset,
         payload=payload,
         collision_setups=api.models.CollisionSetups({"safety": collision_setup}),
+    )
+
+
+def get_safety_collision_setup_from_motion_group_description(
+    motion_group_description: api.models.MotionGroupDescription,
+    tcp: str,
+) -> api.models.CollisionSetup:
+    tool_colliders = (
+        motion_group_description.safety_tool_colliders.get(tcp)
+        if motion_group_description.safety_tool_colliders is not None
+        else None
+    )
+    tool = api.models.Tool(tool_colliders.root) if tool_colliders is not None else None
+    link_chain = (
+        api.models.LinkChain(
+            [api.models.Link(link.root) for link in motion_group_description.safety_link_colliders]
+        )
+        if motion_group_description.safety_link_colliders
+        else None
+    )
+    return api.models.CollisionSetup(
+        colliders=motion_group_description.safety_zones,
+        link_chain=link_chain,
+        tool=tool,
+        self_collision_detection=False,  # explicitly set here until we have a better understanding
     )
 
 

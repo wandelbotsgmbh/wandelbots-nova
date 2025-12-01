@@ -18,6 +18,7 @@ from nova.utils import StreamExtractor
 from nova.utils.collision_setup import (
     get_joint_position_limits_from_motion_group_setup,
     motion_group_setup_from_motion_group_description,
+    get_safety_collision_setup_from_motion_group_description,
     validate_collision_setups,
 )
 from nova.utils.joint_trajectory import combine_trajectories
@@ -142,6 +143,17 @@ class MotionGroup(AbstractRobot):
             Pose(motion_group_description.mounting)
             if motion_group_description.mounting is not None
             else None
+        )
+
+    async def get_safety_collision_setup(self, tcp: str) -> api.models.CollisionSetup:
+        """Get the safety collision setup of the motion group.
+
+        Returns:
+            api.models.CollisionSetup: The safety collision setup of the motion group.
+        """
+        motion_group_description = await self._fetch_motion_group_description()
+        return get_safety_collision_setup_from_motion_group_description(
+            motion_group_description=motion_group_description, tcp=tcp
         )
 
     # TODO: check the response type, it is not easy to use
