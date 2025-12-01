@@ -4,7 +4,6 @@ from nova import api
 
 DEFAULT_TCP_VELOCITY_LIMIT = 50.0  # mm/s
 
-
 class MotionSettings(pydantic.BaseModel):
     """
     Settings for an action. This is closely related to the `MotionCommand` in the API.
@@ -53,6 +52,8 @@ class MotionSettings(pydantic.BaseModel):
     tcp_orientation_velocity_limit: float | None = pydantic.Field(default=None)
     tcp_orientation_acceleration_limit: float | None = pydantic.Field(default=None)
 
+    # TODO: check with Christoph, should we just rename these? otherwise we need to update validate_blending_settings as well
+    # TODO: doc tests are failing because of the two newly added fields, if we rename fix is different
     position_zone_radius: float | None = pydantic.Field(default=None, deprecated=True)
     min_blending_velocity: int | None = pydantic.Field(default=None, deprecated=True)
 
