@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import nats
+
 from nova.cell.cell import Cell
 from nova.config import CELL_NAME, NovaConfig, default_config
-import nats
 
 from .gateway import ApiGateway
 

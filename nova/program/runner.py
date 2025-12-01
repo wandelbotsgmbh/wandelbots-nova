@@ -19,6 +19,7 @@ from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
 from exceptiongroup import ExceptionGroup
 from icecream import ic
+from loguru import logger
 from pydantic import BaseModel, Field, StrictStr
 
 from nova import Nova, NovaConfig, api
@@ -30,7 +31,6 @@ from nova.program.function import Program
 from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
 from nova.utils import timestamp
-from loguru import logger
 
 current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
     "current_execution_context_var"

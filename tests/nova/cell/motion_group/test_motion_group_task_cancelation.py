@@ -148,13 +148,13 @@ def create_movement_controller(exception: BaseException) -> MovementController:
         async def movement_controller(
             response_stream: ExecuteTrajectoryResponseStream,
         ) -> ExecuteTrajectoryRequestStream:
-            count = 0 
+            count = 0
             async for response in controller(response_stream):
                 yield response
                 count += 1
                 if count == 200:
                     raise exception
-                
+
         return movement_controller
 
     return _test_movement_controller

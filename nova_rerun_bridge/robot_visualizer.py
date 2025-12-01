@@ -57,7 +57,8 @@ class RobotVisualizer:
         self.base_entity_path = base_entity_path.rstrip("/")
         self.albedo_factor = albedo_factor
         self.mesh_loaded = False
-        self.collision_link_geometries = {}
+        # Group collision geometries by link
+        self.collision_link_geometries = collision_link_chain.root if collision_link_chain else {}
         self.collision_tcp_geometries = collision_tcp.root if collision_tcp else {}
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool
@@ -84,9 +85,6 @@ class RobotVisualizer:
         for link_chain in robot_model_geometries:
             for link_index, link in enumerate(link_chain.root or []):
                 self.link_geometries.setdefault(link_index, []).extend(link.root.values())
-
-        # Group collision geometries by link
-        self.collision_link_geometries = collision_link_chain.root if collision_link_chain else {}
 
     def discover_joints(self):
         """
@@ -156,7 +154,12 @@ class RobotVisualizer:
     def geometry_pose_to_matrix(self, init_pose: Pose | None):
         if init_pose is None:
             return np.eye(4)
-        return self.robot.pose_to_matrix(init_pose)
+        return self.robot.pose_to_matrix(
+            api.models.Pose(
+                position=api.models.Vector3d(list(init_pose.position.to_tuple())),
+                orientation=api.models.RotationVector(list(init_pose.orientation.to_tuple())),
+            )
+        )
 
     # TODO: this will not work yet
     def compute_forward_kinematics(self, joint_positions: list[float]):
@@ -526,7 +529,7 @@ class RobotVisualizer:
                     )
 
             # Use our hull visualizer to create outlines
-            polygons = HullVisualizer.compute_hull_outlines_from_points(all_points)
+            polygons = HullVisualizer.compute_hull_outlines_from_points(np.array(all_points))
 
             if polygons:
                 # Log wireframe outline

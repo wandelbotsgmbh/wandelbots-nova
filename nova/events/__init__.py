@@ -1,3 +1,4 @@
+import logging
 from abc import ABC
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -8,8 +9,6 @@ from pydantic import BaseModel, Field
 from nova.cell.cell import Cell
 from nova.cell.robot_cell import Device, OutputDevice
 from nova.config import BASE_PATH
-
-import logging
 
 logger = logging.getLogger(__name__)
 

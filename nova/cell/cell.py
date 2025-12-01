@@ -1,10 +1,11 @@
 import asyncio
 import json
 
+import nats
+
 from nova import api
 from nova.core.gateway import ApiGateway
 from nova.exceptions import ControllerNotFound
-import nats
 
 from .controller import Controller
 from .robot_cell import RobotCell

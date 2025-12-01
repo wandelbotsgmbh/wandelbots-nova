@@ -1,12 +1,11 @@
 import asyncio
+import logging
 from typing import Optional
 
 import pydantic
 from decouple import config
 from faststream import FastStream
 from faststream.nats import NatsBroker
-
-import logging
 
 logger = logging.getLogger(__name__)
 

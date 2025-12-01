@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import logging
 import time
 from abc import ABC
 from typing import TypeVar
@@ -8,8 +9,6 @@ from nova import api
 from nova.cell.robot_cell import ConfigurablePeriphery, Device
 from nova.config import NovaConfig
 from nova.version import version as pkg_version
-
-import logging
 
 logger = logging.getLogger(__name__)
 

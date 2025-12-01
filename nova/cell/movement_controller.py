@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from enum import Enum, auto
 from math import ceil, floor
 from typing import AsyncIterator, Optional
@@ -20,7 +21,6 @@ from nova.types import (
     MovementControllerFunction,
 )
 from nova.types.state import motion_group_state_to_motion_state
-import logging
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import AsyncExitStack
@@ -27,8 +28,6 @@ from aiostream import stream
 from nova import api
 from nova.actions import Action, MovementController
 from nova.types import MotionState, MovementResponse, Pose, RobotState
-
-import logging
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,6 @@ from urllib.parse import urlparse
 from decouple import config
 from pydantic import BaseModel, Field, model_validator
 
-
 # TODO: current app store provides api-gateway:8080
 # we should do special handling because schema is missing
 

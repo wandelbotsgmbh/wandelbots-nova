@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os.path
 import tempfile
 from collections.abc import Callable
@@ -15,7 +16,6 @@ from asyncua.crypto import security_policies
 from asyncua.ua import CreateSubscriptionParameters, DataValue, Variant, VariantType
 
 from nova.config import K8S_NAMESPACE
-import logging
 
 logger = logging.getLogger(__name__)
 

@@ -70,9 +70,7 @@ async def test_nats_message_order_two_instances():
             messages.append(msg.data.decode())
 
         # Subscribe with the listener instance
-        await nova_listener.nats.subscribe(
-            "nova.test.order.two_instances", cb=collect_message
-        )
+        await nova_listener.nats.subscribe("nova.test.order.two_instances", cb=collect_message)
 
         # Publish with the publisher instance
         for i in range(1, 11):
@@ -80,7 +78,6 @@ async def test_nats_message_order_two_instances():
                 subject="nova.test.order.two_instances", payload=str(i).encode()
             )
             await nova_publisher.nats.flush()
-        
 
         await asyncio.sleep(5)
 

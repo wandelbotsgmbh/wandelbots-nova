@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import inspect
 import json
+import logging
 from collections.abc import Callable, Mapping
 from typing import (
     Annotated,
@@ -32,8 +33,6 @@ from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
 from nova.exceptions import ControllerCreationFailed
-
-import logging
 
 logger = logging.getLogger(__name__)
 
