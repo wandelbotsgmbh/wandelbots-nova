@@ -93,7 +93,7 @@ jobs:
           in: ${{ needs.setup-instance.outputs.PORTAL_PROD_ACCESS_TOKEN }}
       - name: "Run ${{ matrix.id }} suite"
         env:
-          NOVA_API: ${{ needs.setup-instance.outputs.PORTAL_PROD_HOST }}
+          NOVA_API: https://${{ needs.setup-instance.outputs.PORTAL_PROD_HOST }}
           NOVA_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
           # used for publishing nats data
           CELL_NAME: cell
