@@ -3,9 +3,6 @@ from urllib.parse import urlparse
 from decouple import config
 from pydantic import BaseModel, Field, model_validator
 
-# TODO: current app store provides api-gateway:8080
-# we should do special handling because schema is missing
-
 # Configuration for accessing the Nova platform
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 NOVA_API = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
@@ -55,6 +52,10 @@ class NovaConfig(BaseModel):
     def _normalize_host_prefix(self) -> "NovaConfig":
         self.host = self.host.strip()
         self.host = self.host.rstrip("/")
+
+        # app store has a special case for the host
+        if self.host == "api-gateway:8080":
+            self.host = f"http://{self.host}"
         return self
 
     @model_validator(mode="after")

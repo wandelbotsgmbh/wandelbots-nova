@@ -24,6 +24,14 @@ def test_when_no_user_input_no_env_var_but_only_host_http():
     assert config.nats_client_config["servers"] == "ws://localhost:8080/api/nats"
 
 
+def test_when_host_missing_scheme_from_app_store(monkeypatch):
+    monkeypatch.setattr(config_module, "NATS_BROKER", None)
+    config = NovaConfig(host="api-gateway:8080")
+
+    assert config.host == "http://api-gateway:8080"
+    assert config.nats_client_config["servers"] == "ws://api-gateway:8080/api/nats"
+
+
 def test_when_host_and_token_prioritize_env_var(monkeypatch):
     monkeypatch.setattr(config_module, "NATS_BROKER", "nats://env-broker:4222")
     config = NovaConfig(host="https://api.example.com", access_token="test-token")

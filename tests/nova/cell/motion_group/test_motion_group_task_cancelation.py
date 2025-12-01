@@ -43,6 +43,16 @@ async def ur_mg():
             )
         )
 
+        # wait for controllers to be ready
+        for i in range(10):
+            try:
+                await cell.controller(controller_name)
+                break
+            except Exception:
+                logger.error("Controllers not ready yet, waiting...")
+                await asyncio.sleep(2)
+
+
         ur = await cell.controller(controller_name)
         async with ur[0] as mg:
             try:
@@ -58,6 +68,8 @@ async def ur_mg():
                     ],
                     tcp="Flange",
                 )
+
+
 
 
 @pytest.mark.asyncio

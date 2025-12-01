@@ -6,7 +6,11 @@ from nova import Nova, api
 from nova.cell import virtual_controller
 from nova.cell.controller import Controller
 from nova.cell.io import IOAccess
+import asyncio
 
+
+import logging
+logger = logging.getLogger(__name__)
 
 @pytest.fixture(scope="module")
 @pytest.mark.integration
@@ -30,6 +34,17 @@ async def setup_ur() -> AsyncGenerator[tuple[Controller, Controller], None]:
                 type=api.models.VirtualControllerTypes.KUKA_KR16_R2010_2,
             )
         )
+
+        # wait for controllers to be ready
+        for i in range(10):
+            try:
+                await cell.controller("ur-io-test")
+                await cell.controller("kuka-io-test")
+                break
+            except Exception:
+                logger.error("Controllers not ready yet, waiting...")
+                await asyncio.sleep(2)
+
 
         yield ur, kuka
 

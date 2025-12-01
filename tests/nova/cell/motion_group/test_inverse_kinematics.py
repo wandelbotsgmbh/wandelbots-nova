@@ -1,3 +1,4 @@
+import asyncio
 from math import pi
 
 import pytest
@@ -30,12 +31,22 @@ async def ur_mg():
             )
         )
 
+        # wait for controller to be ready
+        for i in range(10):
+            try:
+                ur = await cell.controller(controller_name)
+                break
+            except Exception:
+                await asyncio.sleep(2)
+
+
         ur = await cell.controller(controller_name)
         async with ur[0] as mg:
             yield mg
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_inverse_kinematics_not_reachable_pose(ur_mg):
     """
     Test a pose that is beyond the robot's reach.
@@ -57,6 +68,7 @@ async def test_inverse_kinematics_not_reachable_pose(ur_mg):
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_inverse_kinematics_reachable_pose(ur_mg):
     """
     Test a pose that is within the robot's reach.
@@ -73,6 +85,7 @@ async def test_inverse_kinematics_reachable_pose(ur_mg):
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_inverse_kinematics_mixed_pose_list(ur_mg):
     """
     Test sending a list of poses for IK calculation.
@@ -93,6 +106,7 @@ async def test_inverse_kinematics_mixed_pose_list(ur_mg):
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup(ur_mg):
     """
     Cut solution space with a plane collider and test that IK respects the collision setup.
@@ -130,6 +144,7 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup(ur_mg)
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup_2(ur_mg):
     """
     Cut solution space with a box collider and test that IK respects the collision setup.
