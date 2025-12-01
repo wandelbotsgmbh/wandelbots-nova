@@ -250,8 +250,8 @@ async def test():
                 motion_group_description,
                 additional_colliders={"welding_part": mesh_collider},
             )
-            scene_api = nova.api.store_collision_setups_api
-            collision_setup = await scene_api.get_stored_collision_setup(
+            setup_api = nova.api.store_collision_setups_api
+            collision_setup = await setup_api.get_stored_collision_setup(
                 cell="cell", setup=collision_setup_id
             )
             # Calculate seam positions based on mesh pose

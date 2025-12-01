@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 
 import pydantic
 
@@ -8,9 +8,18 @@ from nova.actions.base import Action
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
 
-PoseOrVectorTuple = (
-    Pose | tuple[float, float, float, float, float, float] | tuple[float, float, float]
-)
+PoseOrSequence = Pose | Sequence[float]
+
+
+def _convert_to_pose(target: PoseOrSequence) -> Pose:
+    if not isinstance(target, Pose):
+        t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
+
+        if len(t) != 6:
+            raise ValueError("Target must be a sequence of 6 floats")
+
+        target = Pose(t)
+    return target
 
 
 class Motion(Action, ABC):
@@ -60,7 +69,7 @@ class Linear(Motion):
 
 
 def linear(
-    target: PoseOrVectorTuple,
+    target: PoseOrSequence,
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
     **kwargs: dict[str, Any],
@@ -120,7 +129,7 @@ class CartesianPTP(Motion):
 
 
 def cartesian_ptp(
-    target: PoseOrVectorTuple,
+    target: PoseOrSequence,
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
     **kwargs: dict[str, Any],
@@ -142,12 +151,8 @@ def cartesian_ptp(
     CartesianPTP(metas={'line_number': 1}, type='cartesian_ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None)
 
     """
-    if not isinstance(target, Pose):
-        t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
-        target = Pose(t)
-
+    target = _convert_to_pose(target)
     kwargs.update(line_number=utils.get_caller_linenumber())
-
     return CartesianPTP(
         target=target, settings=settings, collision_setup=collision_setup, metas=kwargs
     )
@@ -186,8 +191,8 @@ class Circular(Motion):
 
 
 def circular(
-    target: PoseOrVectorTuple,
-    intermediate: PoseOrVectorTuple,
+    target: PoseOrSequence,
+    intermediate: PoseOrSequence,
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
     **kwargs: dict[str, Any],
@@ -210,16 +215,9 @@ def circular(
     Circular(metas={'line_number': 1}, type='circular', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None, intermediate=Pose(position=Vector3d(x=7, y=8, z=9), orientation=Vector3d(x=10, y=11, z=12)))
 
     """
-    if not isinstance(target, Pose):
-        t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
-        target = Pose(t)
-
-    if not isinstance(intermediate, Pose):
-        i = (*intermediate, 0.0, 0.0, 0.0) if len(intermediate) == 3 else intermediate
-        intermediate = Pose(i)
-
+    target = _convert_to_pose(target)
+    intermediate = _convert_to_pose(intermediate)
     kwargs.update(line_number=utils.get_caller_linenumber())
-
     return Circular(
         target=target,
         intermediate=intermediate,
@@ -307,7 +305,7 @@ class Spline(Motion):
 
 
 def spline(
-    target: PoseOrVectorTuple,
+    target: PoseOrSequence,
     settings: MotionSettings = MotionSettings(),
     path_parameter: float = 1,
     time=None,
@@ -332,10 +330,7 @@ def spline(
     Spline(metas={'line_number': 1}, type='spline', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None, path_parameter=1.0, time=None)
 
     """
-    if not isinstance(target, Pose):
-        t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
-        target = Pose(t)
-
+    target = _convert_to_pose(target)
     kwargs.update(line_number=utils.get_caller_linenumber())
     return Spline(
         target=target,
@@ -359,7 +354,7 @@ class CollisionFreeMotion(Motion):
     """
 
     type: Literal["collision_free"] = "collision_free"
-    target: Pose | tuple[float, ...]
+    target: Pose
     settings: MotionSettings = MotionSettings()
     collision_setup: api.models.CollisionSetup | None = None
 
@@ -398,6 +393,7 @@ def collision_free(
     >>> Action.from_dict(collision_free((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
     CollisionFreeMotion(metas={'line_number': 1}, type='collision_free', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None), collision_setup=None)
     """
+    target = _convert_to_pose(target)
     kwargs.update(line_number=utils.get_caller_linenumber())
     return CollisionFreeMotion(
         target=target,
