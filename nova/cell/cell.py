@@ -246,11 +246,9 @@ class Cell:
             await asyncio.wait_for(controller_ready_event.wait(), timeout=timeout)
         except asyncio.TimeoutError:
             logger.warning(f"Timeout waiting for {cell}/{name} controller to be ready")
-            await sub.unsubscribe()
             raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")
         finally:
             logger.debug("Cleaning up NATS subscription")
             pass
-            # await sub.unsubscribe()
-            # await nc.drain()  # Ensure we clean up the subscription and connection
+            await sub.unsubscribe()
         await asyncio.sleep(1)  # Give some time for any final messages to be processed
