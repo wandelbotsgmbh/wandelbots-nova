@@ -145,7 +145,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             NotImplementedError: If called on a non-virtual controller.
         """
         flag = await self._nova_api.virtual_controller_api.get_emergency_stop(
-            cell=self.cell_id, controller=self.controller_id
+            cell=self.configuration.cell_id, controller=self.controller_id
         )
         return flag.active
 
@@ -159,5 +159,5 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             NotImplementedError: If called on a non-virtual controller.
         """
         await self._nova_api.virtual_controller_api.set_emergency_stop(
-            cell=self.cell_id, controller=self.controller_id, active=active
+            cell=self.configuration.cell_id, controller=self.controller_id, active=active
         )
