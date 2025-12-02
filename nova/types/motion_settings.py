@@ -4,6 +4,7 @@ from nova import api
 
 DEFAULT_TCP_VELOCITY_LIMIT = 50.0  # mm/s
 
+
 class MotionSettings(pydantic.BaseModel):
     """
     Settings for an action. This is closely related to the `MotionCommand` in the API.

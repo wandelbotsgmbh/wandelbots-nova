@@ -158,21 +158,20 @@ class MotionGroup(AbstractRobot):
 
     async def get_default_collision_link_chain(self) -> api.models.LinkChain:
         description = await self._fetch_motion_group_description()
-        collision_model = await self._api_client.motion_group_models_api.get_motion_group_collision_model(
-            motion_group_model=description.motion_group_model.root
+        collision_model = (
+            await self._api_client.motion_group_models_api.get_motion_group_collision_model(
+                motion_group_model=description.motion_group_model.root
+            )
         )
 
-        return api.models.LinkChain(
-            [api.models.Link(link) for link in collision_model]
-        )
-        
+        return api.models.LinkChain([api.models.Link(link) for link in collision_model])
 
     # TODO: check the response type, it is not easy to use
     # API returns list of list of list of float ( 3 inner lists )
     async def _inverse_kinematics(
-        self, 
-        poses: list[Pose], 
-        tcp: str, 
+        self,
+        poses: list[Pose],
+        tcp: str,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> list[list[tuple[float, ...]]]:
         """Do inverse kinematics for the given poses for the motion group.
@@ -555,16 +554,18 @@ class MotionGroup(AbstractRobot):
             motion_group_setup.collision_setups = api.models.CollisionSetups({})
 
         if action.collision_setup is not None:
-            motion_group_setup.collision_setups.root["collision-free-motion"] = action.collision_setup
-
-
+            motion_group_setup.collision_setups.root["collision-free-motion"] = (
+                action.collision_setup
+            )
 
         if isinstance(action.target, Pose):
             solutions = await self._inverse_kinematics(
                 poses=[action.target], tcp=tcp, motion_group_setup=motion_group_setup
             )
             if len(solutions) == 0 or len(solutions[0]) == 0:
-                raise ValueError(f"No inverse kinematics solution found for target pose {action.target}")
+                raise ValueError(
+                    f"No inverse kinematics solution found for target pose {action.target}"
+                )
             target_joint_positions = solutions[0][0]
         elif isinstance(action.target, tuple):
             target_joint_positions = action.target

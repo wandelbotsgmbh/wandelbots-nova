@@ -39,7 +39,6 @@ async def ur_mg():
             except Exception:
                 await asyncio.sleep(2)
 
-
         ur = await cell.controller(controller_name)
         async with ur[0] as mg:
             yield mg

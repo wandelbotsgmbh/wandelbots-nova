@@ -131,7 +131,7 @@ class NovaRerunBridge:
             static=True,
         )
 
-    async def log_collision_setups(
+    def log_collision_setups(
         self, collision_setups: dict[str, api.models.CollisionSetup]
     ) -> dict[str, api.models.CollisionSetup]:
         """Fetch and log all collision setups from Nova to Rerun."""

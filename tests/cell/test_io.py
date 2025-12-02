@@ -10,7 +10,9 @@ import asyncio
 
 
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 @pytest.fixture(scope="module")
 @pytest.mark.integration
@@ -44,7 +46,6 @@ async def setup_ur() -> AsyncGenerator[tuple[Controller, Controller], None]:
             except Exception:
                 logger.error("Controllers not ready yet, waiting...")
                 await asyncio.sleep(2)
-
 
         yield ur, kuka
 

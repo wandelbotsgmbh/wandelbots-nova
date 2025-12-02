@@ -123,14 +123,11 @@ async def test_collision_free_planning_finds_no_solution_pose_as_target(ur_mg: M
     collision_setup.link_chain = await ur_mg.get_default_collision_link_chain()
     collision_setup.colliders = {"plane": plane}
 
-
     with pytest.raises(Exception):
         await ur_mg.plan(
             start_joint_position=tuple(initial_joint_positions),
             actions=[
-                collision_free(
-                    target=Pose(700, 0, -10, 0, 0, 0), collision_setup=collision_setup
-                )
+                collision_free(target=Pose(700, 0, -10, 0, 0, 0), collision_setup=collision_setup)
             ],
             tcp="Flange",
         )
@@ -166,10 +163,6 @@ async def test_collision_free_planning_finds_no_solution_joints_as_target(ur_mg:
     with pytest.raises(Exception):
         await ur_mg.plan(
             start_joint_position=tuple(initial_joint_positions),
-            actions=[
-                collision_free(
-                    target=target_as_joints, collision_setup=collision_setup
-                )
-            ],
+            actions=[collision_free(target=target_as_joints, collision_setup=collision_setup)],
             tcp="Flange",
         )

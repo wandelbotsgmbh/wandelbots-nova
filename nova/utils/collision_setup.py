@@ -62,7 +62,6 @@ def motion_group_setup_from_motion_group_description(
     tcp_name: str,
     payload: api.models.Payload | None = None,
 ) -> api.models.MotionGroupSetup:
-
     collision_setup = get_safety_collision_setup_from_motion_group_description(
         motion_group_description, tcp_name
     )
@@ -89,8 +88,7 @@ def motion_group_setup_from_motion_group_description(
 
 
 def get_safety_collision_setup_from_motion_group_description(
-    motion_group_description: api.models.MotionGroupDescription,
-    tcp: str,
+    motion_group_description: api.models.MotionGroupDescription, tcp: str
 ) -> api.models.CollisionSetup:
     tool_colliders = (
         motion_group_description.safety_tool_colliders.get(tcp)
