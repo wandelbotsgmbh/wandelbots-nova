@@ -92,7 +92,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         """
         if self._motion_group_ids is None:
             raise ValueError("Controller is not opened")
-        return {
+        return {  # type: ignore[unreachable]
             motion_group_id: self.motion_group(motion_group_id)
             for motion_group_id in self._motion_group_ids
         }

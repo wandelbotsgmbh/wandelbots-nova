@@ -31,14 +31,14 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                 axis = rot_vec / angle
             else:
                 axis = np.array([0.0, 0.0, 1.0])
-                angle = 0.0
+                angle = 0.0  # type: ignore[assignment]
 
             rr.log(
                 f"{entity_path}/{collider_id}",
                 rr.Ellipsoids3D(
                     radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
                     centers=[pose.position.to_tuple()],
-                    rotation_axis_angles=[rr.RotationAxisAngle(axis=axis, angle=angle)],
+                    rotation_axis_angles=[rr.RotationAxisAngle(axis=axis, angle=angle)],  # type: ignore
                     colors=[(221, 193, 193, 255)],
                 ),
                 static=True,
@@ -250,7 +250,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                     static=True,
                 )
 
-                vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)
+                vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)  # type: ignore
 
                 rr.log(
                     f"{entity_path}/{collider_id}",
@@ -258,7 +258,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                         vertex_positions=vertices,
                         triangle_indices=triangles,
                         vertex_normals=normals,
-                        albedo_factor=[colors.colors[0]],
+                        albedo_factor=[colors.colors[0]],  # type: ignore
                     ),
                     static=True,
                 )

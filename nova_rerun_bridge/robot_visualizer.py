@@ -576,7 +576,7 @@ class RobotVisualizer:
         # Default fallback for unsupported geometry types
         else:
             # Fallback to a box
-            rr.log(
+            rr.log(  # type: ignore[unreachable]
                 entity_path,
                 rr.Boxes3D(
                     half_sizes=[[50, 50, 50]],
