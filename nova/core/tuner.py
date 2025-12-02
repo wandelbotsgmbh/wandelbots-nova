@@ -5,6 +5,7 @@ import pydantic
 from decouple import config
 from faststream import FastStream
 from faststream.nats import NatsBroker
+from icecream import ic
 
 from nova.core import logger
 
@@ -37,6 +38,7 @@ class TrajectoryTuner:
                     current_cursor.forward(playback_speed_in_percent=speed)
                     # last_operation_result = await future
                 case "step-forward":
+                    ic()
                     continue_tuning_event.set()
                     current_cursor.forward_to_next_action(playback_speed_in_percent=speed)
                     # await future
@@ -54,6 +56,7 @@ class TrajectoryTuner:
                     #     await future
                 case "finish":
                     # TODO only allow finishing if at forward end of trajectory
+                    ic()
                     continue_tuning_event.set()
                     current_cursor.detach()
                     finished_tuning = True
@@ -72,6 +75,19 @@ class TrajectoryTuner:
         @faststream_app.after_startup
         async def after_startup():
             faststream_app_ready_event.set()
+
+        @faststream_app.on_shutdown
+        async def on_shutdown():
+            # TODO this was written in an attempt to fix the shutdown hanging issue
+            # without really understanding the root cause and it did not help so far
+            # TODO this is triggered explicitly when we call faststream_app.exit()
+            # but also when the app is shut down by other means (e.g. SIGINT)
+            nonlocal finished_tuning
+            logger.info("Shutting down TrajectoryTuner FastStream app")
+            continue_tuning_event.set()
+            current_cursor.detach()
+            finished_tuning = True
+            ic()
 
         faststream_app_task = asyncio.create_task(faststream_app.run())
         # runtime_task = asyncio.create_task(runtime_monitor(0.5))  # Output every 0.5 seconds
@@ -93,6 +109,7 @@ class TrajectoryTuner:
             await faststream_app_ready_event.wait()
             current_location = 0.0
             while not finished_tuning:
+                ic()
                 # TODO this plans the second time for the same actions when we get here because
                 # the initial joint trajectory was already planned before the MotionGroup._execute call
                 motion_id, joint_trajectory = await self.plan_fn(actions)
@@ -117,8 +134,11 @@ class TrajectoryTuner:
                     self.execute_fn(client_request_generator=current_cursor.cntrl)
                 )
                 async for execute_response in current_cursor:
+                    ic()
                     yield execute_response
+                ic()
                 await execution_task
+                ic()
                 continue_tuning_event.clear()
                 current_location = (
                     current_cursor._current_location
@@ -134,5 +154,6 @@ class TrajectoryTuner:
                 f"finished_tuning={finished_tuning}, current_location={current_location}, last_operation_result={last_operation_result}"
             )
             pass
+        ic()
         faststream_app.exit()
         await faststream_app_task

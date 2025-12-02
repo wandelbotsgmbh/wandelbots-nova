@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from enum import Enum, auto
 from math import ceil, floor
 from typing import AsyncIterator, Optional
@@ -25,8 +26,11 @@ from nova.types.state import motion_group_state_to_motion_state
 ExecuteJoggingRequestStream = AsyncIterator[api.models.ExecuteJoggingRequest]
 ExecuteJoggingResponseStream = AsyncIterator[api.models.ExecuteJoggingResponse]
 
+ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
+
 
 # TODO: when the message exchange is not working as expected we should gracefully close
+# TODO: add the set_io functionality Thorsten Blatter did for the force torque sensor at Schaeffler
 def move_forward(context: MovementControllerContext) -> MovementControllerFunction:
     """
     movement_controller is an async function that yields requests to the server.
@@ -44,6 +48,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             ready: asyncio.Event,
         ):
             ready.set()
+            await error_monitor_task_created.wait()
             try:
                 async for motion_group_state in motion_group_state_stream:
                     if motion_group_state.execute and isinstance(
@@ -52,27 +57,33 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         if isinstance(
                             motion_group_state.execute.details.state, api.models.TrajectoryEnded
                         ):
-                            await error_monitor_task_created.wait()
                             error_monitor_task.cancel()
                             break
             except asyncio.CancelledError:
                 ic()
+                error_monitor_task.cancel()
                 raise
 
         async def error_monitor(
             responses: ExecuteTrajectoryResponseStream, to_cancel: list[asyncio.Task]
         ):
+            def cancel_tasks():
+                for task in to_cancel:
+                    task.cancel()
+
             try:
                 async for execute_trajectory_response in responses:
                     if isinstance(execute_trajectory_response, api.models.MovementErrorResponse):
-                        for task in to_cancel:
-                            task.cancel()
                         # TODO how does this propagate?
                         # TODO what happens to the state consumer?
                         raise ErrorDuringMovement(execute_trajectory_response.message)
             except asyncio.CancelledError:
                 ic()
                 raise
+            finally:
+                ic()
+                cancel_tasks()
+                ic()
 
         motion_group_state_stream = context.motion_group_state_stream_gen()
         motion_group_state_monitor_ready = asyncio.Event()
@@ -119,6 +130,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         except asyncio.CancelledError:
             ic()
         await motion_group_state_monitor_task
+        ic()
 
     return movement_controller
 
@@ -533,8 +545,9 @@ class TrajectoryCursor:
         # TODO this does not stop the movement atm, it just stops controlling movement
         # this is especially open for testing what happens when the movement is backwards
         # and no end is reached
-        # TODO only allow finishing if at forward end of trajectory
+        # TODO only allow finishing if at forward end of trajectory?
         self._command_queue.put_nowait(self._COMMAND_QUEUE_SENTINAL)
+        self._in_queue.put_nowait(None)  # TODO make sentinel more explicit
 
     def _start_operation(
         self, operation_type: OperationType, target_location: Optional[float] = None
@@ -586,29 +599,58 @@ class TrajectoryCursor:
             yield request
 
         combined_response_consumer_ready_event = asyncio.Event()
-        async with asyncio.TaskGroup() as tg:
-            tg.create_task(self._effect_consumer(), name="effect_consumer")
-            response_consumer_task = tg.create_task(
-                self._response_consumer(), name="response_consumer"
-            )
-            tg.create_task(
-                self._combined_response_consumer(
-                    ready_event=combined_response_consumer_ready_event
-                ),
-                name="combined_response_consumer",
-            )
-            motion_event_updater_task = tg.create_task(
-                self.motion_event_updater(), name="motion_event_updater"
-            )
-            # we need to wait until the response consumer is ready because it stops the
-            # response stream iterator by enquing the sentinel
-            # if we cancel immediately due to the first command being a detach the response consumer might get
-            # cancelled before it has even started and thus will not react to the cancellation properly
-            await combined_response_consumer_ready_event.wait()
-            async for request in self._request_loop():
-                yield request
-            response_consumer_task.cancel()
-            motion_event_updater_task.cancel()
+        try:
+            async with asyncio.TaskGroup() as tg:
+                effect_consumer_task = tg.create_task(
+                    self._effect_consumer(), name="effect_consumer"
+                )
+                response_consumer_task = tg.create_task(
+                    self._response_consumer(), name="response_consumer"
+                )
+                combined_response_consumer_task = tg.create_task(
+                    self._combined_response_consumer(
+                        ready_event=combined_response_consumer_ready_event
+                    ),
+                    name="combined_response_consumer",
+                )
+                motion_event_updater_task = tg.create_task(
+                    self._motion_event_updater(), name="motion_event_updater"
+                )
+                # we need to wait until the response consumer is ready because it stops the
+                # response stream iterator by enquing the sentinel
+                # if we cancel immediately due to the first command being a detach the response consumer might get
+                # cancelled before it has even started and thus will not react to the cancellation properly
+                await combined_response_consumer_ready_event.wait()
+                async for request in self._request_loop():
+                    yield request
+
+                ic()
+                response_consumer_task.cancel()
+                motion_event_updater_task.cancel()
+                effect_consumer_task.cancel()
+                combined_response_consumer_task.cancel()
+                ic()
+                # await response_consumer_task
+                # await motion_event_updater_task
+                # await effect_consumer_task
+        except ExceptionGroup as eg:
+            ic(eg)
+            logger.error(f"ExceptionGroup in TrajectoryCursor cntrl: {eg}")
+            raise
+        except BaseExceptionGroup as eg:
+            ic(eg)
+            logger.error(f"BaseExceptionGroup in TrajectoryCursor cntrl: {eg}")
+            raise
+        except asyncio.CancelledError:
+            ic()
+            logger.debug("TrajectoryCursor cntrl was cancelled during cleanup of internal tasks")
+            raise
+        except Exception as e:
+            ic(e)
+            logger.error(f"Exception in TrajectoryCursor cntrl: {e}")
+            raise
+        finally:
+            ic()
 
         # # OLD
         # self._response_consumer_task: asyncio.Task[None] = asyncio.create_task(
@@ -638,6 +680,7 @@ class TrajectoryCursor:
         #     logger.debug("Motion event updater task was cancelled during trajectory cursor cleanup")
         #     pass
 
+        ic()
         # stopping the external response stream iterator to be sure, but this is a smell
         self._in_queue.put_nowait(None)
 
@@ -667,8 +710,8 @@ class TrajectoryCursor:
 
     async def _effect_consumer(self):
         async for effect in self._effect_stream:
-            # ic(effect)
-            self._in_queue.put_nowait(effect)
+            ic(effect)
+            self._response_queue.put_nowait(effect)
 
     async def _response_consumer(self):
         async for response in self._response_stream:
@@ -681,7 +724,9 @@ class TrajectoryCursor:
 
         try:
             while True:
+                ic()
                 response = await self._response_queue.get()
+                ic(response)
                 self._in_queue.put_nowait(response)
                 if isinstance(response, api.models.MotionGroupState):
                     motion_group_state = response
@@ -740,7 +785,7 @@ class TrajectoryCursor:
                 assert False, "Should not reach here, RAE handles exact stopping"
                 self._pause()
 
-    async def motion_event_updater(self, interval=0.2):
+    async def _motion_event_updater(self, interval=0.2):
         while True:
             match self._current_operation_type:
                 case OperationType.FORWARD | OperationType.FORWARD_TO:
@@ -773,6 +818,7 @@ class TrajectoryCursor:
         value = await self._in_queue.get()
         self._in_queue.task_done()
         if value is None:
+            ic()
             raise StopAsyncIteration
         return value
 
