@@ -4,12 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional, Protocol, Union, runtime_checkable
 
-from nova import api
-
 if TYPE_CHECKING:
+    from nova import api
     from nova.actions import Action
-    from nova.api import models
-    from nova.core.motion_group import MotionGroup
+    from nova.cell.motion_group import MotionGroup
     from nova.core.nova import Nova
 
 
@@ -49,16 +47,17 @@ class NovaRerunBridgeProtocol(Protocol):
 
     async def log_trajectory(
         self,
-        joint_trajectory: models.JointTrajectory,
+        trajectory: api.models.JointTrajectory,
         tcp: str,
         motion_group: MotionGroup,
+        collision_setups: dict[str, api.models.CollisionSetup],
         time_offset: float = 0,
         tool_asset: Optional[str] = None,
     ) -> None:
         """Log trajectory to the viewer."""
         ...
 
-    def _log_collision_setups(self, collision_setups: dict[str, api.models.CollisionSetup]) -> None:
+    def log_collision_setups(self, collision_setups: dict[str, api.models.CollisionSetup]) -> None:
         """Log collision scenes to the viewer."""
         ...
 

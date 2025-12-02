@@ -58,6 +58,7 @@ def test_example(example_name):
         "edge_pattern_manhattan",
         "edge_pattern",
         "multiple_robots2",
+        "multiple_robots3",
         "edge_pattern_line",
         "find_edge_from_4_poses",
         "frame2",

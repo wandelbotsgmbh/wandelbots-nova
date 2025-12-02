@@ -5,11 +5,11 @@ from collections import defaultdict
 from typing import Any, AsyncIterable, Literal, SupportsIndex
 
 import numpy as np
-from scipy.spatial.transform import Rotation
 
 from nova import api
 from nova.actions import Action, MovementController
 from nova.actions.motions import CartesianPTP, Circular, JointPTP, Linear
+from nova.cell.io import ValueType
 from nova.cell.robot_cell import (
     AbstractController,
     AbstractRobot,
@@ -20,7 +20,6 @@ from nova.cell.robot_cell import (
     RobotCell,
     Timer,
 )
-from nova.core.io import ValueType
 from nova.types import MotionState, MovementResponse, Pose, RobotState
 
 

@@ -10,10 +10,8 @@ Prerequisites:
 
 import json
 
-from wandelbots_api_client.v2.models import JointTrajectory
-
 import nova
-from nova import Nova, run_program
+from nova import Nova, api, run_program
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.actions.base import Action
 from nova.api import models
@@ -75,7 +73,9 @@ async def main():
         with open("serialized_program.json", "r") as f:
             loaded_program = json.load(f)
 
-        loaded_joint_trajectory = JointTrajectory.from_json(loaded_program["joint_trajectory"])
+        loaded_joint_trajectory = api.models.JointTrajectory.from_json(
+            loaded_program["joint_trajectory"]
+        )
         loaded_tcp = loaded_program["tcp"]
         loaded_actions = [
             Action.from_dict(json.loads(action_data)) for action_data in loaded_program["actions"]

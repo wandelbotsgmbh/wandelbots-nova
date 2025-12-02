@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os.path
 import tempfile
 from collections.abc import Callable
@@ -14,8 +15,9 @@ from asyncua.common.subscription import DataChangeNotif, DataChangeNotificationH
 from asyncua.crypto import security_policies
 from asyncua.ua import CreateSubscriptionParameters, DataValue, Variant, VariantType
 
-from nova import logger
 from nova.config import K8S_NAMESPACE
+
+logger = logging.getLogger(__name__)
 
 
 class DataChangeSubscription(DataChangeNotificationHandlerAsync):

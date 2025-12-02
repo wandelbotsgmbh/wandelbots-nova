@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from icecream import ic
 
 import nova
@@ -7,8 +5,6 @@ from nova import Nova, api, run_program
 from nova.actions import jnt
 from nova.cell.controllers import virtual_controller
 from nova.program import ProgramPreconditions
-
-ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
 
 
 @nova.program(

@@ -6,6 +6,7 @@ import trimesh
 from scipy.spatial.transform import Rotation
 
 from nova import api
+from nova.types import Pose
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.conversion_helpers import normalize_pose
 from nova_rerun_bridge.dh_robot import DHRobot
@@ -22,13 +23,13 @@ class RobotVisualizer:
     def __init__(
         self,
         robot: DHRobot,
-        robot_model_geometries: list[api.models.RobotLinkGeometry],
-        tcp_geometries: list[api.models.Geometry],
+        robot_model_geometries: list[api.models.LinkChain],
+        tcp_geometries: list[api.models.Collider],
         static_transform: bool = True,
         base_entity_path: str = "robot",
         albedo_factor: list = [255, 255, 255],
-        collision_link_chain=None,
-        collision_tcp=None,
+        collision_link_chain: api.models.LinkChain | None = None,
+        collision_tcp: api.models.Tool | None = None,
         model_from_controller="",
         show_collision_link_chain: bool = False,
         show_collision_tool: bool = True,
@@ -49,15 +50,16 @@ class RobotVisualizer:
         :param show_safety_link_chain: Whether to render robot safety geometry (from controller)
         """
         self.robot = robot
-        self.link_geometries: dict[int, list[models.Geometry]] = {}
-        self.tcp_geometries: list[models.Geometry] = tcp_geometries
+        self.link_geometries: dict[int, list[api.models.Collider]] = {}
+        self.tcp_geometries: list[api.models.Collider] = tcp_geometries
         self.logged_meshes: set[str] = set()
         self.static_transform = static_transform
         self.base_entity_path = base_entity_path.rstrip("/")
         self.albedo_factor = albedo_factor
         self.mesh_loaded = False
-        self.collision_link_geometries = {}
-        self.collision_tcp_geometries = collision_tcp
+        # Group collision geometries by link
+        self.collision_link_geometries = collision_link_chain.root if collision_link_chain else {}
+        self.collision_tcp_geometries = collision_tcp.root if collision_tcp else {}
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool
         self.show_safety_link_chain = show_safety_link_chain
@@ -79,12 +81,10 @@ class RobotVisualizer:
         except Exception as e:
             print(f"Failed to load mesh: {e}")
 
-        # Group geometries by link
-        for gm in robot_model_geometries:
-            self.link_geometries.setdefault(gm.link_index, []).append(gm.geometry)
-
-        # Group geometries by link
-        self.collision_link_geometries = collision_link_chain
+        # Group safety geometries by link index for easier lookup later on
+        for link_chain in robot_model_geometries:
+            for link_index, link in enumerate(link_chain.root or []):
+                self.link_geometries.setdefault(link_index, []).extend(link.root.values())
 
     def discover_joints(self):
         """
@@ -151,24 +151,44 @@ class RobotVisualizer:
         self.layer_nodes_dict[joint] = same_layer
         return same_layer
 
-    def geometry_pose_to_matrix(self, init_pose: api.models.Pose):
-        return self.robot.pose_to_matrix(init_pose)
+    def geometry_pose_to_matrix(self, init_pose: Pose | None):
+        if init_pose is None:
+            return np.eye(4)
+        return self.robot.pose_to_matrix(
+            api.models.Pose(
+                position=api.models.Vector3d(list(init_pose.position.to_tuple())),
+                orientation=api.models.RotationVector(list(init_pose.orientation.to_tuple())),
+            )
+        )
 
-    def compute_forward_kinematics(self, joint_values):
+    # TODO: this will not work yet
+    def compute_forward_kinematics(self, joint_positions: list[float]):
         """Compute link transforms using the robot's methods."""
         accumulated = self.robot.pose_to_matrix(self.robot.mounting)
         transforms = [accumulated.copy()]
-        for dh_param, joint_rot in zip(self.robot.dh_parameters, joint_values.joints, strict=False):
-            transform = self.robot.dh_transform(dh_param, joint_rot)
+        for dh_param, joint_position in zip(
+            self.robot.dh_parameters, joint_positions, strict=False
+        ):
+            transform = self.robot.dh_transform(dh_param=dh_param, joint_position=joint_position)
             accumulated = accumulated @ transform
             transforms.append(accumulated.copy())
         return transforms
 
     def rotation_matrix_to_axis_angle(self, Rm):
-        """Use scipy for cleaner axis-angle extraction."""
-        rot = Rotation.from_matrix(Rm)
+        """Derive an axis-angle representation while being resilient to scaling/noise."""
+        try:
+            U, _, Vt = np.linalg.svd(Rm)
+            Rm_orth = U @ Vt
+            if np.linalg.det(Rm_orth) < 0:
+                U[:, -1] *= -1
+                Rm_orth = U @ Vt
+        except (np.linalg.LinAlgError, ValueError, RuntimeError):
+            Rm_orth = np.eye(3)
+
+        rot = Rotation.from_matrix(Rm_orth)
         angle = rot.magnitude()
-        axis = rot.as_rotvec() / angle if angle > 1e-8 else np.array([1.0, 0.0, 0.0])
+        axis = rot.as_rotvec()
+        axis = axis / angle if angle > 1e-8 else np.array([1.0, 0.0, 0.0])
         return axis, angle
 
     def gamma_lift_single_color(self, color: np.ndarray, gamma: float = 0.8) -> np.ndarray:
@@ -265,9 +285,7 @@ class RobotVisualizer:
                 f"{entity_path}",
                 rr.Ellipsoids3D(
                     radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
-                    centers=[[pose.position.x, pose.position.y, pose.position.z]]
-                    if pose.position
-                    else [0, 0, 0],
+                    centers=[pose.position.root] if pose.position else [0, 0, 0],  # type: ignore
                     colors=[(221, 193, 193, 255)],
                 ),
             )
@@ -276,9 +294,7 @@ class RobotVisualizer:
             rr.log(
                 f"{entity_path}",
                 rr.Boxes3D(
-                    centers=[[pose.position.x, pose.position.y, pose.position.z]]
-                    if pose.position
-                    else [0, 0, 0],
+                    centers=pose.position.root if pose.position else [0, 0, 0],
                     sizes=[collider.shape.size_x, collider.shape.size_y, collider.shape.size_z],
                     colors=[(221, 193, 193, 255)],
                 ),
@@ -297,7 +313,7 @@ class RobotVisualizer:
             # Transform vertices to world position
             transform = np.eye(4)
             if pose.position:
-                transform[:3, 3] = [pose.position.x, pose.position.y, pose.position.z - height / 2]
+                transform[:3, 3] = pose.position.root + [0, 0, -height / 2]
             else:
                 transform[:3, 3] = [0, 0, -height / 2]
 
@@ -329,7 +345,9 @@ class RobotVisualizer:
                 )
 
         elif isinstance(collider.shape, api.models.ConvexHull):
-            polygons = HullVisualizer.compute_hull_outlines_from_points(collider.shape.vertices)
+            polygons = HullVisualizer.compute_hull_outlines_from_points(
+                np.array(collider.shape.vertices)
+            )
 
             if polygons:
                 line_segments = [p.tolist() for p in polygons]
@@ -356,15 +374,15 @@ class RobotVisualizer:
 
         self.logged_meshes.add(entity_path)
 
-    def init_geometry(self, entity_path: str, geometry: api.models.Geometry):
+    def init_geometry(self, entity_path: str, geometry: api.models.Collider):
         """Generic method to log a single geometry, either capsule or box."""
 
         if entity_path in self.logged_meshes:
             return
 
         # Sphere geometry
-        if geometry.sphere:
-            radius = geometry.sphere.radius
+        if isinstance(geometry.shape, api.models.Sphere):
+            radius = geometry.shape.radius
             rr.log(
                 entity_path,
                 rr.Ellipsoids3D(
@@ -375,20 +393,19 @@ class RobotVisualizer:
                 ),
             )
 
-        # Box geometry
-        elif geometry.box:
+        elif isinstance(geometry.shape, api.models.Box):
             rr.log(
                 entity_path,
                 rr.Boxes3D(
                     centers=[0, 0, 0],
                     fill_mode=rr.components.FillMode.Solid,
-                    sizes=[geometry.box.size_x, geometry.box.size_y, geometry.box.size_z],
+                    sizes=[geometry.shape.size_x, geometry.shape.size_y, geometry.shape.size_z],
                     colors=[(221, 193, 193, 255) if self.static_transform else self.albedo_factor],
                 ),
             )
 
         # Rectangle geometry
-        elif geometry.rectangle:
+        elif isinstance(geometry.shape, api.models.Rectangle):
             # Create a flat box with minimal height
             rr.log(
                 entity_path,
@@ -396,8 +413,8 @@ class RobotVisualizer:
                     fill_mode=rr.components.FillMode.Solid,
                     centers=[0, 0, 0],
                     sizes=[
-                        geometry.rectangle.size_x,
-                        geometry.rectangle.size_y,
+                        geometry.shape.size_x,
+                        geometry.shape.size_y,
                         1.0,  # Minimal height for visibility
                     ],
                     colors=[(221, 193, 193, 255) if self.static_transform else self.albedo_factor],
@@ -405,9 +422,9 @@ class RobotVisualizer:
             )
 
         # Cylinder geometry
-        elif geometry.cylinder:
-            radius = geometry.cylinder.radius
-            height = geometry.cylinder.height
+        elif isinstance(geometry.shape, api.models.Cylinder):
+            radius = geometry.shape.radius
+            height = geometry.shape.height
 
             # Create cylinder mesh
             cylinder = trimesh.creation.cylinder(radius=radius, height=height, sections=16)
@@ -424,9 +441,9 @@ class RobotVisualizer:
             )
 
         # Convex hull geometry
-        elif geometry.convex_hull:
+        elif isinstance(geometry.shape, api.models.ConvexHull):
             polygons = HullVisualizer.compute_hull_outlines_from_points(
-                [[v.x, v.y, v.z] for v in geometry.convex_hull.vertices]
+                np.array([v.root for v in geometry.shape.vertices])
             )
 
             if polygons:
@@ -457,9 +474,9 @@ class RobotVisualizer:
                 )
 
         # Capsule geometry
-        elif geometry.capsule:
-            radius = geometry.capsule.radius
-            height = geometry.capsule.cylinder_height
+        elif isinstance(geometry.shape, api.models.Capsule):
+            radius = geometry.shape.radius
+            height = geometry.shape.cylinder_height
 
             # Slightly shrink the capsule if static to reduce z-fighting
             if self.static_transform:
@@ -481,10 +498,10 @@ class RobotVisualizer:
             )
 
         # Rectangular capsule geometry
-        elif geometry.rectangular_capsule:
-            radius = geometry.rectangular_capsule.radius
-            distance_x = geometry.rectangular_capsule.sphere_center_distance_x
-            distance_y = geometry.rectangular_capsule.sphere_center_distance_y
+        elif isinstance(geometry.shape, api.models.RectangularCapsule):
+            radius = geometry.shape.radius
+            distance_x = geometry.shape.sphere_center_distance_x
+            distance_y = geometry.shape.sphere_center_distance_y
 
             # Create a rectangular capsule from its definition - a hull around 4 spheres
             # First, create the four spheres at the corners
@@ -512,7 +529,7 @@ class RobotVisualizer:
                     )
 
             # Use our hull visualizer to create outlines
-            polygons = HullVisualizer.compute_hull_outlines_from_points(all_points)
+            polygons = HullVisualizer.compute_hull_outlines_from_points(np.array(all_points))
 
             if polygons:
                 # Log wireframe outline
@@ -544,7 +561,7 @@ class RobotVisualizer:
                 )
 
         # Plane geometry (simplified as a large, thin rectangle)
-        elif geometry.plane:
+        elif isinstance(geometry.shape, api.models.Plane):
             # Create a large, thin rectangle to represent an infinite plane
             size = 5000  # Large enough to seem infinite in the visualization
             rr.log(
@@ -556,16 +573,10 @@ class RobotVisualizer:
                 ),
             )
 
-        # Compound geometry - recursively process child geometries
-        elif geometry.compound and geometry.compound.child_geometries:
-            for i, child_geom in enumerate(geometry.compound.child_geometries):
-                child_path = f"{entity_path}/child_{i}"
-                self.init_geometry(child_path, child_geom)
-
         # Default fallback for unsupported geometry types
         else:
             # Fallback to a box
-            rr.log(
+            rr.log(  # type: ignore[unreachable]
                 entity_path,
                 rr.Boxes3D(
                     half_sizes=[[50, 50, 50]],
@@ -575,8 +586,8 @@ class RobotVisualizer:
 
         self.logged_meshes.add(entity_path)
 
-    def log_robot_geometry(self, joint_position):
-        transforms = self.compute_forward_kinematics(joint_position)
+    def log_robot_geometry(self, joint_position: list[float]):
+        transforms = self.compute_forward_kinematics(joint_positions=joint_position)
 
         def log_geometry(entity_path, transform):
             translation = transform[:3, 3]
@@ -622,8 +633,9 @@ class RobotVisualizer:
                     # DH theta is rotated, rotate mesh around z in direction of theta
                     rotation_matrix_z_4x4 = np.eye(4)
                     if len(self.robot.dh_parameters) > link_index:
+                        theta = self.robot.dh_parameters[link_index].theta or 0.0
                         rotation_z_minus_90 = Rotation.from_euler(
-                            "z", self.robot.dh_parameters[link_index].theta, degrees=False
+                            "z", theta, degrees=False
                         ).as_matrix()
                         rotation_matrix_z_4x4[:3, :3] = rotation_z_minus_90
 
@@ -645,7 +657,9 @@ class RobotVisualizer:
                 link_transform = transforms[link_index]
                 for i, geom in enumerate(geometries):
                     entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
-                    final_transform = link_transform @ self.geometry_pose_to_matrix(geom.init_pose)
+                    final_transform = link_transform @ self.geometry_pose_to_matrix(
+                        normalize_pose(geom.pose)
+                    )
 
                     self.init_geometry(entity_path, geom)
                     log_geometry(entity_path, final_transform)
@@ -655,17 +669,19 @@ class RobotVisualizer:
             tcp_transform = transforms[-1]  # the final frame transform
             for i, geom in enumerate(self.tcp_geometries):
                 entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
-                final_transform = tcp_transform @ self.geometry_pose_to_matrix(geom.init_pose)
+                final_transform = tcp_transform @ self.geometry_pose_to_matrix(
+                    normalize_pose(geom.pose)
+                )
 
                 self.init_geometry(entity_path, geom)
                 log_geometry(entity_path, final_transform)
 
-    def log_robot_geometries(self, trajectory: list[api.models.TrajectorySample], times_column):
+    def log_robot_geometries(self, trajectory: api.models.JointTrajectory, times_column):
         """
         Log the robot geometries for each link and TCP as separate entities.
 
         Args:
-            trajectory (List[wb.models.TrajectorySample]): The list of trajectory sample points.
+            trajectory (list[api.models.TrajectoryData]): The list of trajectory sample points.
             times_column (rr.TimeColumn): The time column associated with the trajectory points.
         """
         link_positions = {}
@@ -682,8 +698,8 @@ class RobotVisualizer:
             link_positions[entity_path].append(translation)
             link_rotations[entity_path].append(rr.RotationAxisAngle(axis=axis, angle=angle))
 
-        for point in trajectory:
-            transforms = self.compute_forward_kinematics(point.joint_position)
+        for joint_position in trajectory.joint_positions:
+            transforms = self.compute_forward_kinematics(joint_positions=joint_position.root)
 
             # Log robot joint geometries
             if self.mesh_loaded:
@@ -716,8 +732,9 @@ class RobotVisualizer:
                         # DH theta is rotated, rotate mesh around z in direction of theta
                         rotation_matrix_z_4x4 = np.eye(4)
                         if len(self.robot.dh_parameters) > link_index:
+                            theta = self.robot.dh_parameters[link_index].theta or 0.0
                             rotation_z_minus_90 = Rotation.from_euler(
-                                "z", self.robot.dh_parameters[link_index].theta, degrees=False
+                                "z", theta, degrees=False
                             ).as_matrix()
                             rotation_matrix_z_4x4[:3, :3] = rotation_z_minus_90
 
@@ -740,7 +757,7 @@ class RobotVisualizer:
                     for i, geom in enumerate(geometries):
                         entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
                         final_transform = link_transform @ self.geometry_pose_to_matrix(
-                            geom.init_pose
+                            normalize_pose(geom.pose)
                         )
                         self.init_geometry(entity_path, geom)
                         collect_geometry_data(entity_path, final_transform)
@@ -750,7 +767,9 @@ class RobotVisualizer:
                 tcp_transform = transforms[-1]  # End-effector transform
                 for i, geom in enumerate(self.tcp_geometries):
                     entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
-                    final_transform = tcp_transform @ self.geometry_pose_to_matrix(geom.init_pose)
+                    final_transform = tcp_transform @ self.geometry_pose_to_matrix(
+                        normalize_pose(geom.pose)
+                    )
                     self.init_geometry(entity_path, geom)
                     collect_geometry_data(entity_path, final_transform)
 
@@ -758,11 +777,10 @@ class RobotVisualizer:
             if self.show_collision_link_chain and self.collision_link_geometries:
                 for link_index, geometries in enumerate(self.collision_link_geometries):
                     link_transform = transforms[link_index]
-                    for i, geom_id in enumerate(geometries):
+                    for i, geom_id in enumerate(geometries.root):
                         entity_path = f"{self.base_entity_path}/collision/links/link_{link_index}/geometry_{geom_id}"
 
                         pose = normalize_pose(geometries[geom_id].pose)
-
                         final_transform = link_transform @ self.geometry_pose_to_matrix(pose)
                         self.init_collision_geometry(entity_path, geometries[geom_id], pose)
                         collect_geometry_data(entity_path, final_transform)

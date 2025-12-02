@@ -1,10 +1,12 @@
 import asyncio
+import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import AsyncExitStack
 from functools import reduce
 from typing import (
     AsyncIterable,
+    AsyncIterator,
     Awaitable,
     ClassVar,
     Generic,
@@ -25,8 +27,9 @@ from aiostream import stream
 
 from nova import api
 from nova.actions import Action, MovementController
-from nova.core import logger
 from nova.types import MotionState, MovementResponse, Pose, RobotState
+
+logger = logging.getLogger(__name__)
 
 
 class RobotCellError(Exception):
@@ -226,7 +229,7 @@ class AbstractRobot(Device):
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
-        """Plan a trajectory for the given actions
+        """Plan a trajectory for the given actions.
 
         Args:
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
@@ -268,20 +271,23 @@ class AbstractRobot(Device):
         self, actions: list[Action], trajectory: api.models.JointTrajectory, tcp: str
     ) -> None:
         """Log planning results to active viewers if any are configured."""
-        from nova.core.motion_group import MotionGroup
+        from nova.cell.motion_group import MotionGroup
         from nova.viewers import get_viewer_manager
 
         # Only log for motion groups
+        # TODO: does it make sense to move the log planning directly to the MotionGroup?
         if not isinstance(self, MotionGroup):
             return
 
         viewer_manager = get_viewer_manager()
         if viewer_manager.has_active_viewers:
-            await viewer_manager.log_planning_success(actions, trajectory, tcp, self)
+            await viewer_manager.log_planning_success(
+                actions=actions, trajectory=trajectory, tcp=tcp, motion_group=self
+            )
 
     async def _log_planning_error(self, actions: list[Action], error: Exception, tcp: str) -> None:
         """Log planning error to active viewers if any are configured."""
-        from nova.core.motion_group import MotionGroup
+        from nova.cell.motion_group import MotionGroup
         from nova.viewers import get_viewer_manager
 
         # Only log for motion groups
@@ -300,7 +306,7 @@ class AbstractRobot(Device):
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
-    ) -> AsyncIterable[MovementResponse]:
+    ) -> AsyncIterator[MovementResponse]:
         """Execute a planned motion
 
         Args:
@@ -320,6 +326,9 @@ class AbstractRobot(Device):
         start_on_io: api.models.StartOnIO | None = None,
     ) -> AsyncIterable[MotionState]:
         """Execute a planned motion
+
+        Note that if an error happens during the consuming of states from the returned async generator,
+        it is not guaranteed that the last state reported to you is the final state of the robot.
 
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory

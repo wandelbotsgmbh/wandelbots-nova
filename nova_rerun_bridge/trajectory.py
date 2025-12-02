@@ -1,12 +1,13 @@
+import uuid
 from enum import Enum, auto
 from typing import Optional
 
 import numpy as np
 import rerun as rr
-import rerun.archetypes as ra
 from scipy.spatial.transform import Rotation
 
-from nova import api
+from nova import MotionGroup, api
+from nova.types import Pose
 from nova_rerun_bridge.collision_scene import extract_link_chain_and_tcp
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
@@ -34,12 +35,10 @@ _last_offset = 0.0
 _visualizer_cache: dict[str, RobotVisualizer] = {}
 
 
-def log_motion(
-    motion_id: str,
-    model_from_controller: str,
-    motion_group: str,
-    motion_group_setup: api.models.MotionGroupSetup,
-    trajectory: list[api.models.TrajectorySample],
+async def log_motion(
+    trajectory: api.models.JointTrajectory,
+    tcp: str,
+    motion_group: MotionGroup,
     collision_setups: dict[str, api.models.CollisionSetup],
     time_offset: float = 0,
     timing_mode: TimingMode = TimingMode.CONTINUE,  # Deprecated parameter kept for compatibility
@@ -52,12 +51,10 @@ def log_motion(
     Fetch and process a single motion for visualization.
 
     Args:
-        motion_id: Unique identifier for the motion
-        model_from_controller: Robot model identifier
-        motion_group: Motion group identifier
-        optimizer_config: Configuration for the motion optimizer
-        trajectory: List of trajectory sample points
-        collision_scenes: Dictionary of collision scenes
+        trajectory: Joint trajectory to log
+        tcp: TCP to log
+        motion_group: Motion group to log
+        collision_setups: Collision setups to log [setup_name: collision_setup]
         time_offset: Time offset for visualization
         timing_mode: DEPRECATED - Timing mode control (ignored in new implementation)
         tool_asset: Optional tool asset file path
@@ -75,26 +72,50 @@ def log_motion(
             stacklevel=2,
         )
 
-    # Initialize DHRobot and Visualizer
-    if model_from_controller == "Yaskawa_TURN2":
-        if motion_group_setup.dh_parameters is not None:
-            motion_group_setup.dh_parameters[0].a = 0
-            motion_group_setup.dh_parameters[0].d = 360
-            motion_group_setup.dh_parameters[0].alpha = np.pi / 2
-            motion_group_setup.dh_parameters[0].theta = 0
+    motion_group_setup = await motion_group.get_setup(tcp)
+    motion_group_model = (await motion_group.get_model()).root
+    motion_group_description = await motion_group.get_description()
+    motion_group_id = motion_group.motion_group_id
+    motion_id = str(uuid.uuid4())
 
-            motion_group_setup.dh_parameters[1].a = 0
-            motion_group_setup.dh_parameters[1].d = 0
-            motion_group_setup.dh_parameters[1].alpha = 0
-            motion_group_setup.dh_parameters[1].theta = np.pi / 2
+    if motion_group_description.dh_parameters is not None:
+        motion_group_description.dh_parameters[0].a = (
+            motion_group_description.dh_parameters[0].a or 0
+        )
+        motion_group_description.dh_parameters[0].d = (
+            motion_group_description.dh_parameters[0].d or 0
+        )
+        motion_group_description.dh_parameters[0].alpha = (
+            motion_group_description.dh_parameters[0].alpha or 0
+        )
+        motion_group_description.dh_parameters[0].theta = (
+            motion_group_description.dh_parameters[0].theta or 0
+        )
 
-    if motion_group_setup.dh_parameters is None:
+        motion_group_description.dh_parameters[1].a = (
+            motion_group_description.dh_parameters[1].a or 0
+        )
+        motion_group_description.dh_parameters[1].d = (
+            motion_group_description.dh_parameters[1].d or 0
+        )
+        motion_group_description.dh_parameters[1].alpha = (
+            motion_group_description.dh_parameters[1].alpha or 0
+        )
+        motion_group_description.dh_parameters[1].theta = (
+            motion_group_description.dh_parameters[1].theta or 0
+        )
+
+    if motion_group_description.dh_parameters is None:
         raise ValueError("DH parameters cannot be None")
 
-    robot = DHRobot(motion_group_setup.dh_parameters, motion_group_setup.mounting)
+    mounting = motion_group_setup.mounting or api.models.Pose(
+        position=api.models.Vector3d([0, 0, 0]), orientation=api.models.RotationVector([0, 0, 0])
+    )
+    robot = DHRobot(dh_parameters=motion_group_description.dh_parameters, mounting=mounting)
 
+    # TODO: merge collision_setups
     collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
-        collision_setups, motion_group_setup.motion_group_type
+        collision_setups=collision_setups
     )
 
     rr.reset_time()
@@ -103,16 +124,39 @@ def log_motion(
     # Get or create visualizer from cache
     if motion_group not in _visualizer_cache:
         collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
-            collision_setups, motion_group_setup.motion_group_type
+            collision_setups=collision_setups
         )
 
-        _visualizer_cache[motion_group] = RobotVisualizer(
+        # Build tcp geometries
+        tcp_geometries: list[api.models.Collider] = []
+        if (
+            motion_group_description.safety_tool_colliders is not None
+            and tcp in motion_group_description.safety_tool_colliders
+        ):
+            tcp_geometries = [
+                api.models.Collider(tool_collider.root)
+                for tool_collider in motion_group_description.safety_tool_colliders[tcp]
+            ]
+
+        # Build safety link chain
+        safety_link_chain: list[api.models.LinkChain] = []
+        if motion_group_description.safety_link_colliders is not None:
+            safety_link_chain = [
+                api.models.LinkChain(
+                    [
+                        api.models.Link(link.root)
+                        for link in motion_group_description.safety_link_colliders
+                    ]
+                )
+            ]
+
+        _visualizer_cache[motion_group.motion_group_id] = RobotVisualizer(
             robot=robot,
-            robot_model_geometries=motion_group_setup.safety_setup.robot_model_geometries or [],
-            tcp_geometries=motion_group_setup.safety_setup.tcp_geometries or [],
+            robot_model_geometries=safety_link_chain,
+            tcp_geometries=tcp_geometries,
             static_transform=False,
-            base_entity_path=f"motion/{motion_group}",
-            model_from_controller=model_from_controller,
+            base_entity_path=f"motion/{motion_group_id}",
+            model_from_controller=motion_group_model,
             collision_link_chain=collision_link_chain,
             collision_tcp=collision_tcp,
             show_collision_link_chain=show_collision_link_chain,
@@ -120,16 +164,16 @@ def log_motion(
             show_safety_link_chain=show_safety_link_chain,
         )
 
-    visualizer = _visualizer_cache[motion_group]
+    visualizer = _visualizer_cache[motion_group.motion_group_id]
 
     # Process trajectory points
-    log_trajectory(
+    await log_trajectory(
         motion_id=motion_id,
+        trajectory=trajectory,
+        tcp=tcp,
         motion_group=motion_group,
         robot=robot,
         visualizer=visualizer,
-        trajectory=trajectory,
-        motion_group_setup=motion_group_setup,
         timer_offset=time_offset,
         tool_asset=tool_asset,
     )
@@ -139,40 +183,21 @@ def log_motion(
     del visualizer
 
 
-def log_trajectory_path(
-    motion_id: str, trajectory: list[api.models.TrajectorySample], motion_group: str
-):
-    if not all(p.tcp_pose is not None for p in trajectory):
-        raise ValueError("All trajectory points must have a tcp_pose")
-
-    points = [
-        [p.tcp_pose.position.x, p.tcp_pose.position.y, p.tcp_pose.position.z]
-        for p in trajectory
-        if p.tcp_pose and p.tcp_pose.position
-    ]
-    rr.log(
-        f"motion/{motion_group}/trajectory",
-        rr.LineStrips3D([points], colors=[[1.0, 1.0, 1.0, 1.0]]),
-    )
-
-    rr.log("logs/motion", rr.TextLog(f"{motion_group}/{motion_id}", level=rr.TextLogLevel.INFO))
-
-
 def get_times_column(
-    trajectory: list[api.models.TrajectorySample], timer_offset: float = 0
+    trajectory: api.models.JointTrajectory, timer_offset: float = 0
 ) -> rr.TimeColumn:
-    times = np.array([timer_offset + point.time for point in trajectory])
+    times = np.array([timer_offset + time for time in trajectory.times])
     times_column = rr.TimeColumn(TIME_INTERVAL_NAME, duration=times)
     return times_column
 
 
-def log_trajectory(
+async def log_trajectory(
     motion_id: str,
-    motion_group: str,
+    trajectory: api.models.JointTrajectory,
+    tcp: str,
+    motion_group: MotionGroup,
     robot: DHRobot,
     visualizer: RobotVisualizer,
-    trajectory: list[api.models.TrajectorySample],
-    motion_group_setup: api.models.MotionGroupSetup,
     timer_offset: float,
     tool_asset: Optional[str] = None,
 ):
@@ -183,61 +208,60 @@ def log_trajectory(
     rr.set_time(TIME_INTERVAL_NAME, duration=timer_offset)
 
     times_column = get_times_column(trajectory, timer_offset)
+    motion_group_id = motion_group.motion_group_id
 
-    log_trajectory_path(motion_id, trajectory, motion_group)
+    # TODO: calculate tcp pose from joint positions
+    joint_positions = [tuple(p.root) for p in trajectory.joint_positions]
+    tcp_poses = await motion_group.forward_kinematics(joints=joint_positions, tcp=tcp)
+    positions = [[p.position.x, p.position.y, p.position.z] for p in tcp_poses]
+
+    rr.log(
+        f"motion/{motion_group_id}/trajectory",
+        rr.LineStrips3D([positions], colors=[[1.0, 1.0, 1.0, 1.0]]),
+    )
+
+    rr.log("logs/motion", rr.TextLog(f"{motion_group_id}/{motion_id}", level=rr.TextLogLevel.INFO))
 
     # Calculate and log joint positions
     line_segments_batch = []
-    for point in trajectory:
-        joint_positions = robot.calculate_joint_positions(point.joint_position)
-        line_segments_batch.append([joint_positions])  # Wrap each as a line strip
+    for joint_position in trajectory.joint_positions:
+        robot_joint_positions = robot.calculate_joint_positions(joint_positions=joint_position.root)
+        line_segments_batch.append([robot_joint_positions])  # Wrap each as a line strip
 
     rr.send_columns(
-        f"motion/{motion_group}/dh_parameters",
+        f"motion/{motion_group_id}/dh_parameters",
         indexes=[times_column],
         columns=rr.LineStrips3D.columns(strips=line_segments_batch),
     )
     rr.log(
-        f"motion/{motion_group}/dh_parameters",
+        f"motion/{motion_group_id}/dh_parameters",
         rr.LineStrips3D.from_fields(clear_unset=True, colors=[0.5, 0.5, 0.5, 1.0]),
     )
 
     # Log the robot geometries
-    visualizer.log_robot_geometries(trajectory, times_column)
+    visualizer.log_robot_geometries(trajectory=trajectory, times_column=times_column)
 
     # Log TCP pose/orientation
-    log_tcp_pose(trajectory, motion_group, times_column, tool_asset)
-
-    # Log joint data
-    log_joint_data(trajectory, motion_group, times_column, motion_group_setup)
-
-    # Log scalar data
-    log_scalar_values(trajectory, motion_group, times_column, motion_group_setup)
+    log_tcp_pose(
+        tcp_poses=tcp_poses,
+        motion_group_id=motion_group_id,
+        times_column=times_column,
+        tool_asset=tool_asset,
+    )
 
 
 def log_tcp_pose(
-    trajectory: list[api.models.TrajectorySample],
-    motion_group,
-    times_column,
-    tool_asset: str | None = None,
+    tcp_poses: list[Pose], motion_group_id: str, times_column, tool_asset: str | None = None
 ):
     """
     Log TCP pose (position + orientation) data.
     """
-
-    # Handle empty trajectory
-    if not trajectory:
-        return
-
     # Extract positions and orientations from the trajectory
-    poses = [t.tcp_pose for t in trajectory]
-    positions = [[p.position.x, p.position.y, p.position.z] for p in poses]
-    orientations = Rotation.from_rotvec(
-        [[p.orientation.x, p.orientation.y, p.orientation.z] for p in poses]
-    ).as_quat()
+    positions = [p.position.to_tuple() for p in tcp_poses]
+    orientations = [p.orientation.to_tuple() for p in tcp_poses]
 
     # Log TCP and tool asset
-    tcp_entity_path = f"/motion/{motion_group}/tcp_position"
+    tcp_entity_path = f"/motion/{motion_group_id}/tcp_position"
     rr.log(tcp_entity_path, rr.Transform3D(clear=False, axis_length=100))
     if tool_asset:
         rr.log(tcp_entity_path, rr.Asset3D(path=tool_asset), static=True)
@@ -245,166 +269,8 @@ def log_tcp_pose(
     rr.send_columns(
         tcp_entity_path,
         indexes=[times_column],
-        columns=rr.Transform3D.columns(translation=positions, quaternion=orientations),
+        columns=rr.Transform3D.columns(translation=positions, rotation_axis_angle=orientations),
     )
-
-
-def log_joint_data(
-    trajectory: list[api.models.TrajectorySample],
-    motion_group,
-    times_column,
-    motion_group_setup: api.models.MotionGroupSetup,
-) -> None:
-    """
-    Log joint-related data (position, velocity, acceleration, torques) from a trajectory as columns.
-    """
-    # Initialize lists for each joint and each data type
-    if motion_group_setup.dh_parameters is None:
-        raise ValueError("DH parameters cannot be None")
-
-    num_joints = len(motion_group_setup.dh_parameters)
-    joint_data: dict[str, list[list[float]]] = {
-        "velocity": [[] for _ in range(num_joints)],
-        "acceleration": [[] for _ in range(num_joints)],
-        "position": [[] for _ in range(num_joints)],
-        "torque": [[] for _ in range(num_joints)],
-        "velocity_lower_limit": [[] for _ in range(num_joints)],
-        "velocity_upper_limit": [[] for _ in range(num_joints)],
-        "acceleration_lower_limit": [[] for _ in range(num_joints)],
-        "acceleration_upper_limit": [[] for _ in range(num_joints)],
-        "position_lower_limit": [[] for _ in range(num_joints)],
-        "position_upper_limit": [[] for _ in range(num_joints)],
-        "torque_limit": [[] for _ in range(num_joints)],
-    }
-
-    # Collect data from the trajectory
-    for point in trajectory:
-        for i in range(num_joints):
-            joint_data["velocity"][i].append(point.joint_velocity.joints[i])
-            joint_data["acceleration"][i].append(point.joint_acceleration.joints[i])
-            joint_data["position"][i].append(point.joint_position.joints[i])
-            if point.joint_torques and len(point.joint_torques.joints) > i:
-                joint_data["torque"][i].append(point.joint_torques.joints[i])
-
-            # Collect joint limits
-            joint_data["velocity_lower_limit"][i].append(
-                -motion_group_setup.global_limits.joint_velocity_limits[i]
-            )
-            joint_data["velocity_upper_limit"][i].append(
-                motion_group_setup.global_limits.joint_velocity_limits[i]
-            )
-            joint_data["acceleration_lower_limit"][i].append(
-                -motion_group_setup.global_limits.joint_acceleration_limits[i]
-            )
-            joint_data["acceleration_upper_limit"][i].append(
-                motion_group_setup.global_limits.joint_acceleration_limits[i]
-            )
-            joint_data["position_lower_limit"][i].append(
-                motion_group_setup.global_limits.joint_position_limits[i].lower_limit
-            )
-            joint_data["position_upper_limit"][i].append(
-                motion_group_setup.global_limits.joint_position_limits[i].upper_limit
-            )
-            if point.joint_torques and len(point.joint_torques.joints) > i:
-                joint_data["torque_limit"][i].append(
-                    motion_group_setup.global_limits.joint_torque_limits[i]
-                )
-
-    # Send columns if data is not empty
-    for data_type, data in joint_data.items():
-        for i in range(num_joints):
-            if data[i]:
-                rr.send_columns(
-                    f"motion/{motion_group}/joint_{data_type}_{i + 1}",
-                    indexes=[times_column],
-                    columns=[*ra.Scalars.columns(scalars=data[i])],
-                )
-
-
-def log_scalar_values(
-    trajectory: list[api.models.TrajectorySample],
-    motion_group,
-    times_column,
-    motion_group_setup: api.models.MotionGroupSetup,
-):
-    """
-    Log scalar values such as TCP velocity, acceleration, orientation velocity/acceleration, time, and location.
-    """
-    scalar_data: dict[str, list[float]] = {
-        "tcp_velocity": [],
-        "tcp_acceleration": [],
-        "tcp_orientation_velocity": [],
-        "tcp_orientation_acceleration": [],
-        "time": [],
-        "location_on_trajectory": [],
-        "tcp_velocity_limit": [],
-        "tcp_orientation_velocity_lower_limit": [],
-        "tcp_orientation_velocity_upper_limit": [],
-        "tcp_acceleration_lower_limit": [],
-        "tcp_acceleration_upper_limit": [],
-        "tcp_orientation_acceleration_lower_limit": [],
-        "tcp_orientation_acceleration_upper_limit": [],
-    }
-
-    # Collect data from the trajectory
-    for point in trajectory:
-        if point.tcp_velocity is not None:
-            scalar_data["tcp_velocity"].append(point.tcp_velocity)
-        if point.tcp_acceleration is not None:
-            scalar_data["tcp_acceleration"].append(point.tcp_acceleration)
-        if point.tcp_orientation_velocity is not None:
-            scalar_data["tcp_orientation_velocity"].append(point.tcp_orientation_velocity)
-        if point.tcp_orientation_acceleration is not None:
-            scalar_data["tcp_orientation_acceleration"].append(point.tcp_orientation_acceleration)
-        if point.time is not None:
-            scalar_data["time"].append(point.time)
-        if point.location_on_trajectory is not None:
-            scalar_data["location_on_trajectory"].append(point.location_on_trajectory)
-        if motion_group_setup.global_limits.tcp_velocity_limit is not None:
-            scalar_data["tcp_velocity_limit"].append(
-                motion_group_setup.global_limits.tcp_velocity_limit
-            )
-        if motion_group_setup.global_limits.tcp_orientation_velocity_limit is not None:
-            scalar_data["tcp_orientation_velocity_lower_limit"].append(
-                -motion_group_setup.global_limits.tcp_orientation_velocity_limit
-            )
-            scalar_data["tcp_orientation_velocity_upper_limit"].append(
-                motion_group_setup.global_limits.tcp_orientation_velocity_limit
-            )
-        if motion_group_setup.global_limits.tcp_acceleration_limit is not None:
-            scalar_data["tcp_acceleration_lower_limit"].append(
-                -motion_group_setup.global_limits.tcp_acceleration_limit
-            )
-            scalar_data["tcp_acceleration_upper_limit"].append(
-                motion_group_setup.global_limits.tcp_acceleration_limit
-            )
-        if motion_group_setup.global_limits.tcp_orientation_acceleration_limit is not None:
-            scalar_data["tcp_orientation_acceleration_lower_limit"].append(
-                -motion_group_setup.global_limits.tcp_orientation_acceleration_limit
-            )
-            scalar_data["tcp_orientation_acceleration_upper_limit"].append(
-                motion_group_setup.global_limits.tcp_orientation_acceleration_limit
-            )
-
-    # Send columns if data is not empty
-    for key, values in scalar_data.items():
-        if values:
-            rr.send_columns(
-                f"motion/{motion_group}/{key}",
-                indexes=[times_column],
-                columns=[*ra.Scalars.columns(scalars=values)],
-            )
-
-
-def to_trajectory_samples(self) -> list[api.models.TrajectorySample]:
-    """Convert JointTrajectory to list of TrajectorySample objects."""
-    samples = []
-    for joint_pos, time, location in zip(self.joint_positions, self.times, self.locations):
-        sample = api.models.TrajectorySample(
-            joint_position=joint_pos, time=time, location_on_trajectory=location
-        )
-        samples.append(sample)
-    return samples
 
 
 def continue_after_sync():

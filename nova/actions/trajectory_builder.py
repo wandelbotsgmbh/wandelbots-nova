@@ -33,7 +33,9 @@ class TrajectoryBuilder:
 
     def move(self, motion: Motion):
         """Add a motion to the trajectory."""
-        motion.settings = motion.settings or self._current_settings()
+        # handle motions that has default setting
+        if motion.settings is None or motion.settings == MotionSettings():
+            motion.settings = self._current_settings()
         self._actions.append(motion)
 
     def trigger(self, action: Action):

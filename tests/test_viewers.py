@@ -164,7 +164,11 @@ class TestRerunViewer:
 
         # Should call log_trajectory on the bridge
         mock_bridge.log_trajectory.assert_called_once_with(
-            mock_trajectory, mock_tcp, mock_motion_group, tool_asset=None
+            trajectory=mock_trajectory,
+            tcp=mock_tcp,
+            motion_group=mock_motion_group,
+            collision_setups={},
+            tool_asset=None,
         )
 
     @patch("nova_rerun_bridge.NovaRerunBridge")
@@ -345,10 +349,16 @@ class TestViewerManager:
         )
 
         viewer1.log_planning_success.assert_called_once_with(
-            mock_actions, mock_trajectory, mock_tcp, mock_motion_group
+            actions=mock_actions,
+            trajectory=mock_trajectory,
+            tcp=mock_tcp,
+            motion_group=mock_motion_group,
         )
         viewer2.log_planning_success.assert_called_once_with(
-            mock_actions, mock_trajectory, mock_tcp, mock_motion_group
+            actions=mock_actions,
+            trajectory=mock_trajectory,
+            tcp=mock_tcp,
+            motion_group=mock_motion_group,
         )
 
     @pytest.mark.asyncio
@@ -370,10 +380,10 @@ class TestViewerManager:
         await manager.log_planning_failure(mock_actions, mock_error, mock_tcp, mock_motion_group)
 
         viewer1.log_planning_failure.assert_called_once_with(
-            mock_actions, mock_error, mock_tcp, mock_motion_group
+            actions=mock_actions, error=mock_error, tcp=mock_tcp, motion_group=mock_motion_group
         )
         viewer2.log_planning_failure.assert_called_once_with(
-            mock_actions, mock_error, mock_tcp, mock_motion_group
+            actions=mock_actions, error=mock_error, tcp=mock_tcp, motion_group=mock_motion_group
         )
 
     @pytest.mark.asyncio

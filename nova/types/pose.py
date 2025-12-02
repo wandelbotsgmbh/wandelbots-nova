@@ -9,6 +9,8 @@ from scipy.spatial.transform import Rotation
 from nova import api
 from nova.types.vector3d import Vector3d
 
+_POSE_EQUALITY_PRECISION = 6
+
 
 def _parse_args(*args):
     """Parse the arguments and return a dictionary that pydanctic can validate"""
@@ -73,7 +75,10 @@ class Pose(pydantic.BaseModel, Sized):
     def __eq__(self, other):
         if not isinstance(other, Pose):
             return NotImplemented
-        return self.position == other.position and self.orientation == other.orientation
+
+        first_val = tuple(round(val, _POSE_EQUALITY_PRECISION) for val in self.to_tuple())
+        second_val = tuple(round(val, _POSE_EQUALITY_PRECISION) for val in other.to_tuple())
+        return first_val == second_val
 
     def __round__(self, n=None):
         if n is not None:
@@ -124,6 +129,9 @@ class Pose(pydantic.BaseModel, Sized):
         # Convert back to a Pose
         return self._matrix_to_pose(inv_matrix)
 
+    def __getitem__(self, item):
+        return self.to_tuple()[item]
+
     def to_tuple(self) -> tuple[float, float, float, float, float, float]:
         """Return the pose as a tuple
 
@@ -133,11 +141,11 @@ class Pose(pydantic.BaseModel, Sized):
         """
         return self.position.to_tuple() + self.orientation.to_tuple()
 
-    def to_api_pose(self) -> api.models.Pose:
+    def to_api_model(self) -> api.models.Pose:
         """Convert to wandelbots_api_client Pose
 
         Examples:
-        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).to_api_pose()
+        >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).to_api_model()
         Pose(position=Vector3d(root=[10.0, 20.0, 30.0]), orientation=RotationVector(root=[1.0, 2.0, 3.0]))
         """
         return api.models.Pose(
@@ -146,9 +154,6 @@ class Pose(pydantic.BaseModel, Sized):
                 [self.orientation.x, self.orientation.y, self.orientation.z]
             ),
         )
-
-    def __getitem__(self, item):
-        return self.to_tuple()[item]
 
     def __matmul__(self, other):
         """
@@ -207,7 +212,7 @@ class Pose(pydantic.BaseModel, Sized):
         >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).model_dump()
         {'position': [10.0, 20.0, 30.0], 'orientation': [1.0, 2.0, 3.0]}
         """
-        return self.to_api_pose().model_dump()
+        return self.to_api_model().model_dump()
 
     @pydantic.model_validator(mode="before")
     @classmethod

@@ -50,7 +50,7 @@ def test_program_runner_state_transitions() -> None:
     # Test state transitions
     assert runner.state == api.models.ProgramRunState.PREPARING
     runner.start(sync=True)
-    assert runner.state == api.models.ProgramRunState.COMPLETED
+    assert runner.state == api.models.ProgramRunState.COMPLETED  # type: ignore
 
 
 @pytest.mark.integration

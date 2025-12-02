@@ -9,7 +9,7 @@ from weakref import WeakSet
 if TYPE_CHECKING:
     from nova.actions import Action
     from nova.api import models
-    from nova.core.motion_group import MotionGroup
+    from nova.cell.motion_group import MotionGroup
     from nova.core.nova import Nova
 
 from .base import Viewer
@@ -53,7 +53,9 @@ class ViewerManager:
         """Log successful planning results to all active viewers."""
         for viewer in self._viewers:
             try:
-                await viewer.log_planning_success(actions, trajectory, tcp, motion_group)
+                await viewer.log_planning_success(
+                    actions=actions, trajectory=trajectory, tcp=tcp, motion_group=motion_group
+                )
             except Exception as e:
                 # Don't fail planning if logging fails
                 logger.warning("Failed to log planning results to viewer: %s", e)
@@ -64,7 +66,9 @@ class ViewerManager:
         """Log planning failure to all active viewers."""
         for viewer in self._viewers:
             try:
-                await viewer.log_planning_failure(actions, error, tcp, motion_group)
+                await viewer.log_planning_failure(
+                    actions=actions, error=error, tcp=tcp, motion_group=motion_group
+                )
             except Exception as e:
                 # Don't fail planning if logging fails
                 logger.warning("Failed to log planning error to viewer: %s", e)

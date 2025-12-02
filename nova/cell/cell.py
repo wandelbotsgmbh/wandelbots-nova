@@ -1,13 +1,14 @@
 import asyncio
 import json
 
+import nats
+
 from nova import api
-from nova.cell.robot_cell import RobotCell
-from nova.core.controller import Controller
-from nova.core.exceptions import ControllerNotFound
 from nova.core.gateway import ApiGateway
-from nova.logging import logger
-from nova.nats import NatsClient
+from nova.exceptions import ControllerNotFound
+
+from .controller import Controller
+from .robot_cell import RobotCell
 
 # This is the default value we use to wait for add_controller API call to complete.
 DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS = 120
@@ -16,12 +17,15 @@ DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS = 120
 DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS = 120
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class Cell:
     """A representation of a robot cell, providing high-level operations on controllers."""
 
-    def __init__(
-        self, api_gateway: ApiGateway, cell_id: str, nats_client: NatsClient | None = None
-    ):
+    def __init__(self, api_gateway: ApiGateway, cell_id: str, nats_client: nats.NATS):
         """
         Initializes a Cell instance.
         Args:
@@ -43,7 +47,7 @@ class Cell:
         return self._cell_id
 
     @property
-    def nats(self) -> NatsClient | None:
+    def nats(self) -> nats.NATS:
         """
         Returns the NATS client for this cell.
         Returns:
@@ -57,10 +61,7 @@ class Cell:
                 cell_id=self._cell_id,
                 controller_id=controller_id,
                 id=controller_id,
-                nova_api=self._api_client._host,
-                nova_access_token=self._api_client._access_token,
-                nova_username=self._api_client._username,
-                nova_password=self._api_client._password,
+                config=self._api_client.config,
             )
         )
 
@@ -240,16 +241,14 @@ class Cell:
 
         # TODO currently the NotsClient does not support unsubscribing from a subject, keeping the code
         # code like this for when it is supported.
-        sub = await nc.subscribe(subject=nats_subject, on_message=on_cell_status_message)
+        sub = await nc.subscribe(subject=nats_subject, cb=on_cell_status_message)
         try:
             await asyncio.wait_for(controller_ready_event.wait(), timeout=timeout)
         except asyncio.TimeoutError:
             logger.warning(f"Timeout waiting for {cell}/{name} controller to be ready")
-            await sub.unsubscribe()
             raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")
         finally:
             logger.debug("Cleaning up NATS subscription")
             pass
-            # await sub.unsubscribe()
-            # await nc.drain()  # Ensure we clean up the subscription and connection
+            await sub.unsubscribe()
         await asyncio.sleep(1)  # Give some time for any final messages to be processed

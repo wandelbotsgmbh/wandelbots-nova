@@ -10,12 +10,6 @@ from dataclasses import dataclass
 from math import pi
 
 import numpy as np
-from wandelbots_api_client.models import (
-    CoordinateSystem,
-    RotationAngles,
-    RotationAngleTypes,
-    Vector3d,
-)
 
 import nova
 from nova import Controller, Nova, api
@@ -28,8 +22,9 @@ from nova.program import ProgramPreconditions
 class RobotPosition:
     """Represents a robot's position and associated poses"""
 
-    mounting: Vector3d
-    rotation: RotationAngles  # Added rotation field
+    mounting: api.models.Vector3d
+    orientation: api.models.Orientation
+    orientation_type: api.models.OrientationType
     cube_position: tuple[float, float, float, float, float, float]
     handover_position: tuple[float, float, float, float, float, float]
     home_position: tuple[float, ...]
@@ -38,11 +33,9 @@ class RobotPosition:
 
 ROBOT_POSITIONS = {
     "FANUC": RobotPosition(
-        mounting=Vector3d(x=600, y=0, z=350),
-        rotation=RotationAngles(
-            angles=[0, 0, 0],  # Facing +X
-            type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ,
-        ),
+        mounting=api.models.Vector3d([600, 0, 350]),
+        orientation=api.models.Orientation([0, 0, 0]),
+        orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         cube_position=(1000, 0, 100, pi, 0, 0),  # TCP down
         # Halfway between FANUC and KUKA
         handover_position=(300, 300, 400, pi, 0, 0),  # TCP down for handover
@@ -50,11 +43,9 @@ ROBOT_POSITIONS = {
         motion_group_id=1,
     ),
     "KUKA": RobotPosition(
-        mounting=Vector3d(x=0, y=600, z=0),
-        rotation=RotationAngles(
-            angles=[0, 0, pi / 2],  # Facing +Y
-            type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ,
-        ),
+        mounting=api.models.Vector3d([0, 600, 0]),
+        orientation=api.models.Orientation([0, 0, pi / 2]),
+        orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         cube_position=(0, 1000, 100, pi, 0, 0),  # TCP down
         # Halfway between KUKA and YASKAWA
         handover_position=(-300, 300, 400, pi, 0, 0),  # TCP down for handover
@@ -62,11 +53,9 @@ ROBOT_POSITIONS = {
         motion_group_id=0,
     ),
     "YASKAWA": RobotPosition(
-        mounting=Vector3d(x=-600, y=0, z=350),
-        rotation=RotationAngles(
-            angles=[0, 0, pi],  # Facing -X
-            type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ,
-        ),
+        mounting=api.models.Vector3d([-600, 0, 350]),
+        orientation=api.models.Orientation([0, 0, pi]),
+        orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         cube_position=(-1000, 0, 100, pi, 0, 0),  # TCP down
         # Halfway between YASKAWA and ABB
         handover_position=(-300, -300, 400, pi, 0, 0),  # TCP down for handover
@@ -74,11 +63,9 @@ ROBOT_POSITIONS = {
         motion_group_id=0,
     ),
     "ABB": RobotPosition(
-        mounting=Vector3d(x=0, y=-600, z=0),
-        rotation=RotationAngles(
-            angles=[0, 0, -pi / 2],  # Facing -Y
-            type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ,
-        ),
+        mounting=api.models.Vector3d([0, -600, 0]),
+        orientation=api.models.Orientation([0, 0, -pi / 2]),
+        orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         cube_position=(0, -1000, 100, pi, 0, 0),  # TCP down
         # Halfway between ABB and FANUC
         handover_position=(300, -300, 400, pi, 0, 0),  # TCP down for handover
@@ -156,13 +143,13 @@ async def move_to_initial_positions(
 
 
 def calculate_handover_orientation(
-    base_pos: Vector3d, handover_pos: tuple[float, ...], is_receiver: bool = False
+    base_pos: api.models.Vector3d, handover_pos: tuple[float, ...], is_receiver: bool = False
 ) -> tuple[float, float, float]:
     """Calculate TCP orientation for handover using axis-angle representation"""
     direction = np.array(
         [
-            handover_pos[0] - base_pos.x,
-            handover_pos[1] - base_pos.y,
+            handover_pos[0] - base_pos[0],
+            handover_pos[1] - base_pos[1],
             0,  # Ignore Z for horizontal orientation
         ]
     )
@@ -189,22 +176,22 @@ def calculate_handover_orientation(
             virtual_controller(
                 name="fanuc",
                 manufacturer=api.models.Manufacturer.FANUC,
-                type=api.models.VirtualControllerTypes.FANUC_MINUS_LR_MATE_200I_D7_L,
+                type=api.models.VirtualControllerTypes.FANUC_LR_MATE_200I_D7_L,
             ),
             virtual_controller(
                 name="kuka",
                 manufacturer=api.models.Manufacturer.KUKA,
-                type=api.models.VirtualControllerTypes.KUKA_MINUS_KR6_R700_2,
+                type=api.models.VirtualControllerTypes.KUKA_KR6_R700_2,
             ),
             virtual_controller(
                 name="abb",
                 manufacturer=api.models.Manufacturer.ABB,
-                type=api.models.VirtualControllerTypes.ABB_MINUS_IRB1200_7,
+                type=api.models.VirtualControllerTypes.ABB_IRB1200_7,
             ),
             virtual_controller(
                 name="yaskawa",
                 manufacturer=api.models.Manufacturer.YASKAWA,
-                type=api.models.VirtualControllerTypes.YASKAWA_MINUS_GP7,
+                type=api.models.VirtualControllerTypes.YASKAWA_GP7,
             ),
         ],
         cleanup_controllers=False,
@@ -231,12 +218,12 @@ async def main():
                 cell="cell",
                 controller=robot.controller_id,
                 id=pos.motion_group_id,
-                coordinate_system=CoordinateSystem(
+                coordinate_system=api.models.CoordinateSystem(
                     coordinate_system="world",
                     name="mounting",
-                    reference_uid="",
                     position=pos.mounting,
-                    rotation=pos.rotation,  # Use the robot-specific rotation
+                    orientation=pos.rotation,
+                    orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
                 ),
             )
 

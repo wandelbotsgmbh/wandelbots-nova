@@ -4,7 +4,7 @@ import nova
 from nova import Nova, api
 from nova.actions import cartesian_ptp, linear
 from nova.cell import virtual_controller
-from nova.core.exceptions import PlanTrajectoryFailed
+from nova.exceptions import PlanTrajectoryFailed
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 from nova_rerun_bridge import NovaRerunBridge
@@ -17,7 +17,7 @@ from nova_rerun_bridge import NovaRerunBridge
             virtual_controller(
                 name="ur10",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             )
         ],
         cleanup_controllers=False,

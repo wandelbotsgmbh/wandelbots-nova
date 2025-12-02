@@ -7,7 +7,7 @@ from nova_rerun_bridge.hull_visualizer import HullVisualizer
 
 
 def log_safety_zones(
-    motion_group: str, motion_group_description: api.models.MotionGroupDescription
+    motion_group_id: str, motion_group_description: api.models.MotionGroupDescription
 ) -> None:
     """
     Log hull outlines for the safety zones defined in the optimizer configuration.
@@ -18,30 +18,23 @@ def log_safety_zones(
     if motion_group_description.dh_parameters is None:
         raise ValueError("DH parameters cannot be None")
 
-    mounting_transform = motion_group_description.mounting
-    robot = DHRobot(motion_group_description.dh_parameters, motion_group_description.mounting)
+    mounting = motion_group_description.mounting or api.models.Pose(
+        position=api.models.Vector3d([0, 0, 0]), orientation=api.models.RotationVector([0, 0, 0])
+    )
+    robot = DHRobot(motion_group_description.dh_parameters, mounting)
 
-    for zone in motion_group_description.safety_zones:
-        geom = zone.geometry
-        zone_id = zone.id
-        entity_path = f"{motion_group}/zones/zone_{zone_id}"
+    zones = motion_group_description.safety_zones.root
+    for zone_id, collider in zones.items():
+        entity_path = f"{motion_group_id}/zones/zone_{zone_id}"
+        polygons = collider_to_polygons(collider)
 
-        if geom.compound is not None:
-            child_geoms = geom.compound.child_geometries
-            polygons = HullVisualizer.compute_hull_outlines_from_geometries(child_geoms)
-        elif geom.convex_hull is not None:
+        if not polygons:
+            continue
 
-            class ChildWrapper:
-                def __init__(self, convex_hull):
-                    self.convex_hull = convex_hull
+        accumulated = robot.pose_to_matrix(mounting)
+        if collider.pose is not None:
+            accumulated = accumulated @ robot.pose_to_matrix(collider.pose)
 
-            c = ChildWrapper(geom.convex_hull)
-            c.convex_hull = geom.convex_hull
-            polygons = HullVisualizer.compute_hull_outlines_from_geometries([c])
-        else:
-            polygons = []
-
-        accumulated = robot.pose_to_matrix(mounting_transform)
         polygons = apply_transform_to_polygons(polygons, accumulated)
 
         # Log polygons as wireframe outlines
@@ -69,3 +62,15 @@ def apply_transform_to_polygons(polygons, transform):
         # Convert back to 3D coordinates
         transformed_polygons.append(transformed_polygon[:, :3])
     return transformed_polygons
+
+
+def collider_to_polygons(collider: api.models.Collider):
+    """
+    Convert a collider definition into convex hull polygons if possible.
+    """
+    shape = collider.shape
+    if isinstance(shape, api.models.ConvexHull):
+        points = [[vertex[0], vertex[1], vertex[2]] for vertex in shape.vertices]
+        return HullVisualizer.compute_hull_outlines_from_points(np.array(points))
+
+    return []

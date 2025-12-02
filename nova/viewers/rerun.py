@@ -6,9 +6,9 @@ import logging
 from typing import TYPE_CHECKING, Sequence, cast
 
 if TYPE_CHECKING:
+    from nova import api
     from nova.actions import Action
-    from nova.api import models
-    from nova.core.motion_group import MotionGroup
+    from nova.cell.motion_group import MotionGroup
     from nova.core.nova import Nova
 
 from .base import Viewer
@@ -197,7 +197,7 @@ class Rerun(Viewer):
     async def _log_planning_results(
         self,
         actions: Sequence[Action],
-        trajectory: models.JointTrajectory,
+        trajectory: api.models.JointTrajectory,
         tcp: str,
         motion_group: MotionGroup,
     ) -> None:
@@ -217,26 +217,32 @@ class Rerun(Viewer):
 
         try:
             # Log actions
-            await self._bridge.log_actions(list(actions), motion_group=motion_group)
+            await self._bridge.log_actions(actions=list(actions), motion_group=motion_group)
 
             # Log trajectory with tool asset if configured for this TCP
             tool_asset = self._resolve_tool_asset(tcp)
-            await self._bridge.log_trajectory(trajectory, tcp, motion_group, tool_asset=tool_asset)
+            await self._bridge.log_trajectory(
+                trajectory=trajectory,
+                tcp=tcp,
+                motion_group=motion_group,
+                collision_setups=extract_collision_setups_from_actions(actions),
+                tool_asset=tool_asset,
+            )
 
             # Log collision scenes from actions if configured
             if self.show_collision_scenes:
                 collision_setups = extract_collision_setups_from_actions(actions)
                 if collision_setups:
                     # Log collision scenes using the sync method
-                    self._bridge._log_collision_setups(collision_setups)
+                    self._bridge.log_collision_setups(collision_setups=collision_setups)
 
         except Exception as e:
-            logger.warning("Failed to log planning results in Rerun viewer: %s", e)
+            logger.error("Failed to log planning results in Rerun viewer: %s", e)
 
     async def log_planning_success(
         self,
         actions: Sequence[Action],
-        trajectory: models.JointTrajectory,
+        trajectory: api.models.JointTrajectory,
         tcp: str,
         motion_group: MotionGroup,
     ) -> None:
@@ -255,7 +261,9 @@ class Rerun(Viewer):
         await self._ensure_safety_zones_logged(motion_group)
 
         # Log the planning results
-        await self._log_planning_results(actions, trajectory, tcp, motion_group)
+        await self._log_planning_results(
+            actions=actions, trajectory=trajectory, tcp=tcp, motion_group=motion_group
+        )
 
     async def log_planning_failure(
         self, actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
@@ -283,18 +291,27 @@ class Rerun(Viewer):
             await self._bridge.log_actions(list(actions), motion_group=motion_group)
 
             # Handle specific PlanTrajectoryFailed errors which have additional data
-            from nova.core.exceptions import PlanTrajectoryFailed
+            from nova import api
+            from nova.exceptions import PlanTrajectoryFailed
 
             if isinstance(error, PlanTrajectoryFailed):
                 # Log the trajectory from the failed plan
                 if hasattr(error.error, "joint_trajectory") and error.error.joint_trajectory:
                     await self._bridge.log_trajectory(
-                        error.error.joint_trajectory, tcp, motion_group
+                        trajectory=error.error.joint_trajectory,
+                        tcp=tcp,
+                        motion_group=motion_group,
+                        collision_setups=extract_collision_setups_from_actions(actions),
                     )
 
                 # Log error feedback if available
                 if hasattr(error.error, "error_feedback") and error.error.error_feedback:
-                    await self._bridge.log_error_feedback(error.error)
+                    if isinstance(error.error, api.models.PlanTrajectoryFailedResponse):
+                        await self._bridge.log_error_feedback(error.error)
+                    else:
+                        # TODO: handle collision free failed response
+                        logger.warning("Collision free failed response not supported yet")
+                        pass
 
             # Log error information as text
             import rerun as rr
@@ -307,7 +324,7 @@ class Rerun(Viewer):
                 collision_setups = extract_collision_setups_from_actions(actions)
                 if collision_setups:
                     # Log collision scenes using the sync method
-                    self._bridge._log_collision_setups(collision_setups)
+                    self._bridge.log_collision_setups(collision_setups=collision_setups)
 
         except Exception as e:
             logger.warning("Failed to log planning failure in Rerun viewer: %s", e)

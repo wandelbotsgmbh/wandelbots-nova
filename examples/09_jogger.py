@@ -1,13 +1,11 @@
 import asyncio
-from datetime import datetime
-from math import pi
 
 from icecream import ic
+from nova.core.movement_controller import Jogger
 
 import nova
 from nova import Nova, api
 from nova.cell.controllers import virtual_controller
-from nova.core.movement_controller import Jogger
 from nova.program.function import ProgramPreconditions
 
 """
@@ -19,8 +17,6 @@ Prerequisites:
     - NOVA_API=<api>
     - NOVA_ACCESS_TOKEN=<token>
 """
-
-ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
 
 
 @nova.program(
@@ -43,8 +39,6 @@ async def main():
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
-            # Move to home position first
-            home_joints = [-pi, -pi / 2, pi / 2, -pi / 2, -pi / 2, 0]
             # tcp_names = await motion_group.tcp_names()
             # tcp = tcp_names[0]
             tcp = "Flange"

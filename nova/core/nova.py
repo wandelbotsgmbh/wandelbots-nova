@@ -1,20 +1,11 @@
 from __future__ import annotations
 
-from nova.cell.cell import Cell
+import nats
 
-# backward compatibility
-from nova.config import (  # noqa: F401
-    CELL_NAME,
-    LOG_LEVEL,
-    NOVA_ACCESS_TOKEN,
-    NOVA_API,
-    NOVA_PASSWORD,
-    NOVA_USERNAME,
-    NovaConfig,
-    default_config,
-)
-from nova.core.gateway import ApiGateway
-from nova.nats import NatsClient
+from nova.cell.cell import Cell
+from nova.config import CELL_NAME, NovaConfig, default_config
+
+from .gateway import ApiGateway
 
 
 class Nova:
@@ -29,33 +20,35 @@ class Nova:
         """
 
         self._config = config or default_config
-        self._api_client = ApiGateway(
-            host=self._config.host,
-            access_token=self._config.access_token,
-            username=self._config.username,
-            password=self._config.password,
-            verify_ssl=self._config.verify_ssl,
-        )
-        self.nats = NatsClient(nats_client_config=self._config.nats_client_config)
+
+        # many users rely on this private field, we will remove that after some time in v2
+        self._api_client = ApiGateway(self._config)
+        self.apis = self._api_client
+
+        self.nats = nats.NATS()
 
     @property
     def config(self) -> NovaConfig:
         return self._config
+
+    @property
+    def api(self) -> ApiGateway:
+        return self._api_client
 
     def cell(self, cell_id: str = CELL_NAME) -> Cell:
         """Returns the cell object with the given ID."""
         return Cell(self._api_client, cell_id, nats_client=self.nats)
 
     def is_connected(self) -> bool:
-        return self.nats.is_connected()
+        return self.nats.is_connected
 
     async def connect(self):
         # ApiGateway doesn't need an explicit connect call, it's initialized in constructor
-        await self.nats.connect()
+        await self.nats.connect(**(self._config.nats_client_config or {}))
 
     async def close(self):
         """Closes the underlying API client session and NATS client."""
-        await self.nats.close()
+        await self.nats.drain()
         return await self._api_client.close()
 
     async def __aenter__(self):

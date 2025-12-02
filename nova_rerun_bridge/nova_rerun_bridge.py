@@ -15,8 +15,8 @@ from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.core.nova import Nova
 from nova.types.pose import Pose
 from nova_rerun_bridge.blueprint import send_blueprint
-from nova_rerun_bridge.collision_scene import log_collision_scenes
-from nova_rerun_bridge.consts import RECORDING_INTERVAL, TIME_INTERVAL_NAME
+from nova_rerun_bridge.collision_scene import log_collision_setups
+from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.helper_scripts.code_server_helpers import get_rerun_address
 from nova_rerun_bridge.helper_scripts.download_models import get_project_root
 from nova_rerun_bridge.safety_zones import log_safety_zones
@@ -29,19 +29,6 @@ class NovaRerunBridge:
 
     This class provides functionality to visualize Nova data in Rerun.
     It handles trajectoy, collision scenes, blueprints and proper cleanup of resources.
-
-    Example:
-        ```python
-        from nova.core.nova import Nova
-        from nova_rerun_bridge import NovaRerunBridge
-
-        async def main():
-            nova = Nova()
-            async with NovaRerunBridge(nova) as bridge:
-                await bridge.setup_blueprint()
-                await bridge.log_collision_scenes()
-
-        ```
 
     Args:
         nova (Nova): Instance of Nova client
@@ -144,15 +131,17 @@ class NovaRerunBridge:
             static=True,
         )
 
-    async def log_collision_setup(self) -> dict[str, api.models.CollisionSetup]:
-        """Fetch and log all collision scenes from Nova to Rerun."""
-        collision_scenes = (
-            await self.nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
-                cell=self.nova.cell()._cell_id
-            )
-        )
-        log_collision_scenes(collision_scenes)
-        return collision_scenes
+    def log_collision_setups(
+        self, collision_setups: dict[str, api.models.CollisionSetup]
+    ) -> dict[str, api.models.CollisionSetup]:
+        """Fetch and log all collision setups from Nova to Rerun."""
+        # collision_setups = (
+        #     await self.nova.api.store_collision_setups_api.list_stored_collision_setups(
+        #         cell=self.nova.cell()._cell_id
+        #     )
+        # )
+        log_collision_setups(collision_setups)
+        return collision_setups
 
     async def log_collision_setup(self, setup_id: str) -> dict[str, api.models.CollisionSetup]:
         """Log a specific collision scene by its ID.
@@ -164,7 +153,7 @@ class NovaRerunBridge:
             ValueError: If scene_id is not found in stored collision scenes
         """
         collision_setups = (
-            await self.nova._api_client.store_collision_scenes_api.list_stored_collision_scenes(
+            await self.nova._api_client.store_collision_setups_api.list_stored_collision_setups(
                 cell=self.nova.cell()._cell_id
             )
         )
@@ -172,21 +161,28 @@ class NovaRerunBridge:
         if setup_id not in collision_setups:
             raise ValueError(f"Collision setup with ID {setup_id} not found")
 
-        log_collision_scenes({setup_id: collision_setups[setup_id]})
+        log_collision_setups({setup_id: collision_setups[setup_id]})
         return {setup_id: collision_setups[setup_id]}
 
     def _log_collision_setup(self, collision_setups: dict[str, api.models.CollisionSetup]) -> None:
-        log_collision_scenes(collision_setups=collision_setups)
+        log_collision_setups(collision_setups)
 
     async def log_safety_zones(self, motion_group: MotionGroup) -> None:
         rr.reset_time()
         rr.set_time(TIME_INTERVAL_NAME, duration=0)
 
-        log_safety_zones(motion_group.motion_group_id, await motion_group.get_description())
+        motion_group_description = await motion_group.get_description()
+        log_safety_zones(
+            motion_group_id=motion_group.motion_group_id,
+            motion_group_description=motion_group_description,
+        )
 
     async def log_motion(
         self,
-        motion_id: str,
+        trajectory: api.models.JointTrajectory,
+        tcp: str,
+        collision_setups: dict[str, api.models.CollisionSetup],
+        motion_group: MotionGroup,
         timing_mode=TimingMode.CONTINUE,
         time_offset: float = 0,
         tool_asset: Optional[str] = None,
@@ -208,55 +204,19 @@ class NovaRerunBridge:
                 DeprecationWarning,
                 stacklevel=2,
             )
-        logger.debug(f"log_motion called with motion_id: {motion_id}")
         try:
-            # Fetch motion details from api
-            logger.debug("Fetching motion details...")
-            motion = await self.nova._api_client.motion_api.get_planned_motion(
-                self.nova.cell()._cell_id, motion_id
-            )
-            logger.debug("Fetching optimizer config...")
-            motion_group_setup = (
-                await self.nova._api_client.motion_group_infos_api.get_optimizer_configuration(
-                    self.nova.cell()._cell_id, motion.motion_group
-                )
-            )
-            logger.debug("Fetching trajectory...")
-            trajectory = await self.nova._api_client.motion_api.get_motion_trajectory(
-                self.nova.cell()._cell_id, motion_id, int(RECORDING_INTERVAL * 1000)
-            )
-
-            logger.debug("Fetching motion groups...")
-            motion_groups = await self.nova._api_client.motion_group_api.list_motion_groups(
-                self.nova.cell()._cell_id
-            )
-            motion_motion_group = next(
-                (mg for mg in motion_groups.instances if mg.motion_group == motion.motion_group),
-                None,
-            )
-
-            logger.debug("Fetching collision scenes...")
-            collision_scenes = await bridge_nova._api_client.store_collision_setups_api.list_stored_collision_scenes(
-                cell=bridge_nova.cell()._cell_id
-            )
-
-            if motion_motion_group is None:
-                raise ValueError(f"Motion group {motion.motion_group} not found")
-
             # Get or initialize the timer for this motion group
-            motion_group_id = motion.motion_group
+            motion_group_id = motion_group.motion_group_id
             current_time = self._motion_group_timers.get(motion_group_id, 0.0)
 
             logger.debug(
-                f"Calling log_motion function with trajectory points: {len(trajectory.trajectory or [])}"
+                f"Calling log_motion function with trajectory points: {len(trajectory.joint_positions or [])}"
             )
-            log_motion(
-                motion_id=motion_id,
-                model_from_controller=motion_motion_group.model_from_controller,
-                motion_group=motion.motion_group,
-                motion_group_setup=motion_group_setup,
-                trajectory=trajectory.trajectory or [],
-                collision_scenes=collision_scenes,
+            await log_motion(
+                trajectory=trajectory,
+                tcp=tcp,
+                motion_group=motion_group,
+                collision_setups=collision_setups,
                 time_offset=current_time + time_offset,
                 tool_asset=tool_asset,
                 show_collision_link_chain=self.show_collision_link_chain,
@@ -264,12 +224,11 @@ class NovaRerunBridge:
                 show_safety_link_chain=self.show_safety_link_chain,
             )
             # Update the timer for this motion group based on trajectory duration
-            if trajectory.trajectory:
-                last_trajectory_point = trajectory.trajectory[-1]
-                if last_trajectory_point.time is not None:
-                    self._motion_group_timers[motion_group_id] = (
-                        current_time + time_offset + last_trajectory_point.time
-                    )
+            if trajectory and trajectory.times:
+                last_trajectory_time = trajectory.times[-1]
+                self._motion_group_timers[motion_group_id] = (
+                    current_time + time_offset + last_trajectory_time
+                )
             logger.debug("log_motion completed successfully")
         except RuntimeError as e:
             if "Session is closed" in str(e):
@@ -280,14 +239,16 @@ class NovaRerunBridge:
                 raise
         except Exception as e:
             # Log other errors but don't fail
+            # TODO: why is the error not highlighted?
             logger.error(f"Failed to log motion trajectory: {e}")
             raise
 
     async def log_trajectory(
         self,
-        joint_trajectory: api.models.JointTrajectory,
+        trajectory: api.models.JointTrajectory,
         tcp: str,
         motion_group: MotionGroup,
+        collision_setups: dict[str, api.models.CollisionSetup],
         timing_mode=TimingMode.CONTINUE,
         time_offset: float = 0,
         tool_asset: Optional[str] = None,
@@ -312,13 +273,19 @@ class NovaRerunBridge:
                 stacklevel=2,
             )
 
-        if len(joint_trajectory.joint_positions) == 0:
+        if len(trajectory.joint_positions) == 0:
             raise ValueError("No joint trajectory provided")
 
-        load_plan_response = await motion_group._load_planned_motion(joint_trajectory, tcp)
+        # TODO: this is not needed anymore since we pass the data directly
+        # load_plan_response = await motion_group._load_planned_motion(trajectory=trajectory, tcp=tcp)
 
         await self.log_motion(
-            load_plan_response.motion, time_offset=time_offset, tool_asset=tool_asset
+            trajectory=trajectory,
+            tcp=tcp,
+            motion_group=motion_group,
+            collision_setups=collision_setups,
+            time_offset=time_offset,
+            tool_asset=tool_asset,
         )
 
     def continue_after_sync(self) -> None:
@@ -343,12 +310,12 @@ class NovaRerunBridge:
     async def log_error_feedback(
         self, error_feedback: api.models.PlanTrajectoryFailedResponse
     ) -> None:
-        if isinstance(error_feedback.actual_instance, api.models.FeedbackOutOfWorkspace):
+        if isinstance(error_feedback.error_feedback, api.models.FeedbackOutOfWorkspace):
             if (
-                error_feedback.actual_instance.invalid_tcp_pose
-                and error_feedback.actual_instance.invalid_tcp_pose.position
+                error_feedback.error_feedback.invalid_tcp_pose
+                and error_feedback.error_feedback.invalid_tcp_pose.position
             ):
-                position = error_feedback.actual_instance.invalid_tcp_pose.position
+                position = error_feedback.error_feedback.invalid_tcp_pose.position
                 rr.log(
                     "motion/errors/FeedbackOutOfWorkspace",
                     rr.Points3D(
@@ -360,23 +327,24 @@ class NovaRerunBridge:
                     static=True,
                 )
 
-        if isinstance(error_feedback.actual_instance, api.models.FeedbackCollision):
-            collisions = error_feedback.actual_instance.collisions
+        if isinstance(error_feedback.error_feedback, api.models.FeedbackCollision):
+            collisions = error_feedback.error_feedback.collisions
             if not collisions:
                 return
 
             for i, collision in enumerate(collisions):
                 if collision.position_on_a is None or collision.position_on_b is None:
                     continue
-                if collision.position_on_a.world is None or collision.position_on_b.world is None:
+                if collision.position_on_a.root is None or collision.position_on_b.root is None:
                     continue
-                if collision.normal_world_on_b is None:
+                if collision.normal_root_on_b is None:
                     continue
 
                 # Extract positions
-                pos_a = collision.position_on_a.world
-                pos_b = collision.position_on_b.world
-                normal = collision.normal_world_on_b
+                # TODO: is it local or root? (world)
+                pos_a = collision.position_on_a.root
+                pos_b = collision.position_on_b.root
+                normal = collision.normal_root_on_b
 
                 # Scale normal for visibility
                 arrow_length = 50
@@ -529,10 +497,6 @@ class NovaRerunBridge:
                 # Skip other action types that we don't know how to handle
                 continue
 
-            # If we reach here, we should have a valid pose or we need to skip
-            if pose is None:
-                continue
-
             logger.debug(f"Action {i}: {action_type}, Pose: {pose}")
             positions.append([pose.position.x, pose.position.y, pose.position.z])
 
@@ -605,32 +569,8 @@ class NovaRerunBridge:
         try:
             # Use Nova's forward kinematics API to get TCP pose from joint configuration
             # Create a joint position object
-            joint_position = api.models.Joints(list(joint_config))
-
-            # Create TcpPoseRequest for forward kinematics calculation
-            tcp_pose_request = api.models.TcpPoseRequest(
-                motion_group=motion_group.motion_group_id, joint_position=joint_position, tcp=tcp
-            )
-
-            # Use Nova's API to calculate the TCP pose from joint configuration
-            api_pose = await motion_group._api_gateway.motion_group_kinematic_api.calculate_forward_kinematic(
-                cell=motion_group._cell,
-                motion_group=motion_group.motion_group_id,
-                tcp_pose_request=tcp_pose_request,
-            )
-
-            # Convert API pose to Nova Pose
-            orientation = api_pose.orientation
-            return Pose(
-                (
-                    api_pose.position.x,
-                    api_pose.position.y,
-                    api_pose.position.z,
-                    orientation.x if orientation else 0.0,
-                    orientation.y if orientation else 0.0,
-                    orientation.z if orientation else 0.0,
-                )
-            )
+            poses = await motion_group.forward_kinematics([joint_config], tcp)
+            return poses[0]
 
         except Exception as e:
             logger.warning(f"Failed to convert joints to pose using forward kinematics: {e}")

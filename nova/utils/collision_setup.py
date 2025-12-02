@@ -1,7 +1,7 @@
 from nova import api
 from nova.actions.base import Action
 from nova.actions.motions import Motion
-from nova.core.exceptions import InconsistentCollisionScenes
+from nova.exceptions import InconsistentCollisionScenes
 
 
 def compare_collision_setups(setup1: api.models.CollisionSetup, setup2: api.models.CollisionSetup):
@@ -55,3 +55,74 @@ def validate_collision_setups(actions: list[Action]) -> list[api.models.Collisio
             )
 
     return collision_setups
+
+
+def motion_group_setup_from_motion_group_description(
+    motion_group_description: api.models.MotionGroupDescription,
+    tcp_name: str,
+    payload: api.models.Payload | None = None,
+) -> api.models.MotionGroupSetup:
+    collision_setup = get_safety_collision_setup_from_motion_group_description(
+        motion_group_description, tcp_name
+    )
+    # For the time being it is assumed that the auto limits are always present
+    # We also assume that the motion player in RAE will scale corretly if the
+    # planned trajectory is played back with different limits (due to a different robot mode)
+    # than the one used for planning
+    assert motion_group_description.operation_limits.auto_limits is not None
+    limits = motion_group_description.operation_limits.auto_limits
+    tcp_offset = (
+        motion_group_description.tcps[tcp_name].pose
+        if motion_group_description.tcps is not None
+        else None
+    )
+    return api.models.MotionGroupSetup(
+        motion_group_model=motion_group_description.motion_group_model,
+        cycle_time=motion_group_description.cycle_time or 8,
+        mounting=motion_group_description.mounting,
+        global_limits=limits,
+        tcp_offset=tcp_offset,
+        payload=payload,
+        collision_setups=api.models.CollisionSetups({"safety": collision_setup}),
+    )
+
+
+def get_safety_collision_setup_from_motion_group_description(
+    motion_group_description: api.models.MotionGroupDescription, tcp: str
+) -> api.models.CollisionSetup:
+    tool_colliders = (
+        motion_group_description.safety_tool_colliders.get(tcp)
+        if motion_group_description.safety_tool_colliders is not None
+        else None
+    )
+    tool = api.models.Tool(tool_colliders.root) if tool_colliders is not None else None
+    link_chain = (
+        api.models.LinkChain(
+            [api.models.Link(link.root) for link in motion_group_description.safety_link_colliders]
+        )
+        if motion_group_description.safety_link_colliders
+        else None
+    )
+    return api.models.CollisionSetup(
+        colliders=motion_group_description.safety_zones,
+        link_chain=link_chain,
+        tool=tool,
+        self_collision_detection=False,  # explicitly set here until we have a better understanding
+    )
+
+
+def get_joint_position_limits_from_motion_group_setup(
+    motion_group_setup: api.models.MotionGroupSetup,
+) -> api.models.JointPositionLimits | None:
+    """Extract joint position limits from motion group description, if available."""
+    if motion_group_setup.global_limits is None or motion_group_setup.global_limits.joints is None:
+        return None
+
+    # TODO: does optional mean no limit applied for that joint?
+    # will joint.position is not None cause issues by skipping joints without limits?
+    joint_limit_range_list = [
+        joint.position
+        for joint in motion_group_setup.global_limits.joints
+        if joint.position is not None
+    ]
+    return api.models.JointPositionLimits(root=joint_limit_range_list)
