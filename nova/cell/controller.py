@@ -134,3 +134,30 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         return await self._nova_api.controller_api.get_controller_description(
             self.configuration.cell_id, self.configuration.controller_id
         )
+
+    async def get_estop(self) -> bool:
+        """Get the emergency stop state for the controller. Works on virtual controllers only.
+
+        Returns:
+            bool: Whether the emergency stop is active (True) or not (False).
+
+        Raises:
+            NotImplementedError: If called on a non-virtual controller.
+        """
+        flag = await self._nova_api.virtual_controller_api.get_emergency_stop(
+            cell=self.cell_id, controller=self.controller_id
+        )
+        return flag.active
+
+    async def set_estop(self, active: bool):
+        """Set the emergency stop state for the controller. Works on virtual controllers only.
+
+        Args:
+            active (bool): Whether to activate (True) or deactivate (False) the emergency stop.
+
+        Raises:
+            NotImplementedError: If called on a non-virtual controller.
+        """
+        await self._nova_api.virtual_controller_api.set_emergency_stop(
+            cell=self.cell_id, controller=self.controller_id, active=active
+        )
