@@ -3,7 +3,7 @@ from math import pi
 
 import pytest
 
-from nova import Nova
+from nova import Nova, api
 from nova.actions import collision_free
 from nova.api import models
 from nova.cell import virtual_controller
@@ -121,7 +121,7 @@ async def test_collision_free_planning_finds_no_solution_pose_as_target(ur_mg: M
     )
     collision_setup = await ur_mg.get_safety_collision_setup("Flange")
     collision_setup.link_chain = await ur_mg.get_default_collision_link_chain()
-    collision_setup.colliders = {"plane": plane}
+    collision_setup.colliders = api.models.ColliderDictionary({"plane": plane})
 
     with pytest.raises(Exception):
         await ur_mg.plan(
@@ -154,7 +154,7 @@ async def test_collision_free_planning_finds_no_solution_joints_as_target(ur_mg:
     )
     collision_setup = await ur_mg.get_safety_collision_setup("Flange")
     collision_setup.link_chain = await ur_mg.get_default_collision_link_chain()
-    collision_setup.colliders = {"plane": plane}
+    collision_setup.colliders = api.models.ColliderDictionary({"plane": plane})
 
     # plan and expect no solution
     # TODO
