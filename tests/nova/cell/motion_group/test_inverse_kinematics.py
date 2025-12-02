@@ -18,7 +18,7 @@ async def ur_mg():
         MotionGroup: Motion group ready for task cancellation tests
     """
     initial_joint_positions = [1.8294, -1.4618, -1.8644, -1.1851, 1.5188, 0.2529, 0.0]
-    controller_name = "ur-movement-test"
+    controller_name = "ur-test"
 
     async with Nova() as nova:
         cell = nova.cell()

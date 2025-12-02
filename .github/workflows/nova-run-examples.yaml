@@ -57,7 +57,7 @@ jobs:
         include:
           # single entry for the whole integration‑test batch
           - id: integration
-            run_cmd: "pytest -rs -v -m integration"
+            run_cmd: "pytest -rs -s -v -m integration"
           # each example gets its own matrix entry
           - id: start_here
             run_cmd: "python examples/start_here.py"

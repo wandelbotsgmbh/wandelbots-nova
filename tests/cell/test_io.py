@@ -20,7 +20,7 @@ async def setup_ur() -> AsyncGenerator[tuple[Controller, Controller], None]:
 
         ur = await cell.ensure_controller(
             virtual_controller(
-                name="ur-io-test",
+                name="ur-test",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
                 type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             )
@@ -29,7 +29,7 @@ async def setup_ur() -> AsyncGenerator[tuple[Controller, Controller], None]:
         # kuka has special IO naming conventions, so we test that as well
         kuka = await cell.ensure_controller(
             virtual_controller(
-                name="kuka-io-test",
+                name="kuka-test",
                 manufacturer=api.models.Manufacturer.KUKA,
                 type=api.models.VirtualControllerTypes.KUKA_KR16_R2010_2,
             )
@@ -38,8 +38,8 @@ async def setup_ur() -> AsyncGenerator[tuple[Controller, Controller], None]:
         # wait for controllers to be ready
         for i in range(10):
             try:
-                await cell.controller("ur-io-test")
-                await cell.controller("kuka-io-test")
+                await cell.controller("ur-test")
+                await cell.controller("kuka-test")
                 break
             except Exception:
                 logger.error("Controllers not ready yet, waiting...")
@@ -49,6 +49,7 @@ async def setup_ur() -> AsyncGenerator[tuple[Controller, Controller], None]:
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_io_write(setup_ur: tuple[Controller, Controller]):
     ur, kuka = setup_ur
 
