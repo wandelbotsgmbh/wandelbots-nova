@@ -44,8 +44,8 @@ class MotionSettings(pydantic.BaseModel):
             Maximum allowed TCP rotation acceleration in [rad/s^2].
     """
 
-    blending_radius: float | None = pydantic.Field(default=None)
     blending_auto: int | None = pydantic.Field(default=None)
+    blending_radius: float | None = pydantic.Field(default=None)
     joint_velocity_limits: tuple[float, ...] | None = pydantic.Field(default=None)
     joint_acceleration_limits: tuple[float, ...] | None = pydantic.Field(default=None)
     tcp_velocity_limit: float | None = pydantic.Field(default=DEFAULT_TCP_VELOCITY_LIMIT)
@@ -53,8 +53,6 @@ class MotionSettings(pydantic.BaseModel):
     tcp_orientation_velocity_limit: float | None = pydantic.Field(default=None)
     tcp_orientation_acceleration_limit: float | None = pydantic.Field(default=None)
 
-    # TODO: check with Christoph, should we just rename these? otherwise we need to update validate_blending_settings as well
-    # TODO: doc tests are failing because of the two newly added fields, if we rename fix is different
     position_zone_radius: float | None = pydantic.Field(default=None, deprecated=True)
     min_blending_velocity: int | None = pydantic.Field(default=None, deprecated=True)
 
@@ -65,10 +63,19 @@ class MotionSettings(pydantic.BaseModel):
     def field_to_varname(cls, field):
         return f"__ms_{field}"
 
+    def _get_blending_radius(self) -> float | None:
+        return self.blending_radius or self.position_zone_radius
+
+    def _get_blending_auto(self) -> int | None:
+        return self.blending_auto or self.min_blending_velocity
+
     @pydantic.model_validator(mode="after")
     def validate_blending_settings(self) -> "MotionSettings":
-        if self.min_blending_velocity and self.position_zone_radius:
-            raise ValueError("Can't set both min_blending_velocity and blending")
+        blending_radius = self._get_blending_radius()
+        blending_auto = self._get_blending_auto()
+        
+        if blending_radius is not None and blending_auto is not None:
+            raise ValueError("Can't set both blending_radius and blending_auto")
 
         if self.joint_acceleration_limits is not None and self.joint_velocity_limits is not None:
             if len(self.joint_acceleration_limits) != len(self.joint_velocity_limits):
@@ -80,10 +87,8 @@ class MotionSettings(pydantic.BaseModel):
     def has_blending_settings(self) -> bool:
         return any(
             [
-                self.blending_auto,
-                self.blending_radius,
-                self.min_blending_velocity,
-                self.position_zone_radius,
+                self._get_blending_auto(),
+                self._get_blending_radius(),
             ]
         )
 
@@ -114,13 +119,17 @@ class MotionSettings(pydantic.BaseModel):
         )
 
     def as_blending_setting(self) -> api.models.BlendingPosition | api.models.BlendingAuto:
-        if self.position_zone_radius:
+        if not self.has_blending_settings():
+            raise ValueError("No blending settings set")
+
+        blending_radius = self._get_blending_radius()
+        if blending_radius:
             return api.models.BlendingPosition(
-                position_zone_radius=self.blending_radius or self.position_zone_radius,
+                position_zone_radius=blending_radius,
                 blending_name="BlendingPosition",
             )
         return api.models.BlendingAuto(
-            min_velocity_in_percent=self.blending_auto or self.min_blending_velocity,
+            min_velocity_in_percent=self._get_blending_auto(),
             blending_name="BlendingAuto",
         )
 

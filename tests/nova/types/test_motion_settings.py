@@ -52,3 +52,21 @@ def test_joint_velocity_limits():
     for i in range(6):
         assert limits[i].velocity == motion_settings.joint_velocity_limits[i]
         assert limits[i].acceleration == motion_settings.joint_acceleration_limits[i]
+
+
+def test_blending_settings():
+    """
+    Test that only one type of blending setting can be set at a time.
+    """
+    with pytest.raises(ValueError, match="Can't set both blending_radius and blending_auto"):
+        MotionSettings(blending_radius=10.0, blending_auto=50)
+
+
+    with pytest.raises(ValueError, match="Can't set both blending_radius and blending_auto"):
+        MotionSettings(blending_radius=10.0, min_blending_velocity=50)
+
+    with pytest.raises(ValueError, match="Can't set both blending_radius and blending_auto"):
+        MotionSettings(position_zone_radius=10.0, blending_auto=50)
+
+    with pytest.raises(ValueError, match="Can't set both blending_radius and blending_auto"):
+        MotionSettings(position_zone_radius=10.0, min_blending_velocity=50)
