@@ -77,7 +77,7 @@ async def test_io_write(setup_ur: tuple[Controller, Controller]):
 async def test_get_io_descriptions(setup_ur: tuple[Controller, Controller]):
     async with Nova() as nova:
         cell = nova.cell()
-        io = IOAccess(api_client=nova.apis, cell=cell.cell_id, controller_id="ur-io-test")
+        io = IOAccess(api_client=nova.apis, cell=cell.cell_id, controller_id="ur-test")
         io_descriptions = await io.get_io_descriptions()
         assert len(io_descriptions) > 0
         filtered_io_descriptions = IOAccess.filter_io_descriptions(
@@ -93,7 +93,7 @@ async def test_get_io_descriptions(setup_ur: tuple[Controller, Controller]):
 async def test_read(setup_ur: tuple[Controller, Controller]):
     async with Nova() as nova:
         cell = nova.cell()
-        io = IOAccess(api_client=nova.apis, cell=cell.cell_id, controller_id="ur-io-test")
+        io = IOAccess(api_client=nova.apis, cell=cell.cell_id, controller_id="ur-test")
         value1 = await io.read("tool_out[0]")
         assert value1 is False
         value2 = await io.read("digital_out[0]")
@@ -105,7 +105,7 @@ async def test_read(setup_ur: tuple[Controller, Controller]):
 async def test_write(setup_ur: tuple[Controller, Controller]):
     async with Nova() as nova:
         cell = nova.cell()
-        io = IOAccess(api_client=nova.apis, cell=cell.cell_id, controller_id="ur-io-test")
+        io = IOAccess(api_client=nova.apis, cell=cell.cell_id, controller_id="ur-test")
         value1 = await io.read("tool_out[0]")
         assert value1 is False
         await io.write("tool_out[0]", True)

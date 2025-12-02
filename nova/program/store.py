@@ -95,8 +95,6 @@ class _KeyValueStore(Generic[_T]):
         self._bucket_lock = asyncio.Lock()
         self._kv_bucket: KeyValue | None = None
 
-    def _get_nats_client(self) -> "nats.NATS | None":
-        return getattr(self._nats_client, "_nats_client", None)
 
     @property
     def is_connected(self) -> bool:
@@ -120,12 +118,8 @@ class _KeyValueStore(Generic[_T]):
             if not self._nats_client.is_connected:
                 raise RuntimeError("NATS client is not connected")
 
-            # create jetstream client
-            nats_client = self._get_nats_client()
-            if nats_client is None:
-                raise RuntimeError("Failed to get NATS client after connection attempt")
 
-            js = nats_client.jetstream()
+            js = self._nats_client.jetstream()
 
             try:
                 self._kv_bucket = await js.key_value(self._nats_bucket_name)
