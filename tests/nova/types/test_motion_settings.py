@@ -61,7 +61,6 @@ def test_blending_settings():
     with pytest.raises(ValueError, match="Can't set both blending_radius and blending_auto"):
         MotionSettings(blending_radius=10.0, blending_auto=50)
 
-
     with pytest.raises(ValueError, match="Can't set both blending_radius and blending_auto"):
         MotionSettings(blending_radius=10.0, min_blending_velocity=50)
 

@@ -34,6 +34,13 @@ class TestLogMotionParameterValidation:
         mock_motion_group.get_model = AsyncMock(return_value=Mock(root="test_model"))
         mock_motion_group.forward_kinematics = AsyncMock(return_value=[])
 
+        # Description used by log_motion for DH parameters and safety geometry
+        mock_description = Mock()
+        mock_description.dh_parameters = [Mock(a=0, d=0, alpha=0, theta=0) for _ in range(2)]
+        mock_description.safety_tool_colliders = {}
+        mock_description.safety_link_colliders = None
+        mock_motion_group.get_description = AsyncMock(return_value=mock_description)
+
         # Create JointTrajectory
         joint_trajectory = api.models.JointTrajectory(
             joint_positions=[api.models.Joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]) for _ in range(5)],
@@ -84,6 +91,13 @@ class TestLogMotionParameterValidation:
         mock_motion_group.get_model = AsyncMock(return_value=Mock(root="test_model"))
         mock_motion_group.forward_kinematics = AsyncMock(return_value=[])
 
+        # Description used by log_motion for DH parameters and safety geometry
+        mock_description = Mock()
+        mock_description.dh_parameters = [Mock(a=0, d=0, alpha=0, theta=0) for _ in range(2)]
+        mock_description.safety_tool_colliders = {}
+        mock_description.safety_link_colliders = None
+        mock_motion_group.get_description = AsyncMock(return_value=mock_description)
+
         # Create empty JointTrajectory
         empty_trajectory = api.models.JointTrajectory(
             joint_positions=[], times=[], locations=[], tcp="test_tcp"
@@ -129,6 +143,13 @@ class TestLogMotionParameterValidation:
         mock_motion_group.get_setup = AsyncMock(return_value=mock_setup)
         mock_motion_group.get_model = AsyncMock(return_value=Mock(root="test_model"))
         mock_motion_group.forward_kinematics = AsyncMock(return_value=[])
+
+        # Description used by log_motion for DH parameters and safety geometry
+        mock_description = Mock()
+        mock_description.dh_parameters = [Mock(a=0, d=0, alpha=0, theta=0) for _ in range(2)]
+        mock_description.safety_tool_colliders = {}
+        mock_description.safety_link_colliders = None
+        mock_motion_group.get_description = AsyncMock(return_value=mock_description)
 
         # Create empty JointTrajectory
         empty_trajectory = api.models.JointTrajectory(

@@ -198,10 +198,7 @@ class TestCollisionSetups:
             patch("nova_rerun_bridge.nova_rerun_bridge.log_collision_setups") as mock_log,
         ):
             bridge = NovaRerunBridge(mock_nova, spawn=False)
-            result = await bridge.log_collision_setups()
-
-            # Should call API and log collision setups
-            mock_store_api.list_stored_collision_setups.assert_called_once_with(cell="test_cell")
+            result = bridge.log_collision_setups(collision_setups=mock_collision_setups)
             mock_log.assert_called_once_with(mock_collision_setups)
             assert result == mock_collision_setups
 

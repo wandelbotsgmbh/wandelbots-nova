@@ -73,7 +73,7 @@ class MotionSettings(pydantic.BaseModel):
     def validate_blending_settings(self) -> "MotionSettings":
         blending_radius = self._get_blending_radius()
         blending_auto = self._get_blending_auto()
-        
+
         if blending_radius is not None and blending_auto is not None:
             raise ValueError("Can't set both blending_radius and blending_auto")
 
@@ -85,12 +85,7 @@ class MotionSettings(pydantic.BaseModel):
         return self
 
     def has_blending_settings(self) -> bool:
-        return any(
-            [
-                self._get_blending_auto(),
-                self._get_blending_radius(),
-            ]
-        )
+        return any([self._get_blending_auto(), self._get_blending_radius()])
 
     def has_limits_override(self) -> bool:
         return any(
@@ -125,12 +120,10 @@ class MotionSettings(pydantic.BaseModel):
         blending_radius = self._get_blending_radius()
         if blending_radius:
             return api.models.BlendingPosition(
-                position_zone_radius=blending_radius,
-                blending_name="BlendingPosition",
+                position_zone_radius=blending_radius, blending_name="BlendingPosition"
             )
         return api.models.BlendingAuto(
-            min_velocity_in_percent=self._get_blending_auto(),
-            blending_name="BlendingAuto",
+            min_velocity_in_percent=self._get_blending_auto(), blending_name="BlendingAuto"
         )
 
     def as_tcp_cartesian_limits(self) -> api.models.CartesianLimits:
