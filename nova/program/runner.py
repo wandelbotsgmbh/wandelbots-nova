@@ -18,7 +18,6 @@ import anyio
 from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
 from exceptiongroup import ExceptionGroup
-from icecream import ic
 from loguru import logger
 from pydantic import BaseModel, Field, StrictStr
 
@@ -275,7 +274,6 @@ class ProgramRunner(ABC):
             while not sync_stop_event.wait(0.2):
                 from_thread.check_cancelled()
             from_thread.run_sync(async_stop_event.set)
-            ic()
 
         async def runner():
             self._stop_event = threading.Event()
@@ -301,9 +299,7 @@ class ProgramRunner(ABC):
         self._thread.start()
 
         if sync:
-            ic()
             self.join()
-            ic()
 
     async def _estop_handler(
         self,
@@ -495,7 +491,6 @@ class ProgramRunner(ABC):
                     logger.remove(sink_id)
                     self._program_run.logs = log_capture.getvalue()
                     monitoring_scope.cancel()
-                    ic()
         except anyio.get_cancelled_exc_class():
             raise
         except Exception as exc:  # pylint: disable=broad-except
@@ -619,21 +614,17 @@ def run_program(
 
     def sigint_handler(sig, frame):
         logger.info("Received SIGINT, stopping program...")
-        ic(sig, frame)
         runner.stop(sync=True)
         # program_stop_evt.set()
         raise KeyboardInterrupt()
 
-    ic(signal.default_int_handler, signal.Handlers)
     # TODO how do we restore previous handler after program run?
     prev_signal_handler = signal.signal(signal.SIGINT, sigint_handler)
 
     # Try to grab a caller loop if there is one; otherwise, fall back to None.
     try:
         loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
-        ic(loop)
     except RuntimeError:
-        ic()
         loop = None
 
     on_state_change_listener = (
