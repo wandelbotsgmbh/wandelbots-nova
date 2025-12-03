@@ -83,8 +83,6 @@ class MotionGroup(AbstractRobot):
 
     @property
     def current_motion(self) -> str | None:
-        # if not self._current_motion:
-        #    raise ValueError("No MotionId attached. There is no planned motion available.")
         return self._current_motion
 
     # TODO: does this needs to be cached?
