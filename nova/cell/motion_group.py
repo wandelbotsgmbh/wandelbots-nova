@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from functools import partial
 from typing import AsyncIterable, AsyncIterator, cast
 
@@ -30,8 +31,6 @@ from .tuner import TrajectoryTuner
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
 
-
-import logging
 
 logger = logging.getLogger(__name__)
 

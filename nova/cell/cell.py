@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 
 import nats
 
@@ -16,8 +17,6 @@ DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS = 120
 # This is the default value we use when we wait for a controller to be ready.
 DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS = 120
 
-
-import logging
 
 logger = logging.getLogger(__name__)
 

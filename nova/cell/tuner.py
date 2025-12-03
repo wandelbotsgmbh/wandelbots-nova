@@ -8,9 +8,10 @@ from faststream import FastStream
 from faststream.nats import NatsBroker
 from icecream import ic
 
+from .movement_controller import MotionEvent, TrajectoryCursor, motion_started
+
 logger = logging.getLogger(__name__)
 
-from .movement_controller import MotionEvent, TrajectoryCursor, motion_started
 
 # TODO use nova nats client config
 NATS_BROKER_URL = config("NATS_BROKER", default="nats://localhost:4222")
