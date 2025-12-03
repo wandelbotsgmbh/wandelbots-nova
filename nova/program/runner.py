@@ -52,6 +52,7 @@ class ProgramRun(api.models.ProgramRun):
 # very large error messages that could lead to performance issues or denial of service.
 PROGRAM_STATUS_ERROR_MAX_LENGTH = 1024 * 2
 
+SIGINT_HANLER_ENABLED = False
 
 class ProgramStatus(BaseModel):
     run: StrictStr = Field(description="Unique identifier of the program run")
@@ -619,7 +620,8 @@ def run_program(
         raise KeyboardInterrupt()
 
     # TODO how do we restore previous handler after program run?
-    prev_signal_handler = signal.signal(signal.SIGINT, sigint_handler)
+    if SIGINT_HANLER_ENABLED:
+        prev_signal_handler = signal.signal(signal.SIGINT, sigint_handler)
 
     # Try to grab a caller loop if there is one; otherwise, fall back to None.
     try:
