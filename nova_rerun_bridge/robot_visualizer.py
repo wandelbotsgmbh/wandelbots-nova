@@ -274,9 +274,7 @@ class RobotVisualizer:
 
             self.logged_meshes.add(entity_path)
 
-    def init_collision_geometry(
-        self, entity_path: str, collider: api.models.Collider, pose: api.models.Pose
-    ):
+    def init_collision_geometry(self, entity_path: str, collider: api.models.Collider, pose: Pose):
         if entity_path in self.logged_meshes:
             return
 
@@ -285,7 +283,7 @@ class RobotVisualizer:
                 f"{entity_path}",
                 rr.Ellipsoids3D(
                     radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
-                    centers=[pose.position.root] if pose.position else [0, 0, 0],  # type: ignore
+                    centers=list(pose.position.to_tuple()),
                     colors=[(221, 193, 193, 255)],
                 ),
             )
@@ -294,7 +292,7 @@ class RobotVisualizer:
             rr.log(
                 f"{entity_path}",
                 rr.Boxes3D(
-                    centers=pose.position.root if pose.position else [0, 0, 0],
+                    centers=list(pose.position.to_tuple()),
                     sizes=[collider.shape.size_x, collider.shape.size_y, collider.shape.size_z],
                     colors=[(221, 193, 193, 255)],
                 ),
@@ -313,7 +311,7 @@ class RobotVisualizer:
             # Transform vertices to world position
             transform = np.eye(4)
             if pose.position:
-                transform[:3, 3] = pose.position.root + [0, 0, -height / 2]
+                transform[:3, 3] = list(pose.position.to_tuple()) + [0, 0, -height / 2]
             else:
                 transform[:3, 3] = [0, 0, -height / 2]
 
@@ -359,7 +357,7 @@ class RobotVisualizer:
                     static=True,
                 )
 
-                vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)
+                vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)  # type: ignore[assignment]
 
                 rr.log(
                     f"{entity_path}",
@@ -775,9 +773,9 @@ class RobotVisualizer:
 
             # Collect data for collision link geometries (only if enabled)
             if self.show_collision_link_chain and self.collision_link_geometries:
-                for link_index, geometries in enumerate(self.collision_link_geometries):
+                for link_index, geometries in enumerate(self.collision_link_geometries):  # type: ignore[assignment]
                     link_transform = transforms[link_index]
-                    for i, geom_id in enumerate(geometries.root):
+                    for i, geom_id in enumerate(geometries.root):  # type: ignore[attr-defined]
                         entity_path = f"{self.base_entity_path}/collision/links/link_{link_index}/geometry_{geom_id}"
 
                         pose = normalize_pose(geometries[geom_id].pose)
@@ -795,10 +793,7 @@ class RobotVisualizer:
                     final_transform = tcp_transform @ self.geometry_pose_to_matrix(pose)
 
                     # tcp collision geometries are defined in flange frame
-                    identity_pose = api.models.Pose(
-                        position=api.models.Vector3d([0, 0, 0]),
-                        orientation=api.models.RotationVector([0, 0, 0]),
-                    )
+                    identity_pose = Pose((0, 0, 0, 0, 0, 0))
                     self.init_collision_geometry(
                         entity_path, self.collision_tcp_geometries[geom_id], identity_pose
                     )
