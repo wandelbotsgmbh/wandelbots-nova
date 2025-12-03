@@ -122,7 +122,7 @@ class Vector3d(pydantic.BaseModel):
         return api.models.Vector3d(list(self.to_tuple()))
 
     @pydantic.model_serializer
-    def serialize_model(self) -> list[float]:
+    def serialize_model(self) -> dict[str, float]:
         """
         Examples:
         >>> Vector3d.from_tuple((1, 2, 3)).model_dump()
