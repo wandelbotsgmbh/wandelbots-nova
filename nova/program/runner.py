@@ -54,6 +54,7 @@ PROGRAM_STATUS_ERROR_MAX_LENGTH = 1024 * 2
 
 SIGINT_HANLER_ENABLED = False
 
+
 class ProgramStatus(BaseModel):
     run: StrictStr = Field(description="Unique identifier of the program run")
     program: StrictStr = Field(description="Unique identifier of the program")

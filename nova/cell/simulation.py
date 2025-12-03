@@ -306,10 +306,6 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             # Append this Pose to self._trajectory while moving
             self._trajectory.append(motion_state)
 
-            yield api.models.ExecuteTrajectoryResponse(
-                api.models.StartMovementResponse(kind="START_RECEIVED", message=None)
-            )
-
             # yield api.models.ExecuteTrajectoryResponse(
             #     api.models.StartMovementResponse(
             #         time_to_end=0,
