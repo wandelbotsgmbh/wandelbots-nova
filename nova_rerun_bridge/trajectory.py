@@ -4,7 +4,6 @@ from typing import Optional
 
 import numpy as np
 import rerun as rr
-from scipy.spatial.transform import Rotation
 
 from nova import MotionGroup, api
 from nova.types import Pose
@@ -75,7 +74,7 @@ async def log_motion(
     motion_group_setup = await motion_group.get_setup(tcp)
     motion_group_model = (await motion_group.get_model()).root
     motion_group_description = await motion_group.get_description()
-    motion_group_id = motion_group.motion_group_id
+    motion_group_id = motion_group.id
     motion_id = str(uuid.uuid4())
 
     if motion_group_description.dh_parameters is not None:
@@ -150,7 +149,7 @@ async def log_motion(
                 )
             ]
 
-        _visualizer_cache[motion_group.motion_group_id] = RobotVisualizer(
+        _visualizer_cache[motion_group.id] = RobotVisualizer(
             robot=robot,
             robot_model_geometries=safety_link_chain,
             tcp_geometries=tcp_geometries,
@@ -164,7 +163,7 @@ async def log_motion(
             show_safety_link_chain=show_safety_link_chain,
         )
 
-    visualizer = _visualizer_cache[motion_group.motion_group_id]
+    visualizer = _visualizer_cache[motion_group.id]
 
     # Process trajectory points
     await log_trajectory(
@@ -208,7 +207,7 @@ async def log_trajectory(
     rr.set_time(TIME_INTERVAL_NAME, duration=timer_offset)
 
     times_column = get_times_column(trajectory, timer_offset)
-    motion_group_id = motion_group.motion_group_id
+    motion_group_id = motion_group.id
 
     # TODO: calculate tcp pose from joint positions
     joint_positions = [tuple(p.root) for p in trajectory.joint_positions]

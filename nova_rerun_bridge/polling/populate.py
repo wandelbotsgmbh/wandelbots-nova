@@ -123,7 +123,7 @@ async def main():
         controllers = await cell.controllers()
         for controller in controllers:
             for motion_group in await controller.motion_groups():
-                motion_groups.append(motion_group.motion_group_id)
+                motion_groups.append(motion_group.id)
 
     rr.init(application_id="nova", recording_id="nova_live", spawn=False)
     rr.save("data/nova.rrd", default_blueprint=get_blueprint(motion_groups))

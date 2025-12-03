@@ -216,8 +216,8 @@ async def main():
         ]:
             await nova._api_client.virtual_robot_setup_api.set_virtual_controller_mounting(
                 cell="cell",
-                controller=robot.controller_id,
-                motion_group=f"{pos.motion_group_id}@{robot.controller_id}",
+                controller=robot.id,
+                motion_group=f"{pos.motion_group_id}@{robot.id}",
                 coordinate_system=api.models.CoordinateSystem(
                     coordinate_system="world",
                     name="mounting",

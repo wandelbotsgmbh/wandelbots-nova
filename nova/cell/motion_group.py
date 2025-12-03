@@ -12,7 +12,6 @@ from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.types import MovementResponse, Pose, RobotState
-from nova.types.motion_settings import MotionSettings
 from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.utils import StreamExtractor
 from nova.utils.collision_setup import (
@@ -81,8 +80,9 @@ class MotionGroup(AbstractRobot):
         super().__init__(id=motion_group_id)
 
     @property
-    def motion_group_id(self) -> str:
-        """
+    def id(self) -> str:
+        """The unique identifier for this motion group in the shape "motion_group_id@controller_id" e.g. "0@ur10e".
+
         Returns:
             str: The unique identifier for this motion group.
         """
@@ -97,7 +97,7 @@ class MotionGroup(AbstractRobot):
     # TODO: does this needs to be cached?
     async def _fetch_motion_group_description(self) -> api.models.MotionGroupDescription:
         return await self._api_client.motion_group_api.get_motion_group_description(
-            cell=self._cell, controller=self._controller_id, motion_group=self.motion_group_id
+            cell=self._cell, controller=self._controller_id, motion_group=self.id
         )
 
     async def get_description(self) -> api.models.MotionGroupDescription:
@@ -306,7 +306,7 @@ class MotionGroup(AbstractRobot):
         response_stream = self._api_client.motion_group_api.stream_motion_group_state(
             cell=self._cell,
             controller=self._controller_id,
-            motion_group=self.motion_group_id,
+            motion_group=self.id,
             response_rate=response_rate_msecs,
         )
         async for response in response_stream:
@@ -427,7 +427,7 @@ class MotionGroup(AbstractRobot):
 
     async def _fetch_state(self) -> api.models.MotionGroupState:
         return await self._api_client.motion_group_api.get_current_motion_group_state(
-            cell=self._cell, controller=self._controller_id, motion_group=self.motion_group_id
+            cell=self._cell, controller=self._controller_id, motion_group=self.id
         )
 
     async def _load_planned_motion(
@@ -437,7 +437,7 @@ class MotionGroup(AbstractRobot):
             cell=self._cell,
             controller=self._controller_id,
             add_trajectory_request=api.models.AddTrajectoryRequest(
-                motion_group=self.motion_group_id, trajectory=joint_trajectory, tcp=tcp
+                motion_group=self.id, trajectory=joint_trajectory, tcp=tcp
             ),
         )
 
@@ -489,17 +489,14 @@ class MotionGroup(AbstractRobot):
         collision_setups = validate_collision_setups(actions)
         first_collision_setup = collision_setups[0] if len(collision_setups) > 0 else None
 
-
         # this is bad for memory because collision scenes can be very large
         # but we do it for now anyway because we don't want to create side effect on the provided motion group setup
         motion_group_setup = motion_group_setup.model_copy(deep=True)
         if motion_group_setup.collision_setups is None:
             motion_group_setup.collision_setups = api.models.CollisionSetups({})
 
-        
         if first_collision_setup is not None:
             motion_group_setup.collision_setups.root["collision-check"] = first_collision_setup
-
 
         motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
 
@@ -518,7 +515,7 @@ class MotionGroup(AbstractRobot):
             # TODO: handle partially executable path
 
             raise PlanTrajectoryFailed(
-                error=plan_trajectory_response.response, motion_group_id=self.motion_group_id
+                error=plan_trajectory_response.response, motion_group_id=self.id
             )
 
         return plan_trajectory_response.response
@@ -555,7 +552,9 @@ class MotionGroup(AbstractRobot):
             motion_group_setup.collision_setups = api.models.CollisionSetups({})
 
         if action.collision_setup is not None:
-            motion_group_setup.collision_setups.root["collision-free-motion"] = action.collision_setup
+            motion_group_setup.collision_setups.root["collision-free-motion"] = (
+                action.collision_setup
+            )
 
         if isinstance(action.target, Pose):
             solutions = await self._inverse_kinematics(
@@ -591,9 +590,7 @@ class MotionGroup(AbstractRobot):
         )
 
         if isinstance(response.response, api.models.PlanCollisionFreeFailedResponse):
-            raise PlanTrajectoryFailed(
-                error=response.response, motion_group_id=self.motion_group_id
-            )
+            raise PlanTrajectoryFailed(error=response.response, motion_group_id=self.id)
 
         if isinstance(response.response, api.models.JointTrajectory):
             return response.response
@@ -719,7 +716,7 @@ class MotionGroup(AbstractRobot):
         async with asyncio.TaskGroup() as tg:
             monitor_task = tg.create_task(monitor_motion_group_state())
             execution_task = tg.create_task(
-                execution(), name=f"execute_trajectory-{trajectory_id}-{self.motion_group_id}"
+                execution(), name=f"execute_trajectory-{trajectory_id}-{self.id}"
             )
 
             while (motion_group_state := await states.get()) is not SENTINEL:
@@ -761,7 +758,7 @@ class MotionGroup(AbstractRobot):
         # motion_state_stream = self._api_client.motion_group_api.stream_motion_group_state(
         #    cell=self._cell,
         #    controller=self._controller_id,
-        #    motion_group=self.motion_group_id,
+        #    motion_group=self.id,
         #    response_rate=MOTION_STATE_STREAM_RATE_MS,
         # )
         # execute_response_stream = stream.merge(

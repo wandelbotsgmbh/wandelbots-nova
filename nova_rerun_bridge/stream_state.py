@@ -71,8 +71,7 @@ async def stream_motion_group(self, nova: Nova, motion_group: MotionGroup) -> No
         cell=nova.cell()._cell_id
     )
     motion_motion_group = next(
-        (mg for mg in motion_groups.instances if mg.motion_group == motion_group.motion_group_id),
-        None,
+        (mg for mg in motion_groups.instances if mg.motion_group == motion_group.id), None
     )
 
     if motion_motion_group is None:
@@ -82,7 +81,7 @@ async def stream_motion_group(self, nova: Nova, motion_group: MotionGroup) -> No
     try:
         optimizer_config = (
             await self.nova._api_client.motion_group_infos_api.get_optimizer_configuration(
-                self.nova.cell()._cell_id, motion_group.motion_group_id
+                self.nova.cell()._cell_id, motion_group.id
             )
         )
 
@@ -94,28 +93,26 @@ async def stream_motion_group(self, nova: Nova, motion_group: MotionGroup) -> No
             robot_model_geometries=optimizer_config.safety_setup.robot_model_geometries,
             tcp_geometries=optimizer_config.safety_setup.tcp_geometries,
             static_transform=False,
-            base_entity_path=motion_group.motion_group_id,
+            base_entity_path=motion_group.id,
             albedo_factor=[0, 255, 100],
             model_from_controller=motion_motion_group.model_from_controller,
         )
 
         logger.info(f"Started streaming motion group {motion_group}")
-        async for state in self.nova._api_client.motion_group_infos_api.stream_motion_group_state(
-            self.nova.cell()._cell_id, motion_group.motion_group_id
+        async for state in self.nova.api.motion_group_infos_api.stream_motion_group_state(
+            self.nova.cell()._cell_id, motion_group.id
         ):
-            if processor.tcp_pose_changed(motion_group.motion_group_id, state.state.tcp_pose):
+            if processor.tcp_pose_changed(motion_group.id, state.state.tcp_pose):
                 rr.reset_time()
                 rr.set_time(TIME_REALTIME_NAME, timestamp=time.time())
 
                 # Log joint positions
-                log_joint_positions_once(
-                    motion_group.motion_group_id, robot, state.state.joint_position
-                )
+                log_joint_positions_once(motion_group.id, robot, state.state.joint_position)
 
                 # Log robot geometries
                 visualizer.log_robot_geometry(state.state.joint_position)
 
-                processor.log_tcp_orientation(motion_group.motion_group_id, state.state.tcp_pose)
+                processor.log_tcp_orientation(motion_group.id, state.state.tcp_pose)
 
         await asyncio.sleep(0.01)  # Prevents CPU overuse
     except asyncio.CancelledError:

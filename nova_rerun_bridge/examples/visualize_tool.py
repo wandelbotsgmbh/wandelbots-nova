@@ -1,5 +1,4 @@
 import asyncio
-import json
 
 import nova
 from nova import api
@@ -47,8 +46,8 @@ async def test():
             tcp_id = robot_tcp_data.name
             await nova.api.virtual_robot_setup_api.add_virtual_controller_tcp(
                 cell=cell.cell_id,
-                controller=controller.controller_id,
-                motion_group=motion_group.motion_group_id,
+                controller=controller.id,
+                motion_group=motion_group.id,
                 tcp=tcp_id,
                 robot_tcp_data=robot_tcp_data,
             )

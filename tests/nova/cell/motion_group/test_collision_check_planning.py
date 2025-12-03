@@ -1,16 +1,16 @@
-import pytest
-from nova import Nova
-from nova.cell import virtual_controller
-from nova.actions import ptp
-
-from nova.api import models
 import asyncio
 from math import pi
 
+import pytest
+
+from nova import Nova
+from nova.actions import ptp
+from nova.api import models
+from nova.cell import virtual_controller
 from nova.types.pose import Pose
 
-
 initial_joint_positions = [pi / 2, -pi / 2, pi / 2, 0, 0, 0]
+
 
 @pytest.fixture
 async def ur_mg():
@@ -69,9 +69,11 @@ async def test_ptp_planning(ur_mg):
     )
 
     # Verify that the final pose matches the target pose
-    found_pose = (await ur_mg.forward_kinematics([trajectory.joint_positions[-1].root], "Flange"))[0]
+    found_pose = (await ur_mg.forward_kinematics([trajectory.joint_positions[-1].root], "Flange"))[
+        0
+    ]
     assert target_pose == found_pose, "Final pose doesn't match target pose"
-    
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -90,7 +92,6 @@ async def test_ptp_planning_with_collision_setup(ur_mg):
     collision_setup.link_chain = await ur_mg.get_default_collision_link_chain()
     collision_setup.colliders = models.ColliderDictionary({"plane": plane})
 
-
     target_pose = Pose(700, 0, -10, 0, 0, 0)
 
     with pytest.raises(Exception):
@@ -99,4 +100,3 @@ async def test_ptp_planning_with_collision_setup(ur_mg):
             actions=[ptp(target=target_pose, collision_setup=collision_setup)],
             tcp="Flange",
         )
-

@@ -29,8 +29,12 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         )
 
     @property
-    def controller_id(self) -> str:
-        """Returns the unique controller ID."""
+    def id(self) -> str:
+        """The unique identifier for this controller in the shape "controller_id" e.g. "ur10e".
+
+        Returns:
+            str: The unique identifier for this controller.
+        """
         return self.configuration.controller_id
 
     async def open(self):
@@ -59,12 +63,12 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         return MotionGroup(
             api_client=self._nova_api,
             cell=self.configuration.cell_id,
-            controller_id=self.configuration.controller_id,
+            controller_id=self.id,
             motion_group_id=motion_group_id,
         )
 
     def __getitem__(self, motion_group_id: int) -> MotionGroup:
-        return self.motion_group(f"{motion_group_id}@{self.configuration.controller_id}")
+        return self.motion_group(f"{motion_group_id}@{self.id}")
 
     async def motion_groups(self) -> list[MotionGroup]:
         """Retrieves a list of `MotionGroup` instances for all motion groups attached to this controller.
@@ -73,7 +77,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             list[MotionGroup]: All motion groups as `MotionGroup` objects.
         """
         motion_group_description = await self._nova_api.controller_api.get_controller_description(
-            cell=self.configuration.cell_id, controller=self.configuration.controller_id
+            cell=self.configuration.cell_id, controller=self.id
         )
         return [
             self.motion_group(motion_group_id)
@@ -124,15 +128,13 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         Stream the robot controller state.
         """
         async for state in self._nova_api.controller_api.stream_robot_controller_state(
-            cell=self.configuration.cell_id,
-            controller=self.configuration.controller_id,
-            response_rate=rate_msecs,
+            cell=self.configuration.cell_id, controller=self.id, response_rate=rate_msecs
         ):
             yield state
 
     async def _fetch_description(self):
         return await self._nova_api.controller_api.get_controller_description(
-            self.configuration.cell_id, self.configuration.controller_id
+            self.configuration.cell_id, self.id
         )
 
     async def get_estop(self) -> bool:
@@ -145,7 +147,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             NotImplementedError: If called on a non-virtual controller.
         """
         flag = await self._nova_api.virtual_controller_api.get_emergency_stop(
-            cell=self.configuration.cell_id, controller=self.controller_id
+            cell=self.configuration.cell_id, controller=self.id
         )
         return flag.active
 
@@ -159,5 +161,5 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             NotImplementedError: If called on a non-virtual controller.
         """
         await self._nova_api.virtual_controller_api.set_emergency_stop(
-            cell=self.configuration.cell_id, controller=self.controller_id, active=active
+            cell=self.configuration.cell_id, controller=self.id, active=active
         )

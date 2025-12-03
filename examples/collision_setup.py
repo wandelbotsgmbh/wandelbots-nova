@@ -192,16 +192,15 @@ async def test():
 
             motion_group_description = await motion_group.get_description()
 
-            collision_setup = await build_collision_world(nova, "cell", motion_group_description)
-
-            await bridge.log_collision_setups()
-
+            await build_collision_world(nova, "cell", motion_group_description)
             collision_setups = (
                 await nova.api.store_collision_setups_api.list_stored_collision_setups(
                     cell=nova.cell()._cell_id
                 )
             )
             collision_setup = list(collision_setups.values())[0]
+
+            await bridge.log_collision_setups(collision_setups=collision_setups)
 
             tcp_names = await motion_group.tcp_names()
             tcp = tcp_names[0]

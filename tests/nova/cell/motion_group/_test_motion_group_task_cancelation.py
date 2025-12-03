@@ -2,7 +2,6 @@ import asyncio
 from multiprocessing import Process
 
 import pytest
-import wandelbots_api_client as wb
 
 from nova import Nova
 from nova.actions import jnt, lin
@@ -10,7 +9,6 @@ from nova.actions.container import MovementController, MovementControllerContext
 from nova.api import models
 from nova.cell.controllers import virtual_controller
 from nova.cell.movement_controller import move_forward
-from nova.exceptions import InitMovementFailed
 from nova.logging import logger
 from nova.types import (
     ExecuteTrajectoryRequestStream,

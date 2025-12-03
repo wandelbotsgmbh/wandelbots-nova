@@ -89,7 +89,7 @@ class NovaRerunBridge:
 
         for controller in controllers:
             for motion_group in await controller.motion_groups():
-                motion_groups.append(motion_group.motion_group_id)
+                motion_groups.append(motion_group.id)
 
         rr.reset_time()
         rr.set_time(TIME_INTERVAL_NAME, duration=0)
@@ -173,8 +173,7 @@ class NovaRerunBridge:
 
         motion_group_description = await motion_group.get_description()
         log_safety_zones(
-            motion_group_id=motion_group.motion_group_id,
-            motion_group_description=motion_group_description,
+            motion_group_id=motion_group.id, motion_group_description=motion_group_description
         )
 
     async def log_motion(
@@ -206,7 +205,7 @@ class NovaRerunBridge:
             )
         try:
             # Get or initialize the timer for this motion group
-            motion_group_id = motion_group.motion_group_id
+            motion_group_id = motion_group.id
             current_time = self._motion_group_timers.get(motion_group_id, 0.0)
 
             logger.debug(
@@ -427,7 +426,7 @@ class NovaRerunBridge:
 
         # Use motion group specific timing if available
         if motion_group is not None:
-            motion_group_time = self._motion_group_timers.get(motion_group.motion_group_id, 0.0)
+            motion_group_time = self._motion_group_timers.get(motion_group.id, 0.0)
             rr.set_time(TIME_INTERVAL_NAME, duration=motion_group_time)
         else:
             # Fallback to time 0 if no motion group provided
@@ -519,9 +518,7 @@ class NovaRerunBridge:
             # Create descriptive label with ID and action type (only if needed)
             labels.append(f"{len(positions) - 1}: {action_type}")
 
-        entity_path = (
-            f"motion/{motion_group.motion_group_id}/actions" if motion_group else "motion/actions"
-        )
+        entity_path = f"motion/{motion_group.id}/actions" if motion_group else "motion/actions"
 
         # Log all positions with labels and colors
         if positions:

@@ -111,12 +111,11 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 self._log("info", f"Creating controller '{controller_name}'")
                 try:
                     controller = await cell.ensure_controller(controller_config=controller_config)
-                    created_controllers.append(controller.controller_id)
+                    created_controllers.append(controller.id)
                     self._log(
-                        "info",
-                        f"Created controller '{controller_name}' with ID {controller.controller_id}",
+                        "info", f"Created controller '{controller_name}' with ID {controller.id}"
                     )
-                    return controller.controller_id
+                    return controller.id
                 except Exception as e:
                     raise ControllerCreationFailed(controller_name, str(e))
 

@@ -156,7 +156,7 @@ class TestRerunViewer:
         mock_trajectory = Mock()
         mock_tcp = "tcp1"
         mock_motion_group = Mock()
-        mock_motion_group.motion_group_id = "mg1"
+        mock_motion_group.id = "mg1"
 
         await viewer.log_planning_success(
             mock_actions, mock_trajectory, mock_tcp, mock_motion_group
@@ -186,7 +186,7 @@ class TestRerunViewer:
         mock_error = Exception("Planning failed")
         mock_tcp = "tcp1"
         mock_motion_group = Mock()
-        mock_motion_group.motion_group_id = "mg1"
+        mock_motion_group.id = "mg1"
 
         await viewer.log_planning_failure(mock_actions, mock_error, mock_tcp, mock_motion_group)
 
@@ -666,7 +666,7 @@ class TestViewerEdgeCases:
         mock_trajectory = Mock()
         mock_tcp = "tcp1"
         mock_motion_group = Mock()
-        mock_motion_group.motion_group_id = "mg1"
+        mock_motion_group.id = "mg1"
         mock_error = Exception("Test error")
 
         # All operations should work without errors even without bridge
@@ -704,7 +704,7 @@ class TestViewerEdgeCases:
         mock_trajectory = Mock()
         mock_tcp = "tcp1"
         mock_motion_group = Mock()
-        mock_motion_group.motion_group_id = "mg1"
+        mock_motion_group.id = "mg1"
 
         # Call multiple times
         await viewer.log_planning_success(
@@ -733,7 +733,7 @@ class TestViewerEdgeCases:
         mock_trajectory = Mock()
         mock_tcp = "tcp1"
         mock_motion_group = Mock()
-        mock_motion_group.motion_group_id = "mg1"
+        mock_motion_group.id = "mg1"
 
         await viewer.log_planning_success(
             mock_actions, mock_trajectory, mock_tcp, mock_motion_group
