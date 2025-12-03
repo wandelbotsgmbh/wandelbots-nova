@@ -14,7 +14,6 @@ from nova_rerun_bridge.motion_storage import load_processed_motions, save_proces
 # Global run flags
 job_running = False
 first_run = True
-previous_motion_group_list = []
 
 
 async def process_motions():
@@ -23,7 +22,6 @@ async def process_motions():
     """
     global job_running
     global first_run
-    global previous_motion_group_list
 
     # use http://api-gateway:8080 on prod instances
     async with Nova(config=NovaConfig(host="http://api-gateway:8080")) as nova:
@@ -123,7 +121,7 @@ async def main():
         controllers = await cell.controllers()
         for controller in controllers:
             for motion_group in await controller.motion_groups():
-                motion_groups.append(motion_group.motion_group_id)
+                motion_groups.append(motion_group.id)
 
     rr.init(application_id="nova", recording_id="nova_live", spawn=False)
     rr.save("data/nova.rrd", default_blueprint=get_blueprint(motion_groups))

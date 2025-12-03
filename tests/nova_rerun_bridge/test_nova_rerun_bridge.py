@@ -94,7 +94,7 @@ class TestSetupBlueprint:
         mock_cell = Mock()
         mock_controller = Mock()
         mock_motion_group = Mock()
-        mock_motion_group.motion_group_id = "test_group"
+        mock_motion_group.id = "test_group"
 
         # Setup mock chain
         mock_nova.cell.return_value = mock_cell
@@ -146,11 +146,11 @@ class TestSetupBlueprint:
         mock_controller2 = Mock()
 
         mock_group1 = Mock()
-        mock_group1.motion_group_id = "group1"
+        mock_group1.id = "group1"
         mock_group2 = Mock()
-        mock_group2.motion_group_id = "group2"
+        mock_group2.id = "group2"
         mock_group3 = Mock()
-        mock_group3.motion_group_id = "group3"
+        mock_group3.id = "group3"
 
         # Setup mock chain
         mock_nova.cell.return_value = mock_cell
@@ -271,7 +271,7 @@ class TestSafetyZones:
         """Should log safety zones for motion group."""
         mock_nova = Mock()
         mock_motion_group = Mock()
-        mock_motion_group.motion_group_id = "test_group"
+        mock_motion_group.id = "test_group"
 
         mock_motion_group_description = {"description": "data"}
         mock_motion_group.get_description = AsyncMock(return_value=mock_motion_group_description)

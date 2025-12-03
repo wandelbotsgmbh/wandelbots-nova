@@ -214,15 +214,15 @@ async def main():
             (abb, ROBOT_POSITIONS["ABB"]),
             (yaskawa, ROBOT_POSITIONS["YASKAWA"]),
         ]:
-            await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
+            await nova._api_client.virtual_robot_setup_api.set_virtual_controller_mounting(
                 cell="cell",
-                controller=robot.controller_id,
-                id=pos.motion_group_id,
+                controller=robot.id,
+                motion_group=f"{pos.motion_group_id}@{robot.id}",
                 coordinate_system=api.models.CoordinateSystem(
                     coordinate_system="world",
                     name="mounting",
                     position=pos.mounting,
-                    orientation=pos.rotation,
+                    orientation=pos.orientation,
                     orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
                 ),
             )

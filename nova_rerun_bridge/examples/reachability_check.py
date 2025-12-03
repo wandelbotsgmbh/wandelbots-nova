@@ -88,7 +88,7 @@ async def test():
                     response: api.models.AllJointPositionsResponse = (
                         await nova.api.kinematics_api.calculate_all_inverse_kinematic(
                             cell=cell.cell_id,
-                            motion_group=motion_group.motion_group_id,
+                            motion_group=motion_group.id,
                             tcp_pose=api.models.TcpPose(
                                 position=api.models.Vector3d(x=point[0], y=point[1], z=point[2]),
                                 orientation=api.models.Vector3d(

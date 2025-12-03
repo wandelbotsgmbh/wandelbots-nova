@@ -46,7 +46,7 @@ uv sync
 ```
 
 Key dependencies:
-- Python 3.10+
+- Python 3.11+
 - [ANTLR4](https://www.antlr.org/) for grammar processing
 - [wandelbots-nova](https://pypi.org/project/wandelbots-nova/) for data types and interaction with robots
 - [Pydantic](https://docs.pydantic.dev/) for data validation

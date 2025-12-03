@@ -29,7 +29,7 @@ class TestLogMotionParameterValidation:
 
         # Create mock MotionGroup
         mock_motion_group = Mock()
-        mock_motion_group.motion_group_id = "test_group"
+        mock_motion_group.id = "test_group"
         mock_motion_group.get_setup = AsyncMock(return_value=mock_setup)
         mock_motion_group.get_model = AsyncMock(return_value=Mock(root="test_model"))
         mock_motion_group.forward_kinematics = AsyncMock(return_value=[])
@@ -86,7 +86,7 @@ class TestLogMotionParameterValidation:
 
         # Create mock MotionGroup
         mock_motion_group = Mock()
-        mock_motion_group.motion_group_id = "test_group"
+        mock_motion_group.id = "test_group"
         mock_motion_group.get_setup = AsyncMock(return_value=mock_setup)
         mock_motion_group.get_model = AsyncMock(return_value=Mock(root="test_model"))
         mock_motion_group.forward_kinematics = AsyncMock(return_value=[])
@@ -139,7 +139,7 @@ class TestLogMotionParameterValidation:
 
         # Create mock MotionGroup
         mock_motion_group = Mock()
-        mock_motion_group.motion_group_id = "test_group"
+        mock_motion_group.id = "test_group"
         mock_motion_group.get_setup = AsyncMock(return_value=mock_setup)
         mock_motion_group.get_model = AsyncMock(return_value=Mock(root="test_model"))
         mock_motion_group.forward_kinematics = AsyncMock(return_value=[])

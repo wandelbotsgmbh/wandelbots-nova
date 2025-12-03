@@ -1,5 +1,3 @@
-import pytest
-
 from nova.api import models
 from nova.types.motion_settings import DEFAULT_TCP_VELOCITY_LIMIT, MotionSettings
 from nova.utils.motion_group_settings import update_motion_group_setup_with_motion_settings

@@ -2,7 +2,6 @@ import asyncio
 from multiprocessing import Process
 
 import pytest
-import wandelbots_api_client as wb
 
 from nova import Nova
 from nova.actions import jnt, lin
@@ -10,7 +9,6 @@ from nova.actions.container import MovementController, MovementControllerContext
 from nova.api import models
 from nova.cell.controllers import virtual_controller
 from nova.cell.movement_controller import move_forward
-from nova.exceptions import InitMovementFailed
 from nova.logging import logger
 from nova.types import (
     ExecuteTrajectoryRequestStream,
@@ -157,12 +155,17 @@ def create_movement_controller(exception: BaseException) -> MovementController:
         async def movement_controller(
             response_stream: ExecuteTrajectoryResponseStream,
         ) -> ExecuteTrajectoryRequestStream:
-            count = 0
-            async for response in controller(response_stream):
-                yield response
-                count += 1
-                if count == 200:
+            async def intercepted_response_stream():
+                try:
+                    async with asyncio.timeout(2):
+                        async for response in response_stream:
+                            yield response
+                except Exception:
                     raise exception
+
+            request_stream = controller(intercepted_response_stream())
+            async for request in request_stream:
+                yield request
 
         return movement_controller
 

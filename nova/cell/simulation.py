@@ -2,7 +2,7 @@ import asyncio
 import math
 import time
 from collections import defaultdict
-from typing import Any, AsyncIterable, Literal, SupportsIndex
+from typing import Any, AsyncIterable, AsyncIterator, Literal, SupportsIndex
 
 import numpy as np
 
@@ -255,7 +255,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
-    ) -> AsyncIterable[MovementResponse]:
+    ) -> AsyncIterator[MovementResponse]:
         """
         Executes the given joint_trajectory by simulating the robot's motion.
 

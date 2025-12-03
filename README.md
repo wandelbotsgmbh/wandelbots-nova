@@ -40,7 +40,7 @@ The SDK will help you to build your own apps and services using Python on top of
 
 - A running NOVA instance (Get a Wandelbots NOVA account on [wandelbots.com](https://www.wandelbots.com/contact))
 - Valid NOVA API credentials
-- Python >=3.10
+- Python >=3.11
 
 ## Quickstart
 
@@ -315,7 +315,7 @@ async def setup_tcp():
         tcp_config_obj = models.RobotTcp.from_json(json.dumps(tcp_config))
         await nova._api_client.virtual_robot_setup_api.add_virtual_robot_tcp(
             cell.cell_id,
-            controller.controller_id,
+            controller.id,
             motion_group_idx=0,
             tcp_config_obj
         )
@@ -381,7 +381,7 @@ async def setup_coordinated_robots():
         # Position robots relative to world coordinates
         await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
             cell="cell",
-            controller=robot1.controller_id,
+            controller=robot1.id,
             id=0,  # motion_group_id
             coordinate_system=CoordinateSystem(
                 coordinate_system="world",
@@ -397,7 +397,7 @@ async def setup_coordinated_robots():
 
         await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
             cell="cell",
-            controller=robot2.controller_id,
+            controller=robot2.id,
             id=0,  # motion_group_id
             coordinate_system=CoordinateSystem(
                 coordinate_system="world",

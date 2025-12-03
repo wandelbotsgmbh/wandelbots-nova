@@ -183,7 +183,7 @@ class Rerun(Viewer):
             return
 
         # Use the motion group ID as unique identifier
-        motion_group_id = motion_group.motion_group_id
+        motion_group_id = motion_group.id
 
         if motion_group_id not in self._logged_safety_zones:
             try:

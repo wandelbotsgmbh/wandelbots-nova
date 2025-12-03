@@ -89,7 +89,7 @@ class NovaRerunBridge:
 
         for controller in controllers:
             for motion_group in await controller.motion_groups():
-                motion_groups.append(motion_group.motion_group_id)
+                motion_groups.append(motion_group.id)
 
         rr.reset_time()
         rr.set_time(TIME_INTERVAL_NAME, duration=0)
@@ -173,8 +173,7 @@ class NovaRerunBridge:
 
         motion_group_description = await motion_group.get_description()
         log_safety_zones(
-            motion_group_id=motion_group.motion_group_id,
-            motion_group_description=motion_group_description,
+            motion_group_id=motion_group.id, motion_group_description=motion_group_description
         )
 
     async def log_motion(
@@ -206,7 +205,7 @@ class NovaRerunBridge:
             )
         try:
             # Get or initialize the timer for this motion group
-            motion_group_id = motion_group.motion_group_id
+            motion_group_id = motion_group.id
             current_time = self._motion_group_timers.get(motion_group_id, 0.0)
 
             logger.debug(
@@ -353,7 +352,9 @@ class NovaRerunBridge:
                 rr.log(
                     f"motion/errors/FeedbackCollision/collisions/point_{i}/a",
                     rr.Points3D(
-                        [pos_a], radii=rr.Radius.ui_points([5.0]), colors=[(255, 0, 0, 255)]
+                        positions=[pos_a.root],
+                        radii=rr.Radius.ui_points([5.0]),
+                        colors=[(255, 0, 0, 255)],
                     ),
                     static=True,
                 )
@@ -361,7 +362,9 @@ class NovaRerunBridge:
                 rr.log(
                     f"motion/errors/FeedbackCollision/collisions/point_{i}/b",
                     rr.Points3D(
-                        [pos_b], radii=rr.Radius.ui_points([5.0]), colors=[(0, 0, 255, 255)]
+                        positions=[pos_b.root],
+                        radii=rr.Radius.ui_points([5.0]),
+                        colors=[(0, 0, 255, 255)],
                     ),
                     static=True,
                 )
@@ -370,7 +373,7 @@ class NovaRerunBridge:
                 rr.log(
                     f"motion/errors/FeedbackCollision/collisions/normal_{i}",
                     rr.Arrows3D(
-                        origins=[pos_b],
+                        origins=[pos_b.root],
                         vectors=[
                             [
                                 normal[0] * arrow_length,
@@ -388,7 +391,9 @@ class NovaRerunBridge:
         if motion_group in self._streaming_tasks:
             return
 
-        task = asyncio.create_task(stream_motion_group(self, motion_group=motion_group))
+        task = asyncio.create_task(
+            stream_motion_group(self, nova=self.nova, motion_group=motion_group)
+        )
         self._streaming_tasks[motion_group] = task
 
     async def stop_streaming(self) -> None:
@@ -427,7 +432,7 @@ class NovaRerunBridge:
 
         # Use motion group specific timing if available
         if motion_group is not None:
-            motion_group_time = self._motion_group_timers.get(motion_group.motion_group_id, 0.0)
+            motion_group_time = self._motion_group_timers.get(motion_group.id, 0.0)
             rr.set_time(TIME_INTERVAL_NAME, duration=motion_group_time)
         else:
             # Fallback to time 0 if no motion group provided
@@ -519,9 +524,7 @@ class NovaRerunBridge:
             # Create descriptive label with ID and action type (only if needed)
             labels.append(f"{len(positions) - 1}: {action_type}")
 
-        entity_path = (
-            f"motion/{motion_group.motion_group_id}/actions" if motion_group else "motion/actions"
-        )
+        entity_path = f"motion/{motion_group.id}/actions" if motion_group else "motion/actions"
 
         # Log all positions with labels and colors
         if positions:

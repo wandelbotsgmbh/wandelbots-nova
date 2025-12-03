@@ -208,8 +208,8 @@ async def test():
 
         await nova.api.virtual_controller_api.set_virtual_controller_mounting(
             cell="cell",
-            controller=controller.controller_id,
-            motion_group=f"0@{controller.controller_id}",
+            controller=controller.id,
+            motion_group=f"0@{controller.id}",
             coordinate_system=api.models.CoordinateSystem(
                 coordinate_system="world",
                 name="mounting",
@@ -222,7 +222,7 @@ async def test():
         await nova.api.virtual_controller_api.add_virtual_controller_tcp(
             cell="cell",
             controller="ur10",
-            motion_group=f"0@{controller.controller_id}",
+            motion_group=f"0@{controller.id}",
             tcp=tcp_name,
             robot_tcp_data=api.models.RobotTcpData(
                 name="torch",

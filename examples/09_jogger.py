@@ -51,7 +51,7 @@ async def main():
             motion_group_state_stream = motion_group.stream_state()
 
             # Create jogger instance
-            jogger = Jogger(motion_group_state_stream, motion_group.motion_group_id, tcp)
+            jogger = Jogger(motion_group_state_stream, motion_group.id, tcp)
 
             # Start jogging session
             motion_iter = motion_group.stream_jogging(tcp, movement_controller=jogger)
@@ -113,7 +113,7 @@ async def main():
                     break
 
             await driver_task
-            # await cell.delete_robot_controller(controller.controller_id)
+            # await cell.delete_robot_controller(controller.id)
 
 
 if __name__ == "__main__":

@@ -90,8 +90,8 @@ async def collision_free_p2p() -> None:
 
         await nova._api_client.virtual_robot_setup_api.set_virtual_controller_mounting(
             cell="cell",
-            controller=controller.controller_id,
-            motion_group=f"0@{controller.controller_id}",
+            controller=controller.id,
+            motion_group=f"0@{controller.id}",
             coordinate_system=api.models.CoordinateSystem(
                 name="mounting",
                 coordinate_system="world",

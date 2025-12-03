@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Generic, TypeVar
 
 import nats
@@ -16,8 +17,6 @@ _NATS_PROGRAMS_BUCKET_TEMPLATE = "nova_cells_{cell}_programs"
 _NATS_PROGRAMS_MESSAGE_SIZE = 128 * 1024
 _NATS_PROGRAMS_BUCKET_SIZE = _NATS_PROGRAMS_MESSAGE_SIZE * 100
 
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +94,6 @@ class _KeyValueStore(Generic[_T]):
         self._bucket_lock = asyncio.Lock()
         self._kv_bucket: KeyValue | None = None
 
-
     @property
     def is_connected(self) -> bool:
         """Check if client is connected"""
@@ -117,7 +115,6 @@ class _KeyValueStore(Generic[_T]):
 
             if not self._nats_client.is_connected:
                 raise RuntimeError("NATS client is not connected")
-
 
             js = self._nats_client.jetstream()
 
