@@ -352,7 +352,9 @@ class NovaRerunBridge:
                 rr.log(
                     f"motion/errors/FeedbackCollision/collisions/point_{i}/a",
                     rr.Points3D(
-                        [pos_a], radii=rr.Radius.ui_points([5.0]), colors=[(255, 0, 0, 255)]
+                        positions=[pos_a.root],
+                        radii=rr.Radius.ui_points([5.0]),
+                        colors=[(255, 0, 0, 255)],
                     ),
                     static=True,
                 )
@@ -360,7 +362,9 @@ class NovaRerunBridge:
                 rr.log(
                     f"motion/errors/FeedbackCollision/collisions/point_{i}/b",
                     rr.Points3D(
-                        [pos_b], radii=rr.Radius.ui_points([5.0]), colors=[(0, 0, 255, 255)]
+                        positions=[pos_b.root],
+                        radii=rr.Radius.ui_points([5.0]),
+                        colors=[(0, 0, 255, 255)],
                     ),
                     static=True,
                 )
@@ -369,7 +373,7 @@ class NovaRerunBridge:
                 rr.log(
                     f"motion/errors/FeedbackCollision/collisions/normal_{i}",
                     rr.Arrows3D(
-                        origins=[pos_b],
+                        origins=[pos_b.root],
                         vectors=[
                             [
                                 normal[0] * arrow_length,
@@ -387,7 +391,9 @@ class NovaRerunBridge:
         if motion_group in self._streaming_tasks:
             return
 
-        task = asyncio.create_task(stream_motion_group(self, motion_group=motion_group))
+        task = asyncio.create_task(
+            stream_motion_group(self, nova=self.nova, motion_group=motion_group)
+        )
         self._streaming_tasks[motion_group] = task
 
     async def stop_streaming(self) -> None:

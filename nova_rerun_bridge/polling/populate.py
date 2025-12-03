@@ -14,7 +14,6 @@ from nova_rerun_bridge.motion_storage import load_processed_motions, save_proces
 # Global run flags
 job_running = False
 first_run = True
-previous_motion_group_list = []
 
 
 async def process_motions():
@@ -23,7 +22,6 @@ async def process_motions():
     """
     global job_running
     global first_run
-    global previous_motion_group_list
 
     # use http://api-gateway:8080 on prod instances
     async with Nova(config=NovaConfig(host="http://api-gateway:8080")) as nova:

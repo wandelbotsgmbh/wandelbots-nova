@@ -121,21 +121,19 @@ async def log_motion(
     rr.set_time(TIME_INTERVAL_NAME, duration=time_offset)
 
     # Get or create visualizer from cache
-    if motion_group not in _visualizer_cache:
+    if motion_group.id not in _visualizer_cache:
         collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
             collision_setups=collision_setups
         )
 
         # Build tcp geometries
         tcp_geometries: list[api.models.Collider] = []
-        if (
-            motion_group_description.safety_tool_colliders is not None
-            and tcp in motion_group_description.safety_tool_colliders
-        ):
-            tcp_geometries = [
-                api.models.Collider(tool_collider.root)
-                for tool_collider in motion_group_description.safety_tool_colliders[tcp]
-            ]
+        if motion_group_description.safety_tool_colliders is not None:
+            tool_colliders = motion_group_description.safety_tool_colliders[tcp]
+            if tool_colliders is not None:
+                tcp_geometries = [
+                    tool_collider for tool_collider in list(tool_colliders.root.values())
+                ]
 
         # Build safety link chain
         safety_link_chain: list[api.models.LinkChain] = []
@@ -268,7 +266,7 @@ def log_tcp_pose(
     rr.send_columns(
         tcp_entity_path,
         indexes=[times_column],
-        columns=rr.Transform3D.columns(translation=positions, rotation_axis_angle=orientations),
+        columns=rr.Transform3D.columns(translation=positions, rotation_axis_angle=orientations),  # type: ignore[arg-type]
     )
 
 
