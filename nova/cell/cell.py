@@ -248,6 +248,5 @@ class Cell:
             raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")
         finally:
             logger.debug("Cleaning up NATS subscription")
-            pass
             await sub.unsubscribe()
         await asyncio.sleep(1)  # Give some time for any final messages to be processed
