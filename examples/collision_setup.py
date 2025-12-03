@@ -200,7 +200,7 @@ async def test():
             )
             collision_setup = list(collision_setups.values())[0]
 
-            await bridge.log_collision_setups(collision_setups=collision_setups)
+            bridge.log_collision_setups(collision_setups=collision_setups)
 
             tcp_names = await motion_group.tcp_names()
             tcp = tcp_names[0]
