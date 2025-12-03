@@ -1,6 +1,4 @@
-from typing import AsyncIterator, Callable, TypeAlias
-
-from icecream import Union
+from typing import AsyncIterator, Callable, TypeAlias, Union
 
 import nova.api as api
 from nova.types.motion_settings import MotionSettings
