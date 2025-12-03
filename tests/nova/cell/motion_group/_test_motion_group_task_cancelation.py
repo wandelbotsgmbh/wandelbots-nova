@@ -155,7 +155,6 @@ def create_movement_controller(exception: BaseException) -> MovementController:
         async def movement_controller(
             response_stream: ExecuteTrajectoryResponseStream,
         ) -> ExecuteTrajectoryRequestStream:
-
             async def intercepted_response_stream():
                 try:
                     async with asyncio.timeout(2):

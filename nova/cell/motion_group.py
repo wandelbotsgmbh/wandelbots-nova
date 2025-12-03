@@ -707,7 +707,9 @@ class MotionGroup(AbstractRobot):
         async def execution():
             try:
                 await self._api_client.trajectory_execution_api.execute_trajectory(
-                    cell=self._cell, controller=self._controller_id, client_request_generator=controller
+                    cell=self._cell,
+                    controller=self._controller_id,
+                    client_request_generator=controller,
                 )
             finally:
                 states.put_nowait(SENTINEL)
