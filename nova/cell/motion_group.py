@@ -701,16 +701,16 @@ class MotionGroup(AbstractRobot):
 
         async def monitor_motion_group_state():
             async for motion_group_state in self.stream_state():
-                # ic()
-                # ic(motion_group_state)
                 if motion_group_state.execute:
                     states.put_nowait(motion_group_state)
 
         async def execution():
-            await self._api_client.trajectory_execution_api.execute_trajectory(
-                cell=self._cell, controller=self._controller_id, client_request_generator=controller
-            )
-            states.put_nowait(SENTINEL)
+            try:
+                await self._api_client.trajectory_execution_api.execute_trajectory(
+                    cell=self._cell, controller=self._controller_id, client_request_generator=controller
+                )
+            finally:
+                states.put_nowait(SENTINEL)
 
         async with asyncio.TaskGroup() as tg:
             monitor_task = tg.create_task(monitor_motion_group_state())
@@ -719,20 +719,12 @@ class MotionGroup(AbstractRobot):
             )
 
             while (motion_group_state := await states.get()) is not SENTINEL:
-                # ic()
-                # ic(motion_group_state)
                 yield motion_group_state_to_motion_state(motion_group_state)
-            ic()
-            monitor_task.cancel()
-            # async for motion_group_state in self.stream_state():
-            #     if motion_group_state.execute:
-            #         yield motion_group_state_to_motion_state(motion_group_state)
 
-            # try:
-            #     await execution_task
-            #     await monitor_task
-            # except asyncio.CancelledError:
-            #     ic()
+            # when the execution task finished
+            # task group will still wait for the monitoring task
+            # so we need to cancel it
+            monitor_task.cancel()
 
     async def _stream_jogging(self, tcp, movement_controller):
         controller = movement_controller(
