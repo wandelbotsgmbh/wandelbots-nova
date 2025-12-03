@@ -381,9 +381,10 @@ def collision_free(
     """Convenience function to create a collision free motion
 
     Args:
-        target: the target joint configuration
+        target: the target joint configuration or pose
         settings: the motion settings
         collision_setup: the collision setup
+        alogorithm: the collision free algorithm, default is RRTConnectAlgorithm
 
     Returns: the collision free motion
 

@@ -200,7 +200,7 @@ async def test():
             )
             collision_setup = list(collision_setups.values())[0]
 
-            await bridge.log_collision_setups(collision_setups=collision_setups)
+            bridge.log_collision_setups(collision_setups=collision_setups)
 
             tcp_names = await motion_group.tcp_names()
             tcp = tcp_names[0]
@@ -209,7 +209,7 @@ async def test():
 
             actions = [
                 cartesian_ptp(target=target_pose, collision_setup=collision_setup),
-                cartesian_ptp(target=current_pose),
+                cartesian_ptp(target=current_pose, collision_setup=collision_setup),
             ]
             joint_trajectory = await motion_group.plan(actions, tcp)
 

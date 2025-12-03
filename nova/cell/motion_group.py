@@ -14,6 +14,7 @@ from nova.utils.collision_setup import (
     get_joint_position_limits_from_motion_group_setup,
     get_safety_collision_setup_from_motion_group_description,
     motion_group_setup_from_motion_group_description,
+    validate_collision_setups,
 )
 from nova.utils.joint_trajectory import combine_trajectories
 from nova.utils.motion_group_settings import update_motion_group_setup_with_motion_settings
