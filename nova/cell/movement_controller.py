@@ -97,7 +97,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         yield api.models.StartMovementRequest(
             direction=api.models.Direction.DIRECTION_FORWARD,
             set_outputs=set_io_list,
-            start_on_io=None,
+            start_on_io=context.start_on_io,
             pause_on_io=None,
         )
         execute_trajectory_response = await anext(response_stream)
