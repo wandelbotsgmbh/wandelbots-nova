@@ -5,7 +5,7 @@ import rerun as rr
 from loguru import logger
 from scipy.spatial.transform import Rotation as R
 
-from nova import MotionGroup
+from nova import MotionGroup, Nova
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.consts import TIME_REALTIME_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
@@ -63,12 +63,12 @@ class MotionGroupProcessor:
         )
 
 
-async def stream_motion_group(self, motion_group: MotionGroup) -> None:
+async def stream_motion_group(self, nova: Nova, motion_group: MotionGroup) -> None:
     """Stream individual motion group state to Rerun."""
     processor = MotionGroupProcessor()
 
-    motion_groups = await self.nova._api_client.motion_group_api.list_motion_groups(
-        self.nova.cell()._cell_id
+    motion_groups = await nova.api.controller_api.list_robot_controller_motion_groups(
+        cell=nova.cell()._cell_id
     )
     motion_motion_group = next(
         (mg for mg in motion_groups.instances if mg.motion_group == motion_group.motion_group_id),

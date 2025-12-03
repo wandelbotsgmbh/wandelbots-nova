@@ -7,15 +7,15 @@ from nova.actions import cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
 from nova.core.nova import Nova
 from nova.program import ProgramPreconditions
-from nova.types import MotionSettings, Pose
+from nova.types import Pose
 
 TOOL_ASSET = "nova_rerun_bridge/example_data/tool.stl"
-tcp_config_dict = {
-    "id": "vacuum",
-    "readable_name": "vacuum",
-    "position": {"x": 0, "y": -80, "z": 340},
-    "rotation": {"angles": [0, 0, 0], "type": "ROTATION_VECTOR"},
-}
+robot_tcp_data = api.models.RobotTcpData(
+    name="vacuum",
+    position=api.models.Vector3d([0, -80, 340]),
+    orientation=api.models.Orientation([0, 0, 0]),
+    orientation_type=api.models.OrientationType.ROTATION_VECTOR,
+)
 
 
 @nova.program(
@@ -44,11 +44,17 @@ async def test():
             home_joints = await motion_group.joints()
 
             # Define new TCP on virtual robot
-            tcp_id = tcp_config_dict["id"]
-            tcp_config = api.models.RobotTcp.from_json(json.dumps(tcp_config_dict))
-            await nova._api_client.virtual_robot_setup_api.add_virtual_robot_tcp(
-                cell.cell_id, controller.controller_id, motion_group_idx, tcp_config
+            tcp_id = robot_tcp_data.name
+            await nova.api.virtual_robot_setup_api.add_virtual_controller_tcp(
+                cell=cell.cell_id,
+                controller=controller.controller_id,
+                motion_group=motion_group.motion_group_id,
+                tcp=tcp_id,
+                robot_tcp_data=robot_tcp_data,
             )
+
+            tcps = await motion_group.tcps()
+            print(tcps)
 
             # Wait for tcp configuration to be applied
             while True:
@@ -63,11 +69,6 @@ async def test():
             target_pose = current_pose @ Pose((0, 0, 1, 0, 0, 0))
 
             actions = [joint_ptp(home_joints), cartesian_ptp(target_pose), joint_ptp(home_joints)]
-
-            # you can update the settings of the action
-            for action in actions:
-                action.settings = MotionSettings(tcp_velocity_limit=200)
-
             await motion_group.plan(actions, tcp_id)
 
 
