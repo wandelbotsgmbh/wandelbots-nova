@@ -27,7 +27,7 @@ from aiostream import stream
 
 from nova import api
 from nova.actions import Action, MovementController
-from nova.types import MotionState, MovementResponse, Pose, RobotState
+from nova.types import MotionState, Pose, RobotState
 
 logger = logging.getLogger(__name__)
 
@@ -306,7 +306,7 @@ class AbstractRobot(Device):
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
-    ) -> AsyncIterator[MovementResponse]:
+    ) -> AsyncIterator[MotionState]:
         """Execute a planned motion
 
         Args:
@@ -391,29 +391,6 @@ class AbstractRobot(Device):
     ) -> None:
         joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
         await self.execute(joint_trajectory, tcp, actions, movement_controller=None)
-
-    def stream_jogging(
-        self, tcp: str, movement_controller: MovementController
-    ) -> AsyncIterable[MotionState]:
-        """Stream the jogging motion of the robot
-
-        Args:
-            tcp (str): The id of the tool center point (TCP)
-            movement_controller (MovementController): The movement controller to be used for jogging
-        """
-        return self._stream_jogging(tcp=tcp, movement_controller=movement_controller)
-
-    @abstractmethod
-    def _stream_jogging(
-        self, tcp: str, movement_controller: MovementController
-    ) -> AsyncIterable[MovementResponse]:
-        """Stream the jogging motion of the robot
-
-        Args:
-            tcp (str): The id of the tool center point (TCP)
-            movement_controller (MovementController): The movement controller to be used for jogging
-        """
-        raise NotImplementedError("This method should be implemented in a subclass")
 
     @abstractmethod
     async def get_state(self, tcp: str | None = None) -> RobotState:

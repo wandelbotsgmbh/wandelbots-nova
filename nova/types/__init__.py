@@ -1,5 +1,7 @@
 from typing import AsyncIterator, Callable, TypeAlias
 
+from icecream import Union
+
 import nova.api as api
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
@@ -7,7 +9,14 @@ from nova.types.state import MotionState, RobotState
 from nova.types.vector3d import Vector3d
 
 MovementResponse: TypeAlias = api.models.ExecuteTrajectoryResponse
-ExecuteTrajectoryRequestStream: TypeAlias = AsyncIterator[api.models.ExecuteTrajectoryRequest]
+ExecuteTrajectoryRequestStream: TypeAlias = AsyncIterator[
+    Union[
+        api.models.InitializeMovementRequest,
+        api.models.StartMovementRequest,
+        api.models.PauseMovementRequest,
+        api.models.PlaybackSpeedRequest,
+    ]
+]
 ExecuteTrajectoryResponseStream: TypeAlias = AsyncIterator[api.models.ExecuteTrajectoryResponse]
 MovementControllerFunction: TypeAlias = Callable[
     [ExecuteTrajectoryResponseStream], ExecuteTrajectoryRequestStream

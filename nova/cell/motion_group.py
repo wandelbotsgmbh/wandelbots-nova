@@ -10,7 +10,6 @@ from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.types import Pose, RobotState
 from nova.types.state import MotionState, motion_group_state_to_motion_state
-from nova.utils import StreamExtractor
 from nova.utils.collision_setup import (
     get_joint_position_limits_from_motion_group_setup,
     get_safety_collision_setup_from_motion_group_description,
@@ -682,8 +681,12 @@ class MotionGroup(AbstractRobot):
                 motion_group_state_stream_gen=self.stream_state,
             )
         )
-        states = asyncio.Queue[api.models.MotionGroupState | None]()
-        SENTINEL = None
+
+        class MotionGroupStateSentinel:
+            pass
+
+        states = asyncio.Queue[api.models.MotionGroupState | MotionGroupStateSentinel]()
+        SENTINEL = MotionGroupStateSentinel()
 
         async def monitor_motion_group_state():
             async for motion_group_state in self.stream_state():
@@ -705,48 +708,10 @@ class MotionGroup(AbstractRobot):
             tg.create_task(execution(), name=f"execute_trajectory-{trajectory_id}-{self.id}")
 
             while (motion_group_state := await states.get()) is not SENTINEL:
+                assert isinstance(motion_group_state, api.models.MotionGroupState)
                 yield motion_group_state_to_motion_state(motion_group_state)
 
             # when the execution task finished
             # task group will still wait for the monitoring task
             # so we need to cancel it
             monitor_task.cancel()
-
-    async def _stream_jogging(self, tcp, movement_controller):
-        controller = movement_controller(
-            MovementControllerContext(
-                combined_actions=CombinedActions(),
-                motion_id="DUMMY_MOTION_ID",  # TODO This is a dummy ID, not used in jogging
-            )
-        )
-
-        def stop_condition(_response):
-            return True
-
-        execute_response_streaming_controller = StreamExtractor(controller, stop_condition)
-        execution_task = asyncio.create_task(
-            self._api_client.motion_group_jogging_api.execute_jogging(
-                cell=self._cell, controller=self._controller_id, client_request_generator=controller
-            )
-        )
-        # BEGIN TODO
-        # This has just been copied during the last main merge and needs to be checked
-        # MOTION_STATE_STREAM_RATE_MS = 100
-        # motion_state_stream = self._api_client.motion_group_api.stream_motion_group_state(
-        #    cell=self._cell,
-        #    controller=self._controller_id,
-        #    motion_group=self.id,
-        #    response_rate=MOTION_STATE_STREAM_RATE_MS,
-        # )
-        # execute_response_stream = stream.merge(
-        #    execute_response_streaming_controller, motion_state_stream
-        # )
-        # async for execute_response in execute_response_stream.stream():
-        #    # async for execute_response in execute_response_streaming_controller:
-        #    yield execute_response
-        # await execution_task
-        # END TODO
-
-        async for execute_response in execute_response_streaming_controller:
-            yield execute_response
-        await execution_task
