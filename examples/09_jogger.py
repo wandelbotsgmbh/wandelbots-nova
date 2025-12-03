@@ -47,11 +47,11 @@ async def main():
             current_pose = await motion_group.tcp_pose(tcp)
             ic(f"Starting pose: {current_pose}")
 
-            # Create effect stream for the jogger
-            effect_stream = motion_group.stream_state()
+            # Create motion group state stream for the jogger
+            motion_group_state_stream = motion_group.stream_state()
 
             # Create jogger instance
-            jogger = Jogger(effect_stream, motion_group.motion_group_id, tcp)
+            jogger = Jogger(motion_group_state_stream, motion_group.motion_group_id, tcp)
 
             # Start jogging session
             motion_iter = motion_group.stream_jogging(tcp, movement_controller=jogger)
