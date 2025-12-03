@@ -486,21 +486,22 @@ class MotionGroup(AbstractRobot):
 
         """
         # PREPARE THE REQUEST
-        # collision_setups = validate_collision_setups(actions)
+        collision_setups = validate_collision_setups(actions)
+        first_collision_setup = collision_setups[0] if len(collision_setups) > 0 else None
+
+
+        # this is bad for memory because collision scenes can be very large
+        # but we do it for now anyway because we don't want to create side effect on the provided motion group setup
+        motion_group_setup = motion_group_setup.model_copy(deep=True)
+        if motion_group_setup.collision_setups is None:
+            motion_group_setup.collision_setups = api.models.CollisionSetups({})
+
+        
+        if first_collision_setup is not None:
+            motion_group_setup.collision_setups.root["collision-check"] = first_collision_setup
+
 
         motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
-
-        # static_colliders = None
-        # collision_motion_group = None
-        # if collision_setups and len(collision_scenes) > 0:
-        #     static_colliders = collision_setups[0].colliders
-
-        #     motion_group_type = motion_group_setup.motion_group_model
-        #     if (
-        #         collision_setups[0].motion_groups
-        #         and motion_group_type in collision_setups[0].motion_groups
-        #     ):
-        #         collision_motion_group = collision_setups[0].motion_groups[motion_group_type]
 
         # Plan the trajectory
         plan_trajectory_response = await self._api_client.trajectory_planning_api.plan_trajectory(
@@ -554,9 +555,7 @@ class MotionGroup(AbstractRobot):
             motion_group_setup.collision_setups = api.models.CollisionSetups({})
 
         if action.collision_setup is not None:
-            motion_group_setup.collision_setups.root["collision-free-motion"] = (
-                action.collision_setup
-            )
+            motion_group_setup.collision_setups.root["collision-free-motion"] = action.collision_setup
 
         if isinstance(action.target, Pose):
             solutions = await self._inverse_kinematics(
