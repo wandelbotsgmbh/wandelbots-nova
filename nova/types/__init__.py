@@ -8,7 +8,6 @@ from nova.types.pose import Pose
 from nova.types.state import MotionState, RobotState
 from nova.types.vector3d import Vector3d
 
-MovementResponse: TypeAlias = api.models.ExecuteTrajectoryResponse
 ExecuteTrajectoryRequestStream: TypeAlias = AsyncIterator[
     Union[
         api.models.InitializeMovementRequest,
@@ -26,7 +25,6 @@ __all__ = [
     "Vector3d",
     "Pose",
     "CollisionScene",
-    "MovementResponse",
     "MotionState",
     "RobotState",
     "MotionSettings",

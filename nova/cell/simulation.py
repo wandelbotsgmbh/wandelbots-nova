@@ -2,7 +2,7 @@ import asyncio
 import math
 import time
 from collections import defaultdict
-from typing import Any, AsyncIterable, AsyncIterator, Literal, SupportsIndex
+from typing import Any, AsyncIterator, Literal, SupportsIndex
 
 import numpy as np
 
@@ -20,7 +20,7 @@ from nova.cell.robot_cell import (
     RobotCell,
     Timer,
 )
-from nova.types import MotionState, MovementResponse, Pose, RobotState
+from nova.types import MotionState, Pose, RobotState
 
 
 def default_value():
@@ -398,11 +398,6 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
 
     def set_status(self, active: bool) -> None:
         print(f"set status: {active}")
-
-    def _stream_jogging(
-        self, tcp: str, movement_controller: MovementController
-    ) -> AsyncIterable[MovementResponse]:
-        raise NotImplementedError("Jogging is not supported for simulated robot cell")
 
 
 class SimulatedIO(ConfigurablePeriphery, Device, IODevice):
