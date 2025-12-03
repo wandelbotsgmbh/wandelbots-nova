@@ -40,7 +40,7 @@ The SDK will help you to build your own apps and services using Python on top of
 
 - A running NOVA instance (Get a Wandelbots NOVA account on [wandelbots.com](https://www.wandelbots.com/contact))
 - Valid NOVA API credentials
-- Python >=3.10
+- Python >=3.11
 
 ## Quickstart
 
