@@ -21,7 +21,7 @@ class TrajectoryTuner:
         self.plan_fn = plan_fn
         self.execute_fn = execute_fn
 
-    async def tune(self, actions, motion_group_state_stream):
+    async def tune(self, actions, motion_group_state_stream_fn):
         finished_tuning = False
         continue_tuning_event = asyncio.Event()
         faststream_app_ready_event = asyncio.Event()
@@ -116,7 +116,7 @@ class TrajectoryTuner:
                 motion_id, joint_trajectory = await self.plan_fn(actions)
                 current_cursor = TrajectoryCursor(
                     motion_id,
-                    motion_group_state_stream,
+                    motion_group_state_stream_fn(response_rate_msecs=200),
                     joint_trajectory,
                     actions,
                     initial_location=current_location,
@@ -138,6 +138,7 @@ class TrajectoryTuner:
                     ic()
                     yield execute_response
                 ic()
+                current_cursor.detach()
                 await execution_task
                 ic()
                 continue_tuning_event.clear()

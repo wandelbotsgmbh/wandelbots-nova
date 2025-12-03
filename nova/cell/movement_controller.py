@@ -1,6 +1,6 @@
 import asyncio
-from datetime import datetime
 import logging
+from datetime import datetime
 from enum import Enum, auto
 from math import ceil, floor
 from typing import AsyncIterator, Optional
@@ -140,13 +140,15 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 class TrajectoryCursor_V2:
     def __init__(
         self,
-        effect_stream: AsyncIterator[api.models.MotionGroupState],
+        motion_group_state_stream: AsyncIterator[api.models.MotionGroupState],
         joint_trajectory: api.models.JointTrajectory,
     ):
         self.joint_trajectory = joint_trajectory
         self._command_queue = asyncio.Queue()
         self._response_queue = asyncio.Queue()
-        self._effect_stream: AsyncIterator[api.models.MotionGroupState] = effect_stream
+        self._motion_group_state_stream: AsyncIterator[api.models.MotionGroupState] = (
+            motion_group_state_stream
+        )
         self._breakpoints = []
 
     def __call__(self, context: MovementControllerContext):
@@ -188,7 +190,7 @@ class TrajectoryCursor_V2:
             yield request
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(self._effect_consumer(), name="effect_consumer")
+            tg.create_task(self._motion_group_state_consumer(), name="motion_group_state_consumer")
             tg.create_task(self._response_consumer(), name="request_consumer")
             tg.create_task(self._combined_response_consumer(), name="combined_response_consumer")
 
@@ -200,10 +202,10 @@ class TrajectoryCursor_V2:
             yield await self._command_queue.get()
             self._command_queue.task_done()
 
-    async def _effect_consumer(self):
-        async for effect in self._effect_stream:
-            # ic(effect)
-            self._response_queue.put_nowait(effect)
+    async def _motion_group_state_consumer(self):
+        async for motion_group_state in self._motion_group_state_stream:
+            # ic(motion_group_state)
+            self._response_queue.put_nowait(motion_group_state)
 
     async def _response_consumer(self):
         async for response in self._response_stream:
@@ -352,7 +354,7 @@ class TrajectoryCursor:
     def __init__(
         self,
         motion_id: str,
-        effect_stream: AsyncIterator[api.models.MotionGroupState],
+        motion_group_state_stream: AsyncIterator[api.models.MotionGroupState],
         joint_trajectory: api.models.JointTrajectory,
         actions: list[Action],
         initial_location: float,
@@ -365,7 +367,9 @@ class TrajectoryCursor:
         self._COMMAND_QUEUE_SENTINAL = object()
         self._response_queue: asyncio.Queue[api.models.ExecuteTrajectoryResponse] = asyncio.Queue()
         self._in_queue: asyncio.Queue[api.models.ExecuteTrajectoryResponse | None] = asyncio.Queue()
-        self._effect_stream: AsyncIterator[api.models.MotionGroupState] = effect_stream
+        self._motion_group_state_stream: AsyncIterator[api.models.MotionGroupState] = (
+            motion_group_state_stream
+        )
 
         self._current_location = initial_location
         self._overshoot = 0.0
@@ -399,6 +403,8 @@ class TrajectoryCursor:
     @property
     def next_action_index(self) -> int:
         index = ceil(self._current_location - self._overshoot) - 1
+        index = ceil(self._current_location - self._overshoot) + 1
+        # ic(len(self.actions), self._current_location, self._overshoot, index)
         if index < 0:
             return 0
         if index < len(self.actions):
@@ -464,6 +470,7 @@ class TrajectoryCursor:
             )
             return future
         self._target_location = location
+        ic(self._target_location)
         return self.forward(
             target_location=location, playback_speed_in_percent=playback_speed_in_percent
         )
@@ -603,8 +610,8 @@ class TrajectoryCursor:
         combined_response_consumer_ready_event = asyncio.Event()
         try:
             async with asyncio.TaskGroup() as tg:
-                effect_consumer_task = tg.create_task(
-                    self._effect_consumer(), name="effect_consumer"
+                motion_group_state_consumer_task = tg.create_task(
+                    self._motion_group_state_consumer(), name="motion_group_state_consumer"
                 )
                 response_consumer_task = tg.create_task(
                     self._response_consumer(), name="response_consumer"
@@ -626,15 +633,10 @@ class TrajectoryCursor:
                 async for request in self._request_loop():
                     yield request
 
-                ic()
                 response_consumer_task.cancel()
                 motion_event_updater_task.cancel()
-                effect_consumer_task.cancel()
+                motion_group_state_consumer_task.cancel()
                 combined_response_consumer_task.cancel()
-                ic()
-                # await response_consumer_task
-                # await motion_event_updater_task
-                # await effect_consumer_task
         except ExceptionGroup as eg:
             ic(eg)
             logger.error(f"ExceptionGroup in TrajectoryCursor cntrl: {eg}")
@@ -691,7 +693,9 @@ class TrajectoryCursor:
             command = await self._command_queue.get()
             if command is self._COMMAND_QUEUE_SENTINAL:
                 self._command_queue.task_done()
+                ic()
                 break
+            ic(command)
             yield command
 
             if isinstance(command, api.models.StartMovementRequest):
@@ -710,10 +714,10 @@ class TrajectoryCursor:
             # yield await self._command_queue.get()
             self._command_queue.task_done()
 
-    async def _effect_consumer(self):
-        async for effect in self._effect_stream:
-            ic(effect)
-            self._response_queue.put_nowait(effect)
+    async def _motion_group_state_consumer(self):
+        async for motion_group_state in self._motion_group_state_stream:
+            # ic(motion_group_state)
+            self._response_queue.put_nowait(motion_group_state)
 
     async def _response_consumer(self):
         async for response in self._response_stream:
@@ -728,11 +732,21 @@ class TrajectoryCursor:
             while True:
                 ic()
                 response = await self._response_queue.get()
-                ic(response)
-                self._in_queue.put_nowait(response)
+                # ic(response)
                 if isinstance(response, api.models.MotionGroupState):
                     motion_group_state = response
-                    motion_state = motion_group_state_to_motion_state(motion_group_state)
+                    try:
+                        motion_state = motion_group_state_to_motion_state(
+                            motion_group_state
+                        )  # TODO this should only be called if there is a motion state
+                    except ValueError:
+                        # TODO somewhat hacky
+                        # ic(e)
+                        self._response_queue.task_done()
+                        continue
+
+                    self._in_queue.put_nowait(response)
+
                     if last_motion_state is None:
                         last_motion_state = motion_state
                     self._current_location = motion_state.path_parameter
@@ -741,17 +755,24 @@ class TrajectoryCursor:
                     if motion_group_state.execute and isinstance(
                         motion_group_state.execute.details, api.models.TrajectoryDetails
                     ):
+                        ic()
                         match motion_group_state.execute.details.state:
                             case api.models.TrajectoryPausedByUser():
+                                ic()
                                 self._overshoot = self._current_location - self._target_location
-                                assert self._overshoot == 0.0
+                                assert self._overshoot == 0.0, (
+                                    f"Expected overshoot to be 0.0, got {self._overshoot}"
+                                )
                                 # self._overshoot = 0.0  # because the RAE takes care of that
                                 self._complete_operation()
                                 if self._detach_on_standstill:
+                                    ic()
                                     break
                             case api.models.TrajectoryEnded():
                                 self._overshoot = self._current_location - self._target_location
-                                assert self._overshoot == 0.0
+                                assert self._overshoot == 0.0, (
+                                    f"Expected overshoot to be 0.0, got {self._overshoot}"
+                                )
                                 # self._overshoot = 0.0  # because the RAE takes care of that
                                 self._complete_operation()
                                 if self._detach_on_standstill:

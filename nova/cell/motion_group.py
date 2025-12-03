@@ -12,14 +12,12 @@ from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.types import MovementResponse, Pose, RobotState
-from nova.types.motion_settings import MotionSettings
 from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.utils import StreamExtractor
 from nova.utils.collision_setup import (
     get_joint_position_limits_from_motion_group_setup,
     get_safety_collision_setup_from_motion_group_description,
     motion_group_setup_from_motion_group_description,
-    validate_collision_setups,
 )
 from nova.utils.joint_trajectory import combine_trajectories
 from nova.utils.motion_group_settings import update_motion_group_setup_with_motion_settings
@@ -797,5 +795,5 @@ class MotionGroup(AbstractRobot):
             controller=self._controller_id,
         )
         tuner = TrajectoryTuner(plan_fn, execute_fn)
-        async for response in tuner.tune(actions, self.stream_state()):
+        async for response in tuner.tune(actions, self.stream_state):
             yield response
