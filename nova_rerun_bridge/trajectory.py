@@ -129,7 +129,7 @@ async def log_motion(
         # Build tcp geometries
         tcp_geometries: list[api.models.Collider] = []
         if motion_group_description.safety_tool_colliders is not None:
-            tool_colliders = motion_group_description.safety_tool_colliders[tcp]
+            tool_colliders = motion_group_description.safety_tool_colliders.get(tcp)
             if tool_colliders is not None:
                 tcp_geometries = [
                     tool_collider for tool_collider in list(tool_colliders.root.values())
