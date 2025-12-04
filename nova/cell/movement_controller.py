@@ -39,35 +39,34 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             await error_monitor_task_created.wait()
             try:
                 async for motion_group_state in motion_group_state_stream:
+                    
                     if motion_group_state.execute and isinstance(
                         motion_group_state.execute.details, api.models.TrajectoryDetails
                     ):
+                        logger.info(f"BugSearch: MotionGroupState: {motion_group_state.execute.details}")
                         if isinstance(
                             motion_group_state.execute.details.state, api.models.TrajectoryEnded
                         ):
+                            logger.info("BugSearch: Trajectory ended, cancelling error monitor")
                             error_monitor_task.cancel()
                             break
-            except asyncio.CancelledError:
+            finally:
                 error_monitor_task.cancel()
-                raise
 
         async def error_monitor(
             responses: ExecuteTrajectoryResponseStream, to_cancel: list[asyncio.Task]
         ):
-            def cancel_tasks():
-                for task in to_cancel:
-                    task.cancel()
-
             try:
                 async for execute_trajectory_response in responses:
                     if isinstance(execute_trajectory_response, api.models.MovementErrorResponse):
                         # TODO how does this propagate?
                         # TODO what happens to the state consumer?
+                        logger.info("BugSearch: MovementErrorResponse received, raising exception")
                         raise ErrorDuringMovement(execute_trajectory_response.message)
-            except asyncio.CancelledError:
-                raise
             finally:
-                cancel_tasks()
+                for task in to_cancel:
+                    task.cancel()
+
 
         logger.info("BugSearch: Starting movement controller")
         motion_group_state_stream = context.motion_group_state_stream_gen()
