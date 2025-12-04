@@ -69,6 +69,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             finally:
                 cancel_tasks()
 
+        logger.info("BugSearch: Starting movement controller")
         motion_group_state_stream = context.motion_group_state_stream_gen()
         motion_group_state_monitor_ready = asyncio.Event()
         error_monitor_task_created = asyncio.Event()
@@ -79,9 +80,11 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
         await motion_group_state_monitor_ready.wait()
         trajectory_id = api.models.TrajectoryId(id=context.motion_id)
+        logger.info("BugSearch: Before initialize movement")
         yield api.models.InitializeMovementRequest(
             trajectory=trajectory_id, initial_location=api.models.Location(0)
         )
+        logger.info("BugSearch: After initialize movement")
         execute_trajectory_response = await anext(response_stream)
         initialize_movement_response = execute_trajectory_response.root
         assert isinstance(initialize_movement_response, api.models.InitializeMovementResponse)
@@ -93,6 +96,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         ):
             raise InitMovementFailed(initialize_movement_response)
 
+        logger.info("BugSearch: 4")
         set_io_list = context.combined_actions.to_set_io()
         yield api.models.StartMovementRequest(
             direction=api.models.Direction.DIRECTION_FORWARD,
@@ -100,15 +104,20 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             start_on_io=context.start_on_io,
             pause_on_io=None,
         )
+        logger.info("BugSearch: 5")
         execute_trajectory_response = await anext(response_stream)
         start_movement_response = execute_trajectory_response
         assert isinstance(start_movement_response.root, api.models.StartMovementResponse)
 
+        logger.info("BugSearch: 6")
         error_monitor_task = asyncio.create_task(
             error_monitor(response_stream, [motion_group_state_monitor_task]), name="error_monitor"
         )
+
+        logger.info("BugSearch: 7")
         error_monitor_task_created.set()
         await error_monitor_task
         await motion_group_state_monitor_task
+        logger.info("BugSearch: 8")
 
     return movement_controller
