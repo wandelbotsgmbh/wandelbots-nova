@@ -17,6 +17,7 @@ from nova import api
 
 from loguru import logger
 
+
 async def main() -> None:
     refresh_url = os.getenv("PORTAL_PROD_REFRESH_URL")
     client_id = os.getenv("PORTAL_PROD_REFRESH_CLIENT_ID")
@@ -27,7 +28,6 @@ async def main() -> None:
             "PORTAL_PROD_REFRESH_URL, PORTAL_PROD_REFRESH_CLIENT_ID, PORTAL_PROD_REFRESH_TOKEN"
         )
         sys.exit(1)
-
 
     get_token_response = requests.post(
         refresh_url,
@@ -41,7 +41,6 @@ async def main() -> None:
     get_token_response.raise_for_status()
     access_token = get_token_response.json().get("access_token")
 
-    
     github_run_id = os.getenv("GITHUB_RUN_ID", "local-run")
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     sandbox_name = f"svcmgr-{github_run_id}-{timestamp}"
@@ -60,7 +59,6 @@ async def main() -> None:
 
     host = instance_response.get("host")
     instance_id = instance_response.get("instance_id")
-
 
     config = NovaConfig(host=f"https://{host}", access_token=access_token)
     async with Nova(config) as nova:
@@ -96,16 +94,15 @@ async def main() -> None:
                 finally:
                     await asyncio.sleep(5)
 
-
-
     with open("instance_config.env", "w") as file:
         file.write(
-f"""
+            f"""
 PORTAL_PROD_ACCESS_TOKEN="{access_token}"
 PORTAL_PROD_HOST="{host}"
 PORTAL_PROD_INSTANCE_ID="{instance_id}"
-"""            
+"""
         )
+
 
 if __name__ == "__main__":
     asyncio.run(main())

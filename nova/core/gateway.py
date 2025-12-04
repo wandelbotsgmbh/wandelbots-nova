@@ -133,7 +133,6 @@ class ApiGateway:
         self.kinematics_api = _intercept(api.api.KinematicsApi(api_client=self._api_client), self)
         self.cell_api = _intercept(api.api.CellApi(api_client=self._api_client), self)
 
-
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
     async def close(self):
