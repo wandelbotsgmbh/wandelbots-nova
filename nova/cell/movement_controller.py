@@ -113,10 +113,9 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             error_monitor(response_stream, [motion_group_state_monitor_task]), name="error_monitor"
         )
 
-        logger.info("BugSearch: 7")
         error_monitor_task_created.set()
-        await error_monitor_task
         await motion_group_state_monitor_task
+        await error_monitor_task
         logger.info("BugSearch: 8")
 
     return movement_controller
