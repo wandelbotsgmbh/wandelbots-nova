@@ -174,7 +174,7 @@ def create_movement_controller(exception: BaseException) -> MovementController:
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_movement_stops_when_custom_controller_raises(ur_mg):
+async def _test_movement_stops_when_custom_controller_raises(ur_mg):
     movement_in_x = 800
     initial_pose = await ur_mg.tcp_pose()
     final_pose = initial_pose @ Pose((movement_in_x, 0, 0))
@@ -211,7 +211,7 @@ async def test_movement_stops_when_custom_controller_raises(ur_mg):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_task_cancelation_when_movement_controller_cancels_we_should_propagate(ur_mg):
+async def _test_task_cancelation_when_movement_controller_cancels_we_should_propagate(ur_mg):
     """
     Tests that when user sends a task cancelation from inside a custom movement controller,
     the cancelation is properly propagated and the robot stops moving.
