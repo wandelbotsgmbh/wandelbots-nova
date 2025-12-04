@@ -10,12 +10,10 @@ import sys
 from datetime import datetime
 
 import requests
-
-from nova.config import NovaConfig
-from nova import Nova
-from nova import api
-
 from loguru import logger
+
+from nova import Nova, api
+from nova.config import NovaConfig
 
 
 async def main() -> None:
