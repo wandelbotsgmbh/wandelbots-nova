@@ -3,7 +3,7 @@ from concurrent.futures import Future
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import nova
 from nova import api
@@ -247,8 +247,8 @@ async def test_novax_program_pass_arguments_with_pydantic_model():
     assertion = Future()
 
     class ProgramArgs(BaseModel):
-        number_of_iterations: int
-        some_defaul_param: str = "default"
+        number_of_iterations: int = Field(5, description="Number of iterations")
+        some_defaul_param: str = Field("default", description="Some default parameter")
 
     @nova.program()
     async def example_program(args: ProgramArgs):

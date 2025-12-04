@@ -52,7 +52,6 @@ async def test_program_runner_with_unrelated_controller_in_estop():
         )
     )
     # Set the controller in estop
-    # TODO: check with Christoph, merge gone wrong? the function not there anymore
     await controller_in_estop.set_estop(active=True)
 
     # Check if the program starts even if one (unused) controller is in estop

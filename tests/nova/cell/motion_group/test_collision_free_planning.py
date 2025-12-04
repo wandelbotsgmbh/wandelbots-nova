@@ -5,8 +5,7 @@ import pytest
 
 from nova import Nova, api
 from nova.actions import collision_free
-from nova.api import models
-from nova.cell import virtual_controller, MotionGroup, Controller
+from nova.cell import Controller, MotionGroup, virtual_controller
 from nova.types import Pose
 
 initial_joint_positions = [pi / 2, -pi / 2, pi / 2, 0, 0, 0]
@@ -27,8 +26,8 @@ async def ur_mg():
         await cell.ensure_controller(
             virtual_controller(
                 name=controller_name,
-                manufacturer=models.Manufacturer.UNIVERSALROBOTS,
-                type=models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
                 # create controller API doesn't accept 6 values
                 position=[*initial_joint_positions, 0],
             )
@@ -54,7 +53,7 @@ async def test_collision_free_planning_with_joint_position_as_target(ur_mg):
     """
     Tests collision-free planning with a joint position as target.
     """
-    trajectory: models.JointTrajectory = await ur_mg.plan(
+    trajectory = await ur_mg.plan(
         start_joint_position=tuple(initial_joint_positions),
         actions=[collision_free(target=(pi / 4, -pi / 2, pi / 2, 0, 0, 0))],
         tcp="Flange",
@@ -82,7 +81,7 @@ async def test_collision_free_planning_with_pose_as_target(ur_mg):
         await ur_mg.forward_kinematics(joints=[list(target_as_joints)], tcp="Flange")
     )[0]
 
-    trajectory: models.JointTrajectory = await ur_mg.plan(
+    trajectory = await ur_mg.plan(
         start_joint_position=tuple(initial_joint_positions),
         actions=[collision_free(target=target_as_pose)],
         tcp="Flange",
@@ -112,11 +111,11 @@ async def test_collision_free_planning_finds_no_solution_pose_as_target(ur_mg: M
     """
     Tests that collision-free planning correctly identifies when no solution is possible.
     """
-    plane = models.Collider(
-        shape=models.Plane(),
-        pose=models.Pose(
-            position=models.Vector3d(root=[0, 0, 0]),
-            orientation=models.RotationVector(root=[0, 0, 0]),
+    plane = api.models.Collider(
+        shape=api.models.Plane(),
+        pose=api.models.Pose(
+            position=api.models.Vector3d(root=[0, 0, 0]),
+            orientation=api.models.RotationVector(root=[0, 0, 0]),
         ),
     )
     collision_setup = await ur_mg.get_safety_collision_setup("Flange")
@@ -145,11 +144,11 @@ async def test_collision_free_planning_finds_no_solution_joints_as_target(ur_mg:
     target_as_joints = ik_solutions[0][0]
 
     # create a collision scene to make the point unreachable
-    plane = models.Collider(
-        shape=models.Plane(),
-        pose=models.Pose(
-            position=models.Vector3d(root=[0, 0, 0]),
-            orientation=models.RotationVector(root=[0, 0, 0]),
+    plane = api.models.Collider(
+        shape=api.models.Plane(),
+        pose=api.models.Pose(
+            position=api.models.Vector3d(root=[0, 0, 0]),
+            orientation=api.models.RotationVector(root=[0, 0, 0]),
         ),
     )
     collision_setup = await ur_mg.get_safety_collision_setup("Flange")

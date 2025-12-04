@@ -39,11 +39,12 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             await error_monitor_task_created.wait()
             try:
                 async for motion_group_state in motion_group_state_stream:
-                    
                     if motion_group_state.execute and isinstance(
                         motion_group_state.execute.details, api.models.TrajectoryDetails
                     ):
-                        logger.info(f"BugSearch: MotionGroupState: {motion_group_state.execute.details}")
+                        logger.info(
+                            f"BugSearch: MotionGroupState: {motion_group_state.execute.details}"
+                        )
                         if isinstance(
                             motion_group_state.execute.details.state, api.models.TrajectoryEnded
                         ):
@@ -66,7 +67,6 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             finally:
                 for task in to_cancel:
                     task.cancel()
-
 
         logger.info("BugSearch: Starting movement controller")
         motion_group_state_stream = context.motion_group_state_stream_gen()

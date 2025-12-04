@@ -135,8 +135,8 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 from nova.viewers import _setup_active_viewers_after_preconditions
 
                 await _setup_active_viewers_after_preconditions()
-            except ImportError:
-                pass
+            except ImportError as e:
+                logger.error(f"Could not import viewers: {e}")
 
         return created_controllers
 

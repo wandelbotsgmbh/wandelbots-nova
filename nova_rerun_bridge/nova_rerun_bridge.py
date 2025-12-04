@@ -238,7 +238,6 @@ class NovaRerunBridge:
                 raise
         except Exception as e:
             # Log other errors but don't fail
-            # TODO: why is the error not highlighted?
             logger.error(f"Failed to log motion trajectory: {e}")
             raise
 
