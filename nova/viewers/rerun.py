@@ -311,7 +311,6 @@ class Rerun(Viewer):
                     else:
                         # TODO: handle collision free failed response
                         logger.warning("Collision free failed response not supported yet")
-                        pass
 
             # Log error information as text
             import rerun as rr
