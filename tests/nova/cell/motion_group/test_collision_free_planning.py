@@ -6,8 +6,7 @@ import pytest
 from nova import Nova, api
 from nova.actions import collision_free
 from nova.api import models
-from nova.cell import virtual_controller
-from nova.cell.motion_group import MotionGroup
+from nova.cell import virtual_controller, MotionGroup, Controller
 from nova.types import Pose
 
 initial_joint_positions = [pi / 2, -pi / 2, pi / 2, 0, 0, 0]
@@ -36,6 +35,7 @@ async def ur_mg():
         )
 
         # wait for controller to be ready
+        ur: Controller | None = None
         for i in range(10):
             try:
                 ur = await cell.controller(controller_name)
