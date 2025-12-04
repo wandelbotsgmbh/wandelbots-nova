@@ -71,7 +71,7 @@ def test_tcp_limits_patching_all_none_in_settings():
     # Act
     update_motion_group_setup_with_motion_settings(motion_group_setup, settings)
 
-    # Updated to default vecolity limit
+    # Updated to default velocity limit
     assert motion_group_setup.global_limits.tcp.velocity == DEFAULT_TCP_VELOCITY_LIMIT
 
     # unchanged
