@@ -249,4 +249,4 @@ class Cell:
         finally:
             logger.debug("Cleaning up NATS subscription")
             await sub.unsubscribe()
-        await asyncio.sleep(1)  # Give some time for any final messages to be processed
+        await asyncio.sleep(5)  # Give some time for any final messages to be processed
