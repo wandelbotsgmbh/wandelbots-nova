@@ -25,10 +25,13 @@ jobs:
           PORTAL_PROD_REFRESH_TOKEN: ${{ secrets.PORTAL_PROD_REFRESH_TOKEN }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
-          if ! source ./scripts/create_nova_instance.sh; then
+          python ./scripts/create_nova_instance.py
+          if $? -ne 0; then
             echo "Failed to create NOVA instance."
             exit 1
           fi
+          source ./instance_config.env
+
           # expose as job outputs
           echo "PORTAL_PROD_HOST=$PORTAL_PROD_HOST" >> "$GITHUB_OUTPUT"
           echo "PORTAL_PROD_INSTANCE_ID=$PORTAL_PROD_INSTANCE_ID" >> "$GITHUB_OUTPUT"
