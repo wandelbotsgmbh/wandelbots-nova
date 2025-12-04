@@ -24,7 +24,10 @@ jobs:
           PORTAL_PROD_REFRESH_CLIENT_ID: ${{ secrets.PORTAL_PROD_REFRESH_CLIENT_ID }}
           PORTAL_PROD_REFRESH_TOKEN: ${{ secrets.PORTAL_PROD_REFRESH_TOKEN }}
           GITHUB_RUN_ID: ${{ github.run_id }}
+        ## TODO: move to uv script
         run: |
+          pip install requests
+          pip install loguru
           python ./scripts/create_nova_instance.py
           if $? -ne 0; then
             echo "Failed to create NOVA instance."
