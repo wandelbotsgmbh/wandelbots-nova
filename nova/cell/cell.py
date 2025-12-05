@@ -17,6 +17,10 @@ DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS = 120
 # This is the default value we use when we wait for a controller to be ready.
 DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS = 120
 
+CONTROLLER_NOT_READY_STATUSES = [
+    "MODE_CONTROLLER_NOT_CONFIGURED",
+    "MODE_INITIALIZING",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -218,11 +222,11 @@ class Cell:
         if nc is None:
             raise ValueError("NATS client is not connected")
 
-        nats_subject = f"nova.v2.cells.{cell}.status"
-        controller_ready_event = asyncio.Event()
+        cell_status_subject = f"nova.v2.cells.{cell}.status"
+        controller_pod_ready = asyncio.Event()
 
         async def on_cell_status_message(msg):
-            if controller_ready_event.is_set():
+            if controller_pod_ready.is_set():
                 # Skip processing if controller is already ready
                 return
             logger.debug(f"Received message on {msg.subject}: {msg.data}")
@@ -232,21 +236,42 @@ class Cell:
             ]
             assert len(robot_controller_service_status) == 1, "Multiple controllers with same name?"
             if robot_controller_service_status[0]["status"]["code"] == "Running":
-                controller_ready_event.set()
+                controller_pod_ready.set()
             else:
                 logger.info(
                     f"Controller {name} status: {robot_controller_service_status[0]['status']['code']}"
                 )
 
-        # TODO currently the NotsClient does not support unsubscribing from a subject, keeping the code
-        # code like this for when it is supported.
-        sub = await nc.subscribe(subject=nats_subject, cb=on_cell_status_message)
+        controller_status_subject = f"nova.v2.cells.{cell}.controllers.{name}.state"
+        controller_ready = asyncio.Event()
+
+        async def on_controller_status_message(msg):
+            data = json.loads(msg.data)
+            if data["mode"] in CONTROLLER_NOT_READY_STATUSES:
+                logger.info(f"Controller {name} mode: {data['mode']}")
+                return
+            
+            logger.info(f"Controller {name} is ready with mode: {data['mode']}")
+            controller_ready.set()
+
+
+        cell_status_sub = await nc.subscribe(subject=cell_status_subject, cb=on_cell_status_message)
+        controller_status_sub = await nc.subscribe(subject=controller_status_subject, cb=on_controller_status_message)
         try:
-            await asyncio.wait_for(controller_ready_event.wait(), timeout=timeout)
+            await asyncio.wait_for(
+                asyncio.gather(
+                    controller_pod_ready.wait(),
+                    controller_ready.wait(),
+                ),
+                timeout=timeout,
+            )
         except asyncio.TimeoutError:
             logger.warning(f"Timeout waiting for {cell}/{name} controller to be ready")
             raise TimeoutError(f"Timeout waiting for {cell}/{name} controller availability")
         finally:
             logger.debug("Cleaning up NATS subscription")
-            await sub.unsubscribe()
+            await cell_status_sub.unsubscribe()
+            await controller_status_sub.unsubscribe()
+
+        
         await asyncio.sleep(5)  # Give some time for any final messages to be processed
