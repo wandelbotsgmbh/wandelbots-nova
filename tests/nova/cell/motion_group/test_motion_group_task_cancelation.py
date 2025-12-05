@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import aclosing
 from multiprocessing import Process
 
 import pytest
@@ -18,6 +19,8 @@ from nova.types import (
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
 
+import logging
+logger = logging.getLogger(__name__)
 
 @pytest.fixture
 async def ur_mg():
@@ -27,7 +30,7 @@ async def ur_mg():
     Yields:
         MotionGroup: Motion group ready for task cancellation tests
     """
-    initial_joint_positions = [1.8294, -1.4618, -1.8644, -1.1851, 1.5188, 0.2529, 0.0]
+    initial_joint_positions = [1.8294, -1.4618, -1.8644, -1.1851, 1.5188, 0.2529]
     controller_name = "ur-movement-test"
 
     async with Nova() as nova:
@@ -37,21 +40,31 @@ async def ur_mg():
                 name=controller_name,
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
                 type=models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
-                position=initial_joint_positions,
             )
         )
 
 
         ur = await cell.controller(controller_name)
         async with ur[0] as mg:
+            logger.info("Moving to initial joint positions for test.")
+            await mg.plan_and_execute(
+                actions=[
+                    jnt(
+                        initial_joint_positions,
+                        settings=MotionSettings(tcp_velocity_limit=250),
+                    )
+                ],
+                tcp="Flange",
+            )
             try:
                 yield mg
             finally:
+                logger.info("Moving back to initial joint positions after test.")
                 # Move back to the initial position
                 await mg.plan_and_execute(
                     actions=[
                         jnt(
-                            initial_joint_positions[:6],
+                            initial_joint_positions,
                             settings=MotionSettings(tcp_velocity_limit=250),
                         )
                     ],
@@ -120,11 +133,14 @@ async def test_movement_stops_when_async_generator_raises_exception(ur_mg):
 
     try:
         number_of_states_to_consume = 100
-        async for state in ur_mg.stream_execute(trajectory, "Flange", actions=actions):
-            number_of_states_to_consume -= 1
-            if number_of_states_to_consume == 0:
-                raise Exception("Intentional exception to test movement stop on exception.")
-    except Exception as e:
+        stream_execute = ur_mg.stream_execute(trajectory, "Flange", actions=actions)
+        async with aclosing(stream_execute) as state_stream:
+            async for _ in state_stream:
+                number_of_states_to_consume -= 1
+                if number_of_states_to_consume == 0:
+                    raise Exception("Intentional exception to test movement stop on exception.")
+                
+    except BaseException as e:
         logger.info(f"Caught expected exception: {e}")
 
     # time for deceleration

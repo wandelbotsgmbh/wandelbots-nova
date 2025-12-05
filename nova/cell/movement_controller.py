@@ -29,10 +29,14 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
-        async def motion_group_state_monitor():
+        async def motion_group_state_monitor(stream_started_event: asyncio.Event):
             try:
                 logger.info("Starting state monitor for trajectory")
                 async for motion_group_state in context.motion_group_state_stream_gen():
+                    if not stream_started_event.is_set():
+                        stream_started_event.set()
+
+                    logger.debug(f"Trajectory: {context.motion_id} state monitor received state: {motion_group_state}")
                     if not motion_group_state.execute or not isinstance(
                         motion_group_state.execute.details, api.models.TrajectoryDetails
                     ):
@@ -76,10 +80,12 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         # before sending start movement start state monitoring to not loose any data
         # at this point we have exclusive right to do movement on the robot, any movement should be
         # what is coming from our trajectory
+        stream_started_event = asyncio.Event()
         state_monitor = asyncio.create_task(
-            motion_group_state_monitor(), name=f"motion-group-state-monitor-{context.motion_id}"
+            motion_group_state_monitor(stream_started_event), name=f"motion-group-state-monitor-{context.motion_id}"
         )
-        await asyncio.sleep(0)
+        logger.info(f"Trajectory: {context.motion_id} waiting for state monitor to start")
+        await stream_started_event.wait()
 
         set_io_list = context.combined_actions.to_set_io()
         start_movement_request = api.models.StartMovementRequest(

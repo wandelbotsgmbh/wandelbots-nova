@@ -2,7 +2,7 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, aclosing
 from functools import reduce
 from typing import (
     AsyncIterable,
@@ -343,9 +343,10 @@ class AbstractRobot(Device):
         motion_state_stream = self._execute(
             joint_trajectory, tcp, actions, movement_controller=movement_controller
         )
-        async for motion_state in motion_state_stream:
-            # ic()
-            yield motion_state
+
+        async with aclosing(motion_state_stream) as motion_state_stream:
+            async for motion_state in motion_state_stream:
+                yield motion_state
 
     async def execute(
         self,
@@ -364,14 +365,17 @@ class AbstractRobot(Device):
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
         """
-        async for _ in self.stream_execute(
+
+        motion_state_stream = self.stream_execute(
             joint_trajectory,
             tcp,
             actions,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
-        ):
-            pass
+        )
+        async with aclosing(motion_state_stream) as motion_state_stream:
+            async for _ in motion_state_stream:
+                pass
 
     async def stream_plan_and_execute(
         self,
@@ -380,8 +384,10 @@ class AbstractRobot(Device):
         start_joint_position: tuple[float, ...] | None = None,
     ) -> AsyncIterable[MotionState]:
         joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
-        async for motion_state in self.stream_execute(joint_trajectory, tcp, actions):
-            yield motion_state
+        motion_state_stream = self.stream_execute(joint_trajectory, tcp, actions)
+        async with aclosing(motion_state_stream) as motion_state_stream:
+            async for motion_state in motion_state_stream:
+                yield motion_state
 
     async def plan_and_execute(
         self,

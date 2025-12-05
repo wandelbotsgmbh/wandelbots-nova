@@ -9,6 +9,7 @@ from nova.cell.motion_group import MotionGroup, split_actions_into_batches
 from nova.core.gateway import ApiGateway
 from nova.exceptions import InconsistentCollisionScenes
 from nova.types import Pose
+from nova.types.motion_settings import MotionSettings
 from nova.utils.collision_setup import compare_collision_setups, validate_collision_setups
 
 
@@ -166,6 +167,24 @@ async def test_compare_collision_setup():
     assert compare_collision_setups(collision_setup_1, collision_setup_1) is True
     assert compare_collision_setups(collision_setup_1, collision_setup_2) is False
 
+
+def test_validate_collision_setup_single_action():
+    validate_collision_setups([linear((0, 0, 0, 0, 0, 0))])
+    validate_collision_setups([linear((0, 0, 0, 0, 0, 0), settings=MotionSettings())])
+    validate_collision_setups([linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0]))])
+
+    validate_collision_setups([
+        linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0])),
+        linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0]))
+    ])
+
+    with pytest.raises(InconsistentCollisionScenes):
+        validate_collision_setups([
+            linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0])),
+            linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 1]))
+        ])
+
+    
 
 @pytest.mark.asyncio
 async def test_split_and_verify_collision_setup():

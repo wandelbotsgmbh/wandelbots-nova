@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import aclosing
 import logging
 from typing import AsyncIterator, cast
 
@@ -300,8 +301,10 @@ class MotionGroup(AbstractRobot):
             motion_group=self.id,
             response_rate=response_rate_msecs,
         )
-        async for response in response_stream:
-            yield response
+        
+        async with aclosing(response_stream) as response_stream:
+            async for response in response_stream:
+                yield response
 
     async def joints(self) -> tuple[float, ...]:
         """Returns the current joint positions of the motion group."""
@@ -704,6 +707,7 @@ class MotionGroup(AbstractRobot):
 
         async with asyncio.TaskGroup() as tg:
             monitor_task = tg.create_task(monitor_motion_group_state())
+
             tg.create_task(execution(), name=f"execute_trajectory-{trajectory_id}-{self.id}")
 
             while (motion_group_state := await states.get()) is not SENTINEL:
