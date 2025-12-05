@@ -30,87 +30,109 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
         async def motion_group_state_monitor():
-            async for motion_group_state in context.motion_group_state_stream_gen():
-                if not motion_group_state.execute or not isinstance(
-                    motion_group_state.execute.details, api.models.TrajectoryDetails
-                ):
-                    continue
+            try:
+                logger.info("Starting state monitor for trajectory")
+                async for motion_group_state in context.motion_group_state_stream_gen():
+                    if not motion_group_state.execute or not isinstance(
+                        motion_group_state.execute.details, api.models.TrajectoryDetails
+                    ):
+                        continue
 
-                if isinstance(motion_group_state.execute.details.state, api.models.TrajectoryEnded):
-                    return
+                    if isinstance(motion_group_state.execute.details.state, api.models.TrajectoryEnded):
+                        logger.info(f"Trajectory: {context.motion_id} state monitor ended with TrajectoryEnded")
+                        return
 
-        # create a generator from websocket
-        # pass this generator to movement controller and get another generator back
-        # drive this generator and send each data to the websocket
-        
+                logger.info(f"Trajectory: {context.motion_id} state monitor ended without TrajectoryEnded")
+            except BaseException as e:
+                logger.error(f"Trajectory: {context.motion_id} state monitor ended with exception: {type(e).__name__}: {e}")
+                raise
 
-        # as long as there is something to return the flow will continue
-        # first we send initialize movement
-        # than start monitoring
-        # if monitoring finishes return
-
-        # if 
-        # than start movement
-
-
-        # the generator we return should first initialize the movement
-        # and consume the response to make sure we started
-        # and than start the movement
-        # and than consume  
-
-        # as long as we return a response, flow will continue
-        # if we send a data, there should be matching resposne from server
-
-        # first request
-
-
-        # if we don't return something or finish the function, flow is blocked
-        # if we return something but don't get an answer flow is blocked
-
-        # handle initialize movement
         trajectory_id = api.models.TrajectoryId(id=context.motion_id)
         initialize_movement_request = api.models.InitializeMovementRequest(
             trajectory=trajectory_id, initial_location=api.models.Location(0)
         )
 
+        logger.info(
+            f"Trajectory: {context.motion_id} Initializing movement with request"
+        )
         yield initialize_movement_request
         initialize_movement_response = await anext(response_stream)
+
+        logger.info(
+            f"Trajectory: {context.motion_id} received initialize movement response."
+        )
         assert isinstance(initialize_movement_response.root, api.models.InitializeMovementResponse)
+
 
         if (
             initialize_movement_response.root.message
             or initialize_movement_response.root.add_trajectory_error
         ):
+            logger.error(
+                f"Trajectory: {context.motion_id} initialization failed: {initialize_movement_response.root}"
+            )
             raise InitMovementFailed(initialize_movement_response.root)
 
-
-
         # before sending start movement start state monitoring to not loose any data
-        # at this point we have exclusive right to do movement on the robot, any movement should be what is coming from our trajectory
-        state_monitor = asyncio.create_task(motion_group_state_monitor())
+        # at this point we have exclusive right to do movement on the robot, any movement should be
+        # what is coming from our trajectory
+        state_monitor = asyncio.create_task(
+            motion_group_state_monitor(), name=f"motion-group-state-monitor-{context.motion_id}"
+        )
         await asyncio.sleep(0)
 
         set_io_list = context.combined_actions.to_set_io()
         start_movement_request = api.models.StartMovementRequest(
-                direction=api.models.Direction.DIRECTION_FORWARD,
-                set_outputs=set_io_list,
-                start_on_io=context.start_on_io,
-                pause_on_io=None,
+            direction=api.models.Direction.DIRECTION_FORWARD,
+            set_outputs=set_io_list,
+            start_on_io=context.start_on_io,
+            pause_on_io=None,
+        )
+        logger.info(
+            f"Trajectory: {context.motion_id} sending StartMovementRequest"
         )
         yield start_movement_request
 
-
         start_movement_response = await anext(response_stream)
+        logger.info(
+            f"Trajectory: {context.motion_id} received start movement response."
+        )
         assert isinstance(start_movement_response.root, api.models.StartMovementResponse)
 
         # the only possible response we can get from web socket at this point is a movement failure
-        error_consumer = asyncio.create_task(anext(response_stream))
-        done, pending = await asyncio.wait(fs=[error_consumer, state_monitor], return_when=asyncio.FIRST_COMPLETED)
-        if done == state_monitor:
-            return
-        
-        if done == error_consumer:
-            raise ErrorDuringMovement("Error occurred during trajectory execution")
+        async def error_response_consumer(response_stream: ExecuteTrajectoryResponseStream):
+            response = await anext(response_stream)
+            if not isinstance(response.root, api.models.MovementErrorResponse):
+                logger.error(f"Trajectory: {context.motion_id} received unexpected response: {response}")
 
+
+
+        error_consumer = asyncio.create_task(
+            error_response_consumer(response_stream), name=f"execute-trajectory-error-consumer-{context.motion_id}"
+        )
+        tasks = {error_consumer, state_monitor}
+
+        try:
+            logger.info(f"Trajectory: {context.motion_id} waiting for completion or error")
+            done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            if state_monitor in done:
+                logger.info(f"Trajectory: {context.motion_id} completed via state monitor")
+                return
+            
+            if error_consumer in done:
+                logger.info(f"Trajectory: {context.motion_id} error consumer completed")
+                raise ErrorDuringMovement("Error occurred during trajectory execution")
+        except BaseException as e:
+            logger.error(f"Trajectory: {context.motion_id} encountered exception: {e}")
+            raise
+        finally:
+            for task in tasks:
+                if not task.done():
+                    logger.info(f"Trajectory: {context.motion_id} cancelling task: {task.get_name()}")
+                    task.cancel()
+            
+            logger.info(f"Trajectory: {context.motion_id} waiting for tasks to finish")
+            await asyncio.gather(*tasks, return_exceptions=True)
+            logger.info(f"Trajectory: {context.motion_id} all tasks finished")
 
     return movement_controller
