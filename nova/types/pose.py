@@ -17,6 +17,10 @@ def _parse_args(*args):
     if len(args) == 1 and isinstance(args[0], api.models.Pose):
         pos = args[0].position
         ori = args[0].orientation
+        if pos is None:
+            pos = [0.0, 0.0, 0.0]
+        if ori is None:
+            ori = [0.0, 0.0, 0.0]
         return {
             "position": Vector3d(x=pos[0], y=pos[1], z=pos[2]),
             "orientation": Vector3d(x=ori[0], y=ori[1], z=ori[2]),
@@ -59,7 +63,12 @@ class Pose(pydantic.BaseModel, Sized):
         >>> new_pose = Pose.model_validate(pose.model_dump())
         >>> pose == new_pose
         True
-
+        >>> Pose(api.models.Pose(position=None, orientation=None))
+        Pose(position=Vector3d(x=0.0, y=0.0, z=0.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        >>> Pose(api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=None))
+        Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        >>> Pose(api.models.Pose(position=None, orientation=api.models.RotationVector([4, 5, 6])))
+        Pose(position=Vector3d(x=0.0, y=0.0, z=0.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0))
         """
         # >>> Pose(api.models.TcpOffset(name='Flange', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.Vector3d([4, 5, 6]))))
         # Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))

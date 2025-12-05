@@ -108,11 +108,11 @@ class MotionGroup(AbstractRobot):
         motion_group_description = await self._fetch_motion_group_description()
         return motion_group_description.motion_group_model
 
-    async def get_setup(self, tcp: str) -> api.models.MotionGroupSetup:
+    async def get_setup(self, tcp_name: str | None = None) -> api.models.MotionGroupSetup:
         """Get the motion group setup.
 
         Args:
-            tcp (str): The TCP to get the setup for.
+            tcp_name (str): The TCP to get the setup for.
 
         Returns:
             api.models.MotionGroupSetup: The motion group setup.
@@ -120,7 +120,7 @@ class MotionGroup(AbstractRobot):
         # TODO allow to specify payload
         motion_group_description = await self._fetch_motion_group_description()
         return motion_group_setup_from_motion_group_description(
-            motion_group_description=motion_group_description, tcp_name=tcp
+            motion_group_description=motion_group_description, tcp_name=tcp_name
         )
 
     async def get_mounting(self) -> Pose | None:

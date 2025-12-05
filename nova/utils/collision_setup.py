@@ -59,7 +59,7 @@ def validate_collision_setups(actions: list[Action]) -> list[api.models.Collisio
 
 def motion_group_setup_from_motion_group_description(
     motion_group_description: api.models.MotionGroupDescription,
-    tcp_name: str,
+    tcp_name: str | None = None,
     payload: api.models.Payload | None = None,
 ) -> api.models.MotionGroupSetup:
     collision_setup = get_safety_collision_setup_from_motion_group_description(
@@ -71,11 +71,8 @@ def motion_group_setup_from_motion_group_description(
     # than the one used for planning
     assert motion_group_description.operation_limits.auto_limits is not None
     limits = motion_group_description.operation_limits.auto_limits
-    tcp_offset = (
-        motion_group_description.tcps[tcp_name].pose
-        if motion_group_description.tcps is not None
-        else None
-    )
+    tcps = motion_group_description.tcps
+    tcp_offset = tcps[tcp_name].pose if tcp_name is not None and tcps is not None else None
     return api.models.MotionGroupSetup(
         motion_group_model=motion_group_description.motion_group_model,
         cycle_time=motion_group_description.cycle_time or 8,
