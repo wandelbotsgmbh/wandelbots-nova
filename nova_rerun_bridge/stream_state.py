@@ -73,7 +73,7 @@ async def stream_motion_group(
     motion_group_model = await motion_group.get_model()
 
     tcp_geometries: list[api.models.Collider] = []
-    if motion_group_description.safety_tool_colliders is not None:
+    if motion_group_description.safety_tool_colliders is not None and tcp_name is not None:
         tool_colliders = motion_group_description.safety_tool_colliders.get(tcp_name)
         if tool_colliders is not None:
             tcp_geometries = [tool_collider for tool_collider in list(tool_colliders.root.values())]
@@ -90,8 +90,12 @@ async def stream_motion_group(
         ]
 
     try:
+        mounting = motion_group_description.mounting or api.models.Pose(
+            position=api.models.Vector3d([0, 0, 0]),
+            orientation=api.models.RotationVector([0, 0, 0]),
+        )
         robot = DHRobot(
-            motion_group_description.dh_parameters or [], motion_group_description.mounting
+            dh_parameters=motion_group_description.dh_parameters or [], mounting=mounting
         )
         rr.reset_time()
         rr.set_time(TIME_REALTIME_NAME, timestamp=time.time())

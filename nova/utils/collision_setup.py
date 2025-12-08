@@ -63,7 +63,7 @@ def motion_group_setup_from_motion_group_description(
     payload: api.models.Payload | None = None,
 ) -> api.models.MotionGroupSetup:
     collision_setup = get_safety_collision_setup_from_motion_group_description(
-        motion_group_description, tcp_name
+        motion_group_description=motion_group_description, tcp_name=tcp_name
     )
     # For the time being it is assumed that the auto limits are always present
     # We also assume that the motion player in RAE will scale corretly if the
@@ -85,11 +85,11 @@ def motion_group_setup_from_motion_group_description(
 
 
 def get_safety_collision_setup_from_motion_group_description(
-    motion_group_description: api.models.MotionGroupDescription, tcp: str
+    motion_group_description: api.models.MotionGroupDescription, tcp_name: str | None
 ) -> api.models.CollisionSetup:
     tool_colliders = (
-        motion_group_description.safety_tool_colliders.get(tcp)
-        if motion_group_description.safety_tool_colliders is not None
+        motion_group_description.safety_tool_colliders.get(tcp_name)
+        if motion_group_description.safety_tool_colliders is not None and tcp_name is not None
         else None
     )
     tool = api.models.Tool(tool_colliders.root) if tool_colliders is not None else None

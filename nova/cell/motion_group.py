@@ -145,7 +145,7 @@ class MotionGroup(AbstractRobot):
         """
         motion_group_description = await self._fetch_motion_group_description()
         return get_safety_collision_setup_from_motion_group_description(
-            motion_group_description=motion_group_description, tcp=tcp
+            motion_group_description=motion_group_description, tcp_name=tcp
         )
 
     async def get_default_collision_link_chain(self) -> api.models.LinkChain:

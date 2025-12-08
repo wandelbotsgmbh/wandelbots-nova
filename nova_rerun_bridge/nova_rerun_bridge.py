@@ -391,7 +391,7 @@ class NovaRerunBridge:
             return
 
         task = asyncio.create_task(
-            stream_motion_group(self, nova=self.nova, motion_group=motion_group)
+            stream_motion_group(self, nova=self.nova, motion_group=motion_group, tcp_name=None)
         )
         self._streaming_tasks[motion_group] = task
 

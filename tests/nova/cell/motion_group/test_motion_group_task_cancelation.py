@@ -4,10 +4,9 @@ from multiprocessing import Process
 
 import pytest
 
-from nova import Nova
+from nova import Nova, api
 from nova.actions import jnt, lin
 from nova.actions.container import MovementController, MovementControllerContext
-from nova.api import models
 from nova.cell.controllers import virtual_controller
 from nova.cell.movement_controller import move_forward
 from nova.logging import logger
@@ -38,8 +37,8 @@ async def ur_mg():
         await cell.ensure_controller(
             virtual_controller(
                 name=controller_name,
-                manufacturer=models.Manufacturer.UNIVERSALROBOTS,
-                type=models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             )
         )
 
