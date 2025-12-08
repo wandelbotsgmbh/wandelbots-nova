@@ -309,8 +309,12 @@ class Rerun(Viewer):
             if isinstance(error, PlanTrajectoryFailed):
                 # Log the trajectory from the failed plan
                 if hasattr(error.error, "joint_trajectory") and error.error.joint_trajectory:
+                    downsampled_trajectory = downsample_trajectory(
+                        error.error.joint_trajectory,
+                        sample_interval_ms=self.trajectory_sample_interval_ms,
+                    )
                     await self._bridge.log_trajectory(
-                        trajectory=error.error.joint_trajectory,
+                        trajectory=downsampled_trajectory,
                         tcp=tcp,
                         motion_group=motion_group,
                         collision_setups=extract_collision_setups_from_actions(actions),
