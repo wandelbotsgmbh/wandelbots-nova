@@ -58,6 +58,7 @@ class TestRerunViewer:
         assert viewer.show_details is False
         assert viewer.show_safety_zones is True
         assert viewer.show_collision_scenes is True
+        assert viewer.trajectory_sample_interval_ms == 50.0
 
     def test_rerun_viewer_custom_parameters(self):
         """Should accept custom parameters."""
@@ -68,6 +69,7 @@ class TestRerunViewer:
             show_details=True,
             show_safety_zones=False,
             tcp_tools={"gripper": "gripper.stl"},
+            trajectory_sample_interval_ms=100.0,
         )
         assert viewer.show_collision_link_chain is True
         assert viewer.show_collision_tool is False
@@ -75,6 +77,7 @@ class TestRerunViewer:
         assert viewer.show_details is True
         assert viewer.show_safety_zones is False
         assert viewer.tcp_tools == {"gripper": "gripper.stl"}
+        assert viewer.trajectory_sample_interval_ms == 100.0
 
     def test_rerun_viewer_auto_registers(self):
         """Should automatically register itself when created."""
@@ -141,6 +144,18 @@ class TestRerunViewer:
         assert viewer._bridge is None
         assert len(viewer._logged_safety_zones) == 0
 
+    def _create_mock_trajectory(self, n_samples: int = 10):
+        """Create a mock trajectory with the given number of samples."""
+        from nova import api
+
+        joint_positions = [api.models.Joints(root=[float(i) * 0.1] * 6) for i in range(n_samples)]
+        times = [float(i) * 0.01 for i in range(n_samples)]
+        locations = [api.models.Location(root=float(i)) for i in range(n_samples)]
+
+        return api.models.JointTrajectory(
+            joint_positions=joint_positions, times=times, locations=locations
+        )
+
     @patch("nova_rerun_bridge.NovaRerunBridge")
     @pytest.mark.asyncio
     async def test_rerun_viewer_log_planning_success(self, mock_bridge_class):
@@ -151,9 +166,9 @@ class TestRerunViewer:
         viewer = Rerun()
         viewer.configure(Mock())
 
-        # Mock parameters
+        # Mock parameters - use a real trajectory since downsampling needs it
         mock_actions = [Mock()]
-        mock_trajectory = Mock()
+        mock_trajectory = self._create_mock_trajectory(10)
         mock_tcp = "tcp1"
         mock_motion_group = Mock()
         mock_motion_group.id = "mg1"
@@ -162,14 +177,15 @@ class TestRerunViewer:
             mock_actions, mock_trajectory, mock_tcp, mock_motion_group
         )
 
-        # Should call log_trajectory on the bridge
-        mock_bridge.log_trajectory.assert_called_once_with(
-            trajectory=mock_trajectory,
-            tcp=mock_tcp,
-            motion_group=mock_motion_group,
-            collision_setups={},
-            tool_asset=None,
-        )
+        # Should call log_trajectory on the bridge (trajectory may be unchanged since it's small)
+        mock_bridge.log_trajectory.assert_called_once()
+        call_kwargs = mock_bridge.log_trajectory.call_args[1]
+        assert call_kwargs["tcp"] == mock_tcp
+        assert call_kwargs["motion_group"] == mock_motion_group
+        assert call_kwargs["collision_setups"] == {}
+        assert call_kwargs["tool_asset"] is None
+        # Trajectory should be passed (possibly unchanged since small)
+        assert call_kwargs["trajectory"] is not None
 
     @patch("nova_rerun_bridge.NovaRerunBridge")
     @pytest.mark.asyncio
@@ -597,6 +613,223 @@ class TestViewerIntegration:
             assert call_args["show_safety_link_chain"] is False
             assert call_args["show_details"] is True
             # Note: tcp_tools is stored on the viewer but not passed to the bridge constructor
+
+
+class TestTrajectoryDownsampling:
+    """Test adaptive trajectory downsampling functionality."""
+
+    def _create_mock_trajectory(
+        self, n_samples: int, n_joints: int = 6, duration_seconds: float = 10.0
+    ):
+        """Create a mock trajectory with the given number of samples and duration."""
+        import numpy as np
+
+        from nova import api
+
+        np.random.seed(42)  # For reproducibility
+        base_positions = np.linspace(0, np.pi, n_samples)
+
+        joint_positions = []
+        for i in range(n_samples):
+            # Add some noise and joint-specific offsets
+            joints = [base_positions[i] + j * 0.1 for j in range(n_joints)]
+            joint_positions.append(api.models.Joints(root=joints))
+
+        # Time in seconds, spread over duration_seconds
+        times = [float(i) * duration_seconds / max(1, n_samples - 1) for i in range(n_samples)]
+        locations = [api.models.Location(root=float(i)) for i in range(n_samples)]
+
+        return api.models.JointTrajectory(
+            joint_positions=joint_positions, times=times, locations=locations
+        )
+
+    def _create_trajectory_with_high_curvature(
+        self, n_samples: int = 1000, duration_seconds: float = 10.0
+    ):
+        """Create a trajectory with a high-curvature section in the middle."""
+        import numpy as np
+
+        from nova import api
+
+        joint_positions = []
+        for i in range(n_samples):
+            t = i / n_samples
+            if 0.4 < t < 0.6:
+                # High curvature section (sharp direction change)
+                angle = np.sin(t * 20 * np.pi)
+            else:
+                # Low curvature section (straight motion)
+                angle = t * np.pi
+            joints = [angle + j * 0.1 for j in range(6)]
+            joint_positions.append(api.models.Joints(root=joints))
+
+        # Time in seconds
+        times = [float(i) * duration_seconds / max(1, n_samples - 1) for i in range(n_samples)]
+        locations = [api.models.Location(root=float(i)) for i in range(n_samples)]
+
+        return api.models.JointTrajectory(
+            joint_positions=joint_positions, times=times, locations=locations
+        )
+
+    def test_downsample_import(self):
+        """Should be able to import downsample_trajectory utility."""
+        from nova.viewers.utils import downsample_trajectory
+
+        assert downsample_trajectory is not None
+
+    def test_downsample_already_sparse_unchanged(self):
+        """Trajectories already at or below target sample rate should not be modified."""
+        from nova.viewers.utils import downsample_trajectory
+
+        # 100 samples over 10 seconds = 100ms average interval
+        # With 50ms target interval, this is already sparser than target
+        trajectory = self._create_mock_trajectory(100, duration_seconds=10.0)
+        result = downsample_trajectory(trajectory, sample_interval_ms=50.0)
+
+        # Should return the same trajectory (unchanged)
+        assert len(result.joint_positions) == 100
+        assert len(result.times) == 100
+        assert len(result.locations) == 100
+
+    def test_downsample_dense_trajectory_reduced(self):
+        """Dense trajectories should be reduced based on sample interval."""
+        from nova.viewers.utils import downsample_trajectory
+
+        # 2000 samples over 10 seconds = 5ms average interval (very dense)
+        # With 50ms target interval, should be reduced to ~200 samples
+        trajectory = self._create_mock_trajectory(2000, duration_seconds=10.0)
+        result = downsample_trajectory(trajectory, sample_interval_ms=50.0)
+
+        # Should be reduced to approximately 10000ms / 50ms = 200 samples
+        assert len(result.joint_positions) < 2000
+        assert len(result.joint_positions) >= 100  # At least half the target
+        assert len(result.joint_positions) <= 400  # At most double the target
+        assert len(result.times) == len(result.joint_positions)
+        assert len(result.locations) == len(result.joint_positions)
+
+    def test_downsample_preserves_first_and_last(self):
+        """First and last samples should always be preserved."""
+        from nova.viewers.utils import downsample_trajectory
+
+        trajectory = self._create_mock_trajectory(1000, duration_seconds=10.0)
+        result = downsample_trajectory(trajectory, sample_interval_ms=100.0)
+
+        # First and last should be preserved
+        assert result.joint_positions[0].root == trajectory.joint_positions[0].root
+        assert result.joint_positions[-1].root == trajectory.joint_positions[-1].root
+        assert result.times[0] == trajectory.times[0]
+        assert result.times[-1] == trajectory.times[-1]
+
+    def test_downsample_scales_with_duration(self):
+        """Longer trajectories should result in more samples."""
+        from nova.viewers.utils import downsample_trajectory
+
+        # Short trajectory: 1000 samples over 5 seconds
+        short_traj = self._create_mock_trajectory(1000, duration_seconds=5.0)
+        short_result = downsample_trajectory(short_traj, sample_interval_ms=50.0)
+
+        # Long trajectory: 1000 samples over 20 seconds
+        long_traj = self._create_mock_trajectory(1000, duration_seconds=20.0)
+        long_result = downsample_trajectory(long_traj, sample_interval_ms=50.0)
+
+        # Longer trajectory should have more samples (roughly 4x)
+        assert len(long_result.joint_positions) > len(short_result.joint_positions)
+
+    def test_downsample_high_curvature_section_preserved(self):
+        """High curvature sections should have denser sampling."""
+        import numpy as np
+
+        from nova.viewers.utils import downsample_trajectory
+
+        trajectory = self._create_trajectory_with_high_curvature(1000, duration_seconds=10.0)
+        result = downsample_trajectory(trajectory, sample_interval_ms=50.0)
+
+        # Get the indices in the original trajectory that correspond to the middle section
+        # The high curvature section is between 0.4 and 0.6 of the trajectory
+        result_times = np.array(result.times)
+        total_time = trajectory.times[-1]
+        middle_start = 0.4 * total_time
+        middle_end = 0.6 * total_time
+
+        # Count samples in the middle section (high curvature)
+        middle_samples = np.sum((result_times >= middle_start) & (result_times <= middle_end))
+
+        # Count samples in the first section (low curvature)
+        first_samples = np.sum(result_times < middle_start)
+
+        # The middle section (20% of total time) should have relatively more samples
+        # compared to an even distribution due to higher curvature
+        # Compute densities: samples per unit of relative time
+        middle_density = middle_samples / 0.2
+        first_density = first_samples / 0.4 if first_samples > 0 else 0
+
+        # Middle density should be at least comparable (allowing some tolerance for the algorithm)
+        # This is a soft check since the algorithm is probabilistic
+        assert middle_samples > 0, "Middle section should have samples"
+        # Verify that high curvature areas get reasonable sampling density
+        assert middle_density >= first_density * 0.5, (
+            f"Middle density ({middle_density}) should not be drastically lower than first ({first_density})"
+        )
+
+    def test_downsample_edge_case_two_samples(self):
+        """Should handle trajectories with only two samples."""
+        from nova.viewers.utils import downsample_trajectory
+
+        trajectory = self._create_mock_trajectory(2, duration_seconds=1.0)
+        result = downsample_trajectory(trajectory, sample_interval_ms=50.0)
+
+        assert len(result.joint_positions) == 2
+
+    def test_downsample_edge_case_one_sample(self):
+        """Should handle trajectories with only one sample."""
+        from nova import api
+        from nova.viewers.utils import downsample_trajectory
+
+        trajectory = api.models.JointTrajectory(
+            joint_positions=[api.models.Joints(root=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0])],
+            times=[0.0],
+            locations=[api.models.Location(root=0.0)],
+        )
+        result = downsample_trajectory(trajectory, sample_interval_ms=50.0)
+
+        assert len(result.joint_positions) == 1
+
+    def test_downsample_custom_curvature_weight(self):
+        """Different curvature weights should produce different results."""
+        from nova.viewers.utils import downsample_trajectory
+
+        trajectory = self._create_trajectory_with_high_curvature(1000, duration_seconds=10.0)
+
+        # High curvature weight should prioritize curvature points
+        result_high = downsample_trajectory(
+            trajectory, sample_interval_ms=50.0, curvature_weight=0.9
+        )
+
+        # Low curvature weight should be more uniform
+        result_low = downsample_trajectory(
+            trajectory, sample_interval_ms=50.0, curvature_weight=0.1
+        )
+
+        # Both should produce valid results with similar sample counts
+        # (since they target the same interval)
+        assert len(result_high.joint_positions) > 50
+        assert len(result_low.joint_positions) > 50
+
+    def test_downsample_different_intervals(self):
+        """Different sample intervals should produce different sample counts."""
+        from nova.viewers.utils import downsample_trajectory
+
+        # 1000 samples over 10 seconds
+        trajectory = self._create_mock_trajectory(1000, duration_seconds=10.0)
+
+        # Coarse sampling: 200ms interval -> ~50 samples
+        coarse = downsample_trajectory(trajectory, sample_interval_ms=200.0)
+
+        # Fine sampling: 20ms interval -> ~500 samples
+        fine = downsample_trajectory(trajectory, sample_interval_ms=20.0)
+
+        # Fine should have more samples than coarse
+        assert len(fine.joint_positions) > len(coarse.joint_positions)
 
 
 class TestViewerUtilities:

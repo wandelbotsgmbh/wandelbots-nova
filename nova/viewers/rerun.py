@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 from .base import Viewer
 from .manager import register_viewer
 from .protocol import NovaRerunBridgeProtocol
-from .utils import extract_collision_setups_from_actions
+from .utils import downsample_trajectory, extract_collision_setups_from_actions
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,7 @@ class Rerun(Viewer):
         show_safety_link_chain: bool = True,
         tcp_tools: dict[str, str] | None = None,
         show_details: bool = False,
+        trajectory_sample_interval_ms: float = 50.0,
     ) -> None:
         """
         Initialize the Rerun viewer.
@@ -80,6 +81,10 @@ class Rerun(Viewer):
             show_safety_link_chain: Whether to show robot safety geometry (from controller)
             tcp_tools: Optional mapping of TCP IDs to tool asset file paths
             show_details: Whether to show detailed analysis panels with charts and logs (False = 3D view only)
+            trajectory_sample_interval_ms: Target time interval in milliseconds between trajectory
+                samples for visualization. Lower values = higher fidelity, higher values = better
+                performance. Sampling is adaptive, keeping more points at high-curvature regions.
+                (default: 50.0ms, equivalent to 20 samples/second)
         """
         self.application_id: str | None = application_id
         self.spawn: bool = spawn
@@ -90,6 +95,7 @@ class Rerun(Viewer):
         self.show_safety_link_chain: bool = show_safety_link_chain
         self.tcp_tools: dict[str, str] = tcp_tools or {}
         self.show_details: bool = show_details
+        self.trajectory_sample_interval_ms: float = trajectory_sample_interval_ms
         self._bridge: NovaRerunBridgeProtocol | None = None
         self._logged_safety_zones: set[str] = (
             set()
@@ -219,10 +225,16 @@ class Rerun(Viewer):
             # Log actions
             await self._bridge.log_actions(actions=list(actions), motion_group=motion_group)
 
+            # Downsample trajectory for visualization performance
+            # Uses adaptive sampling that keeps more points at high-curvature regions
+            downsampled_trajectory = downsample_trajectory(
+                trajectory, sample_interval_ms=self.trajectory_sample_interval_ms
+            )
+
             # Log trajectory with tool asset if configured for this TCP
             tool_asset = self._resolve_tool_asset(tcp)
             await self._bridge.log_trajectory(
-                trajectory=trajectory,
+                trajectory=downsampled_trajectory,
                 tcp=tcp,
                 motion_group=motion_group,
                 collision_setups=extract_collision_setups_from_actions(actions),
