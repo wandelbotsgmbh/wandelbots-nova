@@ -4,6 +4,7 @@ from typing import Optional
 
 import numpy as np
 import rerun as rr
+from scipy.spatial.transform import Rotation as R
 
 from nova import MotionGroup, api
 from nova.types import Pose
@@ -253,9 +254,13 @@ def log_tcp_pose(
     """
     Log TCP pose (position + orientation) data.
     """
+    # Handle empty trajectory
+    if not tcp_poses:
+        return
+
     # Extract positions and orientations from the trajectory
     positions = [p.position.to_tuple() for p in tcp_poses]
-    orientations = [p.orientation.to_tuple() for p in tcp_poses]
+    orientations = R.from_rotvec([p.orientation.to_tuple() for p in tcp_poses]).as_quat()
 
     # Log TCP and tool asset
     tcp_entity_path = f"/motion/{motion_group_id}/tcp_position"
@@ -266,7 +271,7 @@ def log_tcp_pose(
     rr.send_columns(
         tcp_entity_path,
         indexes=[times_column],
-        columns=rr.Transform3D.columns(translation=positions, rotation_axis_angle=orientations),  # type: ignore[arg-type]
+        columns=rr.Transform3D.columns(translation=positions, quaternion=orientations),
     )
 
 
