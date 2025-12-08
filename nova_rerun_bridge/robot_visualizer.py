@@ -778,9 +778,9 @@ class RobotVisualizer:
                     for i, geom_id in enumerate(geometries.root):  # type: ignore[attr-defined]
                         entity_path = f"{self.base_entity_path}/collision/links/link_{link_index}/geometry_{geom_id}"
 
-                        pose = normalize_pose(geometries[geom_id].pose)
+                        pose = normalize_pose(geometries.root[geom_id].pose)
                         final_transform = link_transform @ self.geometry_pose_to_matrix(pose)
-                        self.init_collision_geometry(entity_path, geometries[geom_id], pose)
+                        self.init_collision_geometry(entity_path, geometries.root[geom_id], pose)
                         collect_geometry_data(entity_path, final_transform)
 
             # Collect data for collision TCP geometries (only if enabled)
