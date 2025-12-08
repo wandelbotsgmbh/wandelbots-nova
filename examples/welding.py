@@ -271,52 +271,48 @@ async def test():
                 collision_free(
                     target=seam1_approach,
                     collision_setup=collision_setup,
-                    settings=MotionSettings(tcp_velocity_limit=30),
+                    settings=MotionSettings(tcp_velocity_limit=500),
                     algorithm=api.models.CollisionFreeAlgorithm(
                         api.models.MidpointInsertionAlgorithm()
                     ),
                 ),
                 linear(
                     target=seam1_start,
-                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
                 ),
                 linear(
                     target=seam1_end,
-                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
                 ),
                 linear(
                     target=seam1_departure,
-                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
                 ),
                 # Move to second seam
                 collision_free(
                     target=seam2_approach,
                     collision_setup=collision_setup,
-                    settings=MotionSettings(tcp_velocity_limit=30),
-                    algorithm=api.models.CollisionFreeAlgorithm(
-                        api.models.MidpointInsertionAlgorithm()
-                    ),
+                    settings=MotionSettings(tcp_velocity_limit=500),
+                    algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
                 ),
                 # Second seam with collision checking
                 linear(
                     target=seam2_start,
-                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
                 ),
                 linear(
                     target=seam2_end,
-                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
                 ),
                 linear(
                     target=seam2_departure,
-                    settings=MotionSettings(tcp_velocity_limit=30, blend_radius=10),
+                    settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
                 ),
                 collision_free(
                     target=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
                     collision_setup=collision_setup,
-                    settings=MotionSettings(tcp_velocity_limit=30),
-                    algorithm=api.models.CollisionFreeAlgorithm(
-                        api.models.MidpointInsertionAlgorithm()
-                    ),
+                    settings=MotionSettings(tcp_velocity_limit=500),
+                    algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
                 ),
             ]
 

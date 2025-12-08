@@ -40,7 +40,6 @@ class NovaRerunBridge:
         nova: Nova,
         spawn: bool = True,
         recording_id=None,
-        show_details: bool = True,
         show_collision_link_chain: bool = False,
         show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
@@ -51,7 +50,6 @@ class NovaRerunBridge:
         self._streaming_tasks: dict[MotionGroup, asyncio.Task] = {}
         # Track timing per motion group - each motion group has its own timeline
         self._motion_group_timers: dict[str, float] = {}
-        self.show_details = show_details
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool
         self.show_safety_link_chain = show_safety_link_chain
@@ -94,7 +92,7 @@ class NovaRerunBridge:
         rr.reset_time()
         rr.set_time(TIME_INTERVAL_NAME, duration=0)
 
-        send_blueprint(motion_groups, self.show_details)
+        send_blueprint(motion_groups)
         self.log_coordinate_system()
 
     def log_coordinate_system(self) -> None:

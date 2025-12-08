@@ -55,7 +55,6 @@ class TestRerunViewer:
         assert viewer.show_collision_link_chain is False
         assert viewer.show_collision_tool is True
         assert viewer.show_safety_link_chain is True
-        assert viewer.show_details is False
         assert viewer.show_safety_zones is True
         assert viewer.show_collision_scenes is True
         assert viewer.trajectory_sample_interval_ms == 50.0
@@ -66,7 +65,6 @@ class TestRerunViewer:
             show_collision_link_chain=True,
             show_collision_tool=False,
             show_safety_link_chain=False,
-            show_details=True,
             show_safety_zones=False,
             tcp_tools={"gripper": "gripper.stl"},
             trajectory_sample_interval_ms=100.0,
@@ -74,7 +72,6 @@ class TestRerunViewer:
         assert viewer.show_collision_link_chain is True
         assert viewer.show_collision_tool is False
         assert viewer.show_safety_link_chain is False
-        assert viewer.show_details is True
         assert viewer.show_safety_zones is False
         assert viewer.tcp_tools == {"gripper": "gripper.stl"}
         assert viewer.trajectory_sample_interval_ms == 100.0
@@ -106,7 +103,6 @@ class TestRerunViewer:
             nova=mock_nova,
             spawn=True,
             recording_id=None,
-            show_details=False,
             show_collision_link_chain=False,
             show_collision_tool=True,
             show_safety_link_chain=False,
@@ -593,14 +589,12 @@ class TestViewerIntegration:
             viewer = Rerun(
                 show_collision_link_chain=True,
                 show_safety_link_chain=False,
-                show_details=True,
                 tcp_tools={"gripper": "gripper.stl"},
             )
 
         # Verify configuration
         assert viewer.show_collision_link_chain is True
         assert viewer.show_safety_link_chain is False
-        assert viewer.show_details is True
         assert viewer.tcp_tools == {"gripper": "gripper.stl"}
 
         # Configuration should be passed to bridge during configure
@@ -611,7 +605,6 @@ class TestViewerIntegration:
             call_args = mock_bridge_class.call_args[1]
             assert call_args["show_collision_link_chain"] is True
             assert call_args["show_safety_link_chain"] is False
-            assert call_args["show_details"] is True
             # Note: tcp_tools is stored on the viewer but not passed to the bridge constructor
 
 

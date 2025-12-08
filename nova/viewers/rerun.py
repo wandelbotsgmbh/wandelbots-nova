@@ -42,7 +42,6 @@ class Rerun(Viewer):
         # Full interface with detailed analysis panels
         @nova.program(
             viewer=nova.viewers.Rerun(
-                show_details=True,
                 show_safety_zones=True,
                 show_collision_link_chain=True,
                 show_collision_tool=True,
@@ -65,7 +64,6 @@ class Rerun(Viewer):
         show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
         tcp_tools: dict[str, str] | None = None,
-        show_details: bool = False,
         trajectory_sample_interval_ms: float = 50.0,
     ) -> None:
         """
@@ -80,7 +78,6 @@ class Rerun(Viewer):
             show_collision_tool: Whether to show TCP tool collision geometry
             show_safety_link_chain: Whether to show robot safety geometry (from controller)
             tcp_tools: Optional mapping of TCP IDs to tool asset file paths
-            show_details: Whether to show detailed analysis panels with charts and logs (False = 3D view only)
             trajectory_sample_interval_ms: Target time interval in milliseconds between trajectory
                 samples for visualization. Lower values = higher fidelity, higher values = better
                 performance. Sampling is adaptive, keeping more points at high-curvature regions.
@@ -94,7 +91,6 @@ class Rerun(Viewer):
         self.show_collision_tool: bool = show_collision_tool
         self.show_safety_link_chain: bool = show_safety_link_chain
         self.tcp_tools: dict[str, str] = tcp_tools or {}
-        self.show_details: bool = show_details
         self.trajectory_sample_interval_ms: float = trajectory_sample_interval_ms
         self._bridge: NovaRerunBridgeProtocol | None = None
         self._logged_safety_zones: set[str] = (
@@ -137,7 +133,6 @@ class Rerun(Viewer):
                 nova=nova,
                 spawn=self.spawn,
                 recording_id=self.application_id,
-                show_details=self.show_details,
                 show_collision_link_chain=self.show_collision_link_chain,
                 show_collision_tool=self.show_collision_tool,
                 show_safety_link_chain=self.show_safety_link_chain,
