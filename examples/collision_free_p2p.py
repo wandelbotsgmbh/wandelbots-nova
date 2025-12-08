@@ -68,7 +68,7 @@ async def build_collision_world(
 
 
 @nova.program(
-    # viewer=nova.viewers.Rerun(),
+    viewer=nova.viewers.Rerun(),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -78,7 +78,7 @@ async def build_collision_world(
             )
         ],
         cleanup_controllers=False,
-    )
+    ),
 )
 async def collision_free_p2p() -> None:
     """
@@ -112,7 +112,10 @@ async def collision_free_p2p() -> None:
                 await motion_group.get_description()
             )
             collision_scene_id = await build_collision_world(nova, "cell", motion_group_description)
-
+            store_collision_setups_api = nova._api_client.store_collision_setups_api
+            collision_setup = await store_collision_setups_api.get_stored_collision_setup(
+                cell="cell", setup=collision_scene_id
+            )
             # Use default planner to move to the right of the sphere
             home = await motion_group.tcp_pose(tcp)
             actions: list[Action] = [
@@ -135,27 +138,27 @@ async def collision_free_p2p() -> None:
             # -> this will collide
             # only plan don't move
             collision_actions: list[Action] = [
-                cartesian_ptp(target=Pose((-500, -400, 200, np.pi, 0, 0)))
+                cartesian_ptp(
+                    target=Pose((-500, -400, 200, np.pi, 0, 0)), collision_setup=collision_setup
+                )
             ]
 
             for action in collision_actions:
                 cast(Motion, action).settings = MotionSettings(tcp_velocity_limit=200)
 
-            await motion_group.plan(
-                collision_actions,
-                tcp,
-                start_joint_position=joint_trajectory.joint_positions[-1].root,
-            )
+            try:
+                await motion_group.plan(
+                    collision_actions,
+                    tcp,
+                    start_joint_position=joint_trajectory.joint_positions[-1].root,
+                )
+            except Exception as e:
+                print(f"Planning failed, we continue with the collision avoidance: {e}")
 
             # Plan collision free PTP motion around the sphere
-            store_collision_setups_api = nova._api_client.store_collision_setups_api
-            collision_setup = await store_collision_setups_api.get_stored_collision_setup(
-                cell="cell", setup=collision_scene_id
-            )
-
             welding_actions: list[Action] = [
                 collision_free(
-                    target=(-500, -400, 200, np.pi, 0, 0),
+                    target=Pose(-500, -400, 200, np.pi, 0, 0),
                     collision_setup=collision_setup,
                     settings=MotionSettings(tcp_velocity_limit=30),
                 )
