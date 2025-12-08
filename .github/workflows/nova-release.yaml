@@ -50,6 +50,28 @@ jobs:
           # These are cosmetic; the *actor* is determined by the token above
           git_committer_name: "pipeline-version-bumper[bot]"
           git_committer_email: "pipeline-version-bumper[bot]@users.noreply.github.com"
+
+      - name: Build wheel & bump post-build number (release/*)
+        if: startsWith(github.ref_name, 'release/')
+        id: build
+        run: |
+          BASE_POINT=$(git merge-base origin/main HEAD || git rev-list --max-parents=0 HEAD)
+          COMMITS=$(git rev-list --count ${BASE_POINT}..HEAD)
+
+          DATE=$(date +%Y%m%d)
+          BRANCH_SLUG=$(echo "${GITHUB_REF_NAME#release/}" | tr '/' '-')
+          BASE_VER=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+
+          NEW_VER="${BASE_VER}.a${DATE}$(printf '%02d' ${COMMITS})"
+          echo "Building ${NEW_VER} for release branch ${BRANCH_SLUG}"
+
+          sed -i -E 's/^(version = ")[^"]+(")$/\1'"${NEW_VER}"'\2/' pyproject.toml
+
+          python -m pip install --upgrade build
+          python -m build --wheel --outdir dist    # keep default wheel name
+
+          echo "wheel=$(ls dist/*.whl)" >> "$GITHUB_OUTPUT"
+
       - name: Publish package to PyPI
         if: |
           (github.ref_name == 'main'  && steps.semrel.outputs.released == 'true') ||
