@@ -32,9 +32,6 @@ def log_safety_zones(
             continue
 
         accumulated = robot.pose_to_matrix(mounting)
-        if collider.pose is not None:
-            accumulated = accumulated @ robot.pose_to_matrix(collider.pose)
-
         polygons = apply_transform_to_polygons(polygons, accumulated)
 
         # Log polygons as wireframe outlines

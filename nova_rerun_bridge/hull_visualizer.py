@@ -3,6 +3,7 @@ from typing import Any
 import numpy as np
 import trimesh
 from scipy.spatial import ConvexHull
+from scipy.spatial.qhull import QhullError
 
 
 class HullVisualizer:
@@ -151,6 +152,85 @@ class HullVisualizer:
         return HullVisualizer._compute_hull_from_points(np.array(points))
 
     @staticmethod
+    def _is_coplanar(points: np.ndarray, tolerance: float = 1e-6) -> tuple[bool, np.ndarray | None]:
+        """Check if points are coplanar and return the plane normal if so.
+
+        Returns:
+            Tuple of (is_coplanar, plane_normal). plane_normal is None if not coplanar.
+        """
+        if len(points) < 3:
+            return True, None
+
+        # Check variance along each axis - if one is near zero, points are flat along that axis
+        ranges = np.ptp(points, axis=0)  # peak-to-peak (max - min) for each dimension
+
+        # If one dimension has zero range, points are coplanar
+        min_range_idx = np.argmin(ranges)
+        if ranges[min_range_idx] < tolerance:
+            # Create normal vector pointing along the flat dimension
+            normal = np.zeros(3)
+            normal[min_range_idx] = 1.0
+            return True, normal
+
+        # Check if points are coplanar using cross product method
+        p0 = points[0]
+        v1 = points[1] - p0
+        v2 = points[2] - p0
+        normal = np.cross(v1, v2)
+        norm = np.linalg.norm(normal)
+        if norm < tolerance:
+            return True, None
+        normal = normal / norm
+
+        # Check all other points against this plane
+        for i in range(3, len(points)):
+            dist = abs(np.dot(points[i] - p0, normal))
+            if dist > tolerance:
+                return False, None
+
+        return True, normal
+
+    @staticmethod
+    def _compute_2d_hull_polygon(points: np.ndarray, normal: np.ndarray) -> list[np.ndarray]:
+        """Compute 2D convex hull for coplanar points and return as 3D polygon.
+
+        Args:
+            points: Nx3 array of coplanar 3D points
+            normal: Normal vector of the plane
+
+        Returns:
+            List containing a single closed polygon as Nx3 numpy array
+        """
+        from scipy.spatial import ConvexHull as ConvexHull2D
+
+        if len(points) < 3:
+            return []
+
+        # Find the dimension with minimum range (the flat dimension)
+        ranges = np.ptp(points, axis=0)
+        flat_dim = np.argmin(ranges)
+
+        # Project to 2D by removing the flat dimension
+        dims_2d = [i for i in range(3) if i != flat_dim]
+        points_2d = points[:, dims_2d]
+
+        try:
+            hull_2d = ConvexHull2D(points_2d)
+            hull_indices = hull_2d.vertices
+
+            # Get the hull points in order and close the loop
+            hull_points_3d = points[hull_indices]
+            closed_loop = np.vstack([hull_points_3d, hull_points_3d[0]])
+            return [closed_loop]
+
+        except QhullError:
+            # If 2D hull also fails (e.g., collinear points), return the points as a line
+            if len(points) >= 2:
+                closed_loop = np.vstack([points, points[0]])
+                return [closed_loop]
+            return []
+
+    @staticmethod
     def _compute_hull_from_points(points: np.ndarray) -> list[np.ndarray]:
         """Internal helper to compute hull from numpy points array."""
         try:
@@ -167,5 +247,15 @@ class HullVisualizer:
                     polygons.append(closed_loop)
             return polygons
 
+        except QhullError:
+            # ConvexHull failed - likely because points are coplanar
+            is_coplanar, normal = HullVisualizer._is_coplanar(points)
+            if is_coplanar and normal is not None:
+                return HullVisualizer._compute_2d_hull_polygon(points, normal)
+            # Try to compute 2D hull anyway as a fallback
+            return HullVisualizer._compute_2d_hull_polygon(
+                points,
+                np.array([0, 1, 0]),  # default normal
+            )
         except Exception:
             return []
