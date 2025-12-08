@@ -1,4 +1,3 @@
-import asyncio
 from math import pi
 
 import pytest

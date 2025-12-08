@@ -1,11 +1,10 @@
-import asyncio
 from math import pi
 
 import pytest
 
 from nova import Nova, api
 from nova.actions import collision_free
-from nova.cell import Controller, MotionGroup, virtual_controller
+from nova.cell import MotionGroup, virtual_controller
 from nova.types import Pose
 
 initial_joint_positions = [pi / 2, -pi / 2, pi / 2, 0, 0, 0]

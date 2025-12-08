@@ -1,6 +1,6 @@
 import asyncio
-from contextlib import aclosing
 import logging
+from contextlib import aclosing
 from typing import AsyncIterator, cast
 
 from nova import api
@@ -301,7 +301,7 @@ class MotionGroup(AbstractRobot):
             motion_group=self.id,
             response_rate=response_rate_msecs,
         )
-        
+
         async with aclosing(response_stream) as response_stream:
             async for response in response_stream:
                 yield response

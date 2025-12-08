@@ -17,10 +17,7 @@ DEFAULT_ADD_CONTROLLER_TIMEOUT_SECS = 120
 # This is the default value we use when we wait for a controller to be ready.
 DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS = 120
 
-CONTROLLER_NOT_READY_STATUSES = [
-    "MODE_CONTROLLER_NOT_CONFIGURED",
-    "MODE_INITIALIZING",
-]
+CONTROLLER_NOT_READY_STATUSES = ["MODE_CONTROLLER_NOT_CONFIGURED", "MODE_INITIALIZING"]
 
 logger = logging.getLogger(__name__)
 
@@ -250,19 +247,17 @@ class Cell:
             if data["mode"] in CONTROLLER_NOT_READY_STATUSES:
                 logger.info(f"Controller {name} mode: {data['mode']}")
                 return
-            
+
             logger.info(f"Controller {name} is ready with mode: {data['mode']}")
             controller_ready.set()
 
-
         cell_status_sub = await nc.subscribe(subject=cell_status_subject, cb=on_cell_status_message)
-        controller_status_sub = await nc.subscribe(subject=controller_status_subject, cb=on_controller_status_message)
+        controller_status_sub = await nc.subscribe(
+            subject=controller_status_subject, cb=on_controller_status_message
+        )
         try:
             await asyncio.wait_for(
-                asyncio.gather(
-                    controller_pod_ready.wait(),
-                    controller_ready.wait(),
-                ),
+                asyncio.gather(controller_pod_ready.wait(), controller_ready.wait()),
                 timeout=timeout,
             )
         except asyncio.TimeoutError:
@@ -273,5 +268,4 @@ class Cell:
             await cell_status_sub.unsubscribe()
             await controller_status_sub.unsubscribe()
 
-        
         await asyncio.sleep(5)  # Give some time for any final messages to be processed

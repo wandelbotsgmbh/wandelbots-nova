@@ -1,12 +1,12 @@
 import asyncio
-from nova.cell.controllers import virtual_controller
-from nova.core.nova import Nova
-from nova.api import models
-from nova.actions import jnt
-
 from math import pi
 
 import pytest
+
+from nova.actions import jnt
+from nova.api import models
+from nova.cell.controllers import virtual_controller
+from nova.core.nova import Nova
 
 
 @pytest.fixture
@@ -66,7 +66,7 @@ async def test_move_to_very_similar_joint_position(ur_mg):
             models.Joints([1.8294, -1.4618, -1.8644, -1.1851, 1.5188, 0.2529]),
         ],
         locations=[0.0, 1.0],
-        times=[0, 0.008]
+        times=[0, 0.008],
     )
 
     # move to the start of the trajectory
@@ -88,12 +88,8 @@ async def test_multiple_movements_back_to_back(ur_mg):
     """
     Tests that multiple movements back to back are handled correctly.
     """
-    joint_position_1 = models.Joints(
-        [1.0, -1.0, -1.0, -1.0, 1.0, 0.0]
-    )
-    joint_position_2 = models.Joints(
-        [1.5, -1.5, -1.5, -1.5, 1.5, 0.0]
-    )
+    joint_position_1 = models.Joints([1.0, -1.0, -1.0, -1.0, 1.0, 0.0])
+    joint_position_2 = models.Joints([1.5, -1.5, -1.5, -1.5, 1.5, 0.0])
 
     async with asyncio.timeout(10):
         await ur_mg.plan_and_execute(actions=[jnt(joint_position_1.root)], tcp="Flange")

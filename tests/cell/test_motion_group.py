@@ -171,20 +171,25 @@ async def test_compare_collision_setup():
 def test_validate_collision_setup_single_action():
     validate_collision_setups([linear((0, 0, 0, 0, 0, 0))])
     validate_collision_setups([linear((0, 0, 0, 0, 0, 0), settings=MotionSettings())])
-    validate_collision_setups([linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0]))])
+    validate_collision_setups(
+        [linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0]))]
+    )
 
-    validate_collision_setups([
-        linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0])),
-        linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0]))
-    ])
+    validate_collision_setups(
+        [
+            linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0])),
+            linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0])),
+        ]
+    )
 
     with pytest.raises(InconsistentCollisionScenes):
-        validate_collision_setups([
-            linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0])),
-            linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 1]))
-        ])
+        validate_collision_setups(
+            [
+                linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 0])),
+                linear((0, 0, 0, 0, 0, 0), collision_setup=_test_collider([0, 0, 1])),
+            ]
+        )
 
-    
 
 @pytest.mark.asyncio
 async def test_split_and_verify_collision_setup():

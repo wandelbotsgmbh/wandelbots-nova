@@ -19,8 +19,8 @@ from nova.types import (
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
 
-import logging
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
+
 
 @pytest.fixture
 async def ur_mg():
@@ -43,16 +43,12 @@ async def ur_mg():
             )
         )
 
-
         ur = await cell.controller(controller_name)
         async with ur[0] as mg:
             logger.info("Moving to initial joint positions for test.")
             await mg.plan_and_execute(
                 actions=[
-                    jnt(
-                        initial_joint_positions,
-                        settings=MotionSettings(tcp_velocity_limit=250),
-                    )
+                    jnt(initial_joint_positions, settings=MotionSettings(tcp_velocity_limit=250))
                 ],
                 tcp="Flange",
             )
@@ -64,8 +60,7 @@ async def ur_mg():
                 await mg.plan_and_execute(
                     actions=[
                         jnt(
-                            initial_joint_positions,
-                            settings=MotionSettings(tcp_velocity_limit=250),
+                            initial_joint_positions, settings=MotionSettings(tcp_velocity_limit=250)
                         )
                     ],
                     tcp="Flange",
@@ -139,7 +134,7 @@ async def test_movement_stops_when_async_generator_raises_exception(ur_mg):
                 number_of_states_to_consume -= 1
                 if number_of_states_to_consume == 0:
                     raise Exception("Intentional exception to test movement stop on exception.")
-                
+
     except BaseException as e:
         logger.info(f"Caught expected exception: {e}")
 
