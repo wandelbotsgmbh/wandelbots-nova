@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 ExecuteJoggingRequestStream = AsyncIterator[api.models.ExecuteJoggingRequest]
 ExecuteJoggingResponseStream = AsyncIterator[api.models.ExecuteJoggingResponse]
 
+_START_STATE_MONITOR_TIMEOUT = 5.0
+
 
 # TODO: when the message exchange is not working as expected we should gracefully close
 # TODO: add the set_io functionality Thorsten Blatter did for the force torque sensor at Schaeffler
@@ -85,13 +87,20 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         # before sending start movement start state monitoring to not loose any data
         # at this point we have exclusive right to do movement on the robot, any movement should be
         # what is coming from our trajectory
-        stream_started_event = asyncio.Event()
-        state_monitor = asyncio.create_task(
-            motion_group_state_monitor(stream_started_event),
-            name=f"motion-group-state-monitor-{context.motion_id}",
-        )
-        logger.info(f"Trajectory: {context.motion_id} waiting for state monitor to start")
-        await stream_started_event.wait()
+        try:
+            stream_started_event = asyncio.Event()
+            state_monitor = asyncio.create_task(
+                motion_group_state_monitor(stream_started_event),
+                name=f"motion-group-state-monitor-{context.motion_id}",
+            )
+            logger.info(f"Trajectory: {context.motion_id} waiting for state monitor to start")
+            await asyncio.wait_for(
+                stream_started_event.wait(), timeout=_START_STATE_MONITOR_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"Trajectory: {context.motion_id} state monitor failed to start in time")
+            state_monitor.cancel()
+            raise Exception("State monitor failed to start in time")
 
         set_io_list = context.combined_actions.to_set_io()
         start_movement_request = api.models.StartMovementRequest(
