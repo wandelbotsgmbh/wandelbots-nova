@@ -30,7 +30,7 @@ class RobotVisualizer:
         albedo_factor: list = [255, 255, 255],
         collision_link_chain: api.models.LinkChain | None = None,
         collision_tcp: api.models.Tool | None = None,
-        model_from_controller="",
+        motion_group_model: str = "",
         show_collision_link_chain: bool = False,
         show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
@@ -71,7 +71,7 @@ class RobotVisualizer:
 
         # load mesh
         try:
-            glb_path = get_model_path(model_from_controller)
+            glb_path = get_model_path(motion_group_model)
             self.scene = trimesh.load_scene(glb_path, file_type="glb")
             self.mesh_loaded = True
             self.edge_data = self.scene.graph.transforms.edge_data

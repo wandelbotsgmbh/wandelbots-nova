@@ -73,7 +73,7 @@ async def log_motion(
         )
 
     motion_group_setup = await motion_group.get_setup(tcp)
-    motion_group_model = (await motion_group.get_model()).root
+    motion_group_model = await motion_group.get_model()
     motion_group_description = await motion_group.get_description()
     motion_group_id = motion_group.id
     motion_id = str(uuid.uuid4())
@@ -154,7 +154,7 @@ async def log_motion(
             tcp_geometries=tcp_geometries,
             static_transform=False,
             base_entity_path=f"motion/{motion_group_id}",
-            model_from_controller=motion_group_model,
+            motion_group_model=motion_group_model,
             collision_link_chain=collision_link_chain,
             collision_tcp=collision_tcp,
             show_collision_link_chain=show_collision_link_chain,

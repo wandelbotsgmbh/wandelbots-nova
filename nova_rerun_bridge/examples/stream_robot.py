@@ -54,7 +54,7 @@ async def test():
         async with controller[0] as motion_group:
             # this streams the current robot state into the timeline "time"
             # use this to record actual motions of the robot
-            await bridge.start_streaming(nova, motion_group)
+            await bridge.start_streaming(motion_group)
 
             # In addition to log the robot state you can still log other data
             # like trajectories into the "time_interval_0.016" timeline

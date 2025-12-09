@@ -43,7 +43,7 @@ The SDK will help you to build your own apps and services using Python on top of
 
 1. Install the SDK using `pip` or set up a local `uv` project with extras for visualization. Refer to the [Installation](#installation) section for both options.
 2. Copy `.env.template` to `.env` and fill in the base URL and access token for your NOVA deployment. Details are covered in [Configure environment variables](#configure-environment-variables).
-3. Run an example to validate the setup, e.g. `uv run python examples/basic.py`. Install the rerun extras and execute `uv run download-models` if you want interactive 3D visualization out of the box.
+3. Run an example to validate the setup, e.g. `uv run python examples/start_here.py`. Install the rerun extras and execute `uv run download-models` if you want interactive 3D visualization out of the box.
 
 ## Installation
 
@@ -114,8 +114,6 @@ You can access the automatically generated NOVA API client using the `api` modul
 ```python
 from nova import api
 ```
-
-Check out the [basic](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/basic.py) and [plan_and_execute](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/plan_and_execute.py) examples to learn how to use the library.
 
 ### Example gallery
 

@@ -100,14 +100,14 @@ class MotionGroup(AbstractRobot):
         """
         return await self._fetch_motion_group_description()
 
-    async def get_model(self) -> api.models.MotionGroupModel:
+    async def get_model(self) -> str:
         """Get the motion group model.
 
         Returns:
             api.models.MotionGroupModel: The motion group model.
         """
         motion_group_description = await self._fetch_motion_group_description()
-        return motion_group_description.motion_group_model
+        return motion_group_description.motion_group_model.root
 
     async def get_setup(self, tcp_name: str | None = None) -> api.models.MotionGroupSetup:
         """Get the motion group setup.
@@ -198,7 +198,7 @@ class MotionGroup(AbstractRobot):
         response = await self._api_client.kinematics_api.inverse_kinematics(
             cell=self._cell,
             inverse_kinematics_request=api.models.InverseKinematicsRequest(
-                motion_group_model=motion_group_model,
+                motion_group_model=api.models.MotionGroupModel(motion_group_model),
                 tcp_poses=[pose.to_api_model() for pose in poses],
                 tcp_offset=tcp_offset.to_api_model(),
                 mounting=mounting.to_api_model() if mounting is not None else None,
@@ -226,7 +226,7 @@ class MotionGroup(AbstractRobot):
         response = await self._api_client.kinematics_api.forward_kinematics(
             cell=self._cell,
             forward_kinematics_request=api.models.ForwardKinematicsRequest(
-                motion_group_model=motion_group_model,
+                motion_group_model=api.models.MotionGroupModel(motion_group_model),
                 joint_positions=joint_positions,
                 tcp_offset=tcp_offset.to_api_model(),
                 mounting=mounting.to_api_model() if mounting is not None else None,

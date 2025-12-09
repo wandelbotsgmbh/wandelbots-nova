@@ -106,7 +106,7 @@ async def stream_motion_group(
             static_transform=False,
             base_entity_path=motion_group.id,
             albedo_factor=[0, 255, 100],
-            model_from_controller=motion_group_model,
+            motion_group_model=motion_group_model,
         )
 
         logger.info(f"Started streaming motion group {motion_group.id}")
