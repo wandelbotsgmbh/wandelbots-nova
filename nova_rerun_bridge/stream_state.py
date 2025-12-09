@@ -7,6 +7,7 @@ from scipy.spatial.transform import Rotation as R
 
 from nova import MotionGroup, Nova, api
 from nova.types import Pose
+from nova.utils.downsample import downsample_stream
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.consts import TIME_REALTIME_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
@@ -64,9 +65,21 @@ class MotionGroupProcessor:
 
 
 async def stream_motion_group(
-    self, nova: Nova, motion_group: MotionGroup, tcp_name: str | None
+    self,
+    nova: Nova,
+    motion_group: MotionGroup,
+    tcp_name: str | None,
+    target_frequency: float | None = 1.0 / 0.033,
 ) -> None:
-    """Stream individual motion group state to Rerun."""
+    """Stream individual motion group state to Rerun.
+
+    Args:
+        self: Nova instance (unused but kept for compatibility)
+        nova: Nova instance
+        motion_group: Motion group to stream
+        tcp_name: Optional TCP name
+        target_frequency: Target frequency in Hz for downsampling. Default is ~30.3 Hz (33ms interval).
+    """
     processor = MotionGroupProcessor()
 
     motion_group_description = await motion_group.get_description()
@@ -110,7 +123,8 @@ async def stream_motion_group(
         )
 
         logger.info(f"Started streaming motion group {motion_group.id}")
-        async for state in motion_group.stream_state():
+
+        async for state in downsample_stream(motion_group.stream_state(), target_frequency):
             current_joint_position = state.joint_position.root
             tcp_pose = Pose(state.tcp_pose)
             if processor.tcp_pose_changed(motion_group_id=motion_group.id, tcp_pose=tcp_pose):
