@@ -5,6 +5,7 @@ import pytest
 from nova import Nova
 from nova.api import models
 from nova.cell import virtual_controller
+from nova.cell.motion_group import _find_shortest_distance
 from nova.types import Pose
 
 
@@ -33,6 +34,17 @@ async def ur_mg():
         ur = await cell.controller(controller_name)
         async with ur[0] as mg:
             yield mg
+
+
+def test_find_shortest_distance_returns_closest_solution():
+    start = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    solutions = [
+        (3.0, 4.0, 0.0, 0.0, 0.0, 0.0), 
+        (1.0, 1.0, 0.0, 0.0, 0.0, 0.0), 
+        (2.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    ]
+
+    assert _find_shortest_distance(start, solutions) == solutions[1]
 
 
 @pytest.mark.asyncio

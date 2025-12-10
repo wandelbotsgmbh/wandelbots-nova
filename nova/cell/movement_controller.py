@@ -34,6 +34,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         async def motion_group_state_monitor(stream_started_event: asyncio.Event):
             try:
                 logger.info("Starting state monitor for trajectory")
+                trajectory_ended = False
                 async for motion_group_state in context.motion_group_state_stream_gen():
                     if not stream_started_event.is_set():
                         stream_started_event.set()
@@ -41,6 +42,13 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                     logger.debug(
                         f"Trajectory: {context.motion_id} state monitor received state: {motion_group_state}"
                     )
+
+                    if trajectory_ended and motion_group_state.standstill:
+                        logger.info(
+                            f"Trajectory: {context.motion_id} state monitor detected standstill."
+                        )
+                        return
+
                     if not motion_group_state.execute or not isinstance(
                         motion_group_state.execute.details, api.models.TrajectoryDetails
                     ):
@@ -52,8 +60,9 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         logger.info(
                             f"Trajectory: {context.motion_id} state monitor ended with TrajectoryEnded"
                         )
-                        return
-
+                        trajectory_ended = True
+                        continue
+                    
                 logger.info(
                     f"Trajectory: {context.motion_id} state monitor ended without TrajectoryEnded"
                 )
@@ -73,7 +82,10 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         initialize_movement_response = await anext(response_stream)
 
         logger.info(f"Trajectory: {context.motion_id} received initialize movement response.")
-        assert isinstance(initialize_movement_response.root, api.models.InitializeMovementResponse)
+        if not isinstance(initialize_movement_response.root, api.models.InitializeMovementResponse):
+            raise Exception(
+                f"Expected InitializeMovementResponse but got: {initialize_movement_response.root}"
+            )
 
         if (
             initialize_movement_response.root.message
@@ -114,15 +126,23 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
         start_movement_response = await anext(response_stream)
         logger.info(f"Trajectory: {context.motion_id} received start movement response.")
-        assert isinstance(start_movement_response.root, api.models.StartMovementResponse)
+        if not isinstance(start_movement_response.root, api.models.StartMovementResponse):
+            raise Exception(
+                f"Expected StartMovementResponse but got: {start_movement_response.root}"
+            )
 
         # the only possible response we can get from web socket at this point is a movement failure
+        error_message = ""
         async def error_response_consumer(response_stream: ExecuteTrajectoryResponseStream):
             response = await anext(response_stream)
             if not isinstance(response.root, api.models.MovementErrorResponse):
                 logger.error(
                     f"Trajectory: {context.motion_id} received unexpected response: {response}"
                 )
+                return
+            
+            nonlocal error_message
+            error_message = response.root.message
 
         error_consumer = asyncio.create_task(
             error_response_consumer(response_stream),
@@ -139,9 +159,9 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
             if error_consumer in done:
                 logger.info(f"Trajectory: {context.motion_id} error consumer completed")
-                raise ErrorDuringMovement("Error occurred during trajectory execution")
+                raise ErrorDuringMovement(f"Error occurred during trajectory execution: {error_message}")
         except BaseException as e:
-            logger.error(f"Trajectory: {context.motion_id} encountered exception: {e}")
+            logger.error(f"Trajectory: {context.motion_id} encountered exception: {type(e).__name__}: {e}")
             raise
         finally:
             for task in tasks:

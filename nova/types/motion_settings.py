@@ -18,10 +18,14 @@ class MotionSettings(pydantic.BaseModel):
             It changes the TCP path around the target point of the motion command.
             The value represents the percentage of the original velocity.
 
+            This setting is not supported for collision-free motions.
+
         blending_radius:
             Specifies the maximum radius in [mm] around the motion command's target point
             where the TCP path can be altered to blend the motion command into the following one.
             If auto-blending blends too much of the resulting trajectory, use position-blending to restrict the blending zone radius.
+
+            This setting is not supported for collision-free motions.
 
         joint_velocity_limits:
             Maximum joint velocity in [rad/s] for each joint.

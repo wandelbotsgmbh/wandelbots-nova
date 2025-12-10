@@ -53,6 +53,16 @@ def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
             batches[-1].append(action)
     return batches
 
+def _find_shortest_distance(start_joint_positions: tuple[float, ...], solutions: list[tuple[float, ...]]) -> tuple[float, ...]:
+    smallest_distance = float("inf")
+    for solution in solutions:
+        distance = np.linalg.norm(np.array(solution) - np.array(start_joint_positions))
+        logger.info(f"IK solution: {solution}, distance from start: {distance}")
+        if distance < smallest_distance:
+            smallest_distance = float(distance)
+            target_joint_positions = solution
+    return target_joint_positions
+
 
 class MotionGroup(AbstractRobot):
     """Manages motion planning and execution within a specified motion group."""
@@ -249,6 +259,7 @@ class MotionGroup(AbstractRobot):
         #           so for now we will not deactivate for the user
         pass
 
+    # TODO: should we remove this until we fix it? 
     async def stop(self):
         """Stop the motion group.
 
@@ -558,7 +569,8 @@ class MotionGroup(AbstractRobot):
                 raise ValueError(
                     f"No inverse kinematics solution found for target pose {action.target}"
                 )
-            target_joint_positions = solutions[0][0]
+            
+            target_joint_positions = _find_shortest_distance(start_joint_position, solutions[0])
         elif isinstance(action.target, tuple):
             target_joint_positions = action.target
         else:
