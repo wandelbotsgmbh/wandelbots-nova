@@ -14,6 +14,11 @@ _POSE_EQUALITY_PRECISION = 6
 
 def _parse_args(*args):
     """Parse the arguments and return a dictionary that pydanctic can validate"""
+    if args == (None,):
+        return {
+            "position": Vector3d(x=0.0, y=0.0, z=0.0),
+            "orientation": Vector3d(x=0.0, y=0.0, z=0.0),
+        }
     if len(args) == 1 and isinstance(args[0], api.models.Pose):
         pos = args[0].position
         ori = args[0].orientation
@@ -69,6 +74,8 @@ class Pose(pydantic.BaseModel, Sized):
         Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
         >>> Pose(api.models.Pose(position=None, orientation=api.models.RotationVector([4, 5, 6])))
         Pose(position=Vector3d(x=0.0, y=0.0, z=0.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0))
+        >>> Pose(None)
+        Pose(position=Vector3d(x=0.0, y=0.0, z=0.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
         """
         # >>> Pose(api.models.TcpOffset(name='Flange', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.Vector3d([4, 5, 6]))))
         # Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))

@@ -4,8 +4,8 @@ import trimesh
 from scipy.spatial.transform import Rotation
 
 from nova import api
+from nova.types import Pose
 from nova_rerun_bridge import colors
-from nova_rerun_bridge.conversion_helpers import normalize_pose
 from nova_rerun_bridge.hull_visualizer import HullVisualizer
 
 
@@ -19,7 +19,7 @@ def log_collision_setups(collision_setups: dict[str, api.models.CollisionSetup])
 
 def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collider]):
     for collider_id, collider in colliders.items():
-        pose = normalize_pose(collider.pose)
+        pose = Pose(collider.pose)
 
         if isinstance(collider.shape, api.models.Sphere):
             # Convert rotation vector to axis-angle format

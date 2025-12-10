@@ -8,7 +8,6 @@ from scipy.spatial.transform import Rotation
 from nova import api
 from nova.types import Pose
 from nova_rerun_bridge import colors
-from nova_rerun_bridge.conversion_helpers import normalize_pose
 from nova_rerun_bridge.dh_robot import DHRobot
 from nova_rerun_bridge.helper_scripts.download_models import get_project_root
 from nova_rerun_bridge.hull_visualizer import HullVisualizer
@@ -655,9 +654,7 @@ class RobotVisualizer:
                 link_transform = transforms[link_index]
                 for i, geom in enumerate(geometries):
                     entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
-                    final_transform = link_transform @ self.geometry_pose_to_matrix(
-                        normalize_pose(geom.pose)
-                    )
+                    final_transform = link_transform @ self.geometry_pose_to_matrix(Pose(geom.pose))
 
                     self.init_geometry(entity_path, geom)
                     log_geometry(entity_path, final_transform)
@@ -667,9 +664,7 @@ class RobotVisualizer:
             tcp_transform = transforms[-1]  # the final frame transform
             for i, geom in enumerate(self.tcp_geometries):
                 entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
-                final_transform = tcp_transform @ self.geometry_pose_to_matrix(
-                    normalize_pose(geom.pose)
-                )
+                final_transform = tcp_transform @ self.geometry_pose_to_matrix(Pose(geom.pose))
 
                 self.init_geometry(entity_path, geom)
                 log_geometry(entity_path, final_transform)
@@ -755,7 +750,7 @@ class RobotVisualizer:
                     for i, geom in enumerate(geometries):
                         entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
                         final_transform = link_transform @ self.geometry_pose_to_matrix(
-                            normalize_pose(geom.pose)
+                            Pose(geom.pose)
                         )
                         self.init_geometry(entity_path, geom)
                         collect_geometry_data(entity_path, final_transform)
@@ -765,9 +760,7 @@ class RobotVisualizer:
                 tcp_transform = transforms[-1]  # End-effector transform
                 for i, geom in enumerate(self.tcp_geometries):
                     entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
-                    final_transform = tcp_transform @ self.geometry_pose_to_matrix(
-                        normalize_pose(geom.pose)
-                    )
+                    final_transform = tcp_transform @ self.geometry_pose_to_matrix(Pose(geom.pose))
                     self.init_geometry(entity_path, geom)
                     collect_geometry_data(entity_path, final_transform)
 
@@ -778,9 +771,9 @@ class RobotVisualizer:
                     for i, geom_id in enumerate(geometries.root):  # type: ignore[attr-defined]
                         entity_path = f"{self.base_entity_path}/collision/links/link_{link_index}/geometry_{geom_id}"
 
-                        pose = normalize_pose(geometries.root[geom_id].pose)
+                        pose = Pose(geometries.root[geom_id].pose)  # type: ignore[attr-defined]
                         final_transform = link_transform @ self.geometry_pose_to_matrix(pose)
-                        self.init_collision_geometry(entity_path, geometries.root[geom_id], pose)
+                        self.init_collision_geometry(entity_path, geometries.root[geom_id], pose)  # type: ignore[attr-defined]
                         collect_geometry_data(entity_path, final_transform)
 
             # Collect data for collision TCP geometries (only if enabled)
@@ -789,7 +782,7 @@ class RobotVisualizer:
                 for i, geom_id in enumerate(self.collision_tcp_geometries):
                     entity_path = f"{self.base_entity_path}/collision/tcp/geometry_{geom_id}"
 
-                    pose = normalize_pose(self.collision_tcp_geometries[geom_id].pose)
+                    pose = Pose(self.collision_tcp_geometries[geom_id].pose)
                     final_transform = tcp_transform @ self.geometry_pose_to_matrix(pose)
 
                     # tcp collision geometries are defined in flange frame
