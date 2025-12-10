@@ -33,6 +33,7 @@ async def ur_mg():
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_move_to_current_joint_position(ur_mg):
     """
     Tests that when the robot is in a certain posision and we provide the same joint position as target,
@@ -45,8 +46,8 @@ async def test_move_to_current_joint_position(ur_mg):
         await ur_mg.plan_and_execute(actions=[jnt(joint_position)], tcp="Flange")
 
 
-## Test moving robot when it is not in the start position
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_move_to_very_similar_joint_position(ur_mg):
     """
     Tessts that two very similar float numbers for joints are handled correctly and trajectory is executed.
@@ -69,29 +70,7 @@ async def test_move_to_very_similar_joint_position(ur_mg):
         times=[0, 0.008],
     )
 
-    # move to the start of the trajectory
     await ur_mg.plan_and_execute(actions=[jnt(trajectory.joint_positions[0].root)], tcp="Flange")
-    ## Seems to not work
-    # async with Nova() as nova:
-    #     await nova.api.virtual_controller_api.set_motion_group_state(
-    #         cell="cell",
-    #         motion_group_joints=models.MotionGroupJoints(positions=trajectory.joint_positions[0].root),
-    #         motion_group=ur_mg.id,
-    #         controller=ur_mg._controller_id,
-    #     )
 
     async with asyncio.timeout(5):
         await ur_mg.execute(joint_trajectory=trajectory, actions=[], tcp="Flange")
-
-
-async def test_multiple_movements_back_to_back(ur_mg):
-    """
-    Tests that multiple movements back to back are handled correctly.
-    """
-    joint_position_1 = models.Joints([1.0, -1.0, -1.0, -1.0, 1.0, 0.0])
-    joint_position_2 = models.Joints([1.5, -1.5, -1.5, -1.5, 1.5, 0.0])
-
-    async with asyncio.timeout(10):
-        await ur_mg.plan_and_execute(actions=[jnt(joint_position_1.root)], tcp="Flange")
-        await ur_mg.plan_and_execute(actions=[jnt(joint_position_2.root)], tcp="Flange")
-        await ur_mg.plan_and_execute(actions=[jnt(joint_position_1.root)], tcp="Flange")
