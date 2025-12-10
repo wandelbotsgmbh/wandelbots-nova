@@ -31,7 +31,7 @@ class TestLogMotionParameterValidation:
         mock_motion_group = Mock()
         mock_motion_group.id = "test_group"
         mock_motion_group.get_setup = AsyncMock(return_value=mock_setup)
-        mock_motion_group.get_model = Mock(root="test_model")
+        mock_motion_group.get_model = AsyncMock(return_value="test_model")
         mock_motion_group.forward_kinematics = AsyncMock(return_value=[])
 
         # Description used by log_motion for DH parameters and safety geometry
@@ -88,7 +88,7 @@ class TestLogMotionParameterValidation:
         mock_motion_group = Mock()
         mock_motion_group.id = "test_group"
         mock_motion_group.get_setup = AsyncMock(return_value=mock_setup)
-        mock_motion_group.get_model = Mock(root="test_model")
+        mock_motion_group.get_model = AsyncMock(return_value="test_model")
         mock_motion_group.forward_kinematics = AsyncMock(return_value=[])
 
         # Description used by log_motion for DH parameters and safety geometry
@@ -141,7 +141,7 @@ class TestLogMotionParameterValidation:
         mock_motion_group = Mock()
         mock_motion_group.id = "test_group"
         mock_motion_group.get_setup = AsyncMock(return_value=mock_setup)
-        mock_motion_group.get_model = Mock(root="test_model")
+        mock_motion_group.get_model = AsyncMock(return_value="test_model")
         mock_motion_group.forward_kinematics = AsyncMock(return_value=[])
 
         # Description used by log_motion for DH parameters and safety geometry
