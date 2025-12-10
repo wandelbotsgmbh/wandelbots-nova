@@ -62,7 +62,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         )
                         trajectory_ended = True
                         continue
-                    
+
                 logger.info(
                     f"Trajectory: {context.motion_id} state monitor ended without TrajectoryEnded"
                 )
@@ -133,6 +133,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
         # the only possible response we can get from web socket at this point is a movement failure
         error_message = ""
+
         async def error_response_consumer(response_stream: ExecuteTrajectoryResponseStream):
             response = await anext(response_stream)
             if not isinstance(response.root, api.models.MovementErrorResponse):
@@ -140,7 +141,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                     f"Trajectory: {context.motion_id} received unexpected response: {response}"
                 )
                 return
-            
+
             nonlocal error_message
             error_message = response.root.message
 
@@ -159,9 +160,13 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
             if error_consumer in done:
                 logger.info(f"Trajectory: {context.motion_id} error consumer completed")
-                raise ErrorDuringMovement(f"Error occurred during trajectory execution: {error_message}")
+                raise ErrorDuringMovement(
+                    f"Error occurred during trajectory execution: {error_message}"
+                )
         except BaseException as e:
-            logger.error(f"Trajectory: {context.motion_id} encountered exception: {type(e).__name__}: {e}")
+            logger.error(
+                f"Trajectory: {context.motion_id} encountered exception: {type(e).__name__}: {e}"
+            )
             raise
         finally:
             for task in tasks:
