@@ -656,7 +656,7 @@ class RobotCell:
         return self
 
     async def __aexit__(self, exc_type, exc_value, exc_traceback):
-        return await self._device_exit_stack.__aexit__(exc_type, exc_value, exc_traceback)
+        return await self._device_exit_stack.aclose()
 
     def __getitem__(self, item):
         try:
