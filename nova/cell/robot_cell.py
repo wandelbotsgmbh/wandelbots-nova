@@ -5,8 +5,8 @@ from collections import defaultdict
 from contextlib import AsyncExitStack, aclosing
 from functools import reduce
 from typing import (
+    AsyncGenerator,
     AsyncIterable,
-    AsyncIterator,
     Awaitable,
     ClassVar,
     Generic,
@@ -306,7 +306,7 @@ class AbstractRobot(Device):
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
-    ) -> AsyncIterator[MotionState]:
+    ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
         Args:
@@ -324,7 +324,7 @@ class AbstractRobot(Device):
         actions: list[Action] | Action,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
-    ) -> AsyncIterable[MotionState]:
+    ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
         Note that if an error happens during the consuming of states from the returned async generator,

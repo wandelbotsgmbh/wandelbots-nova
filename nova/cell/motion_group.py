@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from contextlib import aclosing
-from typing import AsyncIterator, cast
+from typing import AsyncGenerator, cast
 
 from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
@@ -285,7 +285,7 @@ class MotionGroup(AbstractRobot):
 
     async def stream_state(
         self, response_rate_msecs: int | None = None
-    ) -> AsyncIterator[api.models.MotionGroupState]:
+    ) -> AsyncGenerator[api.models.MotionGroupState, None]:
         """
         Streams the motion group state continuously.
 
@@ -668,7 +668,7 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
-    ) -> AsyncIterator[MotionState]:
+    ) -> AsyncGenerator[MotionState, None]:
         if movement_controller is None:
             movement_controller = move_forward
 

@@ -2,7 +2,7 @@ import asyncio
 import math
 import time
 from collections import defaultdict
-from typing import Any, AsyncIterator, Literal, SupportsIndex
+from typing import Any, AsyncGenerator, Literal, SupportsIndex
 
 import numpy as np
 
@@ -255,7 +255,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
-    ) -> AsyncIterator[MotionState]:
+    ) -> AsyncGenerator[MotionState, None]:
         """
         Executes the given joint_trajectory by simulating the robot's motion.
 
@@ -307,39 +307,6 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             self._trajectory.append(motion_state)
 
             yield motion_state
-
-            # yield api.models.ExecuteTrajectoryResponse(
-            #     api.models.StartMovementResponse(
-            #         time_to_end=0,
-            #         current_location=0,
-            #         state=api.models.RobotControllerState(
-            #             controller="Simulated",
-            #             operation_mode="OPERATION_MODE_AUTO",
-            #             safety_state="SAFETY_STATE_NORMAL",
-            #             timestamp=datetime.now(),
-            #             sequence_number="0",
-            #             motion_groups=[
-            #                 api.models.MotionGroupState(
-            #                     motion_group="0",
-            #                     controller="Simulated",
-            #                     tcp_pose=api.models.Pose(
-            #                         position=api.models.Vector3d(
-            #                             motion_state.state.pose.position.to_tuple()
-            #                         ),
-            #                         orientation=api.models.RotationVector(
-            #                             motion_state.state.pose.orientation.to_tuple()
-            #                         ),
-            #                     ),
-            #                     joint_limit_reached=api.models.MotionGroupStateJointLimitReached(
-            #                         limit_reached=[False]
-            #                     ),
-            #                     joint_position=api.models.Joints(list(motion_state.state.joints)),
-            #                     sequence_number="0",
-            #                 )
-            #             ],
-            #         ),
-            #     )
-            # )
 
     async def tcps(self) -> dict[str, api.models.RobotTcp]:
         return {
