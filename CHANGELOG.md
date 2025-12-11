@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.0.0 (2025-12-11)
+
+### Features
+
+- **NDX-43**: Release Python SDK for NOVA v2 (#348)
+  ([#348](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/348),
+  [`ac72e23`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ac72e239bc78fd7b7cb6396a74f3923f562784eb))
+
+
 ## v3.6.7 (2025-11-17)
 
 ### Bug Fixes
