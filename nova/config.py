@@ -7,8 +7,6 @@ from pydantic import BaseModel, Field, model_validator
 INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 NOVA_API = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
 NOVA_ACCESS_TOKEN = config("NOVA_ACCESS_TOKEN", default=None)
-NOVA_USERNAME = config("NOVA_USERNAME", default=None)
-NOVA_PASSWORD = config("NOVA_PASSWORD", default=None)
 
 # Auth0 config
 NOVA_AUTH0_DOMAIN = config("NOVA_AUTH0_DOMAIN", default="#{NOVA_AUTH0_DOMAIN}#")
@@ -25,7 +23,6 @@ K8S_NAMESPACE = config("K8S_NAMESPACE", default="cell")
 LOG_LEVEL: str = config("LOG_LEVEL", default="INFO").upper()
 LOG_FORMAT: str = config("LOG_FORMAT", default="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 LOG_DATETIME_FORMAT: str = config("LOG_DATETIME_FORMAT", default="%Y-%m-%d %H:%M:%S")
-LOGGER_NAME: str = config("LOGGER_NAME", default="wandelbots-nova")
 
 # Feature flags
 ENABLE_TRAJECTORY_TUNING = config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False)
@@ -38,22 +35,28 @@ class NovaConfig(BaseModel):
     Args:
         host (str | None): The Nova API host.
         access_token (str | None): An access token for the Nova API.
-        username (str | None): [Deprecated] Username to authenticate with the Nova API.
-        password (str | None): [Deprecated] Password to authenticate with the Nova API.
         version (str): The API version to use (default: "v1").
         verify_ssl (bool): Whether or not to verify SSL certificates (default: True).
         nats_client_config (dict | None): Configuration dictionary for NATS client.
     """
 
-    host: str | None = Field(default=None, description="Nova API host.")
+    host: str = Field(..., description="Nova API host.")
     access_token: str | None = Field(default=None, description="Access token for Nova API.")
-    username: str | None = Field(default=None, deprecated=True)
-    password: str | None = Field(default=None, deprecated=True)
     verify_ssl: bool = Field(default=True)
     nats_client_config: dict | None = Field(
         default=None,
         description="Client configuration to pass to the nats library. See: https://nats-io.github.io/nats.py/modules.html#nats.aio.client.Client.connect",
     )
+
+    @model_validator(mode="after")
+    def _normalize_host_prefix(self) -> "NovaConfig":
+        self.host = self.host.strip()
+        self.host = self.host.rstrip("/")
+
+        # app store has a special case for the host
+        if self.host == "api-gateway:8080":
+            self.host = f"http://{self.host}"
+        return self
 
     @model_validator(mode="after")
     def _derive_nats_connection_string(self) -> "NovaConfig":
@@ -88,16 +91,8 @@ class NovaConfig(BaseModel):
             )
             return self
 
-        # for backward compatiblity
-        if self.host and self.access_token and not parsed_host.scheme:
-            self.nats_client_config["servers"] = (
-                f"wss://{self.access_token}@{self.host}:{443}/api/nats"
-            )
-
         return self
 
 
 # default config to be used by the SDK if no other explict config is provided
-default_config = NovaConfig(
-    host=NOVA_API, access_token=NOVA_ACCESS_TOKEN, username=NOVA_USERNAME, password=NOVA_PASSWORD
-)
+default_config = NovaConfig(host=NOVA_API, access_token=NOVA_ACCESS_TOKEN)

@@ -101,7 +101,7 @@ def encode(obj):
     Returns: the pydantic model
     Examples:
     >>> encode(Pose((1, 2, 3, 4, 5, 6)))
-    {'position': [1, 2, 3], 'orientation': [4, 5, 6]}
+    {'position': [1.0, 2.0, 3.0], 'orientation': [4.0, 5.0, 6.0]}
     >>> encode(Vector3d(x=1, y=2, z=3))
     {'x': 1, 'y': 2, 'z': 3}
     >>> encode([1, 2, 3])

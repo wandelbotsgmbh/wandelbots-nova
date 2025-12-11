@@ -62,7 +62,7 @@ jobs:
           BRANCH_SLUG=$(echo "${GITHUB_REF_NAME#release/}" | tr '/' '-')
           BASE_VER=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
 
-          NEW_VER="${BASE_VER}.post${DATE}$(printf '%02d' ${COMMITS})"
+          NEW_VER="${BASE_VER}.a${DATE}$(printf '%02d' ${COMMITS})"
           echo "Building ${NEW_VER} for release branch ${BRANCH_SLUG}"
 
           sed -i -E 's/^(version = ")[^"]+(")$/\1'"${NEW_VER}"'\2/' pyproject.toml

@@ -14,15 +14,15 @@ async def main():
     with open(path) as f:
         program_code = f.read()
 
-    nova = Nova()
-    cell = nova.cell()
-    await cell.ensure_controller(
-        virtual_controller(
-            name="ur10e",
-            manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-            type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+    async with Nova() as nova:
+        cell = nova.cell()
+        await cell.ensure_controller(
+            virtual_controller(
+                name="ur10e",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+            )
         )
-    )
 
     await run_wandelscript_program(
         program_id=path.stem,
@@ -32,7 +32,7 @@ async def main():
             "a_dict": {"nested": 3},
             "a_list": [1, 2, {"nested": 4}],
         },
-        nova=nova,
+        nova=Nova(),
         default_robot="0@ur10e",
         default_tcp=None,
     )

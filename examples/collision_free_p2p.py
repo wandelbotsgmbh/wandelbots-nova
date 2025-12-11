@@ -3,12 +3,6 @@ from typing import cast
 
 import numpy as np
 import rerun as rr
-from wandelbots_api_client.models import (
-    CoordinateSystem,
-    RotationAngles,
-    RotationAngleTypes,
-    Vector3d,
-)
 
 import nova
 from nova import Nova, api, run_program
@@ -20,50 +14,55 @@ from nova.types import MotionSettings, Pose
 
 
 async def build_collision_world(
-    nova: Nova, cell_name: str, robot_setup: api.models.OptimizerSetup
+    nova: Nova, cell_name: str, motion_group_description: api.models.MotionGroupDescription
 ) -> str:
-    collision_api = nova._api_client.store_collision_components_api
-    scene_api = nova._api_client.store_collision_scenes_api
+    store_collision_components_api = nova._api_client.store_collision_components_api
+    store_collision_setups_api = nova._api_client.store_collision_setups_api
+    motion_group_models_api = nova._api_client.motion_group_models_api
+
+    motion_group_model = motion_group_description.motion_group_model.root
 
     # define annoying obstacle
     sphere_collider = api.models.Collider(
-        shape=api.models.ColliderShape(api.models.Sphere2(radius=100, shape_type="sphere")),
-        pose=api.models.Pose2(position=[-100, -500, 200]),
+        shape=api.models.Sphere(radius=100, shape_type="sphere"),
+        pose=api.models.Pose(
+            position=api.models.Vector3d([-100, -500, 200]),
+            orientation=api.models.RotationVector([0, 0, 0]),
+        ),
     )
-    await collision_api.store_collider(
+    await store_collision_components_api.store_collider(
         cell=cell_name, collider="annoying_obstacle", collider2=sphere_collider
     )
 
     # define TCP collider geometry
     tool_collider = api.models.Collider(
-        shape=api.models.ColliderShape(
-            api.models.Box2(size_x=100, size_y=100, size_z=100, shape_type="box", box_type="FULL")
+        shape=api.models.Box(
+            size_x=100, size_y=100, size_z=100, shape_type="box", box_type=api.models.BoxType.FULL
         )
     )
-    await collision_api.store_collision_tool(
+    await store_collision_components_api.store_collision_tool(
         cell=cell_name, tool="tool_box", request_body={"tool_collider": tool_collider}
     )
 
     # define robot link geometries
-    robot_link_colliders = await collision_api.get_default_link_chain(
-        cell=cell_name, motion_group_model=robot_setup.motion_group_type
+    robot_link_colliders = await motion_group_models_api.get_motion_group_collision_model(
+        motion_group_model=motion_group_model
     )
-    await collision_api.store_collision_link_chain(
+    await store_collision_components_api.store_collision_link_chain(
         cell=cell_name, link_chain="robot_links", collider=robot_link_colliders
     )
 
     # assemble scene
-    scene = api.models.CollisionScene(
-        colliders={"annoying_obstacle": sphere_collider},
-        motion_groups={
-            robot_setup.motion_group_type: api.models.CollisionMotionGroup(
-                tool={"tool_geometry": tool_collider}, link_chain=robot_link_colliders
-            )
-        },
+    collision_setup = api.models.CollisionSetup(
+        colliders=api.models.ColliderDictionary({"annoying_obstacle": sphere_collider}),
+        tool=api.models.Tool({"tool_geometry": tool_collider}),
+        link_chain=api.models.LinkChain(
+            list(api.models.Link(link) for link in robot_link_colliders)
+        ),
     )
     scene_id = "collision_scene"
-    await scene_api.store_collision_scene(
-        cell_name, scene_id, api.models.CollisionSceneAssembly(scene=scene)
+    await store_collision_setups_api.store_collision_setup(
+        cell=cell_name, setup="collision_scene", collision_setup=collision_setup
     )
     return scene_id
 
@@ -75,7 +74,7 @@ async def build_collision_world(
             virtual_controller(
                 name="ur5",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR5E,
             )
         ],
         cleanup_controllers=False,
@@ -89,18 +88,16 @@ async def collision_free_p2p() -> None:
         cell = nova.cell()
         controller = await cell.controller("ur5")
 
-        await nova._api_client.virtual_robot_setup_api.set_virtual_robot_mounting(
+        await nova._api_client.virtual_robot_setup_api.set_virtual_controller_mounting(
             cell="cell",
-            controller=controller.controller_id,
-            id=0,
-            coordinate_system=CoordinateSystem(
-                coordinate_system="world",
+            controller=controller.id,
+            motion_group=f"0@{controller.id}",
+            coordinate_system=api.models.CoordinateSystem(
                 name="mounting",
-                reference_uid="",
-                position=Vector3d(x=0, y=0, z=0),
-                rotation=RotationAngles(
-                    angles=[0, 0, 0], type=RotationAngleTypes.EULER_ANGLES_EXTRINSIC_XYZ
-                ),
+                coordinate_system="world",
+                position=api.models.Vector3d([0, 0, 0]),
+                orientation=api.models.Orientation([0, 0, 0]),
+                orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
             ),
         )
 
@@ -111,13 +108,14 @@ async def collision_free_p2p() -> None:
         async with controller[0] as motion_group:
             tcp = "Flange"
 
-            robot_setup: api.models.OptimizerSetup = await motion_group._get_optimizer_setup(
-                tcp=tcp
+            motion_group_description: api.models.MotionGroupDescription = (
+                await motion_group.get_description()
             )
-            robot_setup.safety_setup.global_limits.tcp_velocity_limit = 200
-
-            collision_scene_id = await build_collision_world(nova, "cell", robot_setup)
-
+            collision_scene_id = await build_collision_world(nova, "cell", motion_group_description)
+            store_collision_setups_api = nova._api_client.store_collision_setups_api
+            collision_setup = await store_collision_setups_api.get_stored_collision_setup(
+                cell="cell", setup=collision_scene_id
+            )
             # Use default planner to move to the right of the sphere
             home = await motion_group.tcp_pose(tcp)
             actions: list[Action] = [
@@ -140,28 +138,28 @@ async def collision_free_p2p() -> None:
             # -> this will collide
             # only plan don't move
             collision_actions: list[Action] = [
-                cartesian_ptp(target=Pose((-500, -400, 200, np.pi, 0, 0)))
+                cartesian_ptp(
+                    target=Pose((-500, -400, 200, np.pi, 0, 0)), collision_setup=collision_setup
+                )
             ]
 
             for action in collision_actions:
                 cast(Motion, action).settings = MotionSettings(tcp_velocity_limit=200)
 
-            await motion_group.plan(
-                collision_actions,
-                tcp,
-                start_joint_position=joint_trajectory.joint_positions[-1].joints,
-            )
+            try:
+                await motion_group.plan(
+                    collision_actions,
+                    tcp,
+                    start_joint_position=joint_trajectory.joint_positions[-1].root,
+                )
+            except Exception as e:
+                print(f"Planning failed, we continue with the collision avoidance: {e}")
 
             # Plan collision free PTP motion around the sphere
-            scene_api = nova._api_client.store_collision_scenes_api
-            collision_scene = await scene_api.get_stored_collision_scene(
-                cell="cell", scene=collision_scene_id
-            )
-
             welding_actions: list[Action] = [
                 collision_free(
-                    target=Pose((-500, -400, 200, np.pi, 0, 0)),
-                    collision_scene=collision_scene,
+                    target=Pose(-500, -400, 200, np.pi, 0, 0),
+                    collision_setup=collision_setup,
                     settings=MotionSettings(tcp_velocity_limit=30),
                 )
             ]
@@ -169,7 +167,7 @@ async def collision_free_p2p() -> None:
             await motion_group.plan(
                 welding_actions,
                 tcp=tcp,
-                start_joint_position=joint_trajectory.joint_positions[-1].joints,
+                start_joint_position=joint_trajectory.joint_positions[-1].root,
             )
 
 

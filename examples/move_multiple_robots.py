@@ -40,12 +40,12 @@ async def move_robot(controller: Controller):
             virtual_controller(
                 name="ur10",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             ),
             virtual_controller(
                 name="ur5",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR5E,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR5E,
             ),
         ],
         cleanup_controllers=False,

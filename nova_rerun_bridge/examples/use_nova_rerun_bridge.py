@@ -4,9 +4,10 @@ import nova
 from nova import Nova, api
 from nova.actions import cartesian_ptp, linear
 from nova.cell import virtual_controller
-from nova.core.exceptions import PlanTrajectoryFailed
+from nova.exceptions import PlanTrajectoryFailed
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
+from nova.viewers.utils import extract_collision_setups_from_actions
 from nova_rerun_bridge import NovaRerunBridge
 
 
@@ -17,7 +18,7 @@ from nova_rerun_bridge import NovaRerunBridge
             virtual_controller(
                 name="ur10",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             )
         ],
         cleanup_controllers=False,
@@ -32,7 +33,7 @@ async def test():
 
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
-            await bridge.log_saftey_zones(motion_group)
+            await bridge.log_safety_zones(motion_group)
 
             tcp = "Flange"
 
@@ -56,7 +57,12 @@ async def test():
             try:
                 joint_trajectory = await motion_group.plan(actions, tcp)
                 await bridge.log_actions(actions)
-                await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
+                await bridge.log_trajectory(
+                    trajectory=joint_trajectory,
+                    tcp=tcp,
+                    motion_group=motion_group,
+                    collision_setups=extract_collision_setups_from_actions(actions),
+                )
             except PlanTrajectoryFailed as e:
                 await bridge.log_actions(actions)
                 await bridge.log_trajectory(e.error.joint_trajectory, tcp, motion_group)

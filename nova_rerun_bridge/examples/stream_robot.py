@@ -37,7 +37,7 @@ async def handle_shutdown():
             virtual_controller(
                 name="ur10",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             )
         ],
         cleanup_controllers=False,
@@ -58,7 +58,7 @@ async def test():
 
             # In addition to log the robot state you can still log other data
             # like trajectories into the "time_interval_0.016" timeline
-            await bridge.log_saftey_zones(motion_group)
+            await bridge.log_safety_zones(motion_group)
 
             # Keep streaming until Ctrl+C
             async with handle_shutdown() as stop:

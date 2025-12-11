@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import inspect
 import json
+import logging
 from collections.abc import Callable, Mapping
 from typing import (
     Annotated,
@@ -31,8 +32,9 @@ from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
-from nova.core.exceptions import ControllerCreationFailed
-from nova.logging import logger
+from nova.exceptions import ControllerCreationFailed
+
+logger = logging.getLogger(__name__)
 
 Parameters = ParamSpec("Parameters")
 Return = TypeVar("Return")
@@ -95,36 +97,46 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
     async def _create_controllers(self) -> list[str]:
         """Create controllers based on controller_configs and return their IDs."""
-        created_controllers: list[str] = []
         if not self.preconditions or not self.preconditions.controllers:
-            return created_controllers
+            return []
 
+        created_controllers: list[str] = []
         async with Nova() as nova:
             cell = nova.cell()
             controller_config = None
-            try:
-                for controller_config in self.preconditions.controllers:
-                    controller_name = controller_config.name or "unnamed_controller"
-                    controller = await cell.ensure_controller(robot_controller=controller_config)
-                    created_controllers.append(controller.controller_id)
-                    self._log(
-                        "info",
-                        f"Created controller '{controller_name}' with ID {controller.controller_id}",
-                    )
 
-                # Setup viewers after controllers are created and available
+            async def ensure_controller(controller_config: api.models.RobotController):
+                """Ensure a controller is created and return its ID."""
+                controller_name = controller_config.name or "unnamed_controller"
+                self._log("info", f"Creating controller '{controller_name}'")
                 try:
-                    from nova.viewers import _setup_active_viewers_after_preconditions
+                    controller = await cell.ensure_controller(controller_config=controller_config)
+                    created_controllers.append(controller.id)
+                    self._log(
+                        "info", f"Created controller '{controller_name}' with ID {controller.id}"
+                    )
+                    return controller.id
+                except Exception as e:
+                    raise ControllerCreationFailed(controller_name, str(e))
 
-                    await _setup_active_viewers_after_preconditions()
-                except ImportError:
-                    pass
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    for controller_config in self.preconditions.controllers:
+                        tg.create_task(ensure_controller(controller_config))
 
             except Exception as e:
                 controller_name = (
                     controller_config.name if controller_config else "unnamed_controller"
                 )
                 raise ControllerCreationFailed(controller_name, str(e))
+
+            # Setup viewers after controllers are created and available
+            try:
+                from nova.viewers import _setup_active_viewers_after_preconditions
+
+                await _setup_active_viewers_after_preconditions()
+            except ImportError as e:
+                logger.error(f"Could not import viewers: {e}")
 
         return created_controllers
 

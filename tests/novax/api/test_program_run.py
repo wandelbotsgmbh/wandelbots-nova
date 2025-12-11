@@ -3,11 +3,12 @@ from concurrent.futures import Future
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import nova
+from nova import api
 from nova.core.nova import Nova
-from nova.program.runner import ProgramRun, ProgramRunState, ProgramStatus
+from nova.program.runner import ProgramRun, ProgramStatus
 from novax.novax import Novax
 
 
@@ -31,9 +32,10 @@ async def test_novax_program_successful_run(novax_app):
     # subscribe to program run messages
     program_status_messages = []
 
-    await nova.nats.subscribe(
-        "nova.v2.cells.cell.programs", on_message=lambda msg: program_status_messages.append(msg)
-    )
+    async def cb(msg):
+        program_status_messages.append(msg)
+
+    await nova.nats.subscribe("nova.v2.cells.cell.programs", cb=cb)
 
     with TestClient(novax_app) as client:
         start_program = client.post("/programs/sucessful_program/start", json={"arguments": {}})
@@ -49,9 +51,9 @@ async def test_novax_program_successful_run(novax_app):
         models = [
             ProgramStatus.model_validate_json(message.data) for message in program_status_messages
         ]
-        assert models[0].state == ProgramRunState.PREPARING
-        assert models[1].state == ProgramRunState.RUNNING
-        assert models[2].state == ProgramRunState.COMPLETED
+        assert models[0].state == api.models.ProgramRunState.PREPARING
+        assert models[1].state == api.models.ProgramRunState.RUNNING
+        assert models[2].state == api.models.ProgramRunState.COMPLETED
 
         for model in models:
             assert model.app == "novax_test"
@@ -77,9 +79,10 @@ async def test_novax_program_failed_run(novax_app):
     # subscribe to program run messages
     program_status_messages = []
 
-    await nova.nats.subscribe(
-        "nova.v2.cells.cell.programs", on_message=lambda msg: program_status_messages.append(msg)
-    )
+    async def cb(msg):
+        program_status_messages.append(msg)
+
+    await nova.nats.subscribe("nova.v2.cells.cell.programs", cb=cb)
 
     with TestClient(novax_app) as client:
         start_program = client.post("/programs/failing_program/start", json={"arguments": {}})
@@ -95,9 +98,9 @@ async def test_novax_program_failed_run(novax_app):
         models = [
             ProgramStatus.model_validate_json(message.data) for message in program_status_messages
         ]
-        assert models[0].state == ProgramRunState.PREPARING
-        assert models[1].state == ProgramRunState.RUNNING
-        assert models[2].state == ProgramRunState.FAILED
+        assert models[0].state == api.models.ProgramRunState.PREPARING
+        assert models[1].state == api.models.ProgramRunState.RUNNING
+        assert models[2].state == api.models.ProgramRunState.FAILED
 
         for model in models:
             assert model.app == "novax_test"
@@ -124,9 +127,10 @@ async def test_novax_program_stopped_run(novax_app):
     # subscribe to program run messages
     program_status_messages = []
 
-    await nova.nats.subscribe(
-        "nova.v2.cells.cell.programs", on_message=lambda msg: program_status_messages.append(msg)
-    )
+    async def cb(msg):
+        program_status_messages.append(msg)
+
+    await nova.nats.subscribe("nova.v2.cells.cell.programs", cb=cb)
 
     with TestClient(novax_app) as client:
         start_program = client.post("/programs/long_running_program/start", json={"arguments": {}})
@@ -143,8 +147,8 @@ async def test_novax_program_stopped_run(novax_app):
         models = [
             ProgramStatus.model_validate_json(message.data) for message in program_status_messages
         ]
-        assert models[0].state == ProgramRunState.PREPARING
-        assert models[1].state == ProgramRunState.RUNNING
+        assert models[0].state == api.models.ProgramRunState.PREPARING
+        assert models[1].state == api.models.ProgramRunState.RUNNING
 
         # Stop the program
         stop_program = client.post("/programs/long_running_program/stop")
@@ -162,9 +166,9 @@ async def test_novax_program_stopped_run(novax_app):
         final_models = [
             ProgramStatus.model_validate_json(message.data) for message in program_status_messages
         ]
-        assert final_models[0].state == ProgramRunState.PREPARING
-        assert final_models[1].state == ProgramRunState.RUNNING
-        assert final_models[2].state == ProgramRunState.STOPPED
+        assert final_models[0].state == api.models.ProgramRunState.PREPARING
+        assert final_models[1].state == api.models.ProgramRunState.RUNNING
+        assert final_models[2].state == api.models.ProgramRunState.STOPPED
 
         for model in final_models:
             assert model.app == "novax_test"
@@ -243,8 +247,8 @@ async def test_novax_program_pass_arguments_with_pydantic_model():
     assertion = Future()
 
     class ProgramArgs(BaseModel):
-        number_of_iterations: int
-        some_defaul_param: str = "default"
+        number_of_iterations: int = Field(5, description="Number of iterations")
+        some_defaul_param: str = Field("default", description="Some default parameter")
 
     @nova.program()
     async def example_program(args: ProgramArgs):

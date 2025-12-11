@@ -3,13 +3,13 @@ from typing import AsyncIterator, Optional
 
 from fastapi import APIRouter, FastAPI
 
+from nova import api
 from nova.core.nova import Nova
 from nova.logging import logger
 from nova.program.function import Program
-from nova.program.store import Program as StoreProgram
 from nova.program.store import ProgramStore
 from novax.config import APP_NAME, CELL_NAME
-from novax.program_manager import ProgramDetails, ProgramManager
+from novax.program_manager import ProgramManager
 
 
 class Novax:
@@ -64,7 +64,7 @@ class Novax:
         """
         await self._nova.connect()
         logger.info("Novax: Connected to Nova API")
-        store = ProgramStore(cell_id=self._cell.cell_id, nats_client=self._nova.nats)
+        store = ProgramStore(cell=self._cell)
         await self._register_programs(store)
         logger.info("Novax: Programs registered to store on startup")
 
@@ -96,7 +96,7 @@ class Novax:
             for program_id, program_details in programs.items():
                 try:
                     # TODO: schema is not present in ProgramDetails
-                    store_program = StoreProgram(
+                    store_program = api.models.Program(
                         program=program_details.program,
                         name=program_details.name,
                         description=program_details.description,
@@ -145,11 +145,11 @@ class Novax:
         except Exception as e:
             logger.error(f"Novax shutdown error: {e}")
 
-    async def get_programs(self) -> dict[str, ProgramDetails]:
+    async def get_programs(self) -> dict[str, api.models.Program]:
         """Get all registered programs"""
         return await self._program_manager.get_programs()
 
-    async def get_program(self, program_id: str) -> Optional[ProgramDetails]:
+    async def get_program(self, program_id: str) -> Optional[api.models.Program]:
         """Get a specific program by ID"""
         return await self._program_manager.get_program(program_id)
 

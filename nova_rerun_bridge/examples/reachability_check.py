@@ -3,8 +3,6 @@ import asyncio
 import numpy as np
 import rerun as rr
 import trimesh
-from wandelbots_api_client.models.all_joint_positions_request import AllJointPositionsRequest
-from wandelbots_api_client.models.all_joint_positions_response import AllJointPositionsResponse
 
 import nova
 from nova import Nova, api
@@ -41,7 +39,7 @@ def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
             virtual_controller(
                 name="ur10",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             )
         ],
         cleanup_controllers=False,
@@ -61,10 +59,10 @@ async def test():
 
         # Create transformation matrix from Pose2
         transform = np.eye(4)
-        transform[:3, 3] = np.array(mesh_pose.position, dtype=np.float64)
+        transform[:3, 3] = list(mesh_pose.position)
         scene.apply_transform(transform)
 
-        N = 200
+        N = 20000
         points, face_index = trimesh.sample.sample_surface_even(scene, count=N, radius=1)
         normals = scene.face_normals[face_index]
 
@@ -72,10 +70,8 @@ async def test():
         async with controller[0] as motion_group:
             tcp = "Flange"
 
-            # Store points and their configurations count
-            tested_points = []
-            colors = []
-
+            # Build all poses first
+            poses = []
             for point, normal in zip(points, normals, strict=False):
                 # Convert normal to rotation vector
                 rotation = np.cross([0, 0, 1], normal)  # cross product with Z axis
@@ -85,38 +81,23 @@ async def test():
                 else:
                     rotation = np.zeros(3)  # no rotation needed
 
-                tested_points.append(point)
-                try:
-                    response: AllJointPositionsResponse = await nova._api_client.motion_group_kinematic_api.calculate_all_inverse_kinematic(
-                        cell=cell.cell_id,
-                        motion_group=motion_group.motion_group_id,
-                        all_joint_positions_request=AllJointPositionsRequest(
-                            motion_group=motion_group.motion_group_id,
-                            tcp_pose=api.models.TcpPose(
-                                position=api.models.Vector3d(x=point[0], y=point[1], z=point[2]),
-                                orientation=api.models.Vector3d(
-                                    x=rotation[0], y=rotation[1], z=rotation[2]
-                                ),
-                                tcp=tcp,
-                            ),
-                        ),
-                    )
-                    valid_configs = len(response.joint_positions)
-                except Exception:
-                    valid_configs = 0
+                poses.append(
+                    Pose((point[0], point[1], point[2], rotation[0], rotation[1], rotation[2]))
+                )
 
+            # Batch call inverse kinematics for all poses at once
+            joint_solutions = await motion_group._inverse_kinematics(poses=poses, tcp=tcp)
+
+            # Process results and assign colors
+            colors = []
+            for solutions in joint_solutions:
+                valid_configs = len(solutions)
                 # Red if unreachable, green gradient based on number of configurations
                 if valid_configs == 0:
                     colors.append([1.0, 0.0, 0.0, 1.0])  # Red
                 else:
                     intensity = valid_configs / 8.0  # Normalize to [0,1]
                     colors.append([0.0, intensity, 0.0, 1.0])  # Green gradient
-
-            # Log points with colors
-            rr.log(
-                "motion/reachability", rr.Points3D(tested_points, colors=np.array(colors), radii=3)
-            )
-            log_mesh_to_rerun(scene)
 
             home = await motion_group.tcp_pose(tcp)
 
@@ -126,6 +107,13 @@ async def test():
                 action.settings = MotionSettings(tcp_velocity_limit=200)
 
             await motion_group.plan(actions, tcp)
+
+            # Log points with colors
+            rr.log(
+                "motion/reachability",
+                rr.Points3D(positions=points, colors=np.array(colors), radii=3),
+            )
+            log_mesh_to_rerun(scene)
 
 
 if __name__ == "__main__":

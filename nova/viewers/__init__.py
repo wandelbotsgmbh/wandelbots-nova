@@ -20,7 +20,7 @@ from .manager import (
 )
 from .protocol import NovaRerunBridgeProtocol
 from .rerun import Rerun
-from .utils import extract_collision_scenes_from_actions as _extract_collision_scenes_from_actions
+from .utils import extract_collision_setups_from_actions as _extract_collision_setups_from_actions
 
 __all__ = [
     "Viewer",
@@ -34,6 +34,6 @@ __all__ = [
     "_cleanup_active_viewers",
     "_log_planning_results_to_viewers",
     "_log_planning_error_to_viewers",
-    "_extract_collision_scenes_from_actions",
+    "_extract_collision_setups_from_actions",
     "_register_viewer",
 ]

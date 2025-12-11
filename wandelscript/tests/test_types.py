@@ -24,11 +24,8 @@ def test_pose_to_and_from_tuple():
     ],
 )
 def test_pose_save_and_load(data):
-    print(data)
     s = dumps(data)
-    print(data, s)
     data_reloaded = loads(s)
-    print(data_reloaded)
     assert data_reloaded == data
 
 

@@ -24,7 +24,7 @@ from nova.types import MotionSettings, Pose
             virtual_controller(
                 name="ur10e",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_MINUS_UR10E,
+                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             )
         ],
         cleanup_controllers=False,
@@ -83,7 +83,8 @@ async def plan_and_execute():
         joint_trajectory = await motion_group.plan(t.actions, tcp)
         motion_iter = motion_group.stream_execute(joint_trajectory, tcp, actions=t.actions)
         async for motion_state in motion_iter:
-            print(motion_state)
+            pass
+            # print(motion_state)
 
         # Read and write IO values
         io_value = await controller.read("tool_out[0]")

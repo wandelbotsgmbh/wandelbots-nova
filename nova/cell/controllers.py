@@ -1,11 +1,5 @@
+import json
 from math import pi
-
-from wandelbots_api_client.models.abb_controller import AbbController
-from wandelbots_api_client.models.fanuc_controller import FanucController
-from wandelbots_api_client.models.kuka_controller import KukaController
-from wandelbots_api_client.models.universalrobots_controller import UniversalrobotsController
-from wandelbots_api_client.models.virtual_controller import VirtualController
-from wandelbots_api_client.models.yaskawa_controller import YaskawaController
 
 from nova import api
 
@@ -20,17 +14,15 @@ MANUFACTURER_HOME_POSITIONS = {
 
 def _build_controller(
     name: str,
-    controller: AbbController
-    | FanucController
-    | KukaController
-    | UniversalrobotsController
-    | VirtualController
-    | YaskawaController,
+    configuration: api.models.AbbController
+    | api.models.FanucController
+    | api.models.KukaController
+    | api.models.UniversalrobotsController
+    | api.models.VirtualController
+    | api.models.YaskawaController,
 ) -> api.models.RobotController:
     """Helper function to wrap a controller configuration in a RobotController object."""
-    return api.models.RobotController(
-        name=name, configuration=api.models.RobotControllerConfiguration(controller)
-    )
+    return api.models.RobotController(name=name, configuration=configuration)
 
 
 def abb_controller(
@@ -49,12 +41,12 @@ def abb_controller(
         egm_server_port (str): The port of the EGM server.
         controller_port (int): The port of the ABB controller
     """
-    abb_config = AbbController(
-        controllerIp=controller_ip,
-        egmServer=api.models.AbbControllerEgmServer(ip=egm_server_ip, port=egm_server_port),
-        controllerPort=controller_port,
+    abb_config = api.models.AbbController(
+        controller_ip=controller_ip,
+        egm_server=api.models.EgmServer(ip=egm_server_ip, port=egm_server_port),
+        controller_port=controller_port,
     )
-    return _build_controller(name=name, controller=abb_config)
+    return _build_controller(name=name, configuration=abb_config)
 
 
 def universal_robots_controller(name: str, controller_ip: str) -> api.models.RobotController:
@@ -64,8 +56,8 @@ def universal_robots_controller(name: str, controller_ip: str) -> api.models.Rob
         name (str): The name of the controller.
         controller_ip (str): The IP address of the Universal Robots robot.
     """
-    universal_config = UniversalrobotsController(controllerIp=controller_ip)
-    return _build_controller(name=name, controller=universal_config)
+    universal_config = api.models.UniversalrobotsController(controller_ip=controller_ip)
+    return _build_controller(name=name, configuration=universal_config)
 
 
 def kuka_controller(
@@ -80,12 +72,12 @@ def kuka_controller(
         rsi_server_ip (str): The IP address of the RSI server.
         rsi_server_port (str): The port of the RSI server.
     """
-    kuka_config = KukaController(
-        controllerIp=controller_ip,
-        controllerPort=controller_port,
-        rsiServer=api.models.KukaControllerRsiServer(ip=rsi_server_ip, port=rsi_server_port),
+    kuka_config = api.models.KukaController(
+        controller_ip=controller_ip,
+        controller_port=controller_port,
+        rsi_server=api.models.RsiServer(ip=rsi_server_ip, port=rsi_server_port),
     )
-    return _build_controller(name=name, controller=kuka_config)
+    return _build_controller(name=name, configuration=kuka_config)
 
 
 def fanuc_controller(name: str, controller_ip: str) -> api.models.RobotController:
@@ -95,8 +87,8 @@ def fanuc_controller(name: str, controller_ip: str) -> api.models.RobotControlle
         name (str): The name of the controller.
         controller_ip (str): The IP address of the FANUC robot.
     """
-    fanuc_config = FanucController(controllerIp=controller_ip)
-    return _build_controller(name=name, controller=fanuc_config)
+    fanuc_config = api.models.FanucController(controller_ip=controller_ip)
+    return _build_controller(name=name, configuration=fanuc_config)
 
 
 def yaskawa_controller(name: str, controller_ip: str) -> api.models.RobotController:
@@ -106,15 +98,15 @@ def yaskawa_controller(name: str, controller_ip: str) -> api.models.RobotControl
         name (str): The name of the controller.
         controller_ip (str): The IP address of the Yaskawa robot.
     """
-    yaskawa_config = YaskawaController(controllerIp=controller_ip)
-    return _build_controller(name=name, controller=yaskawa_config)
+    yaskawa_config = api.models.YaskawaController(controller_ip=controller_ip)
+    return _build_controller(name=name, configuration=yaskawa_config)
 
 
 def virtual_controller(
     name: str,
     manufacturer: api.models.Manufacturer,
     type: api.models.VirtualControllerTypes | None = None,
-    json: str | None = None,
+    controller_config_json: str | None = None,
     position: list[float] | str | None = None,
 ) -> api.models.RobotController:
     """
@@ -124,15 +116,19 @@ def virtual_controller(
         manufacturer (api.models.Manufacturer): The manufacturer of the robot.
         type (api.models.VirtualControllerTypes | None): One of the available virtual controller types for this manufacturer.
         position: (list[float] | None): Initial joint position of the first motion group from the virtual robot controller.
-        json (str | None): Additional data to save on controller.
+        controller_config_json (str | None): Complete JSON configuration of the virtual robot controller.
     """
-    if position is None:
-        position = str(MANUFACTURER_HOME_POSITIONS.get(manufacturer, [0.0] * 7))
+    # TODO remove if the underlying API has a decent error message
+    if isinstance(position, list) and len(position) != 7:
+        raise ValueError("Position list must contain exactly 7 elements.")
 
-    if isinstance(position, list):
-        position = str(position)
+    if position is None:
+        position = MANUFACTURER_HOME_POSITIONS.get(manufacturer, [0.0] * 7)
 
     virtual_config = api.models.VirtualController(
-        manufacturer=manufacturer, type=type, json=json, position=position
+        manufacturer=manufacturer,
+        type=type,
+        json_=controller_config_json,
+        initial_joint_position=json.dumps(position),
     )
-    return _build_controller(name=name, controller=virtual_config)
+    return _build_controller(name=name, configuration=virtual_config)

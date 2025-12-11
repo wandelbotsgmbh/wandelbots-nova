@@ -1,10 +1,10 @@
 import pytest
 
 import nova
-from nova import run_program
+from nova import api, run_program
 from nova.program.exceptions import NotPlannableError
 from nova.program.function import Program
-from nova.program.runner import ProgramRunner, ProgramRunState
+from nova.program.runner import ProgramRunner
 
 
 @nova.program()
@@ -31,7 +31,7 @@ class TestProgramRunner(ProgramRunner):
             raise NotPlannableError(location=None, value="Test not plannable error")
         if self._should_fail:
             raise RuntimeError("Test failure")
-        self._program_run.state = ProgramRunState.RUNNING
+        self._program_run.state = api.models.ProgramRunState.RUNNING
 
 
 def test_program_runner_initialization():
@@ -39,7 +39,7 @@ def test_program_runner_initialization():
     runner = TestProgramRunner(hello_world_program, parameters={})
 
     assert runner.run_id is not None
-    assert runner.state == ProgramRunState.PREPARING
+    assert runner.state == api.models.ProgramRunState.PREPARING
     assert not runner.is_running()
 
 
@@ -48,9 +48,9 @@ def test_program_runner_state_transitions() -> None:
     runner = TestProgramRunner(hello_world_program, parameters={})
 
     # Test state transitions
-    assert runner.state == ProgramRunState.PREPARING
+    assert runner.state == api.models.ProgramRunState.PREPARING
     runner.start(sync=True)
-    assert runner.state == ProgramRunState.COMPLETED  # type: ignore
+    assert runner.state == api.models.ProgramRunState.COMPLETED  # type: ignore
 
 
 @pytest.mark.integration
@@ -63,7 +63,7 @@ def test_program_runner_stop():
 
     # Test stopping after start
     runner.start(sync=True)
-    assert runner.state == ProgramRunState.COMPLETED
+    assert runner.state == api.models.ProgramRunState.COMPLETED
     assert not runner.is_running()
 
 
@@ -83,7 +83,7 @@ def test_program_runner_error_handling():
     with pytest.raises(RuntimeError):
         runner = TestProgramRunner(hello_world_program, parameters={}, should_fail=True)
         runner.start(sync=True)
-        assert runner.state == ProgramRunState.FAILED
+        assert runner.state == api.models.ProgramRunState.FAILED
         assert runner.program_run.error is not None
         assert runner.program_run.traceback is not None
 
@@ -91,7 +91,7 @@ def test_program_runner_error_handling():
     with pytest.raises(NotPlannableError):
         runner = TestProgramRunner(hello_world_program, parameters={}, should_not_plannable=True)
         runner.start(sync=True)
-        assert runner.state == ProgramRunState.FAILED
+        assert runner.state == api.models.ProgramRunState.FAILED
         assert "NotPlannableError" in runner.program_run.error
 
 
@@ -118,5 +118,5 @@ def test_simple_program():
         print("Hello, world")
 
     runner = run_program(test_program)
-    assert runner.state == ProgramRunState.COMPLETED
+    assert runner.state == api.models.ProgramRunState.COMPLETED
     assert runner.program_run.error is None

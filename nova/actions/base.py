@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar
 
 import pydantic
 
-from nova.logging import logger
+logger = logging.getLogger(__name__)
 
 
 class Action(pydantic.BaseModel, ABC):

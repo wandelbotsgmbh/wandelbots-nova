@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Callable
+from typing import Annotated, AsyncIterator, Callable
 
 import pydantic
 
@@ -19,7 +19,7 @@ class ActionLocation(pydantic.BaseModel):
 
 
 # TODO: all actions should be allowed (Action)
-ActionContainerItem = Motion | WriteAction | CollisionFreeMotion | WaitAction
+ActionContainerItem = Motion | WriteAction | WaitAction
 
 
 class CombinedActions(pydantic.BaseModel):
@@ -50,9 +50,7 @@ class CombinedActions(pydantic.BaseModel):
     def append(self, item: ActionContainerItem):
         super().__setattr__("items", self.items + (item,))
 
-    def _generate_trajectory(
-        self,
-    ) -> tuple[list[Motion | CollisionFreeMotion], list[ActionLocation]]:
+    def _generate_trajectory(self) -> tuple[list[Motion], list[ActionLocation]]:
         """Generate two lists: one of Motion objects and another of ActionContainer objects,
         where each ActionContainer wraps a non-Motion action with its path parameter.
 
@@ -72,7 +70,7 @@ class CombinedActions(pydantic.BaseModel):
         for item in self.items:
             if isinstance(item, WaitAction):
                 continue  # Skip WaitAction items
-            if isinstance(item, Motion) or isinstance(item, CollisionFreeMotion):
+            if isinstance(item, Motion):
                 motions.append(item)
                 last_motion_index += 1  # Increment the motion index for each new Motion
             else:
@@ -82,7 +80,7 @@ class CombinedActions(pydantic.BaseModel):
         return motions, actions
 
     @property
-    def motions(self) -> list[Motion | CollisionFreeMotion]:
+    def motions(self) -> list[Motion]:
         motions, _ = self._generate_trajectory()
         return motions
 
@@ -134,26 +132,30 @@ class CombinedActions(pydantic.BaseModel):
     def to_motion_command(self) -> list[api.models.MotionCommand]:
         motion_commands = []
         for motion in self.motions:
-            path = api.models.MotionCommandPath.from_dict(motion.to_api_model().model_dump())
+            if isinstance(motion, CollisionFreeMotion):
+                continue
+
             settings = motion.settings or MotionSettings()
             blending = settings.as_blending_setting() if settings.has_blending_settings() else None
             limits_override = (
                 settings.as_limits_settings() if settings.has_limits_override() else None
             )
-            motion_commands.append(
-                api.models.MotionCommand(
-                    path=path, blending=blending, limits_override=limits_override
-                )
+            motion_command = api.models.MotionCommand(
+                path=motion.to_api_model(), blending=blending, limits_override=limits_override
             )
+            motion_commands.append(motion_command)
         return motion_commands
 
     def to_set_io(self) -> list[api.models.SetIO]:
         return [
             api.models.SetIO(
-                io=api.models.IOValue(**action.action.to_api_model()),
+                io=api.models.IOValue(action.action.to_api_model()),
                 location=action.path_parameter,
+                # TODO: do we need extra handling logic here?
+                io_origin=api.models.IOOrigin.CONTROLLER,
             )
             for action in self.actions
+            if isinstance(action.action, WriteAction)
         ]
 
 
@@ -162,6 +164,7 @@ class MovementControllerContext(pydantic.BaseModel):
     combined_actions: CombinedActions
     motion_id: str
     start_on_io: api.models.StartOnIO | None = None
+    motion_group_state_stream_gen: Callable[[], AsyncIterator[api.models.MotionGroupState]]
 
 
 MovementController = Callable[[MovementControllerContext], MovementControllerFunction]

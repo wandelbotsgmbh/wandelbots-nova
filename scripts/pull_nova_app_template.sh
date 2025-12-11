@@ -186,7 +186,9 @@ if [ -d "$TEMP_DIR/existing_app_backup" ]; then
         cat "$TEMP_DIR/app_diff_output.txt" | head -20
         echo ""
         echo -e "${YELLOW}💡 Use -f or --force flag to override the existing app${NC}"
-        exit 1
+        # Exit with a distinct status code to indicate that the app template
+        # is out of sync but the CLI itself worked.
+        exit 42
     fi
 else
     # Compare with backup to see what changed (original behavior for new apps)

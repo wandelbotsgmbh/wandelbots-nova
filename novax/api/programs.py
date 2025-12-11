@@ -1,21 +1,20 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
-from wandelbots_api_client.v2.models.program import Program
-from wandelbots_api_client.v2.models.program_start_request import ProgramStartRequest
 
+from nova import api
 from novax.api.dependencies import get_program_manager
 from novax.program_manager import ProgramManager, ProgramRun
 
 router = APIRouter(prefix="/programs", tags=["programs"])
 
 
-@router.get("", operation_id="getPrograms", response_model=list[Program])
+@router.get("", operation_id="getPrograms", response_model=list[api.models.Program])
 async def get_programs(program_manager: ProgramManager = Depends(get_program_manager)):
     """List all programs"""
     programs = await program_manager.get_programs()
     return [program_definition for _, program_definition in programs.items()]
 
 
-@router.get("/{program}", operation_id="getProgram", response_model=Program)
+@router.get("/{program}", operation_id="getProgram", response_model=api.models.Program)
 async def get_program(
     program: str = Path(..., description="The ID of the program"),
     program_manager: ProgramManager = Depends(get_program_manager),
@@ -31,7 +30,7 @@ async def get_program(
 @router.post("/{program}/start", operation_id="startProgram", response_model=ProgramRun)
 async def start_program(
     program: str = Path(..., description="The ID of the program"),
-    request: ProgramStartRequest = Body(...),
+    request: api.models.ProgramStartRequest = Body(...),
     program_manager: ProgramManager = Depends(get_program_manager),
 ):
     """Run a program"""

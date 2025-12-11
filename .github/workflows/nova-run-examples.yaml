@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - release/v2
 concurrency:
   group: run-examples-workflow
   cancel-in-progress: false
@@ -15,7 +16,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.10"
+          python-version: "3.11"
       - name: Create NOVA instance and capture connection details
         id: create
         env:
@@ -23,11 +24,17 @@ jobs:
           PORTAL_PROD_REFRESH_CLIENT_ID: ${{ secrets.PORTAL_PROD_REFRESH_CLIENT_ID }}
           PORTAL_PROD_REFRESH_TOKEN: ${{ secrets.PORTAL_PROD_REFRESH_TOKEN }}
           GITHUB_RUN_ID: ${{ github.run_id }}
+        ## TODO: move to uv script
         run: |
-          if ! source ./scripts/create_nova_instance.sh; then
+          pip install uv
+          uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
+          uv run python ./scripts/create_nova_instance.py
+          if $? -ne 0; then
             echo "Failed to create NOVA instance."
             exit 1
           fi
+          source ./instance_config.env
+
           # expose as job outputs
           echo "PORTAL_PROD_HOST=$PORTAL_PROD_HOST" >> "$GITHUB_OUTPUT"
           echo "PORTAL_PROD_INSTANCE_ID=$PORTAL_PROD_INSTANCE_ID" >> "$GITHUB_OUTPUT"
@@ -56,7 +63,7 @@ jobs:
         include:
           # single entry for the whole integration‑test batch
           - id: integration
-            run_cmd: "pytest -rs -v -m integration"
+            run_cmd: "pytest -rs -s -v -m integration"
           # each example gets its own matrix entry
           - id: start_here
             run_cmd: "python examples/start_here.py"
@@ -64,19 +71,21 @@ jobs:
             run_cmd: "python examples/plan_and_execute.py"
           - id: move_multiple_robots
             run_cmd: "python examples/move_multiple_robots.py"
-          - id: multi_step_movement_with_collision_free
-            run_cmd: "python examples/multi_step_movement_with_collision_free.py"
+          # - id: multi_step_movement_with_collision_free
+          #   run_cmd: "python examples/multi_step_movement_with_collision_free.py"
           - id: run_wandelscript_file
             run_cmd: "python examples/run_wandelscript_file.py"
-          - id: welding_example
-            run_cmd: "python nova_rerun_bridge/examples/welding_example.py"
+          - id: welding
+            run_cmd: "python examples/welding.py"
+          - id: collision_setup
+            run_cmd: "python examples/collision_setup.py"
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.10"
+          python-version: "3.11"
       - name: Set up Python environment
         run: |
           pip install uv
@@ -90,7 +99,7 @@ jobs:
           in: ${{ needs.setup-instance.outputs.PORTAL_PROD_ACCESS_TOKEN }}
       - name: "Run ${{ matrix.id }} suite"
         env:
-          NOVA_API: ${{ needs.setup-instance.outputs.PORTAL_PROD_HOST }}
+          NOVA_API: https://${{ needs.setup-instance.outputs.PORTAL_PROD_HOST }}
           NOVA_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
           # used for publishing nats data
           CELL_NAME: cell

@@ -1,64 +1,52 @@
 import numpy as np
 
-from nova.api import models
+from nova import api
 
 
 class DHRobot:
     """A class for handling DH parameters and computing joint positions."""
 
-    def __init__(self, dh_parameters: list[models.DHParameter], mounting: models.PlannerPose):
+    def __init__(
+        self, dh_parameters: list[api.models.DHParameter], mounting: api.models.Pose
+    ) -> None:
         """
         Initialize the DHRobot with DH parameters and a mounting pose.
         :param dh_parameters: List of DHParameter objects containing all joint configurations.
-        :param mounting: PlannerPose object representing the mounting orientation and position.
+        :param mounting: Pose object representing the mounting orientation and position.
         """
         self.dh_parameters = dh_parameters
         self.mounting = mounting
 
-    def pose_to_matrix(self, pose: models.PlannerPose):
+    def pose_to_matrix(self, pose: api.models.Pose) -> np.ndarray:
         """
-        Convert a PlannerPose (with quaternion orientation) into a 4x4 homogeneous transformation matrix.
-        :param pose: A PlannerPose object with position: Vector3d and orientation: Quaternion.
+        Convert a PlannerPose (with rotation-vector orientation) into a 4x4 homogeneous transformation matrix.
+        :param pose: A PlannerPose object with position: Vector3d and orientation: RotationVector.
         :return: A 4x4 numpy array representing the transformation.
         """
         # Extract translation
         if pose.position is None:
             x, y, z = 0.0, 0.0, 0.0
         else:
-            x, y, z = pose.position.x, pose.position.y, pose.position.z
+            x, y, z = pose.position[0], pose.position[1], pose.position[2]
 
-        # Extract quaternion
+        # Extract rotation vector (axis * angle)
         if pose.orientation is None:
-            # If no orientation is provided, assume identity orientation
-            w, qx, qy, qz = 1.0, 0.0, 0.0, 0.0
+            R = np.eye(3)
         else:
-            w = pose.orientation.w
-            qx = pose.orientation.x
-            qy = pose.orientation.y
-            qz = pose.orientation.z
+            rx, ry, rz = pose.orientation[0], pose.orientation[1], pose.orientation[2]
+            theta = np.linalg.norm([rx, ry, rz])
 
-        # Compute rotation matrix from quaternion
-        # R = [[1 - 2(y²+z²), 2(xy - zw),     2(xz + yw)    ],
-        #      [2(xy + zw),     1 - 2(x²+z²), 2(yz - xw)    ],
-        #      [2(xz - yw),     2(yz + xw),   1 - 2(x²+y²)]]
+            if theta < 1e-12:
+                R = np.eye(3)
+            else:
+                k = np.array([rx, ry, rz]) / theta
+                kx, ky, kz = k
+                K = np.array([[0.0, -kz, ky], [kz, 0.0, -kx], [-ky, kx, 0.0]])
 
-        xx = qx * qx
-        yy = qy * qy
-        zz = qz * qz
-        xy = qx * qy
-        xz = qx * qz
-        yz = qy * qz
-        wx = w * qx
-        wy = w * qy
-        wz = w * qz
-
-        R = np.array(
-            [
-                [1.0 - 2.0 * (yy + zz), 2.0 * (xy - wz), 2.0 * (xz + wy)],
-                [2.0 * (xy + wz), 1.0 - 2.0 * (xx + zz), 2.0 * (yz - wx)],
-                [2.0 * (xz - wy), 2.0 * (yz + wx), 1.0 - 2.0 * (xx + yy)],
-            ]
-        )
+                sin_theta = np.sin(theta)
+                one_minus_cos = 1.0 - np.cos(theta)
+                # Rodrigues' rotation formula
+                R = np.eye(3) + sin_theta * K + one_minus_cos * (K @ K)
 
         # Construct the full homogeneous transformation matrix
         T = np.eye(4)
@@ -67,7 +55,9 @@ class DHRobot:
 
         return T
 
-    def dh_transform(self, dh_param: models.DHParameter, joint_rotation):
+    def dh_transform(
+        self, dh_param: api.models.DHParameter, joint_position: float | None
+    ) -> np.ndarray:
         """
         Compute the homogeneous transformation matrix for a given DH parameter and joint rotation.
         :param dh_param: A single DH parameter.
@@ -75,10 +65,13 @@ class DHRobot:
         :return: A 4x4 homogeneous transformation matrix.
         """
         # Adjust the angle based on rotation direction
-        theta = dh_param.theta + joint_rotation * (-1 if dh_param.reverse_rotation_direction else 1)
-        d = dh_param.d
-        a = dh_param.a
-        alpha = dh_param.alpha if dh_param.alpha is not None else 0.0
+        effective_joint = joint_position or 0.0
+        theta = (dh_param.theta or 0.0) + effective_joint * (
+            -1 if dh_param.reverse_rotation_direction else 1
+        )
+        d = dh_param.d or 0.0
+        a = dh_param.a or 0.0
+        alpha = dh_param.alpha or 0.0
 
         # Create the homogeneous transformation matrix for this DH parameter
         transformation = np.array(
@@ -101,7 +94,7 @@ class DHRobot:
         )
         return transformation
 
-    def calculate_joint_positions(self, joint_values):
+    def calculate_joint_positions(self, joint_positions: list[float]) -> list[list[float]]:
         """
         Compute joint positions based on joint values.
         :param joint_values: Object containing joint rotation values as a list in joint_values.joints.
@@ -110,14 +103,12 @@ class DHRobot:
         # Incorporate the mounting pose at the start
         accumulated_matrix = self.pose_to_matrix(self.mounting)
 
-        joint_positions = [
-            accumulated_matrix[:3, 3].tolist()
-        ]  # Base position after mounting is applied
+        positions = [accumulated_matrix[:3, 3].tolist()]  # Base position after mounting is applied
 
-        for dh_param, joint_rotation in zip(self.dh_parameters, joint_values.joints, strict=False):
-            transform = self.dh_transform(dh_param, joint_rotation)
+        for dh_param, joint_position in zip(self.dh_parameters, joint_positions, strict=False):
+            transform = self.dh_transform(dh_param=dh_param, joint_position=joint_position)
             accumulated_matrix = accumulated_matrix @ transform
             position = accumulated_matrix[:3, 3]  # Extract translation (x, y, z)
-            joint_positions.append(position.tolist())
+            positions.append(position.tolist())
 
-        return joint_positions
+        return positions

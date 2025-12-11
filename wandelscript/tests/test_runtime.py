@@ -136,22 +136,34 @@ def test_store_data_dict():
 async def test_trigger_actions():
     async def motion_iterator():
         yield MotionState(
-            motion_group_id="0", path_parameter=0, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)))
+            motion_group_id="0",
+            path_parameter=0,
+            state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)), tcp=None, joints=()),
         )
         yield MotionState(
-            motion_group_id="0", path_parameter=1, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)))
+            motion_group_id="0",
+            path_parameter=1,
+            state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)), tcp=None, joints=()),
         )
         yield MotionState(
-            motion_group_id="0", path_parameter=2, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)))
+            motion_group_id="0",
+            path_parameter=2,
+            state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)), tcp=None, joints=()),
         )
         yield MotionState(
-            motion_group_id="0", path_parameter=3, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)))
+            motion_group_id="0",
+            path_parameter=3,
+            state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)), tcp=None, joints=()),
         )
         yield MotionState(
-            motion_group_id="0", path_parameter=4, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)))
+            motion_group_id="0",
+            path_parameter=4,
+            state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)), tcp=None, joints=()),
         )
         yield MotionState(
-            motion_group_id="0", path_parameter=5, state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)))
+            motion_group_id="0",
+            path_parameter=5,
+            state=RobotState(pose=Pose((0, 0, 0, 0, 0, 0)), tcp=None, joints=()),
         )
 
     actions = [

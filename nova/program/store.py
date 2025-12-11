@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Generic, TypeVar
 
 import nats
@@ -7,15 +8,17 @@ from nats.js.client import KeyValue
 from nats.js.errors import KeyNotFoundError as KvKeyError
 from nats.js.errors import NoKeysError, NotFoundError
 from pydantic import BaseModel, ValidationError
-from wandelbots_api_client.v2.models.program import Program
 
-from nova.logging import logger as nova_logger
-from nova.nats import NatsClient
+from nova import api
+from nova.cell.cell import Cell
 
 _T = TypeVar("_T", bound=BaseModel)
 _NATS_PROGRAMS_BUCKET_TEMPLATE = "nova_cells_{cell}_programs"
 _NATS_PROGRAMS_MESSAGE_SIZE = 128 * 1024
 _NATS_PROGRAMS_BUCKET_SIZE = _NATS_PROGRAMS_MESSAGE_SIZE * 100
+
+
+logger = logging.getLogger(__name__)
 
 
 # We don't want to expose this to public usage until the jetstream concept gets more mature
@@ -63,7 +66,7 @@ class _KeyValueStore(Generic[_T]):
         self,
         model_class: type[_T],
         nats_bucket_name: str,
-        nats_client: NatsClient,
+        nats_client: nats.NATS,
         nats_kv_config: KeyValueConfig | None = None,
     ):
         """Initialize the KeyValueStore.
@@ -89,16 +92,12 @@ class _KeyValueStore(Generic[_T]):
 
         self._nats_client = nats_client
         self._bucket_lock = asyncio.Lock()
-        self._logger = nova_logger.getChild("ProgramStore")
         self._kv_bucket: KeyValue | None = None
-
-    def _get_nats_client(self) -> "nats.NATS | None":
-        return getattr(self._nats_client, "_nats_client", None)
 
     @property
     def is_connected(self) -> bool:
         """Check if client is connected"""
-        return self._nats_client.is_connected()
+        return self._nats_client.is_connected
 
     async def _key_value(self) -> KeyValue:
         """Get the KeyValue store.
@@ -114,15 +113,10 @@ class _KeyValueStore(Generic[_T]):
             if self._kv_bucket is not None:
                 return self._kv_bucket
 
-            if not self._nats_client.is_connected():
-                await self._nats_client.connect()
+            if not self._nats_client.is_connected:
+                raise RuntimeError("NATS client is not connected")
 
-            # create jetstream client
-            nats_client = self._get_nats_client()
-            if nats_client is None:
-                raise RuntimeError("Failed to get NATS client after connection attempt")
-
-            js = nats_client.jetstream()
+            js = self._nats_client.jetstream()
 
             try:
                 self._kv_bucket = await js.key_value(self._nats_bucket_name)
@@ -178,21 +172,21 @@ class _KeyValueStore(Generic[_T]):
                 model = self._model_class.model_validate_json(entry.value.decode())
                 models.append(model)
             except KvKeyError:
-                self._logger.error(f"Key {key} not found in KV store")
+                logger.error(f"Key {key} not found in KV store")
             except ValidationError:
-                self._logger.error(f"Validation error for key {key}, skipping")
+                logger.error(f"Validation error for key {key}, skipping")
                 continue
 
         return models
 
 
-class ProgramStore(_KeyValueStore[Program]):
+class ProgramStore(_KeyValueStore[api.models.Program]):
     """
     Program store manages all the programs registered in a cell.
     """
 
-    def __init__(self, cell_id: str, nats_client: NatsClient, create_bucket: bool = False):
-        self._nats_bucket_name = _NATS_PROGRAMS_BUCKET_TEMPLATE.format(cell=cell_id)
+    def __init__(self, cell: Cell, create_bucket: bool = False):
+        self._nats_bucket_name = _NATS_PROGRAMS_BUCKET_TEMPLATE.format(cell=cell.cell_id)
         self._kv_config = KeyValueConfig(
             bucket=self._nats_bucket_name,
             max_value_size=_NATS_PROGRAMS_MESSAGE_SIZE,
@@ -200,8 +194,8 @@ class ProgramStore(_KeyValueStore[Program]):
         )
 
         super().__init__(
-            Program,
+            api.models.Program,
             nats_bucket_name=self._nats_bucket_name,
-            nats_client=nats_client,
+            nats_client=cell.nats,
             nats_kv_config=self._kv_config if create_bucket else None,
         )

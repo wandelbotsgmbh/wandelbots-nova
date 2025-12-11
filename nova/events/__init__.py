@@ -1,3 +1,4 @@
+import logging
 from abc import ABC
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -8,8 +9,8 @@ from pydantic import BaseModel, Field
 from nova.cell.cell import Cell
 from nova.cell.robot_cell import Device, OutputDevice
 from nova.config import BASE_PATH
-from nova.logging import logger
-from nova.nats import Message as NatsMessage
+
+logger = logging.getLogger(__name__)
 
 # Read BASE_PATH environment variable and extract app name
 # TODO: make a util and move the logic there
@@ -79,7 +80,7 @@ class Cycle:
 
     Example usage:
         ```python
-        async with Cycle(cell) as cycle:
+        async with Cycle(cell_id) as cycle:
             # Your automation logic here
             await perform_task()
             # On successful completion, finish() is called automatically
@@ -88,7 +89,7 @@ class Cycle:
 
     Alternative manual usage:
         ```python
-        cycle = Cycle(cell)
+        cycle = Cycle(cell_id)
         try:
             await cycle.start()
             # Your automation logic here
@@ -137,13 +138,15 @@ class Cycle:
             event: The cycle event to publish
         """
         if self._cell.nats is None:
-            logger.debug("No NATS client available, skipping event publication")
-            return
+            raise RuntimeError("NATS client is not available in the cell")
+
+        if not self._cell.nats.is_connected:
+            raise RuntimeError("NATS client is not connected")
 
         try:
-            await self._cell.nats.connect()
-            nats_message = NatsMessage(subject=self._subject, data=event.model_dump_json().encode())
-            await self._cell.nats.publish_message(nats_message)
+            await self._cell.nats.publish(
+                subject=self._subject, payload=event.model_dump_json().encode()
+            )
             logger.debug(f"Published {event.event_type} event to NATS subject: {self._subject}")
         except Exception as e:
             logger.error(f"Failed to publish {event.event_type} event to NATS: {e}")
