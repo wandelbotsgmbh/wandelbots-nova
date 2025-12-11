@@ -13,7 +13,7 @@ jobs:
   setup-instance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -81,7 +81,7 @@ jobs:
             run_cmd: "python examples/collision_setup.py"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -157,7 +157,7 @@ jobs:
     needs: [setup-instance, test-integration]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Decode output secrets
         uses: cloudposse/github-action-secret-outputs@main
         id: role
