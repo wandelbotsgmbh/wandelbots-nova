@@ -22,7 +22,7 @@ jobs:
           private_key: ${{ secrets.PIPELINE_VERSION_BUMPER_SECRET }}
 
       - name: Checkout repository at workflow SHA
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
