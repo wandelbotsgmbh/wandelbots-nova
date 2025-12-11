@@ -385,8 +385,8 @@ class ProgramRunner(ABC):
         log_capture = io.StringIO()
         sink_id = logger.add(log_capture)
 
+        nova: Nova | None = None
         try:
-            nova: Nova | None = None
             robot_cell = None
 
             if self._robot_cell_override:
@@ -398,7 +398,6 @@ class ProgramRunner(ABC):
                 nova = Nova(config=self._nova_config)
                 await nova.connect()
                 cell = nova.cell()
-                controllers = await cell.controllers()
                 controller_specs = (
                     list(self._preconditions.controllers or []) if self._preconditions else []
                 )
@@ -432,7 +431,6 @@ class ProgramRunner(ABC):
             await self._set_program_state(
                 api.models.ProgramRunState.PREPARING, on_state_change, nova
             )
-
             monitoring_scope = anyio.CancelScope()
             async with robot_cell, anyio.create_task_group() as tg:
                 await tg.start(self._estop_handler, monitoring_scope)
@@ -499,6 +497,10 @@ class ProgramRunner(ABC):
             # Handle any exceptions raised during entering the robot cell context
             self._handle_general_exception(exc)
             await self._set_program_state(api.models.ProgramRunState.FAILED, on_state_change, nova)
+        finally:
+            # TODO not the most elegant way to close nova instance, especially since we seem to not know
+            # here if we created it or not
+            await nova.close() if nova is not None else None
 
     @abstractmethod
     async def _run(self, execution_context: ExecutionContext):

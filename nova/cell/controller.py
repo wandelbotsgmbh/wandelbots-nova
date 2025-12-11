@@ -39,13 +39,14 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
 
     async def open(self):
         self._motion_group_ids = (await self._fetch_description()).connected_motion_groups
+        await super().open()
         return self
 
     async def close(self):
         # RPS-1174: when a motion group is deactivated, RAE closes all open connections
         #           this behaviour is not desired in some cases,
         #           so for now we will not deactivate for the user
-        pass
+        await super().close()
 
     def __len__(self) -> int:
         # TODO What is this for? Is it still needed when motion group activation is gone?

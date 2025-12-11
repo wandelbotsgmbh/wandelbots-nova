@@ -144,5 +144,22 @@ class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
         config: NovaConfig
 
     def __init__(self, configuration: Configuration, **kwargs):
-        self._nova_api = ApiGateway(configuration.config)
+        self._nova_config = configuration.config
+        self._nova_api_gateway: ApiGateway | None = None
         super().__init__(configuration, **kwargs)
+
+    @property
+    def _nova_api(self) -> ApiGateway:
+        # Ensure we always have an API gateway instance
+        # TODO ideally? we would do this in open and ensure it's not used before being opened
+        if self._nova_api_gateway is None:
+            self._nova_api_gateway = ApiGateway(self._nova_config)
+        return self._nova_api_gateway
+
+    async def open(self) -> None:
+        return await super().open()
+
+    async def close(self):
+        await super().close()
+        if self._nova_api_gateway is not None:
+            await self._nova_api_gateway.close()
