@@ -92,7 +92,7 @@ class NovaRerunBridge:
         rr.reset_time()
         rr.set_time(TIME_INTERVAL_NAME, duration=0)
 
-        send_blueprint(motion_groups)
+        send_blueprint(motion_groups, True)
         self.log_coordinate_system()
 
     def log_coordinate_system(self) -> None:

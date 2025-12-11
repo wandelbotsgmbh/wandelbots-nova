@@ -1,4 +1,5 @@
 import re
+from typing import Any, cast
 
 import numpy as np
 import rerun as rr
@@ -57,8 +58,12 @@ class RobotVisualizer:
         self.albedo_factor = albedo_factor
         self.mesh_loaded = False
         # Group collision geometries by link
-        self.collision_link_geometries = collision_link_chain.root if collision_link_chain else {}
-        self.collision_tcp_geometries = collision_tcp.root if collision_tcp else {}
+        self.collision_link_geometries: list[Any] = (
+            cast(list[Any], collision_link_chain.root) if collision_link_chain else []
+        )
+        self.collision_tcp_geometries: dict[int, api.models.Collider] = (
+            cast(dict[int, api.models.Collider], collision_tcp.root) if collision_tcp else {}
+        )
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool
         self.show_safety_link_chain = show_safety_link_chain
@@ -766,14 +771,18 @@ class RobotVisualizer:
 
             # Collect data for collision link geometries (only if enabled)
             if self.show_collision_link_chain and self.collision_link_geometries:
-                for link_index, geometries in enumerate(self.collision_link_geometries):  # type: ignore[assignment]
+                for link_index, geometries in enumerate(self.collision_link_geometries):
+                    geom_dict = cast(
+                        dict[int, api.models.Collider],
+                        geometries.root if hasattr(geometries, "root") else geometries,
+                    )
                     link_transform = transforms[link_index]
-                    for i, geom_id in enumerate(geometries.root):  # type: ignore[attr-defined]
+                    for geom_id, collider in geom_dict.items():
                         entity_path = f"{self.base_entity_path}/collision/links/link_{link_index}/geometry_{geom_id}"
 
-                        pose = Pose(geometries.root[geom_id].pose)  # type: ignore[attr-defined]
+                        pose = Pose(collider.pose)
                         final_transform = link_transform @ self.geometry_pose_to_matrix(pose)
-                        self.init_collision_geometry(entity_path, geometries.root[geom_id], pose)  # type: ignore[attr-defined]
+                        self.init_collision_geometry(entity_path, collider, pose)
                         collect_geometry_data(entity_path, final_transform)
 
             # Collect data for collision TCP geometries (only if enabled)

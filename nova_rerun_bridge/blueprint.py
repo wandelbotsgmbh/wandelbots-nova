@@ -18,10 +18,11 @@ def get_blueprint(motion_group_list: list[str]) -> rrb.Blueprint:
     )
 
 
-def send_blueprint(motion_group_list: list[str]) -> None:
+def send_blueprint(motion_group_list: list[str], include_coordinate_system: bool = True) -> None:
     """Send blueprint with 3D view.
 
     Args:
         motion_group_list: List of motion group names
+        include_coordinate_system: Currently unused flag to align with caller expectations.
     """
     rr.send_blueprint(get_blueprint(motion_group_list))
