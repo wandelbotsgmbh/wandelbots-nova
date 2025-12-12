@@ -8,11 +8,6 @@ INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:808
 NOVA_API = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
 NOVA_ACCESS_TOKEN = config("NOVA_ACCESS_TOKEN", default=None)
 
-# Auth0 config
-NOVA_AUTH0_DOMAIN = config("NOVA_AUTH0_DOMAIN", default="#{NOVA_AUTH0_DOMAIN}#")
-NOVA_AUTH0_CLIENT_ID = config("NOVA_AUTH0_CLIENT_ID", default="#{NOVA_AUTH0_CLIENT_ID}#")
-NOVA_AUTH0_AUDIENCE = config("NOVA_AUTH0_AUDIENCE", default="#{NOVA_AUTH0_AUDIENCE}#")
-
 # Runtime configuration provided by the environment
 NATS_BROKER = config("NATS_BROKER", default=None)
 CELL_NAME = config("CELL_NAME", default="cell", cast=str)
