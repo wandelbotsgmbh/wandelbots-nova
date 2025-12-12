@@ -1,10 +1,9 @@
 import asyncio
 from math import pi
-from nova.actions import ptp
 
 import pytest
 
-from nova.actions import jnt
+from nova.actions import jnt, ptp
 from nova.api import models
 from nova.cell.controllers import virtual_controller
 from nova.core.nova import Nova
