@@ -89,21 +89,16 @@ async def test_move_when_start_position_is_different_from_current_position(ur_mg
     joint_position = await ur_mg.joints()
     current_pose = await ur_mg.tcp_pose("Flange")
 
-
     await ur_mg.plan_and_execute(
         start_joint_position=joint_position,
-        actions=[
-            ptp(current_pose @ Pose((10, 0, 0, 0, 0, 0)))
-        ], 
-        tcp="Flange"
+        actions=[ptp(current_pose @ Pose((10, 0, 0, 0, 0, 0)))],
+        tcp="Flange",
     )
 
     # use the old joint position as start position, which is now different than the current position
     with pytest.RaisesGroup(InitMovementFailed):
         await ur_mg.plan_and_execute(
             start_joint_position=joint_position,
-            actions=[
-                ptp(current_pose @ Pose((10, 0, 0, 0, 0, 0)))
-            ], 
-            tcp="Flange"
+            actions=[ptp(current_pose @ Pose((10, 0, 0, 0, 0, 0)))],
+            tcp="Flange",
         )
