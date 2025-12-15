@@ -3,10 +3,12 @@ from math import pi
 
 import pytest
 
-from nova.actions import jnt
+from nova.actions import jnt, ptp
 from nova.api import models
 from nova.cell.controllers import virtual_controller
 from nova.core.nova import Nova
+from nova.exceptions import InitMovementFailed
+from nova.types.pose import Pose
 
 
 @pytest.fixture
@@ -37,8 +39,7 @@ async def ur_mg():
 async def test_move_to_current_joint_position(ur_mg):
     """
     Tests that when the robot is in a certain posision and we provide the same joint position as target,
-    execution is not stuck.
-
+    execution is not stuck and finishes correctly.
     """
     joint_position = await ur_mg.joints()
 
@@ -74,3 +75,29 @@ async def test_move_to_very_similar_joint_position(ur_mg):
 
     async with asyncio.timeout(5):
         await ur_mg.execute(joint_trajectory=trajectory, actions=[], tcp="Flange")
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_move_when_start_position_is_different_from_current_position(ur_mg):
+    """
+    Tests that when the start position of the robot is different than the current position of the robot,
+    trajectory execution fails.
+    """
+    # move the robot a little
+    joint_position = await ur_mg.joints()
+    current_pose = await ur_mg.tcp_pose("Flange")
+
+    await ur_mg.plan_and_execute(
+        start_joint_position=joint_position,
+        actions=[ptp(current_pose @ Pose((10, 0, 0, 0, 0, 0)))],
+        tcp="Flange",
+    )
+
+    # use the old joint position as start position, which is now different than the current position
+    with pytest.RaisesGroup(InitMovementFailed):
+        await ur_mg.plan_and_execute(
+            start_joint_position=joint_position,
+            actions=[ptp(current_pose @ Pose((10, 0, 0, 0, 0, 0)))],
+            tcp="Flange",
+        )
