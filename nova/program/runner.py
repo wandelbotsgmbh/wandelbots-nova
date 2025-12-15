@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import contextvars
-import inspect
 import io
 import signal
 import sys
@@ -132,6 +131,7 @@ class ProgramRunner(ABC):
         self._cell_id = cell_id or CELL_NAME
         self._app_name = app_name
         self._nova_config = nova_config
+        self._nova: Nova | None = None
         self._program_run: ProgramRun = ProgramRun(
             run=self._run_id,
             program=program_id,
@@ -385,7 +385,6 @@ class ProgramRunner(ABC):
         log_capture = io.StringIO()
         sink_id = logger.add(log_capture)
 
-        nova: Nova | None = None
         try:
             robot_cell = None
 
@@ -395,9 +394,9 @@ class ProgramRunner(ABC):
                 # When there is no robot_cell_override we create a new robot cell
                 #   based on the program preconditions. That means also only devices that are
                 #   part of the preconditions are opened and streamed for e.g. estop handling
-                nova = Nova(config=self._nova_config)
-                await nova.connect()
-                cell = nova.cell()
+                self._nova = Nova(config=self._nova_config)
+                await self._nova.connect()
+                cell = self._nova.cell()
                 controller_specs = (
                     list(self._preconditions.controllers or []) if self._preconditions else []
                 )
@@ -429,7 +428,9 @@ class ProgramRunner(ABC):
             )
             current_execution_context_var.set(execution_context)
             await self._set_program_state(
-                api.models.ProgramRunState.PREPARING, on_state_change, nova
+                state=api.models.ProgramRunState.PREPARING,
+                on_state_change=on_state_change,
+                nova=self._nova,
             )
             monitoring_scope = anyio.CancelScope()
             async with robot_cell, anyio.create_task_group() as tg:
@@ -438,7 +439,9 @@ class ProgramRunner(ABC):
                 try:
                     self._program_run.start_time = timestamp.now_utc()
                     await self._set_program_state(
-                        api.models.ProgramRunState.RUNNING, on_state_change, nova
+                        state=api.models.ProgramRunState.RUNNING,
+                        on_state_change=on_state_change,
+                        nova=self._nova,
                     )
                     await self._run(execution_context)
                 except anyio.get_cancelled_exc_class() as exc:  # noqa: F841
@@ -454,30 +457,40 @@ class ProgramRunner(ABC):
                         raise
 
                     await self._set_program_state(
-                        api.models.ProgramRunState.STOPPED, on_state_change, nova
+                        state=api.models.ProgramRunState.STOPPED,
+                        on_state_change=on_state_change,
+                        nova=self._nova,
                     )
                     raise
                 except NotPlannableError as exc:
                     # Program was not plannable (aka. /plan/ endpoint)
                     self._handle_general_exception(exc)
                     await self._set_program_state(
-                        api.models.ProgramRunState.FAILED, on_state_change, nova
+                        state=api.models.ProgramRunState.FAILED,
+                        on_state_change=on_state_change,
+                        nova=self._nova,
                     )
                 except Exception as exc:  # pylint: disable=broad-except
                     self._handle_general_exception(exc)
                     await self._set_program_state(
-                        api.models.ProgramRunState.FAILED, on_state_change, nova
+                        state=api.models.ProgramRunState.FAILED,
+                        on_state_change=on_state_change,
+                        nova=self._nova,
                     )
                 else:
                     if self.stopped:
                         # Program was stopped
                         await self._set_program_state(
-                            api.models.ProgramRunState.STOPPED, on_state_change, nova
+                            state=api.models.ProgramRunState.STOPPED,
+                            on_state_change=on_state_change,
+                            nova=self._nova,
                         )
                     elif self._program_run.state is api.models.ProgramRunState.RUNNING:
                         # Program was completed
                         await self._set_program_state(
-                            api.models.ProgramRunState.COMPLETED, on_state_change, nova
+                            state=api.models.ProgramRunState.COMPLETED,
+                            on_state_change=on_state_change,
+                            nova=self._nova,
                         )
                 finally:
                     # get program output data
@@ -496,11 +509,13 @@ class ProgramRunner(ABC):
         except Exception as exc:  # pylint: disable=broad-except
             # Handle any exceptions raised during entering the robot cell context
             self._handle_general_exception(exc)
-            await self._set_program_state(api.models.ProgramRunState.FAILED, on_state_change, nova)
+            await self._set_program_state(
+                api.models.ProgramRunState.FAILED, on_state_change, self._nova
+            )
         finally:
             # TODO not the most elegant way to close nova instance, especially since we seem to not know
             # here if we created it or not
-            await nova.close() if nova is not None else None
+            await self._nova.close() if self._nova is not None else None
 
     @abstractmethod
     async def _run(self, execution_context: ExecutionContext):
@@ -533,14 +548,7 @@ class PythonProgramRunner(ProgramRunner):
         self.parameters = parameters
 
     async def _run(self, execution_context: ExecutionContext) -> Any:
-        # Execute the function with parameters
-        result = self.program(**(self.parameters or {}))
-
-        # Check if the function is async and await it if necessary
-        if inspect.iscoroutine(result):
-            result = await result
-
-        return result
+        return await self.program.invoke(self.parameters or {}, nova=self._nova)
 
 
 def _log_future_result(future: Future):

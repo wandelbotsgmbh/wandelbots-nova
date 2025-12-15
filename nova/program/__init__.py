@@ -1,4 +1,4 @@
-from nova.program.function import Program, ProgramPreconditions, program
+from nova.program.function import NovaProgramContext, Program, ProgramPreconditions, program
 from nova.program.runner import ProgramRunner, PythonProgramRunner, run_program
 
 __all__ = [
@@ -7,5 +7,6 @@ __all__ = [
     "program",
     "ProgramPreconditions",
     "Program",
+    "NovaProgramContext",
     "run_program",
 ]

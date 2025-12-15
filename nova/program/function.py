@@ -40,9 +40,26 @@ Parameters = ParamSpec("Parameters")
 Return = TypeVar("Return")
 
 
+def _param_is_ctx(param: inspect.Parameter) -> bool:
+    return param.annotation is NovaProgramContext or param.name == "ctx"
+
+
+def _param_is_inputs(param: inspect.Parameter) -> bool:
+    return param.name in {"inputs"} or (
+        isinstance(param.annotation, type) and issubclass(param.annotation, BaseModel)
+    )
+
+
 class ProgramPreconditions(BaseModel):
     controllers: list[api.models.RobotController] | None = None
     cleanup_controllers: bool = False
+
+
+class NovaProgramContext:
+    """Context passed into every program execution."""
+
+    def __init__(self, nova: Nova):
+        self.nova = nova
 
 
 class Program(BaseModel, Generic[Parameters, Return]):
@@ -57,7 +74,9 @@ class Program(BaseModel, Generic[Parameters, Return]):
     preconditions: ProgramPreconditions | None = None
 
     @classmethod
-    def validate(cls, value: Callable[Parameters, Return]) -> "Program[Parameters, Return]":
+    def validate(
+        cls, value: Callable[Parameters, Return], *, input_model: type[BaseModel] | None = None
+    ) -> "Program[Parameters, Return]":
         if isinstance(value, Program):
             return value
         if not callable(value):
@@ -67,16 +86,58 @@ class Program(BaseModel, Generic[Parameters, Return]):
         docstring = parse_docstring(value.__doc__ or "")
         description = docstring.description
 
-        input, output = input_and_output_types(value, docstring)
+        input, output = input_and_output_types(value, docstring, input_model=input_model)
 
         function = cls(
             program_id=program_id, name=None, description=description, input=input, output=output
         )
-        function._wrapped = validate_call(validate_return=True)(value)
+        function._wrapped = validate_call(
+            validate_return=True, config={"arbitrary_types_allowed": True}
+        )(value)
         return function
 
+    def _build_input_model(self, inputs: BaseModel | Mapping[str, Any] | None) -> BaseModel:
+        if inputs is None:
+            inputs = {}
+        if isinstance(inputs, BaseModel):
+            values = inputs.model_dump()
+        elif isinstance(inputs, Mapping):
+            values = dict(inputs)
+        else:
+            raise TypeError("inputs must be a mapping or BaseModel instance")
+        return self.input.model_validate(values)
+
+    async def invoke(
+        self, inputs: BaseModel | Mapping[str, Any] | None = None, nova: Nova | None = None
+    ) -> Return:
+        validated_inputs = self._build_input_model(inputs)
+
+        nova_instance = nova or Nova()
+        try:
+            ctx = NovaProgramContext(nova=nova_instance)
+            return await self._wrapped(ctx, validated_inputs)
+        finally:
+            if nova is None:
+                if nova_instance.is_connected():
+                    await nova_instance.close()
+                else:
+                    await nova_instance._api_client.close()
+
     async def __call__(self, *args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:  # pylint: disable=no-member
-        return await self._wrapped(*args, **kwargs)
+        nova = kwargs.pop("nova", None)
+        inputs: BaseModel | Mapping[str, Any] | None = kwargs
+
+        if args:
+            if len(args) == 1 and isinstance(args[0], NovaProgramContext):
+                ctx = args[0]
+                validated_inputs = self._build_input_model(kwargs)
+                return await self._wrapped(ctx, validated_inputs)
+            if len(args) == 1 and isinstance(args[0], (BaseModel, Mapping)):
+                parameters = args[0]
+            else:
+                raise TypeError("Program must be called with a mapping or NovaProgramContext")
+
+        return await self.invoke(inputs=inputs, nova=nova)
 
     def _log(self, level: str, message: str) -> None:
         """Log a message with program prefix."""
@@ -254,39 +315,50 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
 
 def input_and_output_types(
-    func: Callable, docstring: Docstring
+    func: Callable, docstring: Docstring, *, input_model: type[BaseModel] | None = None
 ) -> tuple[type[BaseModel], type[BaseModel]]:
     signature = inspect.signature(func)
     input_types = get_type_hints(func)
     output_type = input_types.pop("return", None)
 
-    input_field_definitions: Mapping[str, Any] = {}
-    for order, (name, parameter) in enumerate(signature.parameters.items()):
-        default: FieldInfo = (
-            Field(...)
-            if parameter.default is parameter.empty
-            else (
-                parameter.default
-                if isinstance(parameter.default, FieldInfo)
-                else Field(parameter.default)
-            )
+    if input_model is not None:
+        input = create_model(
+            input_model.__name__,
+            __base__=input_model,
+            __module__=input_model.__module__,
+            __config__=ConfigDict(extra="forbid"),
         )
+    else:
+        input_field_definitions: Mapping[str, Any] = {}
+        for order, (name, parameter) in enumerate(signature.parameters.items()):
+            if parameter.annotation is NovaProgramContext:
+                continue
 
-        # Add field order
-        default.json_schema_extra = {"x-order": order}
+            default: FieldInfo = (
+                Field(...)
+                if parameter.default is parameter.empty
+                else (
+                    parameter.default
+                    if isinstance(parameter.default, FieldInfo)
+                    else Field(parameter.default)
+                )
+            )
 
-        # Add description from docstring if available
-        if not default.description:
-            if param_doc := next((p for p in docstring.params if p.arg_name == name), None):
-                default.description = param_doc.description
+            # Add field order
+            default.json_schema_extra = {"x-order": order}
 
-        input_field_definitions[name] = (parameter.annotation, default)  # type: ignore
-    input = create_model(
-        "Input",
-        **input_field_definitions,
-        __module__=func.__module__,
-        __config__=ConfigDict(extra="forbid"),
-    )
+            # Add description from docstring if available
+            if not default.description:
+                if param_doc := next((p for p in docstring.params if p.arg_name == name), None):
+                    default.description = param_doc.description
+
+            input_field_definitions[name] = (parameter.annotation, default)  # type: ignore
+        input = create_model(
+            "Input",
+            **input_field_definitions,
+            __module__=func.__module__,
+            __config__=ConfigDict(extra="forbid"),
+        )
 
     if output_type and isinstance(output_type, type) and issubclass(output_type, BaseModel):
         output = output_type
@@ -324,6 +396,7 @@ def program(
     description: str | None = None,
     preconditions: ProgramPreconditions | None = None,
     viewer: Any | None = None,
+    input_model: type[BaseModel] | None = None,
 ):
     """
     Decorator factory for creating Nova programs with declarative controller setup.
@@ -336,6 +409,9 @@ def program(
             Based on the program preconditions, a robot cell is created when running the program in a runner
             Only devices that are part of the preconditions are opened and listened for e.g. estop handling
         viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
+        input_model: Optional pydantic BaseModel describing the program inputs.
+            The model instance is available on NovaProgramContext.inputs. If not provided,
+            the input model is inferred from the function signature.
 
     Decorator / decorator-factory for creating Nova programs.
         - Bare usage:        @nova.program
@@ -363,24 +439,39 @@ def program(
         if not asyncio.iscoroutinefunction(function):
             raise TypeError(f"Program function '{function.__name__}' must be async")
 
-        func_obj = Program.validate(function)
+        program_obj = Program.validate(function, input_model=input_model)
         if id:
-            func_obj.program_id = id
+            program_obj.program_id = id
         if name:
-            func_obj.name = name
+            program_obj.name = name
         if description:
-            func_obj.description = description
-        func_obj.preconditions = preconditions
+            program_obj.description = description
+        program_obj.preconditions = preconditions
 
         # Create a wrapper that handles controller lifecycle
-        original_wrapped = func_obj._wrapped
+        original_wrapped = program_obj._wrapped
+        user_parameters = list(inspect.signature(original_wrapped).parameters.values())
+        # Check if the function expects a NovaProgramContext or a ctx parameter
+        expects_nova_context = any(_param_is_ctx(param) for param in user_parameters)
 
-        async def async_wrapper(*args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:
+        ctx_index = next((idx for idx, p in enumerate(user_parameters) if _param_is_ctx(p)), None)
+        inputs_index = next(
+            (idx for idx, p in enumerate(user_parameters) if _param_is_inputs(p)), None
+        )
+        ctx_param = user_parameters[ctx_index] if ctx_index is not None else None
+        inputs_param = user_parameters[inputs_index] if inputs_index is not None else None
+
+        async def async_wrapper(
+            ctx: NovaProgramContext,
+            inputs: BaseModel,
+            *args: Parameters.args,
+            **kwargs: Parameters.kwargs,
+        ) -> Return:
             """Async wrapper that handles controller creation and cleanup."""
             created_controllers = []
             try:
                 # Create controllers before execution
-                created_controllers = await func_obj._create_controllers()
+                created_controllers = await program_obj._create_controllers()
 
                 # Configure viewers if any are active
                 if viewer is not None:
@@ -389,11 +480,23 @@ def program(
                     pass
 
                 # Execute the wrapped function
-                result = await original_wrapped(*args, **kwargs)
+                if expects_nova_context:
+                    call_kwargs: dict[str, Any] = {}
+                    if ctx_param is not None:
+                        call_kwargs[ctx_param.name] = ctx
+                    if inputs_param is not None:
+                        call_kwargs[inputs_param.name] = inputs
+
+                    if call_kwargs:
+                        result = await original_wrapped(**call_kwargs)
+                    else:
+                        result = await original_wrapped(ctx)
+                else:
+                    result = await original_wrapped(**inputs.model_dump())
                 return result
             finally:
                 # Clean up controllers after execution
-                await func_obj._cleanup_controllers(created_controllers)
+                await program_obj._cleanup_controllers(created_controllers)
 
                 # Clean up viewers
                 if viewer is not None:
@@ -402,8 +505,8 @@ def program(
                     _cleanup_active_viewers()
 
         # Update the wrapped function to our async wrapper
-        func_obj._wrapped = async_wrapper
-        return func_obj
+        program_obj._wrapped = async_wrapper
+        return program_obj
 
     # If used as @nova.program(), return the decorator.
     # If used as @nova.program, decorate immediately.

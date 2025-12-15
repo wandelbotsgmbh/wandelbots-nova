@@ -2,27 +2,28 @@ import pytest
 from pydantic import BaseModel, Field
 
 import nova
-from nova.program.function import Program, ProgramPreconditions
+from nova.program.function import NovaProgramContext, Program, ProgramPreconditions
 
 
 class TestInput(BaseModel):
     name: str = Field(..., description="Name of the person")
     age: int = Field(..., description="Age of the person")
+    __test__ = False
 
 
 class TestOutput(BaseModel):
     message: str = Field(..., description="Greeting message")
+    __test__ = False
 
 
 @pytest.mark.asyncio
 async def test_function_wrapping():
     @nova.program(
-        name="greet", preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False)
+        name="greet",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+        input_model=TestInput,
     )
-    async def greet(
-        name: str = Field(..., description="Name of the person"),
-        age: int = Field(..., description="Age of the person"),
-    ) -> TestOutput:
+    async def greet(inputs: TestInput, ctx: NovaProgramContext) -> TestOutput:
         """Greet a person with their name and age.
 
         Args:
@@ -32,7 +33,7 @@ async def test_function_wrapping():
         Returns:
             A greeting message
         """
-        return TestOutput(message=f"Hello {name}, you are {age} years old!")
+        return TestOutput(message=f"Hello {inputs.name}, you are {inputs.age} years old!")
 
     assert isinstance(greet, Program)
     assert greet.name == "greet"
@@ -67,13 +68,19 @@ async def test_function_validation():
 
 @pytest.mark.asyncio
 async def test_function_calling():
-    @nova.program(
-        name="add", preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False)
-    )
-    async def add(a: int, b: int) -> int:
-        return a + b
+    class AddInput(BaseModel):
+        a: int
+        b: int
 
-    result = await add(5, 3)
+    @nova.program(
+        name="add",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+        input_model=AddInput,
+    )
+    async def add(inputs: AddInput, ctx: NovaProgramContext) -> int:
+        return inputs.a + inputs.b
+
+    result = await add(a=5, b=3)
     assert result == 8
 
 
@@ -87,11 +94,15 @@ async def test_function_with_complex_types():
         name: str = Field(..., description="Name of the person")
         address: Address = Field(..., description="Address of the person")
 
+    class ProcessPersonInput(BaseModel):
+        person: Person = Field(..., description="Person information")
+
     @nova.program(
         name="process_person",
         preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+        input_model=ProcessPersonInput,
     )
-    async def process_person(person: Person) -> str:
+    async def process_person(inputs: ProcessPersonInput, ctx: NovaProgramContext) -> str:
         """Process a person's information.
 
         Args:
@@ -100,20 +111,25 @@ async def test_function_with_complex_types():
         Returns:
             Formatted string with person's details
         """
-        return f"{person.name} lives in {person.address.city}"
+        return f"{inputs.person.name} lives in {inputs.person.address.city}"
 
     person = Person(name="John", address=Address(street="123 Main St", city="New York"))
-    result = await process_person(person)
+    result = await process_person(person=person)
     assert "John lives in New York" in result
 
 
 @pytest.mark.asyncio
 async def test_function_schema_generation():
+    class CalculateAreaInput(BaseModel):
+        length: float
+        width: float
+
     @nova.program(
         name="calculate_area",
         preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+        input_model=CalculateAreaInput,
     )
-    async def calculate_area(length: float, width: float) -> float:
+    async def calculate_area(inputs: CalculateAreaInput, ctx: NovaProgramContext) -> float:
         """Calculate the area of a rectangle.
 
         Args:
@@ -123,7 +139,7 @@ async def test_function_schema_generation():
         Returns:
             Area of the rectangle
         """
-        return length * width
+        return inputs.length * inputs.width
 
     input_schema = calculate_area.input_schema
     assert "length" in input_schema["properties"]
@@ -137,11 +153,16 @@ async def test_function_schema_generation():
 
 @pytest.mark.asyncio
 async def test_function_argument_parser():
+    class ProcessDataInput(BaseModel):
+        name: str
+        count: int = 0
+
     @nova.program(
         id="process_data",
         preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+        input_model=ProcessDataInput,
     )
-    async def process_data(name: str, count: int = 0) -> str:
+    async def process_data(inputs: ProcessDataInput, ctx: NovaProgramContext) -> str:
         """Process some data.
 
         Args:
@@ -151,7 +172,7 @@ async def test_function_argument_parser():
         Returns:
             Processed data string
         """
-        return f"Processed {count} items of {name}"
+        return f"Processed {inputs.count} items of {inputs.name}"
 
     parser = process_data.create_parser()
     args = parser.parse_args(["--name", "test", "--count", "5"])
@@ -161,11 +182,16 @@ async def test_function_argument_parser():
 
 @pytest.mark.asyncio
 async def test_function_with_optional_parameters():
+    class GreetOptionalInput(BaseModel):
+        name: str
+        title: str | None = None
+
     @nova.program(
         name="greet_optional",
         preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+        input_model=GreetOptionalInput,
     )
-    async def greet_optional(name: str, title: str | None = None) -> str:
+    async def greet_optional(inputs: GreetOptionalInput, ctx: NovaProgramContext) -> str:
         """Greet someone with an optional title.
 
         Args:
@@ -175,14 +201,14 @@ async def test_function_with_optional_parameters():
         Returns:
             Greeting message
         """
-        if title:
-            return f"Hello {title} {name}!"
-        return f"Hello {name}!"
+        if inputs.title:
+            return f"Hello {inputs.title} {inputs.name}!"
+        return f"Hello {inputs.name}!"
 
-    result1 = await greet_optional("John")
+    result1 = await greet_optional(name="John")
     assert result1 == "Hello John!"
 
-    result2 = await greet_optional("John", "Dr.")
+    result2 = await greet_optional(name="John", title="Dr.")
     assert result2 == "Hello Dr. John!"
 
 
@@ -192,8 +218,11 @@ async def test_function_with_json_complex_types():
         setting1: str
         setting2: int
 
-    @nova.program()
-    async def process_config(config: Config) -> str:
+    class ConfigInput(BaseModel):
+        config: Config
+
+    @nova.program(input_model=ConfigInput)
+    async def process_config(inputs: ConfigInput, ctx: NovaProgramContext) -> str:
         """Process a configuration.
 
         Args:
@@ -202,7 +231,7 @@ async def test_function_with_json_complex_types():
         Returns:
             Processed configuration string
         """
-        return f"Processed {config.setting1} with value {config.setting2}"
+        return f"Processed {inputs.config.setting1} with value {inputs.config.setting2}"
 
     parser = process_config.create_parser()
     args = parser.parse_args(["--config", '{"setting1": "test", "setting2": 42}'])
@@ -213,11 +242,16 @@ async def test_function_with_json_complex_types():
 
 @pytest.mark.asyncio
 async def test_function_repr():
+    class ExampleInput(BaseModel):
+        x: int
+        y: str
+
     @nova.program(
         name="example_func",
         preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+        input_model=ExampleInput,
     )
-    async def example_func(x: int, y: str) -> float:
+    async def example_func(inputs: ExampleInput, ctx: NovaProgramContext) -> float:
         """Example function.
 
         Args:
@@ -227,7 +261,7 @@ async def test_function_repr():
         Returns:
             A float value
         """
-        return float(x)
+        return float(inputs.x)
 
     func_repr = repr(example_func)
     assert "Program(name='example_func'" in func_repr
@@ -243,9 +277,13 @@ def test_input_schema_should_include_additional_fields_false():
     to prevent extra fields in input.
     """
 
-    @nova.program
-    async def sample_function(param1: int, param2: str):
-        pass
+    class SampleInput(BaseModel):
+        param1: int
+        param2: str
+
+    @nova.program(input_model=SampleInput)
+    async def sample_function(inputs: SampleInput, ctx: NovaProgramContext):
+        return inputs.param1 + len(inputs.param2)
 
     input_schema = sample_function.input_schema
     assert input_schema.get("additionalProperties") is False
