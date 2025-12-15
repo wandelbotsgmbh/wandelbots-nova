@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v4.0.1 (2025-12-15)
+
+### Chores
+
+- Add-test (#351) ([#351](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/351),
+  [`1c941a6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1c941a644a2d576e580b92fd5f21367acf9292d7))
+
+
 ## v4.0.0 (2025-12-11)
 
 ### Features
