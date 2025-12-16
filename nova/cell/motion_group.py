@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import aclosing
+from functools import partial
 from typing import AsyncGenerator, cast
 
 import numpy as np
@@ -9,9 +10,11 @@ from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion
+from nova.cell.tuner import TrajectoryTuner
+from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, PlanTrajectoryFailed
-from nova.types import Pose, RobotState
+from nova.types import ExecuteTrajectoryResponseStream, Pose, RobotState
 from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.utils.collision_setup import (
     get_joint_position_limits_from_motion_group_setup,
@@ -686,6 +689,13 @@ class MotionGroup(AbstractRobot):
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
     ) -> AsyncGenerator[MotionState, None]:
+        # This is the entrypoint for the trajectory tuning mode
+        if ENABLE_TRAJECTORY_TUNING:
+            logger.info("Entering trajectory tuning mode...")
+            async for execute_response in self._tune_trajectory(joint_trajectory, tcp, actions):
+                yield execute_response
+            return
+
         if movement_controller is None:
             movement_controller = move_forward
 
@@ -735,3 +745,25 @@ class MotionGroup(AbstractRobot):
             # task group will still wait for the monitoring task
             # so we need to cancel it
             monitor_task.cancel()
+
+    async def _tune_trajectory(
+        self, joint_trajectory: api.models.JointTrajectory, tcp: str, actions: list[Action]
+    ) -> ExecuteTrajectoryResponseStream:
+        start_joints = await self.joints()
+
+        async def plan_fn(actions: list[Action]) -> tuple[str, api.models.JointTrajectory]:
+            # we fix the start joints here because the tuner might call plan multiple times whilst tuning
+            # and the start joints would change to the respective joint positions at the time of planning
+            # which is not what we want
+            joint_trajectory = await self._plan(actions, tcp, start_joints)
+            load_planned_motion_response = await self._load_planned_motion(joint_trajectory, tcp)
+            return load_planned_motion_response, joint_trajectory
+
+        execute_fn = partial(
+            self._api_client.trajectory_execution_api.execute_trajectory,
+            cell=self._cell,
+            controller=self._controller_id,
+        )
+        tuner = TrajectoryTuner(plan_fn, execute_fn)
+        async for response in tuner.tune(actions, self.stream_state):
+            yield response
