@@ -45,9 +45,13 @@ def _param_is_ctx(param: inspect.Parameter) -> bool:
 
 
 def _param_is_inputs(param: inspect.Parameter) -> bool:
-    return param.name in {"inputs"} or (
-        isinstance(param.annotation, type) and issubclass(param.annotation, BaseModel)
-    )
+    if _param_is_ctx(param):
+        return False
+    if param.name in {"inputs", "input"}:
+        return True
+    if isinstance(param.annotation, type) and issubclass(param.annotation, BaseModel):
+        return True
+    return True
 
 
 class ProgramPreconditions(BaseModel):
@@ -62,15 +66,47 @@ class NovaProgramContext:
         self.nova = nova
 
 
+"""
+## Define programs:
+
+# Program without inputs or context
+async def program():
+    ...
+
+async def program(inputs: InputModel):
+    ...
+
+# Program with inputs and context
+async def program(inputs: InputModel, ctx: NovaProgramContext):
+    ...
+
+# Program with context keyword-only (do we need this?)
+async def program(*, ctx: NovaProgramContext):
+    ...
+
+### Con
+- "*" for using only ctx
+- avoid too much magic
+
+
+## Call programs:
+
+await program(inputs=InputModel())
+await program()
+
+"""
+
+
 class Program(BaseModel, Generic[Parameters, Return]):
-    _wrapped: Callable[Parameters, Any] = PrivateAttr(
+    _wrapped: Callable[..., Any] = PrivateAttr(default_factory=lambda: lambda *args, **kwargs: None)
+    _impl: Callable[..., Coroutine[Any, Any, Return]] = PrivateAttr(
         default_factory=lambda: lambda *args, **kwargs: None
     )
     program_id: str
     name: str | None
     description: str | None
-    input: type[BaseModel]
-    output: type[BaseModel]
+    input_model: type[BaseModel] | None
+    output_model: type[BaseModel]
     preconditions: ProgramPreconditions | None = None
 
     @classmethod
@@ -79,65 +115,102 @@ class Program(BaseModel, Generic[Parameters, Return]):
     ) -> "Program[Parameters, Return]":
         if isinstance(value, Program):
             return value
-        if not callable(value):
-            raise TypeError("value must be callable")
 
         program_id = value.__name__
         docstring = parse_docstring(value.__doc__ or "")
         description = docstring.description
 
-        input, output = input_and_output_types(value, docstring, input_model=input_model)
+        input_model_, output_type = input_and_output_types(value, docstring, input_model=input_model)
 
-        function = cls(
-            program_id=program_id, name=None, description=description, input=input, output=output
+        program = cls(
+            program_id=program_id,
+            name=None,
+            description=description,
+            input_model=input_model_,
+            output_model=output_type,
         )
-        function._wrapped = validate_call(
-            validate_return=True, config={"arbitrary_types_allowed": True}
-        )(value)
-        return function
 
-    def _build_input_model(self, inputs: BaseModel | Mapping[str, Any] | None) -> BaseModel:
+        impl = validate_call(validate_return=True, config={"arbitrary_types_allowed": True})(value)
+        program._impl = impl
+        program._wrapped = impl
+
+        params = list(inspect.signature(value).parameters.values())
+        if len(params) > 2:
+            raise TypeError("Program functions may have at most two parameters (inputs, ctx).")
+
+        count_ctx = sum(1 for p in params if _param_is_ctx(p))
+        count_inputs = sum(1 for p in params if _param_is_inputs(p))
+        if count_ctx > 1 or count_inputs > 1:
+            raise TypeError("Program functions may only declare one ctx and one inputs parameter.")
+
+        if program.input_model is None and count_inputs:
+            raise TypeError("This program declares no inputs; remove the inputs parameter.")
+        if program.input_model is not None and count_inputs == 0:
+            raise TypeError("Program declares an input_model but no inputs parameter.")
+
+        return program
+
+    def _build_input_model(self, inputs: BaseModel | Mapping[str, Any] | None) -> BaseModel | None:
+        if self.input_model is None:
+            if inputs is not None:
+                raise TypeError("This program does not accept inputs.")
+            return None
+
         if inputs is None:
-            inputs = {}
+            raise TypeError("Missing required inputs.")
+
         if isinstance(inputs, BaseModel):
             values = inputs.model_dump()
         elif isinstance(inputs, Mapping):
             values = dict(inputs)
         else:
             raise TypeError("inputs must be a mapping or BaseModel instance")
-        return self.input.model_validate(values)
+        return self.input_model.model_validate(values)
+
+    async def _invoke_declared_signature(
+        self, *, inputs: BaseModel | None, ctx: NovaProgramContext, extra_kwargs: dict[str, Any]
+    ) -> Return:
+        sig = inspect.signature(self._impl)
+        params = list(sig.parameters.values())
+        call_kwargs: dict[str, Any] = {}
+
+        for p in params:
+            if _param_is_ctx(p):
+                call_kwargs[p.name] = ctx
+            elif _param_is_inputs(p):
+                call_kwargs[p.name] = inputs
+            elif p.kind == inspect.Parameter.VAR_KEYWORD:
+                call_kwargs.update(extra_kwargs)
+            elif p.name in extra_kwargs:
+                call_kwargs[p.name] = extra_kwargs[p.name]
+
+        return await self._impl(**call_kwargs)
 
     async def invoke(
-        self, inputs: BaseModel | Mapping[str, Any] | None = None, nova: Nova | None = None
+        self,
+        inputs: BaseModel | Mapping[str, Any] | None = None,
+        ctx: NovaProgramContext | None = None,
+        **kwargs: Any,
     ) -> Return:
         validated_inputs = self._build_input_model(inputs)
-
-        nova_instance = nova or Nova()
-        try:
-            ctx = NovaProgramContext(nova=nova_instance)
-            return await self._wrapped(ctx, validated_inputs)
-        finally:
-            if nova is None:
-                if nova_instance.is_connected():
-                    await nova_instance.close()
-                else:
-                    await nova_instance._api_client.close()
+        ctx_instance = ctx or NovaProgramContext(nova=Nova())
+        return await self._wrapped(ctx_instance, validated_inputs, **kwargs)
 
     async def __call__(self, *args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:  # pylint: disable=no-member
-        nova = kwargs.pop("nova", None)
-        inputs: BaseModel | Mapping[str, Any] | None = kwargs
-
+        inputs = kwargs.pop("inputs", None)
+        ctx = kwargs.pop("ctx", None)
+        nova_override = kwargs.pop("nova", None)
         if args:
-            if len(args) == 1 and isinstance(args[0], NovaProgramContext):
-                ctx = args[0]
-                validated_inputs = self._build_input_model(kwargs)
-                return await self._wrapped(ctx, validated_inputs)
-            if len(args) == 1 and isinstance(args[0], (BaseModel, Mapping)):
-                parameters = args[0]
+            if len(args) == 1 and isinstance(args[0], BaseModel):
+                inputs = args[0]
             else:
-                raise TypeError("Program must be called with a mapping or NovaProgramContext")
-
-        return await self.invoke(inputs=inputs, nova=nova)
+                raise TypeError("Use keyword arguments inputs=... and ctx=... to call a program.")
+        if inputs is None and kwargs:
+            inputs = kwargs
+            kwargs = {}
+        if ctx is None and nova_override is not None:
+            ctx = NovaProgramContext(nova=nova_override)
+        return await self.invoke(inputs=inputs, ctx=ctx, **kwargs)
 
     def _log(self, level: str, message: str) -> None:
         """Log a message with program prefix."""
@@ -228,35 +301,40 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
     @property
     def input_schema(self) -> dict[str, Any]:
-        return self.input.model_json_schema()
+        return self.input_model.model_json_schema() if self.input_model else {}
 
     @property
     def output_schema(self) -> dict[str, Any]:
-        return self.output.model_json_schema()
+        return self.output_model.model_json_schema()
 
     @property
     def json_schema(self, title: str | None = None) -> JsonSchemaValue:
-        _, top_level_schema = models_json_schema(
-            [(self.input, "validation"), (self.output, "validation")], title=title or self.name
-        )
+        schemas: list[tuple[type[BaseModel], str]] = []
+        if self.input_model:
+            schemas.append((self.input_model, "validation"))
+        schemas.append((self.output_model, "validation"))
+        _, top_level_schema = models_json_schema(schemas, title=title or self.name)
         return top_level_schema
 
     def __repr__(self) -> str:
-        input_fields = ", ".join(
-            f"{k}: {v.annotation.__name__}"  # type: ignore
-            for k, v in self.input.model_fields.items()
-        )
+        if self.input_model:
+            input_fields = ", ".join(
+                f"{k}: {v.annotation.__name__}"  # type: ignore
+                for k, v in self.input_model.model_fields.items()
+            )
+        else:
+            input_fields = "none"
 
         # Get the actual output type from RootModel
-        if hasattr(self.output, "model_fields") and "root" in self.output.model_fields:
-            root_annotation = self.output.model_fields["root"].annotation
+        if hasattr(self.output_model, "model_fields") and "root" in self.output_model.model_fields:
+            root_annotation = self.output_model.model_fields["root"].annotation
             # If it's a TypeVar, get its bound type
             if hasattr(root_annotation, "__bound__") and root_annotation.__bound__:  # type: ignore
                 output_type = root_annotation.__bound__.__name__  # type: ignore
             else:
                 output_type = root_annotation.__name__  # type: ignore
         else:
-            output_type = self.output.__name__
+            output_type = self.output_model.__name__
 
         desc_part = f", description='{self.description}'" if self.description else ""
         return (
@@ -271,7 +349,10 @@ class Program(BaseModel, Generic[Parameters, Return]):
         """
         parser = argparse.ArgumentParser(description=self.description or self.name)
 
-        for name, field in self.input.model_fields.items():
+        if not self.input_model:
+            return parser
+
+        for name, field in self.input_model.model_fields.items():
             # Convert field type to appropriate Python type
             field_type = field.annotation
             if hasattr(field_type, "__origin__") and field_type.__origin__ is Annotated:  # type: ignore
@@ -316,13 +397,13 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
 def input_and_output_types(
     func: Callable, docstring: Docstring, *, input_model: type[BaseModel] | None = None
-) -> tuple[type[BaseModel], type[BaseModel]]:
+) -> tuple[type[BaseModel] | None, type[BaseModel]]:
     signature = inspect.signature(func)
     input_types = get_type_hints(func)
     output_type = input_types.pop("return", None)
 
     if input_model is not None:
-        input = create_model(
+        input_type: type[BaseModel] | None = create_model(
             input_model.__name__,
             __base__=input_model,
             __module__=input_model.__module__,
@@ -353,11 +434,16 @@ def input_and_output_types(
                     default.description = param_doc.description
 
             input_field_definitions[name] = (parameter.annotation, default)  # type: ignore
-        input = create_model(
-            "Input",
-            **input_field_definitions,
-            __module__=func.__module__,
-            __config__=ConfigDict(extra="forbid"),
+
+        input_type = (
+            create_model(
+                "Input",
+                **input_field_definitions,
+                __module__=func.__module__,
+                __config__=ConfigDict(extra="forbid"),
+            )
+            if input_field_definitions
+            else None
         )
 
     if output_type and isinstance(output_type, type) and issubclass(output_type, BaseModel):
@@ -384,7 +470,7 @@ def input_and_output_types(
 
         output = Output
 
-    return input, output
+    return input_type, output
 
 
 def program(
@@ -454,16 +540,9 @@ def program(
         # Check if the function expects a NovaProgramContext or a ctx parameter
         expects_nova_context = any(_param_is_ctx(param) for param in user_parameters)
 
-        ctx_index = next((idx for idx, p in enumerate(user_parameters) if _param_is_ctx(p)), None)
-        inputs_index = next(
-            (idx for idx, p in enumerate(user_parameters) if _param_is_inputs(p)), None
-        )
-        ctx_param = user_parameters[ctx_index] if ctx_index is not None else None
-        inputs_param = user_parameters[inputs_index] if inputs_index is not None else None
-
         async def async_wrapper(
             ctx: NovaProgramContext,
-            inputs: BaseModel,
+            inputs: BaseModel | None,
             *args: Parameters.args,
             **kwargs: Parameters.kwargs,
         ) -> Return:
@@ -479,20 +558,10 @@ def program(
                     # This will be done via a hook in the Nova context manager
                     pass
 
-                # Execute the wrapped function
-                if expects_nova_context:
-                    call_kwargs: dict[str, Any] = {}
-                    if ctx_param is not None:
-                        call_kwargs[ctx_param.name] = ctx
-                    if inputs_param is not None:
-                        call_kwargs[inputs_param.name] = inputs
-
-                    if call_kwargs:
-                        result = await original_wrapped(**call_kwargs)
-                    else:
-                        result = await original_wrapped(ctx)
-                else:
-                    result = await original_wrapped(**inputs.model_dump())
+                # Execute the wrapped function using declared signature
+                result = await program_obj._invoke_declared_signature(
+                    inputs=inputs, ctx=ctx, extra_kwargs=kwargs
+                )
                 return result
             finally:
                 # Clean up controllers after execution
