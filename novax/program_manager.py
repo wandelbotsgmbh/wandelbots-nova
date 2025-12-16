@@ -68,7 +68,7 @@ class ProgramManager:
             preconditions=program.preconditions.model_dump(mode="json")
             if program.preconditions
             else None,
-            input_schema=program.input_schema,
+            input_schema=program.input_json_schema,
         )
 
         # Store program details and function separately

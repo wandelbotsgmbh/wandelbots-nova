@@ -1,8 +1,8 @@
 import pytest
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import Field, ValidationError
 
 import nova
-from nova.program.function import NovaProgramContext, ProgramPreconditions
+from nova.program.function import ProgramContext, ProgramPreconditions
 
 
 class _FakeApiClient:
@@ -21,82 +21,82 @@ class FakeNova:
 
 
 @pytest.mark.asyncio
-async def test_inputs_accessible_via_ctx_inputs():
-    class InputModel(BaseModel):
-        count: int = Field(..., ge=1)
-
+async def test_ctx_first_and_implicit_on_call():
     @nova.program(
         name="sample_inputs",
         preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
-        input_model=InputModel,
     )
-    async def sample(inputs: InputModel, ctx: NovaProgramContext):
-        return inputs.count
+    async def sample(ctx, count: int, repeat: bool = False):
+        # ctx should always be injected and available
+        assert isinstance(ctx, ProgramContext)
+        return count if not repeat else count * 2
 
-    result = await sample(count=3, nova=FakeNova())
-    assert result == 3
+    # ctx is optional at call-site, similar to 'self'
+    assert await sample(count=2) == 2
+    assert await sample(count=2, repeat=True) == 4
+
+    # ctx can be overridden for tests via nova=...
+    assert await sample(count=3, nova=FakeNova()) == 3
 
 
 @pytest.mark.asyncio
-async def test_inputs_reject_extra_fields():
-    class SimpleInput(BaseModel):
-        value: int = Field(..., ge=0)
+async def test_missing_ctx_parameter_raises():
+    with pytest.raises(TypeError):
 
-    @nova.program(
-        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
-        input_model=SimpleInput,
-    )
-    async def only_value(inputs: SimpleInput, ctx: NovaProgramContext):
-        return inputs.value
+        @nova.program(
+            name="no_ctx",
+            preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+        )
+        async def no_ctx(count: int):  # type: ignore[unused-ignore]
+            return count
+
+
+@pytest.mark.asyncio
+async def test_extra_fields_rejected_by_input_model():
+    @nova.program(preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False))
+    async def only_value(ctx, value: int = Field(..., ge=0)):
+        assert isinstance(ctx, ProgramContext)
+        return value
 
     with pytest.raises(ValidationError):
         await only_value(value=1, extra="nope", nova=FakeNova())
 
 
 @pytest.mark.asyncio
-async def test_inputs_accepts_basemodel_instance():
-    class Pair(BaseModel):
-        left: int
-        right: int
-
-    pair_instance = Pair(left=2, right=5)
-
-    @nova.program(
-        name="pair_sum",
-        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
-        input_model=Pair,
-    )
-    async def pair_sum(inputs: Pair, ctx: NovaProgramContext):
-        return inputs.left + inputs.right
-
-    result = await pair_sum(pair_instance, nova=FakeNova())
-    assert result == 7
-
-
-@pytest.mark.asyncio
-async def test_ctx_only_signature_injected():
+async def test_ctx_only_signature_allowed():
     @nova.program(
         name="ctx_only",
         preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
     )
-    async def ctx_only(ctx: NovaProgramContext):
+    async def ctx_only(ctx: ProgramContext):
         return ctx.nova is not None
 
     assert await ctx_only(nova=FakeNova()) is True
 
 
 @pytest.mark.asyncio
-async def test_inputs_and_ctx_keyword_only_order():
-    class InputModel(BaseModel):
-        value: int
-
+async def test_no_extra_kwargs_when_no_inputs():
     @nova.program(
-        name="kw_only_ctx",
+        name="ctx_only_no_inputs",
         preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
-        input_model=InputModel,
     )
-    async def kw_only_ctx(inputs: InputModel, *, ctx: NovaProgramContext | None = None):
-        assert ctx is not None
-        return inputs.value + 1
+    async def ctx_only_no_inputs(ctx):
+        return "ok"
 
-    assert await kw_only_ctx(value=2, nova=FakeNova()) == 3
+    assert await ctx_only_no_inputs(nova=FakeNova()) == "ok"
+
+    with pytest.raises(TypeError):
+        await ctx_only_no_inputs(nova=FakeNova(), unexpected=1)
+
+
+@pytest.mark.asyncio
+async def test_positional_args_not_allowed():
+    @nova.program(
+        name="positional_not_allowed",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+    )
+    async def positional_not_allowed(ctx, value: int):
+        return value
+
+    with pytest.raises(TypeError):
+        await positional_not_allowed(1)

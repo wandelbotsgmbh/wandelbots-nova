@@ -548,7 +548,7 @@ class PythonProgramRunner(ProgramRunner):
         self.parameters = parameters
 
     async def _run(self, execution_context: ExecutionContext) -> Any:
-        return await self.program.invoke(self.parameters or {}, nova=self._nova)
+        return await self.program(**(self.parameters or {}))
 
 
 def _log_future_result(future: Future):

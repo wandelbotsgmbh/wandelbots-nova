@@ -17,24 +17,14 @@ Key robotics concepts:
 
 import asyncio
 
-from icecream import ic
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 import nova
 from nova import api, run_program
 from nova.actions import cartesian_ptp, circular, joint_ptp, linear
 from nova.cell import virtual_controller
 from nova.events import Cycle
-from nova.program import NovaProgramContext, ProgramPreconditions
 from nova.types import MotionSettings, Pose
-
-
-class StartHereInputs(BaseModel):
-    """Inputs for the start_here example."""
-
-    count: int = Field(
-        default=1, ge=1, le=10, description="The number of times to repeat the movement"
-    )
 
 
 # Configure the robot program
@@ -42,7 +32,7 @@ class StartHereInputs(BaseModel):
     id="start_here",  # Unique identifier of the program. If not provided, the function name will be used.
     name="Start Here",  # Readable name of the program
     # viewer=nova.viewers.Rerun(),  # add this line for a 3D visualization
-    preconditions=ProgramPreconditions(
+    preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name="kuka-kr16-r2010",
@@ -52,13 +42,15 @@ class StartHereInputs(BaseModel):
         ],
         cleanup_controllers=False,
     ),
-    input_model=StartHereInputs,
 )
-async def start(inputs: StartHereInputs, ctx: NovaProgramContext):
+async def start(
+    ctx: nova.ProgramContext,
+    count: int = Field(
+        default=1, ge=1, le=10, description="The number of times to repeat the movement"
+    ),
+):
     """Main robot control function."""
-    ic(inputs)
-    nova = ctx.nova
-    cell = nova.cell()
+    cell = ctx.nova.cell()
     controller = await cell.controller("kuka-kr16-r2010")
     cycle = Cycle(cell=cell, extra={"app": "visual-studio-code", "program": "start_here"})
 
@@ -102,8 +94,8 @@ async def start(inputs: StartHereInputs, ctx: NovaProgramContext):
         # OPTIONAL: Execute the planned movements
         # You can comment out the lines below to only see the plan in Rerun
         print("Executing planned movements...")
-        for i in range(inputs.count):
-            print(f"Executing movement {i + 1} of {inputs.count}")
+        for i in range(count):
+            print(f"Executing movement {i + 1} of {count}")
             await motion_group.execute(joint_trajectory, tcp, actions=actions)
             print(f"Movement {i + 1} completed")
             await asyncio.sleep(1)

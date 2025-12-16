@@ -4,8 +4,6 @@ import nova
 from nova import api
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
-from nova.core.nova import Nova
-from nova.program import ProgramPreconditions
 from nova.types import Pose
 
 TOOL_ASSET = "nova_rerun_bridge/example_data/tool.stl"
@@ -20,7 +18,7 @@ robot_tcp_data = api.models.RobotTcpData(
 @nova.program(
     name="visualize_tool",
     viewer=nova.viewers.Rerun(application_id="visualize-tool", tcp_tools={"vacuum": TOOL_ASSET}),
-    preconditions=ProgramPreconditions(
+    preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name="ur10",
@@ -31,44 +29,43 @@ robot_tcp_data = api.models.RobotTcpData(
         cleanup_controllers=True,
     ),
 )
-async def test():
-    async with Nova() as nova:
-        cell = nova.cell()
-        controller = await cell.controller("ur10")
+async def test(ctx: nova.ProgramContext):
+    cell = ctx.nova.cell()
+    controller = await cell.controller("ur10")
 
-        # Connect to the controller and activate motion groups
-        motion_group_idx = 0
-        async with controller[motion_group_idx] as motion_group:
-            # Define home
-            home_joints = await motion_group.joints()
+    # Connect to the controller and activate motion groups
+    motion_group_idx = 0
+    async with controller[motion_group_idx] as motion_group:
+        # Define home
+        home_joints = await motion_group.joints()
 
-            # Define new TCP on virtual robot
-            tcp_id = robot_tcp_data.name
-            await nova.api.virtual_robot_setup_api.add_virtual_controller_tcp(
-                cell=cell.cell_id,
-                controller=controller.id,
-                motion_group=motion_group.id,
-                tcp=tcp_id,
-                robot_tcp_data=robot_tcp_data,
-            )
+        # Define new TCP on virtual robot
+        tcp_id = robot_tcp_data.name
+        await ctx.nova.api.virtual_robot_setup_api.add_virtual_controller_tcp(
+            cell=cell.id,
+            controller=controller.id,
+            motion_group=motion_group.id,
+            tcp=tcp_id,
+            robot_tcp_data=robot_tcp_data,
+        )
 
-            tcps = await motion_group.tcps()
-            print(tcps)
+        tcps = await motion_group.tcps()
+        print(tcps)
 
-            # Wait for tcp configuration to be applied
-            while True:
-                try:
-                    await motion_group.tcp_pose(tcp_id)
-                    break
-                except api.exceptions.NotFoundException:
-                    await asyncio.sleep(0.5)
+        # Wait for tcp configuration to be applied
+        while True:
+            try:
+                await motion_group.tcp_pose(tcp_id)
+                break
+            except api.exceptions.NotFoundException:
+                await asyncio.sleep(0.5)
 
-            # Get current TCP pose and offset it slightly along the x-axis
-            current_pose = await motion_group.tcp_pose(tcp_id)
-            target_pose = current_pose @ Pose((0, 0, 1, 0, 0, 0))
+        # Get current TCP pose and offset it slightly along the x-axis
+        current_pose = await motion_group.tcp_pose(tcp_id)
+        target_pose = current_pose @ Pose((0, 0, 1, 0, 0, 0))
 
-            actions = [joint_ptp(home_joints), cartesian_ptp(target_pose), joint_ptp(home_joints)]
-            await motion_group.plan(actions, tcp_id)
+        actions = [joint_ptp(home_joints), cartesian_ptp(target_pose), joint_ptp(home_joints)]
+        await motion_group.plan(actions, tcp_id)
 
 
 if __name__ == "__main__":

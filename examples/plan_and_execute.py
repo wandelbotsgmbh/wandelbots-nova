@@ -12,14 +12,13 @@ import nova
 from nova import api, run_program, viewers
 from nova.actions import TrajectoryBuilder, cartesian_ptp, io_write, joint_ptp
 from nova.cell import virtual_controller
-from nova.program import NovaProgramContext, ProgramPreconditions
 from nova.types import MotionSettings, Pose
 
 
 @nova.program(
     name="Plan and Execute",
     viewer=viewers.Rerun(),
-    preconditions=ProgramPreconditions(
+    preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name="ur10e",
@@ -30,7 +29,7 @@ from nova.types import MotionSettings, Pose
         cleanup_controllers=False,
     ),
 )
-async def plan_and_execute(*, ctx: NovaProgramContext):
+async def plan_and_execute(ctx: nova.ProgramContext):
     nova = ctx.nova
     cell = nova.cell()
     controller = await cell.controller("ur10e")

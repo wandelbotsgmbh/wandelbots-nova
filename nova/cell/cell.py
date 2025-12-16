@@ -38,8 +38,18 @@ class Cell:
         self._nats_client = nats_client
 
     @property
+    def id(self) -> str:
+        """Returns unique identifier for this cell.
+
+        Returns:
+            str: The cell ID.
+        """
+        return self._cell_id
+
+    @property
     def cell_id(self) -> str:
         """
+        [Deprecated] Use .id instead.
         Returns unique identifier for this cell.
         Returns:
             str: The cell ID.

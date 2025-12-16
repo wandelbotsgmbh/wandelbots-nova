@@ -111,7 +111,7 @@ def assert_program_definition_matches(
     assert expected_program.program_id == found_program.program
     assert expected_program.name == found_program.name
     assert expected_program.description == found_program.description
-    assert expected_program.input_schema == found_program.input_schema
+    assert expected_program.input_json_schema == found_program.input_schema
     assert (
         expected_program.preconditions.model_dump(mode="json")
         if expected_program.preconditions
