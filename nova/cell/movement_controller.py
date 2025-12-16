@@ -407,6 +407,77 @@ class OperationResult:
     error: Optional[Exception] = None
 
 
+class OperationHandler:
+    """Encapsulates the bookkeeping for a single movement operation."""
+
+    def __init__(self):
+        self._future: Optional[asyncio.Future[OperationResult]] = None
+        self._operation_type: Optional[OperationType] = None
+        self._target_location: Optional[float] = None
+        self._start_location: Optional[float] = None
+        self._interrupt_requested = False
+
+    def start(
+        self,
+        operation_type: OperationType,
+        *,
+        start_location: float,
+        target_location: Optional[float] = None,
+    ) -> asyncio.Future[OperationResult]:
+        if self._future and not self._future.done():
+            self._future.cancel()
+
+        self._future = asyncio.Future()
+        self._operation_type = operation_type
+        self._target_location = target_location
+        self._start_location = start_location
+        self._interrupt_requested = False
+        return self._future
+
+    def complete(
+        self,
+        *,
+        final_location: float,
+        overshoot: Optional[float],
+        error: Optional[Exception] = None,
+    ) -> None:
+        if not self._future or self._future.done():
+            return
+
+        assert self._operation_type is not None
+        result = OperationResult(
+            operation_type=self._operation_type,
+            target_location=self._target_location,
+            start_location=self._start_location,
+            final_location=final_location,
+            overshoot=overshoot,
+            error=error,
+        )
+        if error:
+            self._future.set_exception(error)
+        else:
+            self._future.set_result(result)
+        self._reset()
+
+    def in_progress(self) -> bool:
+        return self._future is not None and not self._future.done()
+
+    @property
+    def current_operation_type(self) -> Optional[OperationType]:
+        return self._operation_type
+
+    @property
+    def current_future(self) -> Optional[asyncio.Future[OperationResult]]:
+        return self._future
+
+    def _reset(self):
+        self._future = None
+        self._operation_type = None
+        self._target_location = None
+        self._start_location = None
+        self._interrupt_requested = False
+
+
 class MovementOption(str, Enum):
     CAN_MOVE_FORWARD = "CAN_MOVE_FORWARD"
     CAN_MOVE_BACKWARD = "CAN_MOVE_BACKWARD"
@@ -455,11 +526,7 @@ class TrajectoryCursor:
         self._target_location = self.next_action_index + 1.0
         self._detach_on_standstill = detach_on_standstill
 
-        # TODO separate out operation handling into its own class
-        self._current_operation_future: Optional[asyncio.Future[OperationResult]] = None
-        self._current_operation_type: Optional[OperationType] = None
-        self._current_target_location: Optional[float] = None
-        self._current_start_location: Optional[float] = None
+        self._operation_handler = OperationHandler()
 
         self._initialize_task = asyncio.create_task(self.ainitialize())
 
@@ -627,9 +694,9 @@ class TrajectoryCursor:
         if not self._is_operation_in_progress():
             return
 
-        self._start_operation(OperationType.PAUSE)
+        future = self._start_operation(OperationType.PAUSE)
         self._command_queue.put_nowait(api.models.PauseMovementRequest())
-        return self._current_operation_future or None
+        return future
 
     def detach(self):
         # TODO this does not stop the movement atm, it just stops controlling movement
@@ -643,46 +710,22 @@ class TrajectoryCursor:
         self, operation_type: OperationType, target_location: Optional[float] = None
     ) -> asyncio.Future[OperationResult]:
         """Start a new operation, returning a Future that will be resolved when the operation completes."""
-        if self._current_operation_future and not self._current_operation_future.done():
-            # Cancel the current operation
-            self._current_operation_future.cancel()
-
-        self._current_operation_future = asyncio.Future()
-        self._current_operation_type = operation_type
-        self._current_target_location = target_location
-        self._current_start_location = self._current_location
-        self._interrupt_requested = False
-
-        return self._current_operation_future
+        return self._operation_handler.start(
+            operation_type,
+            start_location=self._current_location,
+            target_location=target_location,
+        )
 
     def _complete_operation(self, error: Optional[Exception] = None):
         """Complete the current operation with the given status."""
-        if not self._current_operation_future or self._current_operation_future.done():
-            return
-
-        assert self._current_operation_type is not None
-
-        result = OperationResult(
-            operation_type=self._current_operation_type,
-            # status=status,
-            target_location=self._current_target_location,
-            start_location=self._current_start_location,
+        self._operation_handler.complete(
             final_location=self._current_location,
             overshoot=self._overshoot,
             error=error,
         )
 
-        if error:
-            self._current_operation_future.set_exception(error)
-        else:
-            self._current_operation_future.set_result(result)
-        # reset current operation state so we know there is no current operation anymore
-        self._current_operation_future = None
-
     def _is_operation_in_progress(self) -> bool:
-        return (
-            self._current_operation_future is not None and not self._current_operation_future.done()
-        )
+        return self._operation_handler.in_progress()
 
     async def cntrl(
         self, response_stream: ExecuteTrajectoryResponseStream
@@ -919,7 +962,7 @@ class TrajectoryCursor:
 
     async def _motion_event_updater(self, interval=0.2):
         while True:
-            match self._current_operation_type:
+            match self._operation_handler.current_operation_type:
                 case OperationType.FORWARD | OperationType.FORWARD_TO:
                     target_action = self.actions[self.next_action_index]
                     await motion_started.send_async(
