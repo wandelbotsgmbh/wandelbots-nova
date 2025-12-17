@@ -227,7 +227,7 @@ class Cell:
         """
         nc = self._nats_client
         if nc is None:
-            raise ValueError("NATS client is not connected")
+            raise ValueError(f"NATS client is not connected for: {self._nats_client.connected_url}")
 
         cell_status_subject = f"nova.v2.cells.{cell}.status"
         controller_pod_ready = asyncio.Event()

@@ -141,7 +141,7 @@ class Cycle:
             raise RuntimeError("NATS client is not available in the cell")
 
         if not self._cell.nats.is_connected:
-            raise RuntimeError("NATS client is not connected")
+            raise RuntimeError(f"NATS client is not connected for: {self._cell.nats.connected_url}")
 
         try:
             await self._cell.nats.publish(
