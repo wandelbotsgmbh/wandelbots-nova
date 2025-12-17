@@ -31,7 +31,7 @@ jobs:
           echo "Renaming wheel to: $NAME"
           mv "$WHEEL_ORIG" "dist/$NAME"
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: wheel-${{ steps.meta.outputs.branch }}
           path: dist/*.whl

@@ -135,7 +135,7 @@ jobs:
             -o "diagnose-${{ github.run_id }}.zip"
       - name: Upload diagnose artifact
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: diagnose-package
           path: diagnose-${{ github.run_id }}.zip
