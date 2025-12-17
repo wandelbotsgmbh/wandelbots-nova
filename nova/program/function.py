@@ -45,7 +45,10 @@ class ProgramContext:
     def __init__(self, nova: Nova, program_id: str | None = None):
         self._nova = nova
         self._program_id = program_id
-        self._cell = nova.cell()
+        # Not all Nova stand-ins (e.g., test fakes) implement `cell()`. Cache the cell
+        # when available; otherwise leave as None.
+        cell_fn = getattr(nova, "cell", None)
+        self._cell = cell_fn() if callable(cell_fn) else None
 
     @property
     def nova(self) -> Nova:
@@ -54,7 +57,7 @@ class ProgramContext:
 
     @property
     def cell(self):
-        """Returns the default cell for the program."""
+        """Returns the default cell for the program, if available."""
         return self._cell
 
     @property
@@ -63,8 +66,13 @@ class ProgramContext:
         return self._program_id
 
     def cycle(self, extra: dict[str, Any] | None = None):
-        """Create a Cycle with program_id pre-populated in the extra data."""
+        """Create a Cycle with program pre-populated in the extra data."""
         from nova.events import Cycle
+
+        if self._cell is None:
+            raise AttributeError(
+                "ProgramContext.cell is not available; the provided Nova instance does not expose cell()."
+            )
 
         merged_extra = {"program": self.program_id} if self.program_id else {}
         if extra:
@@ -508,14 +516,14 @@ def program(
 
     Examples:
         >>> import nova
-        >>> @program
-        ... async def simple_program():
+        >>> @nova.program
+        ... async def simple_program(ctx: nova.ProgramContext):
         ...     print("Hello World!")
         >>> simple_program.program_id
         'simple_program'
 
-        >>> @program(id="my_program", name="My Program")
-        ... async def program_with_options():
+        >>> @nova.program(id="my_program", name="My Program")
+        ... async def program_with_options(ctx: nova.ProgramContext):
         ...     print("Hello from My Program!")
         >>> program_with_options.program_id
         'my_program'

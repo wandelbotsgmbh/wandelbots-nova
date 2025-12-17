@@ -17,7 +17,7 @@ from tests.novax.api.test_program_run import (
 
 
 @nova.program(name="simple_program")
-async def simple_program(number_of_steps: int = 30):
+async def simple_program(ctx: nova.ProgramContext, number_of_steps: int = 30):
     print("Hello World!")
 
     for i in range(number_of_steps):

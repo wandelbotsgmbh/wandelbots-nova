@@ -28,7 +28,7 @@ class WandelscriptProgramRunner(ProgramRunner):
         default_tcp: str | None = None,
         foreign_functions: dict[str, ForeignFunction] | None = None,
     ):
-        async def wandelscript_wrapper():
+        async def wandelscript_wrapper(ctx: nova.ProgramContext):
             print(f"Running wandelscript program {program_id}...")
 
         program = nova.program(id=program_id)(wandelscript_wrapper)
