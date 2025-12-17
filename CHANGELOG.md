@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.0.2 (2025-12-17)
+
+### Chores
+
+- **deps**: Bump actions/upload-artifact from 5 to 6 (#354)
+  ([#354](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/354),
+  [`0f29f97`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0f29f97cca06f7c1c6ae87ba59056b4d1f4759e6))
+
+
 ## v4.0.1 (2025-12-15)
 
 ### Chores
