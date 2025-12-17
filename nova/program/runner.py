@@ -106,7 +106,7 @@ class ProgramRunner(ABC):
         self,
         program: Program,
         *,
-        parameters: dict[str, Any],
+        inputs: dict[str, Any],
         robot_cell_override: RobotCell | None = None,
         cell_id: str | None = None,
         app_name: str | None = None,
@@ -115,7 +115,7 @@ class ProgramRunner(ABC):
         """
         Args:
             program_id (str): The unique identifier of the program.
-            parameters (dict[str, Any]): The parameters that are passed to the program.
+            inputs (dict[str, Any]): The inputs that are passed to the program.
             robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Should only be used for testing purposes. When a robot cell is provided, no Nova instance is created. Defaults to None.
             cell_id (str | None, optional): The cell ID to use for the program. Defaults to None.
             app_name (str | None, optional): The app name to discover the program. Will be automatically set when executed via NOVAx or API. Does not need to be set by the user. Defaults to None.
@@ -126,7 +126,7 @@ class ProgramRunner(ABC):
         self._run_id = str(uuid.uuid4())
         self._program_id = program_id
         self._preconditions = program.preconditions
-        self._parameters = parameters
+        self._inputs = inputs
         self._robot_cell_override = robot_cell_override
         self._cell_id = cell_id or CELL_NAME
         self._app_name = app_name
@@ -142,7 +142,7 @@ class ProgramRunner(ABC):
             traceback=None,
             start_time=None,
             end_time=None,
-            input_data=parameters,
+            input_data=inputs,
             output_data={},
         )
         self._thread: threading.Thread | None = None
@@ -531,24 +531,23 @@ class PythonProgramRunner(ProgramRunner):
     def __init__(
         self,
         program: Program,
-        parameters: Optional[dict[str, Any]] = None,
+        inputs: Optional[dict[str, Any]] = None,
         robot_cell_override: RobotCell | None = None,
         nova_config: NovaConfig | None = None,
         app_name: str | None = None,
     ):
         super().__init__(
             program,
-            parameters=parameters or {},
+            inputs=inputs or {},
             robot_cell_override=robot_cell_override,
             nova_config=nova_config,
             app_name=app_name,
         )
         # TODO: is this still required?
         self.program = program
-        self.parameters = parameters
 
     async def _run(self, execution_context: ExecutionContext) -> Any:
-        return await self.program(**(self.parameters or {}))
+        return await self.program(**(self._inputs or {}))
 
 
 def _log_future_result(future: Future):
@@ -596,7 +595,7 @@ def _report_state_change_to_event_loop(
 def run_program(
     program: Program,
     *,
-    parameters: dict[str, Any] | None = None,
+    inputs: dict[str, Any] | None = None,
     sync: bool = True,
     robot_cell_override: RobotCell | None = None,
     on_state_change: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
@@ -618,7 +617,7 @@ def run_program(
     """
     runner = PythonProgramRunner(
         program,
-        parameters=parameters,
+        inputs=inputs,
         robot_cell_override=robot_cell_override,
         nova_config=nova_config,
         app_name=app_name,

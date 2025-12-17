@@ -18,11 +18,11 @@ class TestProgramRunner(ProgramRunner):
     def __init__(
         self,
         program: Program,
-        parameters: dict,
+        inputs: dict,
         should_fail: bool = False,
         should_not_plannable: bool = False,
     ):
-        super().__init__(program, parameters=parameters)
+        super().__init__(program, inputs=inputs)
         self._should_fail = should_fail
         self._should_not_plannable = should_not_plannable
 
@@ -36,7 +36,7 @@ class TestProgramRunner(ProgramRunner):
 
 def test_program_runner_initialization():
     # Test basic initialization
-    runner = TestProgramRunner(hello_world_program, parameters={})
+    runner = TestProgramRunner(hello_world_program, inputs={})
 
     assert runner.run_id is not None
     assert runner.state == api.models.ProgramRunState.PREPARING
@@ -45,7 +45,7 @@ def test_program_runner_initialization():
 
 @pytest.mark.integration
 def test_program_runner_state_transitions() -> None:
-    runner = TestProgramRunner(hello_world_program, parameters={})
+    runner = TestProgramRunner(hello_world_program, inputs={})
 
     # Test state transitions
     assert runner.state == api.models.ProgramRunState.PREPARING
@@ -55,7 +55,7 @@ def test_program_runner_state_transitions() -> None:
 
 @pytest.mark.integration
 def test_program_runner_stop():
-    runner = TestProgramRunner(hello_world_program, parameters={})
+    runner = TestProgramRunner(hello_world_program, inputs={})
 
     # Test stopping before start
     with pytest.raises(RuntimeError):
@@ -69,7 +69,7 @@ def test_program_runner_stop():
 
 @pytest.mark.integration
 def test_program_runner_double_start():
-    runner = TestProgramRunner(hello_world_program, parameters={})
+    runner = TestProgramRunner(hello_world_program, inputs={})
 
     # Test starting twice
     runner.start(sync=True)
@@ -81,7 +81,7 @@ def test_program_runner_double_start():
 def test_program_runner_error_handling():
     # Test general exception handling
     with pytest.raises(RuntimeError):
-        runner = TestProgramRunner(hello_world_program, parameters={}, should_fail=True)
+        runner = TestProgramRunner(hello_world_program, inputs={}, should_fail=True)
         runner.start(sync=True)
         assert runner.state == api.models.ProgramRunState.FAILED
         assert runner.program_run.error is not None
@@ -89,7 +89,7 @@ def test_program_runner_error_handling():
 
     # Test NotPlannableError handling
     with pytest.raises(NotPlannableError):
-        runner = TestProgramRunner(hello_world_program, parameters={}, should_not_plannable=True)
+        runner = TestProgramRunner(hello_world_program, inputs={}, should_not_plannable=True)
         runner.start(sync=True)
         assert runner.state == api.models.ProgramRunState.FAILED
         assert "NotPlannableError" in runner.program_run.error
@@ -97,7 +97,7 @@ def test_program_runner_error_handling():
 
 @pytest.mark.integration
 def test_program_runner_logs_and_stdout():
-    runner = TestProgramRunner(hello_world_program, parameters={})
+    runner = TestProgramRunner(hello_world_program, inputs={})
 
     # Test initial state
     assert runner.program_run.logs is None
