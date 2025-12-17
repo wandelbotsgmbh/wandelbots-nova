@@ -23,7 +23,6 @@ import nova
 from nova import api, run_program
 from nova.actions import cartesian_ptp, circular, joint_ptp, linear
 from nova.cell import virtual_controller
-from nova.events import Cycle
 from nova.types import MotionSettings, Pose
 
 
@@ -50,9 +49,9 @@ async def start(
     ),
 ):
     """Main robot control function."""
-    cell = ctx.nova.cell()
+    cell = ctx.cell
     controller = await cell.controller("kuka-kr16-r2010")
-    cycle = Cycle(cell=cell, extra={"app": "visual-studio-code", "program": "start_here"})
+    cycle = ctx.cycle(extra={"app": "visual-studio-code"})
 
     slow = MotionSettings(tcp_velocity_limit=50)
 

@@ -66,7 +66,7 @@ class ProgramContext:
         """Create a Cycle with program_id pre-populated in the extra data."""
         from nova.events import Cycle
 
-        merged_extra = {"program_id": self.program_id} if self.program_id else {}
+        merged_extra = {"program": self.program_id} if self.program_id else {}
         if extra:
             merged_extra.update(extra)
         return Cycle(self.cell, extra=merged_extra)
