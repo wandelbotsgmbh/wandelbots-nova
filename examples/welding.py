@@ -198,7 +198,7 @@ async def test(ctx: nova.ProgramContext):
     )
 
     # Log to rerun
-    await log_mesh_to_rerun(scene)
+    await log_mesh_to_rerun(scene)  # type: ignore
 
     cell = ctx.nova.cell()
     controller = await cell.controller("ur10")
@@ -217,8 +217,8 @@ async def test(ctx: nova.ProgramContext):
         ),
     )
 
-    await nova.api.virtual_controller_api.add_virtual_controller_tcp(
-        cell="cell",
+    await ctx.nova.api.virtual_controller_api.add_virtual_controller_tcp(
+        cell=cell.id,
         controller="ur10",
         motion_group=f"0@{controller.id}",
         tcp=tcp_name,
@@ -238,19 +238,21 @@ async def test(ctx: nova.ProgramContext):
 
         # Add mesh to collision world
         mesh_collider = await add_mesh_to_collision_world(
-            nova._api_client.store_collision_components_api, "cell", scene
+            collision_api=ctx.nova.api.store_collision_components_api,
+            cell_name=cell.id,
+            scene=scene,  # type: ignore
         )
 
         # Build collision world with welding part included
         collision_setup_id = await build_collision_world(
-            nova,
-            "cell",
+            ctx.nova,
+            cell.id,
             motion_group_description,
             additional_colliders={"welding_part": mesh_collider},
         )
-        setup_api = nova.api.store_collision_setups_api
+        setup_api = ctx.nova.api.store_collision_setups_api
         collision_setup = await setup_api.get_stored_collision_setup(
-            cell="cell", setup=collision_setup_id
+            cell=cell.id, setup=collision_setup_id
         )
         # Calculate seam positions based on mesh pose
         seam1_start, seam1_end, seam2_start, seam2_end = await calculate_seam_poses(mesh_pose)

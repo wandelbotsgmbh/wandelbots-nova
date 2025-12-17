@@ -63,6 +63,7 @@ async def multi_motion_group_trajectory(ctx: nova.ProgramContext):
     start_on_io = api.models.StartOnIO(
         io=api.models.IOValue(api.models.IOBooleanValue(io=SYNC_IO_ID, value=True)),
         comparator=api.models.Comparator.COMPARATOR_EQUALS,
+        io_origin=api.models.IOOrigin.CONTROLLER,
     )
     robot_trajectory_exec = asyncio.create_task(
         robot.execute(robot_path, ROBOT_TCP_ID, [], start_on_io=start_on_io)

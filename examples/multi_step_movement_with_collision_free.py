@@ -13,7 +13,7 @@ from nova import run_program
 from nova.actions import cartesian_ptp, io_write, joint_ptp
 from nova.api import models
 from nova.cell import virtual_controller
-from nova.types import MotionSettings, Pose
+from nova.types import Pose
 
 
 @nova.program(
@@ -55,11 +55,6 @@ async def multi_step_movement_with_collision_free(ctx: nova.ProgramContext):
             cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
             joint_ptp(home_joints),
         ]
-
-    # you can update the settings of the action
-    for action in actions:
-        if action.is_motion():
-            action.settings = MotionSettings(tcp_velocity_limit=200)
 
     joint_trajectory = await motion_group.plan(
         actions, tcp, start_joint_position=(-0.0429, -1.8781, 1.8464, -2.1366, -1.4861, 1.0996)

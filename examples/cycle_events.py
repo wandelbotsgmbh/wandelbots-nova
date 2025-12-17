@@ -18,7 +18,7 @@ async def cycle_events(ctx: nova.ProgramContext):
     # If the context manager is exited with an exception, it will generate a cycle_failed event.
     async with Cycle(cell):
         await asyncio.sleep(0.5)
-        raise Exception("Something went wrong")
+        # raise Exception("Something went wrong")
 
     # Control the cycle manually
     cycle = Cycle(cell)

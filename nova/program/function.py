@@ -9,9 +9,11 @@ from typing import (
     Any,
     Coroutine,
     Generic,
+    Literal,
     ParamSpec,
     TypeVar,
     Union,
+    cast,
     get_args,
     get_origin,
     get_type_hints,
@@ -101,7 +103,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
         input_model_, output_type = input_and_output_types(value, docstring)
 
-        program = cls(
+        program: "Program[Parameters, Return]" = cls(
             program_id=program_id,
             name=None,
             description=description,
@@ -109,7 +111,9 @@ class Program(BaseModel, Generic[Parameters, Return]):
             output_model=output_type,
         )
 
-        program._impl = value  # original async function
+        # mypy does not recognise that `value` is an async function returning a coroutine,
+        # so we help it with a cast here.
+        program._impl = cast(Callable[..., Coroutine[Any, Any, Return]], value)
 
         return program
 
@@ -121,7 +125,8 @@ class Program(BaseModel, Generic[Parameters, Return]):
             )
 
         ctx = kwargs.pop("ctx", None)
-        nova_override = kwargs.pop("nova", None)
+        nova_override_obj = kwargs.pop("nova", None)
+        nova_override: Nova | None = cast(Nova | None, nova_override_obj)
 
         if ctx is not None and not isinstance(ctx, ProgramContext):
             raise TypeError("ctx must be a nova.ProgramContext instance")
@@ -266,7 +271,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
     @property
     def json_schema(self, title: str | None = None) -> JsonSchemaValue:
-        schemas: list[tuple[type[BaseModel], str]] = []
+        schemas: list[tuple[type[BaseModel], Literal["validation"]]] = []
         if self.input_model:
             schemas.append((self.input_model, "validation"))
         schemas.append((self.output_model, "validation"))
