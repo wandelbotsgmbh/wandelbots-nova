@@ -42,8 +42,34 @@ class ProgramPreconditions(BaseModel):
 class ProgramContext:
     """Context passed into every program execution."""
 
-    def __init__(self, nova: Nova):
-        self.nova = nova
+    def __init__(self, nova: Nova, program_id: str | None = None):
+        self._nova = nova
+        self._program_id = program_id
+        self._cell = nova.cell()
+
+    @property
+    def nova(self) -> Nova:
+        """Returns the Nova instance for the program."""
+        return self._nova
+
+    @property
+    def cell(self):
+        """Returns the default cell for the program."""
+        return self._cell
+
+    @property
+    def program_id(self) -> str | None:
+        """Returns the program ID for the program."""
+        return self._program_id
+
+    def cycle(self, extra: dict[str, Any] | None = None):
+        """Create a Cycle with program_id pre-populated in the extra data."""
+        from nova.events import Cycle
+
+        merged_extra = {"program_id": self.program_id} if self.program_id else {}
+        if extra:
+            merged_extra.update(extra)
+        return Cycle(self.cell, extra=merged_extra)
 
 
 """
@@ -133,9 +159,9 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
         if ctx is None:
             if nova_override is not None:
-                ctx = ProgramContext(nova=nova_override)
+                ctx = ProgramContext(nova=nova_override, program_id=self.program_id)
             else:
-                ctx = ProgramContext(nova=Nova())
+                ctx = ProgramContext(nova=Nova(), program_id=self.program_id)
 
         # Remaining keyword arguments are treated as input parameters for the program.
         input_values: dict[str, Any] = kwargs

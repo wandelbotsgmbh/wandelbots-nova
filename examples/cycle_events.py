@@ -2,26 +2,24 @@ import asyncio
 
 import nova
 from nova import run_program
-from nova.events import Cycle
 
 
 @nova.program()
 async def cycle_events(ctx: nova.ProgramContext):
-    cell = ctx.nova.cell()
     # Track a process cycle in the cell.
     # This will generate events cycle_start on entering and cycle_finish on exiting
     # the context manager.
-    async with Cycle(cell):
+    async with ctx.cycle():
         # Run some process
         await asyncio.sleep(1)
 
     # If the context manager is exited with an exception, it will generate a cycle_failed event.
-    async with Cycle(cell):
+    async with ctx.cycle():
         await asyncio.sleep(0.5)
         # raise Exception("Something went wrong")
 
     # Control the cycle manually
-    cycle = Cycle(cell)
+    cycle = ctx.cycle()
     # start() returns the start time as a datetime
     start_time = await cycle.start()
     print(f"Cycle started at {start_time}")
