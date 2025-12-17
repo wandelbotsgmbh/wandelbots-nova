@@ -8,7 +8,7 @@ from nova.program.runner import ProgramRunner
 
 
 @nova.program()
-async def hello_world_program():
+async def hello_world_program(ctx: nova.ProgramContext):
     print("Hello, world")
 
 
