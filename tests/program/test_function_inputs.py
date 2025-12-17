@@ -19,6 +19,12 @@ class FakeNova:
     def is_connected(self) -> bool:  # pragma: no cover - simple passthrough
         return False
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
 
 @pytest.mark.asyncio
 async def test_ctx_first_and_implicit_on_call():
