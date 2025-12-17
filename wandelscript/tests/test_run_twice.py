@@ -1,7 +1,4 @@
 import sys
-from datetime import datetime
-
-from icecream import ic
 
 from nova import api
 from nova.cell.simulation import SimulatedRobotCell, get_robot_controller
@@ -9,8 +6,6 @@ from wandelscript import run
 from wandelscript.utils.runtime import Tee
 
 robot_cell = SimulatedRobotCell(controller=get_robot_controller())
-
-ic.configureOutput(prefix=f"{datetime.now().time()} | ", includeContext=True)
 
 
 def test_run_code_twice():

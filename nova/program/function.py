@@ -26,6 +26,7 @@ from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
+from nova.cell import Cell
 from nova.exceptions import ControllerCreationFailed
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ class ProgramContext:
         # Not all Nova stand-ins (e.g., test fakes) implement `cell()`. Cache the cell
         # when available; otherwise leave as None.
         cell_fn = getattr(nova, "cell", None)
-        self._cell = cell_fn() if callable(cell_fn) else None
+        self._cell: Cell | None = cell_fn() if callable(cell_fn) else None
 
     @property
     def nova(self) -> Nova:
@@ -77,7 +78,7 @@ class ProgramContext:
         merged_extra = {"program": self.program_id} if self.program_id else {}
         if extra:
             merged_extra.update(extra)
-        return Cycle(self.cell, extra=merged_extra)
+        return Cycle(cell=self.cell, extra=merged_extra)
 
 
 """
@@ -165,11 +166,9 @@ class Program(BaseModel, Generic[Parameters, Return]):
         if ctx is not None and not isinstance(ctx, ProgramContext):
             raise TypeError("ctx must be a nova.ProgramContext instance")
 
+        nova = nova_override or Nova()
         if ctx is None:
-            if nova_override is not None:
-                ctx = ProgramContext(nova=nova_override, program_id=self.program_id)
-            else:
-                ctx = ProgramContext(nova=Nova(), program_id=self.program_id)
+            ctx = ProgramContext(nova=nova, program_id=self.program_id)
 
         # Remaining keyword arguments are treated as input parameters for the program.
         input_values: dict[str, Any] = kwargs
@@ -193,20 +192,21 @@ class Program(BaseModel, Generic[Parameters, Return]):
             }
 
         created_controllers: list[str] = []
-        try:
-            created_controllers = await self._create_controllers()
+        async with nova:
+            try:
+                created_controllers = await self._create_controllers(cell=ctx.cell)
 
-            # Execute the wrapped function with ctx and validated inputs.
-            result = await self._impl(ctx, **validated_kwargs)
-            return result
-        finally:
-            await self._cleanup_controllers(created_controllers)
+                # Execute the wrapped function with ctx and validated inputs.
+                result = await self._impl(ctx, **validated_kwargs)
+                return result
+            finally:
+                await self._cleanup_controllers(cell=ctx.cell, controller_ids=created_controllers)
 
-            # Clean up viewers if configured.
-            if self._viewer is not None:
-                from nova.viewers import _cleanup_active_viewers
+                # Clean up viewers if configured.
+                if self._viewer is not None:
+                    from nova.viewers import _cleanup_active_viewers
 
-                _cleanup_active_viewers()
+                    _cleanup_active_viewers()
 
     def _log(self, level: str, message: str) -> None:
         """Log a message with program prefix."""
@@ -225,52 +225,46 @@ class Program(BaseModel, Generic[Parameters, Return]):
         else:
             logger.info(formatted_message)
 
-    async def _create_controllers(self) -> list[str]:
+    async def _create_controllers(self, cell: Cell) -> list[str]:
         """Create controllers based on controller_configs and return their IDs."""
         if not self.preconditions or not self.preconditions.controllers:
             return []
 
         created_controllers: list[str] = []
-        async with Nova() as nova:
-            cell = nova.cell()
-            controller_config = None
+        controller_config = None
 
-            async def ensure_controller(controller_config: api.models.RobotController):
-                """Ensure a controller is created and return its ID."""
-                controller_name = controller_config.name or "unnamed_controller"
-                self._log("info", f"Creating controller '{controller_name}'")
-                try:
-                    controller = await cell.ensure_controller(controller_config=controller_config)
-                    created_controllers.append(controller.id)
-                    self._log(
-                        "info", f"Created controller '{controller_name}' with ID {controller.id}"
-                    )
-                    return controller.id
-                except Exception as e:
-                    raise ControllerCreationFailed(controller_name, str(e))
-
+        async def ensure_controller(controller_config: api.models.RobotController):
+            """Ensure a controller is created and return its ID."""
+            controller_name = controller_config.name or "unnamed_controller"
+            self._log("info", f"Creating controller '{controller_name}'")
             try:
-                async with asyncio.TaskGroup() as tg:
-                    for controller_config in self.preconditions.controllers:
-                        tg.create_task(ensure_controller(controller_config))
-
+                controller = await cell.ensure_controller(controller_config=controller_config)
+                created_controllers.append(controller.id)
+                self._log("info", f"Created controller '{controller_name}' with ID {controller.id}")
+                return controller.id
             except Exception as e:
-                controller_name = (
-                    controller_config.name if controller_config else "unnamed_controller"
-                )
                 raise ControllerCreationFailed(controller_name, str(e))
 
-            # Setup viewers after controllers are created and available
-            try:
-                from nova.viewers import _setup_active_viewers_after_preconditions
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for controller_config in self.preconditions.controllers:
+                    tg.create_task(ensure_controller(controller_config))
 
-                await _setup_active_viewers_after_preconditions()
-            except ImportError as e:
-                logger.error(f"Could not import viewers: {e}")
+        except Exception as e:
+            controller_name = controller_config.name if controller_config else "unnamed_controller"
+            raise ControllerCreationFailed(controller_name, str(e))
+
+        # Setup viewers after controllers are created and available
+        try:
+            from nova.viewers import _setup_active_viewers_after_preconditions
+
+            await _setup_active_viewers_after_preconditions()
+        except ImportError as e:
+            logger.error(f"Could not import viewers: {e}")
 
         return created_controllers
 
-    async def _cleanup_controllers(self, controller_ids: list[str]) -> None:
+    async def _cleanup_controllers(self, cell: Cell, controller_ids: list[str]) -> None:
         """Clean up controllers by their IDs."""
         if (
             not self.preconditions
@@ -280,17 +274,15 @@ class Program(BaseModel, Generic[Parameters, Return]):
             return
 
         try:
-            async with Nova() as nova:
-                cell = nova.cell()
-                for controller_id in controller_ids:
-                    try:
-                        await cell.delete_robot_controller(controller_id)
-                        self._log("info", f"Cleaned up controller with ID '{controller_id}'")
-                    except Exception as e:
-                        # WORKAROUND: {"code":9, "message":"Failed to 'Connect to Host' due the
-                        #   following reason:\nConnection refused (2)!\nexception::CommunicationException: Configured robot connection is not reachable.", "details":[]}
-                        # Log and suppress errors for individual controller cleanup
-                        self._log("error", f"Error cleaning up controller '{controller_id}': {e}")
+            for controller_id in controller_ids:
+                try:
+                    await cell.delete_robot_controller(controller_id)
+                    self._log("info", f"Cleaned up controller with ID '{controller_id}'")
+                except Exception as e:
+                    # WORKAROUND: {"code":9, "message":"Failed to 'Connect to Host' due the
+                    #   following reason:\nConnection refused (2)!\nexception::CommunicationException: Configured robot connection is not reachable.", "details":[]}
+                    # Log and suppress errors for individual controller cleanup
+                    self._log("error", f"Error cleaning up controller '{controller_id}': {e}")
         except Exception as e:
             # Log and suppress errors for the overall cleanup process
             self._log("error", f"Error during controller cleanup: {e}")
