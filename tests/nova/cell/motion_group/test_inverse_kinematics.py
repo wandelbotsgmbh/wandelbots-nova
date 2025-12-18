@@ -5,7 +5,7 @@ import pytest
 from nova import Nova
 from nova.api import models
 from nova.cell import virtual_controller
-from nova.cell.motion_group import _find_shortest_distance
+from nova.cell.motion_group import _find_and_sort_best_joint_solutions
 from nova.types import Pose
 
 
@@ -36,15 +36,47 @@ async def ur_mg():
             yield mg
 
 
-def test_find_shortest_distance_returns_closest_solution():
+def test_find_and_sort_moves_solutions_close_and_sorts_by_distance():
     start = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     solutions = [
-        (3.0, 4.0, 0.0, 0.0, 0.0, 0.0),
+        (2 * pi + 0.1, 0.0, 0.0, 0.0, 0.0, 0.0),  # should wrap close to start
         (1.0, 1.0, 0.0, 0.0, 0.0, 0.0),
-        (2.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     ]
 
-    assert _find_shortest_distance(start, solutions) == solutions[1]
+    sorted_solutions = _find_and_sort_best_joint_solutions(
+        start_joint_positions=start, solutions=solutions, joint_limits=None
+    )
+
+    assert len(sorted_solutions) == 2
+    # wrapped solution should come first and be shifted near 0
+    assert sorted_solutions[0][0] == pytest.approx(0.1)
+    assert tuple(sorted_solutions[1]) == solutions[1]
+
+
+def test_find_and_sort_respects_joint_limits():
+    start = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    solutions = [
+        (pi, 0.0, 0.0, 0.0, 0.0, 0.0),  # outside limits even after wrapping
+        (pi / 4, 0.0, 0.0, 0.0, 0.0, 0.0),
+    ]
+    joint_limits = [
+        models.JointLimits(position=models.LimitRange(lower_limit=-pi / 2, upper_limit=pi / 2)),
+        models.JointLimits(),
+        models.JointLimits(),
+        models.JointLimits(),
+        models.JointLimits(),
+        models.JointLimits(),
+    ]
+
+    sorted_solutions = _find_and_sort_best_joint_solutions(
+        start_joint_positions=start, solutions=solutions, joint_limits=joint_limits
+    )
+
+    assert len(sorted_solutions) == 2
+    # solution within limits should remain closest
+    assert tuple(sorted_solutions[0]) == solutions[1]
+    # solution exceeding limits should stay unwrapped and sorted last
+    assert sorted_solutions[1][0] == pytest.approx(pi)
 
 
 @pytest.mark.asyncio
