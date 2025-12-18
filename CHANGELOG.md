@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.0.3 (2025-12-18)
+
+### Chores
+
+- **deps**: Bump actions/checkout from 5 to 6 (#344)
+  ([#344](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/344),
+  [`9fc4374`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9fc4374d29e9750b6b071c743602939f952536bd))
+
+
 ## v4.0.2 (2025-12-17)
 
 ### Chores
