@@ -11,7 +11,7 @@ from nova.events import Cycle, CycleFailedEvent, CycleFinishedEvent, CycleStarte
 @pytest.fixture
 def mock_cell():
     cell = MagicMock(spec=Cell)
-    cell.cell_id = "test-cell-1"
+    cell.id = "test-cell-1"
     nats_client = MagicMock()
     nats_client.publish = AsyncMock()
     nats_client.is_connected = True
@@ -25,7 +25,7 @@ class TestCycle:
         """Test initialization of the Cycle class."""
         cycle = Cycle(mock_cell)
         assert cycle.cycle_id is None
-        assert cycle._cell_id == mock_cell.cell_id
+        assert cycle._cell.id == mock_cell.id
 
     @pytest.mark.asyncio
     async def test_start(self, mock_cell):
