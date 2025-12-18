@@ -79,12 +79,14 @@ class ExecutionContext:
     # Each motion list is a path the was planned separately
     motion_group_recordings: list[list[MotionState]]
     output_data: dict[str, Any]
+    nova: Nova | None
 
-    def __init__(self, robot_cell: RobotCell, stop_event: anyio.Event):
+    def __init__(self, robot_cell: RobotCell, stop_event: anyio.Event, nova: Nova | None = None):
         self._robot_cell = robot_cell
         self._stop_event = stop_event
         self.motion_group_recordings = []
         self.output_data = {}
+        self.nova = nova
 
     @property
     def robot_cell(self) -> RobotCell:
@@ -424,7 +426,7 @@ class ProgramRunner(ABC):
             is_operator_execution_var.set(self._app_name is not None)
 
             self.execution_context = execution_context = ExecutionContext(
-                robot_cell=robot_cell, stop_event=stop_event
+                robot_cell=robot_cell, stop_event=stop_event, nova=self._nova
             )
             current_execution_context_var.set(execution_context)
             await self._set_program_state(
@@ -547,7 +549,7 @@ class PythonProgramRunner(ProgramRunner):
         self.program = program
 
     async def _run(self, execution_context: ExecutionContext) -> Any:
-        return await self.program(**(self._inputs or {}))
+        return await self.program(nova=execution_context.nova, **(self._inputs or {}))
 
 
 def _log_future_result(future: Future):
