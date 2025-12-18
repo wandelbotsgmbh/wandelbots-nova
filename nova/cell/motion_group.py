@@ -56,17 +56,53 @@ def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
     return batches
 
 
-def _find_shortest_distance(
-    start_joint_positions: tuple[float, ...], solutions: list[tuple[float, ...]]
-) -> tuple[float, ...]:
-    smallest_distance = float("inf")
-    for solution in solutions:
-        distance = np.linalg.norm(np.array(solution) - np.array(start_joint_positions))
-        logger.info(f"IK solution: {solution}, distance from start: {distance}")
-        if distance < smallest_distance:
-            smallest_distance = float(distance)
-            target_joint_positions = solution
-    return target_joint_positions
+def _move_close_to_reference(
+    joint_position: np.ndarray,
+    reference_position: np.ndarray,
+    joint_limits: list[api.models.JointLimits] | None,
+) -> np.ndarray:
+    shifted_joints = joint_position + np.pi * 2 * np.round(
+        (reference_position - joint_position) / (np.pi * 2)
+    )
+
+    if joint_limits is None:
+        return shifted_joints
+
+    for i, joint_limit in enumerate(joint_limits):
+        if joint_limit.position is None:
+            continue
+
+        lower_limit = joint_limit.position.lower_limit
+        upper_limit = joint_limit.position.upper_limit
+        while upper_limit is not None and shifted_joints[i] > upper_limit:
+            shifted_joints[i] -= np.pi * 2
+        while lower_limit is not None and shifted_joints[i] < lower_limit:
+            shifted_joints[i] += np.pi * 2
+        if (upper_limit is not None and shifted_joints[i] > upper_limit) or (
+            lower_limit is not None and shifted_joints[i] < lower_limit
+        ):
+            return joint_position  # this should not happen, only when initial joints where out of limits
+    return shifted_joints
+
+
+def _find_and_sort_best_joint_solutions(
+    start_joint_positions: tuple[float, ...],
+    solutions: list[tuple[float, ...]],
+    joint_limits: list[api.models.JointLimits] | None,
+) -> list[tuple[float, ...]]:
+    """Finds the best joint solutions by moving the solutions close to the start joint positions."""
+    moved_solutions = [
+        _move_close_to_reference(
+            joint_position=target_joints,
+            reference_position=start_joint_positions,
+            joint_limits=joint_limits,
+        )
+        for target_joints in solutions
+    ]
+
+    return sorted(
+        moved_solutions, key=lambda x: float(np.linalg.norm(np.array(x) - start_joint_positions, 1))
+    )
 
 
 class MotionGroup(AbstractRobot):
@@ -566,6 +602,7 @@ class MotionGroup(AbstractRobot):
                 action.collision_setup
             )
 
+        best_joint_solutions: list[tuple[float, ...]] = []
         if isinstance(action.target, Pose):
             solutions = await self._inverse_kinematics(
                 poses=[action.target], tcp=tcp, motion_group_setup=motion_group_setup
@@ -575,9 +612,13 @@ class MotionGroup(AbstractRobot):
                     f"No inverse kinematics solution found for target pose {action.target}"
                 )
 
-            target_joint_positions = _find_shortest_distance(start_joint_position, solutions[0])
+            best_joint_solutions = _find_and_sort_best_joint_solutions(
+                start_joint_position,
+                solutions=solutions[0],
+                joint_limits=motion_group_setup.global_limits.joints,
+            )
         elif isinstance(action.target, tuple):
-            target_joint_positions = action.target
+            best_joint_solutions = [action.target]
         else:
             raise ValueError("Invalid target type for CollisionFreeMotion")
 
@@ -587,26 +628,31 @@ class MotionGroup(AbstractRobot):
                 motion_group_setup=motion_group_setup, settings=action.settings
             )
 
-        request: api.models.PlanCollisionFreeRequest = api.models.PlanCollisionFreeRequest(
-            motion_group_setup=motion_group_setup,
-            start_joint_position=api.models.DoubleArray(list(start_joint_position)),
-            target=api.models.DoubleArray(list(target_joint_positions)),
-            algorithm=action.algorithm,
-        )
+        for best_joint_solution in best_joint_solutions:
+            try:
+                # try to plan the trajectory for the current joint solution
+                response = await self._api_client.trajectory_planning_api.plan_collision_free(
+                    cell=self._cell,
+                    plan_collision_free_request=api.models.PlanCollisionFreeRequest(
+                        motion_group_setup=motion_group_setup,
+                        start_joint_position=api.models.DoubleArray(list(start_joint_position)),
+                        target=api.models.DoubleArray(list(best_joint_solution)),
+                        algorithm=action.algorithm,
+                    ),
+                )
 
-        response: api.models.PlanCollisionFreeResponse = (
-            await self._api_client.trajectory_planning_api.plan_collision_free(
-                cell=self._cell, plan_collision_free_request=request
-            )
-        )
+                if isinstance(response.response, api.models.PlanCollisionFreeFailedResponse):
+                    raise PlanTrajectoryFailed(error=response.response, motion_group_id=self.id)
 
-        if isinstance(response.response, api.models.PlanCollisionFreeFailedResponse):
-            raise PlanTrajectoryFailed(error=response.response, motion_group_id=self.id)
+                if isinstance(response.response, api.models.JointTrajectory):
+                    return response.response
+            except Exception as e:
+                logger.warning(
+                    f"Failed to plan collision free trajectory for joint solution {best_joint_solution}: {e}"
+                )
+                continue
 
-        if isinstance(response.response, api.models.JointTrajectory):
-            return response.response
-
-        raise ValueError("Unexpected response type from plan_collision_free API")
+        raise ValueError("No collision free trajectory found")
 
     async def _plan(
         self,
