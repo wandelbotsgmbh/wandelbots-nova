@@ -8,7 +8,7 @@ from faststream import FastStream
 from faststream.nats import NatsBroker
 from icecream import ic
 
-from .movement_controller import MotionEvent, TrajectoryCursor, motion_started
+from .movement_controller.trajectory_cursor import MotionEvent, TrajectoryCursor, motion_started
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,8 @@ class TrajectoryTuner:
                 motion_id, joint_trajectory = await self.plan_fn(actions)
                 current_cursor = TrajectoryCursor(
                     motion_id,
-                    motion_group_state_stream_fn(response_rate_msecs=200),
+                    # motion_group_state_stream_fn(response_rate_msecs=200),
+                    motion_group_state_stream_fn(),
                     joint_trajectory,
                     actions,
                     initial_location=current_location,
