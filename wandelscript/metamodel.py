@@ -1732,14 +1732,6 @@ async def run_program(
     return context
 
 
-def _run_program_debug(
-    program: Program | str, default_robot: str | None = "0@controller"
-) -> ExecutionContext:
-    return asyncio.run(
-        run_program(program, default_robot=default_robot, default_tcp="Flange", debug=True)
-    )
-
-
 async def run_rule(rule: Rule, **kwargs):
     stop_event = anyio.Event()
     context = ExecutionContext(robot_cell=SimulatedRobotCell(), stop_event=stop_event)

@@ -21,7 +21,7 @@ def test_program_with_rerun_viewer():
 
     # Check that the function was decorated properly
     assert test_program.name == "Test Program"
-    assert hasattr(test_program, "_impl")
+    assert hasattr(test_program, "_wrapped")
 
 
 def test_rerun_viewer_instantiation():
