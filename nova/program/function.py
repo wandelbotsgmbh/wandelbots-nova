@@ -46,10 +46,7 @@ class ProgramContext:
     def __init__(self, nova: Nova, program_id: str | None = None):
         self._nova = nova
         self._program_id = program_id
-        # Not all Nova stand-ins (e.g., test fakes) implement `cell()`. Cache the cell
-        # when available; otherwise leave as None.
-        cell_fn = getattr(nova, "cell", None)
-        self._cell: Cell | None = cell_fn() if callable(cell_fn) else None
+        self._cell = nova.cell()
 
     @property
     def nova(self) -> Nova:
@@ -81,26 +78,8 @@ class ProgramContext:
         return Cycle(cell=self.cell, extra=merged_extra)
 
 
-"""
-## Define programs:
-
-# Program without inputs or context
-async def program1(ctx: ProgramContext):
-    ...
-
-async def program2(ctx: ProgramContext, count: int = 1, ...):
-    ...
-
-## Call programs:
-
-await program1()
-await program2(count=3)
-
-"""
-
-
 class Program(BaseModel, Generic[Parameters, Return]):
-    _impl: Callable[..., Coroutine[Any, Any, Return]] = PrivateAttr(
+    _wrapped: Callable[..., Coroutine[Any, Any, Return]] = PrivateAttr(
         default_factory=lambda *args, **kwargs: None  # type: ignore[assignment]
     )
     _viewer: Any | None = PrivateAttr(default=None)
@@ -148,7 +127,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
         # mypy does not recognise that `value` is an async function returning a coroutine,
         # so we help it with a cast here.
-        program._impl = cast(Callable[..., Coroutine[Any, Any, Return]], value)
+        program._wrapped = cast(Callable[..., Coroutine[Any, Any, Return]], value)
 
         return program
 
@@ -156,7 +135,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
         if args:
             raise TypeError(
                 "Nova programs must be called with keyword arguments only "
-                "(e.g. 'await program(count=3)' or 'await program(ctx=..., count=3)')."
+                "(e.g. 'await program(count=3)')."
             )
 
         ctx = kwargs.pop("ctx", None)
@@ -188,25 +167,31 @@ class Program(BaseModel, Generic[Parameters, Return]):
             # being converted to plain dictionaries.
             validated_kwargs = {
                 field_name: getattr(input_instance, field_name)
-                for field_name in input_instance.model_fields.keys()
+                for field_name in input_instance.model_dump().keys()
             }
 
         created_controllers: list[str] = []
-        async with nova:
-            try:
-                created_controllers = await self._create_controllers(cell=ctx.cell)
+        # Only connect to Nova when required (e.g. controller preconditions or viewers).
+        # This keeps local/offline execution (and unit tests) from hanging on network connects.
+        requires_nova_connection = bool(
+            (self.preconditions and self.preconditions.controllers) or self._viewer is not None
+        )
 
-                # Execute the wrapped function with ctx and validated inputs.
-                result = await self._impl(ctx, **validated_kwargs)
-                return result
-            finally:
-                await self._cleanup_controllers(cell=ctx.cell, controller_ids=created_controllers)
+        if requires_nova_connection:
+            await nova.open()
 
-                # Clean up viewers if configured.
-                if self._viewer is not None:
-                    from nova.viewers import _cleanup_active_viewers
+        try:
+            created_controllers = await self._ensure_preconditions(cell=ctx.cell)
+            return await self._wrapped(ctx, **validated_kwargs)
+        finally:
+            await self._cleanup_preconditions(cell=ctx.cell, controller_ids=created_controllers)
+            await nova.close()
 
-                    _cleanup_active_viewers()
+            # Clean up viewers if configured.
+            if self._viewer is not None:
+                from nova.viewers import _cleanup_active_viewers
+
+                _cleanup_active_viewers()
 
     def _log(self, level: str, message: str) -> None:
         """Log a message with program prefix."""
@@ -225,8 +210,8 @@ class Program(BaseModel, Generic[Parameters, Return]):
         else:
             logger.info(formatted_message)
 
-    async def _create_controllers(self, cell: Cell) -> list[str]:
-        """Create controllers based on controller_configs and return their IDs."""
+    async def _ensure_preconditions(self, cell: Cell) -> list[str]:
+        """Ensure preconditions are met by creating controllers and setting up viewers"""
         if not self.preconditions or not self.preconditions.controllers:
             return []
 
@@ -264,7 +249,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
         return created_controllers
 
-    async def _cleanup_controllers(self, cell: Cell, controller_ids: list[str]) -> None:
+    async def _cleanup_preconditions(self, cell: Cell, controller_ids: list[str]) -> None:
         """Clean up controllers by their IDs."""
         if (
             not self.preconditions

@@ -62,7 +62,7 @@ class Novax:
         Lifespan context manager for FastAPI application lifecycle.
         Handles startup and shutdown events.
         """
-        await self._nova.connect()
+        await self._nova.open()
         logger.info("Novax: Connected to Nova API")
         store = ProgramStore(cell=self._cell)
         await self._register_programs(store)

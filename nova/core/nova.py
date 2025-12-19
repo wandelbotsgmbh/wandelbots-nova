@@ -42,16 +42,7 @@ class Nova:
     def is_connected(self) -> bool:
         return self.nats.is_connected
 
-    async def connect(self):
-        # ApiGateway doesn't need an explicit connect call, it's initialized in constructor
-        await self.nats.connect(**(self._config.nats_client_config or {}))
-
-    async def close(self):
-        """Closes the underlying API client session and NATS client."""
-        await self.nats.drain()
-        return await self._api_client.close()
-
-    async def __aenter__(self):
+    async def open(self):
         # Configure any active viewers
         try:
             from nova.viewers import _configure_active_viewers
@@ -60,8 +51,17 @@ class Nova:
         except ImportError:
             pass
 
-        await self.connect()
+        # ApiGateway doesn't need an explicit connect call, it's initialized in constructor
+        await self.nats.connect(**(self._config.nats_client_config or {}))
 
+    async def close(self):
+        """Closes the underlying API client session and NATS client."""
+        if self.nats is not None and self.nats.is_connected:
+            await self.nats.drain()
+        return await self._api_client.close() if self._api_client is not None else None
+
+    async def __aenter__(self):
+        await self.open()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

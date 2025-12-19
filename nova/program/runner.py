@@ -397,7 +397,7 @@ class ProgramRunner(ABC):
                 #   based on the program preconditions. That means also only devices that are
                 #   part of the preconditions are opened and streamed for e.g. estop handling
                 self._nova = Nova(config=self._nova_config)
-                await self._nova.connect()
+                await self._nova.open()
                 cell = self._nova.cell()
                 controller_specs = (
                     list(self._preconditions.controllers or []) if self._preconditions else []

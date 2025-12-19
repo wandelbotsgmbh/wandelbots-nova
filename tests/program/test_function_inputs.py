@@ -1,13 +1,16 @@
+from unittest.mock import Mock
+
 import pytest
 from pydantic import Field, ValidationError
 
 import nova
+from nova.cell import Cell
 from nova.program.function import ProgramContext, ProgramPreconditions
 
 
 class _FakeApiClient:
-    async def close(self):
-        pass
+    def __init__(self):
+        self.is_connected = False
 
 
 class FakeNova:
@@ -15,15 +18,17 @@ class FakeNova:
 
     def __init__(self):
         self._api_client = _FakeApiClient()
+        self.is_connected = False
 
-    def is_connected(self) -> bool:  # pragma: no cover - simple passthrough
-        return False
+    async def open(self):
+        self.is_connected = True
 
-    async def __aenter__(self):
-        return self
+    async def close(self):
+        self.is_connected = False
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
+    def cell(self):  # pragma: no cover - simple stub
+        """Return a fake Cell-like object for ProgramContext."""
+        return Mock(spec=Cell, id="test-cell-1")
 
 
 @pytest.mark.asyncio

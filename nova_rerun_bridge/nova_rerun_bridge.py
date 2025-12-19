@@ -605,7 +605,7 @@ class NovaRerunBridge:
         """
         # For standalone usage, ensure the Nova instance is connected
         if not self.nova.is_connected():
-            await self.nova.connect()
+            await self.nova.open()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
