@@ -91,18 +91,24 @@ def _find_and_sort_best_joint_solutions(
     joint_limits: list[api.models.JointLimits] | None,
 ) -> list[tuple[float, ...]]:
     """Finds the best joint solutions by moving the solutions close to the start joint positions."""
+    np_solutions = [np.array(solution) for solution in solutions]
+    np_start_joint_positions = np.array(start_joint_positions)
     moved_solutions = [
         _move_close_to_reference(
             joint_position=target_joints,
-            reference_position=start_joint_positions,
+            reference_position=np_start_joint_positions,
             joint_limits=joint_limits,
         )
-        for target_joints in solutions
+        for target_joints in np_solutions
     ]
 
-    return sorted(
-        moved_solutions, key=lambda x: float(np.linalg.norm(np.array(x) - start_joint_positions, 1))
+    np_sorted_solutions = np.array(
+        sorted(
+            moved_solutions,
+            key=lambda x: float(np.linalg.norm(np.array(x) - start_joint_positions, 1)),
+        )
     )
+    return [tuple(solution) for solution in np_sorted_solutions]
 
 
 class MotionGroup(AbstractRobot):
@@ -612,10 +618,13 @@ class MotionGroup(AbstractRobot):
                     f"No inverse kinematics solution found for target pose {action.target}"
                 )
 
+            joint_limits = (
+                motion_group_setup.global_limits.joints
+                if motion_group_setup.global_limits is not None
+                else None
+            )
             best_joint_solutions = _find_and_sort_best_joint_solutions(
-                start_joint_position,
-                solutions=solutions[0],
-                joint_limits=motion_group_setup.global_limits.joints,
+                start_joint_position, solutions=solutions[0], joint_limits=joint_limits
             )
         elif isinstance(action.target, tuple):
             best_joint_solutions = [action.target]
