@@ -397,23 +397,23 @@ class ProgramRunner(ABC):
                 #   based on the program preconditions. That means also only devices that are
                 #   part of the preconditions are opened and streamed for e.g. estop handling
                 self._nova = Nova(config=self._nova_config)
-                await self._nova.open()
-                cell = self._nova.cell()
-                controller_specs = (
-                    list(self._preconditions.controllers or []) if self._preconditions else []
-                )
-                controllers = []
-                for controller_spec in controller_specs:
-                    # Ensure the controller exists and get the actual controller object
-                    # TODO: right now they are also ensured in the decorator. Maybe it makes sense to
-                    #   only ensure them here
-                    ctrl = await cell.ensure_controller(controller_spec)
-                    controllers.append(ctrl)
+                # await self._nova.open()
+                # cell = self._nova.cell()
+                # controller_specs = (
+                #     list(self._preconditions.controllers or []) if self._preconditions else []
+                # )
+                # controllers = []
+                # for controller_spec in controller_specs:
+                #     # Ensure the controller exists and get the actual controller object
+                #     # TODO: right now they are also ensured in the decorator. Maybe it makes sense to
+                #     #   only ensure them here
+                #     ctrl = await cell.ensure_controller(controller_spec)
+                #     controllers.append(ctrl)
 
                 robot_cell = RobotCell(
                     timer=None,
                     cycle=None,
-                    **{controller.id: controller for controller in controllers},
+                    # **{controller.id: controller for controller in controllers},
                 )
 
             if robot_cell is None:
