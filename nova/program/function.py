@@ -169,19 +169,19 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 for field_name in input_instance.model_dump().keys()
             }
 
-        created_controllers: list[str] = []
+        # created_controllers: list[str] = []
         # Only connect to Nova when required (e.g. controller preconditions or viewers).
         # This keeps local/offline execution (and unit tests) from hanging on network connects.
-        has_preconditions = bool(self.preconditions and self.preconditions.controllers)
+        # has_preconditions = bool(self.preconditions and self.preconditions.controllers)
 
         try:
-            if has_preconditions:
-                created_controllers = await self._ensure_preconditions(nova=nova)
+            # if has_preconditions:
+            #     created_controllers = await self._ensure_preconditions(nova=nova)
 
             return await self._wrapped(ctx, **validated_kwargs)
         finally:
-            if has_preconditions:
-                await self._cleanup_preconditions(nova=nova, controller_ids=created_controllers)
+            # if has_preconditions:
+            #     await self._cleanup_preconditions(nova=nova, controller_ids=created_controllers)
 
             # Clean up viewers if configured.
             if self._viewer is not None:
