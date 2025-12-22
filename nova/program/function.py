@@ -26,7 +26,6 @@ from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
-from nova.cell import Cell
 from nova.exceptions import ControllerCreationFailed
 
 logger = logging.getLogger(__name__)
@@ -170,23 +169,19 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 for field_name in input_instance.model_dump().keys()
             }
 
-        # created_controllers: list[str] = []
+        created_controllers: list[str] = []
         # Only connect to Nova when required (e.g. controller preconditions or viewers).
         # This keeps local/offline execution (and unit tests) from hanging on network connects.
-        # has_preconditions = bool(self.preconditions and self.preconditions.controllers)
+        has_preconditions = bool(self.preconditions and self.preconditions.controllers)
 
         try:
-            # if has_preconditions:
-            #    async with nova:
-            #        created_controllers = await self._ensure_preconditions(cell=ctx.cell)
+            if has_preconditions:
+                created_controllers = await self._ensure_preconditions(nova=nova)
 
             return await self._wrapped(ctx, **validated_kwargs)
         finally:
-            # if has_preconditions:
-            #     async with nova:
-            #         await self._cleanup_preconditions(
-            #             cell=ctx.cell, controller_ids=created_controllers
-            #         )
+            if has_preconditions:
+                await self._cleanup_preconditions(nova=nova, controller_ids=created_controllers)
 
             # Clean up viewers if configured.
             if self._viewer is not None:
@@ -211,7 +206,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
         else:
             logger.info(formatted_message)
 
-    async def _ensure_preconditions(self, cell: Cell) -> list[str]:
+    async def _ensure_preconditions(self, nova: Nova) -> list[str]:
         """Ensure preconditions are met by creating controllers and setting up viewers"""
         if not self.preconditions or not self.preconditions.controllers:
             return []
@@ -224,10 +219,15 @@ class Program(BaseModel, Generic[Parameters, Return]):
             controller_name = controller_config.name or "unnamed_controller"
             self._log("info", f"Creating controller '{controller_name}'")
             try:
-                controller = await cell.ensure_controller(controller_config=controller_config)
-                created_controllers.append(controller.id)
-                self._log("info", f"Created controller '{controller_name}' with ID {controller.id}")
-                return controller.id
+                async with nova:
+                    controller = await nova.cell().ensure_controller(
+                        controller_config=controller_config
+                    )
+                    created_controllers.append(controller.id)
+                    self._log(
+                        "info", f"Created controller '{controller_name}' with ID {controller.id}"
+                    )
+                    return controller.id
             except Exception as e:
                 raise ControllerCreationFailed(controller_name, str(e))
 
@@ -250,7 +250,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
         return created_controllers
 
-    async def _cleanup_preconditions(self, cell: Cell, controller_ids: list[str]) -> None:
+    async def _cleanup_preconditions(self, nova: Nova, controller_ids: list[str]) -> None:
         """Clean up controllers by their IDs."""
         if (
             not self.preconditions
@@ -260,15 +260,16 @@ class Program(BaseModel, Generic[Parameters, Return]):
             return
 
         try:
-            for controller_id in controller_ids:
-                try:
-                    await cell.delete_robot_controller(controller_id)
-                    self._log("info", f"Cleaned up controller with ID '{controller_id}'")
-                except Exception as e:
-                    # WORKAROUND: {"code":9, "message":"Failed to 'Connect to Host' due the
-                    #   following reason:\nConnection refused (2)!\nexception::CommunicationException: Configured robot connection is not reachable.", "details":[]}
-                    # Log and suppress errors for individual controller cleanup
-                    self._log("error", f"Error cleaning up controller '{controller_id}': {e}")
+            async with nova:
+                for controller_id in controller_ids:
+                    try:
+                        await nova.cell().delete_robot_controller(controller_id)
+                        self._log("info", f"Cleaned up controller with ID '{controller_id}'")
+                    except Exception as e:
+                        # WORKAROUND: {"code":9, "message":"Failed to 'Connect to Host' due the
+                        #   following reason:\nConnection refused (2)!\nexception::CommunicationException: Configured robot connection is not reachable.", "details":[]}
+                        # Log and suppress errors for individual controller cleanup
+                        self._log("error", f"Error cleaning up controller '{controller_id}': {e}")
         except Exception as e:
             # Log and suppress errors for the overall cleanup process
             self._log("error", f"Error during controller cleanup: {e}")

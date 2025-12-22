@@ -27,7 +27,7 @@ async def main():
     await run_wandelscript_program(
         program_id=path.stem,
         code=program_code,
-        parameters={
+        inputs={
             "pose_a": Pose((0, 0, 400, 0, 3.14, 0)),
             "a_dict": {"nested": 3},
             "a_list": [1, 2, {"nested": 4}],
