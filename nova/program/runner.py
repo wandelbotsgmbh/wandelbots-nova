@@ -18,6 +18,7 @@ from anyio import from_thread, to_thread
 from anyio.abc import TaskStatus
 from exceptiongroup import ExceptionGroup
 from loguru import logger
+from nats.errors import OutboundBufferLimitError
 from pydantic import BaseModel, Field, StrictStr
 
 from nova import Nova, NovaConfig, api
@@ -365,7 +366,14 @@ class ProgramRunner(ABC):
 
             # publish program run to NATS
             subject = f"nova.v2.cells.{self._cell_id}.programs"
-            await nova.nats.publish(subject=subject, payload=data)
+            try:
+                await nova.nats.publish.publish(subject, payload=data)
+            except OutboundBufferLimitError:
+                # du bist schneller als die Leitung → kurz Luft holen + flush
+                await nova.nats.publish.flush(timeout=1)
+                await asyncio.sleep(0.05)
+                raise
+            # await nova.nats.publish(subject=subject, payload=data)
 
     async def _run_program(
         self, stop_event: anyio.Event, on_state_change: Callable[[], Awaitable[None]]
