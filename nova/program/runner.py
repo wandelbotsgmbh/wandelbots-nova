@@ -364,13 +364,12 @@ class ProgramRunner(ABC):
         if nova is not None:
             data = self.program_status.model_dump_json().encode("utf-8")
 
-            # publish program run to NATS
+            # publish program run to NATS safely
             subject = f"nova.v2.cells.{self._cell_id}.programs"
             try:
-                await nova.nats.publish.publish(subject, payload=data)
+                await nova.nats.publish(subject, payload=data)
             except OutboundBufferLimitError:
-                # du bist schneller als die Leitung → kurz Luft holen + flush
-                await nova.nats.publish.flush(timeout=1)
+                await nova.nats.flush(timeout=1)
                 await asyncio.sleep(0.05)
                 raise
             # await nova.nats.publish(subject=subject, payload=data)
@@ -525,7 +524,7 @@ class ProgramRunner(ABC):
         finally:
             # TODO not the most elegant way to close nova instance, especially since we seem to not know
             # here if we created it or not
-            await self._nova.close() if self._nova is not None else None
+            # await self._nova.close() if self._nova is not None else None
 
     @abstractmethod
     async def _run(self, execution_context: ExecutionContext):
