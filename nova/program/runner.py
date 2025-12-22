@@ -522,6 +522,7 @@ class ProgramRunner(ABC):
                 api.models.ProgramRunState.FAILED, on_state_change, self._nova
             )
         finally:
+            pass
             # TODO not the most elegant way to close nova instance, especially since we seem to not know
             # here if we created it or not
             # await self._nova.close() if self._nova is not None else None
