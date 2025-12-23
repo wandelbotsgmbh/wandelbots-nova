@@ -15,13 +15,14 @@ Key robotics concepts:
 - Pose: Position (x,y,z) and orientation (rx,ry,rz) in 3D space
 """
 
+import asyncio
+
+from pydantic import Field
+
 import nova
 from nova import api, run_program
 from nova.actions import cartesian_ptp, circular, joint_ptp, linear
 from nova.cell import virtual_controller
-from nova.core.nova import Nova
-from nova.events import Cycle
-from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 
 
@@ -30,7 +31,7 @@ from nova.types import MotionSettings, Pose
     id="start_here",  # Unique identifier of the program. If not provided, the function name will be used.
     name="Start Here",  # Readable name of the program
     # viewer=nova.viewers.Rerun(),  # add this line for a 3D visualization
-    preconditions=ProgramPreconditions(
+    preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name="kuka-kr16-r2010",
@@ -41,58 +42,66 @@ from nova.types import MotionSettings, Pose
         cleanup_controllers=False,
     ),
 )
-async def start():
+async def start(
+    ctx: nova.ProgramContext,
+    count: int = Field(
+        default=1, ge=1, le=10, description="The number of times to repeat the movement"
+    ),
+):
     """Main robot control function."""
-    async with Nova() as nova:
-        cell = nova.cell()
-        controller = await cell.controller("kuka-kr16-r2010")
-        cycle = Cycle(cell=cell, extra={"app": "visual-studio-code", "program": "start_here"})
+    cell = ctx.cell
+    controller = await cell.controller("kuka-kr16-r2010")
+    cycle = ctx.cycle(extra={"app": "visual-studio-code"})
 
-        slow = MotionSettings(tcp_velocity_limit=50)
+    slow = MotionSettings(tcp_velocity_limit=50)
 
-        async with controller[0] as motion_group:
-            home_joints = await motion_group.joints()
-            tcp_names = await motion_group.tcp_names()
-            tcp = tcp_names[0]
+    async with controller[0] as motion_group:
+        home_joints = await motion_group.joints()
+        tcp_names = await motion_group.tcp_names()
+        tcp = tcp_names[0]
 
-            # Get current TCP pose and create target poses
-            current_pose = await motion_group.tcp_pose(tcp)
-            target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
+        # Get current TCP pose and create target poses
+        current_pose = await motion_group.tcp_pose(tcp)
+        target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
 
-            # Actions define the sequence of movements and other actions to be executed by the robot
-            actions = [
-                joint_ptp(home_joints, settings=slow),  # Move to home position slowly
-                cartesian_ptp(target_pose),  # Move to target pose
-                joint_ptp(home_joints),  # Return to home
-                cartesian_ptp(
-                    target_pose @ [200, 0, 0, 0, 0, 0]
-                ),  # Move 100mm in target pose's local x-axis
-                joint_ptp(home_joints),
-                linear(target_pose @ (200, 200, 0, 0, 0, 0)),  # Move 100mm in local x and y axes
-                joint_ptp(home_joints, settings=slow),
-                cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0))),
-                joint_ptp(home_joints),
-                circular(
-                    target_pose @ Pose((0, 200, 0, 0, 0, 0)),
-                    intermediate=target_pose @ Pose((0, 200, 0, 0, 0, 0)),
-                ),
-                joint_ptp(home_joints),
-            ]
+        # Actions define the sequence of movements and other actions to be executed by the robot
+        actions = [
+            joint_ptp(home_joints, settings=slow),  # Move to home position slowly
+            cartesian_ptp(target_pose),  # Move to target pose
+            joint_ptp(home_joints),  # Return to home
+            cartesian_ptp(
+                target_pose @ [200, 0, 0, 0, 0, 0]
+            ),  # Move 100mm in target pose's local x-axis
+            joint_ptp(home_joints),
+            linear(target_pose @ (200, 200, 0, 0, 0, 0)),  # Move 100mm in local x and y axes
+            joint_ptp(home_joints, settings=slow),
+            cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0))),
+            joint_ptp(home_joints),
+            circular(
+                target_pose @ Pose((0, 200, 0, 0, 0, 0)),
+                intermediate=target_pose @ Pose((0, 200, 0, 0, 0, 0)),
+            ),
+            joint_ptp(home_joints),
+        ]
 
-            # Start the cycle
-            await cycle.start()
+        # Start the cycle
+        await cycle.start()
 
-            # Plan the movements (shows in 3D viewer or creates an rrd file)
-            joint_trajectory = await motion_group.plan(actions, tcp)
+        # Plan the movements (shows in 3D viewer or creates an rrd file)
+        joint_trajectory = await motion_group.plan(actions, tcp)
 
-            # OPTIONAL: Execute the planned movements
-            # You can comment out the lines below to only see the plan in Rerun
-            print("Executing planned movements...")
+        # OPTIONAL: Execute the planned movements
+        # You can comment out the lines below to only see the plan in Rerun
+        print("Executing planned movements...")
+        for i in range(count):
+            print(f"Executing movement {i + 1} of {count}")
             await motion_group.execute(joint_trajectory, tcp, actions=actions)
+            print(f"Movement {i + 1} completed")
+            await asyncio.sleep(1)
 
-            # Finish the cycle
-            await cycle.finish()
-            print("Movement execution completed!")
+        # Finish the cycle
+        await cycle.finish()
+        print("Movement execution completed!")
 
 
 if __name__ == "__main__":

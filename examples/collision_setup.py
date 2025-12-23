@@ -4,7 +4,6 @@ import nova
 from nova import Nova, api
 from nova.actions import cartesian_ptp
 from nova.cell import virtual_controller
-from nova.program import ProgramPreconditions
 from nova.types import Pose
 from nova.viewers.utils import extract_collision_setups_from_actions
 from nova_rerun_bridge import NovaRerunBridge
@@ -169,7 +168,7 @@ async def build_collision_world(
 
 @nova.program(
     name="15_collison_world",
-    preconditions=ProgramPreconditions(
+    preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name="ur5",
@@ -180,11 +179,11 @@ async def build_collision_world(
         cleanup_controllers=False,
     ),
 )
-async def test():
-    async with Nova() as nova, NovaRerunBridge(nova) as bridge:
+async def test(ctx: nova.ProgramContext):
+    async with NovaRerunBridge(ctx.nova) as bridge:
         await bridge.setup_blueprint()
 
-        cell = nova.cell()
+        cell = ctx.nova.cell()
         controller = await cell.controller("ur5")
         # Connect to the controller and activate motion groups
         async with controller[0] as motion_group:
@@ -192,10 +191,10 @@ async def test():
 
             motion_group_description = await motion_group.get_description()
 
-            await build_collision_world(nova, "cell", motion_group_description)
+            await build_collision_world(ctx.nova, cell.id, motion_group_description)
             collision_setups = (
-                await nova.api.store_collision_setups_api.list_stored_collision_setups(
-                    cell=nova.cell()._cell_id
+                await ctx.nova.api.store_collision_setups_api.list_stored_collision_setups(
+                    cell=cell.id
                 )
             )
             collision_setup = list(collision_setups.values())[0]

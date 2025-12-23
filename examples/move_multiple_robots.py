@@ -11,10 +11,9 @@ Prerequisites:
 import asyncio
 
 import nova
-from nova import Controller, Nova, api, run_program
+from nova import Controller, api, run_program
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
-from nova.program import ProgramPreconditions
 from nova.types import Pose
 
 
@@ -35,7 +34,7 @@ async def move_robot(controller: Controller):
     id="move_multiple_robots",
     name="Move Multiple Robots",
     viewer=nova.viewers.Rerun(),
-    preconditions=ProgramPreconditions(
+    preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name="ur10",
@@ -51,12 +50,11 @@ async def move_robot(controller: Controller):
         cleanup_controllers=False,
     ),
 )
-async def move_multiple_robots():
-    async with Nova() as nova:
-        cell = nova.cell()
-        ur10 = await cell.controller("ur10")
-        ur5 = await cell.controller("ur5")
-        await asyncio.gather(move_robot(ur5), move_robot(ur10))
+async def move_multiple_robots(ctx: nova.ProgramContext):
+    cell = ctx.nova.cell()
+    ur10 = await cell.controller("ur10")
+    ur5 = await cell.controller("ur5")
+    await asyncio.gather(move_robot(ur5), move_robot(ur10))
 
 
 if __name__ == "__main__":

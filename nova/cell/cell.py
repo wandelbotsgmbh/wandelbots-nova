@@ -38,8 +38,18 @@ class Cell:
         self._nats_client = nats_client
 
     @property
+    def id(self) -> str:
+        """Returns unique identifier for this cell.
+
+        Returns:
+            str: The cell ID.
+        """
+        return self._cell_id
+
+    @property
     def cell_id(self) -> str:
         """
+        [Deprecated] Use .id instead.
         Returns unique identifier for this cell.
         Returns:
             str: The cell ID.
@@ -217,7 +227,7 @@ class Cell:
         """
         nc = self._nats_client
         if nc is None:
-            raise ValueError("NATS client is not connected")
+            raise ValueError(f"NATS client is not connected to {self._nats_client.connected_url}")
 
         cell_status_subject = f"nova.v2.cells.{cell}.status"
         controller_pod_ready = asyncio.Event()

@@ -111,7 +111,7 @@ def assert_program_definition_matches(
     assert expected_program.program_id == found_program.program
     assert expected_program.name == found_program.name
     assert expected_program.description == found_program.description
-    assert expected_program.input_schema == found_program.input_schema
+    assert expected_program.input_json_schema == found_program.input_schema
     assert (
         expected_program.preconditions.model_dump(mode="json")
         if expected_program.preconditions
@@ -144,7 +144,7 @@ async def test_program_definition_for_simple_program():
         name="Test cycle failed",
         description="A program that report cycle failure",
     )
-    async def example_program():
+    async def example_program(ctx: nova.ProgramContext):
         pass
 
     novax.register_program(example_program)
@@ -181,7 +181,7 @@ async def test_program_definition_for_program_with_preconditions():
             cleanup_controllers=False,
         ),
     )
-    async def program_with_preconditions():
+    async def program_with_preconditions(ctx: nova.ProgramContext):
         pass
 
     novax.register_program(program_with_preconditions)
@@ -203,7 +203,9 @@ async def test_program_definition_for_program_with_input_schema():
         name="Test cycle failed",
         description="A program that report cycle failure",
     )
-    async def program_with_preconditions(should_reset: bool, enable_opc_ua: bool):
+    async def program_with_preconditions(
+        ctx: nova.ProgramContext, should_reset: bool, enable_opc_ua: bool
+    ):
         pass
 
     novax.register_program(program_with_preconditions)
@@ -229,7 +231,9 @@ async def test_program_definition_for_program_with_pydantic_input_schema():
         name="Test cycle failed",
         description="A program that report cycle failure",
     )
-    async def program_with_preconditions(program_input: ProgramInputSchema):
+    async def program_with_preconditions(
+        ctx: nova.ProgramContext, program_input: ProgramInputSchema
+    ):
         pass
 
     novax.register_program(program_with_preconditions)
@@ -266,7 +270,9 @@ async def test_program_definition_for_program_with_input_schema_and_precondition
             cleanup_controllers=False,
         ),
     )
-    async def program_with_preconditions(should_reset: bool, enable_opc_ua: bool):
+    async def program_with_preconditions(
+        ctx: nova.ProgramContext, should_reset: bool, enable_opc_ua: bool
+    ):
         pass
 
     novax.register_program(program_with_preconditions)

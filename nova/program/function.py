@@ -3,15 +3,17 @@ import asyncio
 import inspect
 import json
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from typing import (
     Annotated,
     Any,
     Coroutine,
     Generic,
+    Literal,
     ParamSpec,
     TypeVar,
     Union,
+    cast,
     get_args,
     get_origin,
     get_type_hints,
@@ -19,15 +21,7 @@ from typing import (
 
 from docstring_parser import Docstring
 from docstring_parser import parse as parse_docstring
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    PrivateAttr,
-    RootModel,
-    create_model,
-    validate_call,
-)
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, RootModel, create_model
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
@@ -45,38 +39,155 @@ class ProgramPreconditions(BaseModel):
     cleanup_controllers: bool = False
 
 
+class ProgramContext:
+    """Context passed into every program execution."""
+
+    def __init__(self, nova: Nova, program_id: str | None = None):
+        self._nova = nova
+        self._program_id = program_id
+        self._cell = nova.cell()
+
+    @property
+    def nova(self) -> Nova:
+        """Returns the Nova instance for the program."""
+        return self._nova
+
+    @property
+    def cell(self):
+        """Returns the default cell for the program, if available."""
+        return self._cell
+
+    @property
+    def program_id(self) -> str | None:
+        """Returns the program ID for the program."""
+        return self._program_id
+
+    def cycle(self, extra: dict[str, Any] | None = None):
+        """Create a Cycle with program pre-populated in the extra data."""
+        from nova.events import Cycle
+
+        if self._cell is None:
+            raise AttributeError(
+                "ProgramContext.cell is not available; the provided Nova instance does not expose cell()."
+            )
+
+        merged_extra = {"program": self.program_id} if self.program_id else {}
+        if extra:
+            merged_extra.update(extra)
+        return Cycle(cell=self.cell, extra=merged_extra)
+
+
 class Program(BaseModel, Generic[Parameters, Return]):
-    _wrapped: Callable[Parameters, Any] = PrivateAttr(
-        default_factory=lambda: lambda *args, **kwargs: None
+    _wrapped: Callable[..., Coroutine[Any, Any, Return]] = PrivateAttr(
+        default_factory=lambda *args, **kwargs: None  # type: ignore[assignment]
     )
+    _viewer: Any | None = PrivateAttr(default=None)
     program_id: str
     name: str | None
     description: str | None
-    input: type[BaseModel]
-    output: type[BaseModel]
+    input_model: type[BaseModel] | None
+    output_model: type[BaseModel]
     preconditions: ProgramPreconditions | None = None
 
     @classmethod
     def validate(cls, value: Callable[Parameters, Return]) -> "Program[Parameters, Return]":
         if isinstance(value, Program):
             return value
-        if not callable(value):
-            raise TypeError("value must be callable")
+
+        # Enforce that the first parameter is named `ctx`
+        signature = inspect.signature(value)
+        params = list(signature.parameters.values())
+        if not params or params[0].name != "ctx":
+            raise TypeError(
+                f"Program function '{value.__name__}' must have 'ctx' as its first parameter. "
+                "Define it as 'async def "
+                f"{value.__name__}(ctx, ...):'."
+            )
+
+        # If ctx is untyped, annotate it with NovaProgramContext for better introspection
+        if params[0].annotation is inspect._empty:
+            annotations = dict(getattr(value, "__annotations__", {}))
+            annotations.setdefault("ctx", ProgramContext)
+            value.__annotations__ = annotations
 
         program_id = value.__name__
         docstring = parse_docstring(value.__doc__ or "")
         description = docstring.description
 
-        input, output = input_and_output_types(value, docstring)
+        input_model_, output_type = input_and_output_types(value, docstring)
 
-        function = cls(
-            program_id=program_id, name=None, description=description, input=input, output=output
+        program: "Program[Parameters, Return]" = cls(
+            program_id=program_id,
+            name=None,
+            description=description,
+            input_model=input_model_,
+            output_model=output_type,
         )
-        function._wrapped = validate_call(validate_return=True)(value)
-        return function
+
+        # mypy does not recognise that `value` is an async function returning a coroutine,
+        # so we help it with a cast here.
+        program._wrapped = cast(Callable[..., Coroutine[Any, Any, Return]], value)
+
+        return program
 
     async def __call__(self, *args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:  # pylint: disable=no-member
-        return await self._wrapped(*args, **kwargs)
+        if args:
+            raise TypeError(
+                "Nova programs must be called with keyword arguments only "
+                "(e.g. 'await program(count=3)')."
+            )
+
+        ctx = kwargs.pop("ctx", None)
+        nova_override_obj = kwargs.pop("nova", None)
+        nova_override: Nova | None = cast(Nova | None, nova_override_obj)
+
+        if ctx is not None and not isinstance(ctx, ProgramContext):
+            raise TypeError("ctx must be a nova.ProgramContext instance")
+
+        nova = nova_override or Nova()
+        if ctx is None:
+            ctx = ProgramContext(nova=nova, program_id=self.program_id)
+
+        # Remaining keyword arguments are treated as input parameters for the program.
+        input_values: dict[str, Any] = kwargs
+
+        if self.input_model is None:
+            if input_values:
+                unexpected = ", ".join(sorted(input_values.keys()))
+                raise TypeError(
+                    f"Program '{self.program_id}' does not accept any input parameters "
+                    f"(unexpected: {unexpected})."
+                )
+            validated_kwargs: dict[str, Any] = {}
+        else:
+            input_instance = self.input_model.model_validate(input_values)
+            # Use attribute access instead of model_dump() so that nested
+            # BaseModel instances (e.g. Person) are preserved instead of
+            # being converted to plain dictionaries.
+            validated_kwargs = {
+                field_name: getattr(input_instance, field_name)
+                for field_name in input_instance.model_dump().keys()
+            }
+
+        # created_controllers: list[str] = []
+        # Only connect to Nova when required (e.g. controller preconditions or viewers).
+        # This keeps local/offline execution (and unit tests) from hanging on network connects.
+        # has_preconditions = bool(self.preconditions and self.preconditions.controllers)
+
+        try:
+            # if has_preconditions:
+            #     created_controllers = await self._ensure_preconditions(nova=nova)
+
+            return await self._wrapped(ctx, **validated_kwargs)
+        finally:
+            # if has_preconditions:
+            #     await self._cleanup_preconditions(nova=nova, controller_ids=created_controllers)
+
+            # Clean up viewers if configured.
+            if self._viewer is not None:
+                from nova.viewers import _cleanup_active_viewers
+
+                _cleanup_active_viewers()
 
     def _log(self, level: str, message: str) -> None:
         """Log a message with program prefix."""
@@ -95,52 +206,51 @@ class Program(BaseModel, Generic[Parameters, Return]):
         else:
             logger.info(formatted_message)
 
-    async def _create_controllers(self) -> list[str]:
-        """Create controllers based on controller_configs and return their IDs."""
+    async def _ensure_preconditions(self, nova: Nova) -> list[str]:
+        """Ensure preconditions are met by creating controllers and setting up viewers"""
         if not self.preconditions or not self.preconditions.controllers:
             return []
 
         created_controllers: list[str] = []
-        async with Nova() as nova:
-            cell = nova.cell()
-            controller_config = None
+        controller_config = None
 
-            async def ensure_controller(controller_config: api.models.RobotController):
-                """Ensure a controller is created and return its ID."""
-                controller_name = controller_config.name or "unnamed_controller"
-                self._log("info", f"Creating controller '{controller_name}'")
-                try:
-                    controller = await cell.ensure_controller(controller_config=controller_config)
+        async def ensure_controller(controller_config: api.models.RobotController):
+            """Ensure a controller is created and return its ID."""
+            controller_name = controller_config.name or "unnamed_controller"
+            self._log("info", f"Creating controller '{controller_name}'")
+            try:
+                async with nova:
+                    controller = await nova.cell().ensure_controller(
+                        controller_config=controller_config
+                    )
                     created_controllers.append(controller.id)
                     self._log(
                         "info", f"Created controller '{controller_name}' with ID {controller.id}"
                     )
                     return controller.id
-                except Exception as e:
-                    raise ControllerCreationFailed(controller_name, str(e))
-
-            try:
-                async with asyncio.TaskGroup() as tg:
-                    for controller_config in self.preconditions.controllers:
-                        tg.create_task(ensure_controller(controller_config))
-
             except Exception as e:
-                controller_name = (
-                    controller_config.name if controller_config else "unnamed_controller"
-                )
                 raise ControllerCreationFailed(controller_name, str(e))
 
-            # Setup viewers after controllers are created and available
-            try:
-                from nova.viewers import _setup_active_viewers_after_preconditions
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for controller_config in self.preconditions.controllers:
+                    tg.create_task(ensure_controller(controller_config))
 
-                await _setup_active_viewers_after_preconditions()
-            except ImportError as e:
-                logger.error(f"Could not import viewers: {e}")
+        except Exception as e:
+            controller_name = controller_config.name if controller_config else "unnamed_controller"
+            raise ControllerCreationFailed(controller_name, str(e))
+
+        # Setup viewers after controllers are created and available
+        try:
+            from nova.viewers import _setup_active_viewers_after_preconditions
+
+            await _setup_active_viewers_after_preconditions()
+        except ImportError as e:
+            logger.error(f"Could not import viewers: {e}")
 
         return created_controllers
 
-    async def _cleanup_controllers(self, controller_ids: list[str]) -> None:
+    async def _cleanup_preconditions(self, nova: Nova, controller_ids: list[str]) -> None:
         """Clean up controllers by their IDs."""
         if (
             not self.preconditions
@@ -150,11 +260,10 @@ class Program(BaseModel, Generic[Parameters, Return]):
             return
 
         try:
-            async with Nova() as nova:
-                cell = nova.cell()
+            async with nova:
                 for controller_id in controller_ids:
                     try:
-                        await cell.delete_robot_controller(controller_id)
+                        await nova.cell().delete_robot_controller(controller_id)
                         self._log("info", f"Cleaned up controller with ID '{controller_id}'")
                     except Exception as e:
                         # WORKAROUND: {"code":9, "message":"Failed to 'Connect to Host' due the
@@ -166,36 +275,41 @@ class Program(BaseModel, Generic[Parameters, Return]):
             self._log("error", f"Error during controller cleanup: {e}")
 
     @property
-    def input_schema(self) -> dict[str, Any]:
-        return self.input.model_json_schema()
+    def input_json_schema(self) -> dict[str, Any]:
+        return self.input_model.model_json_schema() if self.input_model else {}
 
     @property
     def output_schema(self) -> dict[str, Any]:
-        return self.output.model_json_schema()
+        return self.output_model.model_json_schema()
 
     @property
     def json_schema(self, title: str | None = None) -> JsonSchemaValue:
-        _, top_level_schema = models_json_schema(
-            [(self.input, "validation"), (self.output, "validation")], title=title or self.name
-        )
+        schemas: list[tuple[type[BaseModel], Literal["validation"]]] = []
+        if self.input_model:
+            schemas.append((self.input_model, "validation"))
+        schemas.append((self.output_model, "validation"))
+        _, top_level_schema = models_json_schema(schemas, title=title or self.name)
         return top_level_schema
 
     def __repr__(self) -> str:
-        input_fields = ", ".join(
-            f"{k}: {v.annotation.__name__}"  # type: ignore
-            for k, v in self.input.model_fields.items()
-        )
+        if self.input_model:
+            input_fields = ", ".join(
+                f"{k}: {v.annotation.__name__}"  # type: ignore
+                for k, v in self.input_model.model_fields.items()
+            )
+        else:
+            input_fields = "none"
 
         # Get the actual output type from RootModel
-        if hasattr(self.output, "model_fields") and "root" in self.output.model_fields:
-            root_annotation = self.output.model_fields["root"].annotation
+        if hasattr(self.output_model, "model_fields") and "root" in self.output_model.model_fields:
+            root_annotation = self.output_model.model_fields["root"].annotation
             # If it's a TypeVar, get its bound type
             if hasattr(root_annotation, "__bound__") and root_annotation.__bound__:  # type: ignore
                 output_type = root_annotation.__bound__.__name__  # type: ignore
             else:
                 output_type = root_annotation.__name__  # type: ignore
         else:
-            output_type = self.output.__name__
+            output_type = self.output_model.__name__
 
         desc_part = f", description='{self.description}'" if self.description else ""
         return (
@@ -210,7 +324,20 @@ class Program(BaseModel, Generic[Parameters, Return]):
         """
         parser = argparse.ArgumentParser(description=self.description or self.name)
 
-        for name, field in self.input.model_fields.items():
+        if not self.input_model:
+            return parser
+
+        # Helper for JSON-typed arguments (used for complex config inputs).
+        def json_type_for(field_name: str) -> Callable[[str], Any]:
+            def _parse(value: str) -> Any:
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError as e:
+                    raise argparse.ArgumentTypeError(f"Invalid JSON for {field_name}: {e}")
+
+            return _parse
+
+        for name, field in self.input_model.model_fields.items():
             # Convert field type to appropriate Python type
             field_type = field.annotation
             if hasattr(field_type, "__origin__") and field_type.__origin__ is Annotated:  # type: ignore
@@ -224,17 +351,10 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
             # For complex types (like Pydantic models), use JSON parsing
             if isinstance(field_type, type) and issubclass(field_type, BaseModel):
-
-                def json_type(value: str) -> Any:
-                    try:
-                        return json.loads(value)
-                    except json.JSONDecodeError as e:
-                        raise argparse.ArgumentTypeError(f"Invalid JSON for {name}: {e}")
-
                 parser.add_argument(
                     f"--{name}",
                     dest=name,
-                    type=json_type,
+                    type=json_type_for(name),
                     default=field.default if field.default is not None else None,
                     required=not is_optional and field.default is None,
                     help=field.description or f"{name} parameter (JSON format)",
@@ -250,18 +370,34 @@ class Program(BaseModel, Generic[Parameters, Return]):
                     help=field.description or f"{name} parameter",
                 )
 
+        # Additionally, provide a generic JSON `--config` argument for complex
+        # configurations. This is especially useful for CLI usage where a single
+        # JSON object can represent all inputs.
+        parser.add_argument(
+            "--config",
+            dest="config",
+            type=json_type_for("config"),
+            required=False,
+            help="Configuration object (JSON format)",
+        )
+
         return parser
 
 
 def input_and_output_types(
     func: Callable, docstring: Docstring
-) -> tuple[type[BaseModel], type[BaseModel]]:
+) -> tuple[type[BaseModel] | None, type[BaseModel]]:
     signature = inspect.signature(func)
     input_types = get_type_hints(func)
     output_type = input_types.pop("return", None)
 
-    input_field_definitions: Mapping[str, Any] = {}
-    for order, (name, parameter) in enumerate(signature.parameters.items()):
+    # Build an InputModel from all parameters *after* the first `ctx` parameter.
+    input_field_definitions: dict[str, Any] = {}
+
+    raw_doc = inspect.getdoc(func) or ""
+
+    parameters_items = list(signature.parameters.items())
+    for order, (name, parameter) in enumerate(parameters_items[1:], start=0):
         default: FieldInfo = (
             Field(...)
             if parameter.default is parameter.empty
@@ -277,15 +413,31 @@ def input_and_output_types(
 
         # Add description from docstring if available
         if not default.description:
-            if param_doc := next((p for p in docstring.params if p.arg_name == name), None):
+            param_doc = next((p for p in docstring.params if p.arg_name == name), None)
+            if param_doc and param_doc.description:
                 default.description = param_doc.description
+            else:
+                # Fallback: simple parsing of "Args:" section for this parameter.
+                for line in raw_doc.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith(f"{name}:"):
+                        _, _, desc = stripped.partition(":")
+                        desc = desc.strip()
+                        if desc:
+                            default.description = desc
+                        break
 
-        input_field_definitions[name] = (parameter.annotation, default)  # type: ignore
-    input = create_model(
-        "Input",
-        **input_field_definitions,
-        __module__=func.__module__,
-        __config__=ConfigDict(extra="forbid"),
+        input_field_definitions[name] = (parameter.annotation, default)
+
+    input_type = (
+        create_model(
+            "Input",
+            **input_field_definitions,
+            __module__=func.__module__,
+            __config__=ConfigDict(extra="forbid"),
+        )
+        if input_field_definitions
+        else None
     )
 
     if output_type and isinstance(output_type, type) and issubclass(output_type, BaseModel):
@@ -312,7 +464,7 @@ def input_and_output_types(
 
         output = Output
 
-    return input, output
+    return input_type, output
 
 
 def program(
@@ -343,14 +495,14 @@ def program(
 
     Examples:
         >>> import nova
-        >>> @program
-        ... async def simple_program():
+        >>> @nova.program
+        ... async def simple_program(ctx: nova.ProgramContext):
         ...     print("Hello World!")
         >>> simple_program.program_id
         'simple_program'
 
-        >>> @program(id="my_program", name="My Program")
-        ... async def program_with_options():
+        >>> @nova.program(id="my_program", name="My Program")
+        ... async def program_with_options(ctx: nova.ProgramContext):
         ...     print("Hello from My Program!")
         >>> program_with_options.program_id
         'my_program'
@@ -363,47 +515,16 @@ def program(
         if not asyncio.iscoroutinefunction(function):
             raise TypeError(f"Program function '{function.__name__}' must be async")
 
-        func_obj = Program.validate(function)
+        program_obj = Program.validate(function)
         if id:
-            func_obj.program_id = id
+            program_obj.program_id = id
         if name:
-            func_obj.name = name
+            program_obj.name = name
         if description:
-            func_obj.description = description
-        func_obj.preconditions = preconditions
-
-        # Create a wrapper that handles controller lifecycle
-        original_wrapped = func_obj._wrapped
-
-        async def async_wrapper(*args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:
-            """Async wrapper that handles controller creation and cleanup."""
-            created_controllers = []
-            try:
-                # Create controllers before execution
-                created_controllers = await func_obj._create_controllers()
-
-                # Configure viewers if any are active
-                if viewer is not None:
-                    # Configure the viewer when Nova instance becomes available in the function
-                    # This will be done via a hook in the Nova context manager
-                    pass
-
-                # Execute the wrapped function
-                result = await original_wrapped(*args, **kwargs)
-                return result
-            finally:
-                # Clean up controllers after execution
-                await func_obj._cleanup_controllers(created_controllers)
-
-                # Clean up viewers
-                if viewer is not None:
-                    from nova.viewers import _cleanup_active_viewers
-
-                    _cleanup_active_viewers()
-
-        # Update the wrapped function to our async wrapper
-        func_obj._wrapped = async_wrapper
-        return func_obj
+            program_obj.description = description
+        program_obj.preconditions = preconditions
+        program_obj._viewer = viewer
+        return program_obj
 
     # If used as @nova.program(), return the decorator.
     # If used as @nova.program, decorate immediately.

@@ -6,7 +6,6 @@ from typing import Any
 
 import numpy as np
 import pytest
-from icecream import ic
 
 from nova import api
 from nova.cell.robot_cell import RobotCell
@@ -20,8 +19,6 @@ from wandelscript.utils.runtime import Tee
 
 robot_cell = RobotCell(controller=get_robot_controller())
 raising_robot_cell = RobotCell(controller=get_robot_controller(raises_on_open=True))
-
-ic.configureOutput(prefix=f"{datetime.now().time()} | ", includeContext=True)
 
 
 def check_program_state(
@@ -41,7 +38,7 @@ def check_program_state(
 
     """
     for i in range(timeout):
-        ic("CHECKING program state", program_runner.state, expected_state)
+        print("CHECKING program state", program_runner.state, expected_state)
         if program_runner.state is expected_state:
             return True
         time.sleep(1)
@@ -84,7 +81,7 @@ move via line() to home :: (0, 100, 0, 0, 0, 0)
     runner = run(
         program_id="test",
         code=code,
-        parameters={},
+        inputs={},
         robot_cell_override=SimulatedRobotCell(),
         default_robot="0@controller",
         default_tcp="Flange",
@@ -119,7 +116,7 @@ print(a)
     runner = run(
         program_id="test",
         code=code,
-        parameters={},
+        inputs={},
         robot_cell_override=SimulatedRobotCell(),
         default_robot="0@controller",
         default_tcp="Flange",
@@ -131,7 +128,7 @@ print(a)
 
 def test_program_runner():
     program_runner = WandelscriptProgramRunner(
-        program_id="test", code="move via p2p() to (100, 0, 300, 0, pi, 0)", parameters={}
+        program_id="test", code="move via p2p() to (100, 0, 300, 0, pi, 0)", inputs={}
     )
     assert program_runner.program_run.run is not None
     assert program_runner.program_run.program is not None
@@ -161,7 +158,7 @@ move via line() to (0, 100, 300, 0, pi, 0)
     program_runner = WandelscriptProgramRunner(
         program_id="test",
         code=code,
-        parameters={},
+        inputs={},
         robot_cell_override=SimulatedRobotCell(),
         default_tcp="Flange",
         default_robot="0@controller",
@@ -175,7 +172,6 @@ move via line() to (0, 100, 300, 0, pi, 0)
     # It should not be possible to start the runner when it is already running
     with pytest.raises(RuntimeError):
         program_runner.start()
-    ic(program_runner.program_run)
 
     assert check_program_state(program_runner, api.models.ProgramRunState.COMPLETED, 10)
     assert isinstance(program_runner.program_run.start_time, datetime)
@@ -216,7 +212,7 @@ def test_program_runner_stop(code):
     program_runner = WandelscriptProgramRunner(
         program_id="test",
         code=code,
-        parameters={},
+        inputs={},
         robot_cell_override=SimulatedRobotCell(),
         default_robot="0@controller",
     )
@@ -253,7 +249,7 @@ move via p2p() to mispelled_var
 def test_program_runner_failed(code, exception):
     with pytest.raises(exception):
         runner = run(
-            program_id="test", code=code, parameters={}, robot_cell_override=SimulatedRobotCell()
+            program_id="test", code=code, inputs={}, robot_cell_override=SimulatedRobotCell()
         )
         assert runner.program_run.state is api.models.ProgramRunState.FAILED
         assert runner.program_run.error is not None
@@ -271,6 +267,6 @@ move via p2p() to home :: (0, 0, 100)
 """
     with pytest.raises(Exception):
         runner = run(
-            program_id="test", code=code, parameters={}, robot_cell_override=raising_robot_cell
+            program_id="test", code=code, inputs={}, robot_cell_override=raising_robot_cell
         )
         assert runner.program_run.state is api.models.ProgramRunState.FAILED

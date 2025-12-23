@@ -4,7 +4,7 @@ from nova.cell import Cell, Controller, MotionGroup
 from nova.config import NovaConfig
 from nova.core.nova import Nova
 from nova.logging import logger
-from nova.program import program, run_program
+from nova.program import ProgramContext, ProgramPreconditions, program, run_program
 from nova.version import version
 
 __version__ = version
@@ -23,5 +23,7 @@ __all__ = [
     "logger",
     "program",
     "run_program",
+    "ProgramContext",
+    "ProgramPreconditions",
     "__version__",
 ]

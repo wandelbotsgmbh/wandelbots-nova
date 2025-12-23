@@ -9,16 +9,15 @@ from nova import Nova, api, run_program
 from nova.actions import Action
 from nova.actions.motions import Motion, cartesian_ptp, collision_free
 from nova.cell import virtual_controller
-from nova.program import ProgramPreconditions
 from nova.types import MotionSettings, Pose
 
 
 async def build_collision_world(
     nova: Nova, cell_name: str, motion_group_description: api.models.MotionGroupDescription
 ) -> str:
-    store_collision_components_api = nova._api_client.store_collision_components_api
-    store_collision_setups_api = nova._api_client.store_collision_setups_api
-    motion_group_models_api = nova._api_client.motion_group_models_api
+    store_collision_components_api = nova.api.store_collision_components_api
+    store_collision_setups_api = nova.api.store_collision_setups_api
+    motion_group_models_api = nova.api.motion_group_models_api
 
     motion_group_model = motion_group_description.motion_group_model.root
 
@@ -69,7 +68,7 @@ async def build_collision_world(
 
 @nova.program(
     viewer=nova.viewers.Rerun(),
-    preconditions=ProgramPreconditions(
+    preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name="ur5",
@@ -80,95 +79,91 @@ async def build_collision_world(
         cleanup_controllers=False,
     ),
 )
-async def collision_free_p2p() -> None:
+async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
     """
     Example of planning a collision free PTP motion. A sphere is placed in the robot's path and the robot uses collision free p2p to move around it.
     """
-    async with Nova() as nova:
-        cell = nova.cell()
-        controller = await cell.controller("ur5")
+    nova = ctx.nova
+    cell = nova.cell()
+    controller = await cell.controller("ur5")
 
-        await nova._api_client.virtual_robot_setup_api.set_virtual_controller_mounting(
-            cell="cell",
-            controller=controller.id,
-            motion_group=f"0@{controller.id}",
-            coordinate_system=api.models.CoordinateSystem(
-                name="mounting",
-                coordinate_system="world",
-                position=api.models.Vector3d([0, 0, 0]),
-                orientation=api.models.Orientation([0, 0, 0]),
-                orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
-            ),
+    await ctx.nova.api.virtual_robot_setup_api.set_virtual_controller_mounting(
+        cell=cell.id,
+        controller=controller.id,
+        motion_group=f"0@{controller.id}",
+        coordinate_system=api.models.CoordinateSystem(
+            name="mounting",
+            coordinate_system="world",
+            position=api.models.Vector3d([0, 0, 0]),
+            orientation=api.models.Orientation([0, 0, 0]),
+            orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
+        ),
+    )
+
+    # NC-1047
+    await asyncio.sleep(5)
+
+    # Connect to the controller and activate motion groups
+    async with controller[0] as motion_group:
+        tcp = "Flange"
+
+        motion_group_description: api.models.MotionGroupDescription = (
+            await motion_group.get_description()
+        )
+        collision_scene_id = await build_collision_world(nova, "cell", motion_group_description)
+        store_collision_setups_api = ctx.nova.api.store_collision_setups_api
+        collision_setup = await store_collision_setups_api.get_stored_collision_setup(
+            cell="cell", setup=collision_scene_id
+        )
+        # Use default planner to move to the right of the sphere
+        home = await motion_group.tcp_pose(tcp)
+        actions: list[Action] = [
+            cartesian_ptp(home),
+            cartesian_ptp(target=Pose((300, -400, 200, np.pi, 0, 0))),
+        ]
+
+        for action in actions:
+            cast(Motion, action).settings = MotionSettings(tcp_velocity_limit=200)
+
+        joint_trajectory = await motion_group.plan(
+            actions, tcp, start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0)
         )
 
-        # NC-1047
-        await asyncio.sleep(5)
+        rr.log("motion/target_", rr.Points3D([[-500, -400, 200]], radii=[10], colors=[(0, 255, 0)]))
 
-        # Connect to the controller and activate motion groups
-        async with controller[0] as motion_group:
-            tcp = "Flange"
-
-            motion_group_description: api.models.MotionGroupDescription = (
-                await motion_group.get_description()
+        # Use default planner to move to the left of the sphere
+        # -> this will collide
+        # only plan don't move
+        collision_actions: list[Action] = [
+            cartesian_ptp(
+                target=Pose((-500, -400, 200, np.pi, 0, 0)), collision_setup=collision_setup
             )
-            collision_scene_id = await build_collision_world(nova, "cell", motion_group_description)
-            store_collision_setups_api = nova._api_client.store_collision_setups_api
-            collision_setup = await store_collision_setups_api.get_stored_collision_setup(
-                cell="cell", setup=collision_scene_id
-            )
-            # Use default planner to move to the right of the sphere
-            home = await motion_group.tcp_pose(tcp)
-            actions: list[Action] = [
-                cartesian_ptp(home),
-                cartesian_ptp(target=Pose((300, -400, 200, np.pi, 0, 0))),
-            ]
+        ]
 
-            for action in actions:
-                cast(Motion, action).settings = MotionSettings(tcp_velocity_limit=200)
+        for action in collision_actions:
+            cast(Motion, action).settings = MotionSettings(tcp_velocity_limit=200)
 
-            joint_trajectory = await motion_group.plan(
-                actions, tcp, start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0)
-            )
-
-            rr.log(
-                "motion/target_", rr.Points3D([[-500, -400, 200]], radii=[10], colors=[(0, 255, 0)])
-            )
-
-            # Use default planner to move to the left of the sphere
-            # -> this will collide
-            # only plan don't move
-            collision_actions: list[Action] = [
-                cartesian_ptp(
-                    target=Pose((-500, -400, 200, np.pi, 0, 0)), collision_setup=collision_setup
-                )
-            ]
-
-            for action in collision_actions:
-                cast(Motion, action).settings = MotionSettings(tcp_velocity_limit=200)
-
-            try:
-                await motion_group.plan(
-                    collision_actions,
-                    tcp,
-                    start_joint_position=joint_trajectory.joint_positions[-1].root,
-                )
-            except Exception as e:
-                print(f"Planning failed, we continue with the collision avoidance: {e}")
-
-            # Plan collision free PTP motion around the sphere
-            welding_actions: list[Action] = [
-                collision_free(
-                    target=Pose(-500, -400, 200, np.pi, 0, 0),
-                    collision_setup=collision_setup,
-                    settings=MotionSettings(tcp_velocity_limit=30),
-                )
-            ]
-
+        try:
             await motion_group.plan(
-                welding_actions,
-                tcp=tcp,
+                collision_actions,
+                tcp,
                 start_joint_position=joint_trajectory.joint_positions[-1].root,
             )
+        except Exception as e:
+            print(f"Planning failed, we continue with the collision avoidance: {e}")
+
+        # Plan collision free PTP motion around the sphere
+        welding_actions: list[Action] = [
+            collision_free(
+                target=Pose(-500, -400, 200, np.pi, 0, 0),
+                collision_setup=collision_setup,
+                settings=MotionSettings(tcp_velocity_limit=30),
+            )
+        ]
+
+        await motion_group.plan(
+            welding_actions, tcp=tcp, start_joint_position=joint_trajectory.joint_positions[-1].root
+        )
 
 
 if __name__ == "__main__":

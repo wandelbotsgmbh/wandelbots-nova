@@ -12,7 +12,7 @@ from novax.program_manager import ProgramManager
     name="Simple Program",
     description="Simple program that prints 'Hello World!' and then sleeps a bit.",
 )
-async def simple_program(number_of_steps: int = 30):
+async def simple_program(ctx: nova.ProgramContext, number_of_steps: int = 30):
     """Simple program that prints 'Hello World!' and then sleeps a bit."""
     print("Hello World!")
 
@@ -24,7 +24,7 @@ async def simple_program(number_of_steps: int = 30):
 
 
 @nova.program(name="long_running_program")
-async def long_running_program():
+async def long_running_program(ctx: nova.ProgramContext):
     for i in range(10):
         await asyncio.sleep(0.1)
         if i == 5:
@@ -34,7 +34,7 @@ async def long_running_program():
 
 
 @nova.program(name="parameterized_program")
-async def parameterized_program(message: str = "default", count: int = 1):
+async def parameterized_program(ctx: nova.ProgramContext, message: str = "default", count: int = 1):
     """A program that accepts parameters"""
     result = []
     for i in range(count):
@@ -98,7 +98,7 @@ async def test_start_program_success():
     assert manager.running_program is None
 
     # Start the program
-    program_run = await manager.start_program(program_id, parameters={"number_of_steps": 5})
+    program_run = await manager.start_program(program_id, inputs={"number_of_steps": 5})
 
     # Verify program is running
     assert manager.is_any_program_running
@@ -121,7 +121,7 @@ async def test_start_program_when_another_is_running():
     manager.register_program(simple_program)
 
     # Start the first program
-    await manager.start_program("simple_program_test", parameters={"number_of_steps": 5})
+    await manager.start_program("simple_program_test", inputs={"number_of_steps": 5})
 
     # Try to start another program while one is running
     with pytest.raises(RuntimeError):

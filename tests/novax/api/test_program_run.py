@@ -17,7 +17,7 @@ from novax.novax import Novax
     name="Simple Test Program",
     description="A simple program for testing program run reporting",
 )
-async def sucessful_program():
+async def sucessful_program(ctx: nova.ProgramContext):
     """Simple program that counts and sleeps."""
     print("simple test program run")
 
@@ -27,7 +27,7 @@ async def sucessful_program():
 @pytest.mark.asyncio
 async def test_novax_program_successful_run(novax_app):
     nova = Nova()
-    await nova.connect()
+    await nova.open()
 
     # subscribe to program run messages
     program_status_messages = []
@@ -64,7 +64,7 @@ async def test_novax_program_successful_run(novax_app):
     name="Failing Test Program",
     description="A program that always fails for testing error handling",
 )
-async def failing_program():
+async def failing_program(ctx: nova.ProgramContext):
     """Program that always fails."""
     raise ValueError("This program is designed to fail for testing purposes")
 
@@ -111,7 +111,7 @@ async def test_novax_program_failed_run(novax_app):
     name="Long Running Test Program",
     description="A program that takes some time to complete for testing stop functionality",
 )
-async def long_running_program():
+async def long_running_program(ctx: nova.ProgramContext):
     """Program that runs for a while and can be stopped."""
     for _ in range(100):
         await asyncio.sleep(1)
@@ -184,7 +184,7 @@ async def test_novax_program_pass_arguments():
     assertion = Future()
 
     @nova.program()
-    async def example_program(number_of_iterations: int):
+    async def example_program(ctx: nova.ProgramContext, number_of_iterations: int):
         try:
             assert number_of_iterations == 5
             assertion.set_result(True)
@@ -215,7 +215,9 @@ async def test_novax_program_pass_arguments_with_default_params():
     assertion = Future()
 
     @nova.program()
-    async def example_program(number_of_iterations: int, some_defaul_param: str = "default"):
+    async def example_program(
+        ctx: nova.ProgramContext, number_of_iterations: int, some_defaul_param: str = "default"
+    ):
         try:
             assert number_of_iterations == 5
             assert some_defaul_param == "default"
@@ -251,7 +253,7 @@ async def test_novax_program_pass_arguments_with_pydantic_model():
         some_defaul_param: str = Field("default", description="Some default parameter")
 
     @nova.program()
-    async def example_program(args: ProgramArgs):
+    async def example_program(ctx: nova.ProgramContext, args: ProgramArgs):
         try:
             assert args.number_of_iterations == 5
             assert args.some_defaul_param == "default"
@@ -281,7 +283,7 @@ async def test_program_run_contains_init_args():
     app = novax.create_app()
 
     @nova.program()
-    async def example_program(cycle_count: int = 1):
+    async def example_program(ctx: nova.ProgramContext, cycle_count: int = 1):
         pass
 
     novax.register_program(example_program)
@@ -304,7 +306,7 @@ async def test_program_run_contains_init_args():
 @pytest.mark.asyncio
 def test_stop_program_on_lifespan_end():
     @nova.program(name="endless_program")
-    async def endless_program():
+    async def endless_program(ctx: nova.ProgramContext):
         while True:
             await asyncio.sleep(1)
 

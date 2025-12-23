@@ -56,14 +56,27 @@ class NovaRerunBridge:
 
         recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        if "VSCODE_PROXY_URI" in os.environ:
-            rr.init(application_id="nova", recording_id=recording_id, spawn=False)
-            rr.save("nova.rrd")
-            logger.info(f"Install rerun app and open the visual log on {get_rerun_address()}")
-        elif spawn:
-            rr.init(application_id="nova", recording_id=recording_id, spawn=True)
+        # In CI/GitHub Actions we should never attempt to spawn/connect the Rerun viewer.
+        # It's optional and can introduce long timeouts/failures (no local proxy running).
+        if (os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")) and os.environ.get(
+            "NOVA_RERUN_SPAWN", ""
+        ).lower() not in {"1", "true", "yes", "on"}:
+            spawn = False
 
-        logger.add(sink=rr.LoggingHandler("logs/handler"))
+        try:
+            if "VSCODE_PROXY_URI" in os.environ:
+                rr.init(application_id="nova", recording_id=recording_id, spawn=False)
+                rr.save("nova.rrd")
+                logger.info(f"Install rerun app and open the visual log on {get_rerun_address()}")
+            elif spawn:
+                rr.init(application_id="nova", recording_id=recording_id, spawn=True)
+
+            # Attach loguru to rerun (best-effort).
+            logger.add(sink=rr.LoggingHandler("logs/handler"))
+        except Exception as e:
+            # Rerun is a best-effort visualization backend. Never fail Nova execution if
+            # the viewer cannot be spawned/connected.
+            logger.warning(f"Rerun initialization failed; continuing without Rerun viewer: {e}")
 
     def _ensure_models_exist(self):
         """Ensure robot models are downloaded"""
@@ -605,7 +618,7 @@ class NovaRerunBridge:
         """
         # For standalone usage, ensure the Nova instance is connected
         if not self.nova.is_connected():
-            await self.nova.connect()
+            await self.nova.open()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:

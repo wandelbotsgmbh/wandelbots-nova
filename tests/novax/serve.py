@@ -5,7 +5,7 @@ from examples.plan_and_execute import plan_and_execute
 
 
 @nova.program(id="test1")
-async def test():
+async def test(ctx: nova.ProgramContext):
     print("Hello, world!")
 
 
@@ -14,7 +14,7 @@ async def test():
     name="Simple Program",
     description="Simple program that prints 'Hello World!' and then sleeps a bit.",
 )
-async def simple_program(number_of_steps: int = 30):
+async def simple_program(ctx: nova.ProgramContext, number_of_steps: int = 30):
     """Simple program that prints "Hello World!" and then sleeps a bit."""
     print("Hello World!")
 
