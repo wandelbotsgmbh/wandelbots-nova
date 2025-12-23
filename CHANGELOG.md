@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.1.0 (2025-12-23)
+
+### Features
+
+- **NDX-408**: Added Nova program context to programs (#352)
+  ([#352](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/352),
+  [`6c001e8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6c001e815d6fb97f17233de320d3dbd889e2dd9b))
+
+
 ## v4.0.3 (2025-12-18)
 
 ### Chores
