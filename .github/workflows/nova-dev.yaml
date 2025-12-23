@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
+      CELL_NAME: cell
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
