@@ -114,7 +114,7 @@ def test_program_runner_logs_and_stdout():
 @pytest.mark.integration
 def test_simple_program():
     @nova.program()
-    async def test_program():
+    async def test_program(ctx: nova.ProgramContext):
         print("Hello, world")
 
     runner = run_program(test_program)

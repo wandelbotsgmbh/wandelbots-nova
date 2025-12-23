@@ -43,6 +43,9 @@ class Nova:
         return self.nats.is_connected
 
     async def open(self):
+        """
+        Opens the NOVA instance. Configures attached viewers and connects to the NATS server.
+        """
         # Configure any active viewers
         try:
             from nova.viewers import _configure_active_viewers
@@ -53,6 +56,12 @@ class Nova:
 
         # ApiGateway doesn't need an explicit connect call, it's initialized in constructor
         await self.nats.connect(**(self._config.nats_client_config or {}))
+
+    async def connect(self):
+        """[Deprecated] Opens the NOVA instance
+        Use open() instead.
+        """
+        await self.open()
 
     async def close(self):
         """Closes the underlying API client session and NATS client."""

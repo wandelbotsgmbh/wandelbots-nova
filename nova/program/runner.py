@@ -422,14 +422,11 @@ class ProgramRunner(ABC):
                 robot_cell = RobotCell(
                     timer=None,
                     cycle=None,
-                    # **{controller.id: controller for controller in controllers},
+                    **{controller.id: controller for controller in controllers},
                 )
 
             if robot_cell is None:
                 raise RuntimeError("No robot cell available")
-
-            # if not self._robot_cell_override and not nova.is_connected():
-            #    await nova.connect()
 
             # Set context variable to indicate if running via operator (for viewer optimization)
             is_operator_execution_var.set(self._app_name is not None)

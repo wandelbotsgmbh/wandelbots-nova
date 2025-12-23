@@ -22,7 +22,7 @@ async def test_program_runner_with_unrelated_controller_in_estop():
     )
 
     @nova.program(preconditions=preconditions)
-    async def test_program():
+    async def test_program(ctx: nova.ProgramContext):
         async with Nova() as nova:
             cell = nova.cell()
             controller = await cell.controller("kuka-no-estop")
