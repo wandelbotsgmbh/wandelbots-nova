@@ -4,6 +4,7 @@ import nats
 
 from nova.cell.cell import Cell
 from nova.config import CELL_NAME, NovaConfig, default_config
+from nova.logging import logger
 
 from .gateway import ApiGateway
 
@@ -65,9 +66,12 @@ class Nova:
 
     async def close(self):
         """Closes the underlying API client session and NATS client."""
-        if self.nats is not None and self.nats.is_connected:
-            await self.nats.drain()
-        return await self._api_client.close() if self._api_client is not None else None
+        try:
+            if self.nats is not None and self.nats.is_connected:
+                await self.nats.drain()
+            return await self._api_client.close() if self._api_client is not None else None
+        except Exception as e:
+            logger.error(f"Error closing Nova: {e}")
 
     async def __aenter__(self):
         await self.open()
