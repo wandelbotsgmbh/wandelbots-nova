@@ -37,6 +37,12 @@ async def test_novax_program_successful_run(novax_app):
 
     await nova.nats.subscribe("nova.v2.cells.cell.programs", cb=cb)
 
+    program_status_messages_new = []
+    await nova.nats.subscribe(
+        "nova.v2.cells.cell.apps.novax_test.programs.sucessful_program.status",
+        on_message=lambda msg: program_status_messages_new.append(msg),
+    )
+
     with TestClient(novax_app) as client:
         start_program = client.post("/programs/sucessful_program/start", json={"arguments": {}})
         assert start_program.status_code == 200, "Failed to start test program"
@@ -54,6 +60,18 @@ async def test_novax_program_successful_run(novax_app):
         assert models[0].state == api.models.ProgramRunState.PREPARING
         assert models[1].state == api.models.ProgramRunState.RUNNING
         assert models[2].state == api.models.ProgramRunState.COMPLETED
+
+        for model in models:
+            assert model.app == "novax_test"
+
+        # verify new program run messages
+        models = [
+            ProgramStatus.model_validate_json(message.data)
+            for message in program_status_messages_new
+        ]
+        assert models[0].state == ProgramRunState.PREPARING
+        assert models[1].state == ProgramRunState.RUNNING
+        assert models[2].state == ProgramRunState.COMPLETED
 
         for model in models:
             assert model.app == "novax_test"
@@ -84,6 +102,12 @@ async def test_novax_program_failed_run(novax_app):
 
     await nova.nats.subscribe("nova.v2.cells.cell.programs", cb=cb)
 
+    program_status_messages_new = []
+    await nova.nats.subscribe(
+        "nova.v2.cells.cell.apps.novax_test.programs.failing_program.status",
+        on_message=lambda msg: program_status_messages_new.append(msg),
+    )
+
     with TestClient(novax_app) as client:
         start_program = client.post("/programs/failing_program/start", json={"arguments": {}})
         assert start_program.status_code == 200, "Failed to start test program"
@@ -101,6 +125,18 @@ async def test_novax_program_failed_run(novax_app):
         assert models[0].state == api.models.ProgramRunState.PREPARING
         assert models[1].state == api.models.ProgramRunState.RUNNING
         assert models[2].state == api.models.ProgramRunState.FAILED
+
+        for model in models:
+            assert model.app == "novax_test"
+
+        # verify new program run messages
+        models = [
+            ProgramStatus.model_validate_json(message.data)
+            for message in program_status_messages_new
+        ]
+        assert models[0].state == ProgramRunState.PREPARING
+        assert models[1].state == ProgramRunState.RUNNING
+        assert models[2].state == ProgramRunState.FAILED
 
         for model in models:
             assert model.app == "novax_test"
@@ -131,6 +167,12 @@ async def test_novax_program_stopped_run(novax_app):
         program_status_messages.append(msg)
 
     await nova.nats.subscribe("nova.v2.cells.cell.programs", cb=cb)
+
+    program_status_messages_new = []
+    await nova.nats.subscribe(
+        "nova.v2.cells.cell.apps.novax_test.programs.long_running_program.status",
+        on_message=lambda msg: program_status_messages_new.append(msg),
+    )
 
     with TestClient(novax_app) as client:
         start_program = client.post("/programs/long_running_program/start", json={"arguments": {}})
@@ -169,6 +211,18 @@ async def test_novax_program_stopped_run(novax_app):
         assert final_models[0].state == api.models.ProgramRunState.PREPARING
         assert final_models[1].state == api.models.ProgramRunState.RUNNING
         assert final_models[2].state == api.models.ProgramRunState.STOPPED
+
+        for model in final_models:
+            assert model.app == "novax_test"
+
+        # verify new program run messages
+        final_models = [
+            ProgramStatus.model_validate_json(message.data)
+            for message in program_status_messages_new
+        ]
+        assert final_models[0].state == ProgramRunState.PREPARING
+        assert final_models[1].state == ProgramRunState.RUNNING
+        assert final_models[2].state == ProgramRunState.STOPPED
 
         for model in final_models:
             assert model.app == "novax_test"
