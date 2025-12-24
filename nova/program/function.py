@@ -179,6 +179,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
             created_controller_ids = await self._ensure_preconditions(cell=cell)
         except Exception as e:
             logger.error(f"Error ensuring preconditions: {e}")
+            await nova.close()
             raise
 
         try:

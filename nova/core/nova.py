@@ -71,7 +71,7 @@ class Nova:
                 await self.nats.drain()
             return await self._api_client.close() if self._api_client is not None else None
         except Exception as e:
-            logger.error(f"Error closing Nova: {e}")
+            logger.error(f"Error closing Nova: {e}", exc_info=True)
 
     async def __aenter__(self):
         await self.open()
