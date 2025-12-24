@@ -170,22 +170,32 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 for field_name in input_instance.model_dump().keys()
             }
 
-        cell = nova.cell()
+        has_preconditions = bool(self.preconditions and self.preconditions.controllers)
         created_controller_ids: list[str] = []
-
-        await nova.open()
-        try:
-            # TODO: preconditions are also ensured in the runner. We should streamline this.
-            created_controller_ids = await self._ensure_preconditions(cell=cell)
-        except Exception as e:
-            logger.error(f"Error ensuring preconditions: {e}")
-            await nova.close()
-            raise
+        cell = None
+        opened_here = False
 
         try:
+            if has_preconditions:
+                # Preconditions require a connected NATS client (controller readiness waits),
+                # so ensure Nova is opened *only if needed*.
+                if hasattr(nova, "is_connected") and callable(nova.is_connected):
+                    is_connected = bool(nova.is_connected())
+                else:
+                    is_connected = bool(getattr(nova, "is_connected", False))
+
+                if not is_connected:
+                    await nova.open()
+                    opened_here = True
+
+                cell = nova.cell()
+                # TODO: preconditions are also ensured in the runner. We should streamline this.
+                created_controller_ids = await self._ensure_preconditions(cell=cell)
+
             return await self._wrapped(ctx, **validated_kwargs)
         finally:
-            await self._cleanup_preconditions(cell=cell, controller_ids=created_controller_ids)
+            if has_preconditions and cell is not None:
+                await self._cleanup_preconditions(cell=cell, controller_ids=created_controller_ids)
 
             # Clean up viewers if configured.
             if self._viewer is not None:
@@ -193,7 +203,8 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
                 _cleanup_active_viewers()
 
-            await nova.close()
+            if opened_here:
+                await nova.close()
 
     def _log(self, level: str, message: str) -> None:
         """Log a message with program prefix."""
