@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-
 import nats
 
 from nova.cell.cell import Cell
@@ -29,7 +27,6 @@ class Nova:
         self.apis = self._api_client
 
         self.nats = nats.NATS()
-        self._open_close_lock = asyncio.Lock()
 
     @property
     def config(self) -> NovaConfig:
@@ -44,7 +41,7 @@ class Nova:
         return Cell(self._api_client, cell_id, nats_client=self.nats)
 
     def is_connected(self) -> bool:
-        return self.nats.is_connected
+        return self.nats is not None and self.nats.is_connected
 
     async def open(self):
         """
@@ -52,20 +49,19 @@ class Nova:
         """
         # `nats.NATS.connect()` is not safe to call concurrently. Guard it and make `open()`
         # idempotent so callers (e.g. runner + decorator) can safely call it.
-        async with self._open_close_lock:
-            if self.nats.is_connected:
-                return
+        if self.is_connected():
+            return
 
-            # Configure any active viewers
-            try:
-                from nova.viewers import _configure_active_viewers
+        # Configure any active viewers
+        try:
+            from nova.viewers import _configure_active_viewers
 
-                _configure_active_viewers(self)
-            except ImportError:
-                pass
+            _configure_active_viewers(self)
+        except ImportError:
+            pass
 
-            # ApiGateway doesn't need an explicit connect call, it's initialized in constructor
-            await self.nats.connect(**(self._config.nats_client_config or {}))
+        # ApiGateway doesn't need an explicit connect call, it's initialized in constructor
+        await self.nats.connect(**(self._config.nats_client_config or {}))
 
     async def connect(self):
         """[Deprecated] Opens the NOVA instance
@@ -76,10 +72,9 @@ class Nova:
     async def close(self):
         """Closes the underlying API client session and NATS client."""
         try:
-            async with self._open_close_lock:
-                if self.nats is not None and self.nats.is_connected:
-                    await self.nats.drain()
-                return await self._api_client.close() if self._api_client is not None else None
+            if self.nats is not None and self.nats.is_connected:
+                await self.nats.drain()
+            return await self._api_client.close() if self._api_client is not None else None
         except Exception as e:
             logger.error(f"Error closing Nova: {e}", exc_info=True)
 
