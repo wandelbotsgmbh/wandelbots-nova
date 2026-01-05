@@ -619,6 +619,7 @@ class TrajectoryCursor:
                             case api.models.TrajectoryEnded():
                                 ic()
                                 self._overshoot = self._current_location - self._target_location
+                                ic(self._current_location, self._target_location, self._overshoot)
                                 assert self._overshoot == 0.0, (
                                     f"Expected overshoot to be 0.0, got {self._overshoot}"
                                 )
