@@ -1,5 +1,6 @@
 ---
-name: "Nova SDK: Test CLI Compatibility"
+name: "@wandelbots/nova-cli: Test CLI Compatibility"
+
 on:
   pull_request:
     branches:
@@ -7,6 +8,7 @@ on:
   push:
     branches:
       - main
+
 concurrency:
   group: nova-cli-test
   cancel-in-progress: false

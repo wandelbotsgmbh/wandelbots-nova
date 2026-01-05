@@ -1,10 +1,11 @@
 ---
-name: "Nova SDK: Release package"
+name: "@wandelbots/wandelbots-nova: Release package"
+
 on:
   push:
     branches:
       - main
-      - 'release/**'          # release/1.x, release/customer-foo, ...
+      - 'release/**'  # release/1.x, release/customer-foo, ...
 
 jobs:
   release:

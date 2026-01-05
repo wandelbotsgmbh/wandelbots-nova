@@ -1,8 +1,10 @@
 ---
 name: "Validate PR Title"
+
 on:
   pull_request:
     types: [opened, edited, reopened]
+
 jobs:
   validate-title:
     runs-on: ubuntu-latest

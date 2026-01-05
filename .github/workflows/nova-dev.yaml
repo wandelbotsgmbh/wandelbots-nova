@@ -1,9 +1,11 @@
 ---
-name: "Nova SDK: Typecheck, Lint and Format"
+name: "@wandelbots/wandelbots-nova: Typecheck, Lint and Format"
+
 on:
   pull_request:
     branches:
       - main
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -11,23 +13,30 @@ jobs:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
       CELL_NAME: cell
     steps:
-      - name: Check out repository
+      - name: Checkout
         uses: actions/checkout@v6
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+
       - name: Set up Python environment
         run: |
           pip install uv
           uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
+
       - name: Check formatting with ruff
         run: uv run ruff format --check .
+
       - name: Check import order
         run: uv run ruff check --select I
+
       - name: Check ruff for linting
         run: uv run ruff check .
+
       - name: Typecheck
         run: uv run mypy
+
       - name: Run tests
         run: PYTHONPATH=. uv run pytest -rs -v -m "not integration"
