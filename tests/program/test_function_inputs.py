@@ -18,13 +18,16 @@ class FakeNova:
 
     def __init__(self):
         self._api_client = _FakeApiClient()
-        self.is_connected = False
+        self._is_connected = False
+
+    def is_connected(self):
+        return self._is_connected
 
     async def open(self):
-        self.is_connected = True
+        self._is_connected = True
 
     async def close(self):
-        self.is_connected = False
+        self._is_connected = False
 
     def cell(self):  # pragma: no cover - simple stub
         """Return a fake Cell-like object for ProgramContext."""

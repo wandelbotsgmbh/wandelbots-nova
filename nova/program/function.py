@@ -179,11 +179,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
             if has_preconditions:
                 # Preconditions require a connected NATS client (controller readiness waits),
                 # so ensure Nova is opened *only if needed*.
-                if hasattr(nova, "is_connected") and callable(nova.is_connected):
-                    is_connected = bool(nova.is_connected())
-                else:
-                    is_connected = bool(getattr(nova, "is_connected", False))
-
+                is_connected = nova.is_connected()
                 if not is_connected:
                     await nova.open()
                     opened_here = True
