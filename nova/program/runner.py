@@ -407,22 +407,22 @@ class ProgramRunner(ABC):
                 # TODO: discuss with Dirk & Mahsum. Right now Nova is opened in the decorator and in the program runner.
                 #   The runner is needed to send NATS messages and to create the robot cell.
                 await self._nova.open()
-                cell = self._nova.cell()
-                controller_specs = (
-                    list(self._preconditions.controllers or []) if self._preconditions else []
-                )
-                controllers = []
-                for controller_spec in controller_specs:
-                    # Ensure the controller exists and get the actual controller object
-                    # TODO: right now they are also ensured in the decorator. Maybe it makes sense to
-                    #   only ensure them here
-                    ctrl = await cell.ensure_controller(controller_spec)
-                    controllers.append(ctrl)
+                # cell = self._nova.cell()
+                # controller_specs = (
+                #     list(self._preconditions.controllers or []) if self._preconditions else []
+                # )
+                # controllers = []
+                # for controller_spec in controller_specs:
+                #     # Ensure the controller exists and get the actual controller object
+                #     # TODO: right now they are also ensured in the decorator. Maybe it makes sense to
+                #     #   only ensure them here
+                #     ctrl = await cell.ensure_controller(controller_spec)
+                #     controllers.append(ctrl)
 
                 robot_cell = RobotCell(
                     timer=None,
                     cycle=None,
-                    **{controller.id: controller for controller in controllers},
+                    # **{controller.id: controller for controller in controllers},
                 )
 
             if robot_cell is None:
@@ -521,9 +521,10 @@ class ProgramRunner(ABC):
                 api.models.ProgramRunState.FAILED, on_state_change, self._nova
             )
         finally:
+            pass
             # TODO not the most elegant way to close nova instance, especially since we seem to not know
             # here if we created it or not
-            await self._nova.close() if self._nova is not None else None
+            # await self._nova.close() if self._nova is not None else None
 
     @abstractmethod
     async def _run(self, execution_context: ExecutionContext):
