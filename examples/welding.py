@@ -177,7 +177,7 @@ async def calculate_seam_poses(mesh_pose: api.models.Pose) -> tuple[Pose, Pose, 
     preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name="ur10",
+                name="ur10e-welding",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
                 type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
             )
@@ -201,7 +201,7 @@ async def test(ctx: nova.ProgramContext):
     await log_mesh_to_rerun(scene)  # type: ignore
 
     cell = ctx.nova.cell()
-    controller = await cell.controller("ur10")
+    controller = await cell.controller("ur10e-welding")
     tcp_name = "torch"
 
     await ctx.nova.api.virtual_controller_api.set_virtual_controller_mounting(
@@ -219,7 +219,7 @@ async def test(ctx: nova.ProgramContext):
 
     await ctx.nova.api.virtual_controller_api.add_virtual_controller_tcp(
         cell=cell.id,
-        controller="ur10",
+        controller=controller.id,
         motion_group=f"0@{controller.id}",
         tcp=tcp_name,
         robot_tcp_data=api.models.RobotTcpData(
