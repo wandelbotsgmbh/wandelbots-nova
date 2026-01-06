@@ -53,7 +53,8 @@ async def start(
     controller = await cell.controller("kuka-kr16-r2010")
     cycle = ctx.cycle(extra={"app": "visual-studio-code"})
 
-    slow = MotionSettings(tcp_velocity_limit=50)
+    normal = MotionSettings(tcp_velocity_limit=100)
+    fast = MotionSettings(tcp_velocity_limit=250)
 
     async with controller[0] as motion_group:
         home_joints = await motion_group.joints()
@@ -66,22 +67,22 @@ async def start(
 
         # Actions define the sequence of movements and other actions to be executed by the robot
         actions = [
-            joint_ptp(home_joints, settings=slow),  # Move to home position slowly
-            cartesian_ptp(target_pose),  # Move to target pose
-            joint_ptp(home_joints),  # Return to home
+            joint_ptp(home_joints, settings=normal),  # Move to home position slowly
+            cartesian_ptp(target_pose, settings=fast),  # Move to target pose
             cartesian_ptp(
-                target_pose @ [200, 0, 0, 0, 0, 0]
+                target_pose @ [200, 0, 0, 0, 0, 0], settings=fast
             ),  # Move 100mm in target pose's local x-axis
-            joint_ptp(home_joints),
-            linear(target_pose @ (200, 200, 0, 0, 0, 0)),  # Move 100mm in local x and y axes
-            joint_ptp(home_joints, settings=slow),
-            cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0))),
-            joint_ptp(home_joints),
+            linear(
+                target_pose @ (200, 200, 0, 0, 0, 0), settings=fast
+            ),  # Move 100mm in local x and y axes
+            joint_ptp(home_joints, settings=normal),
+            cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0)), settings=fast),
             circular(
                 target_pose @ Pose((0, 200, 0, 0, 0, 0)),
                 intermediate=target_pose @ Pose((0, 200, 0, 0, 0, 0)),
+                settings=fast,
             ),
-            joint_ptp(home_joints),
+            joint_ptp(home_joints, settings=normal),
         ]
 
         # Start the cycle
