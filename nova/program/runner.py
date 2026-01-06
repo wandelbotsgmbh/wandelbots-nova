@@ -22,7 +22,6 @@ from nats.errors import OutboundBufferLimitError
 from pydantic import BaseModel, Field, StrictStr
 
 from nova import Nova, NovaConfig, api
-from nova.cell import Cell
 from nova.cell.robot_cell import RobotCell
 from nova.config import CELL_NAME
 from nova.exceptions import ControllerCreationFailed, PlanTrajectoryFailed
@@ -102,7 +101,7 @@ class ExecutionContext:
 
 
 async def _ensure_preconditions(
-    cell: Cell, preconditions: ProgramPreconditions | None
+    nova: Nova, preconditions: ProgramPreconditions | None
 ) -> list[str]:
     """Ensure preconditions are met by creating controllers and setting up viewers"""
     if not preconditions or not preconditions.controllers:
@@ -110,6 +109,7 @@ async def _ensure_preconditions(
 
     created_controllers: list[str] = []
     controller_config = None
+    cell = nova.cell()
 
     async def ensure_controller(controller_config: api.models.RobotController):
         """Ensure a controller is created and return its ID."""
@@ -143,21 +143,18 @@ async def _ensure_preconditions(
     return created_controllers
 
 
-async def _cleanup_preconditions(cell: Cell, controller_ids: list[str]) -> None:
+async def _cleanup_preconditions(nova: Nova, controller_ids: list[str]) -> None:
     """Clean up controllers by their IDs."""
-
-    async def cleanup_controllers(cell: Cell, controller_ids: list[str]) -> None:
-        for controller_id in controller_ids:
-            try:
-                await cell.delete_robot_controller(controller_id)
-                logger.debug(f"Cleaned up controller with ID '{controller_id}'")
-            except Exception as e:
-                # WORKAROUND: {"code":9, "message":"Failed to 'Connect to Host' due the
-                #   following reason:\nConnection refused (2)!\nexception::CommunicationException: Configured robot connection is not reachable.", "details":[]}
-                # Log and suppress errors for individual controller cleanup
-                logger.debug(f"Error cleaning up controller '{controller_id}': {e}")
-
-    await cleanup_controllers(cell=cell, controller_ids=controller_ids)
+    cell = nova.cell()
+    for controller_id in controller_ids:
+        try:
+            await cell.delete_robot_controller(controller_id)
+            logger.debug(f"Cleaned up controller with ID '{controller_id}'")
+        except Exception as e:
+            # WORKAROUND: {"code":9, "message":"Failed to 'Connect to Host' due the
+            #   following reason:\nConnection refused (2)!\nexception::CommunicationException: Configured robot connection is not reachable.", "details":[]}
+            # Log and suppress errors for individual controller cleanup
+            logger.debug(f"Error cleaning up controller '{controller_id}': {e}")
 
 
 class ProgramRunner(ABC):
@@ -455,10 +452,10 @@ class ProgramRunner(ABC):
         # TODO potential memory leak if the the program is running for a long time
         log_capture = io.StringIO()
         sink_id = logger.add(log_capture)
+        created_controller_ids: list[str] = []
+        robot_cell: RobotCell | None = None
 
         try:
-            robot_cell = None
-
             if self._robot_cell_override:
                 robot_cell = self._robot_cell_override
             else:
@@ -467,9 +464,8 @@ class ProgramRunner(ABC):
                 #   part of the preconditions are opened and streamed for e.g. estop handling
                 self._nova = Nova(config=self._nova_config)
                 await self._nova.open()
-                cell = self._nova.cell()
                 created_controller_ids = await _ensure_preconditions(
-                    cell=cell, preconditions=self._preconditions
+                    nova=self._nova, preconditions=self._preconditions
                 )
 
                 robot_cell = RobotCell(
@@ -477,9 +473,6 @@ class ProgramRunner(ABC):
                     cycle=None,
                     # **{controller.id: controller for controller in controllers},
                 )
-
-            if robot_cell is None:
-                raise RuntimeError("No robot cell available")
 
             # Set context variable to indicate if running via operator (for viewer optimization)
             is_operator_execution_var.set(self._app_name is not None)
@@ -575,7 +568,7 @@ class ProgramRunner(ABC):
             )
         finally:
             if self._nova is not None:
-                await _cleanup_preconditions(cell=cell, controller_ids=created_controller_ids)
+                await _cleanup_preconditions(nova=self._nova, controller_ids=created_controller_ids)
                 await self._nova.close()
 
     @abstractmethod
