@@ -17,7 +17,7 @@ def configure_logging():
 
     # By default python prints to stderr and has no date format in logs
     # this configuration is for beginner users to have a better logging experience out of the box
-    # experinced users can override this behaviour by configuring the logger themselfs after importing nova module
+    # experienced users can override this behaviour by configuring the logger themselves after importing nova module
     _formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT)
     _handler = logging.StreamHandler(sys.stdout)
     _handler.setLevel(LOG_LEVEL)
