@@ -63,7 +63,6 @@ async def test_program_runner_with_unrelated_controller_in_estop():
     assert runner._preconditions == preconditions
     # Timer, cycle timer
     assert len(runner.execution_context.robot_cell.devices) == 2
-    # assert "kuka-no-estop" in runner.execution_context.robot_cell.devices
     assert "cycle" in runner.execution_context.robot_cell.devices
     assert "timer" in runner.execution_context.robot_cell.devices
     assert "ur10e-estop" not in runner.execution_context.robot_cell.devices
