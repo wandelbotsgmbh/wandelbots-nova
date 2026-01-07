@@ -5,7 +5,7 @@ import rerun as rr
 import trimesh
 
 import nova
-from nova import Nova, api
+from nova import Nova, api, run_program
 from nova.actions import collision_free, linear
 from nova.cell import virtual_controller
 from nova.types import MotionSettings, Pose
@@ -173,7 +173,7 @@ async def calculate_seam_poses(mesh_pose: api.models.Pose) -> tuple[Pose, Pose, 
 
 @nova.program(
     name="14_welding_example",
-    viewer=nova.viewers.Rerun(application_id="14_welding_example", show_collision_link_chain=True),
+    # viewer=nova.viewers.Rerun(application_id="14_welding_example", show_collision_link_chain=True),
     preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -322,4 +322,4 @@ async def test(ctx: nova.ProgramContext):
 
 
 if __name__ == "__main__":
-    asyncio.run(test())
+    run_program(test)

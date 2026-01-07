@@ -1,8 +1,18 @@
+from unittest.mock import Mock
+
 import pytest
 from pydantic import BaseModel, Field
 
 import nova
+from nova.core.nova import Nova
 from nova.program.function import Program
+
+
+def _connected_nova() -> Nova:
+    nova_mock = Mock(spec=Nova)
+    nova_mock.is_connected.return_value = True
+    nova_mock.cell.return_value = None
+    return nova_mock
 
 
 class TestOutput(BaseModel):
@@ -76,7 +86,7 @@ async def test_function_calling():
     async def add(ctx, a: int, b: int) -> int:
         return a + b
 
-    result = await add(a=5, b=3)
+    result = await add(nova=_connected_nova(), a=5, b=3)
     assert result == 8
 
 
@@ -109,7 +119,7 @@ async def test_function_with_complex_types():
         return f"{person.name} lives in {person.address.city}"
 
     person = Person(name="John", address=Address(street="123 Main St", city="New York"))
-    result = await process_person(person=person)
+    result = await process_person(nova=_connected_nova(), person=person)
     assert "John lives in New York" in result
 
 
@@ -193,10 +203,10 @@ async def test_function_with_optional_parameters():
             return f"Hello {title} {name}!"
         return f"Hello {name}!"
 
-    result1 = await greet_optional(name="John")
+    result1 = await greet_optional(nova=_connected_nova(), name="John")
     assert result1 == "Hello John!"
 
-    result2 = await greet_optional(name="John", title="Dr.")
+    result2 = await greet_optional(nova=_connected_nova(), name="John", title="Dr.")
     assert result2 == "Hello Dr. John!"
 
 

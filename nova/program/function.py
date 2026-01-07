@@ -143,7 +143,26 @@ class Program(BaseModel, Generic[Parameters, Return]):
         if ctx is not None and not isinstance(ctx, ProgramContext):
             raise TypeError("ctx must be a nova.ProgramContext instance")
 
-        nova = nova_override or Nova()
+        # Determine which Nova instance will actually be used for execution:
+        # - if a ctx is provided, the wrapped program will use ctx.nova
+        # - otherwise, a `nova=...` override must be provided
+        nova: Nova | None = ctx.nova if ctx is not None else nova_override
+
+        if nova is None:
+            raise RuntimeError(
+                "No NOVA instance provided for program execution. "
+                "Programs must be executed with a connected NOVA instance. "
+                "Use `from nova import run_program` and run your program via `run_program(my_program, ...)`."
+                "OR provide an NOVA instance via `nova=...`."
+            )
+
+        if not nova.is_connected():
+            logger.warn(
+                "The provided NOVA instance is not connected. "
+                "Use `from nova import run_program` and run your program via `run_program(my_program, ...)`."
+                "OR provide an opened NOVA instance via `nova=...`."
+            )
+
         if ctx is None:
             ctx = ProgramContext(nova=nova, program_id=self.program_id)
 
