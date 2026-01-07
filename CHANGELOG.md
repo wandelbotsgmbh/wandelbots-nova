@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.1.1 (2026-01-07)
+
+### Bug Fixes
+
+- **NDX-452**: Nova connection in decorator (#357)
+  ([#357](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/357),
+  [`0261266`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/026126600d6dee218510b5d384fb490e37297fbd))
+
+
 ## v4.1.0 (2025-12-23)
 
 ### Features
