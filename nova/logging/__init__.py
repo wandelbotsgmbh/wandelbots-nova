@@ -3,19 +3,26 @@ import sys
 
 from nova.config import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
-# By default python prints to stderr and has no date format in logs
-# this configuration is for beginner users to have a better logging experience out of the box
-# experinced users can override this behaviour by configuring the logger themselfs after importing nova module
-_formatter: logging.Formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT)
-_handler: logging.StreamHandler = logging.StreamHandler(sys.stdout)
-_handler.setLevel(LOG_LEVEL)
-_handler.setFormatter(_formatter)
+
+def configure_logging():
+    # Configure a single, consistent handler (stdout + our formatter).
+    _formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT)
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setLevel(LOG_LEVEL)
+    _handler.setFormatter(_formatter)
+
+    logging.basicConfig(level=LOG_LEVEL, handlers=[_handler])
+
+    # Silence chatty libs explicitly
+    logging.getLogger("websockets").setLevel(LOG_LEVEL)
+    logging.getLogger("websockets.client").setLevel(LOG_LEVEL)
+    logging.getLogger("websockets.protocol").setLevel(LOG_LEVEL)
+    logging.getLogger("nats").setLevel(LOG_LEVEL)  # python-nats
+
+    # The `nova` logger itself should simply propagate to the root handler configured above.
+    logger = logging.getLogger("nova")
+    logger.setLevel(LOG_LEVEL)
+    return logger
 
 
-# the logger name is specifically set to "nova" so that other modules can do:
-# import logging
-# logger = logging.getLogger(__name__)
-# and use this logger as parent
-logger: logging.Logger = logging.getLogger("nova")
-logger.setLevel(LOG_LEVEL)
-logger.addHandler(_handler)
+logger = configure_logging()

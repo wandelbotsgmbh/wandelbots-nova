@@ -4,6 +4,7 @@ import nats
 
 from nova.cell.cell import Cell
 from nova.config import CELL_NAME, NovaConfig, default_config
+from nova.logging import logger
 
 from .gateway import ApiGateway
 
@@ -40,12 +41,17 @@ class Nova:
         return Cell(self._api_client, cell_id, nats_client=self.nats)
 
     def is_connected(self) -> bool:
-        return self.nats.is_connected
+        return self.nats is not None and self.nats.is_connected
 
     async def open(self):
         """
         Opens the NOVA instance. Configures attached viewers and connects to the NATS server.
         """
+        # `nats.NATS.connect()` is not safe to call concurrently. Guard it and make `open()`
+        # idempotent so callers (e.g. runner + decorator) can safely call it.
+        if self.is_connected():
+            return
+
         # Configure any active viewers
         try:
             from nova.viewers import _configure_active_viewers
@@ -65,9 +71,12 @@ class Nova:
 
     async def close(self):
         """Closes the underlying API client session and NATS client."""
-        if self.nats is not None and self.nats.is_connected:
-            await self.nats.drain()
-        return await self._api_client.close() if self._api_client is not None else None
+        try:
+            if self.nats is not None and self.nats.is_connected:
+                await self.nats.drain()
+            return await self._api_client.close() if self._api_client is not None else None
+        except Exception as e:
+            logger.error(f"Error closing Nova: {e}", exc_info=True)
 
     async def __aenter__(self):
         await self.open()

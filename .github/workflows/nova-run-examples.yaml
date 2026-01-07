@@ -1,22 +1,27 @@
 ---
-name: "Nova SDK: Run integration tests & examples"
+name: "@wandelbots/wandelbots-nova: Run integration tests & examples"
+
 on:
   pull_request:
     branches:
       - main
-      - release/v2
+
 concurrency:
   group: run-examples-workflow
   cancel-in-progress: false
+
 jobs:
   # This job creates a NOVA instance and captures the connection details
   setup-instance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+
       - name: Create NOVA instance and capture connection details
         id: create
         env:
@@ -40,6 +45,7 @@ jobs:
           echo "PORTAL_PROD_INSTANCE_ID=$PORTAL_PROD_INSTANCE_ID" >> "$GITHUB_OUTPUT"
           echo "PORTAL_PROD_ACCESS_TOKEN=$PORTAL_PROD_ACCESS_TOKEN" >> $GITHUB_OUTPUT
           cat $GITHUB_OUTPUT
+
       - name: Store secret ouput
         uses: cloudposse/github-action-secret-outputs@main
         id: role
@@ -48,10 +54,12 @@ jobs:
           secret: ${{ secrets.GPG_PASSWORD }}
           op: encode
           in: ${{ steps.create.outputs.PORTAL_PROD_ACCESS_TOKEN }}
+
     outputs:
       PORTAL_PROD_HOST: ${{ steps.create.outputs.PORTAL_PROD_HOST }}
       PORTAL_PROD_INSTANCE_ID: ${{ steps.create.outputs.PORTAL_PROD_INSTANCE_ID }}
       PORTAL_PROD_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
+
   # This job runs the integration tests and examples
   test-integration:
     runs-on: ubuntu-latest
@@ -77,19 +85,23 @@ jobs:
             run_cmd: "python examples/run_wandelscript_file.py"
           - id: welding
             run_cmd: "python examples/welding.py"
-          - id: collision_setup
-            run_cmd: "python examples/collision_setup.py"
+          # TODO: starting rerun in the CI is flaky
+          # - id: collision_setup
+          #   run_cmd: "python examples/collision_setup.py"
     steps:
-      - name: Check out repository
+      - name: Checkout
         uses: actions/checkout@v6
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+
       - name: Set up Python environment
         run: |
           pip install uv
           uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
+
       - name: Decode output secrets
         uses: cloudposse/github-action-secret-outputs@main
         id: role
@@ -97,6 +109,7 @@ jobs:
           secret: ${{ secrets.GPG_PASSWORD }}
           op: decode
           in: ${{ needs.setup-instance.outputs.PORTAL_PROD_ACCESS_TOKEN }}
+
       - name: "Run ${{ matrix.id }} suite"
         env:
           NOVA_API: https://${{ needs.setup-instance.outputs.PORTAL_PROD_HOST }}
@@ -124,6 +137,7 @@ jobs:
             echo "Command failed after $max attempts." >&2
             exit 1
           fi
+
       - name: Download diagnose package
         if: failure()
         run: |
@@ -133,12 +147,14 @@ jobs:
             -H 'Accept: application/zip' \
             -H "Authorization: Bearer ${PORTAL_PROD_ACCESS_TOKEN}" \
             -o "diagnose-${{ github.run_id }}.zip"
+
       - name: Upload diagnose artifact
         if: failure()
         uses: actions/upload-artifact@v6
         with:
           name: diagnose-package
           path: diagnose-${{ github.run_id }}.zip
+
   integration-summary:
     if: ${{ always() }}
     needs: [test-integration]
@@ -151,13 +167,16 @@ jobs:
             exit 1
           fi
           echo "All integration tests passed"
+
   # This job cleans up the NOVA instance
   cleanup-instance:
     if: ${{ always() }}
     needs: [setup-instance, test-integration]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Decode output secrets
         uses: cloudposse/github-action-secret-outputs@main
         id: role
@@ -165,6 +184,7 @@ jobs:
           secret: ${{ secrets.GPG_PASSWORD }}
           op: decode
           in: ${{ needs.setup-instance.outputs.PORTAL_PROD_ACCESS_TOKEN }}
+
       - name: Cleanup - Delete instance
         run: ./scripts/delete_nova_instance.sh
         env:

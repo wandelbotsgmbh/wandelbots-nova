@@ -26,7 +26,6 @@ from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
-from nova.exceptions import ControllerCreationFailed
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +143,26 @@ class Program(BaseModel, Generic[Parameters, Return]):
         if ctx is not None and not isinstance(ctx, ProgramContext):
             raise TypeError("ctx must be a nova.ProgramContext instance")
 
-        nova = nova_override or Nova()
+        # Determine which Nova instance will actually be used for execution:
+        # - if a ctx is provided, the wrapped program will use ctx.nova
+        # - otherwise, a `nova=...` override must be provided
+        nova: Nova | None = ctx.nova if ctx is not None else nova_override
+
+        if nova is None:
+            raise RuntimeError(
+                "No NOVA instance provided for program execution. "
+                "Programs must be executed with a connected NOVA instance. "
+                "Use `from nova import run_program` and run your program via `run_program(my_program, ...)`."
+                "OR provide an NOVA instance via `nova=...`."
+            )
+
+        if not nova.is_connected():
+            logger.warn(
+                "The provided NOVA instance is not connected. "
+                "Use `from nova import run_program` and run your program via `run_program(my_program, ...)`."
+                "OR provide an opened NOVA instance via `nova=...`."
+            )
+
         if ctx is None:
             ctx = ProgramContext(nova=nova, program_id=self.program_id)
 
@@ -169,21 +187,9 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 for field_name in input_instance.model_dump().keys()
             }
 
-        # created_controllers: list[str] = []
-        # Only connect to Nova when required (e.g. controller preconditions or viewers).
-        # This keeps local/offline execution (and unit tests) from hanging on network connects.
-        # has_preconditions = bool(self.preconditions and self.preconditions.controllers)
-
         try:
-            # if has_preconditions:
-            #     created_controllers = await self._ensure_preconditions(nova=nova)
-
             return await self._wrapped(ctx, **validated_kwargs)
         finally:
-            # if has_preconditions:
-            #     await self._cleanup_preconditions(nova=nova, controller_ids=created_controllers)
-
-            # Clean up viewers if configured.
             if self._viewer is not None:
                 from nova.viewers import _cleanup_active_viewers
 
@@ -205,74 +211,6 @@ class Program(BaseModel, Generic[Parameters, Return]):
             logger.debug(formatted_message)
         else:
             logger.info(formatted_message)
-
-    async def _ensure_preconditions(self, nova: Nova) -> list[str]:
-        """Ensure preconditions are met by creating controllers and setting up viewers"""
-        if not self.preconditions or not self.preconditions.controllers:
-            return []
-
-        created_controllers: list[str] = []
-        controller_config = None
-
-        async def ensure_controller(controller_config: api.models.RobotController):
-            """Ensure a controller is created and return its ID."""
-            controller_name = controller_config.name or "unnamed_controller"
-            self._log("info", f"Creating controller '{controller_name}'")
-            try:
-                async with nova:
-                    controller = await nova.cell().ensure_controller(
-                        controller_config=controller_config
-                    )
-                    created_controllers.append(controller.id)
-                    self._log(
-                        "info", f"Created controller '{controller_name}' with ID {controller.id}"
-                    )
-                    return controller.id
-            except Exception as e:
-                raise ControllerCreationFailed(controller_name, str(e))
-
-        try:
-            async with asyncio.TaskGroup() as tg:
-                for controller_config in self.preconditions.controllers:
-                    tg.create_task(ensure_controller(controller_config))
-
-        except Exception as e:
-            controller_name = controller_config.name if controller_config else "unnamed_controller"
-            raise ControllerCreationFailed(controller_name, str(e))
-
-        # Setup viewers after controllers are created and available
-        try:
-            from nova.viewers import _setup_active_viewers_after_preconditions
-
-            await _setup_active_viewers_after_preconditions()
-        except ImportError as e:
-            logger.error(f"Could not import viewers: {e}")
-
-        return created_controllers
-
-    async def _cleanup_preconditions(self, nova: Nova, controller_ids: list[str]) -> None:
-        """Clean up controllers by their IDs."""
-        if (
-            not self.preconditions
-            or not self.preconditions.cleanup_controllers
-            or not controller_ids
-        ):
-            return
-
-        try:
-            async with nova:
-                for controller_id in controller_ids:
-                    try:
-                        await nova.cell().delete_robot_controller(controller_id)
-                        self._log("info", f"Cleaned up controller with ID '{controller_id}'")
-                    except Exception as e:
-                        # WORKAROUND: {"code":9, "message":"Failed to 'Connect to Host' due the
-                        #   following reason:\nConnection refused (2)!\nexception::CommunicationException: Configured robot connection is not reachable.", "details":[]}
-                        # Log and suppress errors for individual controller cleanup
-                        self._log("error", f"Error cleaning up controller '{controller_id}': {e}")
-        except Exception as e:
-            # Log and suppress errors for the overall cleanup process
-            self._log("error", f"Error during controller cleanup: {e}")
 
     @property
     def input_json_schema(self) -> dict[str, Any]:

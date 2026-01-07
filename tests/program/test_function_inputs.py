@@ -18,13 +18,16 @@ class FakeNova:
 
     def __init__(self):
         self._api_client = _FakeApiClient()
-        self.is_connected = False
+        self._is_connected = False
+
+    def is_connected(self):
+        return self._is_connected
 
     async def open(self):
-        self.is_connected = True
+        self._is_connected = True
 
     async def close(self):
-        self.is_connected = False
+        self._is_connected = False
 
     def cell(self):  # pragma: no cover - simple stub
         """Return a fake Cell-like object for ProgramContext."""
@@ -42,12 +45,16 @@ async def test_ctx_first_and_implicit_on_call():
         assert isinstance(ctx, ProgramContext)
         return count if not repeat else count * 2
 
-    # ctx is optional at call-site, similar to 'self'
-    assert await sample(count=2) == 2
-    assert await sample(count=2, repeat=True) == 4
+    # Programs must be executed with a connected Nova instance when called directly.
+    connected_nova = FakeNova()
+    await connected_nova.open()
+    assert await sample(count=2, nova=connected_nova) == 2
+    assert await sample(count=2, repeat=True, nova=connected_nova) == 4
 
     # ctx can be overridden for tests via nova=...
-    assert await sample(count=3, nova=FakeNova()) == 3
+    connected_nova2 = FakeNova()
+    await connected_nova2.open()
+    assert await sample(count=3, nova=connected_nova2) == 3
 
 
 @pytest.mark.asyncio
@@ -70,7 +77,9 @@ async def test_extra_fields_rejected_by_input_model():
         return value
 
     with pytest.raises(ValidationError):
-        await only_value(value=1, extra="nope", nova=FakeNova())
+        connected_nova = FakeNova()
+        await connected_nova.open()
+        await only_value(value=1, extra="nope", nova=connected_nova)
 
 
 @pytest.mark.asyncio
@@ -82,7 +91,9 @@ async def test_ctx_only_signature_allowed():
     async def ctx_only(ctx: ProgramContext):
         return ctx.nova is not None
 
-    assert await ctx_only(nova=FakeNova()) is True
+    connected_nova = FakeNova()
+    await connected_nova.open()
+    assert await ctx_only(nova=connected_nova) is True
 
 
 @pytest.mark.asyncio
@@ -94,10 +105,29 @@ async def test_no_extra_kwargs_when_no_inputs():
     async def ctx_only_no_inputs(ctx):
         return "ok"
 
-    assert await ctx_only_no_inputs(nova=FakeNova()) == "ok"
+    connected_nova = FakeNova()
+    await connected_nova.open()
+    assert await ctx_only_no_inputs(nova=connected_nova) == "ok"
 
     with pytest.raises(TypeError):
-        await ctx_only_no_inputs(nova=FakeNova(), unexpected=1)
+        connected_nova2 = FakeNova()
+        await connected_nova2.open()
+        await ctx_only_no_inputs(nova=connected_nova2, unexpected=1)
+
+
+@pytest.mark.asyncio
+async def test_missing_nova_or_ctx_raises_helpful_error():
+    @nova.program(
+        name="needs_nova",
+        preconditions=ProgramPreconditions(controllers=[], cleanup_controllers=False),
+    )
+    async def needs_nova(ctx, value: int):
+        return value
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await needs_nova(value=1)
+
+    assert "run_program" in str(excinfo.value)
 
 
 @pytest.mark.asyncio

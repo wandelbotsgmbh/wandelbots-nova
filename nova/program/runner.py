@@ -24,12 +24,14 @@ from pydantic import BaseModel, Field, StrictStr
 from nova import Nova, NovaConfig, api
 from nova.cell.robot_cell import RobotCell
 from nova.config import CELL_NAME
-from nova.exceptions import PlanTrajectoryFailed
+from nova.exceptions import ControllerCreationFailed, PlanTrajectoryFailed
 from nova.program.exceptions import NotPlannableError
 from nova.program.function import Program
 from nova.program.utils import Tee, stoppable_run
 from nova.types import MotionState
 from nova.utils import timestamp
+
+from .function import ProgramPreconditions
 
 current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
     "current_execution_context_var"
@@ -98,6 +100,63 @@ class ExecutionContext:
         return self._stop_event
 
 
+async def _ensure_preconditions(
+    nova: Nova, preconditions: ProgramPreconditions | None
+) -> list[str]:
+    """Ensure preconditions are met by creating controllers and setting up viewers"""
+    if not preconditions or not preconditions.controllers:
+        return []
+
+    created_controllers: list[str] = []
+    controller_config = None
+    cell = nova.cell()
+
+    async def ensure_controller(controller_config: api.models.RobotController):
+        """Ensure a controller is created and return its ID."""
+        controller_name = controller_config.name or "unnamed_controller"
+        logger.debug(f"Creating controller '{controller_name}'")
+        try:
+            controller = await cell.ensure_controller(controller_config=controller_config)
+            created_controllers.append(controller.id)
+            logger.debug(f"Created controller '{controller_name}' with ID {controller.id}")
+            return controller.id
+        except Exception as e:
+            raise ControllerCreationFailed(controller_name, str(e))
+
+    try:
+        async with asyncio.TaskGroup() as tg:
+            for controller_config in preconditions.controllers:
+                tg.create_task(ensure_controller(controller_config))
+
+    except Exception as e:
+        controller_name = controller_config.name if controller_config else "unnamed_controller"
+        raise ControllerCreationFailed(controller_name, str(e))
+
+    # Setup viewers after controllers are created and available
+    try:
+        from nova.viewers import _setup_active_viewers_after_preconditions
+
+        await _setup_active_viewers_after_preconditions()
+    except ImportError as e:
+        logger.error(f"Could not import viewers: {e}")
+
+    return created_controllers
+
+
+async def _cleanup_preconditions(nova: Nova, controller_ids: list[str]) -> None:
+    """Clean up controllers by their IDs."""
+    cell = nova.cell()
+    for controller_id in controller_ids:
+        try:
+            await cell.delete_robot_controller(controller_id)
+            logger.debug(f"Cleaned up controller with ID '{controller_id}'")
+        except Exception as e:
+            # WORKAROUND: {"code":9, "message":"Failed to 'Connect to Host' due the
+            #   following reason:\nConnection refused (2)!\nexception::CommunicationException: Configured robot connection is not reachable.", "details":[]}
+            # Log and suppress errors for individual controller cleanup
+            logger.debug(f"Error cleaning up controller '{controller_id}': {e}")
+
+
 class ProgramRunner(ABC):
     """Abstract base class for program runners.
 
@@ -119,7 +178,7 @@ class ProgramRunner(ABC):
         Args:
             program_id (str): The unique identifier of the program.
             inputs (dict[str, Any]): The inputs that are passed to the program.
-            robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Should only be used for testing purposes. When a robot cell is provided, no Nova instance is created. Defaults to None.
+            robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Should only be used for testing purposes. When a robot cell is provided, no network connection is established. Defaults to None.
             cell_id (str | None, optional): The cell ID to use for the program. Defaults to None.
             app_name (str | None, optional): The app name to discover the program. Will be automatically set when executed via NOVAx or API. Does not need to be set by the user. Defaults to None.
             nova_config (NovaConfig | None, optional): The Nova config to use for the program. Defaults to None.
@@ -361,7 +420,7 @@ class ProgramRunner(ABC):
         self._program_run.state = state
         await on_state_change()
 
-        if nova is not None:
+        if nova is not None and nova.is_connected():
             data = self.program_status.model_dump_json().encode("utf-8")
 
             # publish program run to NATS safely
@@ -393,40 +452,32 @@ class ProgramRunner(ABC):
         # TODO potential memory leak if the the program is running for a long time
         log_capture = io.StringIO()
         sink_id = logger.add(log_capture)
+        created_controller_ids: list[str] = []
+        robot_cell: RobotCell | None = None
 
         try:
-            robot_cell = None
-
             if self._robot_cell_override:
                 robot_cell = self._robot_cell_override
+                # Even in tests/simulation we provide a Nova instance so program wrappers
+                # can construct a valid ProgramContext. We intentionally do NOT open()
+                # it here (no network/NATS required for robot_cell_override runs).
+                if self._nova is None:
+                    self._nova = Nova(config=self._nova_config)
             else:
                 # When there is no robot_cell_override we create a new robot cell
                 #   based on the program preconditions. That means also only devices that are
                 #   part of the preconditions are opened and streamed for e.g. estop handling
                 self._nova = Nova(config=self._nova_config)
-                # TODO: discuss with Dirk & Mahsum. Right now Nova is opened in the decorator and in the program runner.
-                #   The runner is needed to send NATS messages and to create the robot cell.
                 await self._nova.open()
-                cell = self._nova.cell()
-                controller_specs = (
-                    list(self._preconditions.controllers or []) if self._preconditions else []
+                created_controller_ids = await _ensure_preconditions(
+                    nova=self._nova, preconditions=self._preconditions
                 )
-                controllers = []
-                for controller_spec in controller_specs:
-                    # Ensure the controller exists and get the actual controller object
-                    # TODO: right now they are also ensured in the decorator. Maybe it makes sense to
-                    #   only ensure them here
-                    ctrl = await cell.ensure_controller(controller_spec)
-                    controllers.append(ctrl)
 
                 robot_cell = RobotCell(
                     timer=None,
                     cycle=None,
-                    **{controller.id: controller for controller in controllers},
+                    # **{controller.id: controller for controller in controllers},
                 )
-
-            if robot_cell is None:
-                raise RuntimeError("No robot cell available")
 
             # Set context variable to indicate if running via operator (for viewer optimization)
             is_operator_execution_var.set(self._app_name is not None)
@@ -521,9 +572,9 @@ class ProgramRunner(ABC):
                 api.models.ProgramRunState.FAILED, on_state_change, self._nova
             )
         finally:
-            # TODO not the most elegant way to close nova instance, especially since we seem to not know
-            # here if we created it or not
-            await self._nova.close() if self._nova is not None else None
+            if self._nova is not None:
+                await _cleanup_preconditions(nova=self._nova, controller_ids=created_controller_ids)
+                await self._nova.close()
 
     @abstractmethod
     async def _run(self, execution_context: ExecutionContext):

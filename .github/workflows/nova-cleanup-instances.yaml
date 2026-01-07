@@ -1,18 +1,21 @@
 ---
 name: "Cleanup testing instances"
+
 on:
   schedule:
     # Run at 3 AM UTC every day
     - cron: '0 3 * * *'
   # Allow manual triggering
   workflow_dispatch:
+
 jobs:
   cleanup:
     name: Cleanup Nova Instances
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v6
+
       - name: Run cleanup script
         env:
           PORTAL_PROD_REFRESH_URL: ${{ secrets.PORTAL_PROD_REFRESH_URL }}
