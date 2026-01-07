@@ -134,7 +134,7 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
     cell = nova.cell()
     controller = await cell.controller("kuka-kr16-r2010")
 
-    await nova._api_client.virtual_robot_setup_api.set_virtual_controller_mounting(
+    await nova.api.virtual_robot_setup_api.set_virtual_controller_mounting(
         cell="cell",
         controller=controller.id,
         motion_group=f"0@{controller.id}",
