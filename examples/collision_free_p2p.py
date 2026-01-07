@@ -181,8 +181,7 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
             rr.Points3D([target_pose.position.to_tuple()], radii=[10], colors=[(0, 255, 0)]),
         )
 
-        # Use default planner to move to the left of the sphere
-        # -> this will collide
+        # Use default planner to move to the left of the sphere -> this will collide
         # only plan don't move
         collision_actions: list[Action] = [
             cartesian_ptp(target=target_pose, collision_setup=collision_setup)
@@ -210,7 +209,7 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
             )
         ]
 
-        await motion_group.plan(
+        joint_trajectory = await motion_group.plan(
             welding_actions, tcp=tcp, start_joint_position=joint_trajectory.joint_positions[-1].root
         )
 
