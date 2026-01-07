@@ -178,7 +178,7 @@ class ProgramRunner(ABC):
         Args:
             program_id (str): The unique identifier of the program.
             inputs (dict[str, Any]): The inputs that are passed to the program.
-            robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Should only be used for testing purposes. When a robot cell is provided, no Nova instance is created. Defaults to None.
+            robot_cell_override (RobotCell | None, optional): The robot cell to use for the program. Should only be used for testing purposes. When a robot cell is provided, no network connection is established. Defaults to None.
             cell_id (str | None, optional): The cell ID to use for the program. Defaults to None.
             app_name (str | None, optional): The app name to discover the program. Will be automatically set when executed via NOVAx or API. Does not need to be set by the user. Defaults to None.
             nova_config (NovaConfig | None, optional): The Nova config to use for the program. Defaults to None.
@@ -420,7 +420,7 @@ class ProgramRunner(ABC):
         self._program_run.state = state
         await on_state_change()
 
-        if nova is not None:
+        if nova is not None and nova.is_connected():
             data = self.program_status.model_dump_json().encode("utf-8")
 
             # publish program run to NATS safely
@@ -458,6 +458,11 @@ class ProgramRunner(ABC):
         try:
             if self._robot_cell_override:
                 robot_cell = self._robot_cell_override
+                # Even in tests/simulation we provide a Nova instance so program wrappers
+                # can construct a valid ProgramContext. We intentionally do NOT open()
+                # it here (no network/NATS required for robot_cell_override runs).
+                if self._nova is None:
+                    self._nova = Nova(config=self._nova_config)
             else:
                 # When there is no robot_cell_override we create a new robot cell
                 #   based on the program preconditions. That means also only devices that are
