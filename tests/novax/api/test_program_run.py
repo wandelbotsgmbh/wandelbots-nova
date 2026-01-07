@@ -304,7 +304,7 @@ async def test_program_run_contains_init_args():
 @pytest.mark.integration
 @pytest.mark.xdist_group("program-runs")
 @pytest.mark.asyncio
-def test_stop_program_on_lifespan_end():
+async def test_stop_program_on_lifespan_end():
     @nova.program(name="endless_program")
     async def endless_program(ctx: nova.ProgramContext):
         while True:
