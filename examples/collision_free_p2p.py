@@ -16,9 +16,9 @@ from nova.types import MotionSettings, Pose
 async def build_collision_world(
     nova: Nova, cell_name: str, motion_group_description: api.models.MotionGroupDescription
 ) -> str:
-    store_collision_components_api = nova._api_client.store_collision_components_api
-    store_collision_setups_api = nova._api_client.store_collision_setups_api
-    motion_group_models_api = nova._api_client.motion_group_models_api
+    store_collision_components_api = nova.api.store_collision_components_api
+    store_collision_setups_api = nova.api.store_collision_setups_api
+    motion_group_models_api = nova.api.motion_group_models_api
 
     motion_group_model = motion_group_description.motion_group_model.root
 
@@ -158,19 +158,19 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
             await motion_group.get_description()
         )
         collision_scene_id = await build_collision_world(nova, "cell", motion_group_description)
-        store_collision_setups_api = nova._api_client.store_collision_setups_api
+        store_collision_setups_api = nova.api.store_collision_setups_api
         collision_setup = await store_collision_setups_api.get_stored_collision_setup(
             cell="cell", setup=collision_scene_id
         )
         # Use default planner to move to the right of the sphere
         home = await motion_group.tcp_pose(tcp)
-        actions: list[Action] = [
-            cartesian_ptp(home),
-            cartesian_ptp(target=Pose((1000, -400, 200, np.pi, 0, 0))),
+        actions = [
+            cartesian_ptp(home, settings=MotionSettings(tcp_velocity_limit=200)),
+            cartesian_ptp(
+                target=Pose((1000, -400, 200, np.pi, 0, 0)),
+                settings=MotionSettings(tcp_velocity_limit=200),
+            ),
         ]
-
-        for action in actions:
-            cast(Motion, action).settings = MotionSettings(tcp_velocity_limit=200)
 
         joint_trajectory = await motion_group.plan(
             actions, tcp, start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0)
