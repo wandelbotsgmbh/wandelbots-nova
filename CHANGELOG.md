@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v4.1.2 (2026-01-07)
+
+### Chores
+
+- Add bus io api (#358) ([#358](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/358),
+  [`aded7c9`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/aded7c93ca141d3bb250f3191f318ada928da05f))
+
+
 ## v4.1.1 (2026-01-07)
 
 ### Bug Fixes
