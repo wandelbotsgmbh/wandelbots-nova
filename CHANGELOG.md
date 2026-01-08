@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.1.3 (2026-01-08)
+
+### Bug Fixes
+
+- **NDX-448**: Correctly find the best solution in collision_free (#356)
+  ([#356](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/356),
+  [`0885b9d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0885b9dba04b2906a06e2b1a169c2f0b44b35068))
+
+
 ## v4.1.2 (2026-01-07)
 
 ### Chores
