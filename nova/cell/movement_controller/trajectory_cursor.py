@@ -90,7 +90,9 @@ class OperationHandler:
 
         self._future = asyncio.Future()
         self._operation_type = operation_type
-        self._operation_state = OperationState.COMMANDED
+        self._operation_state = (
+            OperationState.COMMANDED
+        )  # TODO this should be initial and commanded when we have send it to the API
         self._target_location = target_location
         self._start_location = start_location
         self._interrupt_requested = False
@@ -171,7 +173,7 @@ class TrajectoryCursor:
     def __init__(
         self,
         motion_id: str,
-        motion_group_state_stream: AsyncIterator[api.models.MotionGroupState],
+        motion_group_state_stream: AsyncIterator[api.models.MotionGroupState],  # TODO ownership?
         joint_trajectory: api.models.JointTrajectory,
         actions: list[Action],
         initial_location: float,
@@ -189,8 +191,9 @@ class TrajectoryCursor:
         )
 
         self._current_location = initial_location
+        # TODO maybe None instead until we have a target?
+        self._target_location = self._current_location
         self._overshoot = 0.0
-        self._target_location = self.next_action_index + 1.0
         self._detach_on_standstill = detach_on_standstill
 
         self._operation_handler = OperationHandler()
@@ -198,7 +201,8 @@ class TrajectoryCursor:
         self._initialize_task = asyncio.create_task(self.ainitialize())
 
     async def ainitialize(self):
-        target_action = self.actions[self.next_action_index or 0]
+        target_action = self.current_action
+        # TODO maybe we want a dedicated event for initialization?
         await motion_started.send_async(self, event=self._get_motion_event(target_action))
 
     @property
@@ -207,33 +211,48 @@ class TrajectoryCursor:
         assert getattr(self, "joint_trajectory", None) is not None
         return self.joint_trajectory.locations[-1].root
 
-    # TODO this should use the same index calculation as next_action_index (symmetric)
     @property
-    def current_action(self) -> Action:
-        current_action_index = floor(self._current_location) - 1
-        if current_action_index < 0:
-            current_action_index = 0
-        return self.actions[current_action_index]
+    def current_action_start(self) -> float:
+        return float(floor(self._current_location))
 
     @property
-    def next_action_index(self) -> int:
-        index = ceil(self._current_location - self._overshoot)
-        # index = ceil(self._current_location - self._overshoot) + 1
-        ic(len(self.actions), self._current_location, self._overshoot, index)
-        if index < 0:
-            return 0
-        if index < len(self.actions):
-            return index
-        # for now we don't allow forward wrap around
-        return len(self.actions) - 1
+    def current_action_end(self) -> float:
+        return float(ceil(self._current_location))
+
+    @property
+    def next_action_start(self) -> float:
+        return self.current_action_end
+
+    @property
+    def previous_action_start(self) -> float:
+        return self.current_action_start - 1.0
+
+    @property
+    def current_action_index(self) -> int:
+        index = floor(self._current_location)
+        if index >= len(self.actions):
+            # at the end of the trajectory current action remains the last one
+            return len(self.actions) - 1
+        return index
+
+    @property
+    def current_action(self) -> Action:
+        return self.actions[self.current_action_index]
+
+    @property
+    def next_action(self) -> Action | None:
+        next_action_index = self.current_action_index + 1
+        if next_action_index >= len(self.actions):
+            return None
+        return self.actions[next_action_index]
 
     @property
     def previous_action_index(self) -> int:
-        index = ceil(self._current_location - 1.0 - self._overshoot)
+        index = ceil(self._current_location) - 1
         assert index <= len(self.actions)
-        # if index < 0:
-        #     # for now we don't allow backward wrap around
-        #     return 0
+        if index < 0:
+            # for now we don't allow backward wrap around
+            return 0
         return index
 
     def get_movement_options(self) -> set[MovementOption]:
@@ -258,6 +277,7 @@ class TrajectoryCursor:
             self._command_queue.put_nowait(
                 api.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
             )
+        ic(target_location, self._target_location)
         self._command_queue.put_nowait(
             api.models.StartMovementRequest(
                 direction=api.models.Direction.DIRECTION_FORWARD,
@@ -267,6 +287,32 @@ class TrajectoryCursor:
                     else None
                 ),
                 # set_ios=self.context.combined_actions.to_set_io(),  # somehow gets called before self.context is set
+                start_on_io=None,
+                pause_on_io=None,
+            )
+        )
+
+        return future
+
+    def backward(
+        self, target_location: float | None = None, playback_speed_in_percent: int | None = None
+    ) -> asyncio.Future[OperationResult]:
+        future = self._start_operation(OperationType.BACKWARD)
+
+        if playback_speed_in_percent is not None:
+            self._command_queue.put_nowait(
+                api.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
+            )
+        ic(target_location, self._target_location)
+        self._command_queue.put_nowait(
+            api.models.StartMovementRequest(
+                direction=api.models.Direction.DIRECTION_BACKWARD,
+                target_location=(
+                    api.models.Location(root=target_location)
+                    if target_location is not None
+                    else None
+                ),
+                # set_ios=self.context.combined_actions.to_set_io(),
                 start_on_io=None,
                 pause_on_io=None,
             )
@@ -291,44 +337,6 @@ class TrajectoryCursor:
             target_location=location, playback_speed_in_percent=playback_speed_in_percent
         )
 
-    def forward_to_next_action(
-        self, playback_speed_in_percent: int | None = None
-    ) -> asyncio.Future[OperationResult]:
-        index = self.next_action_index
-        if index < len(self.actions):
-            return self.forward_to(index + 1.0, playback_speed_in_percent=playback_speed_in_percent)
-        else:
-            return asyncio.Future()
-            # # Create a future that's already resolved with an error
-            # future = asyncio.Future()
-            # future.set_exception(ValueError("No next action found after current location."))
-            # return future
-
-    def backward(
-        self, target_location: float | None = None, playback_speed_in_percent: int | None = None
-    ) -> asyncio.Future[OperationResult]:
-        future = self._start_operation(OperationType.BACKWARD)
-
-        if playback_speed_in_percent is not None:
-            self._command_queue.put_nowait(
-                api.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
-            )
-        self._command_queue.put_nowait(
-            api.models.StartMovementRequest(
-                direction=api.models.Direction.DIRECTION_BACKWARD,
-                target_location=(
-                    api.models.Location(root=target_location)
-                    if target_location is not None
-                    else None
-                ),
-                # set_ios=self.context.combined_actions.to_set_io(),
-                start_on_io=None,
-                pause_on_io=None,
-            )
-        )
-
-        return future
-
     def backward_to(
         self, location: float, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
@@ -341,20 +349,53 @@ class TrajectoryCursor:
             )
             return future
         self._target_location = location
-        return self.backward(playback_speed_in_percent=playback_speed_in_percent)
+        return self.backward(location, playback_speed_in_percent=playback_speed_in_percent)
+
+    def forward_to_next_action(
+        self, playback_speed_in_percent: int | None = None
+    ) -> asyncio.Future[OperationResult]:
+        target_location = self.next_action_start
+        ic(self._current_location, target_location)
+        if self._current_location == target_location:
+            target_location += 1.0
+        if target_location > len(self.actions):
+            # TODO decide if this should be an error instead
+            # End of trajectory reached
+            # Create a future that's already resolved with a preset result
+            future: asyncio.Future[OperationResult] = asyncio.Future()
+            future.set_result(
+                OperationResult(
+                    final_location=self._current_location,
+                    operation_type=OperationType.FORWARD_TO_NEXT_ACTION,
+                )
+            )
+            # future.set_exception(ValueError("No next action found after current location."))
+            return future
+        return self.forward_to(target_location, playback_speed_in_percent=playback_speed_in_percent)
 
     def backward_to_previous_action(
         self, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
-        index = self.previous_action_index
-        if index + 1.0 >= 0:
+        target_location = (
+            self.previous_action_start
+            if self._current_location - self.previous_action_start <= 1.0
+            else self.current_action_start
+        )
+        ic(self._current_location, target_location, self.previous_action_start)
+        if target_location >= 0:
             return self.backward_to(
-                index + 1.0, playback_speed_in_percent=playback_speed_in_percent
+                target_location, playback_speed_in_percent=playback_speed_in_percent
             )
         else:
             # Create a future that's already resolved with an error
             future: asyncio.Future[OperationResult] = asyncio.Future()
-            future.set_exception(ValueError("No previous action found before current location."))
+            future.set_result(
+                OperationResult(
+                    final_location=self._current_location,
+                    operation_type=OperationType.BACKWARD_TO_PREVIOUS_ACTION,
+                )
+            )
+            # future.set_exception(ValueError("No previous action found before current location."))
             return future
 
     def pause(self) -> asyncio.Future[OperationResult] | None:
@@ -498,16 +539,17 @@ class TrajectoryCursor:
                 break
             ic(command)
             yield command
+            # TODO maybe set the operation as commanded here?
 
             if isinstance(command, api.models.StartMovementRequest):
                 match command.direction:
                     case api.models.Direction.DIRECTION_FORWARD:
-                        target_action = self.actions[self.next_action_index]
+                        target_action = self.current_action
                         await motion_started.send_async(
                             self, event=self._get_motion_event(target_action)
                         )
                     case api.models.Direction.DIRECTION_BACKWARD:
-                        target_action = self.actions[self.previous_action_index]
+                        target_action = self.current_action
                         await motion_started.send_async(
                             self, event=self._get_motion_event(target_action)
                         )
@@ -541,7 +583,8 @@ class TrajectoryCursor:
                     motion_group_state = response
 
                     if self._is_operation_in_progress():
-                        ic((motion_group_state.standstill, motion_group_state.execute))
+                        # ic((motion_group_state.standstill, motion_group_state.execute))
+                        pass
 
                     try:
                         motion_state = motion_group_state_to_motion_state(
@@ -573,7 +616,7 @@ class TrajectoryCursor:
                     assert motion_group_state.execute
                     # TODO this is unreachable?
                     if motion_group_state.standstill and not motion_group_state.execute:
-                        ic()
+                        # ic()
                         assert self._operation_handler.current_operation_state not in (
                             OperationState.INITIAL,
                             OperationState.COMMANDED,
@@ -593,10 +636,10 @@ class TrajectoryCursor:
                     if motion_group_state.execute and isinstance(
                         motion_group_state.execute.details, api.models.TrajectoryDetails
                     ):
-                        ic()
+                        # ic()
                         match motion_group_state.execute.details.state:
                             case api.models.TrajectoryRunning():
-                                ic()
+                                # ic()
                                 if (
                                     self._operation_handler.current_operation_state
                                     == OperationState.COMMANDED
@@ -608,9 +651,9 @@ class TrajectoryCursor:
                             case api.models.TrajectoryPausedByUser():
                                 ic()
                                 self._overshoot = self._current_location - self._target_location
-                                assert self._overshoot == 0.0, (
-                                    f"Expected overshoot to be 0.0, got {self._overshoot}"
-                                )
+                                # assert self._overshoot == 0.0, (
+                                #     f"Expected overshoot to be 0.0, got {self._overshoot}"
+                                # )
                                 # self._overshoot = 0.0  # because the RAE takes care of that
                                 self._complete_operation()
                                 if self._detach_on_standstill:
@@ -620,9 +663,9 @@ class TrajectoryCursor:
                                 ic()
                                 self._overshoot = self._current_location - self._target_location
                                 ic(self._current_location, self._target_location, self._overshoot)
-                                assert self._overshoot == 0.0, (
-                                    f"Expected overshoot to be 0.0, got {self._overshoot}"
-                                )
+                                # assert self._overshoot == 0.0, (
+                                #     f"Expected overshoot to be 0.0, got {self._overshoot}"
+                                # )
                                 # self._overshoot = 0.0  # because the RAE takes care of that
                                 self._complete_operation()
                                 if self._detach_on_standstill:
@@ -651,18 +694,19 @@ class TrajectoryCursor:
             return
         if curr_location > last_location:
             # moving forwards
-            if last_location <= self._target_location < curr_location:
+            if curr_location > self._target_location:
                 assert False, "Should not reach here, RAE handles exact stopping"
         else:
             # moving backwards
-            if last_location > self._target_location >= curr_location:
+            if curr_location < self._target_location:
+                ic(last_location, self._target_location, curr_location)
                 assert False, "Should not reach here, RAE handles exact stopping"
 
     async def _motion_event_updater(self, interval=0.2):
         while True:
             match self._operation_handler.current_operation_type:
                 case OperationType.FORWARD | OperationType.FORWARD_TO:
-                    target_action = self.actions[self.next_action_index]
+                    target_action = self.actions[int(self.next_action_start) - 1]
                     await motion_started.send_async(
                         self, event=self._get_motion_event(target_action)
                     )

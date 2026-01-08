@@ -137,7 +137,7 @@ class TrajectoryTuner:
                     self.execute_fn(client_request_generator=current_cursor.cntrl)
                 )
                 async for execute_response in current_cursor:
-                    ic()
+                    # ic()
                     yield execute_response
                 ic()
                 current_cursor.detach()
