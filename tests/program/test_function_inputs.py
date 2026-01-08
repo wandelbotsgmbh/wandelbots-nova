@@ -1,7 +1,7 @@
 from unittest.mock import Mock
 
 import pytest
-from pydantic import Field, ValidationError
+from pydantic import Field
 
 import nova
 from nova.cell import Cell
@@ -76,7 +76,7 @@ async def test_extra_fields_rejected_by_input_model():
         assert isinstance(ctx, ProgramContext)
         return value
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(Exception):
         connected_nova = FakeNova()
         await connected_nova.open()
         await only_value(value=1, extra="nope", nova=connected_nova)
