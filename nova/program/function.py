@@ -21,7 +21,15 @@ from typing import (
 
 from docstring_parser import Docstring
 from docstring_parser import parse as parse_docstring
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, RootModel, create_model, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    RootModel,
+    create_model,
+    ValidationError,
+)
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
@@ -193,7 +201,6 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 "Please make sure the right input parameters are configured."
                 f"{e}"
             )
-
 
         try:
             return await self._wrapped(ctx, **validated_kwargs)
