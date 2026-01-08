@@ -143,8 +143,13 @@ async def _ensure_preconditions(
     return created_controllers
 
 
-async def _cleanup_preconditions(nova: Nova, controller_ids: list[str]) -> None:
+async def _cleanup_preconditions(
+    nova: Nova, preconditions: ProgramPreconditions | None, controller_ids: list[str]
+) -> None:
     """Clean up controllers by their IDs."""
+    if not preconditions or not preconditions.cleanup_controllers:
+        return
+
     cell = nova.cell()
     for controller_id in controller_ids:
         try:
@@ -573,7 +578,11 @@ class ProgramRunner(ABC):
             )
         finally:
             if self._nova is not None:
-                await _cleanup_preconditions(nova=self._nova, controller_ids=created_controller_ids)
+                await _cleanup_preconditions(
+                    nova=self._nova,
+                    preconditions=self._preconditions,
+                    controller_ids=created_controller_ids,
+                )
                 await self._nova.close()
 
     @abstractmethod
