@@ -21,7 +21,7 @@ from typing import (
 
 from docstring_parser import Docstring
 from docstring_parser import parse as parse_docstring
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, RootModel, create_model
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, RootModel, create_model, ValidationError
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
@@ -169,23 +169,31 @@ class Program(BaseModel, Generic[Parameters, Return]):
         # Remaining keyword arguments are treated as input parameters for the program.
         input_values: dict[str, Any] = kwargs
 
-        if self.input_model is None:
-            if input_values:
-                unexpected = ", ".join(sorted(input_values.keys()))
-                raise TypeError(
-                    f"Program '{self.program_id}' does not accept any input parameters "
-                    f"(unexpected: {unexpected})."
-                )
-            validated_kwargs: dict[str, Any] = {}
-        else:
-            input_instance = self.input_model.model_validate(input_values)
-            # Use attribute access instead of model_dump() so that nested
-            # BaseModel instances (e.g. Person) are preserved instead of
-            # being converted to plain dictionaries.
-            validated_kwargs = {
-                field_name: getattr(input_instance, field_name)
-                for field_name in input_instance.model_dump().keys()
-            }
+        try:
+            if self.input_model is None:
+                if input_values:
+                    unexpected = ", ".join(sorted(input_values.keys()))
+                    raise TypeError(
+                        f"Program '{self.program_id}' does not accept any input parameters "
+                        f"(unexpected: {unexpected})."
+                    )
+                validated_kwargs: dict[str, Any] = {}
+            else:
+                input_instance = self.input_model.model_validate(input_values)
+                # Use attribute access instead of model_dump() so that nested
+                # BaseModel instances (e.g. Person) are preserved instead of
+                # being converted to plain dictionaries.
+                validated_kwargs = {
+                    field_name: getattr(input_instance, field_name)
+                    for field_name in input_instance.model_dump().keys()
+                }
+        except ValidationError as e:
+            raise TypeError(
+                "The program did not receive the parameters it expects. "
+                "Please make sure the right input parameters are configured."
+                f"{e}"
+            )
+
 
         try:
             return await self._wrapped(ctx, **validated_kwargs)
