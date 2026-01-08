@@ -196,10 +196,9 @@ class Program(BaseModel, Generic[Parameters, Return]):
                     for field_name in input_instance.model_dump().keys()
                 }
         except ValidationError as e:
-            raise TypeError(
+            raise Exception(
                 "The program did not receive the parameters it expects. "
-                "Please make sure the right input parameters are configured."
-                f"{e}"
+                f"Please make sure the right input parameters are configured. {e}"
             )
 
         try:
