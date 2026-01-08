@@ -1,7 +1,7 @@
 from unittest.mock import Mock
 
 import pytest
-from pydantic import Field, ValidationError
+from pydantic import Field
 
 import nova
 from nova.cell import Cell
