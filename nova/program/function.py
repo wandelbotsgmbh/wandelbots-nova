@@ -195,8 +195,6 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
                 _cleanup_active_viewers()
 
-            await nova.close()
-
     def _log(self, level: str, message: str) -> None:
         """Log a message with program prefix."""
         prefix = f"Nova Program '{self.name}'"
