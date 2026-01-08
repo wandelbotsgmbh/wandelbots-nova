@@ -27,8 +27,8 @@ from pydantic import (
     Field,
     PrivateAttr,
     RootModel,
-    create_model,
     ValidationError,
+    create_model,
 )
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
