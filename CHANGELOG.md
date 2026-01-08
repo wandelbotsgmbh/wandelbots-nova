@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.1.4 (2026-01-08)
+
+### Chores
+
+- Make the pydantic validation error more human readabe (#359)
+  ([#359](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/359),
+  [`1fb2dce`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1fb2dce7426f64a044eb06bc4ab0b6aacd880455))
+
+
 ## v4.1.3 (2026-01-08)
 
 ### Bug Fixes
