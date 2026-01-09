@@ -1,0 +1,26 @@
+---
+name: pip-audit
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: ["main"]
+  schedule:
+    - cron: "33 4 * * 1" # weekly
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Audit dependencies
+        uses: pypa/gh-action-pip-audit@v1
+        with:
+          inputs: nova/
