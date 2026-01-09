@@ -3,7 +3,7 @@ name: pip-audit
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   push:
     branches: ["main"]
   schedule:
@@ -26,5 +26,3 @@ jobs:
 
       - name: Audit dependencies
         uses: pypa/gh-action-pip-audit@v1.1.0
-        with:
-          inputs: ./
