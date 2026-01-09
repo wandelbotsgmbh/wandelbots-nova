@@ -13,14 +13,18 @@ jobs:
   pip-audit:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
+      - name: Set up Python environment
+        run: |
+          pip install uv
+          uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
+
       - name: Audit dependencies
-        uses: pypa/gh-action-pip-audit@v1
+        uses: pypa/gh-action-pip-audit@v1.1.0
         with:
           inputs: nova/
