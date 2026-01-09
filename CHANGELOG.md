@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.2.0 (2026-01-09)
+
+### Features
+
+- **NDX-390**: Improved security and code quality with CI/CD tooling (#360)
+  ([#360](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/360),
+  [`7952174`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7952174e14ed7ca66dbc0bec3c891854f8138ee2))
+
+
 ## v4.1.4 (2026-01-08)
 
 ### Chores
