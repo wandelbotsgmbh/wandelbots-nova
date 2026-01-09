@@ -12,255 +12,174 @@ def create_cursor(num_actions: int, initial_location: float) -> TrajectoryCursor
     """Helper to create a TrajectoryCursor with mock dependencies."""
     actions = [lin(Pose((i * 100, 0, 0, 0, 0, 0))) for i in range(num_actions)]
 
-    # Mock joint trajectory with locations from 0 to num_actions
     joint_trajectory = MagicMock()
     joint_trajectory.locations = [MagicMock(root=float(i)) for i in range(num_actions + 1)]
 
     cursor = object.__new__(TrajectoryCursor)
     cursor.joint_trajectory = joint_trajectory
     cursor.actions = MagicMock()
-    cursor.actions.__len__ = lambda self: num_actions
-    cursor.actions.__getitem__ = lambda self, i: actions[i]
+    cursor.actions.__len__ = lambda _: num_actions
+    cursor.actions.__getitem__ = lambda _, i: actions[i]
     cursor._current_location = initial_location
     cursor._target_location = initial_location
 
     return cursor
 
 
-class TestCurrentActionIndex:
-    """Tests for current_action_index property."""
-
-    def test_at_trajectory_start(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.0)
-        assert cursor.current_action_index == 0
-
-    def test_midway_through_first_action(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.5)
-        assert cursor.current_action_index == 0
-
-    def test_at_action_boundary(self):
-        cursor = create_cursor(num_actions=3, initial_location=1.0)
-        assert cursor.current_action_index == 1
-
-    def test_midway_through_middle_action(self):
-        cursor = create_cursor(num_actions=3, initial_location=1.7)
-        assert cursor.current_action_index == 1
-
-    def test_at_last_action(self):
-        cursor = create_cursor(num_actions=3, initial_location=2.5)
-        assert cursor.current_action_index == 2
-
-    def test_at_trajectory_end_clamps_to_last_action(self):
-        cursor = create_cursor(num_actions=3, initial_location=3.0)
-        assert cursor.current_action_index == 2  # last action index
-
-    def test_beyond_trajectory_end_clamps_to_last_action(self):
-        cursor = create_cursor(num_actions=3, initial_location=5.0)
-        assert cursor.current_action_index == 2
-
-    def test_single_action_at_start(self):
-        cursor = create_cursor(num_actions=1, initial_location=0.0)
-        assert cursor.current_action_index == 0
-
-    def test_single_action_at_end(self):
-        cursor = create_cursor(num_actions=1, initial_location=1.0)
-        assert cursor.current_action_index == 0
+@pytest.mark.parametrize(
+    "location, expected",
+    [
+        pytest.param(0.0, 0, id="at_trajectory_start"),
+        pytest.param(0.5, 0, id="midway_through_first_action"),
+        pytest.param(1.0, 1, id="at_action_boundary"),
+        pytest.param(1.7, 1, id="midway_through_middle_action"),
+        pytest.param(2.5, 2, id="at_last_action"),
+        pytest.param(3.0, 2, id="at_trajectory_end_clamps_to_last"),
+        pytest.param(5.0, 2, id="beyond_end_clamps_to_last"),
+    ],
+)
+def test_current_action_index(location, expected):
+    cursor = create_cursor(num_actions=3, initial_location=location)
+    assert cursor.current_action_index == expected
 
 
-class TestCurrentActionStart:
-    """Tests for current_action_start property."""
-
-    def test_at_action_start(self):
-        cursor = create_cursor(num_actions=3, initial_location=1.0)
-        assert cursor.current_action_start == 1.0
-
-    def test_midway_through_action(self):
-        cursor = create_cursor(num_actions=3, initial_location=1.7)
-        assert cursor.current_action_start == 1.0
-
-    def test_at_trajectory_start(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.0)
-        assert cursor.current_action_start == 0.0
-
-    def test_just_before_boundary(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.999)
-        assert cursor.current_action_start == 0.0
+@pytest.mark.parametrize(
+    "num_actions, location, expected",
+    [
+        pytest.param(1, 0.0, 0, id="single_action_at_start"),
+        pytest.param(1, 1.0, 0, id="single_action_at_end"),
+    ],
+)
+def test_current_action_index_single_action(num_actions, location, expected):
+    cursor = create_cursor(num_actions=num_actions, initial_location=location)
+    assert cursor.current_action_index == expected
 
 
-class TestCurrentActionEnd:
-    """Tests for current_action_end property."""
-
-    def test_at_action_start_boundary(self):
-        cursor = create_cursor(num_actions=3, initial_location=1.0)
-        assert cursor.current_action_end == 1.0  # ceil(1.0) = 1.0
-
-    def test_midway_through_action(self):
-        cursor = create_cursor(num_actions=3, initial_location=1.3)
-        assert cursor.current_action_end == 2.0
-
-    def test_just_after_boundary(self):
-        cursor = create_cursor(num_actions=3, initial_location=1.001)
-        assert cursor.current_action_end == 2.0
-
-    def test_at_trajectory_start(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.0)
-        assert cursor.current_action_end == 0.0
+@pytest.mark.parametrize(
+    "location, expected",
+    [
+        pytest.param(0.0, 0.0, id="at_trajectory_start"),
+        pytest.param(0.999, 0.0, id="just_before_boundary"),
+        pytest.param(1.0, 1.0, id="at_action_start"),
+        pytest.param(1.7, 1.0, id="midway_through_action"),
+    ],
+)
+def test_current_action_start(location, expected):
+    cursor = create_cursor(num_actions=3, initial_location=location)
+    assert cursor.current_action_start == expected
 
 
-class TestNextActionStart:
-    """Tests for next_action_start property."""
-
-    def test_equals_current_action_end(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.5)
-        assert cursor.next_action_start == cursor.current_action_end
-        assert cursor.next_action_start == 1.0
-
-    def test_at_exact_boundary(self):
-        cursor = create_cursor(num_actions=3, initial_location=1.0)
-        assert cursor.next_action_start == 1.0
-
-    def test_midway_through_last_action(self):
-        cursor = create_cursor(num_actions=3, initial_location=2.5)
-        assert cursor.next_action_start == 3.0
+@pytest.mark.parametrize(
+    "location, expected",
+    [
+        pytest.param(0.0, 0.0, id="at_trajectory_start"),
+        pytest.param(1.0, 1.0, id="at_boundary"),
+        pytest.param(1.001, 2.0, id="just_after_boundary"),
+        pytest.param(1.3, 2.0, id="midway_through_action"),
+    ],
+)
+def test_current_action_end(location, expected):
+    cursor = create_cursor(num_actions=3, initial_location=location)
+    assert cursor.current_action_end == expected
 
 
-class TestPreviousActionStart:
-    """Tests for previous_action_start property."""
-
-    def test_from_second_action(self):
-        cursor = create_cursor(num_actions=3, initial_location=1.5)
-        assert cursor.previous_action_start == 0.0
-
-    def test_from_first_action_returns_negative(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.5)
-        assert cursor.previous_action_start == -1.0
-
-    def test_at_exact_boundary(self):
-        cursor = create_cursor(num_actions=3, initial_location=2.0)
-        assert cursor.previous_action_start == 1.0
-
-    def test_from_third_action(self):
-        cursor = create_cursor(num_actions=3, initial_location=2.5)
-        assert cursor.previous_action_start == 1.0
+@pytest.mark.parametrize(
+    "location, expected",
+    [
+        pytest.param(0.5, 1.0, id="midway_first_action"),
+        pytest.param(1.0, 1.0, id="at_exact_boundary"),
+        pytest.param(2.5, 3.0, id="midway_last_action"),
+    ],
+)
+def test_next_action_start(location, expected):
+    cursor = create_cursor(num_actions=3, initial_location=location)
+    assert cursor.next_action_start == expected
+    assert cursor.next_action_start == cursor.current_action_end
 
 
-class TestPreviousActionIndex:
-    """Tests for previous_action_index property."""
-
-    def test_from_second_action_midway(self):
-        cursor = create_cursor(num_actions=3, initial_location=1.5)
-        # ceil(1.5) - 1 = 2 - 1 = 1
-        assert cursor.previous_action_index == 1
-
-    def test_at_trajectory_start_clamps_to_zero(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.0)
-        # ceil(0.0) - 1 = 0 - 1 = -1, clamped to 0
-        assert cursor.previous_action_index == 0
-
-    def test_from_first_action_midway(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.5)
-        # ceil(0.5) - 1 = 1 - 1 = 0
-        assert cursor.previous_action_index == 0
-
-    def test_at_exact_boundary(self):
-        cursor = create_cursor(num_actions=3, initial_location=2.0)
-        # ceil(2.0) - 1 = 2 - 1 = 1
-        assert cursor.previous_action_index == 1
-
-    def test_from_last_action(self):
-        cursor = create_cursor(num_actions=3, initial_location=2.5)
-        # ceil(2.5) - 1 = 3 - 1 = 2
-        assert cursor.previous_action_index == 2
+@pytest.mark.parametrize(
+    "location, expected",
+    [
+        pytest.param(0.5, -1.0, id="from_first_action_returns_negative"),
+        pytest.param(1.5, 0.0, id="from_second_action"),
+        pytest.param(2.0, 1.0, id="at_exact_boundary"),
+        pytest.param(2.5, 1.0, id="from_third_action"),
+    ],
+)
+def test_previous_action_start(location, expected):
+    cursor = create_cursor(num_actions=3, initial_location=location)
+    assert cursor.previous_action_start == expected
 
 
-class TestEndLocation:
-    """Tests for end_location property."""
-
-    def test_returns_last_trajectory_location(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.0)
-        assert cursor.end_location == 3.0
-
-    def test_single_action(self):
-        cursor = create_cursor(num_actions=1, initial_location=0.0)
-        assert cursor.end_location == 1.0
-
-    def test_many_actions(self):
-        cursor = create_cursor(num_actions=10, initial_location=0.0)
-        assert cursor.end_location == 10.0
-
-
-class TestMovementOptions:
-    """Tests for get_movement_options method."""
-
-    def test_at_start_can_only_move_forward(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.0)
-        options = cursor.get_movement_options()
-        assert MovementOption.CAN_MOVE_FORWARD in options
-        assert MovementOption.CAN_MOVE_BACKWARD not in options
-
-    def test_at_end_can_only_move_backward(self):
-        cursor = create_cursor(num_actions=3, initial_location=3.0)
-        options = cursor.get_movement_options()
-        assert MovementOption.CAN_MOVE_FORWARD not in options
-        assert MovementOption.CAN_MOVE_BACKWARD in options
-
-    def test_in_middle_can_move_both_ways(self):
-        cursor = create_cursor(num_actions=3, initial_location=1.5)
-        options = cursor.get_movement_options()
-        assert MovementOption.CAN_MOVE_FORWARD in options
-        assert MovementOption.CAN_MOVE_BACKWARD in options
-
-    def test_just_after_start(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.001)
-        options = cursor.get_movement_options()
-        assert MovementOption.CAN_MOVE_FORWARD in options
-        assert MovementOption.CAN_MOVE_BACKWARD in options
-
-    def test_just_before_end(self):
-        cursor = create_cursor(num_actions=3, initial_location=2.999)
-        options = cursor.get_movement_options()
-        assert MovementOption.CAN_MOVE_FORWARD in options
-        assert MovementOption.CAN_MOVE_BACKWARD in options
+@pytest.mark.parametrize(
+    "num_actions, location, has_previous",
+    [
+        pytest.param(3, 0.0, False, id="at_trajectory_start_returns_none"),
+        pytest.param(3, 0.5, False, id="in_first_action_returns_none"),
+        pytest.param(3, 1.0, True, id="at_second_action_boundary"),
+        pytest.param(3, 1.5, True, id="in_second_action"),
+        pytest.param(3, 2.5, True, id="in_last_action"),
+        pytest.param(1, 0.5, False, id="single_action_returns_none"),
+    ],
+)
+def test_previous_action(num_actions, location, has_previous):
+    cursor = create_cursor(num_actions=num_actions, initial_location=location)
+    assert (cursor.previous_action is not None) == has_previous
 
 
-class TestNextAction:
-    """Tests for next_action property."""
-
-    def test_from_first_action_returns_second(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.5)
-        assert cursor.next_action is not None
-
-    def test_at_last_action_returns_none(self):
-        cursor = create_cursor(num_actions=3, initial_location=2.5)
-        assert cursor.next_action is None
-
-    def test_at_trajectory_end_returns_none(self):
-        cursor = create_cursor(num_actions=3, initial_location=3.0)
-        assert cursor.next_action is None
-
-    def test_at_second_to_last_action(self):
-        cursor = create_cursor(num_actions=3, initial_location=1.5)
-        assert cursor.next_action is not None
-
-    def test_single_action_returns_none(self):
-        cursor = create_cursor(num_actions=1, initial_location=0.5)
-        assert cursor.next_action is None
+@pytest.mark.parametrize(
+    "num_actions, expected",
+    [
+        pytest.param(1, 1.0, id="single_action"),
+        pytest.param(3, 3.0, id="three_actions"),
+        pytest.param(10, 10.0, id="many_actions"),
+    ],
+)
+def test_end_location(num_actions, expected):
+    cursor = create_cursor(num_actions=num_actions, initial_location=0.0)
+    assert cursor.end_location == expected
 
 
-class TestCurrentAction:
-    """Tests for current_action property."""
+@pytest.mark.parametrize(
+    "location, can_forward, can_backward",
+    [
+        pytest.param(0.0, True, False, id="at_start_can_only_move_forward"),
+        pytest.param(0.001, True, True, id="just_after_start"),
+        pytest.param(1.5, True, True, id="in_middle_can_move_both_ways"),
+        pytest.param(2.999, True, True, id="just_before_end"),
+        pytest.param(3.0, False, True, id="at_end_can_only_move_backward"),
+    ],
+)
+def test_movement_options(location, can_forward, can_backward):
+    cursor = create_cursor(num_actions=3, initial_location=location)
+    options = cursor.get_movement_options()
+    assert (MovementOption.CAN_MOVE_FORWARD in options) == can_forward
+    assert (MovementOption.CAN_MOVE_BACKWARD in options) == can_backward
 
-    def test_returns_action_at_current_index(self):
-        cursor = create_cursor(num_actions=3, initial_location=0.0)
-        action = cursor.current_action
-        assert action is not None
 
-    def test_at_trajectory_end_returns_last_action(self):
-        cursor = create_cursor(num_actions=3, initial_location=3.0)
-        action = cursor.current_action
-        assert action is not None
+@pytest.mark.parametrize(
+    "num_actions, location, has_next",
+    [
+        pytest.param(3, 0.5, True, id="from_first_action"),
+        pytest.param(3, 1.5, True, id="from_second_action"),
+        pytest.param(3, 2.5, False, id="at_last_action_returns_none"),
+        pytest.param(3, 3.0, False, id="at_trajectory_end_returns_none"),
+        pytest.param(1, 0.5, False, id="single_action_returns_none"),
+    ],
+)
+def test_next_action(num_actions, location, has_next):
+    cursor = create_cursor(num_actions=num_actions, initial_location=location)
+    assert (cursor.next_action is not None) == has_next
 
-    def test_single_action(self):
-        cursor = create_cursor(num_actions=1, initial_location=0.5)
-        action = cursor.current_action
-        assert action is not None
+
+@pytest.mark.parametrize(
+    "num_actions, location",
+    [
+        pytest.param(3, 0.0, id="at_start"),
+        pytest.param(3, 3.0, id="at_trajectory_end_returns_last"),
+        pytest.param(1, 0.5, id="single_action"),
+    ],
+)
+def test_current_action_always_returns_action(num_actions, location):
+    cursor = create_cursor(num_actions=num_actions, initial_location=location)
+    assert cursor.current_action is not None
