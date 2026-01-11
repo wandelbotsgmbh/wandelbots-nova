@@ -107,8 +107,7 @@ class Cycle:
         self.cycle_id: UUID | None = None
         self._timer = Timer()
         self._cell = cell
-        self._cell_id = cell.cell_id
-        self._subject = _NATS_SUBJECT_TEMPLATE.format(cell_id=self._cell_id)
+        self._subject = _NATS_SUBJECT_TEMPLATE.format(cell_id=self._cell.id)
 
         self._extra: dict[str, Any] = self._ensure_json_serializable(extra)
 
@@ -141,7 +140,7 @@ class Cycle:
             raise RuntimeError("NATS client is not available in the cell")
 
         if not self._cell.nats.is_connected:
-            raise RuntimeError("NATS client is not connected")
+            raise RuntimeError(f"NATS client is not connected for: {self._cell.nats}")
 
         try:
             await self._cell.nats.publish(
@@ -171,7 +170,7 @@ class Cycle:
 
         self.cycle_id = uuid4()
         event = CycleStartedEvent(
-            cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell_id, extra=self._extra
+            cycle_id=self.cycle_id, timestamp=start_time, cell=self._cell.id, extra=self._extra
         )
         logger.debug(f"Cycle started with ID: {self.cycle_id}")
 
@@ -205,7 +204,7 @@ class Cycle:
             cycle_id=self.cycle_id,
             timestamp=end_time,
             duration_ms=duration_ms,
-            cell=self._cell_id,
+            cell=self._cell.id,
             extra=self._extra,
         )
         logger.debug(f"Cycle finished with ID: {self.cycle_id}")
@@ -246,7 +245,7 @@ class Cycle:
         event = CycleFailedEvent(
             cycle_id=self.cycle_id,
             timestamp=failure_time,
-            cell=self._cell_id,
+            cell=self._cell.id,
             reason=reason,
             extra=self._extra,
         )

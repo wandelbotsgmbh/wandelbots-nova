@@ -6,7 +6,6 @@ from pydantic import TypeAdapter
 import nova
 from nova import api, run_program
 from nova.cell import virtual_controller
-from nova.program import ProgramPreconditions
 
 ROBOT_TCP_ID = "1"
 POSITIONER_TCP_ID = "0"
@@ -30,7 +29,7 @@ def load_joint_trajectories() -> dict[str, api.models.JointTrajectory]:
 
 @nova.program(
     name="multi_motion_group",
-    preconditions=ProgramPreconditions(
+    preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name="kuka",
@@ -41,46 +40,46 @@ def load_joint_trajectories() -> dict[str, api.models.JointTrajectory]:
         ]
     ),
 )
-async def multi_motion_group_trajectory():
+async def multi_motion_group_trajectory(ctx: nova.ProgramContext):
     """
     Example of synchronized trajectory execution with two motion groups (robot and positioner).
     """
-    async with nova.Nova() as n:
-        cell = n.cell()
-        controller = await cell.controller("kuka")
-        robot = controller.motion_group(ROBOT_MOTION_GROUP_ID)
-        positioner = controller.motion_group(POSITIONER_MOTION_GROUP_ID)
+    cell = ctx.nova.cell()
+    controller = await cell.controller("kuka")
+    robot = controller.motion_group(ROBOT_MOTION_GROUP_ID)
+    positioner = controller.motion_group(POSITIONER_MOTION_GROUP_ID)
 
-        # Load trajectories for both motion groups (same duration expected).
-        trajectories = load_joint_trajectories()
-        robot_path = trajectories["manipulator_path"]
-        positioner_path = trajectories["positioner_path"]
+    # Load trajectories for both motion groups (same duration expected).
+    trajectories = load_joint_trajectories()
+    robot_path = trajectories["manipulator_path"]
+    positioner_path = trajectories["positioner_path"]
 
-        # Resetting the sync IO to False before starting
-        await controller.write(key=SYNC_IO_ID, value=False)
+    # Resetting the sync IO to False before starting
+    await controller.write(key=SYNC_IO_ID, value=False)
 
-        print("Starting synchronized execution...")
+    print("Starting synchronized execution...")
 
-        # Starting both movements concurrently with waiting for IO
-        start_on_io = api.models.StartOnIO(
-            io=api.models.IOValue(io=SYNC_IO_ID, boolean_value=True),
-            comparator=api.models.Comparator.COMPARATOR_EQUALS,
-        )
-        robot_trajectory_exec = asyncio.create_task(
-            robot.execute(robot_path, ROBOT_TCP_ID, [], start_on_io=start_on_io)
-        )
-        positioner_trajectory_exec = asyncio.create_task(
-            positioner.execute(positioner_path, POSITIONER_TCP_ID, [], start_on_io=start_on_io)
-        )
+    # Starting both movements concurrently with waiting for IO
+    start_on_io = api.models.StartOnIO(
+        io=api.models.IOValue(api.models.IOBooleanValue(io=SYNC_IO_ID, value=True)),
+        comparator=api.models.Comparator.COMPARATOR_EQUALS,
+        io_origin=api.models.IOOrigin.CONTROLLER,
+    )
+    robot_trajectory_exec = asyncio.create_task(
+        robot.execute(robot_path, ROBOT_TCP_ID, [], start_on_io=start_on_io)
+    )
+    positioner_trajectory_exec = asyncio.create_task(
+        positioner.execute(positioner_path, POSITIONER_TCP_ID, [], start_on_io=start_on_io)
+    )
 
-        # Give some time to ensure both controllers are ready and waiting for the IO signal
-        # Ideally, feedback from movement controllers would be used to ensure readiness
-        await asyncio.sleep(1)
+    # Give some time to ensure both controllers are ready and waiting for the IO signal
+    # Ideally, feedback from movement controllers would be used to ensure readiness
+    await asyncio.sleep(1)
 
-        # Triggering the IO signal to start both movements
-        print("Setting sync IO to True")
-        await controller.write(key=SYNC_IO_ID, value=True)
-        await asyncio.gather(robot_trajectory_exec, positioner_trajectory_exec)
+    # Triggering the IO signal to start both movements
+    print("Setting sync IO to True")
+    await controller.write(key=SYNC_IO_ID, value=True)
+    await asyncio.gather(robot_trajectory_exec, positioner_trajectory_exec)
 
 
 if __name__ == "__main__":

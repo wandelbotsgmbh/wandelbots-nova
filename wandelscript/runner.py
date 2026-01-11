@@ -22,20 +22,20 @@ class WandelscriptProgramRunner(ProgramRunner):
         self,
         program_id: str,
         code: str,
-        parameters: dict[str, ElementType] | None,
+        inputs: dict[str, ElementType] | None,
         robot_cell_override: RobotCell | None = None,
         default_robot: str | None = None,
         default_tcp: str | None = None,
         foreign_functions: dict[str, ForeignFunction] | None = None,
     ):
-        async def wandelscript_wrapper():
+        async def wandelscript_wrapper(ctx: nova.ProgramContext):
             print(f"Running wandelscript program {program_id}...")
 
         program = nova.program(id=program_id)(wandelscript_wrapper)
 
         super().__init__(
             program,
-            parameters=parameters,  # type: ignore
+            inputs=inputs,  # type: ignore
             robot_cell_override=robot_cell_override,
         )
         self._program = wandelscript_wrapper
@@ -55,7 +55,7 @@ class WandelscriptProgramRunner(ProgramRunner):
             stop_event=execution_context.stop_event,
             default_robot=self._default_robot,
             default_tcp=self._default_tcp,
-            run_args=self._parameters,
+            run_args=self._inputs,
             foreign_functions=self._foreign_functions,
         )
 
@@ -71,7 +71,7 @@ class WandelscriptProgramRunner(ProgramRunner):
 def run(
     program_id: str,
     code: str,
-    parameters: dict[str, ElementType] | None = None,
+    inputs: dict[str, ElementType] | None = None,
     default_robot: str | None = None,
     default_tcp: str | None = None,
     foreign_functions: dict[str, ForeignFunction] | None = None,
@@ -96,7 +96,7 @@ def run(
     runner = WandelscriptProgramRunner(
         program_id=program_id,
         code=code,
-        parameters=parameters,
+        inputs=inputs,
         default_robot=default_robot,
         default_tcp=default_tcp,
         foreign_functions=foreign_functions,
@@ -109,7 +109,7 @@ def run(
 async def run_wandelscript_program(
     program_id: str,
     code: str,
-    parameters: dict[str, ElementType] = {},
+    inputs: dict[str, ElementType] = {},
     foreign_functions_paths: list[Path] | None = None,
     default_robot: str | None = None,
     default_tcp: str | None = None,
@@ -135,7 +135,7 @@ async def run_wandelscript_program(
         runner = WandelscriptProgramRunner(
             program_id=program_id,
             code=code,
-            parameters=parameters,
+            inputs=inputs,
             default_robot=default_robot,
             default_tcp=default_tcp,
             foreign_functions=foreign_functions,

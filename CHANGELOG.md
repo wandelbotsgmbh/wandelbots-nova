@@ -1,6 +1,85 @@
 # CHANGELOG
 
 
+## v4.2.0 (2026-01-09)
+
+### Features
+
+- **NDX-390**: Improved security and code quality with CI/CD tooling (#360)
+  ([#360](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/360),
+  [`7952174`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7952174e14ed7ca66dbc0bec3c891854f8138ee2))
+
+
+## v4.1.4 (2026-01-08)
+
+### Chores
+
+- Make the pydantic validation error more human readabe (#359)
+  ([#359](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/359),
+  [`1fb2dce`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1fb2dce7426f64a044eb06bc4ab0b6aacd880455))
+
+
+## v4.1.3 (2026-01-08)
+
+### Bug Fixes
+
+- **NDX-448**: Correctly find the best solution in collision_free (#356)
+  ([#356](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/356),
+  [`0885b9d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0885b9dba04b2906a06e2b1a169c2f0b44b35068))
+
+
+## v4.1.2 (2026-01-07)
+
+### Chores
+
+- Add bus io api (#358) ([#358](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/358),
+  [`aded7c9`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/aded7c93ca141d3bb250f3191f318ada928da05f))
+
+
+## v4.1.1 (2026-01-07)
+
+### Bug Fixes
+
+- **NDX-452**: Nova connection in decorator (#357)
+  ([#357](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/357),
+  [`0261266`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/026126600d6dee218510b5d384fb490e37297fbd))
+
+
+## v4.1.0 (2025-12-23)
+
+### Features
+
+- **NDX-408**: Added Nova program context to programs (#352)
+  ([#352](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/352),
+  [`6c001e8`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6c001e815d6fb97f17233de320d3dbd889e2dd9b))
+
+
+## v4.0.3 (2025-12-18)
+
+### Chores
+
+- **deps**: Bump actions/checkout from 5 to 6 (#344)
+  ([#344](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/344),
+  [`9fc4374`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9fc4374d29e9750b6b071c743602939f952536bd))
+
+
+## v4.0.2 (2025-12-17)
+
+### Chores
+
+- **deps**: Bump actions/upload-artifact from 5 to 6 (#354)
+  ([#354](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/354),
+  [`0f29f97`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0f29f97cca06f7c1c6ae87ba59056b4d1f4759e6))
+
+
+## v4.0.1 (2025-12-15)
+
+### Chores
+
+- Add-test (#351) ([#351](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/351),
+  [`1c941a6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1c941a644a2d576e580b92fd5f21367acf9292d7))
+
+
 ## v4.0.0 (2025-12-11)
 
 ### Features

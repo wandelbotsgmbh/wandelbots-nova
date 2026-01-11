@@ -114,7 +114,9 @@ class _KeyValueStore(Generic[_T]):
                 return self._kv_bucket
 
             if not self._nats_client.is_connected:
-                raise RuntimeError("NATS client is not connected")
+                raise RuntimeError(
+                    f"NATS client is not connected for: {self._nats_client.connected_url}"
+                )
 
             js = self._nats_client.jetstream()
 

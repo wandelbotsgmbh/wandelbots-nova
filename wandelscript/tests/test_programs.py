@@ -27,4 +27,4 @@ CODE_SAMPLES = {
 @pytest.mark.parametrize("sample_code_key", CODE_SAMPLES)
 async def test_execution(sample_code_key):
     sample_code = CODE_SAMPLES[sample_code_key]
-    await run_program(sample_code, default_robot="0@controller", default_tcp="Flange")
+    await run_program(program=sample_code, default_robot="0@controller", default_tcp="Flange")

@@ -144,6 +144,10 @@ class Rerun(Viewer):
                 "Rerun viewer configured but nova_rerun_bridge not available. "
                 "Install with: uv add wandelbots-nova --extra nova-rerun-bridge"
             )
+        except Exception as e:
+            # Rerun is an optional integration. If initialization fails (e.g. no rerun
+            # viewer/proxy available), skip it instead of failing program execution.
+            logger.warning("Skipping Rerun viewer configuration due to error: %s", e)
 
     async def setup_after_preconditions(self) -> None:
         """Setup async components after preconditions are met.

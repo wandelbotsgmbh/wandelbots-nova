@@ -68,7 +68,7 @@ class ProgramManager:
             preconditions=program.preconditions.model_dump(mode="json")
             if program.preconditions
             else None,
-            input_schema=program.input_schema,
+            input_schema=program.input_json_schema,
         )
 
         # Store program details and function separately
@@ -100,7 +100,7 @@ class ProgramManager:
     async def start_program(
         self,
         program_id: str,
-        parameters: dict[str, Any] | None = None,
+        inputs: dict[str, Any] | None = None,
         sync: bool = False,
         on_state_change: Callable[[ProgramRun], Coroutine[Any, Any, None]] | None = None,
     ) -> ProgramRun:
@@ -122,7 +122,7 @@ class ProgramManager:
 
         runner = run_program(
             program,
-            parameters=parameters,
+            inputs=inputs,
             sync=sync,
             on_state_change=on_state_change,
             nova_config=self._nova_config,

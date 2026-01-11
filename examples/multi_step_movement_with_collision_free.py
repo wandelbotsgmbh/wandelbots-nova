@@ -9,17 +9,16 @@ Prerequisites:
 """
 
 import nova
-from nova import Nova, run_program
+from nova import run_program
 from nova.actions import cartesian_ptp, io_write, joint_ptp
 from nova.api import models
 from nova.cell import virtual_controller
-from nova.program import ProgramPreconditions
-from nova.types import MotionSettings, Pose
+from nova.types import Pose
 
 
 @nova.program(
     name="Multi-Step Movement with Collision Free",
-    preconditions=ProgramPreconditions(
+    preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name="ur",
@@ -30,46 +29,40 @@ from nova.types import MotionSettings, Pose
         cleanup_controllers=False,
     ),
 )
-async def multi_step_movement_with_collision_free():
-    async with Nova() as nova:
-        cell = nova.cell()
-        controller = await cell.controller("ur")
+async def multi_step_movement_with_collision_free(ctx: nova.ProgramContext):
+    cell = ctx.nova.cell()
+    controller = await cell.controller("ur")
 
-        # Connect to the controller and activate motion groups
-        async with controller[0] as motion_group:
-            home_joints = await motion_group.joints()
+    # Connect to the controller and activate motion groups
+    async with controller[0] as motion_group:
+        home_joints = await motion_group.joints()
 
-            tcp_names = await motion_group.tcp_names()
-            tcp = tcp_names[0]
+        tcp_names = await motion_group.tcp_names()
+        tcp = tcp_names[0]
 
-            # Get current TCP pose and offset it slightly along the x-axis
-            current_pose = await motion_group.tcp_pose(tcp)
-            target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
+        # Get current TCP pose and offset it slightly along the x-axis
+        current_pose = await motion_group.tcp_pose(tcp)
+        target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
 
-            actions = [
-                cartesian_ptp(target_pose),
-                # collision_free(home_joints),
-                cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
-                io_write(key="digital_out[0]", value=True),
-                joint_ptp(home_joints),
-                cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
-                # collision_free(home_pose),
-                cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
-                joint_ptp(home_joints),
-            ]
+        actions = [
+            cartesian_ptp(target_pose),
+            # collision_free(home_joints),
+            cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
+            io_write(key="digital_out[0]", value=True),
+            joint_ptp(home_joints),
+            cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
+            # collision_free(home_pose),
+            cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
+            joint_ptp(home_joints),
+        ]
 
-        # you can update the settings of the action
-        for action in actions:
-            if action.is_motion():
-                action.settings = MotionSettings(tcp_velocity_limit=200)
+    joint_trajectory = await motion_group.plan(
+        actions, tcp, start_joint_position=(-0.0429, -1.8781, 1.8464, -2.1366, -1.4861, 1.0996)
+    )
+    await motion_group.execute(joint_trajectory, tcp, actions=actions)
 
-        joint_trajectory = await motion_group.plan(
-            actions, tcp, start_joint_position=(-0.0429, -1.8781, 1.8464, -2.1366, -1.4861, 1.0996)
-        )
-        await motion_group.execute(joint_trajectory, tcp, actions=actions)
-
-        value = await controller.read("digital_out[0]")
-        print(f"digital out: {value}")
+    value = await controller.read("digital_out[0]")
+    print(f"digital out: {value}")
 
 
 if __name__ == "__main__":

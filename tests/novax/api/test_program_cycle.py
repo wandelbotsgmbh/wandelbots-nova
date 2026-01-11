@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 import nova
 from nova.core.nova import Nova
-from nova.events import Cycle, CycleFailedEvent, CycleFinishedEvent, CycleStartedEvent
+from nova.events import CycleFailedEvent, CycleFinishedEvent, CycleStartedEvent
 
 
 @nova.program(
@@ -17,12 +17,10 @@ from nova.events import Cycle, CycleFailedEvent, CycleFinishedEvent, CycleStarte
     name="Test cycle",
     description="A program sends cycle started and finished events",
 )
-async def program_with_cycle_data():
-    async with Nova() as nova:
-        cell = nova.cell()
-        cycle = Cycle(cell=cell)
-        await cycle.start()
-        await cycle.finish()
+async def program_with_cycle_data(ctx: nova.ProgramContext):
+    cycle = ctx.cycle()
+    await cycle.start()
+    await cycle.finish()
 
 
 @pytest.mark.integration
@@ -61,12 +59,10 @@ async def test_novax_program_cycle_data(novax_app):
     name="Test cycle failed",
     description="A program that report cycle failure",
 )
-async def program_with_cycle_failure():
-    async with Nova() as nova:
-        cell = nova.cell()
-        cycle = Cycle(cell=cell)
-        await cycle.start()
-        await cycle.fail("This cycle failed for testing purposes")
+async def program_with_cycle_failure(ctx: nova.ProgramContext):
+    cycle = ctx.cycle()
+    await cycle.start()
+    await cycle.fail("This cycle failed for testing purposes")
 
 
 @pytest.mark.integration
@@ -106,13 +102,10 @@ async def test_novax_program_cycle_failure(novax_app):
     name="Test cycle with extra data",
     description="A program that sends cycle events with extra data",
 )
-async def program_with_cycle_extra():
-    async with Nova() as nova:
-        cell = nova.cell()
-        extra_data = {"key1": "value1", "key2": "value2", "test_id": 12345}
-        cycle = Cycle(cell=cell, extra=extra_data)
-        await cycle.start()
-        await cycle.finish()
+async def program_with_cycle_extra(ctx: nova.ProgramContext):
+    cycle = ctx.cycle(extra={"key1": "value1", "key2": "value2", "test_id": 12345})
+    await cycle.start()
+    await cycle.finish()
 
 
 @pytest.mark.integration

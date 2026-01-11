@@ -1,20 +1,25 @@
 ---
-name: "Nova SDK: Build dev wheel"
+name: "@wandelbots/wandelbots-nova: Build dev wheel"
+
 on:
   # Allow manual triggering
   workflow_dispatch:
+
 jobs:
   build-wheel:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v6
         with: {fetch-depth: 0}
+
       - name: Gather metadata
         id: meta
         run: |
           BRANCH="${GITHUB_REF_NAME}"                 # e.g. feat/new-ui
           SAFE_BRANCH=$(echo "$BRANCH" | tr '/' '-')  # feat-new-ui
           echo "branch=$SAFE_BRANCH"   >> "$GITHUB_OUTPUT"
+
       - name: Build wheel
         run: |
           # Gather more metadata
@@ -30,12 +35,14 @@ jobs:
           NAME="wandelbots_nova-${BASE_VER}.dev${DATE}+${{ steps.meta.outputs.branch }}.${COMMIT}.whl"
           echo "Renaming wheel to: $NAME"
           mv "$WHEEL_ORIG" "dist/$NAME"
+
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: wheel-${{ steps.meta.outputs.branch }}
           path: dist/*.whl
           retention-days: 7
+
       - name: Install instructions
         run: |
           echo ""

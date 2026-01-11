@@ -10,7 +10,7 @@ from nova.core.nova import Nova
 @pytest.mark.asyncio
 async def test_nats_pub_sub():
     nova = Nova()
-    await nova.connect()
+    await nova.open()
 
     collected_message = None
 
@@ -38,7 +38,7 @@ async def test_nats_pub_sub():
 @pytest.mark.asyncio
 async def test_nats_message_order():
     nova = Nova()
-    await nova.connect()
+    await nova.open()
 
     messages = []
 

@@ -1,11 +1,13 @@
 ---
 name: "VSCode Extension: Typecheck, Lint and Format"
+
 on:
   pull_request:
     branches:
       - main
     paths:
       - 'vscode-ext/**'
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,17 +17,23 @@ jobs:
       run:
         working-directory: ./vscode-ext/
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Install dependencies
         run: npm install
+
       - name: Format
         run: npm run format
+
       - name: Lint
         run: npm run lint
+
       - name: Typecheck
         run: npm run typecheck
+
       - name: Unit tests
         run: npm run test:unit
+
       - name: Build
         run: npm run package

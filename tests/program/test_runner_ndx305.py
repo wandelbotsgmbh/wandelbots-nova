@@ -22,7 +22,7 @@ async def test_program_runner_with_unrelated_controller_in_estop():
     )
 
     @nova.program(preconditions=preconditions)
-    async def test_program():
+    async def test_program(ctx: nova.ProgramContext):
         async with Nova() as nova:
             cell = nova.cell()
             controller = await cell.controller("kuka-no-estop")
@@ -61,9 +61,8 @@ async def test_program_runner_with_unrelated_controller_in_estop():
 
     # Check if the program runner has the correct preconditions & robot cell
     assert runner._preconditions == preconditions
-    # Timer, cycle timer and the kuka controller
-    assert len(runner.execution_context.robot_cell.devices) == 3
-    assert "kuka-no-estop" in runner.execution_context.robot_cell.devices
+    # Timer, cycle timer
+    assert len(runner.execution_context.robot_cell.devices) == 2
     assert "cycle" in runner.execution_context.robot_cell.devices
     assert "timer" in runner.execution_context.robot_cell.devices
     assert "ur10e-estop" not in runner.execution_context.robot_cell.devices
