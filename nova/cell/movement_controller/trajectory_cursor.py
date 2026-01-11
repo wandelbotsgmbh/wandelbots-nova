@@ -14,7 +14,7 @@ from nova import api
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
 from nova.exceptions import InitMovementFailed
-from nova.types import ExecuteTrajectoryRequestStream, ExecuteTrajectoryResponseStream, MotionState
+from nova.types import ExecuteTrajectoryRequestStream, ExecuteTrajectoryResponseStream
 from nova.types.state import motion_group_state_to_motion_state
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,6 @@ class OperationResult:
     target_location: Optional[float] = None
     start_location: Optional[float] = None
     final_location: Optional[float] = None
-    overshoot: Optional[float] = None
     error: Optional[Exception] = None
 
 
@@ -98,13 +97,7 @@ class OperationHandler:
         self._interrupt_requested = False
         return self._future
 
-    def complete(
-        self,
-        *,
-        final_location: float,
-        overshoot: Optional[float],
-        error: Optional[Exception] = None,
-    ) -> None:
+    def complete(self, *, final_location: float, error: Optional[Exception] = None) -> None:
         if not self._future or self._future.done():
             return
 
@@ -114,7 +107,6 @@ class OperationHandler:
             target_location=self._target_location,
             start_location=self._start_location,
             final_location=final_location,
-            overshoot=overshoot,
             error=error,
         )
         if error:
@@ -184,8 +176,12 @@ class TrajectoryCursor:
         self.actions = CombinedActions(items=actions)  # type: ignore
         self._command_queue: asyncio.Queue = asyncio.Queue()
         self._COMMAND_QUEUE_SENTINAL = object()
-        self._response_queue: asyncio.Queue[api.models.ExecuteTrajectoryResponse] = asyncio.Queue()
-        self._in_queue: asyncio.Queue[api.models.ExecuteTrajectoryResponse | None] = asyncio.Queue()
+        self._response_queue: asyncio.Queue[
+            api.models.ExecuteTrajectoryResponse | api.models.MotionGroupState
+        ] = asyncio.Queue()
+        self._in_queue: asyncio.Queue[
+            api.models.ExecuteTrajectoryResponse | api.models.MotionGroupState | None
+        ] = asyncio.Queue()
         self._motion_group_state_stream: AsyncIterator[api.models.MotionGroupState] = (
             motion_group_state_stream
         )
@@ -193,7 +189,6 @@ class TrajectoryCursor:
         self._current_location = initial_location
         # TODO maybe None instead until we have a target?
         self._target_location = self._current_location
-        self._overshoot = 0.0
         self._detach_on_standstill = detach_on_standstill
 
         self._operation_handler = OperationHandler()
@@ -247,13 +242,11 @@ class TrajectoryCursor:
         return self.actions[next_action_index]
 
     @property
-    def previous_action_index(self) -> int:
-        index = ceil(self._current_location) - 1
-        assert index <= len(self.actions)
-        if index < 0:
-            # for now we don't allow backward wrap around
-            return 0
-        return index
+    def previous_action(self) -> Action | None:
+        previous_action_index = self.current_action_index - 1
+        if previous_action_index < 0:
+            return None
+        return self.actions[previous_action_index]
 
     def get_movement_options(self) -> set[MovementOption]:
         options: dict[MovementOption, bool] = {
@@ -425,9 +418,7 @@ class TrajectoryCursor:
 
     def _complete_operation(self, error: Optional[Exception] = None):
         """Complete the current operation with the given status."""
-        self._operation_handler.complete(
-            final_location=self._current_location, overshoot=self._overshoot, error=error
-        )
+        self._operation_handler.complete(final_location=self._current_location, error=error)
 
     def _is_operation_in_progress(self) -> bool:
         return self._operation_handler.in_progress()
@@ -456,12 +447,12 @@ class TrajectoryCursor:
                     self._response_consumer(ready_event=response_consumer_ready_event),
                     name="response_consumer",
                 )
-                combined_response_consumer_task = tg.create_task(
-                    self._combined_response_consumer(
-                        ready_event=combined_response_consumer_ready_event
-                    ),
-                    name="combined_response_consumer",
-                )
+                # combined_response_consumer_task = tg.create_task(
+                #     self._combined_response_consumer(
+                #         ready_event=combined_response_consumer_ready_event
+                #     ),
+                #     name="combined_response_consumer",
+                # )
                 motion_event_updater_task = tg.create_task(
                     self._motion_event_updater(), name="motion_event_updater"
                 )
@@ -471,14 +462,14 @@ class TrajectoryCursor:
                 # cancelled before it has even started and thus will not react to the cancellation properly
                 await motion_event_updater_ready_event.wait()
                 await response_consumer_ready_event.wait()
-                await combined_response_consumer_ready_event.wait()
+                # await combined_response_consumer_ready_event.wait()
                 async for request in self._request_loop():
                     yield request
 
                 response_consumer_task.cancel()
                 motion_event_updater_task.cancel()
                 motion_group_state_consumer_task.cancel()
-                combined_response_consumer_task.cancel()
+                # combined_response_consumer_task.cancel()
         except ExceptionGroup as eg:
             ic(eg)
             logger.error(f"ExceptionGroup in TrajectoryCursor cntrl: {eg}")
@@ -535,7 +526,6 @@ class TrajectoryCursor:
             command = await self._command_queue.get()
             if command is self._COMMAND_QUEUE_SENTINAL:
                 self._command_queue.task_done()
-                ic()
                 break
             ic(command)
             yield command
@@ -558,13 +548,67 @@ class TrajectoryCursor:
             self._command_queue.task_done()
 
     async def _motion_group_state_consumer(self, ready_event: asyncio.Event):
-        # TODO is this sufficient or do we need to start consuming first (see movement_controller)?
         async for motion_group_state in self._motion_group_state_stream:
             ready_event.set()
-            self._response_queue.put_nowait(motion_group_state)
+
+            if not self._is_operation_in_progress():
+                # We only care about motion group states if there is an operation in progress
+                # assert that we are the sole reason for movement
+                assert not motion_group_state.execute
+                continue
+            else:
+                if (
+                    not motion_group_state.execute
+                    and self._operation_handler.current_operation_state == OperationState.COMMANDED
+                ):  #
+                    continue  # wait for the execution to actually start
+
+                if not motion_group_state.execute and motion_group_state.standstill:
+                    ic()
+                    assert self._operation_handler.current_operation_state not in (
+                        OperationState.INITIAL,
+                        OperationState.COMMANDED,
+                    ), (
+                        f"Unexpected operation state {self._operation_handler.current_operation_state} when standstill is True"
+                    )
+                    self._complete_operation()
+                    if self._detach_on_standstill:
+                        ic()
+                        break
+
+                assert motion_group_state.execute
+                # TODO it is questionable if we want to maintain the semantics of yield motion group states during
+                # execution this is the only reason we do this here
+                self._in_queue.put_nowait(motion_group_state)
+
+                if motion_group_state.execute and isinstance(
+                    motion_group_state.execute.details, api.models.TrajectoryDetails
+                ):
+                    self._current_location = motion_group_state.execute.details.location.root
+                    match motion_group_state.execute.details.state:
+                        case api.models.TrajectoryRunning():
+                            if (
+                                self._operation_handler.current_operation_state
+                                == OperationState.COMMANDED
+                            ):
+                                # State transition: COMMANDED -> RUNNING
+                                self._operation_handler._operation_state = OperationState.RUNNING
+                        case api.models.TrajectoryPausedByUser():
+                            self._complete_operation()
+                            if self._detach_on_standstill:
+                                break
+                        case api.models.TrajectoryEnded():
+                            self._complete_operation()
+                            if self._detach_on_standstill:
+                                break
+
+        # stop the request loop
+        self.detach()
+        # stop the cursor iterator (TODO is this the right place?)
+        ic()
+        self._in_queue.put_nowait(None)  # TODO make sentinel more explicit
 
     async def _response_consumer(self, ready_event: asyncio.Event):
-        # TODO is this sufficient or do we need to start consuming first (see movement_controller)?
         ready_event.set()
         async for response in self._response_stream:
             ic(response)
@@ -576,9 +620,7 @@ class TrajectoryCursor:
 
         try:
             while True:
-                # ic()
                 response = await self._response_queue.get()
-                # ic(response)
                 if isinstance(response, api.models.MotionGroupState):
                     motion_group_state = response
 
@@ -601,7 +643,6 @@ class TrajectoryCursor:
                     if last_motion_state is None:
                         last_motion_state = motion_state
                     self._current_location = motion_state.path_parameter
-                    self._deprecated_handle_motion_state(motion_state, last_motion_state)
                     last_motion_state = motion_state
 
                     if (
@@ -623,11 +664,6 @@ class TrajectoryCursor:
                         ), (
                             f"Unexpected operation state {self._operation_handler.current_operation_state} when standstill is True"
                         )
-                        self._overshoot = self._current_location - self._target_location
-                        assert self._overshoot == 0.0, (
-                            f"Expected overshoot to be 0.0, got {self._overshoot}"
-                        )
-                        # self._overshoot = 0.0  # because the RAE takes care of that
                         self._complete_operation()
                         if self._detach_on_standstill:
                             ic()
@@ -650,23 +686,12 @@ class TrajectoryCursor:
                                     )
                             case api.models.TrajectoryPausedByUser():
                                 ic()
-                                self._overshoot = self._current_location - self._target_location
-                                # assert self._overshoot == 0.0, (
-                                #     f"Expected overshoot to be 0.0, got {self._overshoot}"
-                                # )
-                                # self._overshoot = 0.0  # because the RAE takes care of that
                                 self._complete_operation()
                                 if self._detach_on_standstill:
                                     ic()
                                     break
                             case api.models.TrajectoryEnded():
                                 ic()
-                                self._overshoot = self._current_location - self._target_location
-                                ic(self._current_location, self._target_location, self._overshoot)
-                                # assert self._overshoot == 0.0, (
-                                #     f"Expected overshoot to be 0.0, got {self._overshoot}"
-                                # )
-                                # self._overshoot = 0.0  # because the RAE takes care of that
                                 self._complete_operation()
                                 if self._detach_on_standstill:
                                     ic()
@@ -683,35 +708,18 @@ class TrajectoryCursor:
             ic()
             self._in_queue.put_nowait(None)  # TODO make sentinel more explicit
 
-    def _deprecated_handle_motion_state(
-        self, curr_motion_state: MotionState, last_motion_state: MotionState
-    ):
-        if not 0.0 <= self._target_location <= self.end_location:
-            return
-        curr_location = curr_motion_state.path_parameter
-        last_location = last_motion_state.path_parameter
-        if curr_location == last_location:
-            return
-        if curr_location > last_location:
-            # moving forwards
-            if curr_location > self._target_location:
-                assert False, "Should not reach here, RAE handles exact stopping"
-        else:
-            # moving backwards
-            if curr_location < self._target_location:
-                ic(last_location, self._target_location, curr_location)
-                assert False, "Should not reach here, RAE handles exact stopping"
-
     async def _motion_event_updater(self, interval=0.2):
         while True:
             match self._operation_handler.current_operation_type:
                 case OperationType.FORWARD | OperationType.FORWARD_TO:
-                    target_action = self.actions[int(self.next_action_start) - 1]
+                    target_action = self.next_action if self.next_action else self.current_action
                     await motion_started.send_async(
                         self, event=self._get_motion_event(target_action)
                     )
                 case OperationType.BACKWARD | OperationType.BACKWARD_TO:
-                    target_action = self.actions[self.previous_action_index]
+                    target_action = (
+                        self.previous_action if self.previous_action else self.current_action
+                    )
                     await motion_started.send_async(
                         self, event=self._get_motion_event(target_action)
                     )
@@ -728,14 +736,15 @@ class TrajectoryCursor:
             target_action=target_action,
         )
 
-    def __aiter__(self) -> AsyncIterator[api.models.ExecuteTrajectoryResponse]:
+    def __aiter__(
+        self,
+    ) -> AsyncIterator[api.models.ExecuteTrajectoryResponse | api.models.MotionGroupState]:
         return self
 
-    async def __anext__(self) -> api.models.ExecuteTrajectoryResponse:
+    async def __anext__(self) -> api.models.ExecuteTrajectoryResponse | api.models.MotionGroupState:
         value = await self._in_queue.get()
         self._in_queue.task_done()
         if value is None:
-            ic()
             raise StopAsyncIteration
         return value
 
