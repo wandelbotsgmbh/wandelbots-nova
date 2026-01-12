@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.2.1 (2026-01-12)
+
+### Chores
+
+- **NDX-390**: Renamed SAST github workflows (#362)
+  ([#362](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/362),
+  [`4d1a033`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4d1a0332c2ae92886532c3013b9bcfdb41816e48))
+
+
 ## v4.2.0 (2026-01-09)
 
 ### Features
