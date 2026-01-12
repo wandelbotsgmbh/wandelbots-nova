@@ -12,6 +12,11 @@ from .movement_controller.trajectory_cursor import MotionEvent, TrajectoryCursor
 
 logger = logging.getLogger(__name__)
 
+from nova.progctx import current_program_context_var
+
+# current_program_context_var: contextvars.ContextVar["ProgramContext | None"] = (
+#     contextvars.ContextVar("current_program_context_var", default=None)
+# )
 
 # TODO use nova nats client config
 NATS_BROKER_URL = config("NATS_BROKER", default="nats://localhost:4222")
@@ -29,6 +34,8 @@ class TrajectoryTuner:
         last_operation_result = None  # TODO implement this feature
 
         # TODO use nova nats client config
+        ctx = current_program_context_var.get()
+        ic(ctx)
         broker = NatsBroker(NATS_BROKER_URL)
 
         @broker.subscriber("trajectory-cursor")
@@ -108,7 +115,11 @@ class TrajectoryTuner:
 
         try:
             # tuning loop
-            await faststream_app_ready_event.wait()
+            try:
+                await faststream_app_ready_event.wait()
+            except BaseException as e:
+                logger.error(f"FastStream app failed to start: {e}")
+                raise e
             current_location = 0.0
             while not finished_tuning:
                 ic()
