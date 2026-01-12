@@ -1,5 +1,5 @@
 ---
-name: Dependency review
+name: "SAST: Dependency review"
 
 on:
   pull_request:
