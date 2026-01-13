@@ -341,7 +341,11 @@ class AbstractRobot(Device):
             actions = [actions]
 
         motion_state_stream = self._execute(
-            joint_trajectory, tcp, actions, movement_controller=movement_controller
+            joint_trajectory,
+            tcp,
+            actions,
+            movement_controller=movement_controller,
+            start_on_io=start_on_io,
         )
 
         async with aclosing(motion_state_stream) as motion_state_stream:
@@ -396,7 +400,7 @@ class AbstractRobot(Device):
         start_joint_position: tuple[float, ...] | None = None,
     ) -> None:
         joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
-        await self.execute(joint_trajectory, tcp, actions, movement_controller=None)
+        await self.execute(joint_trajectory, tcp, actions)
 
     @abstractmethod
     async def get_state(self, tcp: str | None = None) -> RobotState:
