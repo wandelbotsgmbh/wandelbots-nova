@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from enum import Enum, auto
+from enum import Enum, StrEnum, auto
 from math import ceil, floor
 from typing import AsyncIterator, Optional
 
@@ -139,18 +139,18 @@ class OperationHandler:
         self._interrupt_requested = False
 
 
-class MovementOption(str, Enum):
-    CAN_MOVE_FORWARD = "CAN_MOVE_FORWARD"
-    CAN_MOVE_BACKWARD = "CAN_MOVE_BACKWARD"
+class MovementOption(StrEnum):
+    CAN_MOVE_FORWARD = auto()
+    CAN_MOVE_BACKWARD = auto()
 
 
 motion_started = signal("motion_started")
 motion_stopped = signal("motion_stopped")
 
 
-class MotionEventType(str, Enum):
-    STARTED = "STARTED"
-    STOPPED = "STOPPED"
+class MotionEventType(StrEnum):
+    STARTED = auto()
+    STOPPED = auto()
 
 
 class MotionEvent(pydantic.BaseModel):
