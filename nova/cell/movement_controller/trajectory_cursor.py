@@ -422,7 +422,6 @@ class TrajectoryCursor:
 
         motion_event_updater_ready_event = asyncio.Event()
         response_consumer_ready_event = asyncio.Event()
-        combined_response_consumer_ready_event = asyncio.Event()
         try:
             async with asyncio.TaskGroup() as tg:
                 motion_group_state_consumer_task = tg.create_task(
