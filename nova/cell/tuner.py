@@ -1,25 +1,16 @@
 import asyncio
+import json
 import logging
 from typing import Optional
 
 import pydantic
-from decouple import config
-from faststream import FastStream
-from faststream.nats import NatsBroker
 from icecream import ic
+
+from nova.progctx import current_program_context_var
 
 from .movement_controller.trajectory_cursor import MotionEvent, TrajectoryCursor, motion_started
 
 logger = logging.getLogger(__name__)
-
-from nova.progctx import current_program_context_var
-
-# current_program_context_var: contextvars.ContextVar["ProgramContext | None"] = (
-#     contextvars.ContextVar("current_program_context_var", default=None)
-# )
-
-# TODO use nova nats client config
-NATS_BROKER_URL = config("NATS_BROKER", default="nats://localhost:4222")
 
 
 class TrajectoryTuner:
@@ -30,17 +21,34 @@ class TrajectoryTuner:
     async def tune(self, actions, motion_group_state_stream_fn):
         finished_tuning = False
         continue_tuning_event = asyncio.Event()
-        faststream_app_ready_event = asyncio.Event()
         last_operation_result = None  # TODO implement this feature
+        subscriptions = []
 
-        # TODO use nova nats client config
         ctx = current_program_context_var.get()
-        ic(ctx)
-        broker = NatsBroker(NATS_BROKER_URL)
+        if ctx is None:
+            raise RuntimeError("TrajectoryTuner requires a valid program context")
+        nats = ctx.nova.nats
+        if nats is None or not nats.is_connected:
+            raise RuntimeError("TrajectoryTuner requires a connected NATS client")
 
-        @broker.subscriber("trajectory-cursor")
-        async def controller_handler(command: str, speed: Optional[pydantic.PositiveInt] = None):
-            nonlocal last_operation_result, finished_tuning
+        current_cursor: Optional[TrajectoryCursor] = None
+
+        async def controller_handler(msg):
+            nonlocal last_operation_result, finished_tuning, current_cursor
+            try:
+                data = json.loads(msg.data.decode())
+                command = data.get("command")
+                speed = data.get("speed")
+                if speed is not None:
+                    speed = pydantic.PositiveInt(speed)
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"Invalid message format in trajectory-cursor: {e}")
+                return
+
+            if current_cursor is None:
+                logger.warning("Received command but cursor is not initialized")
+                return
+
             match command:
                 case "forward":
                     continue_tuning_event.set()
@@ -72,54 +80,27 @@ class TrajectoryTuner:
                 case _:
                     logger.warning(f"Unknown command received in trajectory-cursor: {command}")
 
-        async def runtime_monitor(interval=0.5):
-            start_time = asyncio.get_event_loop().time()
-            while True:
-                elapsed = asyncio.get_event_loop().time() - start_time
-                logger.warning(f"{elapsed:.2f}s")
-                await asyncio.sleep(interval)
+        async def movement_options_handler(msg):
+            try:
+                data = json.loads(msg.data.decode())
+                logger.info(f"Received movement options: {data}")
+            except json.JSONDecodeError as e:
+                logger.warning(f"Invalid JSON in movement options: {e}")
 
-        faststream_app = FastStream(broker)
-
-        @faststream_app.after_startup
-        async def after_startup():
-            faststream_app_ready_event.set()
-
-        @faststream_app.on_shutdown
-        async def on_shutdown():
-            # TODO this was written in an attempt to fix the shutdown hanging issue
-            # without really understanding the root cause and it did not help so far
-            # TODO this is triggered explicitly when we call faststream_app.exit()
-            # but also when the app is shut down by other means (e.g. SIGINT)
-            nonlocal finished_tuning
-            logger.info("Shutting down TrajectoryTuner FastStream app")
-            continue_tuning_event.set()
-            current_cursor.detach()
-            finished_tuning = True
-            ic()
-
-        faststream_app_task = asyncio.create_task(faststream_app.run())
-        # runtime_task = asyncio.create_task(runtime_monitor(0.5))  # Output every 0.5 seconds
+        # Subscribe to NATS subjects
+        cursor_sub = await nats.subscribe("trajectory-cursor", cb=controller_handler)
+        subscriptions.append(cursor_sub)
+        options_sub = await nats.subscribe("editor.movement.options", cb=movement_options_handler)
+        subscriptions.append(options_sub)
 
         @motion_started.connect
         async def on_motion_started(sender, event: MotionEvent):
-            await broker.publish(
-                # {"line": event.target_action.metas["line_number"]}, "editor.line.select"
-                event,
-                "editor.motion-event",
+            await nats.publish(
+                subject="editor.motion-event", payload=event.model_dump_json().encode()
             )
-
-        @broker.subscriber("editor.movement.options")
-        async def movement_options_handler(msg):
-            logger.info(f"Received movement options: {msg}")
 
         try:
             # tuning loop
-            try:
-                await faststream_app_ready_event.wait()
-            except BaseException as e:
-                logger.error(f"FastStream app failed to start: {e}")
-                raise e
             current_location = 0.0
             while not finished_tuning:
                 ic()
@@ -138,9 +119,11 @@ class TrajectoryTuner:
                 # wait for user to send next command
                 logger.info("Cursor initialized. Waiting for user command...")
                 # publish movement options
-                await broker.publish(
-                    {"options": list(current_cursor.get_movement_options())},
-                    "editor.movement.options",
+                await nats.publish(
+                    subject="editor.movement.options",
+                    payload=json.dumps(
+                        {"options": list(current_cursor.get_movement_options())}
+                    ).encode(),
                 )
 
                 await continue_tuning_event.wait()
@@ -169,6 +152,8 @@ class TrajectoryTuner:
                 f"finished_tuning={finished_tuning}, current_location={current_location}, last_operation_result={last_operation_result}"
             )
             pass
-        ic()
-        faststream_app.exit()
-        await faststream_app_task
+        finally:
+            # Clean up subscriptions
+            for sub in subscriptions:
+                await sub.unsubscribe()
+            ic()
