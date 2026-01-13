@@ -6,8 +6,6 @@ from typing import Optional
 import pydantic
 from icecream import ic
 
-from nova.progctx import current_program_context_var
-
 from .movement_controller.trajectory_cursor import MotionEvent, TrajectoryCursor, motion_started
 
 logger = logging.getLogger(__name__)
@@ -24,7 +22,10 @@ class TrajectoryTuner:
         last_operation_result = None  # TODO implement this feature
         subscriptions = []
 
-        ctx = current_program_context_var.get()
+        # Import here to avoid circular import
+        from nova import get_current_program_context
+
+        ctx = get_current_program_context()
         if ctx is None:
             raise RuntimeError("TrajectoryTuner requires a valid program context")
         nats = ctx.nova.nats

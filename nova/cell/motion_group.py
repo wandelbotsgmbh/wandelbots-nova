@@ -10,7 +10,6 @@ from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion
-from nova.cell.tuner import TrajectoryTuner
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, PlanTrajectoryFailed
@@ -27,6 +26,7 @@ from nova.utils.motion_group_settings import update_motion_group_setup_with_moti
 
 from .movement_controller import move_forward
 from .robot_cell import AbstractRobot
+from .tuner import TrajectoryTuner
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
@@ -747,8 +747,12 @@ class MotionGroup(AbstractRobot):
         # This is the entrypoint for the trajectory tuning mode
         if ENABLE_TRAJECTORY_TUNING:
             logger.info("Entering trajectory tuning mode...")
-            async for execute_response in self._tune_trajectory(joint_trajectory, tcp, actions):
-                yield execute_response
+            try:
+                async for execute_response in self._tune_trajectory(joint_trajectory, tcp, actions):
+                    yield execute_response
+            except (Exception, BaseException) as e:
+                logger.error(f"Trajectory tuning failed: {e}")
+                raise e
             return
 
         if movement_controller is None:

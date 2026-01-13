@@ -35,6 +35,8 @@ from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
 
+from .context import ProgramContext, current_program_context_var
+
 logger = logging.getLogger(__name__)
 
 Parameters = ParamSpec("Parameters")
@@ -44,47 +46,6 @@ Return = TypeVar("Return")
 class ProgramPreconditions(BaseModel):
     controllers: list[api.models.RobotController] | None = None
     cleanup_controllers: bool = False
-
-
-from nova.progctx import current_program_context_var
-
-
-class ProgramContext:
-    """Context passed into every program execution."""
-
-    def __init__(self, nova: Nova, program_id: str | None = None):
-        self._nova = nova
-        self._program_id = program_id
-        self._cell = nova.cell()
-
-    @property
-    def nova(self) -> Nova:
-        """Returns the Nova instance for the program."""
-        return self._nova
-
-    @property
-    def cell(self):
-        """Returns the default cell for the program, if available."""
-        return self._cell
-
-    @property
-    def program_id(self) -> str | None:
-        """Returns the program ID for the program."""
-        return self._program_id
-
-    def cycle(self, extra: dict[str, Any] | None = None):
-        """Create a Cycle with program pre-populated in the extra data."""
-        from nova.events import Cycle
-
-        if self._cell is None:
-            raise AttributeError(
-                "ProgramContext.cell is not available; the provided Nova instance does not expose cell()."
-            )
-
-        merged_extra = {"program": self.program_id} if self.program_id else {}
-        if extra:
-            merged_extra.update(extra)
-        return Cycle(cell=self.cell, extra=merged_extra)
 
 
 class Program(BaseModel, Generic[Parameters, Return]):

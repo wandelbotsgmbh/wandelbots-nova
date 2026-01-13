@@ -24,6 +24,14 @@ __all__ = [
     "program",
     "run_program",
     "ProgramContext",
+    "get_current_program_context",
     "ProgramPreconditions",
     "__version__",
 ]
+
+
+def get_current_program_context() -> ProgramContext | None:
+    """Get the current program context, if available."""
+    from nova.program.context import current_program_context_var
+
+    return current_program_context_var.get()
