@@ -1,10 +1,11 @@
 """Tests for TrajectoryCursor action index and location logic."""
 
-import pytest
 from unittest.mock import MagicMock
 
-from nova.cell.movement_controller.trajectory_cursor import TrajectoryCursor, MovementOption
+import pytest
+
 from nova.actions.motions import lin
+from nova.cell.movement_controller.trajectory_cursor import MovementOption, TrajectoryCursor
 from nova.types import Pose
 
 
