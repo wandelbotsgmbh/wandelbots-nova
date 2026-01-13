@@ -14,7 +14,7 @@ from nova import api
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
 from nova.exceptions import InitMovementFailed
-from nova.types.state import motion_group_state_to_motion_state
+from nova.types import ExecuteTrajectoryRequestStream, ExecuteTrajectoryResponseStream
 
 logger = logging.getLogger(__name__)
 
@@ -534,116 +534,25 @@ class TrajectoryCursor:
             self._command_queue.task_done()
 
     async def _motion_group_state_consumer(self, ready_event: asyncio.Event):
-        async for motion_group_state in self._motion_group_state_stream:
-            ready_event.set()
-
-            if not self._is_operation_in_progress():
-                # We only care about motion group states if there is an operation in progress
-                # assert that we are the sole reason for movement
-                assert not motion_group_state.execute
-                continue
-            else:
-                if (
-                    not motion_group_state.execute
-                    and self._operation_handler.current_operation_state == OperationState.COMMANDED
-                ):  #
-                    continue  # wait for the execution to actually start
-
-                if not motion_group_state.execute and motion_group_state.standstill:
-                    ic()
-                    assert self._operation_handler.current_operation_state not in (
-                        OperationState.INITIAL,
-                        OperationState.COMMANDED,
-                    ), (
-                        f"Unexpected operation state {self._operation_handler.current_operation_state} when standstill is True"
-                    )
-                    self._complete_operation()
-                    if self._detach_on_standstill:
-                        ic()
-                        break
-
-                assert motion_group_state.execute
-                # TODO it is questionable if we want to maintain the semantics of yield motion group states during
-                # execution this is the only reason we do this here
-                self._in_queue.put_nowait(motion_group_state)
-
-                if motion_group_state.execute and isinstance(
-                    motion_group_state.execute.details, api.models.TrajectoryDetails
-                ):
-                    self._current_location = motion_group_state.execute.details.location.root
-                    match motion_group_state.execute.details.state:
-                        case api.models.TrajectoryRunning():
-                            if (
-                                self._operation_handler.current_operation_state
-                                == OperationState.COMMANDED
-                            ):
-                                # State transition: COMMANDED -> RUNNING
-                                self._operation_handler._operation_state = OperationState.RUNNING
-                        case api.models.TrajectoryPausedByUser():
-                            self._complete_operation()
-                            if self._detach_on_standstill:
-                                break
-                        case api.models.TrajectoryEnded():
-                            self._complete_operation()
-                            if self._detach_on_standstill:
-                                break
-
-        # stop the request loop
-        self.detach()
-        # stop the cursor iterator (TODO is this the right place?)
-        ic()
-        self._in_queue.put_nowait(None)  # TODO make sentinel more explicit
-
-    async def _response_consumer(self, ready_event: asyncio.Event):
-        ready_event.set()
-        async for response in self._response_stream:
-            ic(response)
-            self._response_queue.put_nowait(response)
-
-    async def _combined_response_consumer(self, ready_event: asyncio.Event):
-        ready_event.set()
-        last_motion_state = None
-
         try:
-            while True:
-                response = await self._response_queue.get()
-                if isinstance(response, api.models.MotionGroupState):
-                    motion_group_state = response
+            async for motion_group_state in self._motion_group_state_stream:
+                ready_event.set()
 
-                    if self._is_operation_in_progress():
-                        # ic((motion_group_state.standstill, motion_group_state.execute))
-                        pass
-
-                    try:
-                        motion_state = motion_group_state_to_motion_state(
-                            motion_group_state
-                        )  # TODO this should only be called if there is a motion state
-                    except ValueError:
-                        # TODO somewhat hacky
-                        # ic(e)
-                        self._response_queue.task_done()
-                        continue
-
-                    self._in_queue.put_nowait(response)
-
-                    if last_motion_state is None:
-                        last_motion_state = motion_state
-                    self._current_location = motion_state.path_parameter
-                    last_motion_state = motion_state
-
+                if not self._is_operation_in_progress():
+                    # We only care about motion group states if there is an operation in progress
+                    # assert that we are the sole reason for movement
+                    assert not motion_group_state.execute
+                    continue
+                else:
                     if (
-                        self._is_operation_in_progress()
-                        and not motion_group_state.execute
+                        not motion_group_state.execute
                         and self._operation_handler.current_operation_state
                         == OperationState.COMMANDED
                     ):  #
                         continue  # wait for the execution to actually start
 
-                    assert self._is_operation_in_progress()
-                    assert motion_group_state.execute
-                    # TODO this is unreachable?
-                    if motion_group_state.standstill and not motion_group_state.execute:
-                        # ic()
+                    if not motion_group_state.execute and motion_group_state.standstill:
+                        ic()
                         assert self._operation_handler.current_operation_state not in (
                             OperationState.INITIAL,
                             OperationState.COMMANDED,
@@ -655,13 +564,17 @@ class TrajectoryCursor:
                             ic()
                             break
 
+                    assert motion_group_state.execute
+                    # TODO it is questionable if we want to maintain the semantics of yield motion group states during
+                    # execution this is the only reason we do this here
+                    self._in_queue.put_nowait(motion_group_state)
+
                     if motion_group_state.execute and isinstance(
                         motion_group_state.execute.details, api.models.TrajectoryDetails
                     ):
-                        # ic()
+                        self._current_location = motion_group_state.execute.details.location.root
                         match motion_group_state.execute.details.state:
                             case api.models.TrajectoryRunning():
-                                # ic()
                                 if (
                                     self._operation_handler.current_operation_state
                                     == OperationState.COMMANDED
@@ -671,21 +584,18 @@ class TrajectoryCursor:
                                         OperationState.RUNNING
                                     )
                             case api.models.TrajectoryPausedByUser():
-                                ic()
                                 self._complete_operation()
                                 if self._detach_on_standstill:
-                                    ic()
                                     break
                             case api.models.TrajectoryEnded():
-                                ic()
                                 self._complete_operation()
                                 if self._detach_on_standstill:
-                                    ic()
                                     break
-
-                    self._response_queue.task_done()
         except asyncio.CancelledError:
-            logger.debug("Response consumer was cancelled, cleaning up trajectory cursor")
+            ic()
+            logger.debug(
+                "TrajectoryCursor motion group state consumer was cancelled during cleanup"
+            )
             raise
         finally:
             # stop the request loop
@@ -693,6 +603,12 @@ class TrajectoryCursor:
             # stop the cursor iterator (TODO is this the right place?)
             ic()
             self._in_queue.put_nowait(None)  # TODO make sentinel more explicit
+
+    async def _response_consumer(self, ready_event: asyncio.Event):
+        ready_event.set()
+        async for response in self._response_stream:
+            ic(response)
+            self._response_queue.put_nowait(response)
 
     async def _motion_event_updater(self, interval=0.2):
         while True:
