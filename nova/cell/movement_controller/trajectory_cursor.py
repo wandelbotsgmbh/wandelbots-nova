@@ -510,7 +510,7 @@ class TrajectoryCursor:
     async def _request_loop(self):
         while True:
             command = await self._command_queue.get()
-            if command is self._COMMAND_QUEUE_SENTINAL:
+            if command is self._COMMAND_QUEUE_SENTINEL:
                 self._command_queue.task_done()
                 break
             ic(command)
