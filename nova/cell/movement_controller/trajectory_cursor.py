@@ -215,9 +215,9 @@ class TrajectoryCursor:
         self._command_queue: asyncio.Queue[ExecuteTrajectoryRequestCommand | _QueueSentinel] = (
             asyncio.Queue()
         )
-        self._in_queue: asyncio.Queue[
-            api.models.ExecuteTrajectoryResponse | api.models.MotionGroupState | _QueueSentinel
-        ] = asyncio.Queue()
+        self._in_queue: asyncio.Queue[api.models.MotionGroupState | _QueueSentinel] = (
+            asyncio.Queue()
+        )
         self._motion_group_state_stream: AsyncIterator[api.models.MotionGroupState] = (
             motion_group_state_stream
         )
@@ -509,21 +509,14 @@ class TrajectoryCursor:
                     )
                     motion_group_state_monitor_task.cancel()
                     raise RuntimeError("State monitor failed to start in time")
-                # TODO do we need to wait for the response consumer?
-                try:
-                    await asyncio.wait_for(
-                        response_consumer_ready_event.wait(), timeout=_STREAM_STARTUP_TIMEOUT
-                    )
-                except asyncio.TimeoutError:
-                    logger.error("TrajectoryCursor response consumer failed to start in time")
-                    response_consumer_task.cancel()
-                    raise RuntimeError("Response consumer failed to start in time")
+
+                await response_consumer_ready_event.wait()
 
                 async for request in self._request_loop():
                     yield request
 
-                response_consumer_task.cancel()
                 motion_event_updater_task.cancel()
+                response_consumer_task.cancel()
                 motion_group_state_monitor_task.cancel()
         except ExceptionGroup as eg:
             ic(eg)
@@ -702,14 +695,10 @@ class TrajectoryCursor:
             target_action=target_action,
         )
 
-    # TODO currently we only enque MotionGroupState, but we might want to enqueue ExecuteTrajectoryResponse as well
-    def __aiter__(
-        self,
-    ) -> AsyncIterator[api.models.ExecuteTrajectoryResponse | api.models.MotionGroupState]:
+    def __aiter__(self) -> AsyncIterator[api.models.MotionGroupState]:
         return self
 
-    # TODO currently we only enque MotionGroupState, but we might want to enqueue ExecuteTrajectoryResponse as well
-    async def __anext__(self) -> api.models.ExecuteTrajectoryResponse | api.models.MotionGroupState:
+    async def __anext__(self) -> api.models.MotionGroupState:
         value = await self._in_queue.get()
         self._in_queue.task_done()
         match value:
