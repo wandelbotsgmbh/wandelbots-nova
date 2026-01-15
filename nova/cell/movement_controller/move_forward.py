@@ -1,9 +1,5 @@
 import asyncio
 import logging
-from datetime import datetime
-from typing import AsyncIterator
-
-from icecream import ic
 
 from nova import api
 from nova.actions import MovementControllerContext
@@ -15,21 +11,6 @@ from nova.types import (
 )
 
 logger = logging.getLogger(__name__)
-
-ExecuteJoggingRequestStream = AsyncIterator[api.models.ExecuteJoggingRequest]
-ExecuteJoggingResponseStream = AsyncIterator[api.models.ExecuteJoggingResponse]
-
-ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
-
-
-from typing import AsyncIterator
-
-from nova import api
-
-logger = logging.getLogger(__name__)
-
-ExecuteJoggingRequestStream = AsyncIterator[api.models.ExecuteJoggingRequest]
-ExecuteJoggingResponseStream = AsyncIterator[api.models.ExecuteJoggingResponse]
 
 _START_STATE_MONITOR_TIMEOUT = 5.0
 

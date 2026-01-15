@@ -1,9 +1,10 @@
 import asyncio
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, StrEnum, auto
 from math import ceil, floor
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Optional, Union
 
 import pydantic
 from aiohttp_retry import dataclass
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
 
-_START_STATE_MONITOR_TIMEOUT = 5.0
+_STREAM_STARTUP_TIMEOUT = 5.0
 
 
 class OperationType(Enum):
@@ -52,77 +53,112 @@ class OperationResult:
     error: Optional[Exception] = None
 
 
+# Type alias for expected response types in _response_consumer
+ExpectedResponseType = Union[
+    type[api.models.StartMovementResponse], type[api.models.PauseMovementResponse]
+]
+
+
+@dataclass
+class Operation:
+    """Encapsulates all state for a single movement operation."""
+
+    future: asyncio.Future[OperationResult]
+    operation_type: OperationType
+    operation_state: OperationState
+    start_location: float
+    expected_response_type: ExpectedResponseType
+    target_location: Optional[float] = None
+    interrupt_requested: bool = False
+
+
 class OperationHandler:
     """Encapsulates the bookkeeping for a single movement operation."""
 
     def __init__(self):
-        self._future: Optional[asyncio.Future[OperationResult]] = None
-        self._operation_type: Optional[OperationType] = None
-        self._operation_state: Optional[OperationState] = None
-        self._target_location: Optional[float] = None
-        self._start_location: Optional[float] = None
-        self._interrupt_requested = False
+        self._operation: Optional[Operation] = None
 
     def start(
         self,
         operation_type: OperationType,
         *,
         start_location: float,
+        expected_response_type: ExpectedResponseType,
         target_location: Optional[float] = None,
     ) -> asyncio.Future[OperationResult]:
-        if self._future and not self._future.done():
-            self._future.cancel()
+        if self._operation and not self._operation.future.done():
+            self._operation.future.cancel()
 
-        self._future = asyncio.Future()
-        self._operation_type = operation_type
-        self._operation_state = (
-            OperationState.COMMANDED
-        )  # TODO this should be initial and commanded when we have send it to the API
-        self._target_location = target_location
-        self._start_location = start_location
-        self._interrupt_requested = False
-        return self._future
+        future: asyncio.Future[OperationResult] = asyncio.Future()
+        self._operation = Operation(
+            future=future,
+            operation_type=operation_type,
+            operation_state=OperationState.INITIAL,
+            start_location=start_location,
+            expected_response_type=expected_response_type,
+            target_location=target_location,
+            interrupt_requested=False,
+        )
+        return future
+
+    def set_commanded(self):
+        assert self._operation is not None
+        # we fail if we are already commanded since that would be a logic error
+        assert self._operation.operation_state is not OperationState.COMMANDED
+        if self._operation.operation_state == OperationState.INITIAL:
+            self._operation.operation_state = OperationState.COMMANDED
+        elif self._operation.operation_state == OperationState.RUNNING:
+            # no-op, already running; this can happen if we process the motion group state with
+            # the execute set before the ExecuteTrajectoryResponse
+            pass
+        else:
+            raise RuntimeError(
+                f"Cannot set operation to COMMANDED from state {self._operation.operation_state}"
+            )
+
+    def set_running(self):
+        assert self._operation is not None
+        if self._operation.operation_state == OperationState.COMMANDED:
+            self._operation.operation_state = OperationState.RUNNING
+        elif self._operation.operation_state == OperationState.RUNNING:
+            # no-op, already running; idempotent
+            pass
+        elif self._operation.operation_state == OperationState.INITIAL:
+            # no-op, this can happen if we process the motion group state with
+            # the execute set before the ExecuteTrajectoryResponse which sets COMMANDED
+            pass
+        else:
+            raise RuntimeError(
+                f"Cannot set operation to RUNNING from state {self._operation.operation_state}"
+            )
 
     def complete(self, *, final_location: float, error: Optional[Exception] = None) -> None:
-        if not self._future or self._future.done():
+        if not self._operation or self._operation.future.done():
             return
 
-        assert self._operation_type is not None
         result = OperationResult(
-            operation_type=self._operation_type,
-            target_location=self._target_location,
-            start_location=self._start_location,
+            operation_type=self._operation.operation_type,
+            target_location=self._operation.target_location,
+            start_location=self._operation.start_location,
             final_location=final_location,
             error=error,
         )
         if error:
-            self._future.set_exception(error)
+            self._operation.future.set_exception(error)
         else:
             ic(result)
-            self._future.set_result(result)
+            self._operation.future.set_result(result)
         self._reset()
 
     def in_progress(self) -> bool:
-        return self._future is not None and not self._future.done()
+        return self._operation is not None and not self._operation.future.done()
 
     @property
-    def current_operation_type(self) -> Optional[OperationType]:
-        return self._operation_type
-
-    @property
-    def current_operation_state(self) -> Optional[OperationState]:
-        return self._operation_state
-
-    @property
-    def current_future(self) -> Optional[asyncio.Future[OperationResult]]:
-        return self._future
+    def current_operation(self) -> Optional[Operation]:
+        return self._operation
 
     def _reset(self):
-        self._future = None
-        self._operation_type = None
-        self._target_location = None
-        self._start_location = None
-        self._interrupt_requested = False
+        self._operation = None
 
 
 class MovementOption(StrEnum):
@@ -147,6 +183,23 @@ class MotionEvent(pydantic.BaseModel):
     target_action: Action
 
 
+ExecuteTrajectoryRequestCommand = Union[
+    api.models.InitializeMovementRequest,
+    api.models.StartMovementRequest,
+    api.models.PauseMovementRequest,
+    api.models.PlaybackSpeedRequest,
+]
+
+
+@dataclass(frozen=True)
+class _QueueSentinel:
+    """Marker type used only as a sentinel."""
+
+
+# The single sentinel value
+_QUEUE_SENTINEL = _QueueSentinel()
+
+
 class TrajectoryCursor:
     def __init__(
         self,
@@ -160,13 +213,11 @@ class TrajectoryCursor:
         self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
         self.actions = CombinedActions(items=actions)  # type: ignore
-        self._command_queue: asyncio.Queue = asyncio.Queue()
-        self._COMMAND_QUEUE_SENTINAL = object()
-        self._response_queue: asyncio.Queue[
-            api.models.ExecuteTrajectoryResponse | api.models.MotionGroupState
-        ] = asyncio.Queue()
+        self._command_queue: asyncio.Queue[ExecuteTrajectoryRequestCommand | _QueueSentinel] = (
+            asyncio.Queue()
+        )
         self._in_queue: asyncio.Queue[
-            api.models.ExecuteTrajectoryResponse | api.models.MotionGroupState | None
+            api.models.ExecuteTrajectoryResponse | api.models.MotionGroupState | _QueueSentinel
         ] = asyncio.Queue()
         self._motion_group_state_stream: AsyncIterator[api.models.MotionGroupState] = (
             motion_group_state_stream
@@ -245,7 +296,9 @@ class TrajectoryCursor:
         self, target_location: float | None = None, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
         # should idempotently move forward
-        future = self._start_operation(OperationType.FORWARD)
+        future = self._start_operation(
+            OperationType.FORWARD, expected_response_type=api.models.StartMovementResponse
+        )
 
         # We can only use this with v2
         # TODO what is this for?
@@ -256,7 +309,6 @@ class TrajectoryCursor:
             self._command_queue.put_nowait(
                 api.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
             )
-        ic(target_location, self._target_location)
         self._command_queue.put_nowait(
             api.models.StartMovementRequest(
                 direction=api.models.Direction.DIRECTION_FORWARD,
@@ -276,13 +328,14 @@ class TrajectoryCursor:
     def backward(
         self, target_location: float | None = None, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
-        future = self._start_operation(OperationType.BACKWARD)
+        future = self._start_operation(
+            OperationType.BACKWARD, expected_response_type=api.models.StartMovementResponse
+        )
 
         if playback_speed_in_percent is not None:
             self._command_queue.put_nowait(
                 api.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
             )
-        ic(target_location, self._target_location)
         self._command_queue.put_nowait(
             api.models.StartMovementRequest(
                 direction=api.models.Direction.DIRECTION_BACKWARD,
@@ -311,7 +364,6 @@ class TrajectoryCursor:
             )
             return future
         self._target_location = location
-        ic(self._target_location)
         return self.forward(
             target_location=location, playback_speed_in_percent=playback_speed_in_percent
         )
@@ -334,7 +386,6 @@ class TrajectoryCursor:
         self, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
         target_location = self.next_action_start
-        ic(self._current_location, target_location)
         if self._current_location == target_location:
             target_location += 1.0
         if target_location > len(self.actions):
@@ -360,7 +411,6 @@ class TrajectoryCursor:
             if self._current_location - self.previous_action_start <= 1.0
             else self.current_action_start
         )
-        ic(self._current_location, target_location, self.previous_action_start)
         if target_location >= 0:
             return self.backward_to(
                 target_location, playback_speed_in_percent=playback_speed_in_percent
@@ -382,7 +432,9 @@ class TrajectoryCursor:
         if not self._is_operation_in_progress():
             return
 
-        future = self._start_operation(OperationType.PAUSE)
+        future = self._start_operation(
+            OperationType.PAUSE, expected_response_type=api.models.PauseMovementResponse
+        )
         self._command_queue.put_nowait(api.models.PauseMovementRequest())
         return future
 
@@ -391,15 +443,22 @@ class TrajectoryCursor:
         # this is especially open for testing what happens when the movement is backwards
         # and no end is reached
         # TODO only allow finishing if at forward end of trajectory?
-        self._command_queue.put_nowait(self._COMMAND_QUEUE_SENTINAL)
-        self._in_queue.put_nowait(None)  # TODO make sentinel more explicit
+        self._command_queue.put_nowait(_QUEUE_SENTINEL)
+        self._in_queue.put_nowait(_QUEUE_SENTINEL)
 
     def _start_operation(
-        self, operation_type: OperationType, target_location: Optional[float] = None
+        self,
+        operation_type: OperationType,
+        *,
+        expected_response_type: ExpectedResponseType,
+        target_location: Optional[float] = None,
     ) -> asyncio.Future[OperationResult]:
         """Start a new operation, returning a Future that will be resolved when the operation completes."""
         return self._operation_handler.start(
-            operation_type, start_location=self._current_location, target_location=target_location
+            operation_type,
+            start_location=self._current_location,
+            expected_response_type=expected_response_type,
+            target_location=target_location,
         )
 
     def _complete_operation(self, error: Optional[Exception] = None):
@@ -420,45 +479,57 @@ class TrajectoryCursor:
         ):
             yield request
 
-        motion_event_updater_ready_event = asyncio.Event()
+        motion_group_state_monitor_ready_event = asyncio.Event()
         response_consumer_ready_event = asyncio.Event()
-        combined_response_consumer_ready_event = asyncio.Event()
         try:
             async with asyncio.TaskGroup() as tg:
-                motion_group_state_consumer_task = tg.create_task(
-                    self._motion_group_state_consumer(ready_event=motion_event_updater_ready_event),
-                    name="motion_group_state_consumer",
+                motion_group_state_monitor_task = tg.create_task(
+                    self._motion_group_state_monitor(
+                        ready_event=motion_group_state_monitor_ready_event
+                    ),
+                    name="motion_group_state_monitor",
                 )
                 response_consumer_task = tg.create_task(
                     self._response_consumer(ready_event=response_consumer_ready_event),
                     name="response_consumer",
                 )
-                # combined_response_consumer_task = tg.create_task(
-                #     self._combined_response_consumer(
-                #         ready_event=combined_response_consumer_ready_event
-                #     ),
-                #     name="combined_response_consumer",
-                # )
                 motion_event_updater_task = tg.create_task(
                     self._motion_event_updater(), name="motion_event_updater"
                 )
-                # we need to wait until the response consumer is ready because it stops the
-                # response stream iterator by enquing the sentinel
-                # if we cancel immediately due to the first command being a detach the response consumer might get
-                # cancelled before it has even started and thus will not react to the cancellation properly
-                await motion_event_updater_ready_event.wait()
-                await response_consumer_ready_event.wait()
-                # await combined_response_consumer_ready_event.wait()
+                # The timeout handling here is very defensive programming to avoid silent hangs
+                # in case the connection to the API is lost or similar issues occur.
+                # It might be overkill but is useful during development and debugging.
+                try:
+                    await asyncio.wait_for(
+                        motion_group_state_monitor_ready_event.wait(),
+                        timeout=_STREAM_STARTUP_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(
+                        "TrajectoryCursor motion group state monitor failed to start in time"
+                    )
+                    motion_group_state_monitor_task.cancel()
+                    raise RuntimeError("State monitor failed to start in time")
+                # TODO do we need to wait for the response consumer?
+                try:
+                    await asyncio.wait_for(
+                        response_consumer_ready_event.wait(), timeout=_STREAM_STARTUP_TIMEOUT
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("TrajectoryCursor response consumer failed to start in time")
+                    response_consumer_task.cancel()
+                    raise RuntimeError("Response consumer failed to start in time")
+
                 async for request in self._request_loop():
                     yield request
 
                 response_consumer_task.cancel()
                 motion_event_updater_task.cancel()
-                motion_group_state_consumer_task.cancel()
-                # combined_response_consumer_task.cancel()
+                motion_group_state_monitor_task.cancel()
         except ExceptionGroup as eg:
             ic(eg)
             logger.error(f"ExceptionGroup in TrajectoryCursor cntrl: {eg}")
+            logger.exception(eg)
             raise
         except BaseExceptionGroup as eg:
             ic(eg)
@@ -475,42 +546,13 @@ class TrajectoryCursor:
         finally:
             ic()
 
-        # # OLD
-        # self._response_consumer_task: asyncio.Task[None] = asyncio.create_task(
-        #     self._response_consumer(ready_event=respons_consumer_ready_event),
-        #     name="response_consumer",
-        # )
-        # motion_event_updater_task = asyncio.create_task(
-        #     self.motion_event_updater(), name="motion_event_updater"
-        # )
-        # # we need to wait until the response consumer is ready because it stops the
-        # # response stream iterator by enquing the sentinel
-        # # if we cancel immediately due to the first command being a detach the response consumer might get
-        # # cancelled before it has even started and thus will not react to the cancellation properly
-        # await respons_consumer_ready_event.wait()
-        # async for request in self._request_loop():
-        #     yield request
-        # self._response_consumer_task.cancel()
-        # try:
-        #     await self._response_consumer_task  # Where to put?
-        # except asyncio.CancelledError:
-        #     logger.debug("Response consumer task was cancelled during trajectory cursor cleanup")
-        #     pass
-        # motion_event_updater_task.cancel()
-        # try:
-        #     await motion_event_updater_task
-        # except asyncio.CancelledError:
-        #     logger.debug("Motion event updater task was cancelled during trajectory cursor cleanup")
-        #     pass
-
-        ic()
         # stopping the external response stream iterator to be sure, but this is a smell
-        self._in_queue.put_nowait(None)
+        self._in_queue.put_nowait(_QUEUE_SENTINEL)
 
     async def _request_loop(self):
         while True:
             command = await self._command_queue.get()
-            if command is self._COMMAND_QUEUE_SENTINAL:
+            if command is _QUEUE_SENTINEL:
                 self._command_queue.task_done()
                 break
             ic(command)
@@ -533,7 +575,8 @@ class TrajectoryCursor:
             # yield await self._command_queue.get()
             self._command_queue.task_done()
 
-    async def _motion_group_state_consumer(self, ready_event: asyncio.Event):
+    async def _motion_group_state_monitor(self, ready_event: asyncio.Event):
+        logger.debug("Starting state monitor for trajectory cursor")
         try:
             async for motion_group_state in self._motion_group_state_stream:
                 ready_event.set()
@@ -544,20 +587,20 @@ class TrajectoryCursor:
                     assert not motion_group_state.execute
                     continue
                 else:
-                    if (
-                        not motion_group_state.execute
-                        and self._operation_handler.current_operation_state
-                        == OperationState.COMMANDED
+                    current_op = self._operation_handler.current_operation
+                    assert current_op is not None
+                    if not motion_group_state.execute and current_op.operation_state in (
+                        OperationState.INITIAL,
+                        OperationState.COMMANDED,
                     ):  #
                         continue  # wait for the execution to actually start
 
                     if not motion_group_state.execute and motion_group_state.standstill:
-                        ic()
-                        assert self._operation_handler.current_operation_state not in (
+                        assert current_op.operation_state not in (
                             OperationState.INITIAL,
                             OperationState.COMMANDED,
                         ), (
-                            f"Unexpected operation state {self._operation_handler.current_operation_state} when standstill is True"
+                            f"Unexpected operation state {current_op.operation_state} when standstill is True"
                         )
                         self._complete_operation()
                         if self._detach_on_standstill:
@@ -575,14 +618,7 @@ class TrajectoryCursor:
                         self._current_location = motion_group_state.execute.details.location.root
                         match motion_group_state.execute.details.state:
                             case api.models.TrajectoryRunning():
-                                if (
-                                    self._operation_handler.current_operation_state
-                                    == OperationState.COMMANDED
-                                ):
-                                    # State transition: COMMANDED -> RUNNING
-                                    self._operation_handler._operation_state = (
-                                        OperationState.RUNNING
-                                    )
+                                self._operation_handler.set_running()  # idempotent
                             case api.models.TrajectoryPausedByUser():
                                 self._complete_operation()
                                 if self._detach_on_standstill:
@@ -591,28 +627,57 @@ class TrajectoryCursor:
                                 self._complete_operation()
                                 if self._detach_on_standstill:
                                     break
+                            case _:
+                                assert False, (
+                                    f"Unexpected or unsupported motion group execute state: {motion_group_state.execute.details.state}"
+                                )
         except asyncio.CancelledError:
-            ic()
-            logger.debug(
-                "TrajectoryCursor motion group state consumer was cancelled during cleanup"
-            )
+            logger.debug("TrajectoryCursor motion group state monitor was cancelled")
             raise
         finally:
             # stop the request loop
             self.detach()
             # stop the cursor iterator (TODO is this the right place?)
-            ic()
-            self._in_queue.put_nowait(None)  # TODO make sentinel more explicit
+            self._in_queue.put_nowait(_QUEUE_SENTINEL)
 
     async def _response_consumer(self, ready_event: asyncio.Event):
+        logger.debug("Starting response consumer for trajectory cursor")
         ready_event.set()
-        async for response in self._response_stream:
-            ic(response)
-            self._response_queue.put_nowait(response)
+        try:
+            async for response in self._response_stream:
+                # TODO log response instead of ic?
+                ic(response)
+                # TODO handle response properly
+                assert self._is_operation_in_progress()
+                current_op = self._operation_handler.current_operation
+                assert current_op is not None
+
+                match response.root:
+                    case api.models.PlaybackSpeedResponse():
+                        pass  # no-op for now
+                    case api.models.MovementErrorResponse():
+                        # TODO do we want this to fail the operation? Maybe you could still continue using the cursor?
+                        raise Exception(
+                            f"Movement error received in trajectory cursor: {response.root.message}"
+                        )
+                    case api.models.StartMovementResponse() | api.models.PauseMovementResponse():
+                        if isinstance(response.root, current_op.expected_response_type):
+                            ic()
+                            self._operation_handler.set_commanded()
+                    case _:
+                        raise RuntimeError(
+                            f"Unexpected response in trajectory cursor response consumer: {type(response.root)}, "
+                            f"expected {current_op.expected_response_type.__name__}"
+                        )
+        except asyncio.CancelledError:
+            logger.debug("TrajectoryCursor response consumer was cancelled")
+            raise
 
     async def _motion_event_updater(self, interval=0.2):
         while True:
-            match self._operation_handler.current_operation_type:
+            current_op = self._operation_handler.current_operation
+            op_type = current_op.operation_type if current_op else None
+            match op_type:
                 case OperationType.FORWARD | OperationType.FORWARD_TO:
                     target_action = self.next_action if self.next_action else self.current_action
                     await motion_started.send_async(
@@ -638,15 +703,17 @@ class TrajectoryCursor:
             target_action=target_action,
         )
 
+    # TODO currently we only enque MotionGroupState, but we might want to enqueue ExecuteTrajectoryResponse as well
     def __aiter__(
         self,
     ) -> AsyncIterator[api.models.ExecuteTrajectoryResponse | api.models.MotionGroupState]:
         return self
 
+    # TODO currently we only enque MotionGroupState, but we might want to enqueue ExecuteTrajectoryResponse as well
     async def __anext__(self) -> api.models.ExecuteTrajectoryResponse | api.models.MotionGroupState:
         value = await self._in_queue.get()
         self._in_queue.task_done()
-        if value is None:
+        if value is _QUEUE_SENTINEL:
             raise StopAsyncIteration
         return value
 
