@@ -138,7 +138,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
         if ctx is None:
             ctx = ProgramContext(nova=nova, program_id=self.program_id)
 
-        token = current_program_context_var.set(ctx)
+        current_program_context_var.set(ctx)
 
         # Remaining keyword arguments are treated as input parameters for the program.
         input_values: dict[str, Any] = kwargs
