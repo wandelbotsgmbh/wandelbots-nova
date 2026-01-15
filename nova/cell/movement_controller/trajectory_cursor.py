@@ -7,7 +7,6 @@ from math import ceil, floor
 from typing import AsyncIterator, Optional, Union
 
 import pydantic
-from aiohttp_retry import dataclass
 from blinker import signal
 from icecream import ic
 
@@ -713,9 +712,11 @@ class TrajectoryCursor:
     async def __anext__(self) -> api.models.ExecuteTrajectoryResponse | api.models.MotionGroupState:
         value = await self._in_queue.get()
         self._in_queue.task_done()
-        if value is _QUEUE_SENTINEL:
-            raise StopAsyncIteration
-        return value
+        match value:
+            case _QueueSentinel():
+                raise StopAsyncIteration
+            case _:
+                return value
 
 
 async def init_movement_gen(
