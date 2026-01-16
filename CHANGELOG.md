@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v4.3.1 (2026-01-16)
+
+### Chores
+
+- Map start on io (#364) ([#364](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/364),
+  [`c374f83`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c374f831e28093328d1ec1416b539ea870878b90))
+
+
 ## v4.3.0 (2026-01-16)
 
 ### Bug Fixes
