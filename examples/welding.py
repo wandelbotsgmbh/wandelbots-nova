@@ -272,9 +272,7 @@ async def test(ctx: nova.ProgramContext):
             target=seam1_approach,
             collision_setup=collision_setup,
             settings=MotionSettings(tcp_velocity_limit=500),
-            algorithm=api.models.CollisionFreeAlgorithm(
-                api.models.MidpointInsertionAlgorithm()
-            ),
+            algorithm=api.models.CollisionFreeAlgorithm(api.models.MidpointInsertionAlgorithm()),
         ),
         linear(
             target=seam1_start,

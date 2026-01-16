@@ -193,9 +193,7 @@ async def test(ctx: nova.ProgramContext):
 
         await build_collision_world(ctx.nova, cell.id, motion_group_description)
         collision_setups = (
-            await ctx.nova.api.store_collision_setups_api.list_stored_collision_setups(
-                cell=cell.id
-            )
+            await ctx.nova.api.store_collision_setups_api.list_stored_collision_setups(cell=cell.id)
         )
         collision_setup = list(collision_setups.values())[0]
 
