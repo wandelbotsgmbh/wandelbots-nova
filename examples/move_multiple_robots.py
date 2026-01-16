@@ -27,7 +27,7 @@ async def move_robot(controller: Controller):
     target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
     actions = [joint_ptp(home_joints), cartesian_ptp(target_pose), joint_ptp(home_joints)]
 
-    await motion_group.plan_and_execute(actions, tcp)
+    await motion_group.plan_and_execute(actions=actions, tcp=tcp)
 
 
 @nova.program(

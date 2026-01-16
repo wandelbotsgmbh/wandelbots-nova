@@ -6,7 +6,6 @@ import rerun as rr
 
 import nova
 from nova import Nova, api, run_program
-from nova.actions import Action
 from nova.actions.motions import Motion, cartesian_ptp, collision_free
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -173,7 +172,7 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
     ]
 
     joint_trajectory = await motion_group.plan(
-        actions, tcp, start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0)
+        actions=actions, tcp=tcp, start_joint_position=tuple((0, -np.pi / 2, np.pi / 2, 0, 0, 0))
     )
     target_pose = Pose((-1500, -400, 200, np.pi, 0, 0))
     rr.log(
@@ -183,22 +182,22 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
 
     # Use default planner to move to the left of the sphere -> this will collide
     # only plan don't move
-    collision_actions: list[Action] = [
-        cartesian_ptp(target=target_pose, collision_setup=collision_setup)
-    ]
+    collision_actions = [cartesian_ptp(target=target_pose, collision_setup=collision_setup)]
 
     for action in collision_actions:
         cast(Motion, action).settings = MotionSettings(tcp_velocity_limit=200)
 
     try:
         await motion_group.plan(
-            collision_actions, tcp, start_joint_position=joint_trajectory.joint_positions[-1].root
+            actions=collision_actions,
+            tcp=tcp,
+            start_joint_position=tuple(joint_trajectory.joint_positions[-1].root),
         )
     except Exception as e:
         print(f"Planning failed, we continue with the collision avoidance: {e}")
 
     # Plan collision free PTP motion around the sphere
-    welding_actions: list[Action] = [
+    welding_actions = [
         collision_free(
             target=target_pose,
             collision_setup=collision_setup,
@@ -208,7 +207,9 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
     ]
 
     joint_trajectory = await motion_group.plan(
-        welding_actions, tcp=tcp, start_joint_position=joint_trajectory.joint_positions[-1].root
+        welding_actions,
+        tcp=tcp,
+        start_joint_position=tuple(joint_trajectory.joint_positions[-1].root),
     )
 
 
