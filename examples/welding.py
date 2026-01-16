@@ -233,92 +233,92 @@ async def test(ctx: nova.ProgramContext):
     await asyncio.sleep(5)
 
     # Connect to the controller and activate motion groups
-    async with controller[0] as motion_group:
-        motion_group_description = await motion_group.get_description()
+    motion_group = controller[0]
+    motion_group_description = await motion_group.get_description()
 
-        # Add mesh to collision world
-        mesh_collider = await add_mesh_to_collision_world(
-            collision_api=ctx.nova.api.store_collision_components_api,
-            cell_name=cell.id,
-            scene=scene,  # type: ignore
-        )
+    # Add mesh to collision world
+    mesh_collider = await add_mesh_to_collision_world(
+        collision_api=ctx.nova.api.store_collision_components_api,
+        cell_name=cell.id,
+        scene=scene,  # type: ignore
+    )
 
-        # Build collision world with welding part included
-        collision_setup_id = await build_collision_world(
-            ctx.nova,
-            cell.id,
-            motion_group_description,
-            additional_colliders={"welding_part": mesh_collider},
-        )
-        setup_api = ctx.nova.api.store_collision_setups_api
-        collision_setup = await setup_api.get_stored_collision_setup(
-            cell=cell.id, setup=collision_setup_id
-        )
-        # Calculate seam positions based on mesh pose
-        seam1_start, seam1_end, seam2_start, seam2_end = await calculate_seam_poses(mesh_pose)
+    # Build collision world with welding part included
+    collision_setup_id = await build_collision_world(
+        ctx.nova,
+        cell.id,
+        motion_group_description,
+        additional_colliders={"welding_part": mesh_collider},
+    )
+    setup_api = ctx.nova.api.store_collision_setups_api
+    collision_setup = await setup_api.get_stored_collision_setup(
+        cell=cell.id, setup=collision_setup_id
+    )
+    # Calculate seam positions based on mesh pose
+    seam1_start, seam1_end, seam2_start, seam2_end = await calculate_seam_poses(mesh_pose)
 
-        # Define approach offset in local coordinates
-        approach_offset = Pose((0, 0, -60, 0, 0, 0))
+    # Define approach offset in local coordinates
+    approach_offset = Pose((0, 0, -60, 0, 0, 0))
 
-        # Create approach and departure poses using @ operator
-        seam1_approach = seam1_start @ approach_offset
-        seam1_departure = seam1_end @ approach_offset
-        seam2_approach = seam2_start @ approach_offset
-        seam2_departure = seam2_end @ approach_offset
+    # Create approach and departure poses using @ operator
+    seam1_approach = seam1_start @ approach_offset
+    seam1_departure = seam1_end @ approach_offset
+    seam2_approach = seam2_start @ approach_offset
+    seam2_departure = seam2_end @ approach_offset
 
-        welding_actions = [
-            # First seam
-            collision_free(
-                target=seam1_approach,
-                collision_setup=collision_setup,
-                settings=MotionSettings(tcp_velocity_limit=500),
-                algorithm=api.models.CollisionFreeAlgorithm(
-                    api.models.MidpointInsertionAlgorithm()
-                ),
+    welding_actions = [
+        # First seam
+        collision_free(
+            target=seam1_approach,
+            collision_setup=collision_setup,
+            settings=MotionSettings(tcp_velocity_limit=500),
+            algorithm=api.models.CollisionFreeAlgorithm(
+                api.models.MidpointInsertionAlgorithm()
             ),
-            linear(
-                target=seam1_start,
-                settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
-            ),
-            linear(
-                target=seam1_end,
-                settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
-            ),
-            linear(
-                target=seam1_departure,
-                settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
-            ),
-            # Move to second seam
-            collision_free(
-                target=seam2_approach,
-                collision_setup=collision_setup,
-                settings=MotionSettings(tcp_velocity_limit=500),
-                algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
-            ),
-            # Second seam with collision checking
-            linear(
-                target=seam2_start,
-                settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
-            ),
-            linear(
-                target=seam2_end,
-                settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
-            ),
-            linear(
-                target=seam2_departure,
-                settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
-            ),
-            collision_free(
-                target=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
-                collision_setup=collision_setup,
-                settings=MotionSettings(tcp_velocity_limit=500),
-                algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
-            ),
-        ]
+        ),
+        linear(
+            target=seam1_start,
+            settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
+        ),
+        linear(
+            target=seam1_end,
+            settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
+        ),
+        linear(
+            target=seam1_departure,
+            settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
+        ),
+        # Move to second seam
+        collision_free(
+            target=seam2_approach,
+            collision_setup=collision_setup,
+            settings=MotionSettings(tcp_velocity_limit=500),
+            algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
+        ),
+        # Second seam with collision checking
+        linear(
+            target=seam2_start,
+            settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
+        ),
+        linear(
+            target=seam2_end,
+            settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
+        ),
+        linear(
+            target=seam2_departure,
+            settings=MotionSettings(tcp_velocity_limit=30, position_zone_radius=10),
+        ),
+        collision_free(
+            target=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
+            collision_setup=collision_setup,
+            settings=MotionSettings(tcp_velocity_limit=500),
+            algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
+        ),
+    ]
 
-        await motion_group.plan(
-            welding_actions, tcp=tcp_name, start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0)
-        )
+    await motion_group.plan(
+        welding_actions, tcp=tcp_name, start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0)
+    )
 
 
 if __name__ == "__main__":
