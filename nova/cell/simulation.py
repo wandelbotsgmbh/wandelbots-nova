@@ -147,7 +147,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
 
     async def _plan(
         self,
-        actions: list[Action] | Action,
+        actions: list[Action],
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,

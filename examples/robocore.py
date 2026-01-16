@@ -131,7 +131,7 @@ async def move_to_initial_positions(
                 tcp = tcp_names[0]
 
                 # Move to home, then to cube position
-                actions: list[Action] = [joint_ptp(pos_config.home_position)]
+                actions = [joint_ptp(pos_config.home_position)]
 
                 joint_trajectory = await motion_group.plan(actions, tcp)
                 await motion_group.execute(joint_trajectory, tcp, actions=actions)

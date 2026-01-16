@@ -208,7 +208,7 @@ async def test(ctx: nova.ProgramContext):
             cartesian_ptp(target=target_pose, collision_setup=collision_setup),
             cartesian_ptp(target=current_pose, collision_setup=collision_setup),
         ]
-        joint_trajectory = await motion_group.plan(actions, tcp)
+        joint_trajectory = await motion_group.plan(actions=actions, tcp=tcp)
 
         await bridge.log_trajectory(
             joint_trajectory,
