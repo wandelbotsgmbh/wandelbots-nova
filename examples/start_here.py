@@ -56,53 +56,53 @@ async def start(
     normal = MotionSettings(tcp_velocity_limit=100)
     fast = MotionSettings(tcp_velocity_limit=250)
 
-    async with controller[0] as motion_group:
-        home_joints = await motion_group.joints()
-        tcp_names = await motion_group.tcp_names()
-        tcp = tcp_names[0]
+    motion_group = controller[0]
+    home_joints = await motion_group.joints()
+    tcp_names = await motion_group.tcp_names()
+    tcp = tcp_names[0]
 
-        # Get current TCP pose and create target poses
-        current_pose = await motion_group.tcp_pose(tcp)
-        target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
+    # Get current TCP pose and create target poses
+    current_pose = await motion_group.tcp_pose(tcp)
+    target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
 
-        # Actions define the sequence of movements and other actions to be executed by the robot
-        actions = [
-            joint_ptp(home_joints, settings=normal),  # Move to home position slowly
-            cartesian_ptp(target_pose, settings=fast),  # Move to target pose
-            cartesian_ptp(
-                target_pose @ [200, 0, 0, 0, 0, 0], settings=fast
-            ),  # Move 100mm in target pose's local x-axis
-            linear(
-                target_pose @ (200, 200, 0, 0, 0, 0), settings=fast
-            ),  # Move 100mm in local x and y axes
-            joint_ptp(home_joints, settings=normal),
-            cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0)), settings=fast),
-            circular(
-                target_pose @ Pose((0, 200, 0, 0, 0, 0)),
-                intermediate=target_pose @ Pose((0, 200, 0, 0, 0, 0)),
-                settings=fast,
-            ),
-            joint_ptp(home_joints, settings=normal),
-        ]
+    # Actions define the sequence of movements and other actions to be executed by the robot
+    actions = [
+        joint_ptp(home_joints, settings=normal),  # Move to home position slowly
+        cartesian_ptp(target_pose, settings=fast),  # Move to target pose
+        cartesian_ptp(
+            target_pose @ [200, 0, 0, 0, 0, 0], settings=fast
+        ),  # Move 100mm in target pose's local x-axis
+        linear(
+            target_pose @ (200, 200, 0, 0, 0, 0), settings=fast
+        ),  # Move 100mm in local x and y axes
+        joint_ptp(home_joints, settings=normal),
+        cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0)), settings=fast),
+        circular(
+            target_pose @ Pose((0, 200, 0, 0, 0, 0)),
+            intermediate=target_pose @ Pose((0, 200, 0, 0, 0, 0)),
+            settings=fast,
+        ),
+        joint_ptp(home_joints, settings=normal),
+    ]
 
-        # Start the cycle
-        await cycle.start()
+    # Start the cycle
+    await cycle.start()
 
-        # Plan the movements (shows in 3D viewer or creates an rrd file)
-        joint_trajectory = await motion_group.plan(actions, tcp)
+    # Plan the movements (shows in 3D viewer or creates an rrd file)
+    joint_trajectory = await motion_group.plan(actions, tcp)
 
-        # OPTIONAL: Execute the planned movements
-        # You can comment out the lines below to only see the plan in Rerun
-        print("Executing planned movements...")
-        for i in range(count):
-            print(f"Executing movement {i + 1} of {count}")
-            await motion_group.execute(joint_trajectory, tcp, actions=actions)
-            print(f"Movement {i + 1} completed")
-            await asyncio.sleep(1)
+    # OPTIONAL: Execute the planned movements
+    # You can comment out the lines below to only see the plan in Rerun
+    print("Executing planned movements...")
+    for i in range(count):
+        print(f"Executing movement {i + 1} of {count}")
+        await motion_group.execute(joint_trajectory, tcp, actions=actions)
+        print(f"Movement {i + 1} completed")
+        await asyncio.sleep(1)
 
-        # Finish the cycle
-        await cycle.finish()
-        print("Movement execution completed!")
+    # Finish the cycle
+    await cycle.finish()
+    print("Movement execution completed!")
 
 
 if __name__ == "__main__":

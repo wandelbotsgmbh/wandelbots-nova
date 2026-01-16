@@ -34,27 +34,27 @@ async def multi_step_movement_with_collision_free(ctx: nova.ProgramContext):
     controller = await cell.controller("ur")
 
     # Connect to the controller and activate motion groups
-    async with controller[0] as motion_group:
-        home_joints = await motion_group.joints()
+    motion_group = controller[0]
+    home_joints = await motion_group.joints()
 
-        tcp_names = await motion_group.tcp_names()
-        tcp = tcp_names[0]
+    tcp_names = await motion_group.tcp_names()
+    tcp = tcp_names[0]
 
-        # Get current TCP pose and offset it slightly along the x-axis
-        current_pose = await motion_group.tcp_pose(tcp)
-        target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
+    # Get current TCP pose and offset it slightly along the x-axis
+    current_pose = await motion_group.tcp_pose(tcp)
+    target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
 
-        actions = [
-            cartesian_ptp(target_pose),
-            # collision_free(home_joints),
-            cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
-            io_write(key="digital_out[0]", value=True),
-            joint_ptp(home_joints),
-            cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
-            # collision_free(home_pose),
-            cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
-            joint_ptp(home_joints),
-        ]
+    actions = [
+        cartesian_ptp(target_pose),
+        # collision_free(home_joints),
+        cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
+        io_write(key="digital_out[0]", value=True),
+        joint_ptp(home_joints),
+        cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
+        # collision_free(home_pose),
+        cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
+        joint_ptp(home_joints),
+    ]
 
     joint_trajectory = await motion_group.plan(
         actions, tcp, start_joint_position=(-0.0429, -1.8781, 1.8464, -2.1366, -1.4861, 1.0996)

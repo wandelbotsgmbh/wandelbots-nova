@@ -50,51 +50,51 @@ async def start():
 
         slow = MotionSettings(tcp_velocity_limit=50)
 
-        async with controller[0] as motion_group:
-            home_joints = await motion_group.joints()
-            tcp_names = await motion_group.tcp_names()
-            tcp = tcp_names[0]
+        motion_group = controller[0]
+        home_joints = await motion_group.joints()
+        tcp_names = await motion_group.tcp_names()
+        tcp = tcp_names[0]
 
-            # Get current TCP pose and create target poses
-            current_pose = await motion_group.tcp_pose(tcp)
-            # Define the target pose based on the current pose with an offset of 100 mm on the x-axis
-            target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
-            offset = 200
+        # Get current TCP pose and create target poses
+        current_pose = await motion_group.tcp_pose(tcp)
+        # Define the target pose based on the current pose with an offset of 100 mm on the x-axis
+        target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
+        offset = 200
 
-            # Actions define the sequence of movements and other actions to be executed by the robot
-            actions = [
-                joint_ptp(home_joints, settings=slow),  # Move to home position slowly
-                cartesian_ptp(target_pose),  # Move to target pose
-                joint_ptp(home_joints),  # Return to home
-                cartesian_ptp(
-                    target_pose @ [offset, 0, 0, 0, 0, 0]
-                ),  # Move 200mm in target pose's local x-axis
-                joint_ptp(home_joints),
-                linear(target_pose @ (offset, offset, 0, 0, 0, 0)),  # Move 200mm in local x and y axes
-                joint_ptp(home_joints, settings=slow),
-                cartesian_ptp(target_pose @ Pose((0, offset, 0, 0, 0, 0))),
-                joint_ptp(home_joints),
-                circular(
-                    target_pose @ Pose((0, 200, 0, 0, 0, 0)),
-                    intermediate=target_pose @ Pose((200, 0, 0, 0, 0, 0)),
-                ),
-                joint_ptp(home_joints),
-            ]
+        # Actions define the sequence of movements and other actions to be executed by the robot
+        actions = [
+            joint_ptp(home_joints, settings=slow),  # Move to home position slowly
+            cartesian_ptp(target_pose),  # Move to target pose
+            joint_ptp(home_joints),  # Return to home
+            cartesian_ptp(
+                target_pose @ [offset, 0, 0, 0, 0, 0]
+            ),  # Move 200mm in target pose's local x-axis
+            joint_ptp(home_joints),
+            linear(target_pose @ (offset, offset, 0, 0, 0, 0)),  # Move 200mm in local x and y axes
+            joint_ptp(home_joints, settings=slow),
+            cartesian_ptp(target_pose @ Pose((0, offset, 0, 0, 0, 0))),
+            joint_ptp(home_joints),
+            circular(
+                target_pose @ Pose((0, 200, 0, 0, 0, 0)),
+                intermediate=target_pose @ Pose((200, 0, 0, 0, 0, 0)),
+            ),
+            joint_ptp(home_joints),
+        ]
 
-            # Start the cycle
-            await cycle.start()
+        # Start the cycle
+        await cycle.start()
 
-            # Plan the movements (shows in 3D viewer or creates an rrd file)
-            joint_trajectory = await motion_group.plan(actions, tcp)
+        # Plan the movements (shows in 3D viewer or creates an rrd file)
+        joint_trajectory = await motion_group.plan(actions, tcp)
 
-            # OPTIONAL: Execute the planned movements
-            # You can comment out the lines below to only see the plan in Rerun
-            print("Executing planned movements...")
-            await motion_group.execute(joint_trajectory, tcp, actions=actions)
+        # OPTIONAL: Execute the planned movements
+        # You can comment out the lines below to only see the plan in Rerun
+        print("Executing planned movements...")
+        await motion_group.execute(joint_trajectory, tcp, actions=actions)
 
-            # Finish the cycle
-            await cycle.finish()
-            print("Movement execution completed!")
+        # Finish the cycle
+        await cycle.finish()
+        print("Movement execution completed!")
 
 
 if __name__ == "__main__":
