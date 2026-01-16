@@ -2,7 +2,7 @@
   "name": "wandelbots-nova",
   "displayName": "Wandelbots NOVA",
   "description": "Wandelbots NOVA VSCode extension",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "publisher": "wandelbots",
   "icon": "media/logo.png",
   "engines": {
@@ -180,6 +180,12 @@
     "test:watch": "tsc -p . -w --outDir out",
     "test:unit": "vitest run --project unit"
   },
+  "dependencies": {
+    "@wandelbots/nova-api": "25.7.0",
+    "axios": "^1.13.2",
+    "nats": "^2.29.3",
+    "url-join": "^5.0.0"
+  },
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "^5.2.2",
     "@types/mocha": "^10.0.10",
@@ -192,14 +198,8 @@
     "esbuild": "^0.25.8",
     "eslint": "^9.32.0",
     "npm-run-all": "^4.1.5",
-    "prettier": "^3.6.2",
+    "prettier": "^3.7.4",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4"
-  },
-  "dependencies": {
-    "@wandelbots/nova-api": "^25.7.0",
-    "axios": "^1.12.2",
-    "nats": "^2.29.3",
-    "url-join": "^5.0.0"
+    "vitest": "^4.0.16"
   }
 }

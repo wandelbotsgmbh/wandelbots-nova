@@ -137,12 +137,11 @@ import inspect
 sys.path.insert(0, r'${moduleDirEscaped}')
 
 import ${moduleName}
+from nova import run_program
+
 
 func = getattr(${moduleName}, '${functionName}')
-result = func()
-
-if inspect.iscoroutine(result):
-    asyncio.run(result)
+run_program(func)
 `.trim()
 
     const tempFilePath = path.join(
