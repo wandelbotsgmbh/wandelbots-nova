@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class TrajectoryTuner:
-    """Coordinate interactive trajectory tuning using NATS/FastStream commands.
+    """Coordinate interactive trajectory tuning via NATS commands.
 
     The ``TrajectoryTuner`` orchestrates planning and execution of motion
     trajectories while allowing an external controller (e.g. UI or tool)
@@ -19,44 +19,42 @@ class TrajectoryTuner:
 
     At a high level, the tuner:
 
-    * Uses ``plan_fn`` to generate a trajectory or motion plan from a set of
-      input actions.
-    * Uses ``execute_fn`` to execute the planned motion segments on the
-      underlying motion system.
+    * Uses ``plan_fn`` to generate a trajectory from a set of input actions.
+    * Uses ``execute_fn`` to execute the planned motion on the robot.
     * Creates and manages a :class:`TrajectoryCursor` instance which controls
       playback (forward, backward, step-wise navigation, pause, detach, etc.).
-    * Runs a FastStream app with a NATS subscriber on the
-      ``"trajectory-cursor"`` subject to receive external commands such as
-      ``"forward"``, ``"backward"``, ``"step-forward"``, ``"step-backward"``,
-      ``"pause"``, and ``"finish"``.
+    * Subscribes to the ``"trajectory-cursor"`` NATS subject to receive
+      external commands: ``"forward"``, ``"backward"``, ``"step-forward"``,
+      ``"step-backward"``, ``"pause"``, and ``"finish"``.
+    * Publishes motion events to ``"editor.motion-event"`` and available
+      movement options to ``"editor.movement.options"``.
+
+    The tuner runs in a loop, re-planning and re-executing the trajectory
+    each time the cursor is paused or reaches a boundary, until a ``"finish"``
+    command is received.
 
     Parameters
     ----------
     plan_fn :
-        A callable responsible for planning the trajectory from the given
-        ``actions``. It is typically invoked within :meth:`tune` to produce
-        a sequence of motion events or a trajectory that the
-        :class:`TrajectoryCursor` can navigate.
+        Async callable that plans a trajectory from actions. Must return
+        a tuple of ``(motion_id, joint_trajectory)``.
     execute_fn :
-        A callable responsible for executing individual motion segments or
-        motion events produced by ``plan_fn``. This is used by the
-        :class:`TrajectoryCursor` (or related components) to drive the actual
-        robot or motion system during tuning.
+        Async callable that executes motion segments. Called with a
+        ``client_request_generator`` from the :class:`TrajectoryCursor`.
 
-    Usage
+    Notes
     -----
-    Instantiate the tuner with appropriate planning and execution callables,
-    then call :meth:`tune` to start an interactive session:
+    Requires a valid program context with a connected NATS client. Use within
+    a ``@nova.program`` decorated function.
 
+    Example
+    -------
     .. code-block:: python
 
         tuner = TrajectoryTuner(plan_fn=plan_trajectory, execute_fn=execute_motion)
-        await tuner.tune(actions, motion_group_state_stream_fn)
-
-    During :meth:`tune`, a FastStream application is started and listens for
-    NATS commands on the ``"trajectory-cursor"`` subject, which control the
-    playback of the trajectory until the session is finished or the app is
-    shut down.
+        async for response in tuner.tune(actions, motion_group_state_stream_fn):
+            # handle execution responses
+            pass
     """
 
     def __init__(self, plan_fn, execute_fn):
