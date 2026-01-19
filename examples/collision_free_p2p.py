@@ -206,8 +206,8 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
         )
     ]
 
-    joint_trajectory = await motion_group.plan(
-        welding_actions,
+    await motion_group.plan(
+        actions=welding_actions,
         tcp=tcp,
         start_joint_position=tuple(joint_trajectory.joint_positions[-1].root),
     )

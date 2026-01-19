@@ -25,7 +25,7 @@ class TrajectoryBuilder:
     @property
     def actions(self) -> list[Action]:
         """The built actions in the trajectory."""
-        return list(self._actions)
+        return self._actions
 
     def _current_settings(self) -> MotionSettings:
         """The current settings to use for the trajectory."""
