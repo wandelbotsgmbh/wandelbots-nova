@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import aclosing
+from functools import partial
 from typing import AsyncGenerator, cast
 
 import numpy as np
@@ -9,6 +10,7 @@ from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion
+from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, PlanTrajectoryFailed
 from nova.types import Pose, RobotState
@@ -24,6 +26,7 @@ from nova.utils.motion_group_settings import update_motion_group_setup_with_moti
 
 from .movement_controller import move_forward
 from .robot_cell import AbstractRobot
+from .tuner import TrajectoryTuner
 
 MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
@@ -741,6 +744,19 @@ class MotionGroup(AbstractRobot):
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
     ) -> AsyncGenerator[MotionState, None]:
+        # This is the entrypoint for the trajectory tuning mode
+        if ENABLE_TRAJECTORY_TUNING:
+            logger.info("Entering trajectory tuning mode...")
+            try:
+                async for motion_group_state in self._tune_trajectory(
+                    joint_trajectory, tcp, actions
+                ):
+                    yield motion_group_state_to_motion_state(motion_group_state)
+            except (Exception, BaseException) as e:
+                logger.error(f"Trajectory tuning failed: {e}")
+                raise e
+            return
+
         if movement_controller is None:
             movement_controller = move_forward
 
@@ -782,11 +798,33 @@ class MotionGroup(AbstractRobot):
 
             tg.create_task(execution(), name=f"execute_trajectory-{trajectory_id}-{self.id}")
 
-            while (motion_group_state := await states.get()) is not SENTINEL:
-                assert isinstance(motion_group_state, api.models.MotionGroupState)
-                yield motion_group_state_to_motion_state(motion_group_state)
+            while (motion_group_state_ := await states.get()) is not SENTINEL:
+                assert isinstance(motion_group_state_, api.models.MotionGroupState)
+                yield motion_group_state_to_motion_state(motion_group_state_)
 
             # when the execution task finished
             # task group will still wait for the monitoring task
             # so we need to cancel it
             monitor_task.cancel()
+
+    async def _tune_trajectory(
+        self, joint_trajectory: api.models.JointTrajectory, tcp: str, actions: list[Action]
+    ) -> AsyncGenerator[api.models.MotionGroupState, None]:
+        start_joints = await self.joints()
+
+        async def plan_fn(actions: list[Action]) -> tuple[str, api.models.JointTrajectory]:
+            # we fix the start joints here because the tuner might call plan multiple times whilst tuning
+            # and the start joints would change to the respective joint positions at the time of planning
+            # which is not what we want
+            joint_trajectory = await self._plan(actions, tcp, start_joints)
+            load_planned_motion_response = await self._load_planned_motion(joint_trajectory, tcp)
+            return load_planned_motion_response, joint_trajectory
+
+        execute_fn = partial(
+            self._api_client.trajectory_execution_api.execute_trajectory,
+            cell=self._cell,
+            controller=self._controller_id,
+        )
+        tuner = TrajectoryTuner(plan_fn, execute_fn)
+        async for response in tuner.tune(actions, self.stream_state):
+            yield response

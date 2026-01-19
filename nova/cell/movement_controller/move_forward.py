@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from typing import AsyncIterator
 
 from nova import api
 from nova.actions import MovementControllerContext
@@ -12,9 +11,6 @@ from nova.types import (
 )
 
 logger = logging.getLogger(__name__)
-
-ExecuteJoggingRequestStream = AsyncIterator[api.models.ExecuteJoggingRequest]
-ExecuteJoggingResponseStream = AsyncIterator[api.models.ExecuteJoggingResponse]
 
 _START_STATE_MONITOR_TIMEOUT = 5.0
 
