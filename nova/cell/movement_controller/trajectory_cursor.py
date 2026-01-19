@@ -44,7 +44,6 @@ from typing import AsyncIterator, Optional, Union
 
 import pydantic
 from blinker import signal
-from icecream import ic
 
 from nova import api
 from nova.actions.base import Action
@@ -276,7 +275,7 @@ class OperationHandler:
         if error:
             self._operation.future.set_exception(error)
         else:
-            ic(result)
+            logger.debug(f"Operation completed with result: {result}")
             self._operation.future.set_result(result)
         self._reset()
 
@@ -831,7 +830,7 @@ class TrajectoryCursor:
             if command is _QUEUE_SENTINEL:
                 self._command_queue.task_done()
                 break
-            ic(command)
+            logger.debug(f"Processing command: {command}")
             assert isinstance(command, ExecuteTrajectoryRequestCommand)
             yield command
 
@@ -888,7 +887,7 @@ class TrajectoryCursor:
                         )
                         self._complete_operation()
                         if self._detach_on_standstill:
-                            ic()
+                            logger.debug("Detaching on standstill")
                             break
 
                     assert motion_group_state.execute
