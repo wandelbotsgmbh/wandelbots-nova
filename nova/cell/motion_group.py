@@ -809,7 +809,7 @@ class MotionGroup(AbstractRobot):
 
     async def _tune_trajectory(
         self, joint_trajectory: api.models.JointTrajectory, tcp: str, actions: list[Action]
-    ) -> AsyncGenerator[api.models.MotionGroupState]:
+    ) -> AsyncGenerator[api.models.MotionGroupState, None]:
         start_joints = await self.joints()
 
         async def plan_fn(actions: list[Action]) -> tuple[str, api.models.JointTrajectory]:
