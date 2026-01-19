@@ -4,7 +4,6 @@ import logging
 from typing import Optional
 
 import pydantic
-from icecream import ic
 
 from .movement_controller.trajectory_cursor import MotionEvent, TrajectoryCursor, motion_started
 
@@ -104,7 +103,6 @@ class TrajectoryTuner:
                     current_cursor.forward(playback_speed_in_percent=speed)
                     # last_operation_result = await future
                 case "step-forward":
-                    ic()
                     continue_tuning_event.set()
                     current_cursor.forward_to_next_action(playback_speed_in_percent=speed)
                     # await future
@@ -122,7 +120,6 @@ class TrajectoryTuner:
                     #     await future
                 case "finish":
                     # TODO only allow finishing if at forward end of trajectory
-                    ic()
                     continue_tuning_event.set()
                     current_cursor.detach()
                     finished_tuning = True
@@ -152,7 +149,6 @@ class TrajectoryTuner:
             # tuning loop
             current_location = 0.0
             while not finished_tuning:
-                ic()
                 # TODO this plans the second time for the same actions when we get here because
                 # the initial joint trajectory was already planned before the MotionGroup._execute call
                 motion_id, joint_trajectory = await self.plan_fn(actions)
@@ -181,10 +177,8 @@ class TrajectoryTuner:
                 )
                 async for execute_response in current_cursor:
                     yield execute_response
-                ic()
                 current_cursor.detach()
                 await execution_task
-                ic()
                 continue_tuning_event.clear()
                 current_location = (
                     current_cursor._current_location
@@ -203,4 +197,3 @@ class TrajectoryTuner:
             # Clean up subscriptions
             for sub in subscriptions:
                 await sub.unsubscribe()
-            ic()
