@@ -937,9 +937,7 @@ class TrajectoryCursor:
         ready_event.set()
         try:
             async for response in self._response_stream:
-                # TODO log response instead of ic?
-                ic(response)
-                # TODO handle response properly
+                logger.debug(f"Received response: {response}")
                 assert self._is_operation_in_progress()
                 current_op = self._operation_handler.current_operation
                 assert current_op is not None
@@ -954,7 +952,6 @@ class TrajectoryCursor:
                         )
                     case api.models.StartMovementResponse() | api.models.PauseMovementResponse():
                         if isinstance(response.root, current_op.expected_response_type):
-                            ic()
                             self._operation_handler.set_commanded()
                     case _:
                         raise RuntimeError(
