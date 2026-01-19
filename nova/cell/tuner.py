@@ -198,7 +198,6 @@ class TrajectoryTuner:
                 f"TrajectoryTuner main loop was cancelled during cleanup. "
                 f"finished_tuning={finished_tuning}, current_location={current_location}, last_operation_result={last_operation_result}"
             )
-            pass
         finally:
             # Clean up subscriptions
             for sub in subscriptions:
