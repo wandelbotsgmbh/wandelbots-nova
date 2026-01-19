@@ -13,7 +13,7 @@ from nova.actions.motions import CollisionFreeMotion
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, PlanTrajectoryFailed
-from nova.types import ExecuteTrajectoryResponseStream, Pose, RobotState
+from nova.types import Pose, RobotState
 from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.utils.collision_setup import (
     get_joint_position_limits_from_motion_group_setup,
@@ -748,8 +748,10 @@ class MotionGroup(AbstractRobot):
         if ENABLE_TRAJECTORY_TUNING:
             logger.info("Entering trajectory tuning mode...")
             try:
-                async for execute_response in self._tune_trajectory(joint_trajectory, tcp, actions):
-                    yield execute_response
+                async for motion_group_state in self._tune_trajectory(
+                    joint_trajectory, tcp, actions
+                ):
+                    yield motion_group_state_to_motion_state(motion_group_state)
             except (Exception, BaseException) as e:
                 logger.error(f"Trajectory tuning failed: {e}")
                 raise e
@@ -796,9 +798,9 @@ class MotionGroup(AbstractRobot):
 
             tg.create_task(execution(), name=f"execute_trajectory-{trajectory_id}-{self.id}")
 
-            while (motion_group_state := await states.get()) is not SENTINEL:
-                assert isinstance(motion_group_state, api.models.MotionGroupState)
-                yield motion_group_state_to_motion_state(motion_group_state)
+            while (motion_group_state_ := await states.get()) is not SENTINEL:
+                assert isinstance(motion_group_state_, api.models.MotionGroupState)
+                yield motion_group_state_to_motion_state(motion_group_state_)
 
             # when the execution task finished
             # task group will still wait for the monitoring task
@@ -807,7 +809,7 @@ class MotionGroup(AbstractRobot):
 
     async def _tune_trajectory(
         self, joint_trajectory: api.models.JointTrajectory, tcp: str, actions: list[Action]
-    ) -> ExecuteTrajectoryResponseStream:
+    ) -> AsyncGenerator[api.models.MotionGroupState]:
         start_joints = await self.joints()
 
         async def plan_fn(actions: list[Action]) -> tuple[str, api.models.JointTrajectory]:

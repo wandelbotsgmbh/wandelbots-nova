@@ -173,8 +173,8 @@ class TrajectoryTuner:
                 execution_task = asyncio.create_task(
                     self.execute_fn(client_request_generator=current_cursor.cntrl)
                 )
-                async for execute_response in current_cursor:
-                    yield execute_response
+                async for motion_group_state in current_cursor:
+                    yield motion_group_state
                 current_cursor.detach()
                 await execution_task
                 continue_tuning_event.clear()
