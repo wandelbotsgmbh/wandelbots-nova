@@ -184,8 +184,6 @@ class TrajectoryTuner:
 
                 # somehow obtain the modified actions for the next iteration
 
-            # runtime_task.cancel()
-            # await runtime_task
         except asyncio.CancelledError:
             logger.debug(
                 f"TrajectoryTuner main loop was cancelled during cleanup. "
