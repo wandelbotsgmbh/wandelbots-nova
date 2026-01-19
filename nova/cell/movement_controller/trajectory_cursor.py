@@ -37,7 +37,6 @@ Example usage:
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum, StrEnum, auto
 from math import ceil, floor
 from typing import AsyncIterator, Optional, Union
@@ -52,8 +51,6 @@ from nova.exceptions import InitMovementFailed
 from nova.types import ExecuteTrajectoryRequestStream, ExecuteTrajectoryResponseStream
 
 logger = logging.getLogger(__name__)
-
-ic.configureOutput(includeContext=True, prefix=lambda: f"{datetime.now()} | ")
 
 _STREAM_STARTUP_TIMEOUT = 5.0
 
