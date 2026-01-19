@@ -815,38 +815,25 @@ class TrajectoryCursor:
                 motion_event_updater_task.cancel()
                 response_consumer_task.cancel()
                 motion_group_state_monitor_task.cancel()
-        except ExceptionGroup as eg:
-            ic(eg)
-            logger.error(f"ExceptionGroup in TrajectoryCursor cntrl: {eg}")
+        except BaseExceptionGroup as eg:
             logger.exception(eg)
             raise
-        except BaseExceptionGroup as eg:
-            ic(eg)
-            logger.error(f"BaseExceptionGroup in TrajectoryCursor cntrl: {eg}")
-            raise
         except asyncio.CancelledError:
-            ic()
             logger.debug("TrajectoryCursor cntrl was cancelled during cleanup of internal tasks")
             raise
-        except Exception as e:
-            ic(e)
-            logger.error(f"Exception in TrajectoryCursor cntrl: {e}")
-            raise
-        finally:
-            ic()
 
         # stopping the external response stream iterator to be sure, but this is a smell
         self._in_queue.put_nowait(_QUEUE_SENTINEL)
 
-    async def _request_loop(self):
+    async def _request_loop(self) -> ExecuteTrajectoryRequestStream:
         while True:
             command = await self._command_queue.get()
             if command is _QUEUE_SENTINEL:
                 self._command_queue.task_done()
                 break
             ic(command)
+            assert isinstance(command, ExecuteTrajectoryRequestCommand)
             yield command
-            # TODO maybe set the operation as commanded here?
 
             if isinstance(command, api.models.StartMovementRequest):
                 match command.direction:
