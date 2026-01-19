@@ -429,7 +429,7 @@ class TrajectoryCursor:
     def pause(self) -> asyncio.Future[OperationResult] | None:
         # TODO should the RAE not also handle that? It seems it does not. So we do it here.
         if not self._is_operation_in_progress():
-            return
+            return None
 
         future = self._start_operation(
             OperationType.PAUSE, expected_response_type=api.models.PauseMovementResponse
@@ -701,11 +701,9 @@ class TrajectoryCursor:
     async def __anext__(self) -> api.models.MotionGroupState:
         value = await self._in_queue.get()
         self._in_queue.task_done()
-        match value:
-            case _QueueSentinel():
-                raise StopAsyncIteration
-            case _:
-                return value
+        if isinstance(value, _QueueSentinel):
+            raise StopAsyncIteration
+        return value
 
 
 async def init_movement_gen(
