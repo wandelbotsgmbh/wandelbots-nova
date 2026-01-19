@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.3.2 (2026-01-19)
+
+### Bug Fixes
+
+- **NDX-443**: Restore trajectory tuning with refactored movement controller (#361)
+  ([#361](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/361),
+  [`521caea`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/521caea4178c6eb41fcdd7685244975926f3bea5))
+
+
 ## v4.3.1 (2026-01-16)
 
 ### Chores
