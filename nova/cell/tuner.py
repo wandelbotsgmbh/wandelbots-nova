@@ -12,6 +12,53 @@ logger = logging.getLogger(__name__)
 
 
 class TrajectoryTuner:
+    """Coordinate interactive trajectory tuning using NATS/FastStream commands.
+
+    The ``TrajectoryTuner`` orchestrates planning and execution of motion
+    trajectories while allowing an external controller (e.g. UI or tool)
+    to step through, play back, and adjust the motion via NATS messages.
+
+    At a high level, the tuner:
+
+    * Uses ``plan_fn`` to generate a trajectory or motion plan from a set of
+      input actions.
+    * Uses ``execute_fn`` to execute the planned motion segments on the
+      underlying motion system.
+    * Creates and manages a :class:`TrajectoryCursor` instance which controls
+      playback (forward, backward, step-wise navigation, pause, detach, etc.).
+    * Runs a FastStream app with a NATS subscriber on the
+      ``"trajectory-cursor"`` subject to receive external commands such as
+      ``"forward"``, ``"backward"``, ``"step-forward"``, ``"step-backward"``,
+      ``"pause"``, and ``"finish"``.
+
+    Parameters
+    ----------
+    plan_fn :
+        A callable responsible for planning the trajectory from the given
+        ``actions``. It is typically invoked within :meth:`tune` to produce
+        a sequence of motion events or a trajectory that the
+        :class:`TrajectoryCursor` can navigate.
+    execute_fn :
+        A callable responsible for executing individual motion segments or
+        motion events produced by ``plan_fn``. This is used by the
+        :class:`TrajectoryCursor` (or related components) to drive the actual
+        robot or motion system during tuning.
+
+    Usage
+    -----
+    Instantiate the tuner with appropriate planning and execution callables,
+    then call :meth:`tune` to start an interactive session:
+
+    .. code-block:: python
+
+        tuner = TrajectoryTuner(plan_fn=plan_trajectory, execute_fn=execute_motion)
+        await tuner.tune(actions, motion_group_state_stream_fn)
+
+    During :meth:`tune`, a FastStream application is started and listens for
+    NATS commands on the ``"trajectory-cursor"`` subject, which control the
+    playback of the trajectory until the session is finished or the app is
+    shut down.
+    """
     def __init__(self, plan_fn, execute_fn):
         self.plan_fn = plan_fn
         self.execute_fn = execute_fn
