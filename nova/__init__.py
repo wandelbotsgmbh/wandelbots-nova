@@ -31,7 +31,16 @@ __all__ = [
 
 
 def get_current_program_context() -> ProgramContext | None:
-    """Get the current program context, if available."""
+    """Get the current program context from within a running program.
+
+    Returns the active ProgramContext when called from inside a function
+    decorated with @program. The context provides access to the Nova instance,
+    the default cell, and the program ID.
+
+    Returns:
+        The current ProgramContext if called within a @program-decorated function,
+        or None if called outside of a program execution context.
+    """
     from nova.program.context import current_program_context_var
 
     return current_program_context_var.get()
