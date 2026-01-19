@@ -6,7 +6,6 @@ import rerun as rr
 
 import nova
 from nova import Nova, api, run_program
-from nova.actions import Action
 from nova.actions.motions import Motion, cartesian_ptp, collision_free
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -151,67 +150,67 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
     await asyncio.sleep(5)
 
     # Connect to the controller and activate motion groups
-    async with controller[0] as motion_group:
-        tcp = "Flange"
+    motion_group = controller[0]
+    tcp = "Flange"
 
-        motion_group_description: api.models.MotionGroupDescription = (
-            await motion_group.get_description()
+    motion_group_description: api.models.MotionGroupDescription = (
+        await motion_group.get_description()
+    )
+    collision_scene_id = await build_collision_world(nova, "cell", motion_group_description)
+    store_collision_setups_api = nova.api.store_collision_setups_api
+    collision_setup = await store_collision_setups_api.get_stored_collision_setup(
+        cell="cell", setup=collision_scene_id
+    )
+    # Use default planner to move to the right of the sphere
+    home = await motion_group.tcp_pose(tcp)
+    actions = [
+        cartesian_ptp(home, settings=MotionSettings(tcp_velocity_limit=200)),
+        cartesian_ptp(
+            target=Pose((1000, -400, 200, np.pi, 0, 0)),
+            settings=MotionSettings(tcp_velocity_limit=200),
+        ),
+    ]
+
+    joint_trajectory = await motion_group.plan(
+        actions=actions, tcp=tcp, start_joint_position=tuple((0, -np.pi / 2, np.pi / 2, 0, 0, 0))
+    )
+    target_pose = Pose((-1500, -400, 200, np.pi, 0, 0))
+    rr.log(
+        "motion/target_",
+        rr.Points3D([target_pose.position.to_tuple()], radii=[10], colors=[(0, 255, 0)]),
+    )
+
+    # Use default planner to move to the left of the sphere -> this will collide
+    # only plan don't move
+    collision_actions = [cartesian_ptp(target=target_pose, collision_setup=collision_setup)]
+
+    for action in collision_actions:
+        cast(Motion, action).settings = MotionSettings(tcp_velocity_limit=200)
+
+    try:
+        await motion_group.plan(
+            actions=collision_actions,
+            tcp=tcp,
+            start_joint_position=tuple(joint_trajectory.joint_positions[-1].root),
         )
-        collision_scene_id = await build_collision_world(nova, "cell", motion_group_description)
-        store_collision_setups_api = nova.api.store_collision_setups_api
-        collision_setup = await store_collision_setups_api.get_stored_collision_setup(
-            cell="cell", setup=collision_scene_id
+    except Exception as e:
+        print(f"Planning failed, we continue with the collision avoidance: {e}")
+
+    # Plan collision free PTP motion around the sphere
+    welding_actions = [
+        collision_free(
+            target=target_pose,
+            collision_setup=collision_setup,
+            settings=MotionSettings(tcp_velocity_limit=30),
+            algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
         )
-        # Use default planner to move to the right of the sphere
-        home = await motion_group.tcp_pose(tcp)
-        actions = [
-            cartesian_ptp(home, settings=MotionSettings(tcp_velocity_limit=200)),
-            cartesian_ptp(
-                target=Pose((1000, -400, 200, np.pi, 0, 0)),
-                settings=MotionSettings(tcp_velocity_limit=200),
-            ),
-        ]
+    ]
 
-        joint_trajectory = await motion_group.plan(
-            actions, tcp, start_joint_position=(0, -np.pi / 2, np.pi / 2, 0, 0, 0)
-        )
-        target_pose = Pose((-1500, -400, 200, np.pi, 0, 0))
-        rr.log(
-            "motion/target_",
-            rr.Points3D([target_pose.position.to_tuple()], radii=[10], colors=[(0, 255, 0)]),
-        )
-
-        # Use default planner to move to the left of the sphere -> this will collide
-        # only plan don't move
-        collision_actions: list[Action] = [
-            cartesian_ptp(target=target_pose, collision_setup=collision_setup)
-        ]
-
-        for action in collision_actions:
-            cast(Motion, action).settings = MotionSettings(tcp_velocity_limit=200)
-
-        try:
-            await motion_group.plan(
-                collision_actions,
-                tcp,
-                start_joint_position=joint_trajectory.joint_positions[-1].root,
-            )
-        except Exception as e:
-            print(f"Planning failed, we continue with the collision avoidance: {e}")
-
-        # Plan collision free PTP motion around the sphere
-        welding_actions: list[Action] = [
-            collision_free(
-                target=target_pose,
-                collision_setup=collision_setup,
-                settings=MotionSettings(tcp_velocity_limit=30),
-                algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
-            )
-        ]
-
-        joint_trajectory = await motion_group.plan(
-            welding_actions, tcp=tcp, start_joint_position=joint_trajectory.joint_positions[-1].root
-        )
+    await motion_group.plan(
+        actions=welding_actions,
+        tcp=tcp,
+        start_joint_position=tuple(joint_trajectory.joint_positions[-1].root),
+    )
 
 
 if __name__ == "__main__":

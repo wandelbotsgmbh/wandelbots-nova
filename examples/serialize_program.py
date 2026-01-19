@@ -37,16 +37,16 @@ async def main(ctx: nova.ProgramContext):
     controller = await cell.controller("ur10e")
 
     # Connect to the controller and activate motion groups
-    async with controller[0] as motion_group:
-        home_joints = await motion_group.joints()
-        tcp_names = await motion_group.tcp_names()
-        tcp = tcp_names[0]
+    motion_group = controller[0]
+    home_joints = await motion_group.joints()
+    tcp_names = await motion_group.tcp_names()
+    tcp = tcp_names[0]
 
-        # Get current TCP pose and offset it slightly along the x-axis
-        current_pose = await motion_group.tcp_pose(tcp)
-        target_pose = current_pose @ Pose((0, 0, 200, 0, 0, 0))
+    # Get current TCP pose and offset it slightly along the x-axis
+    current_pose = await motion_group.tcp_pose(tcp)
+    target_pose = current_pose @ Pose((0, 0, 200, 0, 0, 0))
 
-        actions = [joint_ptp(home_joints), cartesian_ptp(target_pose), joint_ptp(home_joints)]
+    actions = [joint_ptp(home_joints), cartesian_ptp(target_pose), joint_ptp(home_joints)]
 
     joint_trajectory = await motion_group.plan(actions, tcp)
 
