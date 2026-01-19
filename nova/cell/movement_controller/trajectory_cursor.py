@@ -828,7 +828,15 @@ class TrajectoryCursor:
                 self._command_queue.task_done()
                 break
             logger.debug(f"Processing command: {command}")
-            assert isinstance(command, ExecuteTrajectoryRequestCommand)
+            assert isinstance(
+                command,
+                (
+                    api.models.InitializeMovementRequest,
+                    api.models.StartMovementRequest,
+                    api.models.PauseMovementRequest,
+                    api.models.PlaybackSpeedRequest,
+                ),
+            )
             yield command
 
             if isinstance(command, api.models.StartMovementRequest):
