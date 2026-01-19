@@ -355,9 +355,9 @@ class AbstractRobot(Device):
         actions_list = _normalize_actions(actions)
 
         motion_state_stream = self._execute(
-            joint_trajectory,
-            tcp,
-            actions,
+            joint_trajectory=joint_trajectory,
+            tcp=tcp,
+            actions=actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
         )
