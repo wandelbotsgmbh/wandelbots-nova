@@ -197,7 +197,7 @@ export class NovaApi {
         this.config!.cellId,
         controller,
       )
-      return response.data.map((cs) => cs.coordinate_system)
+      return response.data.map((cs: any) => cs.coordinate_system)
     } catch (error) {
       throw new Error(`Failed to list coordinate systems: ${error}`)
     }

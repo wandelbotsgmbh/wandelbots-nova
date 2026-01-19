@@ -1,6 +1,38 @@
 # CHANGELOG
 
 
+## v4.3.1 (2026-01-16)
+
+### Chores
+
+- Map start on io (#364) ([#364](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/364),
+  [`c374f83`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c374f831e28093328d1ec1416b539ea870878b90))
+
+
+## v4.3.0 (2026-01-16)
+
+### Bug Fixes
+
+- Fixed vscode ext program execution (with run_program) (#365)
+  ([#365](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/365),
+  [`8c04a1b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8c04a1bc7ff77c3b86febfc3ab56a35f932dc33f))
+
+### Features
+
+- Added CLAUDE.md to the project (#366)
+  ([#366](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/366),
+  [`27f2bfa`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/27f2bfa5536896e39f223e6a1d404b7a874adf13))
+
+
+## v4.2.1 (2026-01-12)
+
+### Chores
+
+- **NDX-390**: Renamed SAST github workflows (#362)
+  ([#362](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/362),
+  [`4d1a033`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/4d1a0332c2ae92886532c3013b9bcfdb41816e48))
+
+
 ## v4.2.0 (2026-01-09)
 
 ### Features

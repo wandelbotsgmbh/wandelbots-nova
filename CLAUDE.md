@@ -2,12 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Official Python SDK for the Wandelbots NOVA API. NOVA is a robot-agnostic operating system that enables developers to plan, program, control, and operate fleets of six-axis industrial robots through a unified API, across all major robot brands.
+## Project Overview
+
+
+**Requirements**: Python >=3.11, <3.13
+
 ## Build & Development Commands
 
 ```bash
 # Install dependencies
 uv sync --extra "nova-rerun-bridge"
-
 # Format code
 uv run ruff format
 
@@ -18,8 +23,8 @@ uv run ruff check .
 # Type checking
 uv run mypy
 
-# Run all unit tests (excluding integration tests)
 PYTHONPATH=. uv run pytest -rs -v -m "not integration"
+# Run all unit tests (excluding integration tests)
 
 # Run a single test file
 PYTHONPATH=. uv run pytest -rs -v path/to/test_file.py
@@ -36,26 +41,21 @@ uv build
 # Download robot models for visualization
 uv run download-models
 
-# Run Wandelscript CLI
-uv run wandelscript my_script.ws
-uv run ws my_script.ws  # shortcut
-```
-
 ## Architecture Overview
 
+
 This SDK enables Python developers to control industrial robots through the Wandelbots NOVA API.
-
 ### Core Packages
-
 - **nova/**: Main SDK package
+
   - `Nova` - High-level client entry point (uses async context manager pattern)
   - `Cell` - Represents a robot cell containing controllers
   - `Controller` - Manages robot controller hardware connections
   - `MotionGroup` - Handles motion planning and execution for a robot arm
   - `actions/` - Motion primitives: `ptp`, `lin`, `jnt`, `cir`, `collision_free`, `io_write`, `wait`
   - `types/` - Data types: `Pose`, `RobotState`, `MotionSettings`, `CollisionScene`
-  - `api.py` - Auto-generated API client (via `wandelbots_api_client`)
   - `program/` - `@program` decorator for defining executable robot programs
+  - `api.py` - Auto-generated API client (via `wandelbots_api_client`)
 
 - **novax/**: App framework for building FastAPI server applications
   - `Novax` - FastAPI integration with program registration and lifecycle management
@@ -65,40 +65,55 @@ This SDK enables Python developers to control industrial robots through the Wand
   - Grammar defined in `wandelscript/grammar/` (ANTLR4)
   - Runtime execution in `runtime.py`
   - Built-in functions in `builtins/`
+# Run Wandelscript CLI
+uv run wandelscript my_script.ws
+uv run ws my_script.ws  # shortcut
+```
 
-- **nova_rerun_bridge/**: 3D visualization using rerun.io
-
-### Key Patterns
-
-**Async Context Manager**: All robot operations use async/await:
+### Core Usage Pattern
 ```python
+from nova import Nova
+
 async with Nova() as nova:
     cell = nova.cell()
-    controller = await cell.controller("robot")
-    motion_group = controller.motion_group()
+    controller = await cell.controller("robot-name")
+    motion_group = controller[0]
+
+    actions = [joint_ptp(joints), linear(pose)]
+    trajectory = await motion_group.plan(actions, tcp_name)
+    await motion_group.execute(trajectory, tcp_name, actions=actions)
 ```
 
-**Actions-based Motion**: Movements are defined as action sequences:
+### Program Decorator Pattern
 ```python
-from nova.actions import ptp, lin
-actions = [ptp(start_pose), lin(target_pose)]
-await motion_group.run(actions, tcp="Flange")
+@nova.program(id="my-program", name="My Program")
+    cell = ctx.cell
+async def my_program(ctx: nova.ProgramContext):
+    cycle = ctx.cycle()
 ```
 
-**Program Decorator**: Robot programs use `@program` for lifecycle management:
-```python
-from nova import program
-@program
-async def my_robot_program():
-    ...
-```
 
-### Test Markers
+## Code Style
+- **Line length**: 100 characters
+- **Formatting**: Black-compatible via ruff
+- **Type hints**: Modern syntax (`list[T]` not `List[T]`)
+- **Async**: Everything is async - always use `await` and `async with`
+- **Banned**: `icecream` in production code (dev-only)
 
-- Default tests: Unit tests that don't require NOVA instance
-- `@pytest.mark.integration`: Tests requiring a running NOVA instance
-- `@pytest.mark.xdist_group(name)`: Tests that must run sequentially
+## Configuration
 
-### PR Title Convention
+Environment variables (copy `.env.template` to `.env`):
+- `NOVA_API` - Base URL of NOVA instance (required)
+- `NOVA_ACCESS_TOKEN` - Authentication token (required for cloud, recommended for self-hosted)
 
-`chore|feat|fix[(scope)]: Description`
+## Commit Messages
+
+PR titles and commits follow Angular convention: `chore|feat|fix[(scope)]: Description`
+- `feat` → minor version bump
+- `fix`/`chore` → patch version bump
+## Testing
+
+
+- Unit tests: `PYTHONPATH=. uv run pytest -rs -v -m "not integration"`
+- Integration tests require running NOVA instance: `-m "integration"`
+- Use `@pytest.mark.integration` marker for tests requiring NOVA
