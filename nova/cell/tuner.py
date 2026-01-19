@@ -59,6 +59,7 @@ class TrajectoryTuner:
     playback of the trajectory until the session is finished or the app is
     shut down.
     """
+
     def __init__(self, plan_fn, execute_fn):
         self.plan_fn = plan_fn
         self.execute_fn = execute_fn
@@ -198,7 +199,6 @@ class TrajectoryTuner:
                 f"TrajectoryTuner main loop was cancelled during cleanup. "
                 f"finished_tuning={finished_tuning}, current_location={current_location}, last_operation_result={last_operation_result}"
             )
-            pass
         finally:
             # Clean up subscriptions
             for sub in subscriptions:
