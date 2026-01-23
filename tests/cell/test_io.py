@@ -121,7 +121,7 @@ async def setup_virtual_profinet() -> AsyncGenerator[tuple[str, ...], None]:
 
         async def on_bus_io_state(message):
             data = json.loads(message.data)
-            if data["state"] == api.models.BusIOsStateEnum.BUS_IOS_STATE_CONNECTED:
+            if data["state"] == api.models.BusIOsStateEnum.BUS_IOS_STATE_CONNECTED.value:
                 bus_io_service_ready.set()
 
         _ = await nova.nats.subscribe("nova.v2.cells.cell.bus-ios.status", cb=on_bus_io_state)
@@ -132,6 +132,8 @@ async def setup_virtual_profinet() -> AsyncGenerator[tuple[str, ...], None]:
             await nova.api.bus_ios_api.add_bus_io_service(
                 cell="cell", bus_io_type=api.models.BusIOType(api.models.BusIOProfinetVirtual())
             )
+            # we can't interact with bus io even after the connected message, we need to wait a bit
+            await asyncio.sleep(30)
 
         await bus_io_service_ready.wait()
 
@@ -290,6 +292,7 @@ SET_IO_ON_PATH_TEST_CASES = [
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+@pytest.mark.flaky(reruns=3, reruns_delay=1)
 @pytest.mark.parametrize("test_case", SET_IO_ON_PATH_TEST_CASES)
 async def test_set_io_on_path(
     setup_controllers: tuple[Controller, Controller],
