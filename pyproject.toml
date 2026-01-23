@@ -46,6 +46,7 @@ dev = [
     "pyinstrument>=5.1.1",
     "glom>=24.11.0",
     "pytest-xdist>=3.8.0",
+    "types-requests>=2.32.0",
 ]
 
 [project.optional-dependencies]
