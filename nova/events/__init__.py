@@ -315,8 +315,7 @@ class BaseCycleEvent(BaseModel, ABC):  # pyright: ignore[reportUnsafeMultipleInh
     timestamp: datetime = Field(..., description="Event creation time (ISO 8601, UTC)")
     cell: str = Field(..., description="Identifier of the robotic cell")
     extra: dict[str, Any] | None = Field(
-        default_factory=dict,
-        description="Additional data related to the event",
+        default_factory=dict, description="Additional data related to the event"
     )
 
 

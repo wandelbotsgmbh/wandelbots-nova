@@ -476,9 +476,7 @@ def program(
         'my_program'
     """
 
-    def decorator(
-        function: Callable[..., Any],
-    ) -> Program[Any, Any]:
+    def decorator(function: Callable[..., Any]) -> Program[Any, Any]:
         # Validate that the function is async
         if not asyncio.iscoroutinefunction(function):
             raise TypeError(f"Program function '{function.__name__}' must be async")
