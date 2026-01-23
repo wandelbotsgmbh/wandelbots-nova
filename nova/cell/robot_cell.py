@@ -202,7 +202,7 @@ class StateStreamingDevice(Protocol):
         Args:
             rate: The rate at which the state should be streamed
         """
-        ...
+        raise NotImplementedError
 
 
 class AbstractRobot(Device, ABC):  # pyright: ignore[reportImplicitAbstractClass]

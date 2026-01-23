@@ -268,8 +268,10 @@ class MotionGroup(AbstractRobot):
                 collision_setups=motion_group_setup.collision_setups,
             ),
         )
-        # Convert DoubleArray to tuple[float, ...]
-        return [[tuple(joints) for joints in pose_solutions] for pose_solutions in response.joints]
+        # Convert DoubleArray to tuple[float, ...] - use .root to access the underlying array
+        return [
+            [tuple(joints.root) for joints in pose_solutions] for pose_solutions in response.joints
+        ]
 
     async def forward_kinematics(self, joints: list[tuple[float, ...]], tcp: str) -> list[Pose]:
         """Get the forward kinematics of the motion group.

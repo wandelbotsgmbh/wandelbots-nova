@@ -463,6 +463,7 @@ class SimulatedController(ConfigurablePeriphery, AbstractController):  # pyright
     async def open(self) -> Self:
         if self.configuration.raises_on_open:
             raise RuntimeError("RaisingRobotCell")
+        await super().open()
         return self
 
 
