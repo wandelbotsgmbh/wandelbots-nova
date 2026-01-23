@@ -1,6 +1,7 @@
 import logging
 from abc import ABC
 from datetime import datetime, timedelta
+from types import TracebackType
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -10,7 +11,7 @@ from nova.cell.cell import Cell
 from nova.cell.robot_cell import Device, OutputDevice
 from nova.config import BASE_PATH
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 # Read BASE_PATH environment variable and extract app name
 # TODO: make a util and move the logic there
@@ -25,9 +26,9 @@ _APP_NAME_EXTRA_FIELD = "app"
 
 
 class Timer:
-    def __init__(self):
-        self.start_time = None
-        self.stop_time = None
+    def __init__(self) -> None:
+        self.start_time: datetime | None = None
+        self.stop_time: datetime | None = None
 
     def start(self) -> datetime:
         if self.start_time is not None:
@@ -46,6 +47,8 @@ class Timer:
         self.stop_time = None
 
     def elapsed(self) -> timedelta:
+        if self.start_time is None:
+            raise RuntimeError("Timer has not been started.")
         if self.stop_time is None:
             return datetime.now() - self.start_time
         return self.stop_time - self.start_time
@@ -59,7 +62,7 @@ class CycleDevice(OutputDevice, Device):
         super().__init__()
         self._cycle = Cycle(cell=cell)
 
-    async def write(self, key, _):
+    async def write(self, key: str, _: object) -> None:
         if hasattr(self._cycle, key):
             method = getattr(self._cycle, key)
             await method()
@@ -198,6 +201,9 @@ class Cycle:
             raise RuntimeError("Cycle not started") from e
 
         assert self.cycle_id is not None, "Cycle ID is missing; ensure start() was called first"
+        assert self._timer.start_time is not None, (
+            "Timer start_time is missing; ensure start() was called"
+        )
 
         duration_ms = int((end_time - self._timer.start_time).total_seconds() * 1000)
         event = CycleFinishedEvent(
@@ -255,7 +261,7 @@ class Cycle:
 
         self._timer.reset()
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "Cycle":
         """
         Async context manager entry point that starts the cycle.
 
@@ -265,7 +271,12 @@ class Cycle:
         await self.start()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
         """
         Async context manager exit point that completes the cycle.
 

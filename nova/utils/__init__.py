@@ -36,11 +36,11 @@ class StreamExtractor(Generic[In, Out]):
             raise StopAsyncIteration
         return value
 
-    def stop(self):
+    def stop(self) -> None:
         self._in_queue.put_nowait(None)
 
 
-def get_caller_linenumber():
+def get_caller_linenumber() -> int | None:
     """
     Returns the line number where the function that called this
     function was itself called.

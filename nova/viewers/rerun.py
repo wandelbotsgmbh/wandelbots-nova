@@ -16,7 +16,7 @@ from .manager import register_viewer
 from .protocol import NovaRerunBridgeProtocol
 from .utils import downsample_trajectory, extract_collision_setups_from_actions
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class Rerun(Viewer):

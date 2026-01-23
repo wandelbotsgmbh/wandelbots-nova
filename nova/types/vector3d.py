@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterator
 
 import numpy as np
+import numpy.typing as npt
 import pydantic
 
 from nova import api
@@ -19,7 +20,7 @@ class Vector3d(pydantic.BaseModel):
     y: float | int
     z: float | int
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, Vector3d):
             return NotImplemented
         return self.x == other.x and self.y == other.y and self.z == other.z
@@ -60,10 +61,10 @@ class Vector3d(pydantic.BaseModel):
             return NotImplemented
         return (1 / other) * self
 
-    def __len__(self):
+    def __len__(self) -> int:
         return 3
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[float | int]:  # type: ignore[override]
         """Iterate over the vector
 
         Examples:
@@ -75,7 +76,7 @@ class Vector3d(pydantic.BaseModel):
         """
         return iter(self.to_tuple())
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: int) -> float | int:
         return self.to_tuple()[item]
 
     @classmethod
@@ -101,7 +102,7 @@ class Vector3d(pydantic.BaseModel):
         """
         return self.x, self.y, self.z
 
-    def __array__(self, dtype=None):
+    def __array__(self, dtype: npt.DTypeLike = None) -> npt.NDArray[Any]:
         """Allows numpy to automatically convert Vector3d to a numeric array.
 
         Examples:
@@ -112,7 +113,7 @@ class Vector3d(pydantic.BaseModel):
         """
         return np.array(self.to_tuple(), dtype=dtype)
 
-    def to_quaternion(self):
+    def to_quaternion(self) -> npt.NDArray[np.floating[Any]]:
         """Interpret the object as a rotation vector and convert it to a quaternion"""
         values = np.asarray(self)
         half_angle = np.linalg.norm(values) / 2

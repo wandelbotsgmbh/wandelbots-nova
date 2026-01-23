@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, AsyncIterator, Callable
+from typing import Annotated, AsyncIterator, Callable, Iterator
 
 import pydantic
 
@@ -8,7 +8,7 @@ from nova import api
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
-from nova.types import MotionSettings, MovementControllerFunction, Pose
+from nova.types import MotionSettings, MovementControllerFunction, Pose, Vector3d
 
 
 class ActionLocation(pydantic.BaseModel):
@@ -33,21 +33,21 @@ class CombinedActions(pydantic.BaseModel):
         ...,
     ] = ()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.items)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: int) -> ActionContainerItem:
         return self.items[item]
 
-    def __setattr__(self, key, value):
+    def __setattr__(self, key: str, value: object) -> None:
         if key == "items":
             raise TypeError("Cannot set items directly")
         super().__setattr__(key, value)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[ActionContainerItem]:  # type: ignore[override]
         return iter(self.items)
 
-    def append(self, item: ActionContainerItem):
+    def append(self, item: ActionContainerItem) -> None:
         super().__setattr__("items", self.items + (item,))
 
     def _generate_trajectory(self) -> tuple[list[Motion], list[ActionLocation]]:
@@ -110,7 +110,7 @@ class CombinedActions(pydantic.BaseModel):
             if isinstance(motion.target, Pose)
         ]
 
-    def positions(self):
+    def positions(self) -> list[Vector3d]:
         """Returns the positions of all motions. If a motion is not a cartesian motion, the position is ignored
 
         Returns: the positions
@@ -118,7 +118,7 @@ class CombinedActions(pydantic.BaseModel):
         """
         return [pose.position for pose in self.poses()]
 
-    def orientations(self):
+    def orientations(self) -> list[Vector3d]:
         """Returns the orientations of all motions. If a motion is not a cartesian motion, the orientation is ignored
 
         Returns: the orientations
@@ -141,7 +141,9 @@ class CombinedActions(pydantic.BaseModel):
                 settings.as_limits_settings() if settings.has_limits_override() else None
             )
             motion_command = api.models.MotionCommand(
-                path=motion.to_api_model(), blending=blending, limits_override=limits_override
+                path=motion.to_api_model(),  # type: ignore[arg-type]
+                blending=blending,
+                limits_override=limits_override,
             )
             motion_commands.append(motion_command)
         return motion_commands

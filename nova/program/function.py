@@ -5,6 +5,7 @@ import json
 import logging
 from collections.abc import Callable
 from typing import (
+    TYPE_CHECKING,
     Annotated,
     Any,
     Coroutine,
@@ -18,6 +19,9 @@ from typing import (
     get_origin,
     get_type_hints,
 )
+
+if TYPE_CHECKING:
+    from nova.viewers.protocol import NovaRerunBridgeProtocol
 
 from docstring_parser import Docstring
 from docstring_parser import parse as parse_docstring
@@ -37,7 +41,7 @@ from nova import Nova, api
 
 from .context import ProgramContext, current_program_context_var
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 Parameters = ParamSpec("Parameters")
 Return = TypeVar("Return")
@@ -52,7 +56,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
     _wrapped: Callable[..., Coroutine[Any, Any, Return]] = PrivateAttr(
         default_factory=lambda *args, **kwargs: None  # type: ignore[assignment]
     )
-    _viewer: Any | None = PrivateAttr(default=None)
+    _viewer: "NovaRerunBridgeProtocol | None" = PrivateAttr(default=None)
     program_id: str
     name: str | None
     description: str | None
@@ -393,7 +397,10 @@ def program(
     name: str | None = None,
     description: str | None = None,
     preconditions: ProgramPreconditions | None = None,
-    viewer: Any | None = None,
+    viewer: "NovaRerunBridgeProtocol | None" = None,
+) -> (
+    Program[Parameters, Coroutine[Any, Any, Return]]
+    | Callable[[Callable[Parameters, Return]], Program[Parameters, Coroutine[Any, Any, Return]]]
 ):
     """
     Decorator factory for creating Nova programs with declarative controller setup.

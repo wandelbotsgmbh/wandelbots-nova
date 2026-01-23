@@ -1,5 +1,6 @@
 import importlib
 
+version: str
 try:
     from importlib import metadata
 

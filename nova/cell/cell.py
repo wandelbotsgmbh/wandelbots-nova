@@ -19,7 +19,7 @@ DEFAULT_WAIT_FOR_READY_TIMEOUT_SECS = 120
 
 CONTROLLER_NOT_READY_STATUSES = ["MODE_CONTROLLER_NOT_CONFIGURED", "MODE_INITIALIZING"]
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class Cell:
@@ -195,7 +195,7 @@ class Cell:
             raise ControllerNotFound(controller=name)
         return self._create_controller(name)
 
-    async def delete_robot_controller(self, name: str, timeout: int = 25):
+    async def delete_robot_controller(self, name: str, timeout: int = 25) -> None:
         """
         Delete a robot controller from the cell.
         Args:

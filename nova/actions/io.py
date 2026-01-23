@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from nova import api
 from nova.actions.base import Action
@@ -46,7 +46,7 @@ class ReadAction(Action):
     key: str
     device_id: str
 
-    def to_api_model(self):
+    def to_api_model(self) -> dict[str, Any]:
         return super().model_dump()
 
     def is_motion(self) -> bool:
@@ -58,9 +58,9 @@ class CallAction(Action):
     type: Literal["Call"] = "Call"
     device_id: str
     key: str
-    arguments: list
+    arguments: list[Any]
 
-    def to_api_model(self):
+    def to_api_model(self) -> dict[str, Any]:
         return super().model_dump()
 
     def is_motion(self) -> bool:
@@ -73,7 +73,7 @@ class ReadPoseAction(Action):
     device_id: str
     tcp: str | None = None
 
-    def to_api_model(self):
+    def to_api_model(self) -> dict[str, Any]:
         return super().model_dump()
 
     def is_motion(self) -> bool:
@@ -85,7 +85,7 @@ class ReadJointsAction(Action):
     type: Literal["ReadJoints"] = "ReadJoints"
     device_id: str
 
-    def to_api_model(self):
+    def to_api_model(self) -> dict[str, Any]:
         return super().model_dump()
 
     def is_motion(self) -> bool:

@@ -64,7 +64,7 @@ class MotionSettings(pydantic.BaseModel):
         frozen = True
 
     @classmethod
-    def field_to_varname(cls, field):
+    def field_to_varname(cls, field: str) -> str:
         return f"__ms_{field}"
 
     def _get_blending_radius(self) -> float | None:

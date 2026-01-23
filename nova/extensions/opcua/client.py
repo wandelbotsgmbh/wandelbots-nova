@@ -4,36 +4,37 @@ import os.path
 import tempfile
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import Any, Generator, Self
 
 import asyncua
 import httpx
 import pydantic
 from asyncua import ua
-from asyncua.common import Node
-from asyncua.common.subscription import DataChangeNotif, DataChangeNotificationHandlerAsync
+from asyncua.common.subscription import DataChangeNotificationHandlerAsync
 from asyncua.crypto import security_policies
 from asyncua.ua import CreateSubscriptionParameters, DataValue, Variant, VariantType
 
 from nova.config import K8S_NAMESPACE
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
-class DataChangeSubscription(DataChangeNotificationHandlerAsync):
+class _DataChangeSubscription(DataChangeNotificationHandlerAsync):  # pyright: ignore[reportGeneralTypeIssues]
     """
     This class extends the DataChangeNotificationHandlerAsync class from the asyncua library.
     It is used to create a subscription that listens for data change notifications on a node.
     It supports a condition function that is used to determine when the subscription should be completed.
     """
 
-    def __init__(self, condition: Callable[[Any], bool], print_received_messages=False):
+    def __init__(
+        self, condition: Callable[[Any], bool], print_received_messages: bool = False
+    ) -> None:
         super().__init__()
         self._flag = asyncio.Event()
         self._condition = condition
         self._print_received_messages = print_received_messages
 
-    async def datachange_notification(self, node: Node, val, data: DataChangeNotif) -> None:
+    async def datachange_notification(self, node: Any, val: Any, data: Any) -> None:
         if self._print_received_messages:
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
             print(f"{current_time}: Received data change notification for node {node}, {val}")
@@ -41,8 +42,8 @@ class DataChangeSubscription(DataChangeNotificationHandlerAsync):
         if self._condition(val):
             self._flag.set()
 
-    def __await__(self):
-        return self._flag.wait().__await__()
+    def __await__(self) -> Generator[Any, None, None]:
+        return self._flag.wait().__await__()  # type: ignore[return-value]
 
 
 class SecurityConfig(pydantic.BaseModel):
@@ -70,7 +71,7 @@ class SubscriptionConfig(pydantic.BaseModel):
     security_config: SecurityConfig | None = None
 
     @classmethod
-    def from_dict(cls, config_dict: dict):
+    def from_dict(cls, config_dict: dict[str, Any]) -> Self:
         return cls(**config_dict)
 
 
@@ -149,7 +150,7 @@ class OPCUAClient:
             except Exception as cleanup_err:
                 logger.error(f"Error cleaning up temporary file {file_path}: {cleanup_err}")
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         try:
             if self._options.security_config:
                 await self._extend_client_with_certificate()
@@ -160,7 +161,9 @@ class OPCUAClient:
             raise
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
+    ) -> None:
         self._delete_certificate_files()
         await self._client.disconnect()
 
@@ -177,7 +180,7 @@ class OPCUAClient:
         val = await node.read_value()
         return val
 
-    async def write_node(self, key: str, val: Any):
+    async def write_node(self, key: str, val: Any) -> None:
         """
         Writes the value to a opcua node
         Args:
@@ -189,7 +192,7 @@ class OPCUAClient:
         data_value = DataValue(Variant(val, data_type_variant))
         await node.write_value(data_value)
 
-    async def call_node(self, parent_key: str, function_key: str, *args):
+    async def call_node(self, parent_key: str, function_key: str, *args: Any) -> Any:
         """
         Calls a method on a opcua node
         Args:
@@ -210,7 +213,7 @@ class OPCUAClient:
 
     async def watch_node_until_condition(
         self, key: str, condition: Callable[[Any], bool], config: SubscriptionConfig
-    ):
+    ) -> None:
         """
         Creates a subscription that listens for data change notifications on a node until a condition is met
         Args:
@@ -221,7 +224,7 @@ class OPCUAClient:
             config: configuration parameters for the subscription.
                     https://reference.opcfoundation.org/Core/Part4/v104/docs/5.13.1
         """
-        data_change_sub = DataChangeSubscription(
+        data_change_sub = _DataChangeSubscription(
             condition, print_received_messages=config.print_received_messages
         )
 

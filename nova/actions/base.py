@@ -5,8 +5,9 @@ from abc import ABC, abstractmethod
 from typing import Any, ClassVar
 
 import pydantic
+from pydantic import BaseModel
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class Action(pydantic.BaseModel, ABC):
@@ -17,10 +18,10 @@ class Action(pydantic.BaseModel, ABC):
 
     @pydantic.field_validator("metas", mode="before")
     @classmethod
-    def ensure_dict(cls, v):
+    def ensure_dict(cls, v: Any) -> dict[str, Any]:
         return {} if v is None else dict(v)
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
 
         action_type = getattr(cls, "type", None)
@@ -34,7 +35,7 @@ class Action(pydantic.BaseModel, ABC):
         Action._registry[action_type] = cls
 
     @classmethod
-    def from_dict(cls, data: dict) -> Action:
+    def from_dict(cls, data: dict[str, Any]) -> Action:
         """
         Pick the correct concrete Action from the `_registry`
         and let Pydantic validate against that class.
@@ -58,5 +59,5 @@ class Action(pydantic.BaseModel, ABC):
         """Return whether the action is a motion"""
 
     @abstractmethod
-    def to_api_model(self):
+    def to_api_model(self) -> BaseModel | dict[str, Any]:
         """Convert the action to an API model"""

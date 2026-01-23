@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from nova import api
     from nova.actions import Action
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 def downsample_trajectory(

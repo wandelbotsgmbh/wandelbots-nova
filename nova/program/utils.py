@@ -7,9 +7,9 @@ from exceptiongroup import ExceptionGroup
 
 
 class Tee(io.StringIO):
-    def __init__(self, stream: TextIO, *args, **kwargs) -> None:
+    def __init__(self, stream: TextIO, initial_value: str = "", newline: str | None = "\n") -> None:
         self.stream = stream
-        super().__init__(*args, **kwargs)
+        super().__init__(initial_value, newline)
 
     def write(self, string: str) -> int:
         self.stream.write(string)
@@ -43,7 +43,7 @@ async def stoppable_run(run: Awaitable[None], stop: Awaitable[None]) -> None:
         raise eg.exceptions[0]
 
 
-def ensure_trailing_newline(s: str):
+def ensure_trailing_newline(s: str) -> str:
     if not s:
         return s
     return s if s[-1] == "\n" else s + "\n"

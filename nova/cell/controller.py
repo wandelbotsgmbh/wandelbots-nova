@@ -19,6 +19,8 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         cell_id: str
         controller_id: str
 
+    _configuration: Configuration  # Override the base class type annotation
+
     def __init__(self, configuration: Configuration):
         super().__init__(configuration)
         self._motion_group_ids = None
@@ -29,6 +31,10 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         )
 
     @property
+    def configuration(self) -> Configuration:
+        return self._configuration
+
+    @property
     def id(self) -> str:
         """The unique identifier for this controller in the shape "controller_id" e.g. "ur10e".
 
@@ -37,12 +43,12 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         """
         return self.configuration.controller_id
 
-    async def open(self):
+    async def open(self) -> "Controller":  # type: ignore[override]
         self._motion_group_ids = (await self._fetch_description()).connected_motion_groups
         await super().open()
         return self
 
-    async def close(self):
+    async def close(self) -> None:
         # RPS-1174: when a motion group is deactivated, RAE closes all open connections
         #           this behaviour is not desired in some cases,
         #           so for now we will not deactivate for the user
@@ -123,7 +129,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         return await self._io_access.write(key, value)
 
     async def stream_state(
-        self, rate_msecs
+        self, rate_msecs: int
     ) -> AsyncGenerator[api.models.RobotControllerState, None]:
         """
         Stream the robot controller state.
@@ -152,7 +158,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         )
         return flag.active
 
-    async def set_estop(self, active: bool):
+    async def set_estop(self, active: bool) -> None:
         """Set the emergency stop state for the controller. Works on virtual controllers only.
 
         Args:

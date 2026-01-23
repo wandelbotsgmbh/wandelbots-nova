@@ -42,7 +42,7 @@ from math import ceil, floor
 from typing import AsyncIterator, Optional, Union
 
 import pydantic
-from blinker import signal
+from blinker import Signal, signal
 
 from nova import api
 from nova.actions.base import Action
@@ -50,9 +50,9 @@ from nova.actions.container import CombinedActions
 from nova.exceptions import InitMovementFailed
 from nova.types import ExecuteTrajectoryRequestStream, ExecuteTrajectoryResponseStream
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
-_STREAM_STARTUP_TIMEOUT = 5.0
+_STREAM_STARTUP_TIMEOUT: float = 5.0
 
 
 class OperationType(Enum):
@@ -204,7 +204,7 @@ class OperationHandler:
         )
         return future
 
-    def set_commanded(self):
+    def set_commanded(self) -> None:
         """Transition operation state to COMMANDED.
 
         Called when the movement command has been sent to the controller
@@ -228,7 +228,7 @@ class OperationHandler:
                 f"Cannot set operation to COMMANDED from state {self._operation.operation_state}"
             )
 
-    def set_running(self):
+    def set_running(self) -> None:
         """Transition operation state to RUNNING.
 
         Called when the robot begins moving (standstill becomes False).
@@ -307,8 +307,8 @@ class MovementOption(StrEnum):
 
 
 # Signals emitted during motion events for external observers
-motion_started = signal("motion_started")
-motion_stopped = signal("motion_stopped")
+motion_started: Signal = signal("motion_started")
+motion_stopped: Signal = signal("motion_stopped")
 
 
 class MotionEventType(StrEnum):
@@ -411,7 +411,7 @@ class TrajectoryCursor:
         """
         self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
-        self.actions = CombinedActions(items=actions)  # type: ignore
+        self.actions: CombinedActions = CombinedActions(items=actions)  # type: ignore[arg-type]
         self._command_queue: asyncio.Queue[ExecuteTrajectoryRequestCommand | _QueueSentinel] = (
             asyncio.Queue()
         )
@@ -431,7 +431,7 @@ class TrajectoryCursor:
 
         self._initialize_task = asyncio.create_task(self.ainitialize())
 
-    async def ainitialize(self):
+    async def ainitialize(self) -> None:
         """Async initialization that emits the initial motion event."""
         target_action = self.current_action
         await motion_started.send_async(self, event=self._get_motion_event(target_action))
@@ -712,7 +712,7 @@ class TrajectoryCursor:
         self._command_queue.put_nowait(api.models.PauseMovementRequest())
         return future
 
-    def detach(self):
+    def detach(self) -> None:
         """Detach from the trajectory, stopping control but not necessarily movement.
 
         This signals the cursor to stop processing commands and state updates.
@@ -1020,7 +1020,7 @@ class TrajectoryCursor:
 
 
 async def init_movement_gen(
-    motion_id, response_stream, initial_location
+    motion_id: str, response_stream: ExecuteTrajectoryResponseStream, initial_location: float
 ) -> ExecuteTrajectoryRequestStream:
     """Initialize movement on a trajectory with the motion controller.
 
@@ -1041,7 +1041,7 @@ async def init_movement_gen(
     """
     trajectory_id = api.models.TrajectoryId(id=motion_id)
     init_request = api.models.InitializeMovementRequest(
-        trajectory=trajectory_id, initial_location=initial_location
+        trajectory=trajectory_id, initial_location=api.models.Location(initial_location)
     )
     yield init_request
 

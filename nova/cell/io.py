@@ -72,7 +72,7 @@ class IOAccess(Device):
             f"IO value for {key} is of an unexpected type. Expected bool, int or float. Got: {type(input_output)}"
         )
 
-    async def write(self, key: str, value: ValueType):
+    async def write(self, key: str, value: ValueType) -> None:
         """Set a value asynchronously (So a direct read after setting might return still the old value)"""
         await self._ensure_value_type(key, value)
 
@@ -91,10 +91,12 @@ class IOAccess(Device):
                 raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
 
             await self._api_client.controller_ios_api.set_output_values(
-                cell=self._cell, controller=self._controller_id, io_value=[io_value]
+                cell=self._cell,
+                controller=self._controller_id,
+                io_value=[api.models.IOValue(io_value)],
             )
 
-    async def _ensure_value_type(self, key: str, value: ValueType):
+    async def _ensure_value_type(self, key: str, value: ValueType) -> None:
         """Checks if the provided value matches the expected type of the IO"""
         io_descriptions = await self.get_io_descriptions()
         io_description = io_descriptions[key]
@@ -117,7 +119,7 @@ class IOAccess(Device):
         else:
             raise ValueError(f"Unexpected type {type(value)}")
 
-    async def wait_for_bool_io(self, io: str, value: bool):
+    async def wait_for_bool_io(self, io: str, value: bool) -> None:
         """Blocks until the requested IO equals the provided value."""
         # TODO proper implementation utilising also the comparison operators
         io_value = api.models.IOBooleanValue(io=io, value=value)

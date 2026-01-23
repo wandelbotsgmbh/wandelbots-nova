@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 import pydantic
 
@@ -10,13 +10,13 @@ class WaitAction(Action):
     wait_for_in_seconds: float = 0.0
 
     @pydantic.model_serializer
-    def serialize_model(self):
+    def serialize_model(self) -> dict[str, Any]:
         return self.model_dump()
 
     def is_motion(self) -> bool:
         return False
 
-    def to_api_model(self):
+    def to_api_model(self) -> dict[str, Any]:
         return {"type": self.type, "wait_for_in_seconds": self.wait_for_in_seconds}
 
 

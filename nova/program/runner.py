@@ -33,7 +33,7 @@ from nova.utils import timestamp
 
 from .function import ProgramPreconditions
 
-current_execution_context_var: contextvars.ContextVar = contextvars.ContextVar(
+current_execution_context_var: contextvars.ContextVar[Any] = contextvars.ContextVar(
     "current_execution_context_var"
 )
 
@@ -84,7 +84,9 @@ class ExecutionContext:
     output_data: dict[str, Any]
     nova: Nova | None
 
-    def __init__(self, robot_cell: RobotCell, stop_event: anyio.Event, nova: Nova | None = None):
+    def __init__(
+        self, robot_cell: RobotCell, stop_event: anyio.Event, nova: "Nova | None" = None
+    ) -> None:
         self._robot_cell = robot_cell
         self._stop_event = stop_event
         self.motion_group_recordings = []
@@ -171,7 +173,7 @@ class ProgramRunner(ABC):
 
     def __init__(
         self,
-        program: Program,
+        program: Program[..., Any],
         *,
         inputs: dict[str, Any],
         robot_cell_override: RobotCell | None = None,
@@ -290,17 +292,20 @@ class ProgramRunner(ABC):
             api.models.ProgramRunState.RUNNING,
         )
 
-    def join(self):
+    def join(self) -> None:
         """Wait for the program execution to finish.
 
         Raises:
             Exception: If the program execution failed
+            RuntimeError: If the program is not running
         """
+        if self._thread is None:
+            raise RuntimeError("Program is not running")
         self._thread.join()
         if self._exc:
             raise self._exc
 
-    def stop(self, sync: bool = False):
+    def stop(self, sync: bool = False) -> None:
         """Stop the program execution.
 
         Args:
@@ -317,7 +322,7 @@ class ProgramRunner(ABC):
         self,
         sync: bool = False,
         on_state_change: Callable[[ProgramRun], Awaitable[None]] | None = None,
-    ):
+    ) -> None:
         """Creates another thread and starts the program execution. If the program was executed already, is currently
         running, failed or was stopped a new program runner needs to be created.
 
@@ -378,7 +383,7 @@ class ProgramRunner(ABC):
     ):
         assert self.execution_context is not None
 
-        def state_is_estop(state_: api.models.RobotControllerState):
+        def state_is_estop(state_: object) -> bool:
             # See: models.RobotControllerState.safety_state
             acceptable_safety_states = [
                 api.models.SafetyStateType.SAFETY_STATE_NORMAL,
@@ -487,9 +492,10 @@ class ProgramRunner(ABC):
             # Set context variable to indicate if running via operator (for viewer optimization)
             is_operator_execution_var.set(self._app_name is not None)
 
-            self.execution_context = execution_context = ExecutionContext(
+            execution_context = ExecutionContext(
                 robot_cell=robot_cell, stop_event=stop_event, nova=self._nova
             )
+            self.execution_context = execution_context
             current_execution_context_var.set(execution_context)
             await self._set_program_state(
                 state=api.models.ProgramRunState.PREPARING,
@@ -598,7 +604,7 @@ class PythonProgramRunner(ProgramRunner):
 
     def __init__(
         self,
-        program: Program,
+        program: Program[..., Any],
         inputs: Optional[dict[str, Any]] = None,
         robot_cell_override: RobotCell | None = None,
         nova_config: NovaConfig | None = None,
@@ -661,7 +667,7 @@ def _report_state_change_to_event_loop(
 
 
 def run_program(
-    program: Program,
+    program: Program[..., Any],
     *,
     inputs: dict[str, Any] | None = None,
     sync: bool = True,

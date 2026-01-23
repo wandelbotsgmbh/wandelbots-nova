@@ -32,7 +32,7 @@ MAX_JOINT_VELOCITY_PREPARE_MOVE = 0.2
 START_LOCATION_OF_MOTION = 0.0
 
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 # TODO: when collision scene is different in different motions
@@ -266,7 +266,8 @@ class MotionGroup(AbstractRobot):
                 collision_setups=motion_group_setup.collision_setups,
             ),
         )
-        return response.joints
+        # Convert DoubleArray to tuple[float, ...]
+        return [[tuple(joints) for joints in pose_solutions] for pose_solutions in response.joints]
 
     async def forward_kinematics(self, joints: list[tuple[float, ...]], tcp: str) -> list[Pose]:
         """Get the forward kinematics of the motion group.
@@ -298,19 +299,19 @@ class MotionGroup(AbstractRobot):
 
         return [Pose(tcp_pose) for tcp_pose in response.tcp_poses]
 
-    async def open(self):
+    async def open(self) -> "MotionGroup":  # type: ignore[override]
         # TODO if there is no explicit motion group activation, what should we do here?
         # maybe we set the mode to control mode? But this is not needed (implicitly done by the trajectory execution)
         return self
 
-    async def close(self):
+    async def close(self) -> None:
         # RPS-1174: when a motion group is deactivated, RAE closes all open connections
         #           this behaviour is not desired in some cases,
         #           so for now we will not deactivate for the user
         pass
 
     # TODO: should we remove this until we fix it?
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the motion group.
 
         Raises:
@@ -320,7 +321,7 @@ class MotionGroup(AbstractRobot):
         try:
             if self._current_motion is None:
                 raise ValueError("No motion to stop")
-            await self._api_client.motion_api.stop_execution(
+            await self._api_client.motion_api.stop_execution(  # type: ignore[attr-defined]
                 cell=self._cell, motion=self._current_motion
             )
             logger.debug(f"Motion {self.current_motion} stopped.")

@@ -23,7 +23,7 @@ from nova.cell.robot_cell import (
 from nova.types import MotionState, Pose, RobotState
 
 
-def default_value():
+def default_value() -> str:
     """
     NOTE:
         This method is needed because in order to create a Process with a function call the function should not contain
@@ -83,6 +83,8 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         tools: dict[str, Pose] | None = None
         step_size: float = 0
 
+    _configuration: Configuration  # Override base class type annotation
+
     def __init__(self, configuration: Configuration = Configuration()):
         if not configuration.tools:
             configuration = configuration.model_copy(
@@ -108,9 +110,15 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         # this list. Every motion trajectory corresponds to blocs of wandelscript code between sync commands.
         self.record_of_commands: list[list[Action]] = []
 
+    @property
+    def configuration(self) -> Configuration:
+        return self._configuration
+
     async def get_motion_group_setup(self, tcp_name: str) -> api.models.MotionGroupSetup:
-        tcp_pose = self.configuration.tools[tcp_name]
-        tcp_pos = api.models.Vector3d(tcp_pose.position.to_tuple())
+        tools = self.configuration.tools
+        assert tools is not None, "Tools should never be None after __init__"
+        tcp_pose = tools[tcp_name]
+        tcp_pos = api.models.Vector3d(list(tcp_pose.position.to_tuple()))
         tcp_ori = api.models.RotationVector([0, 0, 0])
         # quat = Rotation.from_rotvec(self.configuration.tools[tcp_name].orientation)
         # tcp_ori.x, tcp_ori.y, tcp_ori.z, tcp_ori.w = quat[0], quat[1], quat[2], quat[3]
@@ -309,18 +317,22 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             yield motion_state
 
     async def tcps(self) -> dict[str, api.models.RobotTcp]:
+        tools = self.configuration.tools
+        assert tools is not None, "Tools should never be None after __init__"
         return {
             name: api.models.RobotTcp(
                 id=name,
                 name=name,
-                position=tool_pose.position.model_dump(),
-                orientation=tool_pose.orientation.model_dump(),
+                position=api.models.Vector3d(list(tool_pose.position.to_tuple())),
+                orientation=api.models.Orientation(list(tool_pose.orientation.to_tuple())),
             )
-            for name, tool_pose in self.configuration.tools.items()
+            for name, tool_pose in tools.items()
         }
 
     async def tcp_names(self) -> list[str]:
-        return list(self.configuration.tools.keys())
+        tools = self.configuration.tools
+        assert tools is not None, "Tools should never be None after __init__"
+        return list(tools.keys())
 
     async def active_tcp(self) -> api.models.RobotTcp:
         tcps = await self.tcps()
@@ -328,7 +340,9 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         return next(iter(tcps.values()))
 
     async def active_tcp_name(self) -> str:
-        return next(iter(self.configuration.tools))
+        tools = self.configuration.tools
+        assert tools is not None, "Tools should never be None after __init__"
+        return next(iter(tools))
 
     async def get_state(self, tcp: str | None = None) -> RobotState:
         if not self._trajectory:
@@ -344,7 +358,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         # tcp_pose = Pose.from_position_and_quaternion(*tcp2robot.to_pose())
         return flange2robot.state
 
-    async def joints(self) -> tuple:
+    async def joints(self) -> tuple[float, ...]:
         if not self._trajectory:
             raise UnknownPose
         return self._trajectory[-1].state.joints
@@ -355,10 +369,10 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         state = await self.get_state(tcp)
         return state.pose
 
-    async def stop(self):
+    async def stop(self) -> None:
         pass
 
-    def release(self):
+    def release(self) -> None:
         pass
 
     def set_status(self, active: bool) -> None:
@@ -382,7 +396,9 @@ class SimulatedIO(ConfigurablePeriphery, Device, IODevice):
         type: Literal["simulated_io"] = "simulated_io"
         id: str = "io"
 
-    def __init__(self, configuration: Configuration = Configuration(id="io"), silent=False):
+    def __init__(
+        self, configuration: Configuration = Configuration(id="io"), silent: bool = False
+    ) -> None:
         super().__init__(configuration=configuration)
         self._silent = silent
         self._io: dict[str, Any] = defaultdict(default_value)
@@ -411,6 +427,8 @@ class SimulatedController(ConfigurablePeriphery, AbstractController):
         robots: list[SimulatedRobot.Configuration] | None = None
         raises_on_open: bool = False
 
+    _configuration: Configuration  # Override base class type annotation
+
     def __init__(self, configuration: Configuration = Configuration(id="controller")):
         super().__init__(configuration=configuration)
         if configuration.robots is None:
@@ -422,10 +440,14 @@ class SimulatedController(ConfigurablePeriphery, AbstractController):
         }
         self._simulated_io = SimulatedIO()
 
+    @property
+    def configuration(self) -> Configuration:
+        return self._configuration
+
     def get_motion_groups(self) -> dict[str, AbstractRobot]:
         return self._robots
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: int | str) -> AbstractRobot:
         return self._robots[f"{item}@{self.id}"]
 
     async def read(self, key: str) -> ValueType:
@@ -437,7 +459,7 @@ class SimulatedController(ConfigurablePeriphery, AbstractController):
     async def wait_for_bool_io(self, key: str, value: bool) -> None:
         await self._simulated_io.wait_for_bool_io(key, value)
 
-    async def open(self):
+    async def open(self) -> None:
         if self.configuration.raises_on_open:
             raise RuntimeError("RaisingRobotCell")
 
@@ -452,11 +474,13 @@ class SimulatedTimer(Timer):
     def __init__(self, configuration: Configuration = Configuration()):
         super().__init__(configuration=configuration)
 
-    async def __call__(self, duration: float):
+    async def __call__(self, duration: float) -> None:
         print(f"Wait for {duration} ms")
 
 
-class SimulatedAsyncCallable(ConfigurablePeriphery, AsyncCallableDevice):
+class SimulatedAsyncCallable(
+    ConfigurablePeriphery, AsyncCallableDevice[tuple[str, tuple[Any, ...]]]
+):
     """A simulated callable of an external function or service
 
     Example:
@@ -474,17 +498,17 @@ class SimulatedAsyncCallable(ConfigurablePeriphery, AsyncCallableDevice):
         id: str = "callable"
 
     # TODO the id is only "sensor" to make it work for the current RobotCell
-    def __init__(self, configuration: Configuration = Configuration(id="sensor")):
+    def __init__(self, configuration: Configuration = Configuration(id="sensor")) -> None:
         super().__init__(configuration=configuration)
 
-    async def _call(self, key, *args):
+    async def _call(self, key: str, *args: Any) -> tuple[str, tuple[Any, ...]]:
         return key, args
 
 
 class SimulatedRobotCell(RobotCell):
     """A robot cell fully simulated (on default)"""
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         defaults = {
             "timer": SimulatedTimer(),
             "controller": SimulatedController(),
@@ -509,7 +533,7 @@ def get_simulated_robot_configs(
 
 
 def get_robot_controller(
-    controller_id="controller", num_robots=1, raises_on_open=False
+    controller_id: str = "controller", num_robots: SupportsIndex = 1, raises_on_open: bool = False
 ) -> SimulatedController:
     """Get a simulated controller"""
     return SimulatedController(

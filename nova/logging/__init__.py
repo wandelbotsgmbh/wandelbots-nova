@@ -4,7 +4,7 @@ import sys
 from nova.config import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 
-def configure_logging():
+def configure_logging() -> logging.Logger:
     # Configure a single, consistent handler (stdout + our formatter).
     _formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT)
     _handler = logging.StreamHandler(sys.stdout)
@@ -25,4 +25,4 @@ def configure_logging():
     return logger
 
 
-logger = configure_logging()
+logger: logging.Logger = configure_logging()

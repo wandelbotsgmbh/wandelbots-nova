@@ -3,7 +3,7 @@ from typing import Any
 from .client import ClientConfig, OPCUAClient, SubscriptionConfig
 
 
-async def opcua_write(url: str, node_id: str, value: Any, options: dict | None = None):
+async def opcua_write(url: str, node_id: str, value: Any, options: dict[str, Any] | None = None) -> None:
     """Write a value to the opcua node
 
     Node ids should be based on opcua standard.
@@ -41,7 +41,7 @@ async def opcua_write(url: str, node_id: str, value: Any, options: dict | None =
         await opc.write_node(node_id, value)
 
 
-async def opcua_read(url: str, node_id: str, options: dict | None = None) -> Any:
+async def opcua_read(url: str, node_id: str, options: dict[str, Any] | None = None) -> Any:
     """Reads the value of a opcua node and returns the result
 
     Node ids should be based on opcua standard.
@@ -82,7 +82,7 @@ async def opcua_read(url: str, node_id: str, options: dict | None = None) -> Any
         return await opc.read_node(node_id)
 
 
-async def opcua_call(url: str, object_id: str, function_id: str, *args) -> Any:
+async def opcua_call(url: str, object_id: str, function_id: str, *args: Any) -> Any:
     """executes the opcua function and returns the result
 
     Node ids should be based on opcua standard.
@@ -133,7 +133,7 @@ async def opcua_call(url: str, object_id: str, function_id: str, *args) -> Any:
         return await opc.call_node(object_id, function_id, *opcua_function_args)
 
 
-async def wait_for_opcua_value(url: str, node_id: str, value: Any, config: dict | None = None):
+async def wait_for_opcua_value(url: str, node_id: str, value: Any, config: dict[str, Any] | None = None) -> None:
     """watches the opcua node with the given key until it matches the given value
 
     Node ids should be based on opcua standard.

@@ -1,18 +1,19 @@
+from typing import Any
 from urllib.parse import urlparse
 
 from decouple import config
 from pydantic import BaseModel, Field, model_validator
 
 # Configuration for accessing the Nova platform
-INTERNAL_CLUSTER_NOVA_API = "http://api-gateway.wandelbots.svc.cluster.local:8080"
-NOVA_API = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
-NOVA_ACCESS_TOKEN = config("NOVA_ACCESS_TOKEN", default=None)
+INTERNAL_CLUSTER_NOVA_API: str = "http://api-gateway.wandelbots.svc.cluster.local:8080"
+NOVA_API: str = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
+NOVA_ACCESS_TOKEN: str | None = config("NOVA_ACCESS_TOKEN", default=None)
 
 # Runtime configuration provided by the environment
-NATS_BROKER = config("NATS_BROKER", default=None)
-CELL_NAME = config("CELL_NAME", default="cell", cast=str)
-BASE_PATH = config("BASE_PATH", default=None)
-K8S_NAMESPACE = config("K8S_NAMESPACE", default="cell")
+NATS_BROKER: str | None = config("NATS_BROKER", default=None)
+CELL_NAME: str = config("CELL_NAME", default="cell", cast=str)
+BASE_PATH: str | None = config("BASE_PATH", default=None)
+K8S_NAMESPACE: str = config("K8S_NAMESPACE", default="cell")
 
 # Log configuration
 LOG_LEVEL: str = config("LOG_LEVEL", default="INFO").upper()
@@ -20,7 +21,7 @@ LOG_FORMAT: str = config("LOG_FORMAT", default="%(asctime)s [%(levelname)s] %(na
 LOG_DATETIME_FORMAT: str = config("LOG_DATETIME_FORMAT", default="%Y-%m-%d %H:%M:%S")
 
 # Feature flags
-ENABLE_TRAJECTORY_TUNING = config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False)
+ENABLE_TRAJECTORY_TUNING: bool = config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False)
 
 
 class NovaConfig(BaseModel):
@@ -38,7 +39,7 @@ class NovaConfig(BaseModel):
     host: str = Field(..., description="Nova API host.")
     access_token: str | None = Field(default=None, description="Access token for Nova API.")
     verify_ssl: bool = Field(default=True)
-    nats_client_config: dict | None = Field(
+    nats_client_config: dict[str, Any] | None = Field(
         default=None,
         description="Client configuration to pass to the nats library. See: https://nats-io.github.io/nats.py/modules.html#nats.aio.client.Client.connect",
     )
@@ -90,4 +91,4 @@ class NovaConfig(BaseModel):
 
 
 # default config to be used by the SDK if no other explict config is provided
-default_config = NovaConfig(host=NOVA_API, access_token=NOVA_ACCESS_TOKEN)
+default_config: NovaConfig = NovaConfig(host=NOVA_API, access_token=NOVA_ACCESS_TOKEN)

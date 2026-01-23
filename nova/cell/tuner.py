@@ -1,13 +1,13 @@
 import asyncio
 import json
 import logging
-from typing import Optional
+from typing import Any, AsyncGenerator, Callable, Optional
 
 import pydantic
 
 from .movement_controller.trajectory_cursor import MotionEvent, TrajectoryCursor, motion_started
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class TrajectoryTuner:
@@ -57,11 +57,11 @@ class TrajectoryTuner:
             pass
     """
 
-    def __init__(self, plan_fn, execute_fn):
+    def __init__(self, plan_fn: Callable[..., Any], execute_fn: Callable[..., Any]) -> None:
         self.plan_fn = plan_fn
         self.execute_fn = execute_fn
 
-    async def tune(self, actions, motion_group_state_stream_fn):
+    async def tune(self, actions: Any, motion_group_state_stream_fn: Callable[..., Any]) -> AsyncGenerator[Any, None]:
         finished_tuning = False
         continue_tuning_event = asyncio.Event()
         last_operation_result = None  # TODO implement this feature

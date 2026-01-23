@@ -1,5 +1,6 @@
 from contextlib import contextmanager
-from typing import Optional
+from types import TracebackType
+from typing import Iterator, Optional
 
 from nova.actions import Action
 from nova.actions.motions import Motion
@@ -7,7 +8,7 @@ from nova.types import MotionSettings
 
 
 class TrajectoryBuilder:
-    def __init__(self, settings: Optional[MotionSettings] = None):
+    def __init__(self, settings: Optional[MotionSettings] = None) -> None:
         """A builder for trajectories.
 
         Args:
@@ -16,10 +17,15 @@ class TrajectoryBuilder:
         self._actions: list[Action] = []
         self._settings_stack: list[MotionSettings] = [settings or MotionSettings()]
 
-    def __enter__(self):
+    def __enter__(self) -> "TrajectoryBuilder":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         pass
 
     @property
@@ -31,18 +37,18 @@ class TrajectoryBuilder:
         """The current settings to use for the trajectory."""
         return self._settings_stack[-1]
 
-    def move(self, motion: Motion):
+    def move(self, motion: Motion) -> None:
         """Add a motion to the trajectory."""
         # handle motions that has default setting
         if motion.settings is None or motion.settings == MotionSettings():
             motion.settings = self._current_settings()
         self._actions.append(motion)
 
-    def trigger(self, action: Action):
+    def trigger(self, action: Action) -> None:
         """Add a action to the trajectory."""
         self._actions.append(action)
 
-    def sequence(self, *args: Action | list[Action] | tuple[Action, ...]):
+    def sequence(self, *args: Action | list[Action] | tuple[Action, ...]) -> None:
         """Add a sequence of actions to the trajectory.
 
         Args:
@@ -73,11 +79,11 @@ class TrajectoryBuilder:
         finally:
             self._settings_stack.pop()
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Action]:
         return iter(self._actions)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._actions)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Action:
         return self._actions[idx]

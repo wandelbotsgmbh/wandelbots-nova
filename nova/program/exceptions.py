@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -23,8 +24,8 @@ class ProgramError(Exception):
 
     location: TextRange | None
 
-    def dict(self):
-        result = {"text": self.message()}
+    def dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {"text": self.message()}
         if self.location:
             result["line"] = self.location.start.line
             result["column"] = self.location.start.column
@@ -33,14 +34,10 @@ class ProgramError(Exception):
     def message(self) -> str:
         return "Unexpected error"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if isinstance(self.location, TextRange):
             super().__init__(
                 f"At line {self.location.start.line} column {self.location.start.column}: {self.message()}"
-            )
-        elif isinstance(self.location, TextPosition):
-            super().__init__(
-                f"At line {self.location.line} column {self.location.column}: {self.message()}"
             )
         else:
             super().__init__(self.message())
@@ -49,7 +46,7 @@ class ProgramError(Exception):
 class ProgramRuntimeError(ProgramError):
     """Any runtime constraint is not fulfilled"""
 
-    def message(self):
+    def message(self) -> str:
         return "Runtime error"
 
 
@@ -59,5 +56,5 @@ class NotPlannableError(ProgramRuntimeError):
 
     value: str
 
-    def message(self):
+    def message(self) -> str:
         return self.value

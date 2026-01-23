@@ -5,9 +5,9 @@ from collections import defaultdict
 from contextlib import AsyncExitStack, aclosing
 from functools import reduce
 from typing import (
+    Any,
     AsyncGenerator,
     AsyncIterable,
-    Awaitable,
     ClassVar,
     Generic,
     Literal,
@@ -29,7 +29,7 @@ from nova import api
 from nova.actions import Action, MovementController
 from nova.types import MotionState, Pose, RobotState
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class RobotCellError(Exception):
@@ -47,10 +47,12 @@ class RobotCellKeyError(KeyError):
 class ConfigurablePeriphery:
     """A device which is configurable"""
 
-    all_classes: ClassVar[dict] = {}
+    all_classes: ClassVar[
+        dict[type["ConfigurablePeriphery.Configuration"], type["ConfigurablePeriphery"]]
+    ] = {}
 
-    def __init_subclass__(cls, is_abstract=False):
-        super().__init_subclass__()
+    def __init_subclass__(cls, is_abstract: bool = False, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
         if not is_abstract:
             assert (
                 hasattr(cls, "Configuration")
@@ -66,30 +68,30 @@ class ConfigurablePeriphery:
             id: A unique id to reference the periphery
         """
 
-        model_config = pydantic.ConfigDict(frozen=True)
+        model_config: ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(frozen=True)  # pyright: ignore[reportIncompatibleVariableOverride]
 
         type: str
         id: str
 
     _configuration: Configuration
 
-    def __init__(self, configuration: Configuration, **kwargs):
+    def __init__(self, configuration: Configuration, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._configuration = configuration
 
     @property
-    def configuration(self):
+    def configuration(self) -> Configuration:
         return self._configuration
 
     @property
-    def id(self):
+    def id(self) -> str:
         return self.configuration.id
 
 
 class Device(ABC):
     """A device that takes care of lifetime management"""
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._is_active = False
 
@@ -97,22 +99,24 @@ class Device(ABC):
         """Allocates the external hardware resource (i.e. establish a connection)"""
         self._is_active = True
 
-    async def close(self):
+    async def close(self) -> None:
         """Release the external hardware (i.e. close connection or set mode of external hardware back)"""
         self._is_active = False
 
-    async def restart(self):
+    async def restart(self) -> None:
         if self._is_active:
             await self.close()
         await self.open()
 
     @final
-    async def __aenter__(self):
+    async def __aenter__(self) -> "Device":
         await self.open()
         return self
 
     @final
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
+    ) -> None:
         await self.close()
 
 
@@ -122,13 +126,13 @@ T = TypeVar("T")
 class AsyncCallableDevice(Generic[T], Device):
     """An awaitable external function or service in the robot cell"""
 
-    async def __call__(self, *args, **kwargs) -> Awaitable[T]:
+    async def __call__(self, *args: Any, **kwargs: Any) -> T:
         if not self._is_active:
             raise ValueError("The device is not activated.")
         return await self._call(*args)
 
     @abstractmethod
-    async def _call(self, key, *args) -> Awaitable[T]:
+    async def _call(self, key: str, *args: Any) -> T:
         """The implementation of the call method. AbstractAwaitable guarantees that the device is activated.
 
         Args:
@@ -194,12 +198,12 @@ class AbstractRobot(Device):
 
     _id: str
 
-    def __init__(self, id: str, **kwargs):
+    def __init__(self, id: str, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._id = id
 
     @property
-    def id(self):
+    def id(self) -> str:
         return self._id
 
     @abstractmethod
@@ -415,7 +419,7 @@ class AbstractRobot(Device):
         """
 
     @abstractmethod
-    async def joints(self) -> tuple:
+    async def joints(self) -> tuple[float, ...]:
         """Return the current joint positions of the robot
 
         Returns: the current joint positions
@@ -467,7 +471,7 @@ class AbstractRobot(Device):
         """
 
     @abstractmethod
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop behaviour of the robot"""
 
 
@@ -498,22 +502,22 @@ class Timer(ConfigurablePeriphery, AbstractTimer):
     def __init__(self, configuration: Configuration = Configuration()):
         super().__init__(configuration)
 
-    async def __call__(self, duration: float):
+    async def __call__(self, duration: float) -> None:
         await asyncio.sleep(duration / 1000)
 
 
 class RobotCell:
     """Access a simulated or real robot"""
 
-    _devices: dict
+    _devices: dict[str, Device | None]
 
-    def __init__(self, timer: AbstractTimer | None = None, **kwargs):
+    def __init__(self, timer: AbstractTimer | None = None, **kwargs: Device | None) -> None:
         if timer is None:
             timer = Timer()
         devices = {"timer": timer, **kwargs}
         # TODO: if "timer" has not the same id it cannot correctly be serialized/deserialized currently
         for device_name, device in devices.items():
-            if device is not None and device_name != device.id:
+            if device is not None and hasattr(device, "id") and device_name != device.id:
                 raise ValueError(
                     f"The device name should match its name in the robotcell but are '{device_name}' and '{device.id}'"
                 )
@@ -521,10 +525,10 @@ class RobotCell:
         self._device_exit_stack = AsyncExitStack()
 
     @property
-    def devices(self) -> dict:
+    def devices(self) -> dict[str, Device | None]:
         return self._devices
 
-    def set_configurations(self, configurations: list[ConfigurablePeriphery.Configuration]):
+    def set_configurations(self, configurations: list[ConfigurablePeriphery.Configuration]) -> None:
         """Set the configurations of all devices that are attached to the robot cell
 
         Args:
@@ -534,7 +538,9 @@ class RobotCell:
         self._devices.clear()
         self.apply_configurations(configurations)
 
-    def apply_configurations(self, configurations: list[ConfigurablePeriphery.Configuration]):
+    def apply_configurations(
+        self, configurations: list[ConfigurablePeriphery.Configuration]
+    ) -> None:
         """Applies all given device configurations to the robot cell. If the id is already in the
         robot cell the device gets overriden.
 
@@ -548,7 +554,7 @@ class RobotCell:
             result = ConfigurablePeriphery.all_classes[type(configuration)](
                 configuration=configuration
             )
-            self._devices[device_id] = result
+            self._devices[device_id] = result  # type: ignore[assignment]
 
     def to_configurations(self) -> list[ConfigurablePeriphery.Configuration]:
         """Return the configurations of all devices that are attached to the robot cell
@@ -559,13 +565,15 @@ class RobotCell:
         """
         # TODO: remove 'hasattr(device, "configuration")' See: https://wandelbots.atlassian.net/browse/WP-554
         return [
-            device.configuration
+            device.configuration  # type: ignore[union-attr]
             for device in self._devices.values()
             if hasattr(device, "configuration")
         ]
 
     @classmethod
-    def from_configurations(cls, configurations: list[ConfigurablePeriphery.Configuration]):
+    def from_configurations(
+        cls, configurations: list[ConfigurablePeriphery.Configuration]
+    ) -> "RobotCell":
         """Construct a new robot_cell from the device configurations
 
         Returns:
@@ -617,12 +625,16 @@ class RobotCell:
 
     @property
     def timer(self) -> AbstractTimer:
-        return self["timer"]
+        timer = self["timer"]
+        assert isinstance(timer, AbstractTimer)  # Timer should always be AbstractTimer
+        return timer
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the robot cell"""
         stoppable_devices = [
-            device for device in self._devices.values() if isinstance(device, StoppableDevice)
+            device
+            for device in self._devices.values()
+            if device is not None and isinstance(device, StoppableDevice)
         ]
         if not stoppable_devices:
             return
@@ -631,10 +643,12 @@ class RobotCell:
             for device in stoppable_devices:
                 task_group.start_soon(device.stop)
 
-    async def stream_state(self, rate_msecs: int):
-        """Stream the state of the robot cell"""
+    async def stream_state(self, rate_msecs: int) -> AsyncGenerator[AbstractDeviceState, None]:
+        """Stream the state of the robot cell""" ""
         state_streaming_devices = [
-            device for device in self._devices.values() if isinstance(device, StateStreamingDevice)
+            device
+            for device in self._devices.values()
+            if device is not None and isinstance(device, StateStreamingDevice)
         ]
         if not state_streaming_devices:
             return
@@ -653,22 +667,27 @@ class RobotCell:
     # async def close(self):
     #    raise NotImplementedError()
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "RobotCell":
         for device in self._devices.values():
             if device is not None:
                 await self._device_exit_stack.enter_async_context(device)
         return self
 
-    async def __aexit__(self, exc_type, exc_value, exc_traceback):
-        return await self._device_exit_stack.aclose()
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_traceback: Any,
+    ) -> None:
+        await self._device_exit_stack.aclose()
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: str) -> Device | None:
         try:
             return self._devices.__getitem__(item)
         except KeyError as exc:
             raise RobotCellKeyError(item) from exc
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: str) -> None:
         try:
             return self._devices.__delitem__(key)
         except KeyError as exc:

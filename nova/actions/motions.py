@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Any, Literal, Sequence
+from typing import Any, Literal, NoReturn, Sequence
 
 import pydantic
 
@@ -37,7 +37,7 @@ class Motion(Action, ABC):
     collision_setup: api.models.CollisionSetup | None = None
 
     @property
-    def is_cartesian(self):
+    def is_cartesian(self) -> bool:
         return isinstance(self.target, Pose)
 
     def is_motion(self) -> bool:
@@ -56,7 +56,7 @@ class Linear(Motion):
     type: Literal["linear"] = "linear"
     target: Pose
 
-    def to_api_model(self):
+    def to_api_model(self) -> api.models.PathLine:
         """Serialize the model to the API model
 
         Examples:
@@ -72,7 +72,7 @@ def linear(
     target: PoseOrSequence,
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
-    **kwargs: dict[str, Any],
+    **kwargs: Any,
 ) -> Linear:
     """Convenience function to create a linear motion
 
@@ -132,7 +132,7 @@ def cartesian_ptp(
     target: PoseOrSequence,
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
-    **kwargs: dict[str, Any],
+    **kwargs: Any,
 ) -> CartesianPTP:
     """Convenience function to create a point-to-point motion
 
@@ -195,7 +195,7 @@ def circular(
     intermediate: PoseOrSequence,
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
-    **kwargs: dict[str, Any],
+    **kwargs: Any,
 ) -> Circular:
     """Convenience function to create a circular motion
 
@@ -260,7 +260,7 @@ def joint_ptp(
     target: tuple[float, ...],
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
-    **kwargs: dict[str, Any],
+    **kwargs: Any,
 ) -> JointPTP:
     """Convenience function to create a joint PTP motion
 
@@ -300,7 +300,7 @@ class Spline(Motion):
     path_parameter: float = pydantic.Field(1, ge=0)
     time: float | None = pydantic.Field(default=None, ge=0)
 
-    def to_api_model(self):
+    def to_api_model(self) -> NoReturn:
         raise NotImplementedError("Spline motion is not implemented yet")
 
 
@@ -308,9 +308,9 @@ def spline(
     target: PoseOrSequence,
     settings: MotionSettings = MotionSettings(),
     path_parameter: float = 1,
-    time=None,
+    time: float | None = None,
     collision_setup: api.models.CollisionSetup | None = None,
-    **kwargs: dict[str, Any],
+    **kwargs: Any,
 ) -> Spline:
     """Convenience function to create a spline motion
 
@@ -376,7 +376,7 @@ def collision_free(
     algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(
         api.models.RRTConnectAlgorithm()
     ),
-    **kwargs: dict[str, Any],
+    **kwargs: Any,
 ) -> CollisionFreeMotion:
     """Convenience function to create a collision free motion
 

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from typing import Iterable, Sized
+from typing import TYPE_CHECKING, Any, Iterable, Iterator, Sequence, Sized
 
 import numpy as np
+import numpy.typing as npt
+
+if TYPE_CHECKING:
+    pass
 import pydantic
 from scipy.spatial.transform import Rotation
 
@@ -52,7 +56,7 @@ class Pose(pydantic.BaseModel, Sized):
     position: Vector3d
     orientation: Vector3d
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Parse a tuple into a dict
 
         Examples:
@@ -85,10 +89,10 @@ class Pose(pydantic.BaseModel, Sized):
         else:
             super().__init__(**kwargs)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(round(self).to_tuple())
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, Pose):
             return NotImplemented
 
@@ -96,7 +100,7 @@ class Pose(pydantic.BaseModel, Sized):
         second_val = tuple(round(val, _POSE_EQUALITY_PRECISION) for val in other.to_tuple())
         return first_val == second_val
 
-    def __round__(self, n=None):
+    def __round__(self, n: int | None = None) -> Pose:
         if n is not None:
             raise NotImplementedError("Setting precision is not supported yet")
         pos_and_rot_vector = self.to_tuple()
@@ -107,10 +111,10 @@ class Pose(pydantic.BaseModel, Sized):
             )
         )
 
-    def __len__(self):
+    def __len__(self) -> int:
         return 6
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[float]:  # type: ignore[override]
         """Iterate over the pose
 
         Examples:
@@ -145,7 +149,7 @@ class Pose(pydantic.BaseModel, Sized):
         # Convert back to a Pose
         return self._matrix_to_pose(inv_matrix)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: int) -> float:
         return self.to_tuple()[item]
 
     def to_tuple(self) -> tuple[float, float, float, float, float, float]:
@@ -171,7 +175,7 @@ class Pose(pydantic.BaseModel, Sized):
             ),
         )
 
-    def __matmul__(self, other):
+    def __matmul__(self, other: Pose | Vector3d | Sequence[float]) -> Pose:
         """
         Pose concatenation combines two poses into a single pose that represents the cumulative effect of both
         transformations applied sequentially.
@@ -206,7 +210,7 @@ class Pose(pydantic.BaseModel, Sized):
 
         raise ValueError(f"Cannot multiply Pose with {type(other)}")
 
-    def __array__(self, dtype=None):
+    def __array__(self, dtype: npt.DTypeLike = None) -> npt.NDArray[Any]:
         """Convert Pose to a 6-element numpy array: [pos.x, pos.y, pos.z, ori.x, ori.y, ori.z].
 
         Examples:
@@ -218,11 +222,11 @@ class Pose(pydantic.BaseModel, Sized):
         # The `to_tuple()` method already returns (x, y, z, rx, ry, rz)
         return np.array(self.to_tuple(), dtype=dtype)
 
-    def transform(self, other) -> Pose:
+    def transform(self, other: Pose | Vector3d | Sequence[float]) -> Pose:
         return self @ other
 
     @pydantic.model_serializer
-    def serialize_model(self):
+    def serialize_model(self) -> dict[str, list[float]]:
         """
         Examples:
         >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).model_dump()
@@ -232,7 +236,7 @@ class Pose(pydantic.BaseModel, Sized):
 
     @pydantic.model_validator(mode="before")
     @classmethod
-    def model_validator(cls, data):
+    def model_validator(cls, data: dict[str, Any]) -> dict[str, Vector3d]:
         """Transform the data that is passed into model validator to match what we return in the model_dump"""
         if not isinstance(data, dict):
             raise ValueError("model_validator only accepts dicts")
@@ -243,7 +247,7 @@ class Pose(pydantic.BaseModel, Sized):
             "orientation": Vector3d(x=ori[0], y=ori[1], z=ori[2]),
         }
 
-    def _to_homogenous_transformation_matrix(self):
+    def _to_homogenous_transformation_matrix(self) -> npt.NDArray[np.floating[Any]]:
         """Converts the pose (position and rotation vector) to a 4x4 homogeneous transformation matrix."""
         rotation_vec = [self.orientation.x, self.orientation.y, self.orientation.z]
         rotation_matrix = Rotation.from_rotvec(rotation_vec).as_matrix()
@@ -252,7 +256,7 @@ class Pose(pydantic.BaseModel, Sized):
         mat[:3, 3] = [self.position.x, self.position.y, self.position.z]
         return mat
 
-    def _matrix_to_pose(self, matrix: np.ndarray) -> Pose:
+    def _matrix_to_pose(self, matrix: npt.NDArray[np.floating[Any]]) -> Pose:
         """Converts a homogeneous transformation matrix to a Pose."""
         rotation_matrix = matrix[:3, :3]
         position = matrix[:3, 3]
@@ -271,8 +275,8 @@ class Pose(pydantic.BaseModel, Sized):
     @classmethod
     def from_euler(
         cls,
-        position: Vector3d | tuple | list,
-        euler_angles: tuple | list,
+        position: Vector3d | tuple[float, float, float] | list[float],
+        euler_angles: tuple[float, float, float] | list[float],
         convention: str = "xyz",
         degrees: bool = False,
     ) -> Pose:
@@ -294,7 +298,7 @@ class Pose(pydantic.BaseModel, Sized):
         True
         """
         if not isinstance(position, Vector3d):
-            position = Vector3d.from_tuple(tuple(position))
+            position = Vector3d.from_tuple(tuple(position))  # type: ignore[arg-type]
 
         # convert eulerangles to rotation vector
         rotation = Rotation.from_euler(convention, euler_angles, degrees=degrees)
@@ -304,12 +308,12 @@ class Pose(pydantic.BaseModel, Sized):
 
         return cls(position=position, orientation=orientation)
 
-    def orientation_to_quaternion(self):
+    def orientation_to_quaternion(self) -> npt.NDArray[np.floating[Any]]:
         values = np.asarray(self.orientation)
         half_angle = np.linalg.norm(values) / 2
         return np.concatenate([np.cos(half_angle)[None], values * np.sinc(half_angle / np.pi) / 2])
 
     @property
-    def matrix(self) -> np.ndarray:
+    def matrix(self) -> npt.NDArray[np.floating[Any]]:
         """Returns the homogeneous transformation matrix."""
         return self._to_homogenous_transformation_matrix()

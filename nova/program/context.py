@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from nova import Nova
+    from nova.cell.cell import Cell
+    from nova.events import Cycle
 
 current_program_context_var: contextvars.ContextVar["ProgramContext | None"] = (
     contextvars.ContextVar("current_program_context_var", default=None)
@@ -14,18 +16,18 @@ current_program_context_var: contextvars.ContextVar["ProgramContext | None"] = (
 class ProgramContext:
     """Context passed into every program execution."""
 
-    def __init__(self, nova: Nova, program_id: str | None = None):
+    def __init__(self, nova: "Nova", program_id: str | None = None) -> None:
         self._nova = nova
         self._program_id = program_id
         self._cell = nova.cell()
 
     @property
-    def nova(self) -> Nova:
+    def nova(self) -> "Nova":
         """Returns the Nova instance for the program."""
         return self._nova
 
     @property
-    def cell(self):
+    def cell(self) -> "Cell":
         """Returns the default cell for the program, if available."""
         return self._cell
 
@@ -34,7 +36,7 @@ class ProgramContext:
         """Returns the program ID for the program."""
         return self._program_id
 
-    def cycle(self, extra: dict[str, Any] | None = None):
+    def cycle(self, extra: dict[str, Any] | None = None) -> "Cycle":
         """Create a Cycle with program pre-populated in the extra data."""
         from nova.events import Cycle
 

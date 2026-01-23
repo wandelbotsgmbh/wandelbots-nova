@@ -3,14 +3,14 @@ import functools
 import logging
 import time
 from abc import ABC
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from nova import api
 from nova.cell.robot_cell import ConfigurablePeriphery, Device
 from nova.config import NovaConfig
 from nova.version import version as pkg_version
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 _API_VERSION = "v2"
@@ -86,32 +86,32 @@ class ApiGateway:
         self._api_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
 
         # Use the intercept function to wrap each API client
-        self.system_api = _intercept(api.api.SystemApi(api_client=self._api_client), self)
-        self.controller_api = _intercept(api.api.ControllerApi(api_client=self._api_client), self)
-        self.controller_ios_api = _intercept(
+        self.system_api: api.api.SystemApi = _intercept(api.api.SystemApi(api_client=self._api_client), self)
+        self.controller_api: api.api.ControllerApi = _intercept(api.api.ControllerApi(api_client=self._api_client), self)
+        self.controller_ios_api: api.api.ControllerInputsOutputsApi = _intercept(
             api.api.ControllerInputsOutputsApi(api_client=self._api_client), self
         )
-        self.virtual_controller_api = _intercept(
+        self.virtual_controller_api: api.api.VirtualControllerApi = _intercept(
             api.api.VirtualControllerApi(api_client=self._api_client), self
         )
-        self.virtual_controller_behavior_api = _intercept(
+        self.virtual_controller_behavior_api: api.api.VirtualControllerBehaviorApi = _intercept(
             api.api.VirtualControllerBehaviorApi(api_client=self._api_client), self
         )
         # TODO migrate stuff in rerun bridge and then remove this
-        self.virtual_robot_setup_api = self.virtual_controller_api
-        self.motion_group_api = _intercept(
+        self.virtual_robot_setup_api: api.api.VirtualControllerApi = self.virtual_controller_api
+        self.motion_group_api: api.api.MotionGroupApi = _intercept(
             api.api.MotionGroupApi(api_client=self._api_client), self
         )
-        self.motion_group_jogging_api = _intercept(
+        self.motion_group_jogging_api: api.api.JoggingApi = _intercept(
             api.api.JoggingApi(api_client=self._api_client), self
         )
-        self.store_collision_components_api = _intercept(
+        self.store_collision_components_api: api.api.StoreCollisionComponentsApi = _intercept(
             api.api.StoreCollisionComponentsApi(api_client=self._api_client), self
         )
         self.motion_group_models_api: api.api.MotionGroupModelsApi = _intercept(
             api.api.MotionGroupModelsApi(api_client=self._api_client), self
         )
-        self.store_collision_setups_api = _intercept(
+        self.store_collision_setups_api: api.api.StoreCollisionSetupsApi = _intercept(
             api.api.StoreCollisionSetupsApi(api_client=self._api_client), self
         )
         self.trajectory_planning_api: api.api.TrajectoryPlanningApi = _intercept(
@@ -123,22 +123,22 @@ class ApiGateway:
         self.trajectory_caching_api: api.api.TrajectoryCachingApi = _intercept(
             api.api.TrajectoryCachingApi(api_client=self._api_client), self
         )
-        self.controller_inputs_outputs_api = _intercept(
+        self.controller_inputs_outputs_api: api.api.ControllerInputsOutputsApi = _intercept(
             api.api.ControllerInputsOutputsApi(api_client=self._api_client), self
         )
-        self.jogging_api = _intercept(api.api.JoggingApi(api_client=self._api_client), self)
-        self.store_object_api = _intercept(
+        self.jogging_api: api.api.JoggingApi = _intercept(api.api.JoggingApi(api_client=self._api_client), self)
+        self.store_object_api: api.api.StoreObjectApi = _intercept(
             api.api.StoreObjectApi(api_client=self._api_client), self
         )
-        self.kinematics_api = _intercept(api.api.KinematicsApi(api_client=self._api_client), self)
-        self.cell_api = _intercept(api.api.CellApi(api_client=self._api_client), self)
-        self.bus_ios_api = _intercept(
+        self.kinematics_api: api.api.KinematicsApi = _intercept(api.api.KinematicsApi(api_client=self._api_client), self)
+        self.cell_api: api.api.CellApi = _intercept(api.api.CellApi(api_client=self._api_client), self)
+        self.bus_ios_api: api.api.BUSInputsOutputsApi = _intercept(
             api.api.BUSInputsOutputsApi(api_client=self._api_client), self
         )
 
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
-    async def close(self):
+    async def close(self) -> None:
         await self._api_client.close()
 
 
@@ -146,7 +146,7 @@ class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
     class Configuration(ConfigurablePeriphery.Configuration):
         config: NovaConfig
 
-    def __init__(self, configuration: Configuration, **kwargs):
+    def __init__(self, configuration: Configuration, **kwargs: Any) -> None:
         self._nova_config = configuration.config
         self._nova_api_gateway: ApiGateway | None = None
         super().__init__(configuration, **kwargs)
@@ -162,7 +162,7 @@ class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
     async def open(self) -> None:
         return await super().open()
 
-    async def close(self):
+    async def close(self) -> None:
         await super().close()
         if self._nova_api_gateway is not None:
             await self._nova_api_gateway.close()

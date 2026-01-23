@@ -10,9 +10,9 @@ from nova.types import (
     MovementControllerFunction,
 )
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
-_START_STATE_MONITOR_TIMEOUT = 5.0
+_START_STATE_MONITOR_TIMEOUT: float = 5.0
 
 
 # TODO: when the message exchange is not working as expected we should gracefully close

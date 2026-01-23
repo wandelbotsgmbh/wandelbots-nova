@@ -4,7 +4,7 @@ from nova.actions.motions import Motion
 from nova.exceptions import InconsistentCollisionScenes
 
 
-def compare_collision_setups(setup1: api.models.CollisionSetup, setup2: api.models.CollisionSetup):
+def compare_collision_setups(setup1: api.models.CollisionSetup, setup2: api.models.CollisionSetup) -> bool:
     """Return True if two pydantic CollisionSetup models are equal by value.
 
     Uses model_dump in json mode with exclude_unset/none to avoid differences caused
