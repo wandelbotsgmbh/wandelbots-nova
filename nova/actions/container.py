@@ -37,21 +37,19 @@ class CombinedActions(pydantic.BaseModel):
     @classmethod
     def from_actions(cls, actions: list[Action] | tuple[Action, ...]) -> "CombinedActions":
         """Create CombinedActions from a list of actions.
-        
+
         Args:
             actions: List or tuple of actions to include.
-            
+
         Returns:
             CombinedActions containing the valid action items.
-            
+
         Raises:
             TypeError: If any action is not a supported ActionContainerItem type
                 (Motion, WriteAction, or WaitAction).
         """
         valid_types = (Motion, WriteAction, WaitAction)
-        invalid_actions = [
-            action for action in actions if not isinstance(action, valid_types)
-        ]
+        invalid_actions = [action for action in actions if not isinstance(action, valid_types)]
         if invalid_actions:
             invalid_types = {type(a).__name__ for a in invalid_actions}
             raise TypeError(

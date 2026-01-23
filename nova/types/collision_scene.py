@@ -8,11 +8,11 @@ def compare_collision_scenes(
     scene1: wb.models.CollisionScene, scene2: wb.models.CollisionScene
 ) -> bool:
     """Compare two collision scenes for equality.
-    
+
     Args:
         scene1: First collision scene to compare.
         scene2: Second collision scene to compare.
-        
+
     Returns:
         True if the scenes are equal, False otherwise.
     """
