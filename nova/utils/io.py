@@ -1,10 +1,10 @@
-from dataclasses import dataclass
-from nova import Nova, api
-from typing import Any, Callable
 import logging
+from dataclasses import dataclass
+from typing import Any, Callable
+
 from pydantic.type_adapter import TypeAdapter
 
-from nova import get_current_program_context
+from nova import Nova, api, get_current_program_context
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +26,13 @@ def _resolve_nova(nova: Nova | None) -> Nova:
     """Resolve the Nova instance to use."""
     if nova is not None:
         return nova
-    
+
     context = get_current_program_context()
     if context is None:
         raise RuntimeError("No Nova instance available in the current context")
-    
+
     return context.nova
+
 
 def _convert_value(value: bool | str | float | None) -> bool | int | float | None:
     """Convert string values to integers, pass through other types."""
@@ -41,26 +42,19 @@ def _convert_value(value: bool | str | float | None) -> bool | int | float | Non
 
 
 async def get_bus_io_value(
-    ios: list[str],
-    *,
-    nova: Nova | None = None,
-    cell: str = "cell"
+    ios: list[str], *, nova: Nova | None = None, cell: str = "cell"
 ) -> dict[str, bool | int | float]:
     """Reads values from the given bus IOs."""
     nova = _resolve_nova(nova)
 
     values = await nova.api.bus_ios_api.get_bus_io_values(cell=cell, ios=ios)
-    return {
-        value.root.io: _convert_value(value.root.value)
-        for value in values
-    }
+
+    values = [value for value in values if value.root.value is not None]
+    return {value.root.io: _convert_value(value.root.value) for value in values}  # type: ignore
 
 
 async def set_bus_io_value(
-    io_values: dict[str, bool | int | float],
-    *,
-    nova: Nova | None = None,
-    cell: str = "cell",
+    io_values: dict[str, bool | int | float], *, nova: Nova | None = None, cell: str = "cell"
 ) -> None:
     """Sets values for the given bus IOs."""
     nova = _resolve_nova(nova)
@@ -78,9 +72,7 @@ async def set_bus_io_value(
             raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
         io_value_list.append(api.models.IOValue(io_value))
 
-    await nova.api.bus_ios_api.set_bus_io_values(
-        cell=cell, io_value=io_value_list
-    )
+    await nova.api.bus_ios_api.set_bus_io_values(cell=cell, io_value=io_value_list)
 
 
 async def wait_for_io(

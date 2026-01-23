@@ -1,7 +1,7 @@
 import asyncio
-from dataclasses import dataclass, field
 import json
 import logging
+from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator
 
 import pytest
@@ -111,7 +111,6 @@ async def test_write(setup_controllers: tuple[Controller, Controller]):
         await io.write("tool_out[0]", False)
         value3 = await io.read("tool_out[0]")
         assert value3 is False
-
 
 
 @pytest.fixture
@@ -325,7 +324,7 @@ async def test_set_io_on_path(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_bus_io_get_set_bool_int(setup_virtual_profinet: tuple[str, str, str]):
+async def test_bus_io_get_set_bool_int(setup_virtual_profinet: tuple[str, ...]):
     test_bool, _, test_int, _ = setup_virtual_profinet
 
     async with Nova() as nova:
@@ -353,7 +352,7 @@ async def test_bus_io_get_set_float(setup_virtual_profinet: tuple[str, str, str]
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_wait_io(setup_virtual_profinet: tuple[str,...]):
+async def test_wait_io(setup_virtual_profinet: tuple[str, ...]):
     async with Nova() as nova:
         test_bool, _, _, _ = setup_virtual_profinet
 
@@ -377,7 +376,7 @@ async def test_wait_io(setup_virtual_profinet: tuple[str,...]):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_wait_io_with_noisy_integer(setup_virtual_profinet: tuple[str, str, str]):
+async def test_wait_io_with_noisy_integer(setup_virtual_profinet: tuple[str, ...]):
     test_bool, _, test_int, _ = setup_virtual_profinet
 
     async with Nova() as nova:
@@ -415,4 +414,3 @@ async def test_wait_io_with_noisy_integer(setup_virtual_profinet: tuple[str, str
         # VERIFY
         async with asyncio.timeout(5):
             await wait_task
-
