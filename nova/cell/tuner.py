@@ -61,7 +61,9 @@ class TrajectoryTuner:
         self.plan_fn = plan_fn
         self.execute_fn = execute_fn
 
-    async def tune(self, actions: Any, motion_group_state_stream_fn: Callable[..., Any]) -> AsyncGenerator[Any, None]:
+    async def tune(
+        self, actions: Any, motion_group_state_stream_fn: Callable[..., Any]
+    ) -> AsyncGenerator[Any, None]:
         finished_tuning = False
         continue_tuning_event = asyncio.Event()
         last_operation_result = None  # TODO implement this feature

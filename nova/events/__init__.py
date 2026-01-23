@@ -2,7 +2,7 @@ import logging
 from abc import ABC
 from datetime import datetime, timedelta
 from types import TracebackType
-from typing import Any, Literal
+from typing import Any, Literal, Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -201,9 +201,9 @@ class Cycle:
             raise RuntimeError("Cycle not started") from e
 
         assert self.cycle_id is not None, "Cycle ID is missing; ensure start() was called first"
-        assert self._timer.start_time is not None, (
-            "Timer start_time is missing; ensure start() was called"
-        )
+        assert (
+            self._timer.start_time is not None
+        ), "Timer start_time is missing; ensure start() was called"
 
         duration_ms = int((end_time - self._timer.start_time).total_seconds() * 1000)
         event = CycleFinishedEvent(
@@ -261,7 +261,7 @@ class Cycle:
 
         self._timer.reset()
 
-    async def __aenter__(self) -> "Cycle":
+    async def __aenter__(self) -> Self:
         """
         Async context manager entry point that starts the cycle.
 

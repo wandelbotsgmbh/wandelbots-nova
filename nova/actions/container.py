@@ -141,9 +141,7 @@ class CombinedActions(pydantic.BaseModel):
                 settings.as_limits_settings() if settings.has_limits_override() else None
             )
             motion_command = api.models.MotionCommand(
-                path=motion.to_api_model(),  # type: ignore[arg-type]
-                blending=blending,
-                limits_override=limits_override,
+                path=motion.to_api_model(), blending=blending, limits_override=limits_override
             )
             motion_commands.append(motion_command)
         return motion_commands

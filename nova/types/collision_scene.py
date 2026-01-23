@@ -2,7 +2,9 @@
 import wandelbots_api_client as wb
 
 
-def compare_collition_scenes(scene1: wb.models.CollisionScene, scene2: wb.models.CollisionScene) -> bool:
+def compare_collition_scenes(
+    scene1: wb.models.CollisionScene, scene2: wb.models.CollisionScene
+) -> bool:
     if scene1.colliders != scene2.colliders:
         return False
 

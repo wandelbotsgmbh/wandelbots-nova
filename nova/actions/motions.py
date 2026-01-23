@@ -1,5 +1,5 @@
-from abc import ABC
-from typing import Any, Literal, NoReturn, Sequence
+from abc import ABC, abstractmethod
+from typing import Any, Literal, NoReturn, Sequence, TypeAlias
 
 import pydantic
 
@@ -7,6 +7,15 @@ from nova import api, utils
 from nova.actions.base import Action
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
+
+# Type alias for all motion path types returned by to_api_model
+MotionPath: TypeAlias = (
+    api.models.PathLine
+    | api.models.PathCartesianPTP
+    | api.models.PathCircle
+    | api.models.PathJointPTP
+    | api.models.PathCubicSpline
+)
 
 PoseOrSequence = Pose | Sequence[float]
 
@@ -42,6 +51,10 @@ class Motion(Action, ABC):
 
     def is_motion(self) -> bool:
         return True
+
+    @abstractmethod
+    def to_api_model(self) -> MotionPath:
+        """Convert the motion to an API path model"""
 
 
 class Linear(Motion):
@@ -362,7 +375,7 @@ class CollisionFreeMotion(Motion):
         api.models.RRTConnectAlgorithm()
     )
 
-    def to_api_model(self) -> api.models.PlanCollisionFreeRequest:
+    def to_api_model(self) -> api.models.PlanCollisionFreeRequest:  # type: ignore[override]
         """"""
         # TODO: use data structure and API model are too different.
         # don't return the API model here

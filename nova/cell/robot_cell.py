@@ -12,6 +12,7 @@ from typing import (
     Generic,
     Literal,
     Protocol,
+    Self,
     TypeVar,
     Union,
     final,
@@ -95,9 +96,10 @@ class Device(ABC):
         super().__init__(**kwargs)
         self._is_active = False
 
-    async def open(self) -> None:
+    async def open(self) -> Self:
         """Allocates the external hardware resource (i.e. establish a connection)"""
         self._is_active = True
+        return self
 
     async def close(self) -> None:
         """Release the external hardware (i.e. close connection or set mode of external hardware back)"""
@@ -109,7 +111,7 @@ class Device(ABC):
         await self.open()
 
     @final
-    async def __aenter__(self) -> "Device":
+    async def __aenter__(self) -> Self:
         await self.open()
         return self
 
@@ -571,9 +573,7 @@ class RobotCell:
         ]
 
     @classmethod
-    def from_configurations(
-        cls, configurations: list[ConfigurablePeriphery.Configuration]
-    ) -> "RobotCell":
+    def from_configurations(cls, configurations: list[ConfigurablePeriphery.Configuration]) -> Self:
         """Construct a new robot_cell from the device configurations
 
         Returns:
@@ -667,7 +667,7 @@ class RobotCell:
     # async def close(self):
     #    raise NotImplementedError()
 
-    async def __aenter__(self) -> "RobotCell":
+    async def __aenter__(self) -> Self:
         for device in self._devices.values():
             if device is not None:
                 await self._device_exit_stack.enter_async_context(device)

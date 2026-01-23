@@ -2,7 +2,7 @@ import asyncio
 import math
 import time
 from collections import defaultdict
-from typing import Any, AsyncGenerator, Literal, SupportsIndex
+from typing import Any, AsyncGenerator, Literal, Self, SupportsIndex
 
 import numpy as np
 
@@ -459,9 +459,10 @@ class SimulatedController(ConfigurablePeriphery, AbstractController):
     async def wait_for_bool_io(self, key: str, value: bool) -> None:
         await self._simulated_io.wait_for_bool_io(key, value)
 
-    async def open(self) -> None:
+    async def open(self) -> Self:
         if self.configuration.raises_on_open:
             raise RuntimeError("RaisingRobotCell")
+        return self
 
 
 class SimulatedTimer(Timer):

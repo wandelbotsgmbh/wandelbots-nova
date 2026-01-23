@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Self
 
 import nats
 
@@ -84,9 +84,11 @@ class Nova:
         except Exception as e:
             logger.error(f"Error closing Nova: {e}", exc_info=True)
 
-    async def __aenter__(self) -> "Nova":
+    async def __aenter__(self) -> Self:
         await self.open()
         return self
 
-    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
+    ) -> None:
         await self.close()

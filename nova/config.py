@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Self
 from urllib.parse import urlparse
 
 from decouple import config
@@ -45,7 +45,7 @@ class NovaConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _normalize_host_prefix(self) -> "NovaConfig":
+    def _normalize_host_prefix(self) -> Self:
         self.host = self.host.strip()
         self.host = self.host.rstrip("/")
 
@@ -55,7 +55,7 @@ class NovaConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _derive_nats_connection_string(self) -> "NovaConfig":
+    def _derive_nats_connection_string(self) -> Self:
         """
         Automatically derive the NATS client configuration if not explicitly set.
         """

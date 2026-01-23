@@ -3,7 +3,7 @@ import functools
 import logging
 import time
 from abc import ABC
-from typing import Any, TypeVar
+from typing import Any, Self, TypeVar
 
 from nova import api
 from nova.cell.robot_cell import ConfigurablePeriphery, Device
@@ -86,8 +86,12 @@ class ApiGateway:
         self._api_client.user_agent = f"Wandelbots-Nova-Python-SDK/{pkg_version}"
 
         # Use the intercept function to wrap each API client
-        self.system_api: api.api.SystemApi = _intercept(api.api.SystemApi(api_client=self._api_client), self)
-        self.controller_api: api.api.ControllerApi = _intercept(api.api.ControllerApi(api_client=self._api_client), self)
+        self.system_api: api.api.SystemApi = _intercept(
+            api.api.SystemApi(api_client=self._api_client), self
+        )
+        self.controller_api: api.api.ControllerApi = _intercept(
+            api.api.ControllerApi(api_client=self._api_client), self
+        )
         self.controller_ios_api: api.api.ControllerInputsOutputsApi = _intercept(
             api.api.ControllerInputsOutputsApi(api_client=self._api_client), self
         )
@@ -126,12 +130,18 @@ class ApiGateway:
         self.controller_inputs_outputs_api: api.api.ControllerInputsOutputsApi = _intercept(
             api.api.ControllerInputsOutputsApi(api_client=self._api_client), self
         )
-        self.jogging_api: api.api.JoggingApi = _intercept(api.api.JoggingApi(api_client=self._api_client), self)
+        self.jogging_api: api.api.JoggingApi = _intercept(
+            api.api.JoggingApi(api_client=self._api_client), self
+        )
         self.store_object_api: api.api.StoreObjectApi = _intercept(
             api.api.StoreObjectApi(api_client=self._api_client), self
         )
-        self.kinematics_api: api.api.KinematicsApi = _intercept(api.api.KinematicsApi(api_client=self._api_client), self)
-        self.cell_api: api.api.CellApi = _intercept(api.api.CellApi(api_client=self._api_client), self)
+        self.kinematics_api: api.api.KinematicsApi = _intercept(
+            api.api.KinematicsApi(api_client=self._api_client), self
+        )
+        self.cell_api: api.api.CellApi = _intercept(
+            api.api.CellApi(api_client=self._api_client), self
+        )
         self.bus_ios_api: api.api.BUSInputsOutputsApi = _intercept(
             api.api.BUSInputsOutputsApi(api_client=self._api_client), self
         )
@@ -159,7 +169,7 @@ class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
             self._nova_api_gateway = ApiGateway(self._nova_config)
         return self._nova_api_gateway
 
-    async def open(self) -> None:
+    async def open(self) -> Self:
         return await super().open()
 
     async def close(self) -> None:

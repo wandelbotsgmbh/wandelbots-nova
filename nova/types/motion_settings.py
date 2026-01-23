@@ -1,3 +1,5 @@
+from typing import Self
+
 import pydantic
 
 from nova import api
@@ -74,7 +76,7 @@ class MotionSettings(pydantic.BaseModel):
         return self.blending_auto or self.min_blending_velocity
 
     @pydantic.model_validator(mode="after")
-    def validate_blending_settings(self) -> "MotionSettings":
+    def validate_blending_settings(self) -> Self:
         blending_radius = self._get_blending_radius()
         blending_auto = self._get_blending_auto()
 

@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from types import TracebackType
-from typing import Iterator, Optional
+from typing import Iterator, Optional, Self
 
 from nova.actions import Action
 from nova.actions.motions import Motion
@@ -17,7 +17,7 @@ class TrajectoryBuilder:
         self._actions: list[Action] = []
         self._settings_stack: list[MotionSettings] = [settings or MotionSettings()]
 
-    def __enter__(self) -> "TrajectoryBuilder":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(

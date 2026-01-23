@@ -1,4 +1,4 @@
-from typing import AsyncGenerator, Literal, Sized
+from typing import AsyncGenerator, Literal, Self, Sized
 
 from nova import api
 from nova.core.gateway import NovaDevice
@@ -23,7 +23,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
 
     def __init__(self, configuration: Configuration):
         super().__init__(configuration)
-        self._motion_group_ids = None
+        self._motion_group_ids: list[str] | None = None
         self._io_access = IOAccess(
             api_client=self._nova_api,
             cell=self.configuration.cell_id,
@@ -43,7 +43,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         """
         return self.configuration.controller_id
 
-    async def open(self) -> "Controller":  # type: ignore[override]
+    async def open(self) -> Self:
         self._motion_group_ids = (await self._fetch_description()).connected_motion_groups
         await super().open()
         return self

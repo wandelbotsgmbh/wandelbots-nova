@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import aclosing
 from functools import partial
-from typing import AsyncGenerator, cast
+from typing import AsyncGenerator, Self, cast
 
 import numpy as np
 
@@ -299,7 +299,7 @@ class MotionGroup(AbstractRobot):
 
         return [Pose(tcp_pose) for tcp_pose in response.tcp_poses]
 
-    async def open(self) -> "MotionGroup":  # type: ignore[override]
+    async def open(self) -> Self:
         # TODO if there is no explicit motion group activation, what should we do here?
         # maybe we set the mode to control mode? But this is not needed (implicitly done by the trajectory execution)
         return self
