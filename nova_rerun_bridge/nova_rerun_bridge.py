@@ -414,7 +414,7 @@ class NovaRerunBridge:
 
     async def log_actions(
         self,
-        actions: list[Action | CollisionFreeMotion] | Action,
+        actions: list[Action] | Action,
         show_connection: bool = False,
         show_labels: bool = False,
         motion_group: Optional[MotionGroup] = None,
@@ -483,12 +483,11 @@ class NovaRerunBridge:
                     # Skip write actions without a previous pose/joint config
                     continue
 
-            elif isinstance(action, CollisionFreeMotion) and isinstance(action.target, Pose):
-                pose = action.target
-                last_pose = pose
-
             elif isinstance(action, Motion):
-                if hasattr(action, "target"):
+                if isinstance(action, CollisionFreeMotion) and isinstance(action.target, Pose):
+                    pose = action.target
+                    last_pose = pose
+                elif hasattr(action, "target"):
                     if isinstance(action.target, Pose):
                         # Cartesian motion
                         pose = action.target
@@ -518,7 +517,7 @@ class NovaRerunBridge:
             # Determine action type and color using better color palette
             from nova_rerun_bridge.colors import colors
 
-            if isinstance(action, WriteAction):
+            if action_type == "Write":
                 point_colors.append(tuple(colors[0]))  # Light purple for IO actions
             elif action_type == "joint_ptp":
                 point_colors.append(tuple(colors[2]))  # Medium purple for joint motions

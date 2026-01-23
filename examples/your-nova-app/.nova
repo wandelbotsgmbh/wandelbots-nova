@@ -8,7 +8,7 @@ port: 3000
 # App icon which will be shown in the homescreen. Path from the root of the served app.
 appIcon: app_icon.png
 #
-# A list of environment variables with name and their value. 
+# A list of environment variables with name and their value.
 # These can be used to configure the containerized application, and turn features on or off.
 # environment:
 #   - name: SOME_ENV_VAR
@@ -17,7 +17,7 @@ appIcon: app_icon.png
 # image registry to use when build with nova app install
 # imageRegistry: your-registry.host
 #
-# The path and capacity of a volume that retains data across application restarts. 
+# The path and capacity of a volume that retains data across application restarts.
 # The maximal requestable capacity is 300Mi.
 # storage:
 #  capacity: 100Mi
@@ -27,4 +27,3 @@ appIcon: app_icon.png
 # resources:
 #   intel-gpu: 1
 #   memory-limit: 1Gi
-   

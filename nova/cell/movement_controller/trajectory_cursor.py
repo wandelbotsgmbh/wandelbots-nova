@@ -411,7 +411,7 @@ class TrajectoryCursor:
         """
         self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
-        self.actions: CombinedActions = CombinedActions(items=actions)  # type: ignore[arg-type]
+        self.actions: CombinedActions = CombinedActions.from_actions(actions)
         self._command_queue: asyncio.Queue[ExecuteTrajectoryRequestCommand | _QueueSentinel] = (
             asyncio.Queue()
         )
@@ -428,6 +428,9 @@ class TrajectoryCursor:
         self._detach_on_standstill = detach_on_standstill
 
         self._operation_handler = OperationHandler()
+
+        # Will be set when the cursor is used as an async generator
+        self._response_stream: AsyncIterator[api.models.ExecuteTrajectoryResponse] | None = None
 
         self._initialize_task = asyncio.create_task(self.ainitialize())
 
@@ -884,12 +887,10 @@ class TrajectoryCursor:
                         continue  # wait for the execution to actually start
 
                     if not motion_group_state.execute and motion_group_state.standstill:
-                        assert current_op.operation_state not in (
-                            OperationState.INITIAL,
-                            OperationState.COMMANDED,
-                        ), (
-                            f"Unexpected operation state {current_op.operation_state} when standstill is True"
-                        )
+                        assert (
+                            current_op.operation_state
+                            not in (OperationState.INITIAL, OperationState.COMMANDED)
+                        ), f"Unexpected operation state {current_op.operation_state} when standstill is True"
                         self._complete_operation()
                         if self._detach_on_standstill:
                             logger.debug("Detaching on standstill")
@@ -916,9 +917,7 @@ class TrajectoryCursor:
                                 if self._detach_on_standstill:
                                     break
                             case _:
-                                assert False, (
-                                    f"Unexpected or unsupported motion group execute state: {motion_group_state.execute.details.state}"
-                                )
+                                assert False, f"Unexpected or unsupported motion group execute state: {motion_group_state.execute.details.state}"
         except asyncio.CancelledError:
             logger.debug("TrajectoryCursor motion group state monitor was cancelled")
             raise
@@ -940,6 +939,8 @@ class TrajectoryCursor:
         logger.debug("Starting response consumer for trajectory cursor")
         ready_event.set()
         try:
+            if self._response_stream is None:
+                raise RuntimeError("Response stream not initialized")
             async for response in self._response_stream:
                 logger.debug(f"Received response: {response}")
                 assert self._is_operation_in_progress()

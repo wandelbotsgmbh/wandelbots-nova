@@ -125,7 +125,7 @@ class Device(ABC):
 T = TypeVar("T")
 
 
-class AsyncCallableDevice(Generic[T], Device):
+class AsyncCallableDevice(Generic[T], Device, ABC):  # pyright: ignore[reportImplicitAbstractClass]
     """An awaitable external function or service in the robot cell"""
 
     async def __call__(self, *args: Any, **kwargs: Any) -> T:
@@ -154,6 +154,7 @@ class InputDevice(Protocol):
 
     async def read(self, key: str) -> ValueType:
         """Read a value given its key"""
+        ...  # Protocol methods should have ellipsis
 
 
 @runtime_checkable
@@ -162,6 +163,7 @@ class OutputDevice(Protocol):
 
     async def write(self, key: str, value: ValueType) -> None:
         """Write a value given its key and the new value"""
+        ...  # Protocol methods should have ellipsis
 
 
 @runtime_checkable
@@ -172,8 +174,9 @@ class IODevice(InputDevice, OutputDevice, Protocol):
 class AbstractDeviceState(Protocol):
     """A state of a device"""
 
-    def __eq__(self, other: "AbstractDeviceState") -> bool:
+    def __eq__(self, other: object) -> bool:
         """Check if the state is equal to another state"""
+        ...
 
 
 @runtime_checkable
@@ -182,6 +185,7 @@ class StoppableDevice(Protocol):
 
     async def stop(self) -> None:
         """Stop the device"""
+        ...
 
 
 @runtime_checkable
@@ -193,9 +197,10 @@ class StateStreamingDevice(Protocol):
         Args:
             rate: The rate at which the state should be streamed
         """
+        ...
 
 
-class AbstractRobot(Device):
+class AbstractRobot(Device, ABC):  # pyright: ignore[reportImplicitAbstractClass]
     """An interface for real and simulated robots"""
 
     _id: str
@@ -477,7 +482,9 @@ class AbstractRobot(Device):
         """Stop behaviour of the robot"""
 
 
-class AbstractController(Device):
+class AbstractController(Device, ABC):
+    """An abstract controller interface"""
+
     @abstractmethod
     def get_motion_groups(self) -> dict[str, AbstractRobot]:
         """Return all motion groups that are connected to the controller
@@ -486,7 +493,7 @@ class AbstractController(Device):
         """
 
 
-class AbstractTimer(Device):
+class AbstractTimer(Device, ABC):
     """A timer"""
 
     @abstractmethod
@@ -494,11 +501,11 @@ class AbstractTimer(Device):
         """Wait for a duration ms"""
 
 
-class Timer(ConfigurablePeriphery, AbstractTimer):
+class Timer(ConfigurablePeriphery, AbstractTimer):  # pyright: ignore[reportUnsafeMultipleInheritance]
     """A real timer (blocking the execution)"""
 
     class Configuration(ConfigurablePeriphery.Configuration):
-        type: Literal["timer", "simulated_timer"] = "timer"
+        type: Literal["timer", "simulated_timer"] = "timer"  # pyright: ignore[reportIncompatibleVariableOverride]
         id: str = "timer"
 
     def __init__(self, configuration: Configuration = Configuration()):
@@ -511,24 +518,23 @@ class Timer(ConfigurablePeriphery, AbstractTimer):
 class RobotCell:
     """Access a simulated or real robot"""
 
-    _devices: dict[str, Device | None]
-
     def __init__(self, timer: AbstractTimer | None = None, **kwargs: Device | None) -> None:
         if timer is None:
             timer = Timer()
         devices = {"timer": timer, **kwargs}
         # TODO: if "timer" has not the same id it cannot correctly be serialized/deserialized currently
         for device_name, device in devices.items():
-            if device is not None and hasattr(device, "id") and device_name != device.id:
+            device_id = getattr(device, "id", None)
+            if device is not None and device_id is not None and device_name != device_id:
                 raise ValueError(
-                    f"The device name should match its name in the robotcell but are '{device_name}' and '{device.id}'"
+                    f"The device name should match its name in the robotcell but are '{device_name}' and '{device_id}'"
                 )
         self._devices = devices
         self._device_exit_stack = AsyncExitStack()
 
     @property
-    def devices(self) -> dict[str, Device | None]:
-        return self._devices
+    def devices(self) -> dict[str, Device | ConfigurablePeriphery | None]:
+        return self._devices  # type: ignore[return-value]
 
     def set_configurations(self, configurations: list[ConfigurablePeriphery.Configuration]) -> None:
         """Set the configurations of all devices that are attached to the robot cell
@@ -556,7 +562,7 @@ class RobotCell:
             result = ConfigurablePeriphery.all_classes[type(configuration)](
                 configuration=configuration
             )
-            self._devices[device_id] = result  # type: ignore[assignment]
+            self._devices[device_id] = result  # type: ignore[assignment]  # pyright: ignore[reportArgumentType]
 
     def to_configurations(self) -> list[ConfigurablePeriphery.Configuration]:
         """Return the configurations of all devices that are attached to the robot cell
@@ -569,7 +575,7 @@ class RobotCell:
         return [
             device.configuration  # type: ignore[union-attr]
             for device in self._devices.values()
-            if hasattr(device, "configuration")
+            if isinstance(device, ConfigurablePeriphery)
         ]
 
     @classmethod
@@ -669,7 +675,7 @@ class RobotCell:
 
     async def __aenter__(self) -> Self:
         for device in self._devices.values():
-            if device is not None:
+            if device is not None and isinstance(device, Device):
                 await self._device_exit_stack.enter_async_context(device)
         return self
 
@@ -681,7 +687,7 @@ class RobotCell:
     ) -> None:
         await self._device_exit_stack.aclose()
 
-    def __getitem__(self, item: str) -> Device | None:
+    def __getitem__(self, item: str) -> Device | ConfigurablePeriphery | None:
         try:
             return self._devices.__getitem__(item)
         except KeyError as exc:

@@ -760,9 +760,9 @@ class TestTrajectoryDownsampling:
         # This is a soft check since the algorithm is probabilistic
         assert middle_samples > 0, "Middle section should have samples"
         # Verify that high curvature areas get reasonable sampling density
-        assert middle_density >= first_density * 0.5, (
-            f"Middle density ({middle_density}) should not be drastically lower than first ({first_density})"
-        )
+        assert (
+            middle_density >= first_density * 0.5
+        ), f"Middle density ({middle_density}) should not be drastically lower than first ({first_density})"
 
     def test_downsample_edge_case_two_samples(self):
         """Should handle trajectories with only two samples."""

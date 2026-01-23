@@ -45,7 +45,7 @@ def _parse_args(*args):
     raise ValueError("Invalid number of arguments for Pose")
 
 
-class Pose(pydantic.BaseModel, Sized):
+class Pose(pydantic.BaseModel, Sized):  # pyright: ignore[reportUnsafeMultipleInheritance]
     """A pose (position and orientation)
 
     Example:
@@ -114,7 +114,7 @@ class Pose(pydantic.BaseModel, Sized):
     def __len__(self) -> int:
         return 6
 
-    def __iter__(self) -> Iterator[float]:  # type: ignore[override]
+    def __iter__(self) -> Iterator[float]:  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride]
         """Iterate over the pose
 
         Examples:
@@ -298,7 +298,10 @@ class Pose(pydantic.BaseModel, Sized):
         True
         """
         if not isinstance(position, Vector3d):
-            position = Vector3d.from_tuple(tuple(position))  # type: ignore[arg-type]
+            pos_tuple = tuple(position)
+            if len(pos_tuple) != 3:
+                raise ValueError("Position must be a tuple of 3 floats")
+            position = Vector3d.from_tuple((pos_tuple[0], pos_tuple[1], pos_tuple[2]))
 
         # convert eulerangles to rotation vector
         rotation = Rotation.from_euler(convention, euler_angles, degrees=degrees)

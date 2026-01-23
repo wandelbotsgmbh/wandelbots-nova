@@ -52,12 +52,12 @@ async def test_ptp_planning(ur_mg):
         tcp="Flange",
     )
 
-    assert len(trajectory.joint_positions) > 0, (
-        "Collision-free planning did not return a valid joint trajectory"
-    )
-    assert trajectory.joint_positions[0].root == initial_joint_positions, (
-        "Initial joint positions do not match start"
-    )
+    assert (
+        len(trajectory.joint_positions) > 0
+    ), "Collision-free planning did not return a valid joint trajectory"
+    assert (
+        trajectory.joint_positions[0].root == initial_joint_positions
+    ), "Initial joint positions do not match start"
 
     # Verify that the final pose matches the target pose
     found_pose = (await ur_mg.forward_kinematics([trajectory.joint_positions[-1].root], "Flange"))[

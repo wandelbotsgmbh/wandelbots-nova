@@ -16,10 +16,11 @@ logger: logging.Logger = logging.getLogger(__name__)
 # Read BASE_PATH environment variable and extract app name
 # TODO: make a util and move the logic there
 
+_app_name: str | None  # Use lowercase to avoid constant redefinition error
 if BASE_PATH:
-    _APP_NAME = BASE_PATH.split("/")[-1] if "/" in BASE_PATH else None
+    _app_name = BASE_PATH.split("/")[-1] if "/" in BASE_PATH else None
 else:
-    _APP_NAME = None
+    _app_name = None
 
 _NATS_SUBJECT_TEMPLATE = "nova.v2.cells.{cell_id}.cycle"
 _APP_NAME_EXTRA_FIELD = "app"
@@ -62,7 +63,7 @@ class CycleDevice(OutputDevice, Device):
         super().__init__()
         self._cycle = Cycle(cell=cell)
 
-    async def write(self, key: str, _: object) -> None:
+    async def write(self, key: str, value: object) -> None:
         if hasattr(self._cycle, key):
             method = getattr(self._cycle, key)
             await method()
@@ -115,8 +116,8 @@ class Cycle:
         self._extra: dict[str, Any] = self._ensure_json_serializable(extra)
 
         # if we have the app name available always send it as extra
-        if _APP_NAME_EXTRA_FIELD not in self._extra and _APP_NAME is not None:
-            self._extra[_APP_NAME_EXTRA_FIELD] = _APP_NAME
+        if _APP_NAME_EXTRA_FIELD not in self._extra and _app_name is not None:
+            self._extra[_APP_NAME_EXTRA_FIELD] = _app_name
 
     @staticmethod
     def _ensure_json_serializable(data: dict[str, Any]) -> dict[str, Any]:
@@ -307,28 +308,29 @@ def novax_cycle(cell: Cell, app: str, program: str, extra: dict[str, Any] | None
     return Cycle(cell=cell, extra=cycle_extra)
 
 
-class BaseCycleEvent(BaseModel, ABC):
+class BaseCycleEvent(BaseModel, ABC):  # pyright: ignore[reportUnsafeMultipleInheritance]
     event_type: Literal["cycle_started", "cycle_finished", "cycle_failed"]
     id: UUID = Field(default_factory=uuid4, description="Unique event identifier")
     cycle_id: UUID = Field(..., description="Unique identifier for the automation cycle")
     timestamp: datetime = Field(..., description="Event creation time (ISO 8601, UTC)")
     cell: str = Field(..., description="Identifier of the robotic cell")
     extra: dict[str, Any] | None = Field(
-        default_factory=dict, description="Additional data related to the event"
+        default_factory=dict,  # type: ignore[arg-type]
+        description="Additional data related to the event",
     )
 
 
 class CycleStartedEvent(BaseCycleEvent):
-    event_type: Literal["cycle_started"] = "cycle_started"
+    event_type: Literal["cycle_started"] = "cycle_started"  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
 class CycleFinishedEvent(BaseCycleEvent):
-    event_type: Literal["cycle_finished"] = "cycle_finished"
+    event_type: Literal["cycle_finished"] = "cycle_finished"  # pyright: ignore[reportIncompatibleVariableOverride]
     duration_ms: int = Field(..., description="Cycle duration in milliseconds")
 
 
 class CycleFailedEvent(BaseCycleEvent):
-    event_type: Literal["cycle_failed"] = "cycle_failed"
+    event_type: Literal["cycle_failed"] = "cycle_failed"  # pyright: ignore[reportIncompatibleVariableOverride]
     reason: str = Field(..., description="Human-readable explanation of failure")
 
 

@@ -17,6 +17,16 @@ repos:
       - id: trailing-whitespace
       - id: check-json
         files: \.json$
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: "v1.15.0"
+    hooks:
+      - id: mypy
+        args: [--no-warn-unused-ignores, --config-file=pyproject.toml]
+        files: "^nova/"
+        exclude: '(\.pyi$)'
+        additional_dependencies:
+          - pydantic
+          - types-requests
   - repo: https://github.com/adrienverge/yamllint.git
     rev: v1.35.1
     hooks:

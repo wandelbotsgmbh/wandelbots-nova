@@ -137,7 +137,7 @@ class Rerun(Viewer):
                 show_collision_tool=self.show_collision_tool,
                 show_safety_link_chain=self.show_safety_link_chain,
             )
-            self._bridge = cast(NovaRerunBridgeProtocol, bridge)
+            self._bridge = cast(NovaRerunBridgeProtocol, bridge)  # pyright: ignore[reportInvalidCast]
         except ImportError:
             # nova_rerun_bridge not available, skip rerun integration
             logger.warning(
@@ -307,10 +307,10 @@ class Rerun(Viewer):
 
             if isinstance(error, PlanTrajectoryFailed):
                 # Log the trajectory from the failed plan
-                if hasattr(error.error, "joint_trajectory") and error.error.joint_trajectory:
+                joint_trajectory = getattr(error.error, "joint_trajectory", None)
+                if joint_trajectory is not None:
                     downsampled_trajectory = downsample_trajectory(
-                        error.error.joint_trajectory,
-                        sample_interval_ms=self.trajectory_sample_interval_ms,
+                        joint_trajectory, sample_interval_ms=self.trajectory_sample_interval_ms
                     )
                     await self._bridge.log_trajectory(
                         trajectory=downsampled_trajectory,
@@ -328,10 +328,10 @@ class Rerun(Viewer):
                         logger.warning("Collision free failed response not supported yet")
 
             # Log error information as text
-            import rerun as rr
+            import rerun as rr  # pyright: ignore[reportImplicitRelativeImport]
 
             error_message = f"Planning failed: {type(error).__name__}: {str(error)}"
-            rr.log("planning/errors", rr.TextLog(error_message, level=rr.TextLogLevel.ERROR))
+            rr.log("planning/errors", rr.TextLog(error_message, level=rr.TextLogLevel.ERROR))  # pyright: ignore[reportAttributeAccessIssue]
 
             # Log collision scenes from actions if configured (they might be relevant to the failure)
             if self.show_collision_scenes:

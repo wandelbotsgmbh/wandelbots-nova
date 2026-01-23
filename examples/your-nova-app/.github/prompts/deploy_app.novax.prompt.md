@@ -43,7 +43,7 @@ DO NOT USE THE pyproject.toml for this purpose.
 docker buildx build --load -t <image-tag> --platform linux/amd64 .
 ```
 2. Inform the user this command is temporary and will not be needed in a future version of nova cli.
-3. Run 
+3. Run
 ```bash
 nova app install
 ```

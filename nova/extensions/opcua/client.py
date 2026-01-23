@@ -43,7 +43,7 @@ class _DataChangeSubscription(DataChangeNotificationHandlerAsync):  # pyright: i
             self._flag.set()
 
     def __await__(self) -> Generator[Any, None, None]:
-        return self._flag.wait().__await__()  # type: ignore[return-value]
+        return self._flag.wait().__await__()  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
 
 class SecurityConfig(pydantic.BaseModel):
@@ -115,9 +115,14 @@ async def certificate_files(cert_path: str, private_key_path: str) -> tuple[str,
 class OPCUAClient:
     """A wrapper around asyncua client"""
 
+    _temp_private_key_file: str | None
+    _temp_cert_file: str | None
+
     def __init__(self, url: str, options: ClientConfig = ClientConfig()):
         self._options = options
         self._client = asyncua.Client(url=url, timeout=options.request_timeout_seconds)
+        self._temp_private_key_file = None
+        self._temp_cert_file = None
 
     async def _extend_client_with_certificate(self):
         if not self._options.security_config:
@@ -139,9 +144,9 @@ class OPCUAClient:
 
     def _delete_certificate_files(self):
         files = []
-        if hasattr(self, "_temp_cert_file") and os.path.exists(self._temp_cert_file):
+        if self._temp_cert_file is not None and os.path.exists(self._temp_cert_file):
             files.append(self._temp_cert_file)
-        if hasattr(self, "_temp_private_key_file") and os.path.exists(self._temp_private_key_file):
+        if self._temp_private_key_file is not None and os.path.exists(self._temp_private_key_file):
             files.append(self._temp_private_key_file)
 
         for file_path in files:
@@ -229,21 +234,23 @@ class OPCUAClient:
         )
 
         create_sub_params = CreateSubscriptionParameters(
-            RequestedPublishingInterval=config.requested_publishing_interval,
-            RequestedLifetimeCount=config.requested_lifetime_count,
-            RequestedMaxKeepAliveCount=self._client.get_keepalive_count(
+            RequestedPublishingInterval=config.requested_publishing_interval,  # pyright: ignore[reportArgumentType]
+            RequestedLifetimeCount=config.requested_lifetime_count,  # pyright: ignore[reportArgumentType]
+            RequestedMaxKeepAliveCount=self._client.get_keepalive_count(  # pyright: ignore[reportArgumentType]
                 config.requested_publishing_interval
             ),
-            MaxNotificationsPerPublish=config.max_notifications_per_publish,
-            PublishingEnabled=True,
-            Priority=config.priority,
+            MaxNotificationsPerPublish=config.max_notifications_per_publish,  # pyright: ignore[reportArgumentType]
+            PublishingEnabled=True,  # pyright: ignore[reportArgumentType]
+            Priority=config.priority,  # pyright: ignore[reportArgumentType]
         )
         sub = await self._client.create_subscription(create_sub_params, data_change_sub)
         self._compare_subscription_parameters(create_sub_params, sub.parameters)
 
         node = self._client.get_node(key)
-        await sub.subscribe_data_change(
-            nodes=node, queuesize=config.queue_size, sampling_interval=config.sampling_interval
+        await sub.subscribe_data_change(  # pyright: ignore[reportCallIssue]
+            nodes=node,
+            queuesize=config.queue_size,
+            sampling_interval=config.sampling_interval,  # pyright: ignore[reportArgumentType]
         )
 
         await data_change_sub

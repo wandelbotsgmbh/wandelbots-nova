@@ -3,8 +3,6 @@ import json
 import logging
 from typing import Any, AsyncGenerator, Callable, Optional
 
-import pydantic
-
 from .movement_controller.trajectory_cursor import MotionEvent, TrajectoryCursor, motion_started
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -88,7 +86,9 @@ class TrajectoryTuner:
                 command = data.get("command")
                 speed = data.get("speed")
                 if speed is not None:
-                    speed = pydantic.PositiveInt(speed)
+                    speed = int(speed)
+                    if speed <= 0:
+                        raise ValueError("speed must be positive")
             except (json.JSONDecodeError, ValueError) as e:
                 logger.warning(f"Invalid message format in trajectory-cursor: {e}")
                 return
@@ -145,9 +145,10 @@ class TrajectoryTuner:
                 subject="editor.motion-event", payload=event.model_dump_json().encode()
             )
 
+        # Initialize current_location before try block to ensure it's always bound
+        current_location: float = 0.0
         try:
             # tuning loop
-            current_location = 0.0
             while not finished_tuning:
                 # TODO this plans the second time for the same actions when we get here because
                 # the initial joint trajectory was already planned before the MotionGroup._execute call

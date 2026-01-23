@@ -54,7 +54,7 @@ class ProgramPreconditions(BaseModel):
 
 class Program(BaseModel, Generic[Parameters, Return]):
     _wrapped: Callable[..., Coroutine[Any, Any, Return]] = PrivateAttr(
-        default_factory=lambda *args, **kwargs: None  # type: ignore[assignment]
+        default_factory=lambda *args, **kwargs: None  # type: ignore[assignment]  # pyright: ignore[reportAssignmentType]
     )
     _viewer: "NovaRerunBridgeProtocol | None" = PrivateAttr(default=None)
     program_id: str
@@ -216,7 +216,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
     def __repr__(self) -> str:
         if self.input_model:
             input_fields = ", ".join(
-                f"{k}: {v.annotation.__name__}"  # type: ignore
+                f"{k}: {getattr(v.annotation, '__name__', str(v.annotation))}"
                 for k, v in self.input_model.model_fields.items()
             )
         else:
@@ -226,10 +226,11 @@ class Program(BaseModel, Generic[Parameters, Return]):
         if hasattr(self.output_model, "model_fields") and "root" in self.output_model.model_fields:
             root_annotation = self.output_model.model_fields["root"].annotation
             # If it's a TypeVar, get its bound type
-            if hasattr(root_annotation, "__bound__") and root_annotation.__bound__:  # type: ignore
-                output_type = root_annotation.__bound__.__name__  # type: ignore
+            bound = getattr(root_annotation, "__bound__", None)
+            if bound is not None:
+                output_type = getattr(bound, "__name__", str(bound))
             else:
-                output_type = root_annotation.__name__  # type: ignore
+                output_type = getattr(root_annotation, "__name__", str(root_annotation))
         else:
             output_type = self.output_model.__name__
 
@@ -262,13 +263,19 @@ class Program(BaseModel, Generic[Parameters, Return]):
         for name, field in self.input_model.model_fields.items():
             # Convert field type to appropriate Python type
             field_type = field.annotation
-            if hasattr(field_type, "__origin__") and field_type.__origin__ is Annotated:  # type: ignore
-                field_type = field_type.__origin__  # type: ignore
+            origin = get_origin(field_type)
+            if origin is Annotated:
+                # Get the underlying type from Annotated
+                args = get_args(field_type)
+                field_type = args[0] if args else field_type
+                origin = get_origin(field_type)
 
             # Handle optional fields
             is_optional = False
-            if hasattr(field_type, "__origin__") and field_type.__origin__ is Union:  # type: ignore
-                field_type = field_type.__args__[0]  # type: ignore
+            if origin is Union:
+                type_args = get_args(field_type)
+                if type_args:
+                    field_type = type_args[0]
                 is_optional = True
 
             # For complex types (like Pydantic models), use JSON parsing
@@ -281,15 +288,25 @@ class Program(BaseModel, Generic[Parameters, Return]):
                     required=not is_optional and field.default is None,
                     help=field.description or f"{name} parameter (JSON format)",
                 )
-            else:
-                # Add argument to parser
+            elif field_type is not None and isinstance(field_type, type):
+                # Add argument to parser - only when we have a valid type
                 parser.add_argument(
                     f"--{name}",
                     dest=name,
-                    type=field_type,  # type: ignore
+                    type=field_type,
                     default=field.default if field.default is not None else None,
                     required=not is_optional and field.default is None,
                     help=field.description or f"{name} parameter",
+                )
+            else:
+                # For complex or unknown types, use JSON parsing as fallback
+                parser.add_argument(
+                    f"--{name}",
+                    dest=name,
+                    type=json_type_for(name),
+                    default=field.default if field.default is not None else None,
+                    required=not is_optional and field.default is None,
+                    help=field.description or f"{name} parameter (JSON format)",
                 )
 
         # Additionally, provide a generic JSON `--config` argument for complex
@@ -307,7 +324,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
 
 def input_and_output_types(
-    func: Callable, docstring: Docstring
+    func: Callable[..., Any], docstring: Docstring
 ) -> tuple[type[BaseModel] | None, type[BaseModel]]:
     signature = inspect.signature(func)
     input_types = get_type_hints(func)
@@ -365,7 +382,7 @@ def input_and_output_types(
     if output_type and isinstance(output_type, type) and issubclass(output_type, BaseModel):
         output = output_type
     else:
-        T = TypeVar("T")
+        T = TypeVar("T")  # noqa: F841
         description = None
 
         # Check if return type is Annotated
@@ -375,9 +392,9 @@ def input_and_output_types(
                 if isinstance(annotation, FieldInfo):
                     description = annotation.description
                     break
-            T = TypeVar("T", bound=base_type)  # type: ignore
+            T = TypeVar("T", bound=base_type)  # type: ignore[misc,valid-type]  # pyright: ignore[reportConstantRedefinition,reportInvalidTypeForm]
         else:
-            T = TypeVar("T", bound=output_type)  # type: ignore
+            T = TypeVar("T", bound=output_type)  # type: ignore[misc,valid-type]  # pyright: ignore[reportConstantRedefinition,reportInvalidTypeForm]
             if docstring.returns:
                 description = docstring.returns.description
 

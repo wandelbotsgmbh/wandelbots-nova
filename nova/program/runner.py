@@ -624,7 +624,7 @@ class PythonProgramRunner(ProgramRunner):
         return await self.program(nova=execution_context.nova, **(self._inputs or {}))
 
 
-def _log_future_result(future: Future):
+def _log_future_result(future: Future[Any]):
     try:
         result = future.result()
         logger.debug(f"Program state change callback completed with result: {result}")
@@ -653,7 +653,7 @@ def _report_state_change_to_event_loop(
         try:
             if loop and loop.is_running() and not loop.is_closed():
                 # Post the callback onto the caller's loop, thread-safe.
-                future: Future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+                future: Future[None] = asyncio.run_coroutine_threadsafe(coroutine, loop)
                 future.add_done_callback(_log_future_result)
             else:
                 # No caller loop: schedule on the runner thread's loop.
@@ -704,6 +704,7 @@ def run_program(
         raise KeyboardInterrupt()
 
     # TODO how do we restore previous handler after program run?
+    prev_signal_handler = None
     if SIGINT_HANLER_ENABLED:
         prev_signal_handler = signal.signal(signal.SIGINT, sigint_handler)
 
@@ -718,7 +719,8 @@ def run_program(
     )
 
     def restore_signal_handler():
-        signal.signal(signal.SIGINT, prev_signal_handler)
+        if prev_signal_handler is not None:
+            signal.signal(signal.SIGINT, prev_signal_handler)
 
     runner.start(sync=sync, on_state_change=on_state_change_listener)
 

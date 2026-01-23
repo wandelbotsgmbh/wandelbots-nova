@@ -38,9 +38,9 @@ def test_wait_action_trajectory_duration():
     # Test trajectory 1 (2.5 seconds)
     assert len(trajectory_1.times) >= 2
     assert trajectory_1.times[-1] == 2.5
-    assert trajectory_1.times[-1] - trajectory_1.times[0] >= 2.0, (
-        "Wait trajectory should be longer than 2 seconds"
-    )
+    assert (
+        trajectory_1.times[-1] - trajectory_1.times[0] >= 2.0
+    ), "Wait trajectory should be longer than 2 seconds"
 
     # Test trajectory 2 (edge case - 0.1 seconds)
     assert len(trajectory_2.times) >= 2
@@ -49,9 +49,9 @@ def test_wait_action_trajectory_duration():
     # Test trajectory 3 (long wait - 10 seconds)
     assert len(trajectory_3.times) >= 2
     assert trajectory_3.times[-1] == 10.0
-    assert trajectory_3.times[-1] - trajectory_3.times[0] >= 2.0, (
-        "Wait trajectory should be longer than 2 seconds"
-    )
+    assert (
+        trajectory_3.times[-1] - trajectory_3.times[0] >= 2.0
+    ), "Wait trajectory should be longer than 2 seconds"
 
     # Check that all joint positions are identical
     for trajectory in [trajectory_1, trajectory_2, trajectory_3]:
@@ -62,6 +62,6 @@ def test_wait_action_trajectory_duration():
     for trajectory in [trajectory_1, trajectory_3]:  # Skip the short trajectory
         for i in range(1, len(trajectory.times) - 1):  # Skip last point which might be adjusted
             time_diff = trajectory.times[i] - trajectory.times[i - 1]
-            assert 0.049 <= time_diff <= 0.051, (
-                f"Timestep should be approximately 50ms but was {time_diff * 1000}ms"
-            )
+            assert (
+                0.049 <= time_diff <= 0.051
+            ), f"Timestep should be approximately 50ms but was {time_diff * 1000}ms"

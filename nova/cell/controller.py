@@ -8,18 +8,18 @@ from .motion_group import MotionGroup
 from .robot_cell import AbstractController, AbstractRobot, IODevice, ValueType
 
 
-class Controller(Sized, AbstractController, NovaDevice, IODevice):
+class Controller(Sized, AbstractController, NovaDevice, IODevice):  # pyright: ignore[reportUnsafeMultipleInheritance]
     """
     Represents a Nova controller, managing motion groups and IO interactions.
     """
 
     class Configuration(NovaDevice.Configuration):
-        type: Literal["controller"] = "controller"
+        type: Literal["controller"] = "controller"  # pyright: ignore[reportIncompatibleVariableOverride]
         id: str = "controller"
         cell_id: str
         controller_id: str
 
-    _configuration: Configuration  # Override the base class type annotation
+    _configuration: Configuration  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def __init__(self, configuration: Configuration):
         super().__init__(configuration)
@@ -103,7 +103,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         """
         if self._motion_group_ids is None:
             raise ValueError("Controller is not opened")
-        return {  # type: ignore[unreachable]
+        return {
             motion_group_id: self.motion_group(motion_group_id)
             for motion_group_id in self._motion_group_ids
         }

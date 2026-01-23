@@ -321,7 +321,7 @@ class MotionGroup(AbstractRobot):
         try:
             if self._current_motion is None:
                 raise ValueError("No motion to stop")
-            await self._api_client.motion_api.stop_execution(  # type: ignore[attr-defined]
+            await self._api_client.motion_api.stop_execution(  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue]
                 cell=self._cell, motion=self._current_motion
             )
             logger.debug(f"Motion {self.current_motion} stopped.")
@@ -554,7 +554,7 @@ class MotionGroup(AbstractRobot):
         if first_collision_setup is not None:
             motion_group_setup.collision_setups.root["collision-check"] = first_collision_setup
 
-        motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
+        motion_commands = CombinedActions.from_actions(actions).to_motion_command()
 
         # Plan the trajectory
         plan_trajectory_response = await self._api_client.trajectory_planning_api.plan_trajectory(
@@ -766,7 +766,7 @@ class MotionGroup(AbstractRobot):
 
         controller = movement_controller(
             MovementControllerContext(
-                combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
+                combined_actions=CombinedActions.from_actions(actions),
                 motion_id=trajectory_id,
                 start_on_io=start_on_io,
                 motion_group_state_stream_gen=self.stream_state,
@@ -789,7 +789,7 @@ class MotionGroup(AbstractRobot):
                 await self._api_client.trajectory_execution_api.execute_trajectory(
                     cell=self._cell,
                     controller=self._controller_id,
-                    client_request_generator=controller,
+                    client_request_generator=controller,  # pyright: ignore[reportArgumentType]
                 )
             finally:
                 states.put_nowait(SENTINEL)

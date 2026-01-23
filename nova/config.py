@@ -1,4 +1,5 @@
 from typing import Any, Self
+from typing import cast as typing_cast
 from urllib.parse import urlparse
 
 from decouple import config
@@ -6,19 +7,23 @@ from pydantic import BaseModel, Field, model_validator
 
 # Configuration for accessing the Nova platform
 INTERNAL_CLUSTER_NOVA_API: str = "http://api-gateway.wandelbots.svc.cluster.local:8080"
-NOVA_API: str = config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API)
-NOVA_ACCESS_TOKEN: str | None = config("NOVA_ACCESS_TOKEN", default=None)
+NOVA_API: str = typing_cast(str, config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API))
+NOVA_ACCESS_TOKEN: str | None = typing_cast("str | None", config("NOVA_ACCESS_TOKEN", default=None))
 
 # Runtime configuration provided by the environment
-NATS_BROKER: str | None = config("NATS_BROKER", default=None)
-CELL_NAME: str = config("CELL_NAME", default="cell", cast=str)
-BASE_PATH: str | None = config("BASE_PATH", default=None)
-K8S_NAMESPACE: str = config("K8S_NAMESPACE", default="cell")
+NATS_BROKER: str | None = typing_cast("str | None", config("NATS_BROKER", default=None))
+CELL_NAME: str = typing_cast(str, config("CELL_NAME", default="cell", cast=str))
+BASE_PATH: str | None = typing_cast("str | None", config("BASE_PATH", default=None))
+K8S_NAMESPACE: str = typing_cast(str, config("K8S_NAMESPACE", default="cell"))
 
 # Log configuration
-LOG_LEVEL: str = config("LOG_LEVEL", default="INFO").upper()
-LOG_FORMAT: str = config("LOG_FORMAT", default="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-LOG_DATETIME_FORMAT: str = config("LOG_DATETIME_FORMAT", default="%Y-%m-%d %H:%M:%S")
+LOG_LEVEL: str = typing_cast(str, config("LOG_LEVEL", default="INFO")).upper()
+LOG_FORMAT: str = typing_cast(
+    str, config("LOG_FORMAT", default="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+)
+LOG_DATETIME_FORMAT: str = typing_cast(
+    str, config("LOG_DATETIME_FORMAT", default="%Y-%m-%d %H:%M:%S")
+)
 
 # Feature flags
 ENABLE_TRAJECTORY_TUNING: bool = config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False)

@@ -30,5 +30,5 @@ If not, inform the user about the failure and provide the relevant error logs.
 7. Prompt the user for the input data required by the program.
 8. Start the program by using the /programs/<program_name>/start endpoint with the provided input data.
 IGNORE THE PROGRAM RUN, DO NOT CALL runs api
-9. Conguratulate the user on successfully starting the program. 
+9. Conguratulate the user on successfully starting the program.
 10. End the conversation.

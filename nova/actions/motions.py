@@ -66,8 +66,8 @@ class Linear(Motion):
 
     """
 
-    type: Literal["linear"] = "linear"
-    target: Pose
+    type: Literal["linear"] = "linear"  # pyright: ignore[reportIncompatibleVariableOverride]
+    target: Pose  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def to_api_model(self) -> api.models.PathLine:
         """Serialize the model to the API model
@@ -125,7 +125,7 @@ class CartesianPTP(Motion):
 
     """
 
-    type: Literal["cartesian_ptp"] = "cartesian_ptp"
+    type: Literal["cartesian_ptp"] = "cartesian_ptp"  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def to_api_model(self) -> api.models.PathCartesianPTP:
         """Serialize the model to the API model
@@ -182,7 +182,7 @@ class Circular(Motion):
 
     """
 
-    type: Literal["circular"] = "circular"
+    type: Literal["circular"] = "circular"  # pyright: ignore[reportIncompatibleVariableOverride]
     intermediate: Pose
 
     def to_api_model(self) -> api.models.PathCircle:
@@ -252,7 +252,7 @@ class JointPTP(Motion):
 
     """
 
-    type: Literal["joint_ptp"] = "joint_ptp"
+    type: Literal["joint_ptp"] = "joint_ptp"  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def to_api_model(self) -> api.models.PathJointPTP:
         """Serialize the model to the API model
@@ -309,7 +309,7 @@ class Spline(Motion):
 
     """
 
-    type: Literal["spline"] = "spline"
+    type: Literal["spline"] = "spline"  # pyright: ignore[reportIncompatibleVariableOverride]
     path_parameter: float = pydantic.Field(1, ge=0)
     time: float | None = pydantic.Field(default=None, ge=0)
 
@@ -366,7 +366,7 @@ class CollisionFreeMotion(Motion):
     CollisionFreeMotion(metas={}, type='collision_free', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6)), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, algorithm=CollisionFreeAlgorithm(root=RRTConnectAlgorithm(algorithm_name='RRTConnectAlgorithm', max_iterations=10000, max_step_size=1, adaptive_step_size=True, apply_smoothing=True, apply_blending=True)))
     """
 
-    type: Literal["collision_free"] = "collision_free"
+    type: Literal["collision_free"] = "collision_free"  # pyright: ignore[reportIncompatibleVariableOverride]
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     collision_setup: api.models.CollisionSetup | None = None
@@ -375,7 +375,7 @@ class CollisionFreeMotion(Motion):
         api.models.RRTConnectAlgorithm()
     )
 
-    def to_api_model(self) -> api.models.PlanCollisionFreeRequest:  # type: ignore[override]
+    def to_api_model(self) -> api.models.PlanCollisionFreeRequest:  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride]
         """"""
         # TODO: use data structure and API model are too different.
         # don't return the API model here

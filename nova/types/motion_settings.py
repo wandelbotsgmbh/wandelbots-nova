@@ -144,6 +144,7 @@ class MotionSettings(pydantic.BaseModel):
         if self.joint_velocity_limits is None and self.joint_acceleration_limits is None:
             return None
 
+        length = 0
         if self.joint_velocity_limits is not None:
             length = len(self.joint_velocity_limits)
 

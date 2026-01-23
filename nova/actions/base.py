@@ -10,7 +10,7 @@ from pydantic import BaseModel
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-class Action(pydantic.BaseModel, ABC):
+class Action(pydantic.BaseModel, ABC):  # pyright: ignore[reportUnsafeMultipleInheritance]
     _registry: ClassVar[dict[str, type[Action]]] = {}
     metas: dict[str, Any] = pydantic.Field(
         default_factory=dict, description="User-defined metadata"

@@ -1,3 +1,4 @@
+# pyright: reportImportCycles=false
 # Import api, types, and actions modules
 from nova import actions, api, exceptions, types, viewers
 from nova.cell import Cell, Controller, MotionGroup

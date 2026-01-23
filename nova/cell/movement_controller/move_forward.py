@@ -95,6 +95,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         # before sending start movement start state monitoring to not loose any data
         # at this point we have exclusive right to do movement on the robot, any movement should be
         # what is coming from our trajectory
+        state_monitor: asyncio.Task[None] | None = None
         try:
             stream_started_event = asyncio.Event()
             state_monitor = asyncio.create_task(
@@ -107,7 +108,8 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             )
         except asyncio.TimeoutError:
             logger.error(f"Trajectory: {context.motion_id} state monitor failed to start in time")
-            state_monitor.cancel()
+            if state_monitor is not None:
+                state_monitor.cancel()
             raise Exception("State monitor failed to start in time")
 
         set_io_list = context.combined_actions.to_set_io()

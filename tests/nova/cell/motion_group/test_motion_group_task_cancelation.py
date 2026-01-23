@@ -98,9 +98,9 @@ async def test_movement_stops_when_canceling_task_with_execute(ur_mg):
     await asyncio.sleep(1)
     pose = await ur_mg.tcp_pose()
     assert pose.position.x > initial_pose.position.x, "Robot did not move at all."
-    assert pose.position.x < final_pose.position.x, (
-        "Robot completed the full movement despite cancelation."
-    )
+    assert (
+        pose.position.x < final_pose.position.x
+    ), "Robot completed the full movement despite cancelation."
 
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
@@ -141,9 +141,9 @@ async def test_movement_stops_when_async_generator_raises_exception(ur_mg):
     await asyncio.sleep(1)
     pose = await ur_mg.tcp_pose()
     assert pose.position.x > initial_pose.position.x, "Robot did not move at all."
-    assert pose.position.x <= final_pose.position.x, (
-        "Robot completed the full movement despite cancelation."
-    )
+    assert (
+        pose.position.x <= final_pose.position.x
+    ), "Robot completed the full movement despite cancelation."
 
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
@@ -202,9 +202,9 @@ async def test_movement_stops_when_custom_controller_raises(ur_mg):
     await asyncio.sleep(1)
     pose = await ur_mg.tcp_pose()
     assert pose.position.x > initial_pose.position.x, "Robot did not move at all."
-    assert pose.position.x <= final_pose.position.x, (
-        "Robot completed the full movement despite cancelation."
-    )
+    assert (
+        pose.position.x <= final_pose.position.x
+    ), "Robot completed the full movement despite cancelation."
 
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
@@ -242,9 +242,9 @@ async def test_task_cancelation_when_movement_controller_cancels_we_should_propa
     await asyncio.sleep(1)
     pose = await ur_mg.tcp_pose()
     assert pose.position.x > initial_pose.position.x, "Robot did not move at all."
-    assert pose.position.x <= final_pose.position.x, (
-        "Robot completed the full movement despite cancelation."
-    )
+    assert (
+        pose.position.x <= final_pose.position.x
+    ), "Robot completed the full movement despite cancelation."
 
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
@@ -295,9 +295,9 @@ async def _test_task_cancelation_when_process_is_killed(ur_mg):
     await asyncio.sleep(1)
     pose = await ur_mg.tcp_pose()
     assert pose.position.x > initial_pose.position.x, "Robot did not move at all."
-    assert pose.position.x <= final_pose.position.x, (
-        "Robot completed the full movement despite cancelation."
-    )
+    assert (
+        pose.position.x <= final_pose.position.x
+    ), "Robot completed the full movement despite cancelation."
 
     # wait a little to and check that position not changed
     await asyncio.sleep(2)

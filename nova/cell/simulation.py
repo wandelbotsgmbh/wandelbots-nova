@@ -65,7 +65,7 @@ def naive_joints_to_pose(joints: tuple[float, ...]) -> Pose:
     return Pose((x, y, z, rx, ry, rz))
 
 
-class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
+class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):  # pyright: ignore[reportUnsafeMultipleInheritance]
     """A simulated robot cell without a camera"""
 
     class Configuration(ConfigurablePeriphery.Configuration):
@@ -77,13 +77,13 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
                 just start and end)
         """
 
-        type: Literal["simulated_robot"] = "simulated_robot"
+        type: Literal["simulated_robot"] = "simulated_robot"  # pyright: ignore[reportIncompatibleVariableOverride]
         id: str = "0@controller"
         initial_pose: Pose = Pose((0, 0, 0, 0, 0, 0))
         tools: dict[str, Pose] | None = None
         step_size: float = 0
 
-    _configuration: Configuration  # Override base class type annotation
+    _configuration: Configuration  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def __init__(self, configuration: Configuration = Configuration()):
         if not configuration.tools:
@@ -379,7 +379,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         print(f"set status: {active}")
 
 
-class SimulatedIO(ConfigurablePeriphery, Device, IODevice):
+class SimulatedIO(ConfigurablePeriphery, Device, IODevice):  # pyright: ignore[reportUnsafeMultipleInheritance]
     """A simulated IO by a default dict
 
     Example:
@@ -393,7 +393,7 @@ class SimulatedIO(ConfigurablePeriphery, Device, IODevice):
     """
 
     class Configuration(ConfigurablePeriphery.Configuration):
-        type: Literal["simulated_io"] = "simulated_io"
+        type: Literal["simulated_io"] = "simulated_io"  # pyright: ignore[reportIncompatibleVariableOverride]
         id: str = "io"
 
     def __init__(
@@ -418,16 +418,16 @@ class SimulatedIO(ConfigurablePeriphery, Device, IODevice):
             await asyncio.sleep(0.1)
 
 
-class SimulatedController(ConfigurablePeriphery, AbstractController):
+class SimulatedController(ConfigurablePeriphery, AbstractController):  # pyright: ignore[reportUnsafeMultipleInheritance]
     """A simulated controller"""
 
     class Configuration(ConfigurablePeriphery.Configuration):
-        type: Literal["simulated_controller"] = "simulated_controller"
+        type: Literal["simulated_controller"] = "simulated_controller"  # pyright: ignore[reportIncompatibleVariableOverride]
         id: str = "controller"
         robots: list[SimulatedRobot.Configuration] | None = None
         raises_on_open: bool = False
 
-    _configuration: Configuration  # Override base class type annotation
+    _configuration: Configuration  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def __init__(self, configuration: Configuration = Configuration(id="controller")):
         super().__init__(configuration=configuration)
@@ -469,7 +469,7 @@ class SimulatedTimer(Timer):
     """A simulated timer (doing logging only)"""
 
     class Configuration(Timer.Configuration):
-        type: Literal["simulated_timer"] = "simulated_timer"
+        type: Literal["simulated_timer"] = "simulated_timer"  # pyright: ignore[reportIncompatibleVariableOverride]
         id: str = "timer"
 
     def __init__(self, configuration: Configuration = Configuration()):
@@ -479,7 +479,7 @@ class SimulatedTimer(Timer):
         print(f"Wait for {duration} ms")
 
 
-class SimulatedAsyncCallable(
+class SimulatedAsyncCallable(  # pyright: ignore[reportUnsafeMultipleInheritance]
     ConfigurablePeriphery, AsyncCallableDevice[tuple[str, tuple[Any, ...]]]
 ):
     """A simulated callable of an external function or service
@@ -495,7 +495,7 @@ class SimulatedAsyncCallable(
     """
 
     class Configuration(ConfigurablePeriphery.Configuration):
-        type: Literal["simulated_callable"] = "simulated_callable"
+        type: Literal["simulated_callable"] = "simulated_callable"  # pyright: ignore[reportIncompatibleVariableOverride]
         id: str = "callable"
 
     # TODO the id is only "sensor" to make it work for the current RobotCell

@@ -1,3 +1,4 @@
+# pyright: reportImportCycles=false
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions, MovementController, MovementControllerContext
 from nova.actions.io import io_write

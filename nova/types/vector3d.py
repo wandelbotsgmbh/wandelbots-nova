@@ -64,7 +64,7 @@ class Vector3d(pydantic.BaseModel):
     def __len__(self) -> int:
         return 3
 
-    def __iter__(self) -> Iterator[float | int]:  # type: ignore[override]
+    def __iter__(self) -> Iterator[float | int]:  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride]
         """Iterate over the vector
 
         Examples:

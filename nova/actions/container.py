@@ -5,6 +5,7 @@ from typing import Annotated, AsyncIterator, Callable, Iterator
 import pydantic
 
 from nova import api
+from nova.actions.base import Action
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
@@ -33,6 +34,15 @@ class CombinedActions(pydantic.BaseModel):
         ...,
     ] = ()
 
+    @classmethod
+    def from_actions(cls, actions: list[Action] | tuple[Action, ...]) -> "CombinedActions":
+        """Create CombinedActions from a list of actions, filtering to valid container items."""
+        # Filter to only valid ActionContainerItem types and cast properly
+        valid_items: list[ActionContainerItem] = [
+            action for action in actions if isinstance(action, (Motion, WriteAction, WaitAction))
+        ]
+        return cls(items=tuple(valid_items))
+
     def __len__(self) -> int:
         return len(self.items)
 
@@ -44,7 +54,7 @@ class CombinedActions(pydantic.BaseModel):
             raise TypeError("Cannot set items directly")
         super().__setattr__(key, value)
 
-    def __iter__(self) -> Iterator[ActionContainerItem]:  # type: ignore[override]
+    def __iter__(self) -> Iterator[ActionContainerItem]:  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride]
         return iter(self.items)
 
     def append(self, item: ActionContainerItem) -> None:

@@ -13,7 +13,7 @@ def __getattr__(name: str) -> Any:
 
     _lazy_imports.update(
         {
-            "models": wb.models,
+            "models": wb.models,  # pyright: ignore[reportAttributeAccessIssue]
             "api": wb.api,
             "api_client": wb.api_client,
             "configuration": wb.configuration,

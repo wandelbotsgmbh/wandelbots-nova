@@ -43,9 +43,9 @@ async def test_novax_program_successful_run(novax_app):
 
         await asyncio.sleep(10)
 
-        assert len(program_status_messages) == 3, (
-            f"Expected 3 program status messages, but got {len(program_status_messages)}"
-        )
+        assert (
+            len(program_status_messages) == 3
+        ), f"Expected 3 program status messages, but got {len(program_status_messages)}"
 
         # verify program run messages
         models = [
@@ -90,9 +90,9 @@ async def test_novax_program_failed_run(novax_app):
 
         await asyncio.sleep(8)
 
-        assert len(program_status_messages) == 3, (
-            f"Expected 3 program status messages, but got {len(program_status_messages)}"
-        )
+        assert (
+            len(program_status_messages) == 3
+        ), f"Expected 3 program status messages, but got {len(program_status_messages)}"
 
         # verify program status messages
         models = [
@@ -141,9 +141,9 @@ async def test_novax_program_stopped_run(novax_app):
         await asyncio.sleep(5)
 
         # Verify program is running
-        assert len(program_status_messages) >= 2, (
-            f"Expected at least 2 program run messages, but got {len(program_status_messages)}"
-        )
+        assert (
+            len(program_status_messages) >= 2
+        ), f"Expected at least 2 program run messages, but got {len(program_status_messages)}"
         models = [
             ProgramStatus.model_validate_json(message.data) for message in program_status_messages
         ]
@@ -158,9 +158,9 @@ async def test_novax_program_stopped_run(novax_app):
         await asyncio.sleep(5)
 
         # Verify that we received the STOPPED event
-        assert len(program_status_messages) == 3, (
-            f"Expected 3 program status messages, but got {len(program_status_messages)}"
-        )
+        assert (
+            len(program_status_messages) == 3
+        ), f"Expected 3 program status messages, but got {len(program_status_messages)}"
 
         # verify program status messages
         final_models = [

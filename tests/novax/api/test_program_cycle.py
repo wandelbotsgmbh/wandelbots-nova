@@ -43,9 +43,9 @@ async def test_novax_program_cycle_data(novax_app):
 
             await asyncio.sleep(5)
 
-            assert len(cycle_messages) == 2, (
-                f"Expected 2 cycle messages, but got {len(cycle_messages)}"
-            )
+            assert (
+                len(cycle_messages) == 2
+            ), f"Expected 2 cycle messages, but got {len(cycle_messages)}"
 
             cycle_started = CycleStartedEvent.model_validate_json(cycle_messages[0].data)
             cycle_finished = CycleFinishedEvent.model_validate_json(cycle_messages[1].data)
@@ -129,9 +129,9 @@ async def test_novax_program_cycle_with_extra(novax_app):
 
             await asyncio.sleep(5)
 
-            assert len(cycle_messages) == 2, (
-                "Expected 2 cycle messages, but got {len(cycle_messages)}"
-            )
+            assert (
+                len(cycle_messages) == 2
+            ), "Expected 2 cycle messages, but got {len(cycle_messages)}"
 
             cycle_started = CycleStartedEvent.model_validate_json(cycle_messages[0].data)
             cycle_finished = CycleFinishedEvent.model_validate_json(cycle_messages[1].data)

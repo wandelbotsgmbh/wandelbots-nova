@@ -68,7 +68,7 @@ class _Interceptor:
 def _intercept(api_instance: T, gateway: "ApiGateway") -> T:
     # we ignore the type error here because
     # we want the return type to be the same as the original api instance to not break typing support
-    return _Interceptor(api_instance, gateway)  # type: ignore[return-value]
+    return _Interceptor(api_instance, gateway)  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
 
 class ApiGateway:
@@ -152,7 +152,7 @@ class ApiGateway:
         await self._api_client.close()
 
 
-class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
+class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):  # pyright: ignore[reportUnsafeMultipleInheritance]
     class Configuration(ConfigurablePeriphery.Configuration):
         config: NovaConfig
 

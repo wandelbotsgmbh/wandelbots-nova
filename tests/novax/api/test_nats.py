@@ -25,12 +25,12 @@ async def test_nats_pub_sub():
     await asyncio.sleep(2)
 
     assert collected_message is not None, "No message received"
-    assert collected_message.data == b"test message", (
-        "Received message does not match published message"
-    )
-    assert collected_message.subject == "nova.test.subject", (
-        "Received message subject does not match"
-    )
+    assert (
+        collected_message.data == b"test message"
+    ), "Received message does not match published message"
+    assert (
+        collected_message.subject == "nova.test.subject"
+    ), "Received message subject does not match"
 
 
 @pytest.mark.integration
