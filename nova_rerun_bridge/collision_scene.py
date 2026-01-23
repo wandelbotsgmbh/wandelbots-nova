@@ -24,12 +24,12 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
         if isinstance(collider.shape, api.models.Sphere):
             # Convert rotation vector to axis-angle format
             rot_vec = np.array(pose.orientation.to_tuple())
-            angle = np.linalg.norm(rot_vec)
+            angle: float = float(np.linalg.norm(rot_vec))
             if angle > 0:
                 axis = rot_vec / angle
             else:
                 axis = np.array([0.0, 0.0, 1.0])
-                angle = 0.0  # type: ignore[assignment]
+                angle = 0.0
 
             rr.log(
                 f"{entity_path}/{collider_id}",
@@ -256,7 +256,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                         vertex_positions=vertices,
                         triangle_indices=triangles,
                         vertex_normals=normals,
-                        albedo_factor=[colors.colors[0]],
+                        albedo_factor=colors.colors[0],
                     ),
                     static=True,
                 )
