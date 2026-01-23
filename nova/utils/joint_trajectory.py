@@ -1,4 +1,4 @@
-from nova import api
+import nova.api as api
 
 
 def combine_trajectories(

@@ -1,10 +1,11 @@
+# pyright: reportImportCycles=false
 import asyncio
 import json
 import logging
 
 import nats
 
-from nova import api
+import nova.api as api
 from nova.core.gateway import ApiGateway
 from nova.exceptions import ControllerNotFound
 

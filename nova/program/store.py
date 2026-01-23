@@ -9,7 +9,7 @@ from nats.js.errors import KeyNotFoundError as KvKeyError
 from nats.js.errors import NoKeysError, NotFoundError
 from pydantic import BaseModel, ValidationError
 
-from nova import api
+import nova.api as api
 from nova.cell.cell import Cell
 
 _T = TypeVar("_T", bound=BaseModel)

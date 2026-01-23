@@ -1,8 +1,8 @@
 import asyncio
 import logging
 
-from nova import api
-from nova.actions import MovementControllerContext
+import nova.api as api
+from nova.actions.container import MovementControllerContext
 from nova.exceptions import ErrorDuringMovement, InitMovementFailed
 from nova.types import (
     ExecuteTrajectoryRequestStream,

@@ -4,7 +4,7 @@ from typing import Annotated, AsyncIterator, Callable, Iterator
 
 import pydantic
 
-from nova import api
+import nova.api as api
 from nova.actions.base import Action
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction

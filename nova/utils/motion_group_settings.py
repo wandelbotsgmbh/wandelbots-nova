@@ -1,4 +1,4 @@
-from nova import api
+import nova.api as api
 from nova.types.motion_settings import MotionSettings
 
 

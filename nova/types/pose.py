@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 import pydantic
 from scipy.spatial.transform import Rotation
 
-from nova import api
+import nova.api as api
 from nova.types.vector3d import Vector3d
 
 _POSE_EQUALITY_PRECISION = 6

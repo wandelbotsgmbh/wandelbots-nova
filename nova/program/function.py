@@ -37,7 +37,8 @@ from pydantic import (
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
-from nova import Nova, api
+import nova.api as api
+from nova.core.nova import Nova
 
 from .context import ProgramContext, current_program_context_var
 

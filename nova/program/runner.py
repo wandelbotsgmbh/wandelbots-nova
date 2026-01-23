@@ -21,9 +21,10 @@ from loguru import logger
 from nats.errors import OutboundBufferLimitError
 from pydantic import BaseModel, Field, StrictStr
 
-from nova import Nova, NovaConfig, api
+import nova.api as api
 from nova.cell.robot_cell import RobotCell
-from nova.config import CELL_NAME
+from nova.config import CELL_NAME, NovaConfig
+from nova.core.nova import Nova
 from nova.exceptions import ControllerCreationFailed, PlanTrajectoryFailed
 from nova.program.exceptions import NotPlannableError
 from nova.program.function import Program

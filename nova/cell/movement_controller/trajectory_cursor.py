@@ -44,7 +44,7 @@ from typing import AsyncIterator, Optional, Union
 import pydantic
 from blinker import Signal, signal
 
-from nova import api
+import nova.api as api
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
 from nova.exceptions import InitMovementFailed

@@ -2,7 +2,7 @@ from typing import Self
 
 import pydantic
 
-from nova import api
+import nova.api as api
 
 DEFAULT_TCP_VELOCITY_LIMIT = 50.0  # mm/s
 

@@ -26,8 +26,9 @@ import asyncstdlib
 import pydantic
 from aiostream import stream
 
-from nova import api
-from nova.actions import Action, MovementController
+import nova.api as api
+from nova.actions.base import Action
+from nova.actions.container import MovementController
 from nova.types import MotionState, Pose, RobotState
 
 logger: logging.Logger = logging.getLogger(__name__)

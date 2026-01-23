@@ -1,4 +1,12 @@
 # pyright: reportImportCycles=false
+# The import cycle suppression above is intentional. This package has structural
+# import cycles due to TYPE_CHECKING imports in submodules that reference types
+# from other submodules. These cycles are safe at runtime because:
+# 1. TYPE_CHECKING blocks only execute during static analysis
+# 2. Runtime imports within functions are deferred
+# The cycles exist to provide a clean public API where users can import everything
+# from the top-level 'nova' package.
+
 # Import api, types, and actions modules
 from nova import actions, api, exceptions, types, viewers
 from nova.cell import Cell, Controller, MotionGroup

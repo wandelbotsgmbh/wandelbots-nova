@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from nova import api
+import nova.api as api
 from nova.actions.base import Action
 
 

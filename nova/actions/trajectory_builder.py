@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from types import TracebackType
 from typing import Iterator, Optional, Self
 
-from nova.actions import Action
+from nova.actions.base import Action
 from nova.actions.motions import Motion
 from nova.types import MotionSettings
 

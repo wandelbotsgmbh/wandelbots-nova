@@ -1,6 +1,6 @@
 from typing import AsyncGenerator, Literal, Self, Sized
 
-from nova import api
+import nova.api as api
 from nova.core.gateway import NovaDevice
 
 from .io import IOAccess

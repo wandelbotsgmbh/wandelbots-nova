@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 import pydantic
 
-from nova import api
+import nova.api as api
 
 
 class Vector3d(pydantic.BaseModel):

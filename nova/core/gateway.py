@@ -5,7 +5,7 @@ import time
 from abc import ABC
 from typing import Any, Self, TypeVar
 
-from nova import api
+import nova.api as api
 from nova.cell.robot_cell import ConfigurablePeriphery, Device
 from nova.config import NovaConfig
 from nova.version import version as pkg_version

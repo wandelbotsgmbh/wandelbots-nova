@@ -1,4 +1,4 @@
-from nova import api
+import nova.api as api
 from nova.actions.base import Action
 from nova.actions.motions import Motion
 from nova.exceptions import InconsistentCollisionScenes

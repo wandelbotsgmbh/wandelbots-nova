@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from nova import api
+import nova.api as api
 from nova.cell.robot_cell import Device, ValueType
 from nova.core.gateway import ApiGateway
 

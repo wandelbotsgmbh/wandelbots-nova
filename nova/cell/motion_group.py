@@ -1,3 +1,4 @@
+# pyright: reportImportCycles=false
 import asyncio
 import logging
 from contextlib import aclosing
@@ -6,8 +7,9 @@ from typing import AsyncGenerator, Self, cast
 
 import numpy as np
 
-from nova import api
-from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
+import nova.api as api
+from nova.actions.base import Action
+from nova.actions.container import CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion
 from nova.config import ENABLE_TRAJECTORY_TUNING

@@ -3,7 +3,8 @@ from typing import Any, Literal, NoReturn, Sequence, TypeAlias
 
 import pydantic
 
-from nova import api, utils
+import nova.api as api
+import nova.utils as utils
 from nova.actions.base import Action
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose

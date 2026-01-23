@@ -1,7 +1,7 @@
 import json
 from math import pi
 
-from nova import api
+import nova.api as api
 
 MANUFACTURER_HOME_POSITIONS = {
     api.models.Manufacturer.ABB: [0.0, 0.0, 0.0, 0.0, pi / 2, pi, 0.0],
