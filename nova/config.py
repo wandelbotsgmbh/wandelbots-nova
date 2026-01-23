@@ -8,12 +8,12 @@ from pydantic import BaseModel, Field, model_validator
 # Configuration for accessing the Nova platform
 INTERNAL_CLUSTER_NOVA_API: str = "http://api-gateway.wandelbots.svc.cluster.local:8080"
 NOVA_API: str = typing_cast(str, config("NOVA_API", default=INTERNAL_CLUSTER_NOVA_API))
-NOVA_ACCESS_TOKEN: str | None = typing_cast("str | None", config("NOVA_ACCESS_TOKEN", default=None))
+NOVA_ACCESS_TOKEN: str | None = typing_cast(str | None, config("NOVA_ACCESS_TOKEN", default=None))
 
 # Runtime configuration provided by the environment
-NATS_BROKER: str | None = typing_cast("str | None", config("NATS_BROKER", default=None))
+NATS_BROKER: str | None = typing_cast(str | None, config("NATS_BROKER", default=None))
 CELL_NAME: str = typing_cast(str, config("CELL_NAME", default="cell", cast=str))
-BASE_PATH: str | None = typing_cast("str | None", config("BASE_PATH", default=None))
+BASE_PATH: str | None = typing_cast(str | None, config("BASE_PATH", default=None))
 K8S_NAMESPACE: str = typing_cast(str, config("K8S_NAMESPACE", default="cell"))
 
 # Log configuration

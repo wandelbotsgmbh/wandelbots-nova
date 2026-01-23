@@ -22,6 +22,8 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):  # pyright: i
     _configuration: Configuration  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def __init__(self, configuration: Configuration):
+        # super().__init__ correctly chains through MRO to NovaDevice.__init__
+        # (Controller -> Sized -> AbstractController -> NovaDevice -> ...)
         super().__init__(configuration)
         self._motion_group_ids: list[str] | None = None
         self._io_access = IOAccess(

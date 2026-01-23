@@ -659,7 +659,7 @@ class RobotCell:
                 task_group.start_soon(device.stop)
 
     async def stream_state(self, rate_msecs: int) -> AsyncGenerator[AbstractDeviceState, None]:
-        """Stream the state of the robot cell""" ""
+        """Stream the state of the robot cell"""
         state_streaming_devices = [
             device
             for device in self._devices.values()
