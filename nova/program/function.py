@@ -18,9 +18,11 @@ from typing import (
     get_args,
     get_origin,
     get_type_hints,
+    overload,
 )
 
 if TYPE_CHECKING:
+    from nova.viewers.base import Viewer
     from nova.viewers.protocol import NovaRerunBridgeProtocol
 
 from docstring_parser import Docstring
@@ -57,7 +59,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
     _wrapped: Callable[..., Coroutine[Any, Any, Return]] = PrivateAttr(
         default_factory=lambda *args, **kwargs: None  # type: ignore[assignment]  # pyright: ignore[reportAssignmentType]
     )
-    _viewer: "NovaRerunBridgeProtocol | None" = PrivateAttr(default=None)
+    _viewer: "Viewer | NovaRerunBridgeProtocol | None" = PrivateAttr(default=None)
     program_id: str
     name: str | None
     description: str | None
@@ -66,7 +68,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
     preconditions: ProgramPreconditions | None = None
 
     @classmethod
-    def validate(cls, value: Callable[Parameters, Return]) -> "Program[Parameters, Return]":
+    def validate(cls, value: Callable[..., Any]) -> "Program[Any, Any]":
         if isinstance(value, Program):
             return value
 
@@ -102,11 +104,11 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
         # mypy does not recognise that `value` is an async function returning a coroutine,
         # so we help it with a cast here.
-        program._wrapped = cast(Callable[..., Coroutine[Any, Any, Return]], value)
+        program._wrapped = cast(Callable[..., Coroutine[Any, Any, Any]], value)
 
         return program
 
-    async def __call__(self, *args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:  # pylint: disable=no-member
+    async def __call__(self, *args: Any, **kwargs: Any) -> Any:
         if args:
             raise TypeError(
                 "Nova programs must be called with keyword arguments only "
@@ -407,19 +409,42 @@ def input_and_output_types(
     return input_type, output
 
 
+# Overload for bare @program decorator
+@overload
+def program(
+    _func: Callable[..., Any],
+    *,
+    id: str | None = ...,
+    name: str | None = ...,
+    description: str | None = ...,
+    preconditions: ProgramPreconditions | None = ...,
+    viewer: "Viewer | NovaRerunBridgeProtocol | None" = ...,
+) -> Program[Any, Any]: ...
+
+
+# Overload for @program() decorator factory
+@overload
+def program(
+    _func: None = ...,
+    *,
+    id: str | None = ...,
+    name: str | None = ...,
+    description: str | None = ...,
+    preconditions: ProgramPreconditions | None = ...,
+    viewer: "Viewer | NovaRerunBridgeProtocol | None" = ...,
+) -> Callable[[Callable[..., Any]], Program[Any, Any]]: ...
+
+
 def program(
     # allows bare @nova.program
-    _func: Callable[Parameters, Return] | None = None,
+    _func: Callable[..., Any] | None = None,
     *,
     id: str | None = None,
     name: str | None = None,
     description: str | None = None,
     preconditions: ProgramPreconditions | None = None,
-    viewer: "NovaRerunBridgeProtocol | None" = None,
-) -> (
-    Program[Parameters, Coroutine[Any, Any, Return]]
-    | Callable[[Callable[Parameters, Return]], Program[Parameters, Coroutine[Any, Any, Return]]]
-):
+    viewer: "Viewer | NovaRerunBridgeProtocol | None" = None,
+) -> Program[Any, Any] | Callable[[Callable[..., Any]], Program[Any, Any]]:
     """
     Decorator factory for creating Nova programs with declarative controller setup.
 
@@ -452,8 +477,8 @@ def program(
     """
 
     def decorator(
-        function: Callable[Parameters, Return],
-    ) -> Program[Parameters, Coroutine[Any, Any, Return]]:
+        function: Callable[..., Any],
+    ) -> Program[Any, Any]:
         # Validate that the function is async
         if not asyncio.iscoroutinefunction(function):
             raise TypeError(f"Program function '{function.__name__}' must be async")

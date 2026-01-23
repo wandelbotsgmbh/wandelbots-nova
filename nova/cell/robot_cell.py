@@ -2,6 +2,7 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from collections.abc import Sequence
 from contextlib import AsyncExitStack, aclosing
 from functools import reduce
 from typing import (
@@ -239,7 +240,7 @@ class AbstractRobot(Device, ABC):  # pyright: ignore[reportImplicitAbstractClass
 
     async def plan(
         self,
-        actions: list[Action] | Action,
+        actions: Sequence[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
@@ -258,28 +259,30 @@ class AbstractRobot(Device, ABC):  # pyright: ignore[reportImplicitAbstractClass
         Returns:
             api.models.JointTrajectory: The planned joint trajectory
         """
-        if not isinstance(actions, list):
-            actions = [actions]
+        if isinstance(actions, Action):
+            action_list: list[Action] = [actions]
+        else:
+            action_list = list(actions)
 
-        if len(actions) == 0:
+        if len(action_list) == 0:
             raise ValueError("No actions provided")
 
         try:
             trajectory = await self._plan(
-                actions=actions,
+                actions=action_list,
                 tcp=tcp,
                 start_joint_position=start_joint_position,
                 motion_group_setup=motion_group_setup,
             )
 
             # Automatic viewer integration - log planning results if viewers are active
-            await self._log_planning_results(actions, trajectory, tcp)
+            await self._log_planning_results(action_list, trajectory, tcp)
 
             return trajectory
 
         except Exception as planning_error:
             # Log planning failure to viewers
-            await self._log_planning_error(actions, planning_error, tcp)
+            await self._log_planning_error(action_list, planning_error, tcp)
             raise planning_error
 
     async def _log_planning_results(
@@ -336,7 +339,7 @@ class AbstractRobot(Device, ABC):  # pyright: ignore[reportImplicitAbstractClass
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str,
-        actions: list[Action] | Action,
+        actions: Sequence[Action] | Action,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
     ) -> AsyncGenerator[MotionState, None]:
@@ -352,13 +355,15 @@ class AbstractRobot(Device, ABC):  # pyright: ignore[reportImplicitAbstractClass
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
         """
-        if not isinstance(actions, list):
-            actions = [actions]
+        if isinstance(actions, Action):
+            action_list: list[Action] = [actions]
+        else:
+            action_list = list(actions)
 
         motion_state_stream = self._execute(
             joint_trajectory,
             tcp,
-            actions,
+            action_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
         )
@@ -371,7 +376,7 @@ class AbstractRobot(Device, ABC):  # pyright: ignore[reportImplicitAbstractClass
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str,
-        actions: list[Action] | Action,
+        actions: Sequence[Action] | Action,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
     ) -> None:
@@ -410,7 +415,7 @@ class AbstractRobot(Device, ABC):  # pyright: ignore[reportImplicitAbstractClass
 
     async def plan_and_execute(
         self,
-        actions: list[Action] | Action,
+        actions: Sequence[Action] | Action,
         tcp: str,
         start_joint_position: tuple[float, ...] | None = None,
     ) -> None:

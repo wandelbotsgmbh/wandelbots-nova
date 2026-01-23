@@ -198,7 +198,7 @@ async def test(ctx: nova.ProgramContext):
     )
 
     # Log to rerun
-    await log_mesh_to_rerun(scene)  # type: ignore
+    await log_mesh_to_rerun(scene)
 
     cell = ctx.nova.cell()
     controller = await cell.controller("ur10e-welding")
@@ -240,7 +240,7 @@ async def test(ctx: nova.ProgramContext):
         mesh_collider = await add_mesh_to_collision_world(
             collision_api=ctx.nova.api.store_collision_components_api,
             cell_name=cell.id,
-            scene=scene,  # type: ignore
+            scene=scene,
         )
 
         # Build collision world with welding part included

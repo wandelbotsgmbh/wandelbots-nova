@@ -36,7 +36,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                 rr.Ellipsoids3D(
                     radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
                     centers=[pose.position.to_tuple()],
-                    rotation_axis_angles=[rr.RotationAxisAngle(axis=axis, angle=angle)],  # type: ignore
+                    rotation_axis_angles=[rr.RotationAxisAngle(axis=axis, angle=angle)],
                     colors=[(221, 193, 193, 255)],
                 ),
                 static=True,
@@ -256,7 +256,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                         vertex_positions=vertices,
                         triangle_indices=triangles,
                         vertex_normals=normals,
-                        albedo_factor=[colors.colors[0]],  # type: ignore
+                        albedo_factor=[colors.colors[0]],
                     ),
                     static=True,
                 )

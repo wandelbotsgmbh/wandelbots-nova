@@ -668,7 +668,7 @@ def _report_state_change_to_event_loop(
 
 
 def run_program(
-    program: Program[..., Any],
+    program: Program[Any, Any],
     *,
     inputs: dict[str, Any] | None = None,
     sync: bool = True,
