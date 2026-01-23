@@ -887,10 +887,12 @@ class TrajectoryCursor:
                         continue  # wait for the execution to actually start
 
                     if not motion_group_state.execute and motion_group_state.standstill:
-                        assert (
-                            current_op.operation_state
-                            not in (OperationState.INITIAL, OperationState.COMMANDED)
-                        ), f"Unexpected operation state {current_op.operation_state} when standstill is True"
+                        assert current_op.operation_state not in (
+                            OperationState.INITIAL,
+                            OperationState.COMMANDED,
+                        ), (
+                            f"Unexpected operation state {current_op.operation_state} when standstill is True"
+                        )
                         self._complete_operation()
                         if self._detach_on_standstill:
                             logger.debug("Detaching on standstill")
@@ -917,7 +919,9 @@ class TrajectoryCursor:
                                 if self._detach_on_standstill:
                                     break
                             case _:
-                                assert False, f"Unexpected or unsupported motion group execute state: {motion_group_state.execute.details.state}"
+                                assert False, (
+                                    f"Unexpected or unsupported motion group execute state: {motion_group_state.execute.details.state}"
+                                )
         except asyncio.CancelledError:
             logger.debug("TrajectoryCursor motion group state monitor was cancelled")
             raise

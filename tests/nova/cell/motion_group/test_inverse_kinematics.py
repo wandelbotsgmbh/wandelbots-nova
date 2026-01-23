@@ -93,12 +93,12 @@ async def test_inverse_kinematics_not_reachable_pose(ur_mg):
         tcp="Flange",
     )
 
-    assert (
-        len(solutions) == 1
-    ), "Inverse kinematics did not return a solution for the unreachable pose"
-    assert (
-        len(solutions[0]) == 0
-    ), "Inverse kinematics should return no solutions for unreachable pose"
+    assert len(solutions) == 1, (
+        "Inverse kinematics did not return a solution for the unreachable pose"
+    )
+    assert len(solutions[0]) == 0, (
+        "Inverse kinematics should return no solutions for unreachable pose"
+    )
 
 
 @pytest.mark.asyncio
@@ -109,12 +109,12 @@ async def test_inverse_kinematics_reachable_pose(ur_mg):
     """
     solutions = await ur_mg._inverse_kinematics(poses=[Pose(700, 0, 700, 0, 0, 0)], tcp="Flange")
 
-    assert (
-        len(solutions) == 1
-    ), "Inverse kinematics did not return a solution for the unreachable pose"
-    assert (
-        len(solutions[0]) == 8
-    ), "Inverse kinematics should return no solutions for unreachable pose"
+    assert len(solutions) == 1, (
+        "Inverse kinematics did not return a solution for the unreachable pose"
+    )
+    assert len(solutions[0]) == 8, (
+        "Inverse kinematics should return no solutions for unreachable pose"
+    )
     assert len(solutions[0][0]) == 6, "Inverse kinematics solution does not have 6 joint values"
 
 
@@ -131,9 +131,9 @@ async def test_inverse_kinematics_mixed_pose_list(ur_mg):
 
     assert len(solutions) == 2, "Inverse kinematics did not return solutions for all poses"
     assert len(solutions[0]) == 8, "Inverse kinematics should return solutions for reachable pose"
-    assert (
-        len(solutions[1]) == 0
-    ), "Inverse kinematics should return no solutions for unreachable pose"
+    assert len(solutions[1]) == 0, (
+        "Inverse kinematics should return no solutions for unreachable pose"
+    )
 
     for solution in solutions[0]:
         assert len(solution) == 6, "Inverse kinematics solution does not have 6 joint values"

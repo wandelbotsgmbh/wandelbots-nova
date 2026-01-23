@@ -49,20 +49,15 @@ async def test_collision_free_planning_with_joint_position_as_target(ur_mg):
         tcp="Flange",
     )
 
-    assert (
-        len(trajectory.joint_positions) > 0
-    ), "Collision-free planning did not return a valid joint trajectory"
-    assert (
-        trajectory.joint_positions[0].root == initial_joint_positions
-    ), "Initial joint positions do not match start"
-    assert trajectory.joint_positions[-1].root == [
-        pi / 4,
-        -pi / 2,
-        pi / 2,
-        0,
-        0,
-        0,
-    ], "Final joint positions do not match target"
+    assert len(trajectory.joint_positions) > 0, (
+        "Collision-free planning did not return a valid joint trajectory"
+    )
+    assert trajectory.joint_positions[0].root == initial_joint_positions, (
+        "Initial joint positions do not match start"
+    )
+    assert trajectory.joint_positions[-1].root == [pi / 4, -pi / 2, pi / 2, 0, 0, 0], (
+        "Final joint positions do not match target"
+    )
 
 
 @pytest.mark.asyncio
@@ -82,12 +77,12 @@ async def test_collision_free_planning_with_pose_as_target(ur_mg):
         tcp="Flange",
     )
 
-    assert (
-        len(trajectory.joint_positions) > 0
-    ), "Collision-free planning did not return a valid joint trajectory"
-    assert (
-        trajectory.joint_positions[0].root == initial_joint_positions
-    ), "Initial joint positions do not match start"
+    assert len(trajectory.joint_positions) > 0, (
+        "Collision-free planning did not return a valid joint trajectory"
+    )
+    assert trajectory.joint_positions[0].root == initial_joint_positions, (
+        "Initial joint positions do not match start"
+    )
 
     # make sure the final joint position leas to the some pose as target_as_pose
     last_joint_position = trajectory.joint_positions[-1].root
@@ -95,9 +90,9 @@ async def test_collision_free_planning_with_pose_as_target(ur_mg):
         await ur_mg.forward_kinematics(joints=[list(last_joint_position)], tcp="Flange")
     )[0]
 
-    assert (
-        last_joint_position_as_pose == target_as_pose
-    ), "Final joint position as pose does not match target pose"
+    assert last_joint_position_as_pose == target_as_pose, (
+        "Final joint position as pose does not match target pose"
+    )
 
 
 @pytest.mark.asyncio

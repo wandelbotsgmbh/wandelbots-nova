@@ -72,9 +72,9 @@ move via ptp() to (23, 0, 626, 0, 0, 0)
 
     for j, path in enumerate(record_of_commands):
         for i, motion in enumerate(path):
-            assert isinstance(
-                motion, expected_motion_types[j][i]
-            ), f"The point has a wrong motion type - {expected_motion_types[j][i]=} == {type(motion)=}"
+            assert isinstance(motion, expected_motion_types[j][i]), (
+                f"The point has a wrong motion type - {expected_motion_types[j][i]=} == {type(motion)=}"
+            )
 
 
 @pytest.mark.skip("JointPTP not supported by simulated robot")
@@ -157,14 +157,14 @@ move via joint_p2p() to [31, 0, 626, 0, 0, 0]
     for j, path in enumerate(record_of_commands):
         for i, motion in enumerate(path):
             # Check the motion type:
-            assert isinstance(
-                motion, expected_motion_types[j][i]
-            ), f"The point has a wrong motion type - {expected_motion_types[j][i]=} == {type(path[i])=}"
+            assert isinstance(motion, expected_motion_types[j][i]), (
+                f"The point has a wrong motion type - {expected_motion_types[j][i]=} == {type(path[i])=}"
+            )
 
             if isinstance(path[i], JointPTP):
-                assert (
-                    motion.target == expected_joint_values[j][i]
-                ), f"The joint values don't match - {expected_joint_values[j][i]=} == {path[i].target=}"
+                assert motion.target == expected_joint_values[j][i], (
+                    f"The joint values don't match - {expected_joint_values[j][i]=} == {path[i].target=}"
+                )
 
 
 @pytest.mark.skip("JointPTP not supported by simulated robot")
