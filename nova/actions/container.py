@@ -151,8 +151,7 @@ class CombinedActions(pydantic.BaseModel):
             api.models.SetIO(
                 io=api.models.IOValue(action.action.to_api_model()),
                 location=action.path_parameter,
-                # TODO: do we need extra handling logic here?
-                io_origin=api.models.IOOrigin.CONTROLLER,
+                io_origin=action.action.origin,
             )
             for action in self.actions
             if isinstance(action.action, WriteAction)
