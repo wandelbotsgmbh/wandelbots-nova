@@ -80,7 +80,8 @@ class Nova:
         try:
             if self.nats is not None and self.nats.is_connected:
                 await self.nats.drain()
-            return await self._api_client.close() if self._api_client is not None else None
+            if self._api_client is not None:
+                await self._api_client.close()
         except Exception as e:
             logger.error(f"Error closing Nova: {e}", exc_info=True)
 

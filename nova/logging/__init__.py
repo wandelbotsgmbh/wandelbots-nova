@@ -3,6 +3,8 @@ import sys
 
 from nova.config import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
+__all__ = ["logger", "configure_logging"]
+
 
 def configure_logging() -> logging.Logger:
     # Configure a single, consistent handler (stdout + our formatter).

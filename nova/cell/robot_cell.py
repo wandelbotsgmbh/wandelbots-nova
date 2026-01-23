@@ -129,6 +129,9 @@ T = TypeVar("T")
 class AsyncCallableDevice(Generic[T], Device, ABC):  # pyright: ignore[reportImplicitAbstractClass]
     """An awaitable external function or service in the robot cell"""
 
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+
     async def __call__(self, *args: Any, **kwargs: Any) -> T:
         if not self._is_active:
             raise ValueError("The device is not activated.")
@@ -155,7 +158,7 @@ class InputDevice(Protocol):
 
     async def read(self, key: str) -> ValueType:
         """Read a value given its key"""
-        ...  # Protocol methods should have ellipsis
+        raise NotImplementedError
 
 
 @runtime_checkable
@@ -164,7 +167,7 @@ class OutputDevice(Protocol):
 
     async def write(self, key: str, value: ValueType) -> None:
         """Write a value given its key and the new value"""
-        ...  # Protocol methods should have ellipsis
+        raise NotImplementedError
 
 
 @runtime_checkable
@@ -177,7 +180,7 @@ class AbstractDeviceState(Protocol):
 
     def __eq__(self, other: object) -> bool:
         """Check if the state is equal to another state"""
-        ...
+        raise NotImplementedError
 
 
 @runtime_checkable
@@ -186,7 +189,7 @@ class StoppableDevice(Protocol):
 
     async def stop(self) -> None:
         """Stop the device"""
-        ...
+        raise NotImplementedError
 
 
 @runtime_checkable

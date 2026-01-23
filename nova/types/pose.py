@@ -208,7 +208,7 @@ class Pose(pydantic.BaseModel, Sized):  # pyright: ignore[reportUnsafeMultipleIn
             seq = tuple(other)
             return self.__matmul__(Pose(seq))
 
-        raise ValueError(f"Cannot multiply Pose with {type(other)}")
+        return NotImplemented  # type: ignore[return-value]
 
     def __array__(self, dtype: npt.DTypeLike = None) -> npt.NDArray[Any]:
         """Convert Pose to a 6-element numpy array: [pos.x, pos.y, pos.z, ori.x, ori.y, ori.z].
