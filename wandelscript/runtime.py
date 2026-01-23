@@ -17,7 +17,7 @@ from nova.actions import Action, CombinedActions
 from nova.actions.container import ActionLocation
 from nova.actions.io import CallAction, ReadAction, ReadJointsAction, ReadPoseAction, WriteAction
 from nova.actions.motions import Motion
-from nova.cell.robot_cell import AbstractRobot, Device, RobotCell
+from nova.cell.robot_cell import AbstractRobot, ConfigurablePeriphery, Device, RobotCell
 from nova.types import MotionSettings, MotionState, Pose
 from wandelscript import exception as wsexception
 from wandelscript.datatypes import ElementType, Frame, as_builtin_type
@@ -248,7 +248,7 @@ class ExecutionContext:
     async def wait(self, duration: int):
         await self.robot_cell.timer(duration)
 
-    def get_device(self, name: str) -> Device:
+    def get_device(self, name: str) -> Device | ConfigurablePeriphery | None:
         return self.robot_cell[name]
 
     def get_motion_group(self, name=None) -> AbstractRobot:
@@ -312,7 +312,7 @@ def run_action(arg, context: ExecutionContext):
 
 @run_action.register(WriteAction)
 async def _(arg: WriteAction, context: ExecutionContext) -> None:
-    device = context.robot_cell.devices.get(arg.device_id)
+    device = context.robot_cell.devices.get(arg.device_id)  # type: ignore[arg-type]
     return await device.write(arg.key, arg.value)  # type: ignore
 
 
@@ -553,7 +553,7 @@ class PlannableActionQueue(ActionQueue):
         if isinstance(action, ReadAction):
             device = self._execution_context.robot_cell[action.device_id]
             # allow reading from run_args
-            if device.configuration.type in ("database",):
+            if device.configuration.type in ("database",):  # type: ignore[union-attr]
                 return await run_action(action, self._execution_context)
         raise NotPlannableError(
             location=self._execution_context.location_in_code,

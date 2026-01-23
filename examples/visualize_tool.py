@@ -41,6 +41,7 @@ async def test(ctx: nova.ProgramContext):
 
         # Define new TCP on virtual robot
         tcp_id = robot_tcp_data.name
+        assert tcp_id is not None, "TCP name must be set"
         await ctx.nova.api.virtual_robot_setup_api.add_virtual_controller_tcp(
             cell=cell.id,
             controller=controller.id,

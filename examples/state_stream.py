@@ -15,7 +15,7 @@ async def main(controller_name: str = "controller") -> None:
         cell = nova.cell()
         controller = await cell.controller(controller_name)
 
-        rc = RobotCell(**{controller_name: controller})
+        rc = RobotCell(timer=None, **{controller_name: controller})
         async for controller_state in rc.stream_state(rate_msecs=500):
             print(controller_state)
 

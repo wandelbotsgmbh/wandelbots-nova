@@ -52,7 +52,7 @@ async def main(ctx: nova.ProgramContext):
         t.move(joint_ptp(joints, settings=slow))
 
     joint_trajectory = await motion_group.plan(t.actions, tcp)
-    motion_group.execute(joint_trajectory, tcp, actions=t.actions)
+    await motion_group.execute(joint_trajectory, tcp, actions=t.actions)
 
 
 if __name__ == "__main__":

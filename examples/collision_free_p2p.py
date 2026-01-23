@@ -194,7 +194,7 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
             await motion_group.plan(
                 collision_actions,
                 tcp,
-                start_joint_position=joint_trajectory.joint_positions[-1].root,
+                start_joint_position=tuple(joint_trajectory.joint_positions[-1].root),
             )
         except Exception as e:
             print(f"Planning failed, we continue with the collision avoidance: {e}")
@@ -210,7 +210,9 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
         ]
 
         joint_trajectory = await motion_group.plan(
-            welding_actions, tcp=tcp, start_joint_position=joint_trajectory.joint_positions[-1].root
+            welding_actions,
+            tcp=tcp,
+            start_joint_position=tuple(joint_trajectory.joint_positions[-1].root),
         )
 
 
