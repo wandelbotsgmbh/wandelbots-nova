@@ -81,7 +81,7 @@ async def wait_for_io(
     on_change: Callable[[dict[str, IOChange]], bool],
     nova: Nova | None = None,
     cell: str = "cell",
-    nats_subscription_kwargs: dict[str, Any] = {},
+    nats_subscription_kwargs: dict[str, Any] | None = None,
 ) -> None:
     """
     Wait for changes on specified bus IOs and call the on_change callback when changes occur.
@@ -106,6 +106,9 @@ async def wait_for_io(
 
     if not nova.nats.is_connected:
         raise RuntimeError("NATS client is not connected")
+
+    if nats_subscription_kwargs is None:
+        nats_subscription_kwargs = {}
 
     if "subject" in nats_subscription_kwargs:
         raise ValueError("wait_for_io does not allow overriding the subscription subject")
