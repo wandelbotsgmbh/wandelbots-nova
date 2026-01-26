@@ -88,7 +88,7 @@ async def wait_for_io(
     The function will continue to listen for changes until the on_change callback returns True.
 
     Note that this function does not guarantee that all IO changes are captured.
-    Underlying NATS subscription guarantees at-most-once delivery when the consumer is healty.
+    Underlying NATS subscription guarantees at-most-once delivery when the consumer is healthy.
 
     Provided nats_subscription_kwargs should be used to tune the subscription behavior.
     Additional tuning behaviour can be achieved by adjusting the NATS client configuration in the Nova instance.

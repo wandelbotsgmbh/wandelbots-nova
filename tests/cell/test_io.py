@@ -194,7 +194,7 @@ class SetIOOnPathTestCase:
     controller_io_prestate: dict[str, Any] = field(default_factory=dict)
     bus_io_prestate: dict[str, Any] = field(default_factory=dict)
 
-    # excersize values
+    # exercise values
     actions: list[Action] = field(default_factory=list)
 
     # verification values
@@ -296,7 +296,7 @@ SET_IO_ON_PATH_TEST_CASES = [
 @pytest.mark.parametrize("test_case", SET_IO_ON_PATH_TEST_CASES)
 async def test_set_io_on_path(
     setup_controllers: tuple[Controller, Controller],
-    setup_virtual_profinet: tuple[str, str, str],
+    setup_virtual_profinet: tuple[str, ...],
     test_case: SetIOOnPathTestCase,
 ):
     async with Nova() as nova:
@@ -343,7 +343,7 @@ async def test_bus_io_get_set_bool_int(setup_virtual_profinet: tuple[str, ...]):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_bus_io_get_set_float(setup_virtual_profinet: tuple[str, str, str]):
+async def test_bus_io_get_set_float(setup_virtual_profinet: tuple[str, ...]):
     _ = setup_virtual_profinet
 
     async with Nova() as nova:

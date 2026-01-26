@@ -65,7 +65,10 @@ async def main(ctx: nova.ProgramContext) -> None:
 
     # wait for bus io value
     def on_change(changes: dict[str, IOChange]) -> bool:
-        if changes["test_bool"].new_value == False and changes["test_bool"].old_value == True:
+        if "test_bool" not in changes:
+            return False
+        
+        if changes["test_bool"].new_value == False and changes["test_bool"].old_value == True:  # noqa: E712
             # returning true stops the wait
             return True
 
