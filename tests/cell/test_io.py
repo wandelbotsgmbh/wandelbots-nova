@@ -45,6 +45,79 @@ async def setup_controllers() -> AsyncGenerator[tuple[Controller, Controller], N
         yield ur, kuka
 
 
+@pytest.fixture
+@pytest.mark.integration
+async def setup_virtual_profinet() -> AsyncGenerator[tuple[str, ...], None]:
+    async with Nova() as nova:
+        bus_io_service_ready = asyncio.Event()
+
+        async def on_bus_io_state(message):
+            data = json.loads(message.data)
+            if data["state"] == api.models.BusIOsStateEnum.BUS_IOS_STATE_CONNECTED.value:
+                bus_io_service_ready.set()
+
+        _ = await nova.nats.subscribe("nova.v2.cells.cell.bus-ios.status", cb=on_bus_io_state)
+        try:
+            await nova.api.bus_ios_api.get_bus_io_service("cell")
+            bus_io_service_ready.set()
+        except Exception:
+            await nova.api.bus_ios_api.add_bus_io_service(
+                cell="cell", bus_io_type=api.models.BusIOType(api.models.BusIOProfinetVirtual())
+            )
+            # sometimes we get error if we communicate with bus io right after we get the "connected" message
+            await asyncio.sleep(30)
+
+        await bus_io_service_ready.wait()
+
+        await nova.api.bus_ios_api.add_profinet_io(
+            cell="cell",
+            io="test_bool",
+            profinet_io_data=api.models.ProfinetIOData(
+                type=api.models.ProfinetIOTypeEnum.PROFINET_IO_TYPE_BOOL,
+                description="Test bool data",
+                direction=api.models.ProfinetIODirection.PROFINET_IO_DIRECTION_OUTPUT,
+                byte_address=800,
+                bit_address=1,
+            ),
+        )
+
+        await nova.api.bus_ios_api.add_profinet_io(
+            cell="cell",
+            io="test_bool_2",
+            profinet_io_data=api.models.ProfinetIOData(
+                type=api.models.ProfinetIOTypeEnum.PROFINET_IO_TYPE_BOOL,
+                description="Test bool data",
+                direction=api.models.ProfinetIODirection.PROFINET_IO_DIRECTION_OUTPUT,
+                byte_address=801,
+                bit_address=1,
+            ),
+        )
+
+        await nova.api.bus_ios_api.add_profinet_io(
+            cell="cell",
+            io="test_int",
+            profinet_io_data=api.models.ProfinetIOData(
+                type=api.models.ProfinetIOTypeEnum.PROFINET_IO_TYPE_INT,
+                description="Test int data",
+                direction=api.models.ProfinetIODirection.PROFINET_IO_DIRECTION_OUTPUT,
+                byte_address=802,
+            ),
+        )
+
+        await nova.api.bus_ios_api.add_profinet_io(
+            cell="cell",
+            io="test_float",
+            profinet_io_data=api.models.ProfinetIOData(
+                type=api.models.ProfinetIOTypeEnum.PROFINET_IO_TYPE_REAL,
+                description="Test float data",
+                direction=api.models.ProfinetIODirection.PROFINET_IO_DIRECTION_OUTPUT,
+                byte_address=804,
+            ),
+        )
+
+        yield "test_bool", "test_bool_2", "test_int", "test_float"
+
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_io_write(setup_controllers: tuple[Controller, Controller]):
@@ -111,79 +184,6 @@ async def test_write(setup_controllers: tuple[Controller, Controller]):
         await io.write("tool_out[0]", False)
         value3 = await io.read("tool_out[0]")
         assert value3 is False
-
-
-@pytest.fixture
-@pytest.mark.integration
-async def setup_virtual_profinet() -> AsyncGenerator[tuple[str, ...], None]:
-    async with Nova() as nova:
-        bus_io_service_ready = asyncio.Event()
-
-        async def on_bus_io_state(message):
-            data = json.loads(message.data)
-            if data["state"] == api.models.BusIOsStateEnum.BUS_IOS_STATE_CONNECTED.value:
-                bus_io_service_ready.set()
-
-        _ = await nova.nats.subscribe("nova.v2.cells.cell.bus-ios.status", cb=on_bus_io_state)
-        try:
-            await nova.api.bus_ios_api.get_bus_io_service("cell")
-            bus_io_service_ready.set()
-        except Exception:
-            await nova.api.bus_ios_api.add_bus_io_service(
-                cell="cell", bus_io_type=api.models.BusIOType(api.models.BusIOProfinetVirtual())
-            )
-            # we can't interact with bus io even after the connected message, we need to wait a bit
-            await asyncio.sleep(30)
-
-        await bus_io_service_ready.wait()
-
-        await nova.api.bus_ios_api.add_profinet_io(
-            cell="cell",
-            io="test_bool",
-            profinet_io_data=api.models.ProfinetIOData(
-                type=api.models.ProfinetIOTypeEnum.PROFINET_IO_TYPE_BOOL,
-                description="Test bool data",
-                direction=api.models.ProfinetIODirection.PROFINET_IO_DIRECTION_OUTPUT,
-                byte_address=800,
-                bit_address=1,
-            ),
-        )
-
-        await nova.api.bus_ios_api.add_profinet_io(
-            cell="cell",
-            io="test_bool_2",
-            profinet_io_data=api.models.ProfinetIOData(
-                type=api.models.ProfinetIOTypeEnum.PROFINET_IO_TYPE_BOOL,
-                description="Test bool data",
-                direction=api.models.ProfinetIODirection.PROFINET_IO_DIRECTION_OUTPUT,
-                byte_address=801,
-                bit_address=1,
-            ),
-        )
-
-        await nova.api.bus_ios_api.add_profinet_io(
-            cell="cell",
-            io="test_int",
-            profinet_io_data=api.models.ProfinetIOData(
-                type=api.models.ProfinetIOTypeEnum.PROFINET_IO_TYPE_INT,
-                description="Test int data",
-                direction=api.models.ProfinetIODirection.PROFINET_IO_DIRECTION_OUTPUT,
-                byte_address=802,
-            ),
-        )
-
-        await nova.api.bus_ios_api.add_profinet_io(
-            cell="cell",
-            io="test_float",
-            profinet_io_data=api.models.ProfinetIOData(
-                type=api.models.ProfinetIOTypeEnum.PROFINET_IO_TYPE_REAL,
-                description="Test float data",
-                direction=api.models.ProfinetIODirection.PROFINET_IO_DIRECTION_OUTPUT,
-                byte_address=804,
-            ),
-        )
-
-        yield "test_bool", "test_bool_2", "test_int", "test_float"
 
 
 @dataclass
