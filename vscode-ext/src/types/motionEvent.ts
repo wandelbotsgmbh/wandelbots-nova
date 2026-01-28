@@ -13,9 +13,9 @@ export interface ActionMessage {
 export interface MotionEventMessage {
   type: MotionEventType
   current_location: number
-  current_action: ActionMessage
+  current_action: ActionMessage | null
   target_location: number
-  target_action: ActionMessage
+  target_action: ActionMessage | null
   // allow unknown extra fields to avoid being brittle to backend changes
   [key: string]: unknown
 }
