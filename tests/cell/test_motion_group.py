@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -156,6 +157,29 @@ def _test_collider(position: list[float]) -> api.models.CollisionSetup:
                 )
             }
         )
+    )
+
+
+def _make_joint_trajectory(joints: tuple[float, ...]) -> api.models.JointTrajectory:
+    return api.models.JointTrajectory(
+        joint_positions=[api.models.Joints(list(joints)), api.models.Joints(list(joints))],
+        times=[0.0, 0.1],
+        locations=[0.0, 1.0],
+    )
+
+
+@pytest.fixture
+def mock_planning_motion_group():
+    """Create a MotionGroup instance with planning APIs mocked."""
+    mock_api_client = MagicMock(spec=ApiGateway)
+    mock_api_client.trajectory_planning_api = MagicMock()
+    mock_api_client.trajectory_planning_api.plan_trajectory = AsyncMock()
+    mock_api_client.trajectory_planning_api.plan_collision_free = AsyncMock()
+    return MotionGroup(
+        api_client=mock_api_client,
+        cell="test_cell",
+        controller_id="test-controller",
+        motion_group_id="0@test-controller",
     )
 
 
@@ -413,3 +437,133 @@ async def test_ensure_virtual_tcp_different_rotation_types_not_equal(mock_motion
             orientation_type=tcp.orientation_type,
         ),
     )
+
+
+@pytest.mark.asyncio
+async def test_plan_does_not_mutate_setup_for_collision_check(mock_planning_motion_group):
+    start_joints = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    existing_setup = _test_collider([0, 0, 0])
+    new_setup = _test_collider([1, 0, 0])
+
+    motion_group_setup = api.models.MotionGroupSetup(
+        motion_group_model="test",
+        cycle_time=8,
+        collision_setups=api.models.CollisionSetups({"existing": existing_setup}),
+    )
+    original_root = motion_group_setup.collision_setups.root
+    original_keys = set(original_root.keys())
+
+    mock_planning_motion_group._api_client.trajectory_planning_api.plan_trajectory.return_value = (
+        SimpleNamespace(response=_make_joint_trajectory(start_joints))
+    )
+
+    await mock_planning_motion_group.plan(
+        actions=[linear(target=(0, 0, 0, 0, 0, 0), collision_setup=new_setup)],
+        tcp="Flange",
+        start_joint_position=start_joints,
+        motion_group_setup=motion_group_setup,
+    )
+
+    assert motion_group_setup.collision_setups.root is original_root
+    assert set(motion_group_setup.collision_setups.root.keys()) == original_keys
+    assert "collision-check" not in motion_group_setup.collision_setups.root
+
+    request = mock_planning_motion_group._api_client.trajectory_planning_api.plan_trajectory.call_args.kwargs[
+        "plan_trajectory_request"
+    ]
+    assert request.motion_group_setup.collision_setups.root["existing"] is existing_setup
+    assert request.motion_group_setup.collision_setups.root["collision-check"] is new_setup
+
+
+@pytest.mark.asyncio
+async def test_plan_does_not_mutate_setup_for_collision_free(mock_planning_motion_group):
+    start_joints = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    existing_setup = _test_collider([0, 0, 0])
+    new_setup = _test_collider([1, 0, 0])
+
+    base_limits = api.models.CartesianLimits(
+        velocity=10.0, acceleration=20.0, orientation_velocity=1.0, orientation_acceleration=2.0
+    )
+    motion_group_setup = api.models.MotionGroupSetup(
+        motion_group_model="test",
+        cycle_time=8,
+        collision_setups=api.models.CollisionSetups({"existing": existing_setup}),
+        global_limits=api.models.LimitSet(tcp=base_limits),
+    )
+    original_root = motion_group_setup.collision_setups.root
+
+    mock_planning_motion_group._api_client.trajectory_planning_api.plan_collision_free.return_value = (
+        SimpleNamespace(response=_make_joint_trajectory(start_joints))
+    )
+
+    settings = MotionSettings(tcp_velocity_limit=123.0)
+    await mock_planning_motion_group.plan(
+        actions=[
+            collision_free(
+                target=(1, 2, 3, 4, 5, 6), collision_setup=new_setup, settings=settings
+            )
+        ],
+        tcp="Flange",
+        start_joint_position=start_joints,
+        motion_group_setup=motion_group_setup,
+    )
+
+    assert motion_group_setup.collision_setups.root is original_root
+    assert "collision-free-motion" not in motion_group_setup.collision_setups.root
+    assert motion_group_setup.global_limits.tcp.velocity == 10.0
+
+    request = mock_planning_motion_group._api_client.trajectory_planning_api.plan_collision_free.call_args.kwargs[
+        "plan_collision_free_request"
+    ]
+    assert request.motion_group_setup.collision_setups.root["existing"] is existing_setup
+    assert request.motion_group_setup.collision_setups.root["collision-free-motion"] is new_setup
+    assert request.motion_group_setup.global_limits.tcp.velocity == 123.0
+
+
+@pytest.mark.asyncio
+async def test_plan_does_not_mutate_global_limits(mock_planning_motion_group):
+    start_joints = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+    base_limits = api.models.CartesianLimits(
+        velocity=10.0, acceleration=20.0, orientation_velocity=1.0, orientation_acceleration=2.0
+    )
+    existing_joints = [
+        api.models.JointLimits(velocity=1.0, acceleration=2.0),
+        api.models.JointLimits(velocity=3.0, acceleration=4.0),
+    ]
+    motion_group_setup = api.models.MotionGroupSetup(
+        motion_group_model="test",
+        cycle_time=8,
+        global_limits=api.models.LimitSet(tcp=base_limits, joints=existing_joints),
+    )
+
+    mock_planning_motion_group._api_client.trajectory_planning_api.plan_collision_free.return_value = (
+        SimpleNamespace(response=_make_joint_trajectory(start_joints))
+    )
+
+    settings = MotionSettings(
+        tcp_velocity_limit=123.0,
+        tcp_acceleration_limit=456.0,
+        joint_velocity_limits=(9.0, 8.0),
+        joint_acceleration_limits=(7.0, 6.0),
+    )
+    await mock_planning_motion_group.plan(
+        actions=[collision_free(target=(1, 2, 3, 4, 5, 6), settings=settings)],
+        tcp="Flange",
+        start_joint_position=start_joints,
+        motion_group_setup=motion_group_setup,
+    )
+
+    assert motion_group_setup.global_limits.tcp.velocity == 10.0
+    assert motion_group_setup.global_limits.tcp.acceleration == 20.0
+    assert motion_group_setup.global_limits.joints == existing_joints
+
+    request = mock_planning_motion_group._api_client.trajectory_planning_api.plan_collision_free.call_args.kwargs[
+        "plan_collision_free_request"
+    ]
+    assert request.motion_group_setup.global_limits.tcp.velocity == 123.0
+    assert request.motion_group_setup.global_limits.tcp.acceleration == 456.0
+    assert request.motion_group_setup.global_limits.joints[0].velocity == 9.0
+    assert request.motion_group_setup.global_limits.joints[0].acceleration == 7.0
+    assert request.motion_group_setup.global_limits.joints[1].velocity == 8.0
+    assert request.motion_group_setup.global_limits.joints[1].acceleration == 6.0

@@ -59,6 +59,36 @@ def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
     return batches
 
 
+def _with_collision_setup(
+    motion_group_setup: api.models.MotionGroupSetup,
+    key: str,
+    collision_setup: api.models.CollisionSetup | None,
+) -> api.models.MotionGroupSetup:
+    existing_root = (
+        motion_group_setup.collision_setups.root
+        if motion_group_setup.collision_setups is not None
+        else {}
+    )
+    new_root = dict(existing_root)
+    if collision_setup is not None:
+        new_root[key] = collision_setup
+    return motion_group_setup.model_copy(
+        deep=False, update={"collision_setups": api.models.CollisionSetups(new_root)}
+    )
+
+
+def _with_copied_global_limits(
+    motion_group_setup: api.models.MotionGroupSetup,
+) -> api.models.MotionGroupSetup:
+    if motion_group_setup.global_limits is None:
+        return motion_group_setup
+
+    global_limits = motion_group_setup.global_limits.model_copy(deep=False)
+    if global_limits.tcp is not None:
+        global_limits.tcp = global_limits.tcp.model_copy(deep=False)
+    return motion_group_setup.model_copy(deep=False, update={"global_limits": global_limits})
+
+
 def _move_close_to_reference(
     joint_position: np.ndarray,
     reference_position: np.ndarray,
@@ -544,14 +574,9 @@ class MotionGroup(AbstractRobot):
         collision_setups = validate_collision_setups(actions)
         first_collision_setup = collision_setups[0] if len(collision_setups) > 0 else None
 
-        # this is bad for memory because collision scenes can be very large
-        # but we do it for now anyway because we don't want to create side effect on the provided motion group setup
-        motion_group_setup = motion_group_setup.model_copy(deep=True)
-        if motion_group_setup.collision_setups is None:
-            motion_group_setup.collision_setups = api.models.CollisionSetups({})
-
-        if first_collision_setup is not None:
-            motion_group_setup.collision_setups.root["collision-check"] = first_collision_setup
+        motion_group_setup = _with_collision_setup(
+            motion_group_setup, "collision-check", first_collision_setup
+        )
 
         motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
 
@@ -600,16 +625,10 @@ class MotionGroup(AbstractRobot):
         if start_joint_position is None:
             raise RuntimeError("start_joint_position must be provided for CollisionFreeMotion")
 
-        # this is bad for memory because collision scenes can be very large
-        # but we do it for now anyway because we don't want to create side effect on the provided motion group setup
-        motion_group_setup = motion_group_setup.model_copy(deep=True)
-        if motion_group_setup.collision_setups is None:
-            motion_group_setup.collision_setups = api.models.CollisionSetups({})
-
-        if action.collision_setup is not None:
-            motion_group_setup.collision_setups.root["collision-free-motion"] = (
-                action.collision_setup
-            )
+        motion_group_setup = _with_collision_setup(
+            motion_group_setup, "collision-free-motion", action.collision_setup
+        )
+        motion_group_setup = _with_copied_global_limits(motion_group_setup)
 
         best_joint_solutions: list[tuple[float, ...]] = []
         if isinstance(action.target, Pose):
