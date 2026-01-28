@@ -1,3 +1,5 @@
+import pytest
+
 from nova.api import models
 from nova.types.motion_settings import DEFAULT_TCP_VELOCITY_LIMIT, MotionSettings
 from nova.utils.motion_group_settings import update_motion_group_setup_with_motion_settings
@@ -211,8 +213,6 @@ def test_joint_limits_raises_error_when_joint_count_differs():
     )
 
     # Act & Assert - Should raise ValueError
-    import pytest
-
     with pytest.raises(ValueError, match="Joint count mismatch"):
         update_motion_group_setup_with_motion_settings(motion_group_setup, settings)
 
