@@ -184,3 +184,64 @@ def test_next_action(num_actions, location, has_next):
 def test_current_action_always_returns_action(num_actions, location):
     cursor = create_cursor(num_actions=num_actions, initial_location=location)
     assert cursor.current_action is not None
+
+
+def create_cursor_without_actions(end_location: float, initial_location: float) -> TrajectoryCursor:
+    """Helper to create a TrajectoryCursor without actions for testing."""
+    cursor = object.__new__(TrajectoryCursor)
+    cursor.joint_trajectory = MagicMock()
+    cursor.joint_trajectory.locations = [MagicMock(root=0.0), MagicMock(root=end_location)]
+    cursor.actions = None
+    cursor._current_location = initial_location
+    cursor._target_location = initial_location
+    return cursor
+
+
+def test_cursor_without_actions():
+    """Test that cursor works with no actions provided."""
+    cursor = create_cursor_without_actions(end_location=3.0, initial_location=1.5)
+
+    # Properties should return None
+    assert cursor.current_action is None
+    assert cursor.next_action is None
+    assert cursor.previous_action is None
+    assert cursor.current_action_index is None
+
+    # Location-based properties should still work
+    assert cursor.end_location == 3.0
+    assert cursor.current_action_start == 1.0
+    assert cursor.current_action_end == 2.0
+
+    # Movement options should work
+    options = cursor.get_movement_options()
+    assert MovementOption.CAN_MOVE_FORWARD in options
+    assert MovementOption.CAN_MOVE_BACKWARD in options
+
+
+def test_forward_to_next_action_without_actions():
+    """Test forward_to_next_action uses integer boundaries when no actions."""
+    cursor = create_cursor_without_actions(end_location=5.0, initial_location=1.3)
+    assert cursor.next_action_start == 2.0
+
+
+def test_backward_to_previous_action_without_actions():
+    """Test backward_to_previous_action uses integer boundaries when no actions."""
+    cursor = create_cursor_without_actions(end_location=5.0, initial_location=2.7)
+    assert cursor.previous_action_start == 1.0
+
+
+def test_motion_event_with_no_actions():
+    """Test MotionEvent can be created with None actions."""
+    from nova.cell.movement_controller.trajectory_cursor import MotionEvent, MotionEventType
+
+    event = MotionEvent(
+        type=MotionEventType.STARTED,
+        current_location=1.5,
+        current_action=None,
+        target_location=2.0,
+        target_action=None,
+    )
+
+    # Should serialize without error
+    json_data = event.model_dump_json()
+    assert '"current_action":null' in json_data or '"current_action": null' in json_data

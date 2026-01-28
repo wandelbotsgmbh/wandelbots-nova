@@ -14,6 +14,7 @@ Key concepts:
 
 Example usage:
     ```python
+    # With actions (full functionality)
     cursor = TrajectoryCursor(
         motion_id=motion_id,
         motion_group_state_stream=state_stream,
@@ -22,11 +23,20 @@ Example usage:
         initial_location=0.0,
     )
 
-    # Move forward to end
+    # Without actions (location-based navigation only)
+    cursor = TrajectoryCursor(
+        motion_id=motion_id,
+        motion_group_state_stream=state_stream,
+        joint_trajectory=trajectory,
+        actions=None,  # or omit entirely
+        initial_location=0.0,
+    )
+
+    # Both support forward/backward navigation
     result = await cursor.forward()
 
-    # Step through actions one at a time
-    await cursor.forward_to_next_action()
+    # Action stepping works with location boundaries when actions absent
+    await cursor.forward_to_next_action()  # Next integer location
     await cursor.backward_to_previous_action()
 
     # Pause current movement
@@ -329,16 +339,16 @@ class MotionEvent(pydantic.BaseModel):
     Attributes:
         type: Whether motion started or stopped.
         current_location: Current position on the trajectory.
-        current_action: The action at the current location.
+        current_action: The action at the current location (None if no actions available).
         target_location: The intended destination location.
-        target_action: The action at the target location.
+        target_action: The action at the target location (None if no actions available).
     """
 
     type: MotionEventType
     current_location: float
-    current_action: Action
+    current_action: Action | None
     target_location: float
-    target_action: Action
+    target_action: Action | None
 
 
 ExecuteTrajectoryRequestCommand = Union[
@@ -395,8 +405,8 @@ class TrajectoryCursor:
         motion_id: str,
         motion_group_state_stream: AsyncIterator[api.models.MotionGroupState],
         joint_trajectory: api.models.JointTrajectory,
-        actions: list[Action],
-        initial_location: float,
+        actions: list[Action] | None = None,
+        initial_location: float = 0.0,
         detach_on_standstill: bool = False,
     ):
         """Initialize a trajectory cursor.
@@ -405,13 +415,23 @@ class TrajectoryCursor:
             motion_id: Unique identifier for this motion execution.
             motion_group_state_stream: Async stream of motion group state updates.
             joint_trajectory: The planned joint-space trajectory to execute.
-            actions: List of motion actions that make up the trajectory.
+            actions: List of motion actions that make up the trajectory. Optional for location-based navigation.
             initial_location: Starting position on the trajectory (usually 0.0).
             detach_on_standstill: If True, automatically detach when robot stops.
         """
         self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
-        self.actions = CombinedActions(items=actions)  # type: ignore
+        self.actions = CombinedActions(items=actions) if actions is not None else None  # type: ignore
+
+        if self.actions is not None:
+            expected_end_location = len(self.actions)
+            actual_end_location = joint_trajectory.locations[-1].root
+            if abs(actual_end_location - expected_end_location) > 0.01:
+                raise ValueError(
+                    f"Trajectory end location ({actual_end_location}) does not match "
+                    f"number of actions ({expected_end_location}). "
+                    f"Expected location to be approximately {expected_end_location}.0"
+                )
         self._command_queue: asyncio.Queue[ExecuteTrajectoryRequestCommand | _QueueSentinel] = (
             asyncio.Queue()
         )
@@ -463,8 +483,10 @@ class TrajectoryCursor:
         return self.current_action_start - 1.0
 
     @property
-    def current_action_index(self) -> int:
-        """Zero-based index of the action at the current location."""
+    def current_action_index(self) -> int | None:
+        """Zero-based index of the action at the current location, or None if no actions."""
+        if self.actions is None:
+            return None
         index = floor(self._current_location)
         if index >= len(self.actions):
             # at the end of the trajectory current action remains the last one
@@ -472,24 +494,36 @@ class TrajectoryCursor:
         return index
 
     @property
-    def current_action(self) -> Action:
-        """The action at the current trajectory location."""
-        return self.actions[self.current_action_index]
+    def current_action(self) -> Action | None:
+        """The action at the current trajectory location, or None if no actions."""
+        index = self.current_action_index
+        if index is None:
+            return None
+        assert self.actions is not None
+        return self.actions[index]
 
     @property
     def next_action(self) -> Action | None:
-        """The action after the current one, or None if at end."""
-        next_action_index = self.current_action_index + 1
+        """The action after the current one, or None if at end or no actions."""
+        index = self.current_action_index
+        if index is None:
+            return None
+        next_action_index = index + 1
+        assert self.actions is not None
         if next_action_index >= len(self.actions):
             return None
         return self.actions[next_action_index]
 
     @property
     def previous_action(self) -> Action | None:
-        """The action before the current one, or None if at start."""
-        previous_action_index = self.current_action_index - 1
+        """The action before the current one, or None if at start or no actions."""
+        index = self.current_action_index
+        if index is None:
+            return None
+        previous_action_index = index - 1
         if previous_action_index < 0:
             return None
+        assert self.actions is not None
         return self.actions[previous_action_index]
 
     def get_movement_options(self) -> set[MovementOption]:
@@ -632,7 +666,7 @@ class TrajectoryCursor:
     def forward_to_next_action(
         self, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
-        """Move forward to the start of the next action.
+        """Move forward to the start of the next action (or next integer location if no actions).
 
         Useful for stepping through a trajectory one action at a time.
         If already at an action boundary, moves to the next action.
@@ -647,7 +681,7 @@ class TrajectoryCursor:
         target_location = self.next_action_start
         if self._current_location == target_location:
             target_location += 1.0
-        if target_location > len(self.actions):
+        if target_location > self.end_location:
             # End of trajectory reached - return immediately
             future: asyncio.Future[OperationResult] = asyncio.Future()
             future.set_result(
@@ -662,7 +696,7 @@ class TrajectoryCursor:
     def backward_to_previous_action(
         self, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
-        """Move backward to the start of the previous action.
+        """Move backward to the start of the previous action (or previous integer location if no actions).
 
         Useful for stepping backward through a trajectory one action at a time.
         If within an action, moves to the start of that action first.
@@ -992,7 +1026,7 @@ class TrajectoryCursor:
                     pass
             await asyncio.sleep(interval)
 
-    def _get_motion_event(self, target_action: Action) -> MotionEvent:
+    def _get_motion_event(self, target_action: Action | None) -> MotionEvent:
         """Create a MotionEvent with current cursor state."""
         return MotionEvent(
             type=MotionEventType.STARTED,
