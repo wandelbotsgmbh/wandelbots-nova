@@ -10,7 +10,7 @@ Prerequisites:
   - test_bool: Boolean type
   - test_int: Integer type
 - Run this example script
-    e.g. uv run python examples/bus_io_example.py
+    e.g. uv run python examples/signals.py
 - You will see the script will hang at the end until the bus io 'test_bool' changes from True to False.
 - Navigate to the signals application and update the value of 'test_bool' to False to see the script complete.
 """
@@ -21,7 +21,7 @@ from nova.actions import ptp
 from nova.actions.io import io_write
 from nova.cell import virtual_controller
 from nova.types.pose import Pose
-from nova.utils.io import IOChange, get_bus_io_value, set_bus_io_value, wait_for_io
+from nova.utils.io import IOChange, get_bus_io_value, set_bus_io_value, wait_for_bus_io
 
 
 @nova.program(
@@ -76,7 +76,7 @@ async def main(ctx: nova.ProgramContext) -> None:
         return False
 
     print("waiting for test_bool to become False...")
-    await wait_for_io(["test_bool"], on_change=on_change)
+    await wait_for_bus_io(["test_bool"], on_change=on_change)
     print("test_bool is now False, waiting stopped.")
 
 

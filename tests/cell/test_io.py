@@ -14,7 +14,7 @@ from nova.cell import virtual_controller
 from nova.cell.controller import Controller
 from nova.cell.io import IOAccess
 from nova.types.pose import Pose
-from nova.utils.io import IOChange, get_bus_io_value, set_bus_io_value, wait_for_io
+from nova.utils.io import IOChange, get_bus_io_value, set_bus_io_value, wait_for_bus_io
 
 logger = logging.getLogger(__name__)
 
@@ -368,7 +368,7 @@ async def test_wait_io(setup_virtual_profinet: tuple[str, ...]):
 
             return False
 
-        wait_task = asyncio.create_task(wait_for_io([test_bool], on_change=on_change, nova=nova))
+        wait_task = asyncio.create_task(wait_for_bus_io([test_bool], on_change=on_change, nova=nova))
 
         await set_bus_io_value({test_bool: False}, nova=nova)
         await set_bus_io_value({test_bool: True}, nova=nova)
@@ -403,7 +403,7 @@ async def test_wait_io_with_noisy_integer(setup_virtual_profinet: tuple[str, ...
                 update_count += 1
                 await asyncio.sleep(0.01)
 
-        wait_task = asyncio.create_task(wait_for_io([test_bool], on_change=on_change, nova=nova))
+        wait_task = asyncio.create_task(wait_for_bus_io([test_bool], on_change=on_change, nova=nova))
         _ = asyncio.create_task(update_integer_io())
 
         while update_count < 5:

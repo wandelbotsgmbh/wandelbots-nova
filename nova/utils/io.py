@@ -75,7 +75,7 @@ async def set_bus_io_value(
     await nova.api.bus_ios_api.set_bus_io_values(cell=cell, io_value=io_value_list)
 
 
-async def wait_for_io(
+async def wait_for_bus_io(
     bus_ios: list[str],
     *,
     on_change: Callable[[dict[str, IOChange]], bool],
