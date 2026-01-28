@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.4.0 (2026-01-28)
+
+### Features
+
+- **trajectory-cursor**: Make actions parameter optional (#380)
+  ([#380](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/380),
+  [`3087495`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/308749550fb9e719da7de75b28828ce193b3f714))
+
+
 ## v4.3.2 (2026-01-19)
 
 ### Bug Fixes
