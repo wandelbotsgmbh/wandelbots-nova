@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.5.0 (2026-01-28)
+
+### Features
+
+- Integrate bus io to sdk (#376)
+  ([#376](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/376),
+  [`5b5d85a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5b5d85ae07d86edf6370eeea7f3a33a63b9c8395))
+
+
 ## v4.4.0 (2026-01-28)
 
 ### Features
