@@ -9,6 +9,7 @@ class WriteAction(Action):
     key: str
     value: bool | int | float
     device_id: str | None
+    origin: api.models.IOOrigin = api.models.IOOrigin.CONTROLLER
 
     def to_api_model(
         self,
@@ -26,7 +27,12 @@ class WriteAction(Action):
         return False
 
 
-def io_write(key: str, value: bool | int | float, device_id: str | None = None) -> WriteAction:
+def io_write(
+    key: str,
+    value: bool | int | float,
+    device_id: str | None = None,
+    origin: api.models.IOOrigin = api.models.IOOrigin.CONTROLLER,
+) -> WriteAction:
     """Create a WriteAction
 
     Args:
@@ -38,7 +44,7 @@ def io_write(key: str, value: bool | int | float, device_id: str | None = None) 
         The WriteAction
 
     """
-    return WriteAction(key=key, value=value, device_id=device_id)
+    return WriteAction(key=key, value=value, device_id=device_id, origin=origin)
 
 
 class ReadAction(Action):
