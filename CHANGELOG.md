@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.6.1 (2026-01-29)
+
+### Bug Fixes
+
+- Reduce number of MRs dependabot creates (#385)
+  ([#385](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/385),
+  [`7dd6b4a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7dd6b4a48e41e619c1e52df5d97e58a714425d52))
+
+
 ## v4.6.0 (2026-01-29)
 
 ### Features
