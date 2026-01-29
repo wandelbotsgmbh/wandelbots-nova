@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.5.1 (2026-01-29)
+
+### Bug Fixes
+
+- Preserve position limits in joint merge (#383)
+  ([#383](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/383),
+  [`29026c4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/29026c4579c2e10ec66dced673c41493c68ad675))
+
+
 ## v4.5.0 (2026-01-28)
 
 ### Features
