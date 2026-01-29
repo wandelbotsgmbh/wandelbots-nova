@@ -80,8 +80,8 @@ async with Nova() as nova:
     motion_group = controller[0]
 
     actions = [joint_ptp(joints), linear(pose)]
-    trajectory = await motion_group.plan(actions, tcp_name)
-    await motion_group.execute(trajectory, tcp_name, actions=actions)
+    trajectory = await motion_group.plan(actions, tcp)
+    await motion_group.execute(trajectory, tcp, actions=actions)
 ```
 
 ### Program Decorator Pattern

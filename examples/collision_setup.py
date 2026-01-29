@@ -186,38 +186,36 @@ async def test(ctx: nova.ProgramContext):
         cell = ctx.nova.cell()
         controller = await cell.controller("ur5")
         # Connect to the controller and activate motion groups
-        async with controller[0] as motion_group:
-            await bridge.log_safety_zones(motion_group)
+        motion_group = controller[0]
+        await bridge.log_safety_zones(motion_group)
 
-            motion_group_description = await motion_group.get_description()
+        motion_group_description = await motion_group.get_description()
 
-            await build_collision_world(ctx.nova, cell.id, motion_group_description)
-            collision_setups = (
-                await ctx.nova.api.store_collision_setups_api.list_stored_collision_setups(
-                    cell=cell.id
-                )
-            )
-            collision_setup = list(collision_setups.values())[0]
+        await build_collision_world(ctx.nova, cell.id, motion_group_description)
+        collision_setups = (
+            await ctx.nova.api.store_collision_setups_api.list_stored_collision_setups(cell=cell.id)
+        )
+        collision_setup = list(collision_setups.values())[0]
 
-            bridge.log_collision_setups(collision_setups=collision_setups)
+        bridge.log_collision_setups(collision_setups=collision_setups)
 
-            tcp_names = await motion_group.tcp_names()
-            tcp = tcp_names[0]
-            current_pose = await motion_group.tcp_pose(tcp)
-            target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
+        tcp_names = await motion_group.tcp_names()
+        tcp = tcp_names[0]
+        current_pose = await motion_group.tcp_pose(tcp)
+        target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
 
-            actions = [
-                cartesian_ptp(target=target_pose, collision_setup=collision_setup),
-                cartesian_ptp(target=current_pose, collision_setup=collision_setup),
-            ]
-            joint_trajectory = await motion_group.plan(actions, tcp)
+        actions = [
+            cartesian_ptp(target=target_pose, collision_setup=collision_setup),
+            cartesian_ptp(target=current_pose, collision_setup=collision_setup),
+        ]
+        joint_trajectory = await motion_group.plan(actions=actions, tcp=tcp)
 
-            await bridge.log_trajectory(
-                joint_trajectory,
-                tcp,
-                motion_group,
-                collision_setups=extract_collision_setups_from_actions(actions),
-            )
+        await bridge.log_trajectory(
+            joint_trajectory,
+            tcp,
+            motion_group,
+            collision_setups=extract_collision_setups_from_actions(actions),
+        )
 
 
 if __name__ == "__main__":
