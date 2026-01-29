@@ -53,6 +53,7 @@ from typing import AsyncIterator, Optional, Union
 
 import pydantic
 from blinker import signal
+from icecream import ic
 
 from nova import api
 from nova.actions.base import Action
@@ -284,6 +285,7 @@ class OperationHandler:
         else:
             logger.debug(f"Operation completed with result: {result}")
             self._operation.future.set_result(result)
+        ic(result)
         self._reset()
 
     def in_progress(self) -> bool:
@@ -902,6 +904,9 @@ class TrajectoryCursor:
         try:
             async for motion_group_state in self._motion_group_state_stream:
                 ready_event.set()
+                from icecream import ic
+
+                ic(motion_group_state, self._is_operation_in_progress())
 
                 if not self._is_operation_in_progress():
                     # We only care about motion group states if there is an operation in progress
@@ -942,13 +947,15 @@ class TrajectoryCursor:
                             case api.models.TrajectoryRunning():
                                 self._operation_handler.set_running()  # idempotent
                             case api.models.TrajectoryPausedByUser():
-                                self._complete_operation()
-                                if self._detach_on_standstill:
-                                    break
+                                if motion_group_state.standstill:
+                                    self._complete_operation()
+                                    if self._detach_on_standstill:
+                                        break
                             case api.models.TrajectoryEnded():
-                                self._complete_operation()
-                                if self._detach_on_standstill:
-                                    break
+                                if motion_group_state.standstill:
+                                    self._complete_operation()
+                                    if self._detach_on_standstill:
+                                        break
                             case _:
                                 assert False, (
                                     f"Unexpected or unsupported motion group execute state: {motion_group_state.execute.details.state}"
