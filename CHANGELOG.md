@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.6.0 (2026-01-29)
+
+### Features
+
+- **NDX-454**: Remove "... as motion_group:" from examples (#371)
+  ([#371](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/371),
+  [`6fa9052`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6fa9052e3cdc777e2a1d9ab4cff634005066f859))
+
+
 ## v4.5.1 (2026-01-29)
 
 ### Bug Fixes
