@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11, <3.13"
 
 [options]
@@ -1709,7 +1709,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "4.5.1"
+version = "4.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },

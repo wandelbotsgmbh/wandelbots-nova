@@ -1002,7 +1002,9 @@ class TrajectoryCursor:
             logger.debug("TrajectoryCursor motion group state monitor was cancelled")
             raise
         finally:
+            # stop the request loop
             self.detach()
+            # stop the cursor iterator (TODO is this the right place?)
             self._in_queue.put_nowait(_QUEUE_SENTINEL)
 
     async def _response_consumer(self, ready_event: asyncio.Event):
