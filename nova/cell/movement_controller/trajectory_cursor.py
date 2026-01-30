@@ -337,9 +337,9 @@ def process_motion_group_state(
     state updates. Most behavior is derived from state.execute presence in the monitor;
     this function only determines skip/complete/detach decisions.
 
-    Completion is defined as: execute present + (PausedByUser or Ended) + standstill.
-    Once an operation has execute, it will not receive a state with standstill=True
-    without execute - completion always comes through execute details.
+    Completion is defined as: execute present + (PausedByUser or Ended).
+    Terminal trajectory states are sufficient for operation completion.
+    Standstill, if requested, only controls whether we also detach.
 
     Args:
         state: The motion group state to process.
@@ -361,10 +361,12 @@ def process_motion_group_state(
     if isinstance(state.execute.details, api.models.TrajectoryDetails):
         match state.execute.details.state:
             case api.models.TrajectoryPausedByUser() | api.models.TrajectoryEnded():
-                if state.standstill:
-                    return StateProcessingResult(
-                        complete_operation=True, detach=detach_on_standstill
-                    )
+                # Treat terminal trajectory states as sufficient for operation completion.
+                # Standstill, if requested, only controls whether we also detach.
+                return StateProcessingResult(
+                    complete_operation=True,
+                    detach=detach_on_standstill and state.standstill,
+                )
             case _:
                 pass  # TrajectoryRunning or other - no completion
 
@@ -977,6 +979,21 @@ class TrajectoryCursor:
                 )
 
                 if result.skip:
+                    # Historically, we asserted that when no operation is in progress
+                    # (current_operation is None), motion_group_state.execute must be
+                    # absent. This ensures TrajectoryCursor is the sole controller of
+                    # the robot. If we see an execute here while no operation is
+                    # active, it likely indicates another entity is trying to control
+                    # the robot concurrently.
+                    if (
+                        self._operation_handler.current_operation is None
+                        and motion_group_state.execute is not None
+                    ):
+                        raise AssertionError(
+                            "Unexpected execute in motion_group_state when no "
+                            "operation is in progress; TrajectoryCursor should be "
+                            "the sole controller of the robot."
+                        )
                     continue
 
                 # Derived from execute presence
