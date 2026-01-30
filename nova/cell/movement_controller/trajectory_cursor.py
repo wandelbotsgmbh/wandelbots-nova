@@ -984,12 +984,8 @@ class TrajectoryCursor:
                     self._in_queue.put_nowait(motion_group_state)
                     self._operation_handler.set_running()  # idempotent
 
-                    if isinstance(
-                        motion_group_state.execute.details, api.models.TrajectoryDetails
-                    ):
-                        self._current_location = (
-                            motion_group_state.execute.details.location.root
-                        )
+                    if isinstance(motion_group_state.execute.details, api.models.TrajectoryDetails):
+                        self._current_location = motion_group_state.execute.details.location.root
 
                 if result.complete_operation:
                     self._complete_operation()
