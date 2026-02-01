@@ -30,7 +30,6 @@ dependencies = [
     "exceptiongroup>=1.2.2",
     "nats-py>=2.11.0",
     "blinker>=1.9.0",
-    "faststream[nats]>=0.5.48",
 ]
 
 [dependency-groups]

@@ -131,6 +131,28 @@ class OperationResult:
     error: Optional[Exception] = None
 
 
+@dataclass
+class StateProcessingResult:
+    """Result of processing a MotionGroupState in the context of an operation.
+
+    Most behavior is derived from MotionGroupState.execute presence:
+    - Queue state: Always when execute is present
+    - Set running: Always when execute is present (idempotent)
+    - Update location: Always when execute.details is TrajectoryDetails
+
+    This dataclass only encodes the remaining decisions.
+
+    Attributes:
+        skip: If True, ignore this state and continue to next.
+        complete_operation: If True, mark the operation as completed.
+        detach: If True, signal to detach from the cursor.
+    """
+
+    skip: bool = False
+    complete_operation: bool = False
+    detach: bool = False
+
+
 # Type alias for expected response types in _response_consumer
 ExpectedResponseType = Union[
     type[api.models.StartMovementResponse], type[api.models.PauseMovementResponse]
@@ -302,6 +324,51 @@ class OperationHandler:
     def _reset(self):
         """Clear the current operation."""
         self._operation = None
+
+
+def process_motion_group_state(
+    state: api.models.MotionGroupState,
+    current_operation: Optional[Operation],
+    detach_on_standstill: bool,
+) -> StateProcessingResult:
+    """Analyze MotionGroupState and determine what actions the monitor should take.
+
+    This pure function encapsulates the decision logic for processing motion group
+    state updates. Most behavior is derived from state.execute presence in the monitor;
+    this function only determines skip/complete/detach decisions.
+
+    Completion is defined as: execute present + (PausedByUser or Ended) + standstill.
+    Once an operation has execute, it will not receive a state with standstill=True
+    without execute - completion always comes through execute details.
+
+    Args:
+        state: The motion group state to process.
+        current_operation: The current operation in progress, or None.
+        detach_on_standstill: If True, signal detachment when operation completes.
+
+    Returns:
+        StateProcessingResult indicating what actions the monitor should take.
+    """
+    # No operation in progress - skip this state
+    if current_operation is None or current_operation.future.done():
+        return StateProcessingResult(skip=True)
+
+    # Waiting for execution to start
+    if not state.execute:
+        return StateProcessingResult(skip=True)
+
+    # Execute is present - check for completion conditions
+    if isinstance(state.execute.details, api.models.TrajectoryDetails):
+        match state.execute.details.state:
+            case api.models.TrajectoryPausedByUser() | api.models.TrajectoryEnded():
+                if state.standstill:
+                    return StateProcessingResult(
+                        complete_operation=True, detach=detach_on_standstill
+                    )
+            case _:
+                pass  # TrajectoryRunning or other - no completion
+
+    return StateProcessingResult()  # No special action needed
 
 
 class MovementOption(StrEnum):
@@ -903,56 +970,30 @@ class TrajectoryCursor:
             async for motion_group_state in self._motion_group_state_stream:
                 ready_event.set()
 
-                if not self._is_operation_in_progress():
-                    # We only care about motion group states if there is an operation in progress
-                    # assert that we are the sole reason for movement
-                    assert not motion_group_state.execute
+                result = process_motion_group_state(
+                    state=motion_group_state,
+                    current_operation=self._operation_handler.current_operation,
+                    detach_on_standstill=self._detach_on_standstill,
+                )
+
+                if result.skip:
                     continue
-                else:
-                    current_op = self._operation_handler.current_operation
-                    assert current_op is not None
-                    if not motion_group_state.execute and current_op.operation_state in (
-                        OperationState.INITIAL,
-                        OperationState.COMMANDED,
-                    ):  #
-                        continue  # wait for the execution to actually start
 
-                    if not motion_group_state.execute and motion_group_state.standstill:
-                        assert current_op.operation_state not in (
-                            OperationState.INITIAL,
-                            OperationState.COMMANDED,
-                        ), (
-                            f"Unexpected operation state {current_op.operation_state} when standstill is True"
-                        )
-                        self._complete_operation()
-                        if self._detach_on_standstill:
-                            logger.debug("Detaching on standstill")
-                            break
-
-                    assert motion_group_state.execute
-                    # TODO it is questionable if we want to maintain the semantics of yield motion group states during
-                    # execution this is the only reason we do this here
+                # Derived from execute presence
+                if motion_group_state.execute:
                     self._in_queue.put_nowait(motion_group_state)
+                    self._operation_handler.set_running()  # idempotent
 
-                    if motion_group_state.execute and isinstance(
-                        motion_group_state.execute.details, api.models.TrajectoryDetails
-                    ):
+                    if isinstance(motion_group_state.execute.details, api.models.TrajectoryDetails):
                         self._current_location = motion_group_state.execute.details.location.root
-                        match motion_group_state.execute.details.state:
-                            case api.models.TrajectoryRunning():
-                                self._operation_handler.set_running()  # idempotent
-                            case api.models.TrajectoryPausedByUser():
-                                self._complete_operation()
-                                if self._detach_on_standstill:
-                                    break
-                            case api.models.TrajectoryEnded():
-                                self._complete_operation()
-                                if self._detach_on_standstill:
-                                    break
-                            case _:
-                                assert False, (
-                                    f"Unexpected or unsupported motion group execute state: {motion_group_state.execute.details.state}"
-                                )
+
+                if result.complete_operation:
+                    self._complete_operation()
+
+                if result.detach:
+                    logger.debug("Detaching on standstill")
+                    break
+
         except asyncio.CancelledError:
             logger.debug("TrajectoryCursor motion group state monitor was cancelled")
             raise
