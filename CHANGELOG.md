@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.6.2 (2026-02-01)
+
+### Bug Fixes
+
+- **NDX-443**: Fixes after testing (#386)
+  ([#386](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/386),
+  [`0826b22`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0826b2245609e72c075a542f3acce21baa78b8c9))
+
+
 ## v4.6.1 (2026-01-29)
 
 ### Bug Fixes
