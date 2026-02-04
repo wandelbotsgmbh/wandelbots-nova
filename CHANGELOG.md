@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.7.0 (2026-02-04)
+
+### Features
+
+- Add py.typed file for type hinting support (#379)
+  ([#379](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/379),
+  [`9a1e3c4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9a1e3c4cf17a8b2da62df362da7027faebb17f47))
+
+
 ## v4.6.2 (2026-02-01)
 
 ### Bug Fixes
