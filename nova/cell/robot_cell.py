@@ -258,6 +258,10 @@ class AbstractRobot(Device):
 
         Returns:
             api.models.JointTrajectory: The planned joint trajectory
+
+        Raises:
+            NoInverseKinematicsSolutionFound: When a collision-free motion targets a Pose and the SDK
+                cannot find a valid inverse kinematics solution for that pose.
         """
         actions_list = _normalize_actions(actions)
 
@@ -407,6 +411,17 @@ class AbstractRobot(Device):
     async def plan_and_execute(
         self, actions: ActionsLike, tcp: str, start_joint_position: tuple[float, ...] | None = None
     ) -> None:
+        """Plan and execute a trajectory for the given actions.
+
+        Args:
+            actions (list[Action] | Action): The actions to be planned and executed.
+            tcp (str): The id of the tool center point (TCP)
+            start_joint_position (tuple[float, ...] | None): The starting joint position.
+
+        Raises:
+            NoInverseKinematicsSolutionFound: When a collision-free motion targets a Pose and the SDK
+                cannot find a valid inverse kinematics solution for that pose.
+        """
         joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
         await self.execute(joint_trajectory, tcp, actions)
 
