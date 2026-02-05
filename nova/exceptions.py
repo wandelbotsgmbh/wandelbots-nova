@@ -1,4 +1,5 @@
 from nova import api
+from nova.types import Pose
 
 
 class ControllerNotFound(Exception):
@@ -92,3 +93,17 @@ class ControllerCreationFailed(Exception):
         self.controller_name = controller_name
         self.error = error
         super().__init__(f"Failed to create controller '{controller_name}': {error}")
+
+
+# extends ValueError for backwards compatibility, otherwise it could extend Exception directly
+class NoInverseKinematicsSolutionFound(ValueError):
+    """Raised when no inverse kinematics solution can be found for a target pose."""
+
+    def __init__(self, pose: Pose):
+        self._pose = pose
+        super().__init__(f"No inverse kinematics solution found for target pose {pose}")
+
+    @property
+    def pose(self) -> Pose:
+        """Return the target pose that could not be solved."""
+        return self._pose

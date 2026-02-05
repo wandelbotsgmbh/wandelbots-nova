@@ -12,7 +12,7 @@ from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
-from nova.exceptions import LoadPlanFailed, PlanTrajectoryFailed
+from nova.exceptions import LoadPlanFailed, NoInverseKinematicsSolutionFound, PlanTrajectoryFailed
 from nova.types import Pose, RobotState
 from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.utils.collision_setup import (
@@ -617,9 +617,7 @@ class MotionGroup(AbstractRobot):
                 poses=[action.target], tcp=tcp, motion_group_setup=motion_group_setup
             )
             if len(solutions) == 0 or len(solutions[0]) == 0:
-                raise ValueError(
-                    f"No inverse kinematics solution found for target pose {action.target}"
-                )
+                raise NoInverseKinematicsSolutionFound(action.target)
 
             joint_limits = (
                 motion_group_setup.global_limits.joints
