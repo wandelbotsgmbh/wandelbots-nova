@@ -260,8 +260,8 @@ class AbstractRobot(Device):
             api.models.JointTrajectory: The planned joint trajectory
 
         Raises:
-            NoInverseKinematicsSolutionFound: When a collision-free motion targets a Pose and the SDK
-                cannot find a valid inverse kinematics solution for that pose.
+            NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a
+                target pose in a collision-free motion.
         """
         actions_list = _normalize_actions(actions)
 
@@ -419,8 +419,8 @@ class AbstractRobot(Device):
             start_joint_position (tuple[float, ...] | None): The starting joint position.
 
         Raises:
-            NoInverseKinematicsSolutionFound: When a collision-free motion targets a Pose and the SDK
-                cannot find a valid inverse kinematics solution for that pose.
+            NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a target
+                pose in a collision-free motion.
         """
         joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
         await self.execute(joint_trajectory, tcp, actions)
