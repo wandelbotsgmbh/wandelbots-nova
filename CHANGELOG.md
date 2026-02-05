@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.7.1 (2026-02-05)
+
+### Chores
+
+- Add domain specific error for IK (#389)
+  ([#389](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/389),
+  [`fdb372b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fdb372bf19451e905a9595aaccc4db80e31e688a))
+
+
 ## v4.7.0 (2026-02-04)
 
 ### Features
