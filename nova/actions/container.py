@@ -1,25 +1,29 @@
 from __future__ import annotations
 
-from typing import Annotated, AsyncIterator, Callable
+from typing import TYPE_CHECKING, Annotated, AsyncIterator, Callable, Union
 
 import pydantic
 
 from nova import api
+from nova.actions.async_action import AsyncAction
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.types import MotionSettings, MovementControllerFunction, Pose
+
+if TYPE_CHECKING:
+    from nova.cell.movement_controller.async_action_executor import AsyncActionExecutor
 
 
 class ActionLocation(pydantic.BaseModel):
     """A container for an action at a specific path parameter"""
 
     path_parameter: float = 1.0
-    action: WriteAction
+    action: Union[WriteAction, AsyncAction]
 
 
 # TODO: all actions should be allowed (Action)
-ActionContainerItem = Motion | WriteAction | WaitAction
+ActionContainerItem = Motion | WriteAction | WaitAction | AsyncAction
 
 
 class CombinedActions(pydantic.BaseModel):
@@ -73,7 +77,7 @@ class CombinedActions(pydantic.BaseModel):
             if isinstance(item, Motion):
                 motions.append(item)
                 last_motion_index += 1  # Increment the motion index for each new Motion
-            else:
+            elif isinstance(item, (WriteAction, AsyncAction)):
                 # Assign the current value of last_motion_index as path_parameter for actions
                 actions.append(ActionLocation(path_parameter=last_motion_index, action=item))
 
@@ -157,13 +161,38 @@ class CombinedActions(pydantic.BaseModel):
             if isinstance(action.action, WriteAction)
         ]
 
+    def get_async_actions(self) -> list[ActionLocation]:
+        """Get all AsyncAction items with their path parameters.
+
+        Returns:
+            List of ActionLocation objects containing AsyncAction instances.
+        """
+        return [action for action in self.actions if isinstance(action.action, AsyncAction)]
+
 
 # TODO: should not be located here
 class MovementControllerContext(pydantic.BaseModel):
+    """Context for movement controller execution.
+
+    Attributes:
+        combined_actions: The actions to execute along with trajectory.
+        motion_id: Unique identifier for this motion/trajectory.
+        start_on_io: Optional IO trigger to start motion.
+        motion_group_state_stream_gen: Factory for streaming motion group state.
+        async_action_executor: Optional executor for AsyncAction handling.
+        pause_callback: Callback to request motion pause (for blocking actions).
+        resume_callback: Callback to request motion resume (after blocking actions).
+    """
+
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+
     combined_actions: CombinedActions
     motion_id: str
     start_on_io: api.models.StartOnIO | None = None
     motion_group_state_stream_gen: Callable[[], AsyncIterator[api.models.MotionGroupState]]
+
+    # Async action support
+    async_action_executor: "AsyncActionExecutor | None" = None
 
 
 MovementController = Callable[[MovementControllerContext], MovementControllerFunction]

@@ -3,12 +3,16 @@ import logging
 
 from nova import api
 from nova.actions import MovementControllerContext
+from nova.actions.async_action import AsyncAction, ErrorHandlingMode
+from nova.cell.movement_controller.async_action_executor import AsyncActionExecutor
 from nova.exceptions import ErrorDuringMovement, InitMovementFailed
 from nova.types import (
     ExecuteTrajectoryRequestStream,
     ExecuteTrajectoryResponseStream,
     MovementControllerFunction,
+    Pose,
 )
+from nova.types.state import RobotState
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +27,31 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     If a movement_consumer is provided, we'll asend() each wb.models.MovementMovement to it,
     letting it produce MotionState objects.
     """
+    # Initialize async action executor if there are async actions
+    async_actions = context.combined_actions.get_async_actions()
+    executor: AsyncActionExecutor | None = None
+
+    if async_actions:
+        # Check for blocking actions and warn (move_forward doesn't truly pause motion)
+        blocking_actions = [
+            al for al in async_actions if isinstance(al.action, AsyncAction) and al.action.blocking
+        ]
+        if blocking_actions:
+            logger.warning(
+                f"Trajectory {context.motion_id} has {len(blocking_actions)} blocking async action(s). "
+                "move_forward controller executes blocking actions but cannot pause robot motion. "
+                "For true motion pause during blocking actions, use TrajectoryCursor instead."
+            )
+
+        executor = context.async_action_executor or AsyncActionExecutor(
+            motion_group_id=context.motion_id,
+            async_actions=async_actions,
+            error_mode=ErrorHandlingMode.COLLECT,  # Don't raise during motion
+        )
+        logger.info(
+            f"Trajectory {context.motion_id}: initialized executor with "
+            f"{len(async_actions)} async action(s)"
+        )
 
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,
@@ -39,10 +68,45 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         f"Trajectory: {context.motion_id} state monitor received state: {motion_group_state}"
                     )
 
+                    # Execute async actions based on location
+                    if (
+                        executor
+                        and motion_group_state.execute
+                        and isinstance(
+                            motion_group_state.execute.details, api.models.TrajectoryDetails
+                        )
+                    ):
+                        current_location = motion_group_state.execute.details.location.root
+
+                        # Build RobotState from motion_group_state
+                        tcp_pose = motion_group_state.tcp_pose
+                        pose = Pose(tcp_pose) if tcp_pose else Pose((0, 0, 0, 0, 0, 0))
+                        robot_state = RobotState(
+                            pose=pose,
+                            tcp=motion_group_state.tcp,
+                            joints=tuple(motion_group_state.joint_position.joints),
+                        )
+
+                        try:
+                            await executor.check_and_trigger(
+                                current_location=current_location, current_state=robot_state
+                            )
+                        except Exception as e:
+                            logger.error(f"Trajectory {context.motion_id}: async action error: {e}")
+                            # Continue execution - errors are collected in executor
+
                     if trajectory_ended and motion_group_state.standstill:
                         logger.info(
                             f"Trajectory: {context.motion_id} state monitor detected standstill."
                         )
+                        # Wait for remaining async actions before returning
+                        if executor:
+                            await executor.wait_for_all_actions()
+                            summary = executor.get_summary()
+                            logger.info(
+                                f"Trajectory {context.motion_id}: async actions completed - "
+                                f"{summary['succeeded']} succeeded, {summary['failed']} failed"
+                            )
                         return
 
                     if not motion_group_state.execute or not isinstance(
@@ -62,10 +126,20 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                 logger.info(
                     f"Trajectory: {context.motion_id} state monitor ended without TrajectoryEnded"
                 )
+                # Ensure any remaining actions complete
+                if executor:
+                    await executor.wait_for_all_actions()
+            except asyncio.CancelledError:
+                # Cancel pending async actions on cancellation
+                if executor:
+                    await executor.cancel_all_actions()
+                raise
             except BaseException as e:
                 logger.error(
                     f"Trajectory: {context.motion_id} state monitor ended with exception: {type(e).__name__}: {e}"
                 )
+                if executor:
+                    await executor.cancel_all_actions()
                 raise
 
         trajectory_id = api.models.TrajectoryId(id=context.motion_id)

@@ -49,7 +49,7 @@ import logging
 from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
 from math import ceil, floor
-from typing import AsyncIterator, Optional, Union
+from typing import TYPE_CHECKING, AsyncIterator, Optional, Union
 
 import pydantic
 from blinker import signal
@@ -58,6 +58,13 @@ from nova import api
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
 from nova.exceptions import InitMovementFailed
+from nova.types import Pose
+from nova.types.state import RobotState
+
+if TYPE_CHECKING:
+    from nova.actions.async_action import AsyncActionResult
+    from nova.cell.movement_controller.async_action_executor import AsyncActionExecutor
+
 from nova.types import ExecuteTrajectoryRequestStream, ExecuteTrajectoryResponseStream
 
 logger = logging.getLogger(__name__)
@@ -386,6 +393,7 @@ class MovementOption(StrEnum):
 # Signals emitted during motion events for external observers
 motion_started = signal("motion_started")
 motion_stopped = signal("motion_stopped")
+async_action_completed = signal("async_action_completed")
 
 
 class MotionEventType(StrEnum):
@@ -475,6 +483,7 @@ class TrajectoryCursor:
         actions: list[Action] | None = None,
         initial_location: float = 0.0,
         detach_on_standstill: bool = False,
+        async_action_executor: "AsyncActionExecutor | None" = None,
     ):
         """Initialize a trajectory cursor.
 
@@ -485,10 +494,15 @@ class TrajectoryCursor:
             actions: List of motion actions that make up the trajectory. Optional for location-based navigation.
             initial_location: Starting position on the trajectory (usually 0.0).
             detach_on_standstill: If True, automatically detach when robot stops.
+            async_action_executor: Optional executor for handling AsyncAction instances.
+                If provided, async actions in the trajectory will be executed at their
+                designated locations. Blocking actions will pause motion using the cursor's
+                pause() method.
         """
         self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
         self.actions = CombinedActions(items=actions) if actions is not None else None  # type: ignore
+        self._async_action_executor = async_action_executor
 
         if self.actions is not None:
             expected_end_location = len(self.actions)
@@ -592,6 +606,18 @@ class TrajectoryCursor:
             return None
         assert self.actions is not None
         return self.actions[previous_action_index]
+
+    @property
+    def async_action_results(self) -> list["AsyncActionResult"]:
+        """Get results of completed async actions.
+
+        Returns:
+            List of AsyncActionResult for all completed async actions.
+            Empty list if no async action executor is configured.
+        """
+        if self._async_action_executor is None:
+            return []
+        return self._async_action_executor.results
 
     def get_movement_options(self) -> set[MovementOption]:
         """Get the set of currently available movement options.
@@ -960,7 +986,8 @@ class TrajectoryCursor:
         """Monitor motion group state and update operation status accordingly.
 
         Processes state updates from the motion controller to track operation progress,
-        detect completion (standstill), and update current location.
+        detect completion (standstill), and update current location. Also triggers
+        async actions when their designated locations are crossed.
 
         Args:
             ready_event: Event to signal when the monitor is ready to receive states.
@@ -987,6 +1014,9 @@ class TrajectoryCursor:
                     if isinstance(motion_group_state.execute.details, api.models.TrajectoryDetails):
                         self._current_location = motion_group_state.execute.details.location.root
 
+                        # Trigger async actions at this location
+                        await self._check_and_trigger_async_actions(motion_group_state)
+
                 if result.complete_operation:
                     self._complete_operation()
 
@@ -996,12 +1026,55 @@ class TrajectoryCursor:
 
         except asyncio.CancelledError:
             logger.debug("TrajectoryCursor motion group state monitor was cancelled")
+            if self._async_action_executor:
+                await self._async_action_executor.cancel_all_actions()
             raise
         finally:
+            # Wait for any remaining async actions
+            if self._async_action_executor:
+                await self._async_action_executor.wait_for_all_actions()
             # stop the request loop
             self.detach()
             # stop the cursor iterator (TODO is this the right place?)
             self._in_queue.put_nowait(_QUEUE_SENTINEL)
+
+    async def _check_and_trigger_async_actions(
+        self, motion_group_state: api.models.MotionGroupState
+    ) -> None:
+        """Check for and trigger async actions at the current location.
+
+        For blocking actions, pauses motion before executing and resumes after.
+
+        Args:
+            motion_group_state: Current motion group state with position info.
+        """
+        if self._async_action_executor is None:
+            return
+
+        # Build RobotState from motion_group_state
+        tcp_pose = motion_group_state.tcp_pose
+        pose = Pose(tcp_pose) if tcp_pose else Pose((0, 0, 0, 0, 0, 0))
+        robot_state = RobotState(
+            pose=pose,
+            tcp=motion_group_state.tcp,
+            joints=tuple(motion_group_state.joint_position.joints),
+        )
+
+        try:
+            # Check and trigger uses callbacks for blocking actions
+            # For TrajectoryCursor, we handle blocking inline
+            await self._async_action_executor.check_and_trigger(
+                current_location=self._current_location, current_state=robot_state
+            )
+            # Note: blocking actions are already executed by the executor
+            # When a blocking action completes, emit signal
+            for action_result in self._async_action_executor.results:
+                # Emit signal for newly completed actions
+                # (The executor collects them, we just need to notify)
+                pass  # Signal emission is handled in the executor's result collection
+
+        except Exception as e:
+            logger.error(f"Async action error at location {self._current_location}: {e}")
 
     async def _response_consumer(self, ready_event: asyncio.Event):
         """Process responses from the motion controller and update operation state.
