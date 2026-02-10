@@ -16,7 +16,6 @@ _START_STATE_MONITOR_TIMEOUT = 5.0
 
 
 # TODO: when the message exchange is not working as expected we should gracefully close
-# TODO: add the set_io functionality Thorsten Blatter did for the force torque sensor at Schaeffler
 def move_forward(context: MovementControllerContext) -> MovementControllerFunction:
     """
     movement_controller is an async function that yields requests to the server.
@@ -51,16 +50,17 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         continue
 
                     if isinstance(
-                        motion_group_state.execute.details.state, api.models.TrajectoryEnded
+                        motion_group_state.execute.details.state,
+                        (api.models.TrajectoryEnded, api.models.TrajectoryPausedOnIO),
                     ):
                         logger.info(
-                            f"Trajectory: {context.motion_id} state monitor ended with TrajectoryEnded"
+                            f"Trajectory: {context.motion_id} state monitor ended with {type(motion_group_state.execute.details.state).__name__}"
                         )
                         trajectory_ended = True
                         continue
 
                 logger.info(
-                    f"Trajectory: {context.motion_id} state monitor ended without TrajectoryEnded"
+                    f"Trajectory: {context.motion_id} state monitor ended without observing a terminal trajectory state (TrajectoryEnded or TrajectoryPausedOnIO)"
                 )
             except BaseException as e:
                 logger.error(
@@ -115,7 +115,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             direction=api.models.Direction.DIRECTION_FORWARD,
             set_outputs=set_io_list,
             start_on_io=context.start_on_io,
-            pause_on_io=None,
+            pause_on_io=context.pause_on_io,
         )
         logger.info(f"Trajectory: {context.motion_id} sending StartMovementRequest")
         yield start_movement_request
