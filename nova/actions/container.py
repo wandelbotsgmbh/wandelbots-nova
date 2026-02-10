@@ -163,6 +163,7 @@ class MovementControllerContext(pydantic.BaseModel):
     combined_actions: CombinedActions
     motion_id: str
     start_on_io: api.models.StartOnIO | None = None
+    pause_on_io: api.models.PauseOnIO | None = None
     motion_group_state_stream_gen: Callable[[], AsyncIterator[api.models.MotionGroupState]]
 
 
