@@ -171,9 +171,7 @@ async def test_pause_on_io_with_virtual_controller_terminates_motion():
 
             # Verify the robot stopped before reaching the target
             final_pose = await mg.tcp_pose("Flange")
-            assert final_pose.position.x > initial_pose.position.x, (
-                "Robot did not move at all"
-            )
+            assert final_pose.position.x > initial_pose.position.x, "Robot did not move at all"
             assert final_pose.position.x < target_pose.position.x, (
                 "Robot completed full movement despite pause-on-io trigger"
             )
