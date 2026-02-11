@@ -182,7 +182,7 @@
   },
   "dependencies": {
     "@wandelbots/nova-api": "25.7.0",
-    "axios": "^1.13.2",
+    "axios": "^1.13.5",
     "nats": "^2.29.3",
     "url-join": "^5.0.0"
   },
