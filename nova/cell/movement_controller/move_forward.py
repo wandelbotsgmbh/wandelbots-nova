@@ -3,6 +3,7 @@ import logging
 
 from nova import api
 from nova.actions import MovementControllerContext
+from nova.cell.movement_controller.trajectory_state_machine import TrajectoryExecutionMachine
 from nova.exceptions import ErrorDuringMovement, InitMovementFailed
 from nova.types import (
     ExecuteTrajectoryRequestStream,
@@ -30,7 +31,9 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         async def motion_group_state_monitor(stream_started_event: asyncio.Event):
             try:
                 logger.info("Starting state monitor for trajectory")
-                trajectory_ended = False
+                machine = TrajectoryExecutionMachine()
+                machine.send("start")
+
                 async for motion_group_state in context.motion_group_state_stream_gen():
                     if not stream_started_event.is_set():
                         stream_started_event.set()
@@ -39,25 +42,18 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         f"Trajectory: {context.motion_id} state monitor received state: {motion_group_state}"
                     )
 
-                    if trajectory_ended and motion_group_state.standstill:
+                    result = machine.process_motion_state(motion_group_state)
+
+                    if machine.is_completed:
                         logger.info(
-                            f"Trajectory: {context.motion_id} state monitor detected standstill."
+                            f"Trajectory: {context.motion_id} state monitor completed at standstill."
                         )
                         return
 
-                    if not motion_group_state.execute or not isinstance(
-                        motion_group_state.execute.details, api.models.TrajectoryDetails
-                    ):
-                        continue
-
-                    if isinstance(
-                        motion_group_state.execute.details.state, api.models.TrajectoryEnded
-                    ):
-                        logger.info(
-                            f"Trajectory: {context.motion_id} state monitor ended with TrajectoryEnded"
+                    if machine.is_waiting_for_standstill:
+                        logger.debug(
+                            f"Trajectory: {context.motion_id} waiting for standstill"
                         )
-                        trajectory_ended = True
-                        continue
 
                 logger.info(
                     f"Trajectory: {context.motion_id} state monitor ended without TrajectoryEnded"
