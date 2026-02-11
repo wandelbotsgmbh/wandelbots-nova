@@ -7,7 +7,7 @@ import pytest
 from nova import Nova, api
 from nova.actions import jnt, lin
 from nova.actions.container import CombinedActions, MovementControllerContext
-from nova.cell.controllers import virtual_controller
+from nova.cell import virtual_controller
 from nova.cell.movement_controller import move_forward
 from nova.types import Pose
 from nova.types.motion_settings import MotionSettings
@@ -18,6 +18,8 @@ async def test_pause_on_io_parameter_forwarded_to_context():
     """
     Tests that pause_on_io parameter is correctly set in MovementControllerContext.
     """
+    from datetime import datetime, timezone
+
     pause_io = api.models.PauseOnIO(
         io=api.models.IOBooleanValue(io="OUT#900", value=True),
         comparator=api.models.Comparator.COMPARATOR_EQUALS,
@@ -25,7 +27,15 @@ async def test_pause_on_io_parameter_forwarded_to_context():
     )
 
     async def mock_stream_state():
-        yield api.models.MotionGroupState(standstill=True)
+        yield api.models.MotionGroupState(
+            timestamp=datetime.now(timezone.utc),
+            sequence_number=0,
+            motion_group="mg0",
+            controller="test-controller",
+            joint_position=[0.0] * 6,
+            joint_limit_reached={"values": [False] * 6, "limit_reached": [False] * 6},
+            standstill=True,
+        )
 
     context = MovementControllerContext(
         combined_actions=CombinedActions(items=tuple([])),
@@ -36,7 +46,7 @@ async def test_pause_on_io_parameter_forwarded_to_context():
     )
 
     assert context.pause_on_io is not None
-    assert context.pause_on_io.io.io == "OUT#900"
+    assert context.pause_on_io.io.root.io == "OUT#900"
     assert context.pause_on_io.comparator == api.models.Comparator.COMPARATOR_EQUALS
 
 
@@ -45,6 +55,8 @@ async def test_move_forward_controller_includes_pause_on_io_in_start_request():
     """
     Tests that move_forward controller includes pause_on_io in StartMovementRequest.
     """
+    from datetime import datetime, timezone
+
     pause_io = api.models.PauseOnIO(
         io=api.models.IOBooleanValue(io="OUT#900", value=True),
         comparator=api.models.Comparator.COMPARATOR_EQUALS,
@@ -52,7 +64,15 @@ async def test_move_forward_controller_includes_pause_on_io_in_start_request():
     )
 
     async def mock_stream_state():
-        yield api.models.MotionGroupState(standstill=True)
+        yield api.models.MotionGroupState(
+            timestamp=datetime.now(timezone.utc),
+            sequence_number=0,
+            motion_group="mg0",
+            controller="test-controller",
+            joint_position=[0.0] * 6,
+            joint_limit_reached={"values": [False] * 6, "limit_reached": [False] * 6},
+            standstill=True,
+        )
 
     context = MovementControllerContext(
         combined_actions=CombinedActions(items=tuple([])),
@@ -79,15 +99,15 @@ async def test_move_forward_controller_includes_pause_on_io_in_start_request():
 
     assert start_request is not None
     assert start_request.pause_on_io is not None
-    assert start_request.pause_on_io.io.io == "OUT#900"
+    assert start_request.pause_on_io.io.root.io == "OUT#900"
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_pause_on_io_with_virtual_controller_terminates_motion():
     """
-    Tests that pause_on_io parameter propagates through the full execution pipeline and motion terminates
-    when the IO signal changes.
+    Tests that when pause_on_io is configured and the IO signal changes during motion,
+    the trajectory stops early and is treated as completed (TrajectoryPausedOnIO).
     """
     initial_joint_positions = [0.0, -1.57, 1.57, 0.0, 0.0, 0.0]
     controller_name = "kuka-pause-on-io-test"
@@ -112,9 +132,13 @@ async def test_pause_on_io_with_virtual_controller_terminates_motion():
                 tcp="Flange",
             )
 
-            # Get current pose and plan a longer motion
-            current_pose = await mg.tcp_pose("Flange")
-            target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
+            # Ensure the IO is initially False
+            await kuka.write("OUT#900", False)
+            await asyncio.sleep(0.1)
+
+            # Get current pose and plan a longer motion (1000mm to give time for IO change)
+            initial_pose = await mg.tcp_pose("Flange")
+            target_pose = initial_pose @ Pose((1000, 0, 0, 0, 0, 0))
 
             pause_io = api.models.PauseOnIO(
                 io=api.models.IOBooleanValue(io="OUT#900", value=True),
@@ -125,16 +149,31 @@ async def test_pause_on_io_with_virtual_controller_terminates_motion():
             actions = [lin(target_pose, settings=MotionSettings(tcp_velocity_limit=100))]
             trajectory = await mg.plan(actions=actions, tcp="Flange")
 
-            # Execute with pause_on_io parameter - the motion should proceed since IO is not triggered
-            # but the parameter should be properly forwarded through the stack
+            # Start motion in a task so we can trigger IO change during execution
+            movement_task = asyncio.create_task(
+                mg.execute(trajectory, "Flange", actions, pause_on_io=pause_io)
+            )
+
+            # Wait for motion to start (2 seconds should be enough)
+            await asyncio.sleep(2)
+
+            # Trigger the IO change to pause the motion
+            await kuka.write("OUT#900", True)
+
+            # Wait for the motion to complete (should pause due to IO)
             try:
-                await mg.execute(trajectory, "Flange", actions, pause_on_io=pause_io)
-                # If execution completes, motion reached the target (pause-on-io was not triggered)
-                final_pose = await mg.tcp_pose("Flange")
-                # Verify robot completed motion to target or close to it
-                assert abs(final_pose.position.x - target_pose.position.x) < 2.0, (
-                    "Robot should have moved toward target"
-                )
+                await asyncio.wait_for(movement_task, timeout=5.0)
             except asyncio.TimeoutError:
-                # Execution timed out - this is acceptable as the motion may be waiting for IO
-                pass
+                pytest.fail("Motion did not complete within timeout after IO trigger")
+
+            # Wait for deceleration
+            await asyncio.sleep(1)
+
+            # Verify the robot stopped before reaching the target
+            final_pose = await mg.tcp_pose("Flange")
+            assert final_pose.position.x > initial_pose.position.x, (
+                "Robot did not move at all"
+            )
+            assert final_pose.position.x < target_pose.position.x, (
+                "Robot completed full movement despite pause-on-io trigger"
+            )
