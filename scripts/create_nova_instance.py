@@ -15,6 +15,10 @@ from loguru import logger
 from nova import Nova, api
 from nova.config import NovaConfig
 
+# TODO use env or command line args for these
+CELL_READINESS_TIMEOUT_SECS = 300.0
+SERVICES_READINESS_TIMEOUT_SECS = 300.0
+
 
 async def main() -> None:
     refresh_url = os.getenv("PORTAL_PROD_REFRESH_URL")
@@ -61,7 +65,8 @@ async def main() -> None:
     config = NovaConfig(host=f"https://{host}", access_token=access_token)
     async with Nova(config) as nova:
         # wait for cell to be ready
-        async with asyncio.timeout(180):
+        logger.info("Waiting for cell readiness (%fs)...", CELL_READINESS_TIMEOUT_SECS)
+        async with asyncio.timeout(CELL_READINESS_TIMEOUT_SECS):
             while True:
                 try:
                     cells = await nova.api.cell_api.list_cells()
@@ -75,7 +80,8 @@ async def main() -> None:
 
         # wait for all services in the cell to be ready
         # TODO: could probably use nats
-        async with asyncio.timeout(300):
+        logger.info("Waiting for cell readiness (%fs)...", SERVICES_READINESS_TIMEOUT_SECS)
+        async with asyncio.timeout(SERVICES_READINESS_TIMEOUT_SECS):
             while True:
                 try:
                     cell_status = await nova.api.cell_api.get_cell_status("cell")
