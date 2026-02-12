@@ -75,7 +75,7 @@ async def main() -> None:
 
         # wait for all services in the cell to be ready
         # TODO: could probably use nats
-        async with asyncio.timeout(180):
+        async with asyncio.timeout(300):
             while True:
                 try:
                     cell_status = await nova.api.cell_api.get_cell_status("cell")
