@@ -325,6 +325,7 @@ class AbstractRobot(Device):
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
@@ -334,6 +335,7 @@ class AbstractRobot(Device):
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
+            pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
         """
 
     async def stream_execute(
@@ -343,6 +345,7 @@ class AbstractRobot(Device):
         actions: ActionsLike,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
@@ -355,6 +358,7 @@ class AbstractRobot(Device):
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
+            pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
         """
         actions_list = _normalize_actions(actions)
 
@@ -364,6 +368,7 @@ class AbstractRobot(Device):
             actions=actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
+            pause_on_io=pause_on_io,
         )
 
         async with aclosing(motion_state_stream) as motion_state_stream:
@@ -377,6 +382,7 @@ class AbstractRobot(Device):
         actions: ActionsLike,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
     ) -> None:
         """Execute a planned motion
 
@@ -386,6 +392,7 @@ class AbstractRobot(Device):
             actions (list[Action] | Action): The actions to be executed.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
+            pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
         """
 
         motion_state_stream = self.stream_execute(
@@ -394,22 +401,52 @@ class AbstractRobot(Device):
             actions,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
+            pause_on_io=pause_on_io,
         )
         async with aclosing(motion_state_stream) as motion_state_stream:
             async for _ in motion_state_stream:
                 pass
 
     async def stream_plan_and_execute(
-        self, actions: ActionsLike, tcp: str, start_joint_position: tuple[float, ...] | None = None
+        self,
+        actions: ActionsLike,
+        tcp: str,
+        start_joint_position: tuple[float, ...] | None = None,
+        movement_controller: MovementController | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
     ) -> AsyncIterable[MotionState]:
+        """Plan and execute a trajectory for the given actions.
+
+        Args:
+            actions (list[Action] | Action): The actions to be planned and executed.
+            tcp (str): The id of the tool center point (TCP)
+            start_joint_position (tuple[float, ...] | None): The starting joint position.
+            movement_controller (MovementController | None): The movement controller to be used. Defaults to move_forward.
+            start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
+            pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
+        """
         joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
-        motion_state_stream = self.stream_execute(joint_trajectory, tcp, actions)
+        motion_state_stream = self.stream_execute(
+            joint_trajectory,
+            tcp,
+            actions,
+            movement_controller=movement_controller,
+            start_on_io=start_on_io,
+            pause_on_io=pause_on_io,
+        )
         async with aclosing(motion_state_stream) as motion_state_stream:
             async for motion_state in motion_state_stream:
                 yield motion_state
 
     async def plan_and_execute(
-        self, actions: ActionsLike, tcp: str, start_joint_position: tuple[float, ...] | None = None
+        self,
+        actions: ActionsLike,
+        tcp: str,
+        start_joint_position: tuple[float, ...] | None = None,
+        movement_controller: MovementController | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
     ) -> None:
         """Plan and execute a trajectory for the given actions.
 
@@ -417,13 +454,23 @@ class AbstractRobot(Device):
             actions (list[Action] | Action): The actions to be planned and executed.
             tcp (str): The id of the tool center point (TCP)
             start_joint_position (tuple[float, ...] | None): The starting joint position.
+            movement_controller (MovementController | None): The movement controller to be used. Defaults to move_forward.
+            start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
+            pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
 
         Raises:
             NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a target
                 pose in a collision-free motion.
         """
         joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
-        await self.execute(joint_trajectory, tcp, actions)
+        await self.execute(
+            joint_trajectory,
+            tcp,
+            actions,
+            movement_controller=movement_controller,
+            start_on_io=start_on_io,
+            pause_on_io=pause_on_io,
+        )
 
     @abstractmethod
     async def get_state(self, tcp: str | None = None) -> RobotState:
