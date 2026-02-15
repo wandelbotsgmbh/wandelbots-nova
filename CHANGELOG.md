@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v4.8.0 (2026-02-13)
+
+### Features
+
+- Remove vscode-ext (#398) ([#398](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/398),
+  [`dee0c1f`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/dee0c1fe2b81bad97291e5b004872852dc305415))
+
+
 ## v4.7.1 (2026-02-05)
 
 ### Chores
