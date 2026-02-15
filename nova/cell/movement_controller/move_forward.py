@@ -1,10 +1,9 @@
 import asyncio
 import logging
 
-from icecream import ic
-
 from nova import api
 from nova.actions import MovementControllerContext
+from nova.cell.movement_controller.trajectory_state_machine import TrajectoryExecutionMachine
 from nova.exceptions import ErrorDuringMovement, InitMovementFailed
 from nova.types import (
     ExecuteTrajectoryRequestStream,

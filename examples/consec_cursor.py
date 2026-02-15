@@ -1,16 +1,20 @@
 import asyncio
+import logging
 from math import pi
 
 from icecream import ic
 
 import nova
 from nova import api, run_program
-from nova.actions import jnt, ptp
+from nova.actions import jnt
 from nova.cell.controllers import virtual_controller
 from nova.cell.movement_controller.trajectory_cursor import TrajectoryCursor
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
-from nova.types.pose import Pose
+
+logging.getLogger("websockets.client").setLevel(logging.WARNING)
+logging.getLogger("nova.cell.movement_controller.move_forward").setLevel(logging.WARNING)
+logging.root.filter
 
 fast = MotionSettings(tcp_velocity_limit=1000, tcp_acceleration_limit=2000)
 
@@ -39,9 +43,9 @@ async def main(ctx: nova.ProgramContext):
     tcp_names = await motion_group.tcp_names()
     tcp = tcp_names[0]
     actions = [
-        jnt(home_joints, fast),
-        ptp(Pose(0, 0, 200, 0, 0, 0) @ home, fast),
-        jnt(home_joints, fast),
+        jnt(home_joints, fast)
+        # ptp(Pose(0, 0, 200, 0, 0, 0) @ home, fast),
+        # jnt(home_joints, fast),
     ]
     ic()
     for _ in range(1):

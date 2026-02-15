@@ -57,6 +57,7 @@ from blinker import signal
 from nova import api
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
+from nova.cell.movement_controller.trajectory_state_machine import TrajectoryExecutionMachine
 from nova.exceptions import InitMovementFailed
 from nova.types import ExecuteTrajectoryRequestStream, ExecuteTrajectoryResponseStream
 
@@ -131,26 +132,7 @@ class OperationResult:
     error: Optional[Exception] = None
 
 
-@dataclass
-class StateProcessingResult:
-    """Result of processing a MotionGroupState in the context of an operation.
 
-    Most behavior is derived from MotionGroupState.execute presence:
-    - Queue state: Always when execute is present
-    - Set running: Always when execute is present (idempotent)
-    - Update location: Always when execute.details is TrajectoryDetails
-
-    This dataclass only encodes the remaining decisions.
-
-    Attributes:
-        skip: If True, ignore this state and continue to next.
-        complete_operation: If True, mark the operation as completed.
-        detach: If True, signal to detach from the cursor.
-    """
-
-    skip: bool = False
-    complete_operation: bool = False
-    detach: bool = False
 
 
 # Type alias for expected response types in _response_consumer
@@ -326,49 +308,7 @@ class OperationHandler:
         self._operation = None
 
 
-def process_motion_group_state(
-    state: api.models.MotionGroupState,
-    current_operation: Optional[Operation],
-    detach_on_standstill: bool,
-) -> StateProcessingResult:
-    """Analyze MotionGroupState and determine what actions the monitor should take.
 
-    This pure function encapsulates the decision logic for processing motion group
-    state updates. Most behavior is derived from state.execute presence in the monitor;
-    this function only determines skip/complete/detach decisions.
-
-    Completion is defined as: execute present + (PausedByUser or Ended) + standstill.
-    Once an operation has execute, it will not receive a state with standstill=True
-    without execute - completion always comes through execute details.
-
-    Args:
-        state: The motion group state to process.
-        current_operation: The current operation in progress, or None.
-        detach_on_standstill: If True, signal detachment when operation completes.
-
-    Returns:
-        StateProcessingResult indicating what actions the monitor should take.
-    """
-    # No operation in progress - skip this state
-    if current_operation is None or current_operation.future.done():
-        return StateProcessingResult(skip=True)
-
-    # Waiting for execution to start
-    if not state.execute:
-        return StateProcessingResult(skip=True)
-
-    # Execute is present - check for completion conditions
-    if isinstance(state.execute.details, api.models.TrajectoryDetails):
-        match state.execute.details.state:
-            case api.models.TrajectoryPausedByUser() | api.models.TrajectoryEnded():
-                if state.standstill:
-                    return StateProcessingResult(
-                        complete_operation=True, detach=detach_on_standstill
-                    )
-            case _:
-                pass  # TrajectoryRunning or other - no completion
-
-    return StateProcessingResult()  # No special action needed
 
 
 class MovementOption(StrEnum):
@@ -514,6 +454,7 @@ class TrajectoryCursor:
         self._target_location = self._current_location
         self._detach_on_standstill = detach_on_standstill
 
+        self._state_machine = TrajectoryExecutionMachine()
         self._operation_handler = OperationHandler()
 
         self._initialize_task = asyncio.create_task(self.ainitialize())
@@ -830,6 +771,9 @@ class TrajectoryCursor:
         target_location: Optional[float] = None,
     ) -> asyncio.Future[OperationResult]:
         """Start a new operation, returning a Future that will be resolved when the operation completes."""
+        # Transition the state machine back to executing for each new operation
+        if not self._state_machine.is_executing:
+            self._state_machine.send("start")
         return self._operation_handler.start(
             operation_type,
             start_location=self._current_location,
@@ -959,8 +903,8 @@ class TrajectoryCursor:
     async def _motion_group_state_monitor(self, ready_event: asyncio.Event):
         """Monitor motion group state and update operation status accordingly.
 
-        Processes state updates from the motion controller to track operation progress,
-        detect completion (standstill), and update current location.
+        Uses a :class:`TrajectoryExecutionMachine` to track trajectory lifecycle
+        and determine when operations complete.
 
         Args:
             ready_event: Event to signal when the monitor is ready to receive states.
@@ -970,29 +914,29 @@ class TrajectoryCursor:
             async for motion_group_state in self._motion_group_state_stream:
                 ready_event.set()
 
-                result = process_motion_group_state(
-                    state=motion_group_state,
-                    current_operation=self._operation_handler.current_operation,
-                    detach_on_standstill=self._detach_on_standstill,
-                )
+                # Skip if no operation in progress
+                current_op = self._operation_handler.current_operation
+                if current_op is None or current_op.future.done():
+                    continue
+
+                result = self._state_machine.process_motion_state(motion_group_state)
 
                 if result.skip:
                     continue
 
                 # Derived from execute presence
-                if motion_group_state.execute:
+                if result.has_execute:
                     self._in_queue.put_nowait(motion_group_state)
                     self._operation_handler.set_running()  # idempotent
 
-                    if isinstance(motion_group_state.execute.details, api.models.TrajectoryDetails):
-                        self._current_location = motion_group_state.execute.details.location.root
+                    if result.location is not None:
+                        self._current_location = result.location
 
-                if result.complete_operation:
+                if self._state_machine.is_completed or self._state_machine.is_paused:
                     self._complete_operation()
-
-                if result.detach:
-                    logger.debug("Detaching on standstill")
-                    break
+                    if self._detach_on_standstill and self._state_machine.is_completed:
+                        logger.debug("Detaching on standstill")
+                        break
 
         except asyncio.CancelledError:
             logger.debug("TrajectoryCursor motion group state monitor was cancelled")
