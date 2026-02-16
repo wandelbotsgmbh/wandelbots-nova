@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 Description: Retrieve access token, create instance, create default cell,
-             and verify that ProgramEngine is up.
+             and verify that all services are up using NATS subscriptions.
 """
 
 import asyncio
+import json
 import os
 import sys
 from datetime import datetime
@@ -12,8 +13,61 @@ from datetime import datetime
 import requests
 from loguru import logger
 
-from nova import Nova, api
+from nova import Nova
 from nova.config import NovaConfig
+
+# TODO use env or command line args for these
+CELL_READINESS_TIMEOUT_SECS = 180.0
+SERVICES_READINESS_TIMEOUT_SECS = 180.0
+
+
+async def wait_for_services_ready(nova: Nova, cell: str, timeout: float) -> None:
+    """
+    Wait for all services in a cell to be running using NATS subscription.
+
+    Args:
+        nova: The Nova client instance.
+        cell: The cell name to monitor.
+        timeout: Maximum time to wait in seconds.
+    """
+    cell_status_subject = f"nova.v2.cells.{cell}.status"
+    all_services_ready = asyncio.Event()
+
+    async def on_cell_status_message(msg):
+        if all_services_ready.is_set():
+            return
+        try:
+            data = json.loads(msg.data)
+            if not data:
+                return
+
+            # Check if all services are running
+            all_running = all(
+                service.get("status", {}).get("code") == "Running" for service in data
+            )
+            if all_running:
+                service_count = len(data)
+                logger.info(f"✅ All {service_count} services in cell '{cell}' are running.")
+                all_services_ready.set()
+            else:
+                not_running = [
+                    f"{s['service']}: {s.get('status', {}).get('code')}"
+                    for s in data
+                    if s.get("status", {}).get("code") != "Running"
+                ]
+                logger.debug(f"Services not ready: {not_running}")
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse status message: {e}")
+
+    sub = await nova.nats.subscribe(subject=cell_status_subject, cb=on_cell_status_message)
+    logger.info(f"Subscribed to {cell_status_subject}")
+    try:
+        await asyncio.wait_for(all_services_ready.wait(), timeout=timeout)
+    except asyncio.TimeoutError:
+        logger.error(f"Timeout waiting for services in cell '{cell}' to be ready")
+        raise TimeoutError(f"Services not ready within {timeout}s")
+    finally:
+        await sub.unsubscribe()
 
 
 async def main() -> None:
@@ -60,8 +114,9 @@ async def main() -> None:
 
     config = NovaConfig(host=f"https://{host}", access_token=access_token)
     async with Nova(config) as nova:
-        # wait for cell to be ready
-        async with asyncio.timeout(180):
+        # Wait for cell to exist (API must be reachable for NATS connection)
+        logger.info("Waiting for cell readiness (%fs)...", CELL_READINESS_TIMEOUT_SECS)
+        async with asyncio.timeout(CELL_READINESS_TIMEOUT_SECS):
             while True:
                 try:
                     cells = await nova.api.cell_api.list_cells()
@@ -73,24 +128,11 @@ async def main() -> None:
                 finally:
                     await asyncio.sleep(5)
 
-        # wait for all services in the cell to be ready
-        # TODO: could probably use nats
-        async with asyncio.timeout(180):
-            while True:
-                try:
-                    cell_status = await nova.api.cell_api.get_cell_status("cell")
-                    all_running = all(
-                        a_status.status.code == api.models.ServiceStatusPhase.RUNNING
-                        for a_status in cell_status.service_status
-                    )
-                    if all_running:
-                        logger.info("✅ All services in cell are running.")
-                        break
-
-                except Exception as e:
-                    logger.error(f"Waiting for all services in cell to be running: {e}")
-                finally:
-                    await asyncio.sleep(5)
+        # Wait for all services using NATS subscription
+        logger.info(
+            "Waiting for services readiness via NATS (%fs)...", SERVICES_READINESS_TIMEOUT_SECS
+        )
+        await wait_for_services_ready(nova, "cell", SERVICES_READINESS_TIMEOUT_SECS)
 
     with open("instance_config.env", "w") as file:
         file.write(
