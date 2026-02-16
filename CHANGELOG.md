@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.8.1 (2026-02-16)
+
+### Bug Fixes
+
+- **CI**: Use AsyncAPI/NATS to wait for cell services readiness (#396)
+  ([#396](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/396),
+  [`c235909`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c2359090e881c0769e3be2f3a9710353e2cda534))
+
+
 ## v4.8.0 (2026-02-13)
 
 ### Features
