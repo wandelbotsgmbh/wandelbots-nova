@@ -24,7 +24,7 @@ class RobotVisualizer:
         self,
         robot: DHRobot,
         robot_model_geometries: list[api.models.LinkChain],
-        tcp_geometries: list[api.models.Collider],
+        tcp_geometries: dict[str, api.models.Collider] | list[api.models.Collider],
         static_transform: bool = True,
         base_entity_path: str = "robot",
         albedo_factor: list = [255, 255, 255],
@@ -38,7 +38,9 @@ class RobotVisualizer:
         """
         :param robot: DHRobot instance
         :param robot_model_geometries: List of geometries for each link
-        :param tcp_geometries: TCP geometries (similar structure to link geometries)
+        :param tcp_geometries: TCP geometries as a dict mapping collider names to Collider objects.
+            A list is also accepted for backward compatibility and will be converted to a dict
+            with positional keys.
         :param static_transform: If True, transforms are logged as static, else temporal.
         :param base_entity_path: A base path prefix for logging the entities (e.g. motion group name)
         :param albedo_factor: A list representing the RGB values [R, G, B] to apply as the albedo factor.
@@ -51,7 +53,11 @@ class RobotVisualizer:
         """
         self.robot = robot
         self.link_geometries: dict[int, list[api.models.Collider]] = {}
-        self.tcp_geometries: list[api.models.Collider] = tcp_geometries
+        self.tcp_geometries: dict[str, api.models.Collider] = (
+            {f"geometry_{i}": geom for i, geom in enumerate(tcp_geometries)}
+            if isinstance(tcp_geometries, list)
+            else tcp_geometries
+        )
         self.logged_meshes: set[str] = set()
         self.static_transform = static_transform
         self.base_entity_path = base_entity_path.rstrip("/")
@@ -61,8 +67,8 @@ class RobotVisualizer:
         self.collision_link_geometries: list[Any] = (
             cast(list[Any], collision_link_chain.root) if collision_link_chain else []
         )
-        self.collision_tcp_geometries: dict[int, api.models.Collider] = (
-            cast(dict[int, api.models.Collider], collision_tcp.root) if collision_tcp else {}
+        self.collision_tcp_geometries: dict[str, api.models.Collider] = (
+            cast(dict[str, api.models.Collider], collision_tcp.root) if collision_tcp else {}
         )
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool
@@ -667,8 +673,9 @@ class RobotVisualizer:
         # Log TCP geometries (safety from controller)
         if self.show_safety_link_chain and self.tcp_geometries:
             tcp_transform = transforms[-1]  # the final frame transform
-            for i, geom in enumerate(self.tcp_geometries):
-                entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
+            for name, geom in self.tcp_geometries.items():
+                escaped_name = rr.escape_entity_path_part(name)
+                entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/{escaped_name}"
                 final_transform = tcp_transform @ self.geometry_pose_to_matrix(Pose(geom.pose))
 
                 self.init_geometry(entity_path, geom)
@@ -763,8 +770,11 @@ class RobotVisualizer:
             # Collect data for TCP geometries (safety from controller)
             if self.show_safety_link_chain and self.tcp_geometries:
                 tcp_transform = transforms[-1]  # End-effector transform
-                for i, geom in enumerate(self.tcp_geometries):
-                    entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/geometry_{i}"
+                for name, geom in self.tcp_geometries.items():
+                    escaped_name = rr.escape_entity_path_part(name)
+                    entity_path = (
+                        f"{self.base_entity_path}/safety_from_controller/tcp/{escaped_name}"
+                    )
                     final_transform = tcp_transform @ self.geometry_pose_to_matrix(Pose(geom.pose))
                     self.init_geometry(entity_path, geom)
                     collect_geometry_data(entity_path, final_transform)
@@ -773,7 +783,7 @@ class RobotVisualizer:
             if self.show_collision_link_chain and self.collision_link_geometries:
                 for link_index, geometries in enumerate(self.collision_link_geometries):
                     geom_dict = cast(
-                        dict[int, api.models.Collider],
+                        dict[str, api.models.Collider],
                         geometries.root if hasattr(geometries, "root") else geometries,
                     )
                     link_transform = transforms[link_index]
@@ -788,17 +798,16 @@ class RobotVisualizer:
             # Collect data for collision TCP geometries (only if enabled)
             if self.show_collision_tool and self.collision_tcp_geometries:
                 tcp_transform = transforms[-1]  # End-effector transform
-                for i, geom_id in enumerate(self.collision_tcp_geometries):
-                    entity_path = f"{self.base_entity_path}/collision/tcp/geometry_{geom_id}"
+                for geom_id, collider in self.collision_tcp_geometries.items():
+                    escaped_id = rr.escape_entity_path_part(geom_id)
+                    entity_path = f"{self.base_entity_path}/collision/tcp/geometry_{escaped_id}"
 
-                    pose = Pose(self.collision_tcp_geometries[geom_id].pose)
+                    pose = Pose(collider.pose)
                     final_transform = tcp_transform @ self.geometry_pose_to_matrix(pose)
 
                     # tcp collision geometries are defined in flange frame
                     identity_pose = Pose((0, 0, 0, 0, 0, 0))
-                    self.init_collision_geometry(
-                        entity_path, self.collision_tcp_geometries[geom_id], identity_pose
-                    )
+                    self.init_collision_geometry(entity_path, collider, identity_pose)
                     collect_geometry_data(entity_path, final_transform)
 
         # Send collected columns for all geometries

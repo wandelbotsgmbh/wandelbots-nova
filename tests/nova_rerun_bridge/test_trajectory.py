@@ -25,7 +25,7 @@ class TestLogMotionParameterValidation:
         mock_setup.motion_group_type = "test_type"
         mock_setup.safety_setup = Mock()
         mock_setup.safety_setup.robot_model_geometries = []
-        mock_setup.safety_setup.tcp_geometries = []
+        mock_setup.safety_setup.tcp_geometries = {}
 
         # Create mock MotionGroup
         mock_motion_group = Mock()
@@ -82,7 +82,7 @@ class TestLogMotionParameterValidation:
         mock_setup.motion_group_type = "test_type"
         mock_setup.safety_setup = Mock()
         mock_setup.safety_setup.robot_model_geometries = []
-        mock_setup.safety_setup.tcp_geometries = []
+        mock_setup.safety_setup.tcp_geometries = {}
 
         # Create mock MotionGroup
         mock_motion_group = Mock()
@@ -135,7 +135,7 @@ class TestLogMotionParameterValidation:
         mock_setup.motion_group_type = "test_type"
         mock_setup.safety_setup = Mock()
         mock_setup.safety_setup.robot_model_geometries = []
-        mock_setup.safety_setup.tcp_geometries = []
+        mock_setup.safety_setup.tcp_geometries = {}
 
         # Create mock MotionGroup
         mock_motion_group = Mock()
