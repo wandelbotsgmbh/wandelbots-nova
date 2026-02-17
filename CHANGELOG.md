@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.9.0 (2026-02-17)
+
+### Features
+
+- Implement pause-on-io on a trajectory (#390)
+  ([#390](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/390),
+  [`22650ed`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/22650ed23b2b295f5fcf7386edbd452de491fa6d))
+
+
 ## v4.8.1 (2026-02-16)
 
 ### Bug Fixes
