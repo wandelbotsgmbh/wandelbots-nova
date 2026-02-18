@@ -85,11 +85,11 @@ async def stream_motion_group(
     motion_group_description = await motion_group.get_description()
     motion_group_model = await motion_group.get_model()
 
-    tcp_geometries: list[api.models.Collider] = []
+    tcp_geometries: dict[str, api.models.Collider] = {}
     if motion_group_description.safety_tool_colliders is not None and tcp_name is not None:
         tool_colliders = motion_group_description.safety_tool_colliders.get(tcp_name)
         if tool_colliders is not None:
-            tcp_geometries = [tool_collider for tool_collider in list(tool_colliders.root.values())]
+            tcp_geometries = dict(tool_colliders.root)
 
     robot_model_geometries: list[api.models.LinkChain] = []
     if motion_group_description.safety_link_colliders is not None:
