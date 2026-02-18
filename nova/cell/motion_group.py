@@ -741,6 +741,7 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         # This is the entrypoint for the trajectory tuning mode
         if ENABLE_TRAJECTORY_TUNING:
@@ -766,6 +767,7 @@ class MotionGroup(AbstractRobot):
                 combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
                 motion_id=trajectory_id,
                 start_on_io=start_on_io,
+                pause_on_io=pause_on_io,
                 motion_group_state_stream_gen=self.stream_state,
             )
         )
