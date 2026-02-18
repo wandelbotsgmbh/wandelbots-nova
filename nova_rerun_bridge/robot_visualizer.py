@@ -681,7 +681,9 @@ class RobotVisualizer:
                 self.init_geometry(entity_path, geom)
                 log_geometry(entity_path, final_transform)
 
-    def log_robot_geometries(self, trajectory: api.models.JointTrajectory, times_column):
+    def log_robot_geometries(
+        self, trajectory: api.models.JointTrajectory, times_column: rr.TimeColumn
+    ):
         """
         Log the robot geometries for each link and TCP as separate entities.
 
@@ -788,7 +790,8 @@ class RobotVisualizer:
                     )
                     link_transform = transforms[link_index]
                     for geom_id, collider in geom_dict.items():
-                        entity_path = f"{self.base_entity_path}/collision/links/link_{link_index}/geometry_{geom_id}"
+                        escaped_geom_id = rr.escape_entity_path_part(str(geom_id))
+                        entity_path = f"{self.base_entity_path}/collision/links/link_{link_index}/geometry_{escaped_geom_id}"
 
                         pose = Pose(collider.pose)
                         final_transform = link_transform @ self.geometry_pose_to_matrix(pose)
@@ -800,7 +803,7 @@ class RobotVisualizer:
                 tcp_transform = transforms[-1]  # End-effector transform
                 for geom_id, collider in self.collision_tcp_geometries.items():
                     escaped_id = rr.escape_entity_path_part(geom_id)
-                    entity_path = f"{self.base_entity_path}/collision/tcp/geometry_{escaped_id}"
+                    entity_path = f"{self.base_entity_path}/collision/tcp/{escaped_id}"
 
                     pose = Pose(collider.pose)
                     final_transform = tcp_transform @ self.geometry_pose_to_matrix(pose)

@@ -25,7 +25,7 @@ def log_safety_zones(
 
     zones = motion_group_description.safety_zones.root
     for zone_id, collider in zones.items():
-        entity_path = f"{motion_group_id}/zones/zone_{zone_id}"
+        entity_path = f"{motion_group_id}/zones/zone_{rr.escape_entity_path_part(zone_id)}"
         polygons = collider_to_polygons(collider)
 
         if not polygons:
