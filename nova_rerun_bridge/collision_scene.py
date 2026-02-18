@@ -11,7 +11,7 @@ from nova_rerun_bridge.hull_visualizer import HullVisualizer
 
 def log_collision_setups(collision_setups: dict[str, api.models.CollisionSetup]):
     for setup_id, setup in collision_setups.items():
-        entity_path = f"collision_setups/{setup_id}"
+        entity_path = f"collision_setups/{rr.escape_entity_path_part(setup_id)}"
         if setup.colliders:
             for collider_id, collider in setup.colliders.root.items():
                 log_colliders_once(entity_path, {collider_id: collider})
@@ -19,6 +19,7 @@ def log_collision_setups(collision_setups: dict[str, api.models.CollisionSetup])
 
 def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collider]):
     for collider_id, collider in colliders.items():
+        escaped_collider_id = rr.escape_entity_path_part(collider_id)
         pose = Pose(collider.pose)
 
         if isinstance(collider.shape, api.models.Sphere):
@@ -32,7 +33,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                 angle = 0.0  # type: ignore[assignment]
 
             rr.log(
-                f"{entity_path}/{collider_id}",
+                f"{entity_path}/{escaped_collider_id}",
                 rr.Ellipsoids3D(
                     radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
                     centers=[pose.position.to_tuple()],
@@ -82,7 +83,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
             if polygons:
                 line_segments = [p.tolist() for p in polygons]
                 rr.log(
-                    f"{entity_path}/{collider_id}",
+                    f"{entity_path}/{escaped_collider_id}",
                     rr.LineStrips3D(
                         line_segments,
                         radii=rr.Radius.ui_points(0.75),
@@ -120,7 +121,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
             ]
 
             rr.log(
-                f"{entity_path}/{collider_id}",
+                f"{entity_path}/{escaped_collider_id}",
                 rr.LineStrips3D(
                     line_segments, radii=rr.Radius.ui_points(0.75), colors=[[221, 193, 193, 255]]
                 ),
@@ -152,7 +153,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
             if polygons:
                 line_segments = [p.tolist() for p in polygons]
                 rr.log(
-                    f"{entity_path}/{collider_id}",
+                    f"{entity_path}/{escaped_collider_id}",
                     rr.LineStrips3D(
                         line_segments,
                         radii=rr.Radius.ui_points(0.75),
@@ -184,7 +185,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
             if polygons:
                 line_segments = [p.tolist() for p in polygons]
                 rr.log(
-                    f"{entity_path}/{collider_id}",
+                    f"{entity_path}/{escaped_collider_id}",
                     rr.LineStrips3D(
                         line_segments,
                         radii=rr.Radius.ui_points(0.75),
@@ -216,7 +217,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
             if polygons:
                 line_segments = [p.tolist() for p in polygons]
                 rr.log(
-                    f"{entity_path}/{collider_id}",
+                    f"{entity_path}/{escaped_collider_id}",
                     rr.LineStrips3D(
                         line_segments,
                         radii=rr.Radius.ui_points(0.75),
@@ -241,7 +242,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
             if polygons:
                 line_segments = [p.tolist() for p in polygons]
                 rr.log(
-                    f"{entity_path}/{collider_id}",
+                    f"{entity_path}/{escaped_collider_id}",
                     rr.LineStrips3D(
                         line_segments, radii=rr.Radius.ui_points(1.5), colors=[colors.colors[2]]
                     ),
@@ -251,7 +252,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                 vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)  # type: ignore
 
                 rr.log(
-                    f"{entity_path}/{collider_id}",
+                    f"{entity_path}/{escaped_collider_id}",
                     rr.Mesh3D(
                         vertex_positions=vertices,
                         triangle_indices=triangles,
