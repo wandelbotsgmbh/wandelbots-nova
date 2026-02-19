@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v4.10.0 (2026-02-19)
+
+### Bug Fixes
+
+- **rerun-bridge**: Escape user-provided IDs in entity paths (#399)
+  ([#399](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/399),
+  [`8de0eeb`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8de0eebb630383f197eea7815d5b2fef47d96e2f))
+
+### Features
+
+- **rerun-bridge**: Use collider names for TCP geometry entity paths (#400)
+  ([#400](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/400),
+  [`bbd3770`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bbd3770b4f6e3ad67320f7a43aa96b4872edc203))
+
+
 ## v4.9.0 (2026-02-17)
 
 ### Features
