@@ -9,6 +9,9 @@ This script downloads the pre-processed robot models from the wandelbots-js-reac
 These models are already optimized and don't require additional processing.
 """
 
+PINNED_COMPONENTS_RELEASE_ID = "285774921"
+PINNED_COMPONENTS_VERSION = "3.7.4"
+
 
 def get_project_root() -> Path:
     """Get the root directory of the user's project"""
@@ -31,14 +34,8 @@ def get_current_version(models_dir: Path) -> str:
     return ""
 
 
-def get_latest_release_version() -> str:
-    api_url = (
-        "https://api.github.com/repos/wandelbotsgmbh/wandelbots-js-react-components/releases/latest"
-    )
-    response = requests.get(api_url)
-    if response.status_code != 200:
-        raise Exception(f"Failed to get latest release: {response.status_code}")
-    return response.json()["tag_name"].lstrip("v")
+def get_pinned_release_version() -> str:
+    return PINNED_COMPONENTS_VERSION
 
 
 def download_and_extract(version: str, models_dir: Path) -> None:
@@ -60,7 +57,7 @@ def download_and_extract(version: str, models_dir: Path) -> None:
 
 
 def update_robot_models():
-    version = get_latest_release_version()
+    version = get_pinned_release_version()
     models_dir = Path.cwd() / "models"
     current_version = get_current_version(models_dir)
 
