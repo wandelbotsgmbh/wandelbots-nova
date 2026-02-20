@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.10.1 (2026-02-20)
+
+### Bug Fixes
+
+- Ping the js components version (#401)
+  ([#401](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/401),
+  [`61d20dc`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/61d20dcb64494ecfa54d182564a3fd0ed735c603))
+
+
 ## v4.10.0 (2026-02-19)
 
 ### Bug Fixes
