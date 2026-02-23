@@ -10,11 +10,7 @@ from datetime import datetime, timezone
 import pytest
 
 from nova import api
-from nova.cell.movement_controller.trajectory_state_machine import (
-    StateUpdate,
-    TrajectoryExecutionMachine,
-)
-
+from nova.cell.movement_controller.trajectory_state_machine import TrajectoryExecutionMachine
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -31,9 +27,7 @@ def _make_motion_group_state(
         motion_group="mg-0",
         controller="ctrl-0",
         joint_position=api.models.Joints(root=[0.0] * 6),
-        joint_limit_reached=api.models.MotionGroupStateJointLimitReached(
-            limit_reached=[False] * 6
-        ),
+        joint_limit_reached=api.models.MotionGroupStateJointLimitReached(limit_reached=[False] * 6),
         standstill=standstill,
         execute=execute,
     )
@@ -75,14 +69,14 @@ class TestStateMachineLifecycle:
         machine.send("start")
         assert machine.is_executing
 
-    def test_completed_is_terminal(self):
+    def test_ended_is_terminal(self):
         machine = TrajectoryExecutionMachine()
         machine.send("start")
         state = _make_motion_group_state(
             standstill=True, execute=_make_execute(api.models.TrajectoryEnded())
         )
         machine.process_motion_state(state)
-        assert machine.is_completed
+        assert machine.is_ended
         assert machine.is_terminal
 
     def test_error_is_terminal(self):
@@ -109,7 +103,7 @@ class TestTrajectoryEnded:
         )
         result = machine.process_motion_state(state)
 
-        assert machine.is_completed
+        assert machine.is_ended
         assert result.state_changed
         assert result.has_execute
 
@@ -126,8 +120,8 @@ class TestTrajectoryEnded:
         assert machine.is_waiting_for_standstill
         assert result.state_changed
 
-    def test_ending_then_standstill_completes(self):
-        """Two-phase completion: TrajectoryEnded(no standstill) → standstill → completed."""
+    def test_ending_then_standstill_ends(self):
+        """Two-phase ending: TrajectoryEnded(no standstill) → standstill → ended."""
         machine = TrajectoryExecutionMachine()
         machine.send("start")
 
@@ -143,11 +137,11 @@ class TestTrajectoryEnded:
             standstill=True, execute=_make_execute(api.models.TrajectoryEnded())
         )
         result = machine.process_motion_state(state2)
-        assert machine.is_completed
+        assert machine.is_ended
         assert result.state_changed
 
-    def test_ending_then_bare_standstill_does_not_complete(self):
-        """Standalone standstill without execute does NOT complete from ending state.
+    def test_ending_then_bare_standstill_does_not_end(self):
+        """Standalone standstill without execute does NOT transition to ended.
 
         The API guarantees execute persists once set, so bare standstill is
         unreliable for determining completion.
@@ -209,8 +203,7 @@ class TestTrajectoryPaused:
         machine.send("start")
 
         state = _make_motion_group_state(
-            standstill=False,
-            execute=_make_execute(api.models.TrajectoryPausedByUser()),
+            standstill=False, execute=_make_execute(api.models.TrajectoryPausedByUser())
         )
         result = machine.process_motion_state(state)
 
@@ -223,15 +216,13 @@ class TestTrajectoryPaused:
         machine.send("start")
 
         state1 = _make_motion_group_state(
-            standstill=False,
-            execute=_make_execute(api.models.TrajectoryPausedByUser()),
+            standstill=False, execute=_make_execute(api.models.TrajectoryPausedByUser())
         )
         machine.process_motion_state(state1)
         assert machine.is_pausing
 
         state2 = _make_motion_group_state(
-            standstill=True,
-            execute=_make_execute(api.models.TrajectoryPausedByUser()),
+            standstill=True, execute=_make_execute(api.models.TrajectoryPausedByUser())
         )
         machine.process_motion_state(state2)
         assert machine.is_paused
@@ -260,7 +251,7 @@ class TestResumeFromPaused:
         machine.send("start")
         assert machine.is_executing
 
-    def test_start_from_completed(self):
+    def test_start_from_ended(self):
         machine = TrajectoryExecutionMachine()
         machine.send("start")
 
@@ -268,7 +259,7 @@ class TestResumeFromPaused:
             standstill=True, execute=_make_execute(api.models.TrajectoryEnded())
         )
         machine.process_motion_state(state)
-        assert machine.is_completed
+        assert machine.is_ended
 
         # Restart
         machine.send("start")
@@ -288,8 +279,7 @@ class TestTrajectoryRunning:
         machine.send("start")
 
         state = _make_motion_group_state(
-            standstill=False,
-            execute=_make_execute(api.models.TrajectoryRunning(time_to_end=5000)),
+            standstill=False, execute=_make_execute(api.models.TrajectoryRunning(time_to_end=5000))
         )
         result = machine.process_motion_state(state)
 
@@ -302,8 +292,7 @@ class TestTrajectoryRunning:
         machine.send("start")
 
         state = _make_motion_group_state(
-            standstill=True,
-            execute=_make_execute(api.models.TrajectoryRunning(time_to_end=5000)),
+            standstill=True, execute=_make_execute(api.models.TrajectoryRunning(time_to_end=5000))
         )
         machine.process_motion_state(state)
         assert machine.is_executing
@@ -359,9 +348,7 @@ class TestLocationTracking:
 
         state = _make_motion_group_state(
             standstill=False,
-            execute=_make_execute(
-                api.models.TrajectoryRunning(time_to_end=5000), location=2.5
-            ),
+            execute=_make_execute(api.models.TrajectoryRunning(time_to_end=5000), location=2.5),
         )
         result = machine.process_motion_state(state)
 
@@ -381,18 +368,14 @@ class TestLocationTracking:
 
         state1 = _make_motion_group_state(
             standstill=False,
-            execute=_make_execute(
-                api.models.TrajectoryRunning(time_to_end=5000), location=1.0
-            ),
+            execute=_make_execute(api.models.TrajectoryRunning(time_to_end=5000), location=1.0),
         )
         machine.process_motion_state(state1)
         assert machine.location == 1.0
 
         state2 = _make_motion_group_state(
             standstill=False,
-            execute=_make_execute(
-                api.models.TrajectoryRunning(time_to_end=3000), location=2.0
-            ),
+            execute=_make_execute(api.models.TrajectoryRunning(time_to_end=3000), location=2.0),
         )
         machine.process_motion_state(state2)
         assert machine.location == 2.0
@@ -451,8 +434,7 @@ class TestFullSequence:
             state = _make_motion_group_state(
                 standstill=False,
                 execute=_make_execute(
-                    api.models.TrajectoryRunning(time_to_end=int((2.0 - loc) * 1000)),
-                    location=loc,
+                    api.models.TrajectoryRunning(time_to_end=int((2.0 - loc) * 1000)), location=loc
                 ),
             )
             result = machine.process_motion_state(state)
@@ -461,19 +443,17 @@ class TestFullSequence:
 
         # TrajectoryEnded without standstill
         state = _make_motion_group_state(
-            standstill=False,
-            execute=_make_execute(api.models.TrajectoryEnded(), location=2.0),
+            standstill=False, execute=_make_execute(api.models.TrajectoryEnded(), location=2.0)
         )
         machine.process_motion_state(state)
         assert machine.is_ending
 
         # Standstill
         state = _make_motion_group_state(
-            standstill=True,
-            execute=_make_execute(api.models.TrajectoryEnded(), location=2.0),
+            standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), location=2.0)
         )
         machine.process_motion_state(state)
-        assert machine.is_completed
+        assert machine.is_ended
         assert machine.location == 2.0
 
     def test_forward_pause_resume_complete(self):
@@ -484,9 +464,7 @@ class TestFullSequence:
         # Running
         state = _make_motion_group_state(
             standstill=False,
-            execute=_make_execute(
-                api.models.TrajectoryRunning(time_to_end=5000), location=0.5
-            ),
+            execute=_make_execute(api.models.TrajectoryRunning(time_to_end=5000), location=0.5),
         )
         machine.process_motion_state(state)
         assert machine.is_executing
@@ -506,20 +484,17 @@ class TestFullSequence:
         # Running again
         state = _make_motion_group_state(
             standstill=False,
-            execute=_make_execute(
-                api.models.TrajectoryRunning(time_to_end=2000), location=1.2
-            ),
+            execute=_make_execute(api.models.TrajectoryRunning(time_to_end=2000), location=1.2),
         )
         machine.process_motion_state(state)
         assert machine.is_executing
 
         # Ended + standstill
         state = _make_motion_group_state(
-            standstill=True,
-            execute=_make_execute(api.models.TrajectoryEnded(), location=2.0),
+            standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), location=2.0)
         )
         machine.process_motion_state(state)
-        assert machine.is_completed
+        assert machine.is_ended
 
     def test_forward_pause_backward_complete(self):
         """forward → pause → backward → complete (at start)."""
@@ -529,9 +504,7 @@ class TestFullSequence:
         # Running forward
         state = _make_motion_group_state(
             standstill=False,
-            execute=_make_execute(
-                api.models.TrajectoryRunning(time_to_end=5000), location=1.0
-            ),
+            execute=_make_execute(api.models.TrajectoryRunning(time_to_end=5000), location=1.0),
         )
         machine.process_motion_state(state)
 
@@ -550,20 +523,17 @@ class TestFullSequence:
         # Running backward
         state = _make_motion_group_state(
             standstill=False,
-            execute=_make_execute(
-                api.models.TrajectoryRunning(time_to_end=3000), location=0.5
-            ),
+            execute=_make_execute(api.models.TrajectoryRunning(time_to_end=3000), location=0.5),
         )
         machine.process_motion_state(state)
         assert machine.is_executing
 
         # Reached start, ended
         state = _make_motion_group_state(
-            standstill=True,
-            execute=_make_execute(api.models.TrajectoryEnded(), location=0.0),
+            standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), location=0.0)
         )
         machine.process_motion_state(state)
-        assert machine.is_completed
+        assert machine.is_ended
         assert machine.location == 0.0
 
 
@@ -579,9 +549,7 @@ class TestStateUpdateResult:
 
         state = _make_motion_group_state(
             standstill=False,
-            execute=_make_execute(
-                api.models.TrajectoryRunning(time_to_end=5000), location=1.5
-            ),
+            execute=_make_execute(api.models.TrajectoryRunning(time_to_end=5000), location=1.5),
         )
         result = machine.process_motion_state(state)
 

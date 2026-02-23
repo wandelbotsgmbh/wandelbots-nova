@@ -44,16 +44,14 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
 
                     result = machine.process_motion_state(motion_group_state)
 
-                    if machine.is_completed:
+                    if machine.is_ended:
                         logger.info(
                             f"Trajectory: {context.motion_id} state monitor completed at standstill."
                         )
                         return
 
                     if machine.is_waiting_for_standstill:
-                        logger.debug(
-                            f"Trajectory: {context.motion_id} waiting for standstill"
-                        )
+                        logger.debug(f"Trajectory: {context.motion_id} waiting for standstill")
 
                 logger.info(
                     f"Trajectory: {context.motion_id} state monitor ended without TrajectoryEnded"
