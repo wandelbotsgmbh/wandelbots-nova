@@ -132,9 +132,6 @@ class OperationResult:
     error: Optional[Exception] = None
 
 
-
-
-
 # Type alias for expected response types in _response_consumer
 ExpectedResponseType = Union[
     type[api.models.StartMovementResponse], type[api.models.PauseMovementResponse]
@@ -306,9 +303,6 @@ class OperationHandler:
     def _reset(self):
         """Clear the current operation."""
         self._operation = None
-
-
-
 
 
 class MovementOption(StrEnum):
@@ -932,9 +926,9 @@ class TrajectoryCursor:
                     if result.location is not None:
                         self._current_location = result.location
 
-                if self._state_machine.is_completed or self._state_machine.is_paused:
+                if self._state_machine.is_ended or self._state_machine.is_paused:
                     self._complete_operation()
-                    if self._detach_on_standstill and self._state_machine.is_completed:
+                    if self._detach_on_standstill and self._state_machine.is_ended:
                         logger.debug("Detaching on standstill")
                         break
 

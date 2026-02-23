@@ -11,19 +11,19 @@ This module provides `TrajectoryExecutionMachine`, a finite-state machine that e
 | `ending` | `TrajectoryEnded` received but robot not yet at standstill |
 | `pausing` | `TrajectoryPausedByUser` received, not yet at standstill |
 | `paused` | Robot paused and at standstill — may `start` again to resume |
-| `completed` | Trajectory finished **and** robot at standstill |
+| `ended` | Trajectory finished **and** robot at standstill |
 | `error` | Unrecoverable error — terminal state |
 
 ## Transitions
 
 ### External Commands
-- `start` — begin or resume execution (from `idle`, `paused`, or `completed`)
+- `start` — begin or resume execution (from `idle`, `paused`, or `ended`)
 - `fail` — signal an error from any non-terminal state
 
 ### Internal Transitions (via `process_motion_state`)
 - `TrajectoryRunning` → stay in `executing`
-- `TrajectoryEnded` + standstill → `completed`
-- `TrajectoryEnded` (no standstill) → `ending` → (on standstill) → `completed`
+- `TrajectoryEnded` + standstill → `ended`
+- `TrajectoryEnded` (no standstill) → `ending` → (on standstill) → `ended`
 - `TrajectoryPausedByUser` + standstill → `paused`
 - `TrajectoryPausedByUser` (no standstill) → `pausing` → (on standstill) → `paused`
 
@@ -45,16 +45,16 @@ state error <<final>>
 
 idle --> executing : start
 paused --> executing : start / resume
-completed --> executing : start
+ended --> executing : start
 
 executing --> executing : TrajectoryRunning
-executing --> completed : TrajectoryEnded\n[standstill]
+executing --> ended : TrajectoryEnded\n[standstill]
 executing --> ending : TrajectoryEnded\n[!standstill]
 executing --> paused : TrajectoryPausedByUser\n[standstill]
 executing --> pausing : TrajectoryPausedByUser\n[!standstill]
 
 ending --> ending : [!standstill]
-ending --> completed : [standstill]
+ending --> ended : [standstill]
 
 pausing --> pausing : [!standstill]
 pausing --> paused : [standstill]
@@ -80,16 +80,16 @@ stateDiagram-v2
 
     idle --> executing : start
     paused --> executing : start (resume)
-    completed --> executing : start
+    ended --> executing : start
 
     executing --> executing : TrajectoryRunning
-    executing --> completed : TrajectoryEnded [standstill]
+    executing --> ended : TrajectoryEnded [standstill]
     executing --> ending : TrajectoryEnded [!standstill]
     executing --> paused : TrajectoryPausedByUser [standstill]
     executing --> pausing : TrajectoryPausedByUser [!standstill]
 
     ending --> ending : [!standstill]
-    ending --> completed : [standstill]
+    ending --> ended : [standstill]
 
     pausing --> pausing : [!standstill]
     pausing --> paused : [standstill]
@@ -120,7 +120,7 @@ async for state in motion_group_states:
     if result.location is not None:
         update_location(result.location)
 
-    if machine.is_completed:
+    if machine.is_ended:
         break
     if machine.is_paused:
         handle_pause()
