@@ -140,7 +140,10 @@ Curated examples in this repository showcase typical SDK workflows:
 
 <img width="100%" alt="thumbnail" src="https://github.com/user-attachments/assets/6f0c441e-b133-4a3a-bf0e-0e947d3efad4" />
 
-## Wandelscript
+## Wandelscript (deprecated)
+
+> [!WARNING]
+> ⚠️ Wandelscript is deprecated and will be removed in a future release. For more information on how to migrate Wandelscript to Python programs, click [here](https://docs.wandelbots.io/latest/pathplanning-local-development#migrating-wandelscript-to-python-programs).
 
 Wandelscript is a domain-specific language for programming robots.
 It is a declarative language that allows you to describe the robot's behavior in a high-level way.
