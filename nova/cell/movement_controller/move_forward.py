@@ -41,7 +41,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         f"Trajectory: {context.motion_id} state monitor received state: {motion_group_state}"
                     )
 
-                    result = machine.process_motion_state(motion_group_state)
+                    machine.process_motion_state(motion_group_state)
 
                     if machine.is_ended:
                         logger.info(
