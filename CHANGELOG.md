@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.11.0 (2026-02-26)
+
+### Features
+
+- **RB-3155**: Add deprecation warning for Wandelscript (#403)
+  ([#403](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/403),
+  [`9214b37`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9214b377e07621e3d4042268d0032ec62e33edc2))
+
+
 ## v4.10.1 (2026-02-20)
 
 ### Bug Fixes
