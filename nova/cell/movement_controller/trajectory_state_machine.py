@@ -100,11 +100,6 @@ class StateUpdate:
 # State machine
 # ---------------------------------------------------------------------------
 
-# A frozen sentinel used only to carry the standstill flag into the
-# ``cond=`` helpers.  We store it on the model before firing any
-# transition so that the condition guards can read it.
-_UNSET: float | None = None
-
 
 class TrajectoryExecutionMachine(StateMachine):
     """Finite-state machine for a single trajectory execution lifecycle.
