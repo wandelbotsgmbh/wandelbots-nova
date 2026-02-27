@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.11.1 (2026-02-27)
+
+### Bug Fixes
+
+- **NDX-517**: Introduce state machine for movement controllers (#402)
+  ([#402](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/402),
+  [`fd8eca2`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fd8eca2ce7de80e6d274fd89de570b2e34e05f51))
+
+
 ## v4.11.0 (2026-02-26)
 
 ### Features
