@@ -1,4 +1,4 @@
-"""Tests for process_motion_group_state and move_forward state monitor logic.
+"""Tests for move_forward state monitor logic.
 
 These tests verify that trajectory completion is only detected when both
 TrajectoryEnded (or TrajectoryPausedByUser) AND standstill are True.
@@ -12,12 +12,6 @@ import pytest
 from nova import api
 from nova.actions.container import CombinedActions, MovementControllerContext
 from nova.cell.movement_controller.move_forward import move_forward
-from nova.cell.movement_controller.trajectory_cursor import (
-    Operation,
-    OperationState,
-    OperationType,
-    process_motion_group_state,
-)
 from nova.exceptions import ErrorDuringMovement, InitMovementFailed
 
 # ---------------------------------------------------------------------------
@@ -58,18 +52,6 @@ def _make_execute(
     )
 
 
-def _make_operation(state: OperationState = OperationState.RUNNING) -> Operation:
-    """Create a minimal Operation for testing."""
-    future: asyncio.Future = asyncio.Future()
-    return Operation(
-        future=future,
-        operation_type=OperationType.FORWARD,
-        operation_state=state,
-        start_location=0.0,
-        expected_response_type=api.models.StartMovementResponse,
-    )
-
-
 async def _async_iter(items):
     """Turn a list into an async iterator."""
     for item in items:
@@ -91,109 +73,6 @@ def _make_context(
         start_on_io=None,
         motion_group_state_stream_gen=lambda: _async_iter(state_sequence),
     )
-
-
-# ---------------------------------------------------------------------------
-# process_motion_group_state tests
-# ---------------------------------------------------------------------------
-
-
-class TestProcessMotionGroupState:
-    """Tests for the process_motion_group_state pure function."""
-
-    def test_no_operation_returns_skip(self):
-        state = _make_motion_group_state(standstill=True)
-        result = process_motion_group_state(
-            state, current_operation=None, detach_on_standstill=False
-        )
-        assert result.skip is True
-
-    def test_completed_operation_returns_skip(self):
-        op = _make_operation()
-        op.future.set_result(None)
-        state = _make_motion_group_state(standstill=True)
-        result = process_motion_group_state(state, current_operation=op, detach_on_standstill=False)
-        assert result.skip is True
-
-    def test_no_execute_returns_skip(self):
-        op = _make_operation()
-        state = _make_motion_group_state(standstill=True, execute=None)
-        result = process_motion_group_state(state, current_operation=op, detach_on_standstill=False)
-        assert result.skip is True
-
-    def test_trajectory_running_no_standstill_no_completion(self):
-        """Running trajectory without standstill should not complete."""
-        op = _make_operation()
-        execute = _make_execute(api.models.TrajectoryRunning(time_to_end=5000))
-        state = _make_motion_group_state(standstill=False, execute=execute)
-        result = process_motion_group_state(state, current_operation=op, detach_on_standstill=False)
-        assert result.skip is False
-        assert result.complete_operation is False
-
-    def test_trajectory_running_with_standstill_no_completion(self):
-        """Running trajectory with standstill should not complete."""
-        op = _make_operation()
-        execute = _make_execute(api.models.TrajectoryRunning(time_to_end=5000))
-        state = _make_motion_group_state(standstill=True, execute=execute)
-        result = process_motion_group_state(state, current_operation=op, detach_on_standstill=False)
-        assert result.complete_operation is False
-
-    def test_trajectory_ended_without_standstill_no_completion(self):
-        """TrajectoryEnded WITHOUT standstill must NOT complete the operation.
-
-        This is the key scenario: the trajectory may report Ended before the robot
-        has fully decelerated. We must wait for standstill before completing.
-        """
-        op = _make_operation()
-        execute = _make_execute(api.models.TrajectoryEnded())
-        state = _make_motion_group_state(standstill=False, execute=execute)
-        result = process_motion_group_state(state, current_operation=op, detach_on_standstill=False)
-        assert result.complete_operation is False
-
-    def test_trajectory_ended_with_standstill_completes(self):
-        """TrajectoryEnded WITH standstill should complete the operation."""
-        op = _make_operation()
-        execute = _make_execute(api.models.TrajectoryEnded())
-        state = _make_motion_group_state(standstill=True, execute=execute)
-        result = process_motion_group_state(state, current_operation=op, detach_on_standstill=False)
-        assert result.complete_operation is True
-        assert result.detach is False
-
-    def test_trajectory_ended_with_standstill_and_detach(self):
-        """TrajectoryEnded with standstill and detach_on_standstill should also detach."""
-        op = _make_operation()
-        execute = _make_execute(api.models.TrajectoryEnded())
-        state = _make_motion_group_state(standstill=True, execute=execute)
-        result = process_motion_group_state(state, current_operation=op, detach_on_standstill=True)
-        assert result.complete_operation is True
-        assert result.detach is True
-
-    def test_trajectory_paused_without_standstill_no_completion(self):
-        """TrajectoryPausedByUser WITHOUT standstill must NOT complete."""
-        op = _make_operation()
-        execute = _make_execute(api.models.TrajectoryPausedByUser())
-        state = _make_motion_group_state(standstill=False, execute=execute)
-        result = process_motion_group_state(state, current_operation=op, detach_on_standstill=False)
-        assert result.complete_operation is False
-
-    def test_trajectory_paused_with_standstill_completes(self):
-        """TrajectoryPausedByUser WITH standstill should complete."""
-        op = _make_operation()
-        execute = _make_execute(api.models.TrajectoryPausedByUser())
-        state = _make_motion_group_state(standstill=True, execute=execute)
-        result = process_motion_group_state(state, current_operation=op, detach_on_standstill=False)
-        assert result.complete_operation is True
-
-    def test_non_trajectory_details_no_completion(self):
-        """Execute with non-TrajectoryDetails should not complete."""
-        op = _make_operation()
-        execute = api.models.Execute(
-            joint_position=[0.0] * 6,
-            details=None,  # e.g. JoggingDetails or None
-        )
-        state = _make_motion_group_state(standstill=True, execute=execute)
-        result = process_motion_group_state(state, current_operation=op, detach_on_standstill=False)
-        assert result.complete_operation is False
 
 
 # ---------------------------------------------------------------------------

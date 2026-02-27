@@ -186,7 +186,7 @@ class TrajectoryExecutionMachine(StateMachine):
             A :class:`StateUpdate` with location, execute presence and
             transition information.
         """
-        previous_state_id: str = self.current_state.id  # type: ignore[union-attr]
+        previous_state_id: str = self.current_state.id
         has_execute = state.execute is not None
         location: float | None = None
 
@@ -198,7 +198,7 @@ class TrajectoryExecutionMachine(StateMachine):
                 has_execute=False,
                 state_changed=False,
                 previous_state_id=previous_state_id,
-                current_state_id=self.current_state.id,  # type: ignore[union-attr]
+                current_state_id=self.current_state.id,
             )
 
         # Execute *is* present ------------------------------------------------
@@ -228,7 +228,7 @@ class TrajectoryExecutionMachine(StateMachine):
             has_execute=True,
             state_changed=self.current_state.id != previous_state_id,
             previous_state_id=previous_state_id,
-            current_state_id=self.current_state.id,  # type: ignore[union-attr]
+            current_state_id=self.current_state.id,
         )
 
     # -- Convenience properties -----------------------------------------------
@@ -300,6 +300,7 @@ class TrajectoryExecutionMachine(StateMachine):
             | api.models.TrajectoryEnded
             | api.models.TrajectoryPausedByUser
             | api.models.TrajectoryPausedOnIO
+            | api.models.TrajectoryWaitForIO
             | None
         ),
         *,
@@ -319,7 +320,7 @@ class TrajectoryExecutionMachine(StateMachine):
                 else:
                     self._begin_pausing()
 
-            case api.models.TrajectoryRunning():
+            case api.models.TrajectoryRunning() | api.models.TrajectoryWaitForIO():
                 self._keep_executing()
 
             case _:
