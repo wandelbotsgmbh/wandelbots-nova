@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 from nova import api
 
@@ -33,20 +34,7 @@ class DHRobot:
         if pose.orientation is None:
             R = np.eye(3)
         else:
-            rx, ry, rz = pose.orientation[0], pose.orientation[1], pose.orientation[2]
-            theta = np.linalg.norm([rx, ry, rz])
-
-            if theta < 1e-12:
-                R = np.eye(3)
-            else:
-                k = np.array([rx, ry, rz]) / theta
-                kx, ky, kz = k
-                K = np.array([[0.0, -kz, ky], [kz, 0.0, -kx], [-ky, kx, 0.0]])
-
-                sin_theta = np.sin(theta)
-                one_minus_cos = 1.0 - np.cos(theta)
-                # Rodrigues' rotation formula
-                R = np.eye(3) + sin_theta * K + one_minus_cos * (K @ K)
+            R = Rotation.from_rotvec(pose.orientation.root).as_matrix()
 
         # Construct the full homogeneous transformation matrix
         T = np.eye(4)
