@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, AsyncIterator, Callable, Union
+from typing import Annotated, Any, AsyncIterator, Callable, Union
 
 import pydantic
 
@@ -10,9 +10,6 @@ from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.types import MotionSettings, MovementControllerFunction, Pose
-
-if TYPE_CHECKING:
-    from nova.cell.movement_controller.async_action_executor import AsyncActionExecutor
 
 
 class ActionLocation(pydantic.BaseModel):
@@ -193,7 +190,9 @@ class MovementControllerContext(pydantic.BaseModel):
     motion_group_state_stream_gen: Callable[[], AsyncIterator[api.models.MotionGroupState]]
 
     # Async action support
-    async_action_executor: "AsyncActionExecutor | None" = None
+    async_action_executor: Any | None = (
+        None  # AsyncActionExecutor (typed as Any to avoid circular import)
+    )
 
 
 MovementController = Callable[[MovementControllerContext], MovementControllerFunction]
