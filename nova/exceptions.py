@@ -132,10 +132,7 @@ class AsyncActionError(Exception):
         super().__init__(
             f"Async action '{action_name}'{blocking_info} failed ({location_info}): {cause}"
         )
-
-    def __cause__(self) -> Exception:
-        """Return the underlying cause exception."""
-        return self.cause
+        self.__cause__ = cause
 
 
 # extends ValueError for backwards compatibility, otherwise it could extend Exception directly

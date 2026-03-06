@@ -992,9 +992,7 @@ class TrajectoryCursor:
         tcp_pose = motion_group_state.tcp_pose
         pose = Pose(tcp_pose) if tcp_pose else Pose((0, 0, 0, 0, 0, 0))
         robot_state = RobotState(
-            pose=pose,
-            tcp=motion_group_state.tcp,
-            joints=tuple(motion_group_state.joint_position.joints),
+            pose=pose, tcp=motion_group_state.tcp, joints=tuple(motion_group_state.joint_position)
         )
 
         try:

@@ -79,7 +79,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
                         robot_state = RobotState(
                             pose=pose,
                             tcp=motion_group_state.tcp,
-                            joints=tuple(motion_group_state.joint_position.joints),
+                            joints=tuple(motion_group_state.joint_position),
                         )
 
                         try:

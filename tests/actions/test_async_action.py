@@ -581,9 +581,9 @@ class TestCombinedActionsAsyncIntegration:
         async_actions = actions.get_async_actions()
         assert len(async_actions) == 2
         assert async_actions[0].path_parameter == 1.0
-        assert async_actions[0].action.action_name == "first"  # type: ignore
+        assert async_actions[0].action.action_name == "first"
         assert async_actions[1].path_parameter == 3.0
-        assert async_actions[1].action.action_name == "second"  # type: ignore
+        assert async_actions[1].action.action_name == "second"
 
     def test_motions_excludes_async_actions(self):
         """Test that motions property doesn't include async actions."""
