@@ -5,6 +5,8 @@
 [![Build status](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/nova-release.yaml/badge.svg)](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/nova-release.yaml)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/wandelbotsgmbh/wandelbots-nova)
 
+> **📚 New to the SDK?** Explore the [DeepWiki documentation](https://deepwiki.com/wandelbotsgmbh/wandelbots-nova) for architecture guides and tutorials. You can also **chat with it** to get code examples, detailed explanations, and answers to your questions.
+
 This library provides an SDK for the Wandelbots NOVA API.
 
 The SDK will help you to build your own apps and services using Python on top of Wandelbots NOVA and makes programming a robot as easy as possible.
