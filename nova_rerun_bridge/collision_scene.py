@@ -17,7 +17,23 @@ def log_collision_setups(collision_setups: dict[str, api.models.CollisionSetup])
                 log_colliders_once(entity_path, {collider_id: collider})
 
 
-def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collider]):
+def log_colliders_once(
+    entity_path: str,
+    colliders: dict[str, api.models.Collider],
+    line_color: list | None = None,
+    line_radius: float | None = None,
+    mesh_color: list | None = None,
+):
+    """Log collider shapes as rerun primitives.
+
+    Args:
+        entity_path: Rerun entity path prefix.
+        colliders: Mapping of collider id to collider.
+        line_color: Override wireframe color for all shapes (RGBA list).
+        line_radius: Override wireframe radius (in UI points) for all shapes.
+        mesh_color: Override mesh fill color for ConvexHull shapes (RGBA list).
+    """
+    default_line_color = [221, 193, 193, 255]
     for collider_id, collider in colliders.items():
         escaped_collider_id = rr.escape_entity_path_part(collider_id)
         pose = Pose(collider.pose)
@@ -38,7 +54,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                     radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
                     centers=[pose.position.to_tuple()],
                     rotation_axis_angles=[rr.RotationAxisAngle(axis=axis, angle=angle)],  # type: ignore
-                    colors=[(221, 193, 193, 255)],
+                    colors=[line_color or default_line_color],
                 ),
                 static=True,
             )
@@ -86,8 +102,8 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                     f"{entity_path}/{escaped_collider_id}",
                     rr.LineStrips3D(
                         line_segments,
-                        radii=rr.Radius.ui_points(0.75),
-                        colors=[[221, 193, 193, 255]],
+                        radii=rr.Radius.ui_points(line_radius or 0.75),
+                        colors=[line_color or default_line_color],
                     ),
                     static=True,
                 )
@@ -123,7 +139,9 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
             rr.log(
                 f"{entity_path}/{escaped_collider_id}",
                 rr.LineStrips3D(
-                    line_segments, radii=rr.Radius.ui_points(0.75), colors=[[221, 193, 193, 255]]
+                    line_segments,
+                    radii=rr.Radius.ui_points(line_radius or 0.75),
+                    colors=[line_color or default_line_color],
                 ),
                 static=True,
             )
@@ -156,8 +174,8 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                     f"{entity_path}/{escaped_collider_id}",
                     rr.LineStrips3D(
                         line_segments,
-                        radii=rr.Radius.ui_points(0.75),
-                        colors=[[221, 193, 193, 255]],
+                        radii=rr.Radius.ui_points(line_radius or 0.75),
+                        colors=[line_color or default_line_color],
                     ),
                     static=True,
                 )
@@ -188,8 +206,8 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                     f"{entity_path}/{escaped_collider_id}",
                     rr.LineStrips3D(
                         line_segments,
-                        radii=rr.Radius.ui_points(0.75),
-                        colors=[[221, 193, 193, 255]],
+                        radii=rr.Radius.ui_points(line_radius or 0.75),
+                        colors=[line_color or default_line_color],
                     ),
                     static=True,
                 )
@@ -220,8 +238,8 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                     f"{entity_path}/{escaped_collider_id}",
                     rr.LineStrips3D(
                         line_segments,
-                        radii=rr.Radius.ui_points(0.75),
-                        colors=[[221, 193, 193, 255]],
+                        radii=rr.Radius.ui_points(line_radius or 0.75),
+                        colors=[line_color or default_line_color],
                     ),
                     static=True,
                 )
@@ -244,7 +262,9 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                 rr.log(
                     f"{entity_path}/{escaped_collider_id}",
                     rr.LineStrips3D(
-                        line_segments, radii=rr.Radius.ui_points(1.5), colors=[colors.colors[2]]
+                        line_segments,
+                        radii=rr.Radius.ui_points(line_radius or 1.5),
+                        colors=[line_color or colors.colors[2]],
                     ),
                     static=True,
                 )
@@ -257,7 +277,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                         vertex_positions=vertices,
                         triangle_indices=triangles,
                         vertex_normals=normals,
-                        albedo_factor=[colors.colors[0]],  # type: ignore
+                        albedo_factor=[mesh_color or colors.colors[0]],  # type: ignore
                     ),
                     static=True,
                 )
