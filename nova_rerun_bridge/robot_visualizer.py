@@ -787,6 +787,9 @@ class RobotVisualizer:
             trajectory: The joint trajectory with sample points.
             times_column: The time column associated with the trajectory points.
         """
+        if not trajectory.joint_positions:
+            return
+
         all_joints = np.array([jp.root for jp in trajectory.joint_positions], dtype=np.float64)
 
         mounting_matrix = self.robot.pose_to_matrix(self.robot.mounting)
@@ -800,7 +803,7 @@ class RobotVisualizer:
         # --- Visual meshes ---
         if self.mesh_loaded:
             for link_index, joint_name in enumerate(self.joint_names):
-                if link_index >= all_transforms.shape[0] - 1:
+                if link_index >= all_transforms.shape[0]:
                     break
 
                 link_transforms_batch = all_transforms[link_index]

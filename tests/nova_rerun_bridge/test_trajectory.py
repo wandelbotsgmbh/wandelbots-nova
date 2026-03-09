@@ -6,9 +6,11 @@ and motion processing. Does not test rerun library functionality directly.
 
 from unittest.mock import AsyncMock, Mock, patch
 
+import numpy as np
 import pytest
 
 from nova import api
+from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 from nova_rerun_bridge.trajectory import log_motion
 
 
@@ -190,3 +192,29 @@ class TestLogMotionParameterValidation:
 
             # Should be called again
             assert mock_log_trajectory.call_count == 2
+
+
+class TestLogRobotGeometriesEmptyTrajectory:
+    """Test that log_robot_geometries handles an empty trajectory without error."""
+
+    def test_empty_trajectory_does_not_crash(self):
+        """Calling log_robot_geometries with an empty JointTrajectory should be a no-op."""
+        visualizer = Mock(spec=RobotVisualizer)
+        visualizer.robot = Mock()
+        visualizer.robot.dh_parameters = [
+            Mock(a=0, d=0, alpha=0, theta=0, reverse_rotation_direction=False) for _ in range(6)
+        ]
+        visualizer.robot.mounting = Mock()
+        visualizer.robot.pose_to_matrix = Mock(return_value=np.eye(4))
+        visualizer.mesh_loaded = False
+        visualizer.show_safety_link_chain = False
+        visualizer.show_collision_link_chain = False
+        visualizer.show_collision_tool = False
+
+        empty_trajectory = api.models.JointTrajectory(
+            joint_positions=[], times=[], locations=[], tcp="tcp"
+        )
+        mock_times = Mock()
+
+        # Call the real method on a mock instance — should not raise
+        RobotVisualizer.log_robot_geometries(visualizer, empty_trajectory, mock_times)
