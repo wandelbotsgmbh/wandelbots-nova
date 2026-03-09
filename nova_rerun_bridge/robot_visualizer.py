@@ -832,6 +832,7 @@ class RobotVisualizer:
                 inverse_transform[:3, 3] *= 1000
 
                 static_part = rotation_matrix_z_4x4 @ root_transform @ inverse_transform
+                final_transforms = np.matmul(link_transforms_batch, static_part)
 
                 for geom in filtered_geoms:
                     entity_path = (
@@ -839,8 +840,6 @@ class RobotVisualizer:
                         f"link_{link_index}/mesh/{geom.metadata.get('node')}"
                     )
                     self.init_mesh(entity_path, geom, joint_name)
-
-                    final_transforms = np.matmul(link_transforms_batch, static_part)
                     _batch_collect(final_transforms, link_positions, link_rotations, entity_path)
 
         # --- Safety link chain geometries ---
