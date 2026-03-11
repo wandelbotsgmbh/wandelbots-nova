@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.11.2 (2026-03-11)
+
+### Bug Fixes
+
+- Use child entity path for wireframe to inherit parent transform (#407)
+  ([#407](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/407),
+  [`d76d033`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d76d0338793603ac11e01fe6d7b55a36272ca27b))
+
+
 ## v4.11.1 (2026-02-27)
 
 ### Bug Fixes
