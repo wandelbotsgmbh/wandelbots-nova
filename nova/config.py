@@ -48,8 +48,15 @@ class NovaConfig(BaseModel):
         self.host = self.host.strip()
         self.host = self.host.rstrip("/")
 
-        # app store has a special case for the host
-        if self.host == "api-gateway:8080":
+        if not self.host:
+            return self
+
+        parsed_host = urlparse(self.host)
+        if parsed_host.scheme and parsed_host.netloc:
+            return self
+
+        parsed_host_without_scheme = urlparse(f"//{self.host}")
+        if parsed_host_without_scheme.netloc:
             self.host = f"http://{self.host}"
         return self
 

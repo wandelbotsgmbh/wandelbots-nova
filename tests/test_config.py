@@ -1,5 +1,12 @@
+import pytest
+
 import nova.config as config_module
 from nova.config import NovaConfig
+
+
+@pytest.fixture(autouse=True)
+def clear_nats_broker(monkeypatch):
+    monkeypatch.setattr(config_module, "NATS_BROKER", None)
 
 
 def test_when_user_provides_nats_config_explicitly():
@@ -32,6 +39,22 @@ def test_when_host_missing_scheme_from_app_store(monkeypatch):
     assert config.nats_client_config["servers"] == "ws://api-gateway:8080/api/nats"
 
 
+def test_when_host_missing_scheme_for_generic_host(monkeypatch):
+    monkeypatch.setattr(config_module, "NATS_BROKER", None)
+    config = NovaConfig(host="api.example.com")
+
+    assert config.host == "http://api.example.com"
+    assert config.nats_client_config["servers"] == "ws://api.example.com:80/api/nats"
+
+
+def test_when_host_missing_scheme_for_localhost(monkeypatch):
+    monkeypatch.setattr(config_module, "NATS_BROKER", None)
+    config = NovaConfig(host="localhost:8080")
+
+    assert config.host == "http://localhost:8080"
+    assert config.nats_client_config["servers"] == "ws://localhost:8080/api/nats"
+
+
 def test_when_host_and_token_prioritize_env_var(monkeypatch):
     monkeypatch.setattr(config_module, "NATS_BROKER", "nats://env-broker:4222")
     config = NovaConfig(host="https://api.example.com", access_token="test-token")
@@ -54,5 +77,5 @@ def test_when_host_has_trailing_slash_it_is_normalized():
 
 
 def test_host_is_trimmed():
-    config = NovaConfig(host=" https://api.example.com/   ")
-    assert config.host == "https://api.example.com"
+    config = NovaConfig(host=" api.example.com/   ")
+    assert config.host == "http://api.example.com"
