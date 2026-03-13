@@ -32,7 +32,6 @@ def test_when_no_user_input_no_env_var_but_only_host_http():
 
 
 def test_when_host_missing_scheme_from_app_store(monkeypatch):
-    monkeypatch.setattr(config_module, "NATS_BROKER", None)
     config = NovaConfig(host="api-gateway:8080")
 
     assert config.host == "http://api-gateway:8080"
@@ -40,7 +39,6 @@ def test_when_host_missing_scheme_from_app_store(monkeypatch):
 
 
 def test_when_host_missing_scheme_for_generic_host(monkeypatch):
-    monkeypatch.setattr(config_module, "NATS_BROKER", None)
     config = NovaConfig(host="api.example.com")
 
     assert config.host == "http://api.example.com"
@@ -48,7 +46,6 @@ def test_when_host_missing_scheme_for_generic_host(monkeypatch):
 
 
 def test_when_host_missing_scheme_for_localhost(monkeypatch):
-    monkeypatch.setattr(config_module, "NATS_BROKER", None)
     config = NovaConfig(host="localhost:8080")
 
     assert config.host == "http://localhost:8080"
@@ -79,3 +76,6 @@ def test_when_host_has_trailing_slash_it_is_normalized():
 def test_host_is_trimmed():
     config = NovaConfig(host=" api.example.com/   ")
     assert config.host == "http://api.example.com"
+
+    config_with_scheme = NovaConfig(host=" https://api.example.com/   ")
+    assert config_with_scheme.host == "https://api.example.com"
