@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## v4.11.3 (2026-03-13)
+
+### Bug Fixes
+
+- Normalize schemeless Nova hosts (#408)
+  ([#408](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/408),
+  [`a297ae0`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a297ae06900b61e97b8c3acb2ff2fd55b98f4f83))
+
+
+## v4.11.2 (2026-03-11)
+
+### Bug Fixes
+
+- Use child entity path for wireframe to inherit parent transform (#407)
+  ([#407](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/407),
+  [`d76d033`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d76d0338793603ac11e01fe6d7b55a36272ca27b))
+
+
 ## v4.11.1 (2026-02-27)
 
 ### Bug Fixes

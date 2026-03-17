@@ -553,7 +553,7 @@ class RobotVisualizer:
                 # First log wireframe outline
                 line_segments = [p.tolist() for p in polygons]
                 rr.log(
-                    f"{entity_path}_wireframe",
+                    f"{entity_path}/wireframe",
                     rr.LineStrips3D(
                         line_segments,
                         radii=rr.Radius.ui_points(1.0),
@@ -638,7 +638,7 @@ class RobotVisualizer:
                 # Log wireframe outline
                 line_segments = [p.tolist() for p in polygons]
                 rr.log(
-                    f"{entity_path}_wireframe",
+                    f"{entity_path}/wireframe",
                     rr.LineStrips3D(
                         line_segments,
                         radii=rr.Radius.ui_points(1.0),
