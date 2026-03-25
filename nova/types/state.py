@@ -4,6 +4,20 @@ from nova import api
 from nova.types.pose import Pose
 
 
+def robot_state_from_motion_group_state(
+    motion_group_state: api.models.MotionGroupState,
+) -> "RobotState":
+    """Build a RobotState from a MotionGroupState.
+
+    Uses a zero pose fallback when tcp_pose is not available.
+    """
+    tcp_pose = motion_group_state.tcp_pose
+    pose = Pose(tcp_pose) if tcp_pose else Pose((0, 0, 0, 0, 0, 0))
+    return RobotState(
+        pose=pose, tcp=motion_group_state.tcp, joints=tuple(motion_group_state.joint_position)
+    )
+
+
 class RobotState(pydantic.BaseModel):
     """Collection of information on the current state of the robot.
 

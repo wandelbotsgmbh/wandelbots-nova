@@ -189,10 +189,8 @@ class MovementControllerContext(pydantic.BaseModel):
     pause_on_io: api.models.PauseOnIO | None = None
     motion_group_state_stream_gen: Callable[[], AsyncIterator[api.models.MotionGroupState]]
 
-    # Async action support
-    async_action_executor: Any | None = (
-        None  # AsyncActionExecutor (typed as Any to avoid circular import)
-    )
+    # Async action support — typed as Any to avoid circular import with AsyncActionExecutor
+    async_action_executor: Any | None = None
 
 
 MovementController = Callable[[MovementControllerContext], MovementControllerFunction]

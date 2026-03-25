@@ -8,6 +8,7 @@ import numpy as np
 
 from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
+from nova.actions.async_action import ErrorHandlingMode
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion
 from nova.config import ENABLE_TRAJECTORY_TUNING
@@ -25,6 +26,7 @@ from nova.utils.joint_trajectory import combine_trajectories
 from nova.utils.motion_group_settings import update_motion_group_setup_with_motion_settings
 
 from .movement_controller import move_forward
+from .movement_controller.async_action_executor import AsyncActionExecutor
 from .robot_cell import AbstractRobot
 from .tuner import TrajectoryTuner
 
@@ -762,13 +764,25 @@ class MotionGroup(AbstractRobot):
         # Load planned trajectory
         trajectory_id = await self._load_planned_motion(joint_trajectory, tcp)
 
+        # Create async action executor if there are async actions
+        combined_actions = CombinedActions(items=tuple(actions))  # type: ignore
+        async_actions = combined_actions.get_async_actions()
+        executor: AsyncActionExecutor | None = None
+        if async_actions:
+            executor = AsyncActionExecutor(
+                motion_group_id=self.id,
+                async_actions=async_actions,
+                error_mode=ErrorHandlingMode.COLLECT,
+            )
+
         controller = movement_controller(
             MovementControllerContext(
-                combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
+                combined_actions=combined_actions,
                 motion_id=trajectory_id,
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
                 motion_group_state_stream_gen=self.stream_state,
+                async_action_executor=executor,
             )
         )
 
