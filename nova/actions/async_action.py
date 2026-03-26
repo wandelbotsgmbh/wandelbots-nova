@@ -1,39 +1,37 @@
 """Async action support for executing arbitrary async callables during trajectory execution.
 
-This module provides the AsyncAction type and supporting infrastructure for executing
-user-defined async functions at specific locations along a robot trajectory. Actions
-can run in parallel with robot motion (default) or block motion until complete.
+This module provides the AsyncAction type, AwaitAction, WaitUntilAction, and
+supporting infrastructure for executing user-defined async functions at specific
+locations along a robot trajectory.
 
 Key concepts:
-    - **AsyncAction**: An action that triggers an async callable at a trajectory location.
+    - **AsyncAction**: Starts an async callable at a trajectory location (runs in background).
+    - **AwaitAction**: Pauses motion until a previously started AsyncAction completes.
+    - **WaitUntilAction**: Pauses motion until a predicate on the shared ExecutionState is True.
     - **ActionRegistry**: Maps string names to async callables for serialization support.
     - **AsyncActionResult**: Captures execution results including timing and error info.
+    - **ExecutionState**: Per-trajectory shared state for cross-action communication.
 
 Example usage:
     ```python
-    from nova.actions import async_action, register_async_action
+    from nova.actions import async_action, await_action, wait_until, register_async_action
     from nova.actions.async_action import ActionExecutionContext
 
-    # Define an async action handler
-    async def log_position(ctx: ActionExecutionContext):
-        print(f"Robot at location {ctx.trigger_location}: {ctx.current_state.pose}")
+    async def detect_part(ctx: ActionExecutionContext):
+        result = await sensor.read()
+        await ctx.state.set("part_detected", result.found)
 
-    # Register it
-    register_async_action("log_position", log_position)
+    register_async_action("detect_part", detect_part)
 
-    # Use in trajectory
     actions = [
         ptp(pose1),
-        async_action("log_position"),  # Fires after ptp completes
+        async_action("detect_part", action_id="det1"),
         lin(pose2),
-        async_action("log_position", blocking=True),  # Pauses motion during execution
+        await_action("det1"),
+        wait_until(lambda s: s.get("part_detected")),
+        lin(pose3),
     ]
     ```
-
-Future enhancements:
-    - TODO: Add sync function support via asyncio.to_thread() wrapper
-    - TODO: Add action priority/ordering within same location
-    - TODO: Add action cancellation on trajectory abort
 """
 
 from __future__ import annotations
@@ -48,6 +46,7 @@ from typing import Any, Awaitable, Callable, ClassVar, Literal
 import pydantic
 
 from nova.actions.base import Action
+from nova.actions.execution_state import ExecutionState
 from nova.types.state import RobotState
 
 logger = logging.getLogger(__name__)
@@ -67,6 +66,7 @@ class ActionExecutionContext:
         action_name: The registered name of the action being executed.
         action_args: Positional arguments passed to the action.
         action_kwargs: Keyword arguments passed to the action.
+        state: Shared execution state for cross-action communication.
     """
 
     trigger_location: float
@@ -75,6 +75,7 @@ class ActionExecutionContext:
     action_name: str
     action_args: tuple[Any, ...] = ()
     action_kwargs: dict[str, Any] = field(default_factory=dict)
+    state: ExecutionState = field(default_factory=ExecutionState)
 
 
 # Type alias for async action handlers
@@ -236,38 +237,40 @@ class ErrorHandlingMode(StrEnum):
 
 
 class AsyncAction(Action):
-    """An action that executes an async callable at a specific trajectory location.
+    """An action that starts an async callable at a specific trajectory location.
 
     AsyncAction triggers user-defined async functions during trajectory execution.
     The callable is looked up by name in the action registry at execution time.
+    The action runs in the background (parallel to motion) unless an
+    ``AwaitAction`` referencing the same ``action_id`` is placed later in the
+    action list.
 
     Attributes:
         type: Literal type discriminator for serialization.
+        action_id: Unique identifier used by ``AwaitAction`` to reference this action.
         action_name: Name of the registered async handler to invoke.
         args: Positional arguments to pass to the handler (via context).
         kwargs: Keyword arguments to pass to the handler (via context).
-        blocking: If True, pause robot motion during action execution.
-        timeout: Optional timeout in seconds. None means no timeout.
 
     Example:
         ```python
-        # Non-blocking action (runs in parallel with motion)
-        async_action("log_data")
+        # Start an async action (runs in parallel with motion)
+        async_action("log_data", action_id="log1")
 
-        # Blocking action (pauses motion)
-        async_action("take_photo", blocking=True, timeout=5.0)
+        # Start and immediately await (equivalent to old blocking=True)
+        async_action("take_photo", action_id="photo1")
+        await_action("photo1")
 
         # With arguments
-        async_action("send_notification", "completed", level="info")
+        async_action("send_notification", action_id="notify1", "completed", level="info")
         ```
     """
 
     type: Literal["AsyncAction"] = "AsyncAction"
+    action_id: str
     action_name: str
     args: tuple[Any, ...] = ()
     kwargs: dict[str, Any] = pydantic.Field(default_factory=dict)
-    blocking: bool = False
-    timeout: float | None = None
 
     # Reference to registry (not serialized) - uses different name to avoid collision with Action._registry
     _action_registry: ClassVar[ActionRegistry | None] = None
@@ -325,7 +328,6 @@ class AsyncActionResult:
         duration_seconds: Execution duration.
         return_value: Value returned by the handler (if any).
         error: Exception if execution failed, None otherwise.
-        was_blocking: Whether the action blocked robot motion.
         timed_out: Whether the action was terminated due to timeout.
     """
 
@@ -336,7 +338,6 @@ class AsyncActionResult:
     completion_location: float | None = None
     return_value: Any = None
     error: Exception | None = None
-    was_blocking: bool = False
     timed_out: bool = False
 
     @property
@@ -352,6 +353,7 @@ class AsyncActionResult:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for logging/serialization."""
         return {
+            "action_id": self.action.action_id,
             "action_name": self.action.action_name,
             "trigger_location": self.trigger_location,
             "completion_location": self.completion_location,
@@ -359,24 +361,22 @@ class AsyncActionResult:
             "completed_at": self.completed_at.isoformat(),
             "duration_seconds": self.duration_seconds,
             "succeeded": self.succeeded,
-            "was_blocking": self.was_blocking,
             "timed_out": self.timed_out,
             "error": str(self.error) if self.error else None,
         }
 
 
-def async_action(
-    name: str, *args: Any, blocking: bool = False, timeout: float | None = None, **kwargs: Any
-) -> AsyncAction:
-    """Create an AsyncAction that executes a registered async handler.
+def async_action(name: str, *args: Any, action_id: str, **kwargs: Any) -> AsyncAction:
+    """Create an AsyncAction that starts a registered async handler.
 
-    Factory function for creating AsyncAction instances with a convenient API.
+    The action runs in the background (parallel to robot motion). Use
+    :func:`await_action` at a later trajectory location to guarantee
+    completion before the robot proceeds.
 
     Args:
         name: Name of the registered async handler to invoke.
         *args: Positional arguments passed to handler via context.
-        blocking: If True, pause robot motion during execution. Default False.
-        timeout: Optional timeout in seconds. None means no timeout.
+        action_id: Unique identifier for this action instance (required).
         **kwargs: Keyword arguments passed to handler via context.
 
     Returns:
@@ -384,19 +384,123 @@ def async_action(
 
     Example:
         ```python
-        # Simple async action (runs parallel to motion)
-        async_action("log_position")
-
-        # Blocking action with timeout
-        async_action("capture_image", blocking=True, timeout=2.0)
+        # Start async action (runs parallel to motion)
+        async_action("log_position", action_id="log1")
 
         # With arguments
-        async_action("send_data", target="server", value=42)
+        async_action("send_data", action_id="s1", target="server", value=42)
         ```
-
-    Raises:
-        KeyError: At execution time if name is not registered.
     """
-    return AsyncAction(
-        action_name=name, args=args, kwargs=kwargs, blocking=blocking, timeout=timeout
-    )
+    return AsyncAction(action_id=action_id, action_name=name, args=args, kwargs=kwargs)
+
+
+class AwaitAction(Action):
+    """Wait for a previously started ``AsyncAction`` to complete.
+
+    When the executor reaches this action's trajectory location it checks
+    whether the referenced ``AsyncAction`` (identified by *action_id*) has
+    finished.  If not, robot motion is paused until the action completes (or
+    *timeout* elapses).
+
+    Placing an ``AwaitAction`` at the same location as its ``AsyncAction``
+    is equivalent to the former ``blocking=True`` behaviour.
+
+    Attributes:
+        type: Literal type discriminator for serialization.
+        action_id: The ``action_id`` of the ``AsyncAction`` to await.
+        timeout: Optional timeout in seconds.  ``None`` means wait forever.
+    """
+
+    type: Literal["AwaitAction"] = "AwaitAction"
+    action_id: str
+    timeout: float | None = None
+
+    def is_motion(self) -> bool:
+        return False
+
+    def to_api_model(self) -> dict[str, Any]:
+        return self.model_dump(exclude={"metas"})
+
+
+def await_action(action_id: str, timeout: float | None = None) -> AwaitAction:
+    """Create an AwaitAction that waits for a started async action to complete.
+
+    Args:
+        action_id: The ``action_id`` of the ``AsyncAction`` to wait for.
+        timeout: Maximum seconds to wait.  ``None`` means wait forever.
+
+    Returns:
+        AwaitAction instance.
+
+    Example:
+        ```python
+        actions = [
+            ptp(home),
+            async_action("capture", action_id="cam1"),
+            lin(point_a),
+            await_action("cam1"),           # pause here if cam1 still running
+            lin(point_b),
+        ]
+        ```
+    """
+    return AwaitAction(action_id=action_id, timeout=timeout)
+
+
+class WaitUntilAction(Action):
+    """Pause robot motion until a predicate on the execution state is satisfied.
+
+    The predicate receives the current execution state dict and must return
+    ``True`` to let the robot proceed.  If it returns ``False`` at the time the
+    trajectory reaches this action's location, robot motion is paused until a
+    concurrent async action changes the state such that the predicate becomes
+    ``True`` (or *timeout* elapses).
+
+    .. note::
+
+        The *predicate* is a callable and therefore **not serialisable**.  This
+        action type is client-side only.
+
+    Attributes:
+        type: Literal type discriminator for serialization.
+        predicate: Callable ``(state_dict) -> bool``.
+        timeout: Optional timeout in seconds.  ``None`` means wait forever.
+    """
+
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+
+    type: Literal["WaitUntil"] = "WaitUntil"
+    predicate: Callable[[dict[str, Any]], bool]
+    timeout: float | None = None
+
+    def is_motion(self) -> bool:
+        return False
+
+    def to_api_model(self) -> dict[str, Any]:
+        return {"type": self.type, "timeout": self.timeout}
+
+
+def wait_until(
+    predicate: Callable[[dict[str, Any]], bool], timeout: float | None = None
+) -> WaitUntilAction:
+    """Create a WaitUntilAction that pauses motion until a predicate is satisfied.
+
+    Args:
+        predicate: Callable that receives the execution state dict (``dict[str, Any]``)
+            and returns ``True`` when the robot may proceed.
+        timeout: Maximum seconds to wait.  ``None`` means wait forever.
+
+    Returns:
+        WaitUntilAction instance.
+
+    Example:
+        ```python
+        actions = [
+            ptp(home),
+            async_action("detect_part", action_id="det1"),
+            lin(point_a),
+            wait_until(lambda s: s.get("part_detected")),  # pause until True
+            lin(point_b),
+        ]
+        ```
+    """
+    return WaitUntilAction(predicate=predicate, timeout=timeout)

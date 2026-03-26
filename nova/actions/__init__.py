@@ -3,14 +3,19 @@ from nova.actions.async_action import (
     ActionRegistry,
     AsyncAction,
     AsyncActionResult,
+    AwaitAction,
     ErrorHandlingMode,
+    WaitUntilAction,
     async_action,
+    await_action,
     get_default_registry,
     register_async_action,
     unregister_async_action,
+    wait_until,
 )
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions, MovementController, MovementControllerContext
+from nova.actions.execution_state import ExecutionState
 from nova.actions.io import io_write
 from nova.actions.mock import wait
 from nova.actions.motions import (
@@ -32,7 +37,11 @@ __all__ = [
     "ActionRegistry",
     "AsyncAction",
     "AsyncActionResult",
+    "AwaitAction",
+    "ExecutionState",
+    "WaitUntilAction",
     "async_action",
+    "await_action",
     "cartesian_ptp",
     "ptp",
     "circular",
@@ -48,6 +57,7 @@ __all__ = [
     "register_async_action",
     "unregister_async_action",
     "wait",
+    "wait_until",
     "collision_free",
     "MovementController",
     "MovementControllerContext",

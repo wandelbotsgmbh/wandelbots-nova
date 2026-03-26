@@ -4,7 +4,9 @@ Example: Execute async actions during trajectory execution.
 This example shows how to:
 - register async action handlers
 - trigger non-blocking handlers while the robot keeps moving
-- trigger blocking handlers that pause motion until the handler completes
+- use await_action to pause motion until an async action completes
+- use wait_until to pause motion until a predicate on shared state is True
+- use ExecutionState to communicate between async actions and predicates
 
 Prerequisites:
 - Create an NOVA instance
@@ -20,10 +22,12 @@ from nova import api, run_program
 from nova.actions import (
     ActionExecutionContext,
     async_action,
+    await_action,
     get_default_registry,
     joint_ptp,
     linear,
     register_async_action,
+    wait_until,
 )
 from nova.cell import virtual_controller
 from nova.types import MotionSettings, Pose
@@ -47,10 +51,12 @@ async def notify_external_system(ctx: ActionExecutionContext) -> None:
 
 
 async def inspect_pose(ctx: ActionExecutionContext) -> None:
-    """Simulate a blocking inspection step."""
+    """Simulate a blocking inspection step that sets shared state."""
     inspection_name = ctx.action_args[0] if ctx.action_args else "inspection"
     print(f"[inspect] starting {inspection_name} at {ctx.trigger_location:.3f}")
     await asyncio.sleep(0.5)
+    # Signal completion via shared execution state
+    await ctx.state.set("inspection_passed", True)
     print(f"[inspect] finished {inspection_name}")
 
 
@@ -101,21 +107,27 @@ async def main(ctx: nova.ProgramContext) -> None:
 
         actions = [
             joint_ptp(home_joints, settings=slow),
-            async_action("examples.async_action.log_state", label="home"),
+            # Non-blocking: log state in background
+            async_action("examples.async_action.log_state", action_id="log1", label="home"),
             linear(point_a, settings=normal),
+            # Non-blocking: fire-and-forget notification
             async_action(
                 "examples.async_action.notify_external_system",
+                action_id="notify1",
                 message="Reached point A",
             ),
             linear(point_b, settings=normal),
+            # Start inspection in background, then immediately await it (blocking equivalent)
             async_action(
-                "examples.async_action.inspect_pose",
-                "camera_check",
-                blocking=True,
-                timeout=2.0,
+                "examples.async_action.inspect_pose", "camera_check", action_id="inspect1"
             ),
+            await_action("inspect1", timeout=2.0),
             linear(point_c, settings=normal),
-            async_action("examples.async_action.log_state", label="after inspection"),
+            # Wait until the inspection set shared state before continuing
+            wait_until(lambda s: s.get("inspection_passed"), timeout=5.0),
+            async_action(
+                "examples.async_action.log_state", action_id="log2", label="after inspection"
+            ),
             joint_ptp(home_joints, settings=slow),
         ]
 

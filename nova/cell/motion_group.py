@@ -9,6 +9,7 @@ import numpy as np
 from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.async_action import ErrorHandlingMode
+from nova.actions.execution_state import ExecutionState
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion
 from nova.config import ENABLE_TRAJECTORY_TUNING
@@ -764,14 +765,16 @@ class MotionGroup(AbstractRobot):
         # Load planned trajectory
         trajectory_id = await self._load_planned_motion(joint_trajectory, tcp)
 
-        # Create async action executor if there are async actions
+        # Create async action executor if there are executor actions
         combined_actions = CombinedActions(items=tuple(actions))  # type: ignore
-        async_actions = combined_actions.get_async_actions()
+        executor_actions = combined_actions.get_executor_actions()
         executor: AsyncActionExecutor | None = None
-        if async_actions:
+        if executor_actions:
+            execution_state = ExecutionState()
             executor = AsyncActionExecutor(
                 motion_group_id=self.id,
-                async_actions=async_actions,
+                executor_actions=executor_actions,
+                execution_state=execution_state,
                 error_mode=ErrorHandlingMode.COLLECT,
             )
 

@@ -10,13 +10,18 @@ from nova.actions.async_action import (
     ActionRegistry,
     AsyncAction,
     AsyncActionResult,
+    AwaitAction,
     ErrorHandlingMode,
+    WaitUntilAction,
     async_action,
+    await_action,
     get_default_registry,
     register_async_action,
     unregister_async_action,
+    wait_until,
 )
 from nova.actions.container import ActionLocation, CombinedActions
+from nova.actions.execution_state import ExecutionState
 from nova.actions.motions import linear
 from nova.cell.movement_controller.async_action_executor import AsyncActionExecutor
 from nova.exceptions import AsyncActionError
@@ -146,20 +151,19 @@ class TestAsyncAction:
 
     def test_is_motion_returns_false(self):
         """Test that AsyncAction.is_motion() returns False."""
-        action = AsyncAction(action_name="test")
+        action = AsyncAction(action_id="a1", action_name="test")
         assert action.is_motion() is False
 
     def test_to_api_model(self):
         """Test serialization to dict."""
         action = AsyncAction(
-            action_name="test", args=(1, 2), kwargs={"key": "value"}, blocking=True, timeout=5.0
+            action_id="a1", action_name="test", args=(1, 2), kwargs={"key": "value"}
         )
         result = action.to_api_model()
+        assert result["action_id"] == "a1"
         assert result["action_name"] == "test"
         assert result["args"] == (1, 2)
         assert result["kwargs"] == {"key": "value"}
-        assert result["blocking"] is True
-        assert result["timeout"] == 5.0
 
     def test_get_handler(self):
         """Test getting handler from action."""
@@ -168,12 +172,12 @@ class TestAsyncAction:
             pass
 
         register_async_action("my_action", handler)
-        action = AsyncAction(action_name="my_action")
+        action = AsyncAction(action_id="a1", action_name="my_action")
         assert action.get_handler() is handler
 
     def test_get_handler_unregistered_raises(self):
         """Test getting handler for unregistered action raises."""
-        action = AsyncAction(action_name="nonexistent")
+        action = AsyncAction(action_id="a1", action_name="nonexistent")
         with pytest.raises(KeyError):
             action.get_handler()
 
@@ -183,28 +187,21 @@ class TestAsyncActionFactory:
 
     def test_basic_creation(self):
         """Test basic action creation."""
-        action = async_action("test")
+        action = async_action("test", action_id="a1")
         assert action.action_name == "test"
-        assert action.blocking is False
-        assert action.timeout is None
+        assert action.action_id == "a1"
         assert action.args == ()
         assert action.kwargs == {}
 
     def test_with_args(self):
         """Test creation with positional args."""
-        action = async_action("test", 1, 2, 3)
+        action = async_action("test", 1, 2, 3, action_id="a1")
         assert action.args == (1, 2, 3)
 
     def test_with_kwargs(self):
         """Test creation with keyword args."""
-        action = async_action("test", key="value", num=42)
+        action = async_action("test", action_id="a1", key="value", num=42)
         assert action.kwargs == {"key": "value", "num": 42}
-
-    def test_blocking_and_timeout(self):
-        """Test creation with blocking and timeout."""
-        action = async_action("test", blocking=True, timeout=10.0)
-        assert action.blocking is True
-        assert action.timeout == 10.0
 
 
 # ============================================================================
@@ -221,7 +218,7 @@ class TestAsyncActionResult:
         completed = datetime(2024, 1, 1, 12, 0, 5)  # 5 seconds later
 
         result = AsyncActionResult(
-            action=AsyncAction(action_name="test"),
+            action=AsyncAction(action_id="a1", action_name="test"),
             trigger_location=1.0,
             started_at=started,
             completed_at=completed,
@@ -231,7 +228,7 @@ class TestAsyncActionResult:
     def test_succeeded_true(self):
         """Test succeeded property when no error."""
         result = AsyncActionResult(
-            action=AsyncAction(action_name="test"),
+            action=AsyncAction(action_id="a1", action_name="test"),
             trigger_location=1.0,
             started_at=datetime.now(),
             completed_at=datetime.now(),
@@ -241,7 +238,7 @@ class TestAsyncActionResult:
     def test_succeeded_false_on_error(self):
         """Test succeeded property when error present."""
         result = AsyncActionResult(
-            action=AsyncAction(action_name="test"),
+            action=AsyncAction(action_id="a1", action_name="test"),
             trigger_location=1.0,
             started_at=datetime.now(),
             completed_at=datetime.now(),
@@ -252,7 +249,7 @@ class TestAsyncActionResult:
     def test_succeeded_false_on_timeout(self):
         """Test succeeded property when timed out."""
         result = AsyncActionResult(
-            action=AsyncAction(action_name="test"),
+            action=AsyncAction(action_id="a1", action_name="test"),
             trigger_location=1.0,
             started_at=datetime.now(),
             completed_at=datetime.now(),
@@ -263,18 +260,17 @@ class TestAsyncActionResult:
     def test_to_dict(self):
         """Test serialization to dict."""
         result = AsyncActionResult(
-            action=AsyncAction(action_name="test"),
+            action=AsyncAction(action_id="a1", action_name="test"),
             trigger_location=1.5,
             completion_location=2.0,
             started_at=datetime(2024, 1, 1, 12, 0, 0),
             completed_at=datetime(2024, 1, 1, 12, 0, 1),
-            was_blocking=True,
         )
         d = result.to_dict()
+        assert d["action_id"] == "a1"
         assert d["action_name"] == "test"
         assert d["trigger_location"] == 1.5
         assert d["completion_location"] == 2.0
-        assert d["was_blocking"] is True
         assert d["succeeded"] is True
 
 
@@ -308,12 +304,13 @@ class TestAsyncActionExecutor:
 
         register_async_action("log_action", handler)
 
-        action = AsyncAction(action_name="log_action")
+        action = AsyncAction(action_id="a1", action_name="log_action")
         action_location = ActionLocation(path_parameter=1.0, action=action)
 
         executor = AsyncActionExecutor(
             motion_group_id="test",
-            async_actions=[action_location],
+            executor_actions=[action_location],
+            execution_state=ExecutionState(),
             error_mode=ErrorHandlingMode.COLLECT,
         )
 
@@ -345,13 +342,22 @@ class TestAsyncActionExecutor:
         register_async_action("log", handler)
 
         actions = [
-            ActionLocation(path_parameter=3.0, action=AsyncAction(action_name="log")),
-            ActionLocation(path_parameter=1.0, action=AsyncAction(action_name="log")),
-            ActionLocation(path_parameter=2.0, action=AsyncAction(action_name="log")),
+            ActionLocation(
+                path_parameter=3.0, action=AsyncAction(action_id="a3", action_name="log")
+            ),
+            ActionLocation(
+                path_parameter=1.0, action=AsyncAction(action_id="a1", action_name="log")
+            ),
+            ActionLocation(
+                path_parameter=2.0, action=AsyncAction(action_id="a2", action_name="log")
+            ),
         ]
 
         executor = AsyncActionExecutor(
-            motion_group_id="test", async_actions=actions, error_mode=ErrorHandlingMode.COLLECT
+            motion_group_id="test",
+            executor_actions=actions,
+            execution_state=ExecutionState(),
+            error_mode=ErrorHandlingMode.COLLECT,
         )
 
         state = self._make_robot_state()
@@ -365,69 +371,195 @@ class TestAsyncActionExecutor:
         assert not executor.has_pending_actions
 
     @pytest.mark.asyncio
-    async def test_blocking_action_executes_inline(self):
-        """Test that blocking actions are executed synchronously."""
+    async def test_await_action_pauses_until_complete(self):
+        """Test that AwaitAction pauses motion when the referenced action is still running."""
         execution_order = []
-
-        async def blocking_handler(ctx: ActionExecutionContext):
-            execution_order.append("blocking")
-
-        register_async_action("blocking", blocking_handler)
-
-        action = AsyncAction(action_name="blocking", blocking=True)
-        action_location = ActionLocation(path_parameter=1.0, action=action)
-
-        executor = AsyncActionExecutor(motion_group_id="test", async_actions=[action_location])
-
-        state = self._make_robot_state()
-        await executor.check_and_trigger(1.0, state)
-
-        # Blocking action should complete immediately
-        assert execution_order == ["blocking"]
-        assert len(executor.results) == 1
-        assert executor.results[0].was_blocking is True
-
-    @pytest.mark.asyncio
-    async def test_timeout_handling(self):
-        """Test action timeout handling."""
+        pause_called = False
+        resume_called = False
 
         async def slow_handler(ctx: ActionExecutionContext):
-            await asyncio.sleep(10)
+            execution_order.append("start")
+            await asyncio.sleep(0.1)
+            execution_order.append("end")
 
         register_async_action("slow", slow_handler)
 
-        action = AsyncAction(action_name="slow", blocking=True, timeout=0.1)
-        action_location = ActionLocation(path_parameter=1.0, action=action)
+        async def mock_pause():
+            nonlocal pause_called
+            pause_called = True
+
+        async def mock_resume():
+            nonlocal resume_called
+            resume_called = True
+
+        action = AsyncAction(action_id="s1", action_name="slow")
+        await_act = AwaitAction(action_id="s1")
+        actions = [
+            ActionLocation(path_parameter=1.0, action=action),
+            ActionLocation(path_parameter=2.0, action=await_act),
+        ]
 
         executor = AsyncActionExecutor(
             motion_group_id="test",
-            async_actions=[action_location],
+            executor_actions=actions,
+            execution_state=ExecutionState(),
             error_mode=ErrorHandlingMode.COLLECT,
+            pause_callback=mock_pause,
+            resume_callback=mock_resume,
+        )
+
+        state = self._make_robot_state()
+
+        # Trigger the async action at location 1.0
+        await executor.check_and_trigger(1.0, state)
+        assert executor.has_running_actions
+
+        # Trigger the await at location 2.0 — should pause, wait, resume
+        await executor.check_and_trigger(2.0, state)
+
+        assert pause_called
+        assert resume_called
+        assert execution_order == ["start", "end"]
+        assert len(executor.results) == 1
+        assert executor.results[0].succeeded
+
+    @pytest.mark.asyncio
+    async def test_await_action_already_completed(self):
+        """Test that AwaitAction does not pause when action already finished."""
+        pause_called = False
+
+        async def fast_handler(ctx: ActionExecutionContext):
+            pass
+
+        register_async_action("fast", fast_handler)
+
+        async def mock_pause():
+            nonlocal pause_called
+            pause_called = True
+
+        action = AsyncAction(action_id="f1", action_name="fast")
+        await_act = AwaitAction(action_id="f1")
+        actions = [
+            ActionLocation(path_parameter=1.0, action=action),
+            ActionLocation(path_parameter=3.0, action=await_act),
+        ]
+
+        executor = AsyncActionExecutor(
+            motion_group_id="test",
+            executor_actions=actions,
+            execution_state=ExecutionState(),
+            error_mode=ErrorHandlingMode.COLLECT,
+            pause_callback=mock_pause,
         )
 
         state = self._make_robot_state()
         await executor.check_and_trigger(1.0, state)
+        await executor.wait_for_all_actions()
+        # Action already completed by now
+
+        await executor.check_and_trigger(3.0, state)
+        assert not pause_called  # Should not pause
+
+    @pytest.mark.asyncio
+    async def test_await_with_timeout(self):
+        """Test AwaitAction timeout handling."""
+
+        async def forever_handler(ctx: ActionExecutionContext):
+            await asyncio.sleep(100)
+
+        register_async_action("forever", forever_handler)
+
+        action = AsyncAction(action_id="f1", action_name="forever")
+        await_act = AwaitAction(action_id="f1", timeout=0.1)
+        actions = [
+            ActionLocation(path_parameter=1.0, action=action),
+            ActionLocation(path_parameter=2.0, action=await_act),
+        ]
+
+        executor = AsyncActionExecutor(
+            motion_group_id="test",
+            executor_actions=actions,
+            execution_state=ExecutionState(),
+            error_mode=ErrorHandlingMode.COLLECT,
+            pause_callback=lambda: asyncio.sleep(0),
+            resume_callback=lambda: asyncio.sleep(0),
+        )
+
+        state = self._make_robot_state()
+        await executor.check_and_trigger(1.0, state)
+        await executor.check_and_trigger(2.0, state)
 
         assert len(executor.results) == 1
         assert executor.results[0].timed_out is True
         assert executor.results[0].succeeded is False
 
     @pytest.mark.asyncio
+    async def test_immediate_await_blocks_like_old_blocking(self):
+        """Test start + immediate await at same location (old blocking=True equivalent)."""
+        execution_order = []
+
+        async def handler(ctx: ActionExecutionContext):
+            execution_order.append("action")
+
+        register_async_action("act", handler)
+
+        action = AsyncAction(action_id="b1", action_name="act")
+        await_act = AwaitAction(action_id="b1")
+        actions = [
+            ActionLocation(path_parameter=1.0, action=action),
+            ActionLocation(path_parameter=1.0, action=await_act),
+        ]
+
+        executor = AsyncActionExecutor(
+            motion_group_id="test",
+            executor_actions=actions,
+            execution_state=ExecutionState(),
+            error_mode=ErrorHandlingMode.COLLECT,
+            pause_callback=lambda: asyncio.sleep(0),
+            resume_callback=lambda: asyncio.sleep(0),
+        )
+
+        state = self._make_robot_state()
+        await executor.check_and_trigger(1.0, state)
+
+        assert execution_order == ["action"]
+        assert len(executor.results) == 1
+        assert executor.results[0].succeeded
+
+    @pytest.mark.asyncio
+    async def test_dangling_await_raises_at_init(self):
+        """Test that AwaitAction with no matching AsyncAction raises ValueError."""
+        await_act = AwaitAction(action_id="nonexistent")
+        actions = [ActionLocation(path_parameter=1.0, action=await_act)]
+
+        with pytest.raises(ValueError, match="no corresponding AsyncAction"):
+            AsyncActionExecutor(
+                motion_group_id="test", executor_actions=actions, execution_state=ExecutionState()
+            )
+
+    @pytest.mark.asyncio
     async def test_error_mode_raise(self):
-        """Test RAISE error mode propagates exceptions."""
+        """Test RAISE error mode propagates exceptions via await."""
 
         async def failing_handler(ctx: ActionExecutionContext):
             raise ValueError("test error")
 
         register_async_action("failing", failing_handler)
 
-        action = AsyncAction(action_name="failing", blocking=True)
-        action_location = ActionLocation(path_parameter=1.0, action=action)
+        action = AsyncAction(action_id="f1", action_name="failing")
+        await_act = AwaitAction(action_id="f1")
+        actions = [
+            ActionLocation(path_parameter=1.0, action=action),
+            ActionLocation(path_parameter=1.0, action=await_act),
+        ]
 
         executor = AsyncActionExecutor(
             motion_group_id="test",
-            async_actions=[action_location],
+            executor_actions=actions,
+            execution_state=ExecutionState(),
             error_mode=ErrorHandlingMode.RAISE,
+            pause_callback=lambda: asyncio.sleep(0),
+            resume_callback=lambda: asyncio.sleep(0),
         )
 
         state = self._make_robot_state()
@@ -446,13 +578,20 @@ class TestAsyncActionExecutor:
 
         register_async_action("failing", failing_handler)
 
-        action = AsyncAction(action_name="failing", blocking=True)
-        action_location = ActionLocation(path_parameter=1.0, action=action)
+        action = AsyncAction(action_id="f1", action_name="failing")
+        await_act = AwaitAction(action_id="f1")
+        actions = [
+            ActionLocation(path_parameter=1.0, action=action),
+            ActionLocation(path_parameter=1.0, action=await_act),
+        ]
 
         executor = AsyncActionExecutor(
             motion_group_id="test",
-            async_actions=[action_location],
+            executor_actions=actions,
+            execution_state=ExecutionState(),
             error_mode=ErrorHandlingMode.COLLECT,
+            pause_callback=lambda: asyncio.sleep(0),
+            resume_callback=lambda: asyncio.sleep(0),
         )
 
         state = self._make_robot_state()
@@ -476,14 +615,21 @@ class TestAsyncActionExecutor:
 
         register_async_action("failing", failing_handler)
 
-        action = AsyncAction(action_name="failing", blocking=True)
-        action_location = ActionLocation(path_parameter=1.0, action=action)
+        action = AsyncAction(action_id="f1", action_name="failing")
+        await_act = AwaitAction(action_id="f1")
+        actions = [
+            ActionLocation(path_parameter=1.0, action=action),
+            ActionLocation(path_parameter=1.0, action=await_act),
+        ]
 
         executor = AsyncActionExecutor(
             motion_group_id="test",
-            async_actions=[action_location],
+            executor_actions=actions,
+            execution_state=ExecutionState(),
             error_mode=ErrorHandlingMode.CALLBACK,
             error_callback=error_handler,
+            pause_callback=lambda: asyncio.sleep(0),
+            resume_callback=lambda: asyncio.sleep(0),
         )
 
         state = self._make_robot_state()
@@ -502,11 +648,17 @@ class TestAsyncActionExecutor:
         register_async_action("action", handler)
 
         actions = [
-            ActionLocation(path_parameter=1.0, action=AsyncAction(action_name="action")),
-            ActionLocation(path_parameter=2.0, action=AsyncAction(action_name="action")),
+            ActionLocation(
+                path_parameter=1.0, action=AsyncAction(action_id="a1", action_name="action")
+            ),
+            ActionLocation(
+                path_parameter=2.0, action=AsyncAction(action_id="a2", action_name="action")
+            ),
         ]
 
-        executor = AsyncActionExecutor(motion_group_id="test-group", async_actions=actions)
+        executor = AsyncActionExecutor(
+            motion_group_id="test-group", executor_actions=actions, execution_state=ExecutionState()
+        )
 
         state = self._make_robot_state()
         await executor.check_and_trigger(1.5, state)
@@ -530,10 +682,14 @@ class TestAsyncActionExecutor:
 
         register_async_action("long", long_handler)
 
-        action = AsyncAction(action_name="long")  # Non-blocking
+        action = AsyncAction(action_id="l1", action_name="long")
         action_location = ActionLocation(path_parameter=1.0, action=action)
 
-        executor = AsyncActionExecutor(motion_group_id="test", async_actions=[action_location])
+        executor = AsyncActionExecutor(
+            motion_group_id="test",
+            executor_actions=[action_location],
+            execution_state=ExecutionState(),
+        )
 
         state = self._make_robot_state()
         await executor.check_and_trigger(1.0, state)
@@ -562,7 +718,11 @@ class TestCombinedActionsAsyncIntegration:
     def test_async_action_in_container(self):
         """Test AsyncAction can be added to CombinedActions."""
         actions = CombinedActions(
-            items=(self._make_linear(), AsyncAction(action_name="test"), self._make_linear())
+            items=(
+                self._make_linear(),
+                AsyncAction(action_id="a1", action_name="test"),
+                self._make_linear(),
+            )
         )
         assert len(actions) == 3
 
@@ -571,10 +731,10 @@ class TestCombinedActionsAsyncIntegration:
         actions = CombinedActions(
             items=(
                 self._make_linear(),  # location 1
-                AsyncAction(action_name="first"),  # at location 1
+                AsyncAction(action_id="a1", action_name="first"),  # at location 1
                 self._make_linear(),  # location 2
                 self._make_linear(),  # location 3
-                AsyncAction(action_name="second"),  # at location 3
+                AsyncAction(action_id="a2", action_name="second"),  # at location 3
             )
         )
 
@@ -585,16 +745,241 @@ class TestCombinedActionsAsyncIntegration:
         assert async_actions[1].path_parameter == 3.0
         assert async_actions[1].action.action_name == "second"
 
+    def test_get_executor_actions(self):
+        """Test extracting executor actions including await and wait_until."""
+        actions = CombinedActions(
+            items=(
+                self._make_linear(),
+                AsyncAction(action_id="a1", action_name="test"),
+                self._make_linear(),
+                AwaitAction(action_id="a1"),
+                WaitUntilAction(predicate=lambda s: True),
+                self._make_linear(),
+            )
+        )
+
+        executor_actions = actions.get_executor_actions()
+        assert len(executor_actions) == 3
+        assert isinstance(executor_actions[0].action, AsyncAction)
+        assert isinstance(executor_actions[1].action, AwaitAction)
+        assert isinstance(executor_actions[2].action, WaitUntilAction)
+
     def test_motions_excludes_async_actions(self):
         """Test that motions property doesn't include async actions."""
         actions = CombinedActions(
-            items=(self._make_linear(), AsyncAction(action_name="test"), self._make_linear())
+            items=(
+                self._make_linear(),
+                AsyncAction(action_id="a1", action_name="test"),
+                self._make_linear(),
+            )
         )
         assert len(actions.motions) == 2
 
     def test_to_set_io_excludes_async_actions(self):
         """Test that to_set_io doesn't include async actions."""
-        actions = CombinedActions(items=(self._make_linear(), AsyncAction(action_name="test")))
+        actions = CombinedActions(
+            items=(self._make_linear(), AsyncAction(action_id="a1", action_name="test"))
+        )
         # Should not raise and should return empty (no WriteActions)
         io_list = actions.to_set_io()
         assert io_list == []
+
+
+# ============================================================================
+# ExecutionState Tests
+# ============================================================================
+
+
+class TestExecutionState:
+    """Tests for ExecutionState class."""
+
+    @pytest.mark.asyncio
+    async def test_set_and_get(self):
+        """Test basic set/get operations."""
+        state = ExecutionState()
+        await state.set("key", "value")
+        assert state.get("key") == "value"
+        assert state.get("missing") is None
+        assert state.get("missing", 42) == 42
+
+    @pytest.mark.asyncio
+    async def test_wait_for_already_true(self):
+        """Test wait_for returns immediately when predicate is already True."""
+        state = ExecutionState()
+        await state.set("ready", True)
+        result = await state.wait_for(lambda s: s.get("ready"), timeout=1.0)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_wait_for_becomes_true(self):
+        """Test wait_for blocks until predicate becomes True via concurrent set."""
+        state = ExecutionState()
+
+        async def set_after_delay():
+            await asyncio.sleep(0.05)
+            await state.set("done", True)
+
+        asyncio.create_task(set_after_delay())
+        result = await state.wait_for(lambda s: s.get("done"), timeout=2.0)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_wait_for_timeout(self):
+        """Test wait_for returns False on timeout."""
+        state = ExecutionState()
+        result = await state.wait_for(lambda s: s.get("never_set"), timeout=0.05)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_snapshot(self):
+        """Test snapshot returns a copy."""
+        state = ExecutionState()
+        await state.set("a", 1)
+        snap = state.snapshot()
+        assert snap == {"a": 1}
+        snap["b"] = 2  # mutating snapshot should not affect state
+        assert state.get("b") is None
+
+
+# ============================================================================
+# AwaitAction / WaitUntilAction Factory Tests
+# ============================================================================
+
+
+class TestAwaitActionFactory:
+    """Tests for await_action factory function."""
+
+    def test_basic_creation(self):
+        action = await_action("a1")
+        assert action.action_id == "a1"
+        assert action.timeout is None
+        assert action.is_motion() is False
+
+    def test_with_timeout(self):
+        action = await_action("a1", timeout=5.0)
+        assert action.timeout == 5.0
+
+
+class TestWaitUntilFactory:
+    """Tests for wait_until factory function."""
+
+    def test_basic_creation(self):
+        def pred(s):
+            return s.get("x")
+
+        action = wait_until(pred)
+        assert action.predicate is pred
+        assert action.timeout is None
+        assert action.is_motion() is False
+
+    def test_with_timeout(self):
+        action = wait_until(lambda s: True, timeout=3.0)
+        assert action.timeout == 3.0
+
+
+# ============================================================================
+# WaitUntilAction Executor Integration Tests
+# ============================================================================
+
+
+class TestWaitUntilExecutor:
+    """Tests for WaitUntilAction integration with AsyncActionExecutor."""
+
+    def teardown_method(self):
+        get_default_registry().clear()
+
+    def _make_robot_state(self) -> RobotState:
+        return RobotState(
+            pose=Pose(position=(0, 0, 0), orientation=(0, 0, 0)),
+            tcp="flange",
+            joints=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        )
+
+    @pytest.mark.asyncio
+    async def test_predicate_already_true(self):
+        """Test WaitUntil does not pause when predicate is already True."""
+        pause_called = False
+
+        async def mock_pause():
+            nonlocal pause_called
+            pause_called = True
+
+        execution_state = ExecutionState()
+        await execution_state.set("ready", True)
+
+        wait_act = WaitUntilAction(predicate=lambda s: s.get("ready"), timeout=1.0)
+        actions = [ActionLocation(path_parameter=1.0, action=wait_act)]
+
+        executor = AsyncActionExecutor(
+            motion_group_id="test",
+            executor_actions=actions,
+            execution_state=execution_state,
+            pause_callback=mock_pause,
+        )
+
+        state = self._make_robot_state()
+        await executor.check_and_trigger(1.0, state)
+        assert not pause_called
+
+    @pytest.mark.asyncio
+    async def test_predicate_becomes_true_via_async_action(self):
+        """Test WaitUntil pauses and resumes when async action sets state."""
+        pause_called = False
+        resume_called = False
+
+        async def setter(ctx: ActionExecutionContext):
+            await asyncio.sleep(0.05)
+            await ctx.state.set("part_detected", True)
+
+        register_async_action("detect", setter)
+
+        async def mock_pause():
+            nonlocal pause_called
+            pause_called = True
+
+        async def mock_resume():
+            nonlocal resume_called
+            resume_called = True
+
+        execution_state = ExecutionState()
+        action = AsyncAction(action_id="d1", action_name="detect")
+        wait_act = WaitUntilAction(predicate=lambda s: s.get("part_detected"), timeout=2.0)
+        actions = [
+            ActionLocation(path_parameter=1.0, action=action),
+            ActionLocation(path_parameter=2.0, action=wait_act),
+        ]
+
+        executor = AsyncActionExecutor(
+            motion_group_id="test",
+            executor_actions=actions,
+            execution_state=execution_state,
+            pause_callback=mock_pause,
+            resume_callback=mock_resume,
+        )
+
+        state = self._make_robot_state()
+        await executor.check_and_trigger(1.0, state)
+        await executor.check_and_trigger(2.0, state)
+
+        assert pause_called
+        assert resume_called
+        assert execution_state.get("part_detected") is True
+
+    @pytest.mark.asyncio
+    async def test_predicate_timeout(self):
+        """Test WaitUntil with timeout when predicate never becomes True."""
+        execution_state = ExecutionState()
+        wait_act = WaitUntilAction(predicate=lambda s: s.get("never"), timeout=0.05)
+        actions = [ActionLocation(path_parameter=1.0, action=wait_act)]
+
+        executor = AsyncActionExecutor(
+            motion_group_id="test",
+            executor_actions=actions,
+            execution_state=execution_state,
+            pause_callback=lambda: asyncio.sleep(0),
+            resume_callback=lambda: asyncio.sleep(0),
+        )
+
+        state = self._make_robot_state()
+        paused = await executor.check_and_trigger(1.0, state)
+        assert paused is True

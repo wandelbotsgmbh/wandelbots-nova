@@ -98,15 +98,11 @@ class ControllerCreationFailed(Exception):
 class AsyncActionError(Exception):
     """Raised when an async action fails during trajectory execution.
 
-    This exception captures detailed context about the action failure including
-    where in the trajectory it occurred and whether it was blocking motion.
-
     Attributes:
         action_name: Name of the async action that failed.
         trigger_location: Path parameter where action was triggered.
         completion_location: Path parameter when error occurred (may differ from trigger).
         cause: The underlying exception that caused the failure.
-        was_blocking: Whether the action was blocking robot motion.
     """
 
     def __init__(
@@ -115,23 +111,17 @@ class AsyncActionError(Exception):
         trigger_location: float,
         completion_location: float | None,
         cause: Exception,
-        was_blocking: bool,
     ):
         self.action_name = action_name
         self.trigger_location = trigger_location
         self.completion_location = completion_location
         self.cause = cause
-        self.was_blocking = was_blocking
 
         location_info = f"triggered at {trigger_location:.3f}"
         if completion_location is not None and completion_location != trigger_location:
             location_info += f", failed at {completion_location:.3f}"
 
-        blocking_info = " (blocking)" if was_blocking else " (parallel)"
-
-        super().__init__(
-            f"Async action '{action_name}'{blocking_info} failed ({location_info}): {cause}"
-        )
+        super().__init__(f"Async action '{action_name}' failed ({location_info}): {cause}")
         self.__cause__ = cause
 
 

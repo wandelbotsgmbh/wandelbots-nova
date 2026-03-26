@@ -1,15 +1,16 @@
 """Executor for async actions during trajectory execution.
 
 This module provides the AsyncActionExecutor class that manages the lifecycle
-of AsyncAction execution during robot motion. It handles triggering actions
-when trajectory locations are crossed, managing parallel vs blocking execution,
-timeout handling, and error collection.
+of AsyncAction, AwaitAction, and WaitUntilAction execution during robot motion.
 
 The executor integrates with movement controllers to:
-- Monitor robot location and trigger actions at appropriate times
-- Execute actions in parallel with motion (default) or pause motion (blocking)
-- Track action results including completion location and timing
-- Handle errors according to configured policy
+- Start async actions in the background at their trajectory locations.
+- Pause motion when an AwaitAction is reached and the referenced action is
+  still running, then resume once it completes.
+- Pause motion when a WaitUntilAction predicate is not yet satisfied, then
+  resume once the shared ExecutionState satisfies it.
+- Track action results including completion location and timing.
+- Handle errors according to configured policy.
 """
 
 from __future__ import annotations
@@ -18,14 +19,17 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Union
 
 from nova.actions.async_action import (
     ActionExecutionContext,
     AsyncAction,
     AsyncActionResult,
+    AwaitAction,
     ErrorHandlingMode,
+    WaitUntilAction,
 )
+from nova.actions.execution_state import ExecutionState
 from nova.types.state import RobotState
 
 if TYPE_CHECKING:
@@ -41,6 +45,9 @@ ResumeCallback = Callable[[], Awaitable[None]]
 # Callback type for error handling
 ErrorCallback = Callable[[AsyncActionResult], Awaitable[None]]
 
+# Union of action types the executor handles
+ExecutorAction = Union[AsyncAction, AwaitAction, WaitUntilAction]
+
 
 @dataclass
 class PendingAction:
@@ -48,18 +55,18 @@ class PendingAction:
 
     Attributes:
         location: Path parameter where action should trigger.
-        action: The AsyncAction to execute.
+        action: The action to process.
         triggered: Whether this action has been triggered.
     """
 
     location: float
-    action: AsyncAction
+    action: ExecutorAction
     triggered: bool = False
 
 
 @dataclass
 class RunningAction:
-    """An action currently being executed.
+    """An async action currently being executed in the background.
 
     Attributes:
         action: The AsyncAction being executed.
@@ -75,37 +82,32 @@ class RunningAction:
 
 
 class AsyncActionExecutor:
-    """Manages execution of AsyncActions during trajectory motion.
+    """Manages execution of actions during trajectory motion.
 
-    The executor monitors robot location during trajectory execution and triggers
-    registered async actions when their target locations are crossed. It supports
-    both parallel execution (default) and blocking execution that pauses robot motion.
+    The executor monitors robot location during trajectory execution and
+    processes three kinds of actions:
 
-    Attributes:
-        motion_group_id: Identifier of the motion group.
-        error_mode: How to handle action errors (raise, collect, or callback).
-        results: Completed action results.
+    - **AsyncAction**: starts an async callable in the background.
+    - **AwaitAction**: checks whether a previously-started AsyncAction has
+      completed; if not, pauses robot motion until it does.
+    - **WaitUntilAction**: evaluates a predicate on the shared
+      ``ExecutionState``; if ``False``, pauses until it becomes ``True``.
 
     Example:
         ```python
         executor = AsyncActionExecutor(
             motion_group_id="0@ur10",
-            async_actions=combined_actions.get_async_actions(),
+            executor_actions=combined_actions.get_executor_actions(),
+            execution_state=ExecutionState(),
             error_mode=ErrorHandlingMode.COLLECT,
         )
 
-        # In state monitor loop:
         async for state in motion_group_states:
-            needs_pause = await executor.check_and_trigger(
+            await executor.check_and_trigger(
                 current_location=state.location,
                 current_state=robot_state,
             )
-            if needs_pause:
-                await pause_motion()
-                await executor.wait_for_blocking_actions()
-                await resume_motion()
 
-        # After execution:
         for result in executor.results:
             print(f"{result.action.action_name}: {result.succeeded}")
         ```
@@ -114,7 +116,8 @@ class AsyncActionExecutor:
     def __init__(
         self,
         motion_group_id: str,
-        async_actions: list[ActionLocation],
+        executor_actions: list[ActionLocation],
+        execution_state: ExecutionState,
         error_mode: ErrorHandlingMode = ErrorHandlingMode.RAISE,
         error_callback: ErrorCallback | None = None,
         pause_callback: PauseCallback | None = None,
@@ -123,39 +126,62 @@ class AsyncActionExecutor:
         """Initialize the executor.
 
         Args:
-            motion_group_id: Identifier of the motion group executing trajectory.
-            async_actions: List of ActionLocation containing AsyncAction instances.
+            motion_group_id: Motion group executing the trajectory.
+            executor_actions: ActionLocations containing AsyncAction, AwaitAction,
+                or WaitUntilAction instances.
+            execution_state: Shared per-trajectory state for predicates.
             error_mode: How to handle action execution errors.
             error_callback: Callback for CALLBACK error mode.
-            pause_callback: Called when blocking action needs to pause motion.
-            resume_callback: Called when blocking action completes to resume motion.
+            pause_callback: Called when motion must pause.
+            resume_callback: Called when motion may resume.
+
+        Raises:
+            ValueError: If an AwaitAction references an action_id that has
+                no corresponding AsyncAction (dangling await).
         """
         self.motion_group_id = motion_group_id
         self.error_mode = error_mode
         self._error_callback = error_callback
         self._pause_callback = pause_callback
         self._resume_callback = resume_callback
+        self._execution_state = execution_state
 
-        # Initialize pending actions from the provided list
+        # Build pending list from all executor-relevant actions
         self._pending_actions: list[PendingAction] = [
             PendingAction(location=al.path_parameter, action=al.action)
-            for al in async_actions
-            if isinstance(al.action, AsyncAction)
+            for al in executor_actions
+            if isinstance(al.action, (AsyncAction, AwaitAction, WaitUntilAction))
         ]
 
-        # Sort by location for efficient processing
+        # Sort by location for sequential processing
         self._pending_actions.sort(key=lambda pa: pa.location)
 
-        # Currently running actions (parallel, non-blocking)
-        self._running_actions: list[RunningAction] = []
+        # Validate: every AwaitAction must reference an existing AsyncAction
+        async_ids = {
+            pa.action.action_id
+            for pa in self._pending_actions
+            if isinstance(pa.action, AsyncAction)
+        }
+        for pa in self._pending_actions:
+            if isinstance(pa.action, AwaitAction) and pa.action.action_id not in async_ids:
+                raise ValueError(
+                    f"AwaitAction references action_id '{pa.action.action_id}' "
+                    f"which has no corresponding AsyncAction"
+                )
 
-        # Completed results
+        # Active background tasks keyed by action_id
+        self._active_tasks: dict[str, RunningAction] = {}
+
+        # Completed results keyed by action_id (for await lookups)
+        self._completed_by_id: dict[str, AsyncActionResult] = {}
+
+        # All completed results in order
         self._results: list[AsyncActionResult] = []
 
-        # Track last known location for completion tracking
+        # Track last known location
         self._last_location: float = 0.0
 
-        # Lock for thread-safe result collection
+        # Lock for result collection
         self._results_lock = asyncio.Lock()
 
         logger.debug(
@@ -176,73 +202,56 @@ class AsyncActionExecutor:
     @property
     def has_running_actions(self) -> bool:
         """Check if there are actions currently executing."""
-        return len(self._running_actions) > 0
+        return len(self._active_tasks) > 0
 
     async def check_and_trigger(self, current_location: float, current_state: RobotState) -> bool:
-        """Check if any actions should be triggered and start them.
+        """Check if any actions should be triggered and process them.
 
-        Called by the movement controller on each state update. Triggers any
-        pending actions whose location has been crossed.
+        Called by the movement controller on each state update.
 
         Args:
             current_location: Current path parameter on trajectory.
             current_state: Current robot state.
 
         Returns:
-            True if a blocking action was triggered and motion should pause.
-
-        Raises:
-            Exception: If error_mode is RAISE and an action fails.
+            True if motion was paused (blocking await/wait_until triggered).
         """
         self._last_location = current_location
-        blocking_triggered = False
+        paused = False
 
-        # Check for actions to trigger
         for pending in self._pending_actions:
             if pending.triggered:
                 continue
 
-            # Trigger if we've reached or passed the action location
             if current_location >= pending.location:
                 pending.triggered = True
 
-                logger.info(
-                    f"Triggering async action '{pending.action.action_name}' "
-                    f"at location {current_location:.3f} (target: {pending.location:.3f})"
-                )
-
-                if pending.action.blocking:
-                    # Blocking action - execute synchronously
-                    blocking_triggered = True
-                    if self._pause_callback:
-                        await self._pause_callback()
-
-                    await self._execute_blocking_action(
+                if isinstance(pending.action, AsyncAction):
+                    self._start_async_action(pending.action, current_location, current_state)
+                elif isinstance(pending.action, AwaitAction):
+                    did_pause = await self._handle_await(
                         pending.action, current_location, current_state
                     )
+                    paused = paused or did_pause
+                elif isinstance(pending.action, WaitUntilAction):
+                    did_pause = await self._handle_wait_until(pending.action, current_location)
+                    paused = paused or did_pause
 
-                    if self._resume_callback:
-                        await self._resume_callback()
-                else:
-                    # Non-blocking action - execute in background
-                    self._start_parallel_action(pending.action, current_location, current_state)
+        # Collect any completed background tasks
+        await self._collect_completed_tasks()
 
-        # Clean up completed parallel actions
-        await self._collect_completed_actions()
+        return paused
 
-        return blocking_triggered
+    # -- AsyncAction: start in background ------------------------------------
 
-    async def _execute_blocking_action(
+    def _start_async_action(
         self, action: AsyncAction, trigger_location: float, current_state: RobotState
     ) -> None:
-        """Execute a blocking action and wait for completion.
-
-        Args:
-            action: The AsyncAction to execute.
-            trigger_location: Location where action was triggered.
-            current_state: Robot state at trigger time.
-        """
-        started_at = datetime.now()
+        """Start an async action in the background."""
+        logger.info(
+            f"Starting async action '{action.action_name}' (id={action.action_id}) "
+            f"at location {trigger_location:.3f}"
+        )
         context = ActionExecutionContext(
             trigger_location=trigger_location,
             current_state=current_state,
@@ -250,93 +259,142 @@ class AsyncActionExecutor:
             action_name=action.action_name,
             action_args=action.args,
             action_kwargs=action.kwargs,
+            state=self._execution_state,
         )
 
+        async def execute_action() -> Any:
+            handler = action.get_handler()
+            return await handler(context)
+
+        task = asyncio.create_task(execute_action(), name=f"async-action-{action.action_id}")
+
+        running = RunningAction(
+            action=action, task=task, trigger_location=trigger_location, started_at=datetime.now()
+        )
+        self._active_tasks[action.action_id] = running
+
+    # -- AwaitAction: wait for referenced AsyncAction -------------------------
+
+    async def _handle_await(
+        self, await_act: AwaitAction, current_location: float, current_state: RobotState
+    ) -> bool:
+        """Handle an AwaitAction.  Returns True if motion was paused."""
+        action_id = await_act.action_id
+
+        # Already completed?
+        if action_id in self._completed_by_id:
+            logger.debug(
+                f"AwaitAction '{action_id}' at location {current_location:.3f}: "
+                "already completed — no pause needed"
+            )
+            return False
+
+        # Still running?
+        running = self._active_tasks.get(action_id)
+        if running is None:
+            # Should not happen if validation passed, but be safe
+            logger.error(f"AwaitAction references unknown action_id '{action_id}'")
+            return False
+
+        logger.info(
+            f"AwaitAction '{action_id}' at location {current_location:.3f}: "
+            "action still running — pausing motion"
+        )
+
+        # Pause motion
+        if self._pause_callback:
+            await self._pause_callback()
+
+        # Wait for the task
         error: Exception | None = None
         return_value: Any = None
         timed_out = False
 
         try:
-            handler = action.get_handler()
-            if action.timeout:
-                return_value = await asyncio.wait_for(handler(context), timeout=action.timeout)
+            if await_act.timeout is not None:
+                return_value = await asyncio.wait_for(running.task, timeout=await_act.timeout)
             else:
-                return_value = await handler(context)
+                return_value = await running.task
         except asyncio.TimeoutError:
             timed_out = True
             error = asyncio.TimeoutError(
-                f"Async action '{action.action_name}' timed out after {action.timeout}s"
+                f"AwaitAction for '{action_id}' timed out after {await_act.timeout}s"
             )
             logger.warning(str(error))
         except Exception as e:
             error = e
-            logger.error(f"Async action '{action.action_name}' failed: {e}", exc_info=True)
+            logger.error(f"Async action '{action_id}' failed: {e}", exc_info=True)
 
+        # Record result
         completed_at = datetime.now()
-
         result = AsyncActionResult(
-            action=action,
-            trigger_location=trigger_location,
-            started_at=started_at,
+            action=running.action,
+            trigger_location=running.trigger_location,
+            started_at=running.started_at,
             completed_at=completed_at,
-            completion_location=self._last_location,  # For blocking, same as trigger
+            completion_location=self._last_location,
             return_value=return_value,
             error=error,
-            was_blocking=True,
             timed_out=timed_out,
         )
-
         async with self._results_lock:
             self._results.append(result)
+        self._completed_by_id[action_id] = result
+        self._active_tasks.pop(action_id, None)
 
         await self._handle_error(result)
 
-    def _start_parallel_action(
-        self, action: AsyncAction, trigger_location: float, current_state: RobotState
-    ) -> None:
-        """Start a non-blocking action in the background.
+        # Resume motion
+        if self._resume_callback:
+            await self._resume_callback()
 
-        Args:
-            action: The AsyncAction to execute.
-            trigger_location: Location where action was triggered.
-            current_state: Robot state at trigger time.
-        """
-        context = ActionExecutionContext(
-            trigger_location=trigger_location,
-            current_state=current_state,
-            motion_group_id=self.motion_group_id,
-            action_name=action.action_name,
-            action_args=action.args,
-            action_kwargs=action.kwargs,
+        return True
+
+    # -- WaitUntilAction: wait for predicate ----------------------------------
+
+    async def _handle_wait_until(self, action: WaitUntilAction, current_location: float) -> bool:
+        """Handle a WaitUntilAction.  Returns True if motion was paused."""
+        # Fast path: predicate already satisfied
+        if action.predicate(self._execution_state.snapshot()):
+            logger.debug(
+                f"WaitUntilAction at location {current_location:.3f}: "
+                "predicate already satisfied — no pause"
+            )
+            return False
+
+        logger.info(
+            f"WaitUntilAction at location {current_location:.3f}: "
+            "predicate not satisfied — pausing motion"
         )
 
-        async def execute_action() -> Any:
-            handler = action.get_handler()
-            if action.timeout:
-                return await asyncio.wait_for(handler(context), timeout=action.timeout)
-            return await handler(context)
+        if self._pause_callback:
+            await self._pause_callback()
 
-        task = asyncio.create_task(execute_action(), name=f"async-action-{action.action_name}")
+        satisfied = await self._execution_state.wait_for(action.predicate, timeout=action.timeout)
 
-        running = RunningAction(
-            action=action, task=task, trigger_location=trigger_location, started_at=datetime.now()
-        )
-        self._running_actions.append(running)
+        if not satisfied:
+            logger.warning(
+                f"WaitUntilAction at location {current_location:.3f}: "
+                f"timed out after {action.timeout}s"
+            )
 
-    async def _collect_completed_actions(self) -> None:
-        """Collect results from completed parallel actions."""
-        completed: list[RunningAction] = []
-        still_running: list[RunningAction] = []
+        if self._resume_callback:
+            await self._resume_callback()
 
-        for running in self._running_actions:
+        return True
+
+    # -- Background task collection -------------------------------------------
+
+    async def _collect_completed_tasks(self) -> None:
+        """Collect results from completed background tasks."""
+        completed_ids: list[str] = []
+
+        for action_id, running in self._active_tasks.items():
             if running.task.done():
-                completed.append(running)
-            else:
-                still_running.append(running)
+                completed_ids.append(action_id)
 
-        self._running_actions = still_running
-
-        for running in completed:
+        for action_id in completed_ids:
+            running = self._active_tasks.pop(action_id)
             completed_at = datetime.now()
             error: Exception | None = None
             return_value: Any = None
@@ -363,24 +421,19 @@ class AsyncActionExecutor:
                 completion_location=self._last_location,
                 return_value=return_value,
                 error=error,
-                was_blocking=False,
                 timed_out=timed_out,
             )
 
             async with self._results_lock:
                 self._results.append(result)
+            self._completed_by_id[running.action.action_id] = result
 
             await self._handle_error(result)
 
+    # -- Error handling -------------------------------------------------------
+
     async def _handle_error(self, result: AsyncActionResult) -> None:
-        """Handle action error according to error mode.
-
-        Args:
-            result: The completed action result.
-
-        Raises:
-            AsyncActionError: If error_mode is RAISE and action failed.
-        """
+        """Handle action error according to error mode."""
         if result.error is None:
             return
 
@@ -392,46 +445,42 @@ class AsyncActionExecutor:
                 trigger_location=result.trigger_location,
                 completion_location=result.completion_location,
                 cause=result.error,
-                was_blocking=result.was_blocking,
             )
         elif self.error_mode == ErrorHandlingMode.CALLBACK and self._error_callback:
             await self._error_callback(result)
         # COLLECT mode: error is already stored in result
 
+    # -- Lifecycle ------------------------------------------------------------
+
     async def wait_for_all_actions(self) -> None:
-        """Wait for all parallel actions to complete.
+        """Wait for all background actions to complete.
 
         Should be called at end of trajectory execution to ensure all
         background actions have finished.
         """
-        if not self._running_actions:
+        if not self._active_tasks:
             return
 
-        logger.debug(f"Waiting for {len(self._running_actions)} parallel actions to complete")
+        logger.debug(f"Waiting for {len(self._active_tasks)} background actions to complete")
 
-        tasks = [ra.task for ra in self._running_actions]
+        tasks = [ra.task for ra in self._active_tasks.values()]
         await asyncio.gather(*tasks, return_exceptions=True)
-        await self._collect_completed_actions()
+        await self._collect_completed_tasks()
 
     async def cancel_all_actions(self) -> None:
-        """Cancel all running parallel actions.
-
-        Called when trajectory execution is aborted.
-        """
-        for running in self._running_actions:
+        """Cancel all running background actions."""
+        for running in self._active_tasks.values():
             if not running.task.done():
                 running.task.cancel()
 
-        if self._running_actions:
-            await asyncio.gather(*[ra.task for ra in self._running_actions], return_exceptions=True)
-            self._running_actions.clear()
+        if self._active_tasks:
+            await asyncio.gather(
+                *[ra.task for ra in self._active_tasks.values()], return_exceptions=True
+            )
+            self._active_tasks.clear()
 
     def get_summary(self) -> dict[str, Any]:
-        """Get execution summary for logging/debugging.
-
-        Returns:
-            Dictionary with execution statistics.
-        """
+        """Get execution summary for logging/debugging."""
         succeeded = sum(1 for r in self._results if r.succeeded)
         failed = sum(1 for r in self._results if not r.succeeded)
         total_duration = sum(r.duration_seconds for r in self._results)
@@ -443,6 +492,6 @@ class AsyncActionExecutor:
             "completed": len(self._results),
             "succeeded": succeeded,
             "failed": failed,
-            "still_running": len(self._running_actions),
+            "still_running": len(self._active_tasks),
             "total_duration_seconds": total_duration,
         }
