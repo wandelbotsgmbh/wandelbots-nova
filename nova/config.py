@@ -48,8 +48,15 @@ class NovaConfig(BaseModel):
         self.host = self.host.strip()
         self.host = self.host.rstrip("/")
 
-        # app store has a special case for the host
-        if self.host == "api-gateway:8080":
+        if not self.host:
+            return self
+
+        parsed_host = urlparse(self.host)
+        if parsed_host.scheme and parsed_host.netloc:
+            return self
+
+        parsed_host_without_scheme = urlparse(f"//{self.host}")
+        if parsed_host_without_scheme.netloc:
             self.host = f"http://{self.host}"
         return self
 
@@ -75,14 +82,26 @@ class NovaConfig(BaseModel):
 
         parsed_host = urlparse(self.host)
         if parsed_host.scheme == "http":
+            try:
+                port = parsed_host.port
+            except ValueError as exc:
+                raise ValueError(
+                    "Invalid port in NovaConfig.host; expected a numeric port value."
+                ) from exc
             self.nats_client_config["servers"] = (
-                f"ws://{parsed_host.hostname}:{parsed_host.port or 80}/api/nats"
+                f"ws://{parsed_host.hostname}:{port or 80}/api/nats"
             )
             return self
 
         if parsed_host.scheme == "https" and self.access_token:
+            try:
+                port = parsed_host.port
+            except ValueError as exc:
+                raise ValueError(
+                    "Invalid port in NovaConfig.host; expected a numeric port value."
+                ) from exc
             self.nats_client_config["servers"] = (
-                f"wss://{self.access_token}@{parsed_host.hostname}:{parsed_host.port or 443}/api/nats"
+                f"wss://{self.access_token}@{parsed_host.hostname}:{port or 443}/api/nats"
             )
             return self
 

@@ -237,6 +237,12 @@ async def test_split_and_verify_collision_setup():
 def mock_motion_group():
     """Create a MotionGroup instance for testing."""
     mock_api_client = MagicMock(spec=ApiGateway)
+    mock_api_client.bus_ios_api = MagicMock()
+    mock_api_client.bus_ios_api.set_bus_io_values = AsyncMock()
+    mock_api_client.controller_ios_api = MagicMock()
+    mock_api_client.controller_ios_api.set_output_values = AsyncMock()
+    mock_api_client.trajectory_planning_api = MagicMock()
+    mock_api_client.trajectory_planning_api.plan_trajectory = AsyncMock()
     mock_api_client.virtual_controller_api = MagicMock()
     mock_api_client.virtual_controller_api.add_virtual_controller_tcp = AsyncMock()
     return MotionGroup(
@@ -244,6 +250,27 @@ def mock_motion_group():
         cell="test_cell",
         controller_id="test-controller",
         motion_group_id="0@test-controller",
+    )
+
+
+@pytest.mark.asyncio
+async def test_plan_and_execute_write_only_actions_use_direct_io_calls(mock_motion_group):
+    actions = [
+        io_write("digital_in[0]", True),
+        io_write("test_bool", True, origin=api.models.IOOrigin.BUS_IO),
+    ]
+
+    await mock_motion_group.plan_and_execute(actions, "Flange")
+
+    mock_motion_group._api_client.trajectory_planning_api.plan_trajectory.assert_not_awaited()
+    mock_motion_group._api_client.controller_ios_api.set_output_values.assert_awaited_once_with(
+        cell="test_cell",
+        controller="test-controller",
+        io_value=[api.models.IOBooleanValue(io="digital_in[0]", value=True)],
+    )
+    mock_motion_group._api_client.bus_ios_api.set_bus_io_values.assert_awaited_once_with(
+        cell="test_cell",
+        io_value=[api.models.IOValue(api.models.IOBooleanValue(io="test_bool", value=True))],
     )
 
 
