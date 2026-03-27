@@ -287,6 +287,44 @@ SET_IO_ON_PATH_TEST_CASES = [
         ),
         id="multiple_bus_io_at_the_end",
     ),
+    pytest.param(
+        SetIOOnPathTestCase(
+            description="set controller io with a write-only action list",
+            controller_io_prestate={"digital_in[0]": False, "digital_in[1]": False},
+            actions=[
+                io_write("digital_in[0]", True),
+                io_write("digital_in[1]", True),
+            ],
+            expected_controller_io={"digital_in[0]": True, "digital_in[1]": True},
+        ),
+        id="write_only_controller_io",
+    ),
+    pytest.param(
+        SetIOOnPathTestCase(
+            description="set bus io with a write-only action list",
+            bus_io_prestate={"test_bool": False, "test_bool_2": False},
+            actions=[
+                io_write("test_bool", True, origin=api.models.IOOrigin.BUS_IO),
+                io_write("test_bool_2", True, origin=api.models.IOOrigin.BUS_IO),
+            ],
+            expected_bus_io={"test_bool": True, "test_bool_2": True},
+        ),
+        id="write_only_bus_io",
+    ),
+    pytest.param(
+        SetIOOnPathTestCase(
+            description="set mixed controller and bus io with a write-only action list",
+            controller_io_prestate={"digital_in[0]": False},
+            bus_io_prestate={"test_bool": False},
+            actions=[
+                io_write("digital_in[0]", True),
+                io_write("test_bool", True, origin=api.models.IOOrigin.BUS_IO),
+            ],
+            expected_controller_io={"digital_in[0]": True},
+            expected_bus_io={"test_bool": True},
+        ),
+        id="write_only_mixed_io",
+    ),
 ]
 
 

@@ -8,6 +8,7 @@ import numpy as np
 
 from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
+from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion
 from nova.config import ENABLE_TRAJECTORY_TUNING
@@ -145,6 +146,23 @@ class MotionGroup(AbstractRobot):
     @property
     def current_motion(self) -> str | None:
         return self._current_motion
+
+    def _supports_direct_write_actions(self, actions: list[Action]) -> bool:
+        return len(actions) > 0 and all(isinstance(action, WriteAction) for action in actions)
+
+    async def _execute_direct_write_actions(self, actions: list[WriteAction]) -> None:
+        for action in actions:
+            if action.origin == api.models.IOOrigin.BUS_IO:
+                await self._api_client.bus_ios_api.set_bus_io_values(
+                    cell=self._cell,
+                    io_value=[api.models.IOValue(action.to_api_model())],
+                )
+            else:
+                await self._api_client.controller_ios_api.set_output_values(
+                    cell=self._cell,
+                    controller=self._controller_id,
+                    io_value=[action.to_api_model()],
+                )
 
     # TODO: does this needs to be cached?
     async def _fetch_motion_group_description(self) -> api.models.MotionGroupDescription:
