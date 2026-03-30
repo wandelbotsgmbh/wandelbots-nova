@@ -764,6 +764,48 @@ class TestCombinedActionsAsyncIntegration:
         assert isinstance(executor_actions[1].action, AwaitAction)
         assert isinstance(executor_actions[2].action, WaitUntilAction)
 
+    def test_get_async_actions_without_motions_start_at_zero(self):
+        """Test async-only action lists are mapped to location 0.0."""
+        actions = CombinedActions(
+            items=(
+                AsyncAction(action_id="a1", action_name="first"),
+                AsyncAction(action_id="a2", action_name="second"),
+            )
+        )
+
+        async_actions = actions.get_async_actions()
+        assert len(async_actions) == 2
+        assert async_actions[0].path_parameter == 0.0
+        assert async_actions[1].path_parameter == 0.0
+
+    def test_get_executor_actions_without_motions_start_at_zero(self):
+        """Test executor actions without motions are all mapped to location 0.0."""
+        actions = CombinedActions(
+            items=(
+                AsyncAction(action_id="a1", action_name="test"),
+                AwaitAction(action_id="a1"),
+                WaitUntilAction(predicate=lambda s: True),
+            )
+        )
+
+        executor_actions = actions.get_executor_actions()
+        assert len(executor_actions) == 3
+        assert [action.path_parameter for action in executor_actions] == [0.0, 0.0, 0.0]
+
+    def test_get_executor_actions_before_first_motion_use_zero_location(self):
+        """Test executor actions before the first motion use the start location."""
+        actions = CombinedActions(
+            items=(
+                AsyncAction(action_id="a1", action_name="test"),
+                AwaitAction(action_id="a1"),
+                self._make_linear(),
+            )
+        )
+
+        executor_actions = actions.get_executor_actions()
+        assert len(executor_actions) == 2
+        assert [action.path_parameter for action in executor_actions] == [0.0, 0.0]
+
     def test_motions_excludes_async_actions(self):
         """Test that motions property doesn't include async actions."""
         actions = CombinedActions(

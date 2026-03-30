@@ -3,12 +3,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from nova import api
-from nova.actions import cartesian_ptp, collision_free, io_write, linear, wait
+from nova.actions import async_action, await_action, cartesian_ptp, collision_free, io_write, linear, register_async_action, wait
 from nova.actions.base import Action
+from nova.actions.async_action import ActionExecutionContext, get_default_registry
 from nova.cell.motion_group import MotionGroup, split_actions_into_batches
 from nova.core.gateway import ApiGateway
 from nova.exceptions import InconsistentCollisionScenes
-from nova.types import Pose
+from nova.types import Pose, RobotState
 from nova.types.motion_settings import MotionSettings
 from nova.utils.collision_setup import compare_collision_setups, validate_collision_setups
 
@@ -245,16 +246,24 @@ def mock_motion_group():
     mock_api_client.trajectory_planning_api.plan_trajectory = AsyncMock()
     mock_api_client.virtual_controller_api = MagicMock()
     mock_api_client.virtual_controller_api.add_virtual_controller_tcp = AsyncMock()
-    return MotionGroup(
+    motion_group = MotionGroup(
         api_client=mock_api_client,
         cell="test_cell",
         controller_id="test-controller",
         motion_group_id="0@test-controller",
     )
+    motion_group.get_state = AsyncMock(
+        return_value=RobotState(
+            pose=Pose(position=(0, 0, 0), orientation=(0, 0, 0)),
+            tcp="Flange",
+            joints=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        )
+    )
+    return motion_group
 
 
 @pytest.mark.asyncio
-async def test_plan_and_execute_write_only_actions_use_direct_io_calls(mock_motion_group):
+async def test_plan_and_execute_write_only_actions_use_direct_non_motion_path(mock_motion_group):
     actions = [
         io_write("digital_in[0]", True),
         io_write("test_bool", True, origin=api.models.IOOrigin.BUS_IO),
@@ -272,6 +281,53 @@ async def test_plan_and_execute_write_only_actions_use_direct_io_calls(mock_moti
         cell="test_cell",
         io_value=[api.models.IOValue(api.models.IOBooleanValue(io="test_bool", value=True))],
     )
+
+
+@pytest.mark.asyncio
+async def test_plan_and_execute_async_only_actions_use_direct_non_motion_path(mock_motion_group):
+    get_default_registry().clear()
+    called_labels: list[str] = []
+
+    async def handler(ctx: ActionExecutionContext):
+        called_labels.append(ctx.action_kwargs["label"])
+
+    register_async_action("test.async_only", handler)
+
+    await mock_motion_group.plan_and_execute(
+        [async_action("test.async_only", action_id="a1", label="async_only")], "Flange"
+    )
+
+    assert called_labels == ["async_only"]
+    mock_motion_group._api_client.trajectory_planning_api.plan_trajectory.assert_not_awaited()
+    get_default_registry().clear()
+
+
+@pytest.mark.asyncio
+async def test_plan_and_execute_mixed_non_motion_actions_run_in_order(mock_motion_group):
+    get_default_registry().clear()
+    call_log: list[str] = []
+
+    async def handler(ctx: ActionExecutionContext):
+        call_log.append(f"async:{ctx.action_kwargs['label']}")
+
+    register_async_action("test.mixed_non_motion", handler)
+
+    actions = [
+        async_action("test.mixed_non_motion", action_id="a1", label="first"),
+        io_write("digital_in[0]", True),
+        await_action("a1", timeout=1.0),
+    ]
+
+    await mock_motion_group.plan_and_execute(actions, "Flange")
+
+    assert call_log == ["async:first"]
+    mock_motion_group._api_client.trajectory_planning_api.plan_trajectory.assert_not_awaited()
+    mock_motion_group._api_client.controller_ios_api.set_output_values.assert_awaited_once_with(
+        cell="test_cell",
+        controller="test-controller",
+        io_value=[api.models.IOBooleanValue(io="digital_in[0]", value=True)],
+    )
+    get_default_registry().clear()
 
 
 @pytest.mark.asyncio
