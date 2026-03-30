@@ -1718,7 +1718,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "4.12.0.dev0"
+version = "4.12.0.dev1"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
