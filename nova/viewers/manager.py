@@ -47,7 +47,7 @@ class ViewerManager:
         self,
         actions: Sequence[Action],
         trajectory: models.JointTrajectory,
-        tcp: str,
+        tcp: str | None,
         motion_group: MotionGroup,
     ) -> None:
         """Log successful planning results to all active viewers."""
@@ -61,7 +61,11 @@ class ViewerManager:
                 logger.warning("Failed to log planning results to viewer: %s", e)
 
     async def log_planning_failure(
-        self, actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
+        self,
+        actions: Sequence[Action],
+        error: Exception,
+        tcp: str | None,
+        motion_group: MotionGroup,
     ) -> None:
         """Log planning failure to all active viewers."""
         for viewer in self._viewers:
@@ -112,7 +116,7 @@ def cleanup_active_viewers() -> None:
 async def log_planning_results_to_viewers(
     actions: Sequence[Action],
     trajectory: models.JointTrajectory,
-    tcp: str,
+    tcp: str | None,
     motion_group: MotionGroup,
 ) -> None:
     """Log successful planning results to all active viewers. (Legacy function for backward compatibility)"""
@@ -120,7 +124,7 @@ async def log_planning_results_to_viewers(
 
 
 async def log_planning_error_to_viewers(
-    actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
+    actions: Sequence[Action], error: Exception, tcp: str | None, motion_group: MotionGroup
 ) -> None:
     """Log planning failure to all active viewers. (Legacy function for backward compatibility)"""
     await _viewer_manager.log_planning_failure(actions, error, tcp, motion_group)
