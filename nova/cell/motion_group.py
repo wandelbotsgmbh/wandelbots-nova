@@ -2,12 +2,21 @@ import asyncio
 import logging
 from contextlib import aclosing
 from functools import partial
-from typing import AsyncGenerator, cast
+from typing import Any, AsyncGenerator, cast
 
 import numpy as np
 
 from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
+from nova.actions.async_action import (
+    ActionExecutionContext,
+    AsyncAction,
+    AwaitAction,
+    ErrorHandlingMode,
+    WaitUntilAction,
+)
+from nova.actions.execution_state import ExecutionState
+from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion
 from nova.config import ENABLE_TRAJECTORY_TUNING
@@ -25,6 +34,7 @@ from nova.utils.joint_trajectory import combine_trajectories
 from nova.utils.motion_group_settings import update_motion_group_setup_with_motion_settings
 
 from .movement_controller import move_forward
+from .movement_controller.async_action_executor import AsyncActionExecutor
 from .robot_cell import AbstractRobot
 from .tuner import TrajectoryTuner
 
@@ -145,6 +155,92 @@ class MotionGroup(AbstractRobot):
     @property
     def current_motion(self) -> str | None:
         return self._current_motion
+
+    def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:
+        return len(actions) > 0 and all(not action.is_motion() for action in actions)
+
+    async def _execute_direct_non_motion_actions(self, actions: list[Action], tcp: str) -> None:
+        execution_state = ExecutionState()
+        current_state = await self.get_state(tcp)
+        active_tasks: dict[str, tuple[AsyncAction, asyncio.Task[Any]]] = {}
+        completed_action_ids: set[str] = set()
+
+        async def await_async_action(
+            async_action: AsyncAction, task: asyncio.Task[Any], timeout: float | None = None
+        ) -> None:
+            try:
+                if timeout is not None:
+                    await asyncio.wait_for(task, timeout=timeout)
+                else:
+                    await task
+            except asyncio.TimeoutError:
+                logger.warning(f"Async action '{async_action.action_id}' timed out")
+            except Exception as exc:
+                logger.error(
+                    f"Async action '{async_action.action_id}' failed: {exc}", exc_info=True
+                )
+            finally:
+                active_tasks.pop(async_action.action_id, None)
+                completed_action_ids.add(async_action.action_id)
+
+        for action in actions:
+            if isinstance(action, WriteAction):
+                if action.origin == api.models.IOOrigin.BUS_IO:
+                    await self._api_client.bus_ios_api.set_bus_io_values(
+                        cell=self._cell,
+                        io_value=[api.models.IOValue(action.to_api_model())],
+                    )
+                else:
+                    await self._api_client.controller_ios_api.set_output_values(
+                        cell=self._cell,
+                        controller=self._controller_id,
+                        io_value=[action.to_api_model()],
+                    )
+            elif isinstance(action, WaitAction):
+                await asyncio.sleep(action.wait_for_in_seconds)
+            elif isinstance(action, AsyncAction):
+                context = ActionExecutionContext(
+                    trigger_location=0.0,
+                    current_state=current_state,
+                    motion_group_id=self.id,
+                    action_name=action.action_name,
+                    action_args=action.args,
+                    action_kwargs=action.kwargs,
+                    state=execution_state,
+                )
+
+                async def execute_async_action(
+                    async_action: AsyncAction = action, ctx: ActionExecutionContext = context
+                ) -> Any:
+                    handler = async_action.get_handler()
+                    return await handler(ctx)
+
+                task = asyncio.create_task(execute_async_action(), name=f"async-action-{action.action_id}")
+                active_tasks[action.action_id] = (action, task)
+            elif isinstance(action, AwaitAction):
+                if action.action_id in completed_action_ids:
+                    continue
+
+                running = active_tasks.get(action.action_id)
+                if running is None:
+                    raise ValueError(
+                        f"AwaitAction references action_id '{action.action_id}' "
+                        "which has no corresponding AsyncAction"
+                    )
+
+                async_action, task = running
+                await await_async_action(async_action, task, timeout=action.timeout)
+            elif isinstance(action, WaitUntilAction):
+                satisfied = await execution_state.wait_for(action.predicate, timeout=action.timeout)
+                if not satisfied:
+                    logger.warning(
+                        f"WaitUntilAction timed out after {action.timeout}s at location 0.0"
+                    )
+            else:
+                raise ValueError(f"Unsupported non-motion action type: {type(action)}")
+
+        for async_action, task in list(active_tasks.values()):
+            await await_async_action(async_action, task)
 
     # TODO: does this needs to be cached?
     async def _fetch_motion_group_description(self) -> api.models.MotionGroupDescription:
@@ -762,13 +858,27 @@ class MotionGroup(AbstractRobot):
         # Load planned trajectory
         trajectory_id = await self._load_planned_motion(joint_trajectory, tcp)
 
+        # Create async action executor if there are executor actions
+        combined_actions = CombinedActions(items=tuple(actions))  # type: ignore
+        executor_actions = combined_actions.get_executor_actions()
+        executor: AsyncActionExecutor | None = None
+        if executor_actions:
+            execution_state = ExecutionState()
+            executor = AsyncActionExecutor(
+                motion_group_id=self.id,
+                executor_actions=executor_actions,
+                execution_state=execution_state,
+                error_mode=ErrorHandlingMode.COLLECT,
+            )
+
         controller = movement_controller(
             MovementControllerContext(
-                combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
+                combined_actions=combined_actions,
                 motion_id=trajectory_id,
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
                 motion_group_state_stream_gen=self.stream_state,
+                async_action_executor=executor,
             )
         )
 

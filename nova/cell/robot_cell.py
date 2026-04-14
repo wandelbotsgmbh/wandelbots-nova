@@ -218,6 +218,14 @@ class AbstractRobot(Device):
     def id(self):
         return self._id
 
+    def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:
+        return False
+
+    async def _execute_direct_non_motion_actions(self, actions: list[Action], tcp: str) -> None:
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support direct execution of non-motion action lists"
+        )
+
     @abstractmethod
     async def _plan(
         self,
@@ -426,11 +434,19 @@ class AbstractRobot(Device):
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
         """
-        joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
+        actions_list = _normalize_actions(actions)
+
+        if self._supports_direct_non_motion_actions(actions_list):
+            await self._execute_direct_non_motion_actions(actions_list, tcp)
+            return
+
+        joint_trajectory = await self.plan(
+            actions_list, tcp, start_joint_position=start_joint_position
+        )
         motion_state_stream = self.stream_execute(
             joint_trajectory,
             tcp,
-            actions,
+            actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
@@ -462,11 +478,19 @@ class AbstractRobot(Device):
             NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a target
                 pose in a collision-free motion.
         """
-        joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
+        actions_list = _normalize_actions(actions)
+
+        if self._supports_direct_non_motion_actions(actions_list):
+            await self._execute_direct_non_motion_actions(actions_list, tcp)
+            return
+
+        joint_trajectory = await self.plan(
+            actions_list, tcp, start_joint_position=start_joint_position
+        )
         await self.execute(
             joint_trajectory,
             tcp,
-            actions,
+            actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,

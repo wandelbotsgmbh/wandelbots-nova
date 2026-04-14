@@ -95,6 +95,36 @@ class ControllerCreationFailed(Exception):
         super().__init__(f"Failed to create controller '{controller_name}': {error}")
 
 
+class AsyncActionError(Exception):
+    """Raised when an async action fails during trajectory execution.
+
+    Attributes:
+        action_name: Name of the async action that failed.
+        trigger_location: Path parameter where action was triggered.
+        completion_location: Path parameter when error occurred (may differ from trigger).
+        cause: The underlying exception that caused the failure.
+    """
+
+    def __init__(
+        self,
+        action_name: str,
+        trigger_location: float,
+        completion_location: float | None,
+        cause: Exception,
+    ):
+        self.action_name = action_name
+        self.trigger_location = trigger_location
+        self.completion_location = completion_location
+        self.cause = cause
+
+        location_info = f"triggered at {trigger_location:.3f}"
+        if completion_location is not None and completion_location != trigger_location:
+            location_info += f", failed at {completion_location:.3f}"
+
+        super().__init__(f"Async action '{action_name}' failed ({location_info}): {cause}")
+        self.__cause__ = cause
+
+
 # extends ValueError for backwards compatibility, otherwise it could extend Exception directly
 class NoInverseKinematicsSolutionFound(ValueError):
     """Raised when no inverse kinematics solution can be found for a target pose."""

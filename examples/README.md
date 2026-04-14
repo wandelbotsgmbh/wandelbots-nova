@@ -8,6 +8,7 @@ Examples on how to use the wandelbots-nova library.
 2. [Plan and execute a trajectory](plan_and_execute.py)
 3. [Move multiple robots](move_multiple_robots.py)
 4. [Coordinate multiple motion groups](multi_motion_group.py)
+5. [Actor-style multi-robot coordination with a PLC actor](actor_multibot.py)
 6. [Multi-step collision free movement](multi_step_movement_with_collision_free.py)
 7. [Cycle events](cycle_events.py)
 8. [Run Wandelscript files](run_wandelscript_file.py)

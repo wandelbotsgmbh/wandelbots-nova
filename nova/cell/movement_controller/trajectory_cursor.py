@@ -898,7 +898,8 @@ class TrajectoryCursor:
         """Monitor motion group state and update operation status accordingly.
 
         Uses a :class:`TrajectoryExecutionMachine` to track trajectory lifecycle
-        and determine when operations complete.
+        and determine when operations complete while triggering
+        async actions when their designated locations are crossed.
 
         Args:
             ready_event: Event to signal when the monitor is ready to receive states.
