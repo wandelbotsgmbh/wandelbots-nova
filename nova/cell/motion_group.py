@@ -613,7 +613,8 @@ class MotionGroup(AbstractRobot):
 
         best_joint_solutions: list[tuple[float, ...]] = []
         if isinstance(action.target, Pose):
-            assert tcp is not None, "TCP is required for collision_free with Pose target"
+            if tcp is None:
+                raise ValueError("TCP is required for collision_free with Pose target")
             solutions = await self._inverse_kinematics(
                 poses=[action.target], tcp=tcp, motion_group_setup=motion_group_setup
             )
