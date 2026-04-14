@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.12.0 (2026-04-14)
+
+### Features
+
+- Make TCP optional for plan/execute to support motion groups without TCP (#412)
+  ([#412](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/412),
+  [`19d284a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/19d284ad6b2345b1f865d7e5287242cba784ae3b))
+
+
 ## v4.11.3 (2026-03-13)
 
 ### Bug Fixes
