@@ -148,7 +148,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
     async def _plan(
         self,
         actions: list[Action],
-        tcp: str,
+        tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
@@ -251,7 +251,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
     async def _execute(
         self,
         joint_trajectory: api.models.JointTrajectory,
-        tcp: str,
+        tcp: str | None,
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,

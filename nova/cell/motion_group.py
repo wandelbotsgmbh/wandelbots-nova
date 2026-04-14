@@ -9,7 +9,7 @@ import numpy as np
 from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.mock import WaitAction
-from nova.actions.motions import CollisionFreeMotion
+from nova.actions.motions import CartesianPTP, Circular, CollisionFreeMotion, Linear
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, NoInverseKinematicsSolutionFound, PlanTrajectoryFailed
@@ -486,7 +486,7 @@ class MotionGroup(AbstractRobot):
         )
 
     async def _load_planned_motion(
-        self, joint_trajectory: api.models.JointTrajectory, tcp: str
+        self, joint_trajectory: api.models.JointTrajectory, tcp: str | None
     ) -> str:
         load_plan_response = await self._api_client.trajectory_caching_api.add_trajectory(
             cell=self._cell,
@@ -507,7 +507,7 @@ class MotionGroup(AbstractRobot):
     async def _plan_with_collision_check(
         self,
         actions: list[Action],
-        tcp: str,
+        tcp: str | None,
         motion_group_setup: api.models.MotionGroupSetup,
         start_joint_position: tuple[float, ...],
     ) -> api.models.JointTrajectory:
@@ -578,7 +578,7 @@ class MotionGroup(AbstractRobot):
     async def _plan_collision_free(
         self,
         action: CollisionFreeMotion,
-        tcp: str,
+        tcp: str | None,
         motion_group_setup: api.models.MotionGroupSetup,
         start_joint_position: tuple[float, ...] | None = None,
     ) -> api.models.JointTrajectory:
@@ -613,6 +613,8 @@ class MotionGroup(AbstractRobot):
 
         best_joint_solutions: list[tuple[float, ...]] = []
         if isinstance(action.target, Pose):
+            if tcp is None:
+                raise ValueError("TCP is required for collision_free with Pose target")
             solutions = await self._inverse_kinematics(
                 poses=[action.target], tcp=tcp, motion_group_setup=motion_group_setup
             )
@@ -667,12 +669,26 @@ class MotionGroup(AbstractRobot):
     async def _plan(
         self,
         actions: list[Action],
-        tcp: str,
+        tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
         if not actions:
             raise ValueError("No actions provided")
+
+        if tcp is None:
+            _requires_tcp = (Linear, CartesianPTP, Circular)
+            for action in actions:
+                if isinstance(action, _requires_tcp):
+                    raise ValueError(
+                        "TCP is required for cartesian motion actions (lin, ptp, cir). "
+                        "Provide a TCP or use joint-space actions (jnt) instead."
+                    )
+                if isinstance(action, CollisionFreeMotion) and isinstance(action.target, Pose):
+                    raise ValueError(
+                        "TCP is required for collision_free motions with a Pose target. "
+                        "Provide a TCP or use a joint-space target instead."
+                    )
 
         current_joints = start_joint_position or await self.joints()
         motion_group_setup = motion_group_setup or await self.get_setup(tcp)
@@ -737,7 +753,7 @@ class MotionGroup(AbstractRobot):
     async def _execute(
         self,
         joint_trajectory: api.models.JointTrajectory,
-        tcp: str,
+        tcp: str | None,
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -808,7 +824,7 @@ class MotionGroup(AbstractRobot):
             monitor_task.cancel()
 
     async def _tune_trajectory(
-        self, joint_trajectory: api.models.JointTrajectory, tcp: str, actions: list[Action]
+        self, joint_trajectory: api.models.JointTrajectory, tcp: str | None, actions: list[Action]
     ) -> AsyncGenerator[api.models.MotionGroupState, None]:
         start_joints = await self.joints()
 

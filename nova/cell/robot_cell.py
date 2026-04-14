@@ -222,7 +222,7 @@ class AbstractRobot(Device):
     async def _plan(
         self,
         actions: list[Action],
-        tcp: str,
+        tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
@@ -231,7 +231,7 @@ class AbstractRobot(Device):
         Args:
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
                 Only motion actions are considered for planning.
-            tcp (str): The id of the tool center point (TCP)
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
 
         Returns:
@@ -241,7 +241,7 @@ class AbstractRobot(Device):
     async def plan(
         self,
         actions: ActionsLike,
-        tcp: str,
+        tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
     ) -> api.models.JointTrajectory:
@@ -250,7 +250,7 @@ class AbstractRobot(Device):
         Args:
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
                 Only motion actions are considered for planning.
-            tcp (str): The id of the tool center point (TCP)
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             start_joint_position: the initial position of the robot
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
             motion_group_setup (api.models.MotionGroupSetup | None): The motion group setup to be used for planning.
@@ -287,7 +287,7 @@ class AbstractRobot(Device):
             raise planning_error
 
     async def _log_planning_results(
-        self, actions: list[Action], trajectory: api.models.JointTrajectory, tcp: str
+        self, actions: list[Action], trajectory: api.models.JointTrajectory, tcp: str | None
     ) -> None:
         """Log planning results to active viewers if any are configured."""
         from nova.cell.motion_group import MotionGroup
@@ -304,7 +304,9 @@ class AbstractRobot(Device):
                 actions=actions, trajectory=trajectory, tcp=tcp, motion_group=self
             )
 
-    async def _log_planning_error(self, actions: list[Action], error: Exception, tcp: str) -> None:
+    async def _log_planning_error(
+        self, actions: list[Action], error: Exception, tcp: str | None
+    ) -> None:
         """Log planning error to active viewers if any are configured."""
         from nova.cell.motion_group import MotionGroup
         from nova.viewers import get_viewer_manager
@@ -321,7 +323,7 @@ class AbstractRobot(Device):
     def _execute(
         self,
         joint_trajectory: api.models.JointTrajectory,
-        tcp: str,
+        tcp: str | None,
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -331,7 +333,7 @@ class AbstractRobot(Device):
 
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
-            tcp (str): The id of the tool center point (TCP)
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
@@ -341,7 +343,7 @@ class AbstractRobot(Device):
     async def stream_execute(
         self,
         joint_trajectory: api.models.JointTrajectory,
-        tcp: str,
+        tcp: str | None,
         actions: ActionsLike,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -354,7 +356,7 @@ class AbstractRobot(Device):
 
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
-            tcp (str): The id of the tool center point (TCP)
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
@@ -378,7 +380,7 @@ class AbstractRobot(Device):
     async def execute(
         self,
         joint_trajectory: api.models.JointTrajectory,
-        tcp: str,
+        tcp: str | None,
         actions: ActionsLike,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -388,7 +390,7 @@ class AbstractRobot(Device):
 
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
-            tcp (str): The id of the tool center point (TCP)
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             actions (list[Action] | Action): The actions to be executed.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
@@ -410,7 +412,7 @@ class AbstractRobot(Device):
     async def stream_plan_and_execute(
         self,
         actions: ActionsLike,
-        tcp: str,
+        tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -420,7 +422,7 @@ class AbstractRobot(Device):
 
         Args:
             actions (list[Action] | Action): The actions to be planned and executed.
-            tcp (str): The id of the tool center point (TCP)
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             start_joint_position (tuple[float, ...] | None): The starting joint position.
             movement_controller (MovementController | None): The movement controller to be used. Defaults to move_forward.
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
@@ -442,7 +444,7 @@ class AbstractRobot(Device):
     async def plan_and_execute(
         self,
         actions: ActionsLike,
-        tcp: str,
+        tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -452,7 +454,7 @@ class AbstractRobot(Device):
 
         Args:
             actions (list[Action] | Action): The actions to be planned and executed.
-            tcp (str): The id of the tool center point (TCP)
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             start_joint_position (tuple[float, ...] | None): The starting joint position.
             movement_controller (MovementController | None): The movement controller to be used. Defaults to move_forward.
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
