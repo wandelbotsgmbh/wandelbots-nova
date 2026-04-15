@@ -7,7 +7,7 @@ from typing import Any, AsyncGenerator
 import pytest
 
 from nova import Nova, api
-from nova.actions import ptp
+from nova.actions import ptp, wait
 from nova.actions.base import Action
 from nova.actions.io import io_write
 from nova.cell import virtual_controller
@@ -324,6 +324,19 @@ SET_IO_ON_PATH_TEST_CASES = [
             expected_bus_io={"test_bool": True},
         ),
         id="write_only_mixed_io",
+    ),
+    pytest.param(
+        SetIOOnPathTestCase(
+            description="set bus io with a write-wait-write action list and no motions",
+            bus_io_prestate={"test_bool": False, "test_bool_2": False},
+            actions=[
+                io_write("test_bool", True, origin=api.models.IOOrigin.BUS_IO),
+                wait(0.1),
+                io_write("test_bool_2", True, origin=api.models.IOOrigin.BUS_IO),
+            ],
+            expected_bus_io={"test_bool": True, "test_bool_2": True},
+        ),
+        id="write_wait_write_only_bus_io",
     ),
 ]
 

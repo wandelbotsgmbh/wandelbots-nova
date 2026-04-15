@@ -275,6 +275,74 @@ async def test_plan_and_execute_write_only_actions_use_direct_io_calls(mock_moti
 
 
 @pytest.mark.asyncio
+async def test_plan_and_execute_wait_only_actions_use_direct_sleep(mock_motion_group, monkeypatch):
+    sleep = AsyncMock()
+    monkeypatch.setattr("nova.cell.motion_group.asyncio.sleep", sleep)
+
+    await mock_motion_group.plan_and_execute([wait(1.25)], "Flange")
+
+    mock_motion_group._api_client.trajectory_planning_api.plan_trajectory.assert_not_awaited()
+    sleep.assert_awaited_once_with(1.25)
+
+
+@pytest.mark.asyncio
+async def test_plan_and_execute_mixed_non_motion_actions_run_in_order(
+    mock_motion_group, monkeypatch
+):
+    call_order: list[str] = []
+
+    async def record_controller_write(*args, **kwargs):
+        call_order.append("controller_write")
+
+    async def record_bus_write(*args, **kwargs):
+        call_order.append("bus_write")
+
+    async def record_sleep(seconds: float):
+        call_order.append(f"sleep:{seconds}")
+
+    mock_motion_group._api_client.controller_ios_api.set_output_values = AsyncMock(
+        side_effect=record_controller_write
+    )
+    mock_motion_group._api_client.bus_ios_api.set_bus_io_values = AsyncMock(
+        side_effect=record_bus_write
+    )
+    monkeypatch.setattr("nova.cell.motion_group.asyncio.sleep", AsyncMock(side_effect=record_sleep))
+
+    await mock_motion_group.plan_and_execute(
+        [
+            io_write("digital_in[0]", True),
+            wait(0.5),
+            io_write("test_bool", True, origin=api.models.IOOrigin.BUS_IO),
+        ],
+        "Flange",
+    )
+
+    mock_motion_group._api_client.trajectory_planning_api.plan_trajectory.assert_not_awaited()
+    assert call_order == ["controller_write", "sleep:0.5", "bus_write"]
+
+
+@pytest.mark.asyncio
+async def test_plan_and_execute_actions_with_motion_do_not_use_direct_non_motion_path(
+    mock_motion_group,
+):
+    mock_motion_group._execute_direct_non_motion_actions = AsyncMock()
+    mock_motion_group.plan = AsyncMock(
+        return_value=api.models.JointTrajectory(
+            joint_positions=[api.models.Joints([0.0] * 6), api.models.Joints([0.0] * 6)],
+            times=[0.0, 0.1],
+            locations=[api.models.Location(0.0), api.models.Location(1.0)],
+        )
+    )
+    mock_motion_group.execute = AsyncMock()
+
+    await mock_motion_group.plan_and_execute([wait(0.1), linear((0, 0, 0, 0, 0, 0))], "Flange")
+
+    mock_motion_group._execute_direct_non_motion_actions.assert_not_awaited()
+    mock_motion_group.plan.assert_awaited_once()
+    mock_motion_group.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_ensure_virtual_tcp_creates_new_tcp(mock_motion_group):
     """Test that ensure_virtual_tcp creates a new TCP when it doesn't exist."""
     tcp = api.models.RobotTcp(

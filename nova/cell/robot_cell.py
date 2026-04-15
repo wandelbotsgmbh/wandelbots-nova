@@ -16,7 +16,6 @@ from typing import (
     TypeAlias,
     TypeVar,
     Union,
-    cast,
     final,
     get_origin,
     get_type_hints,
@@ -30,7 +29,6 @@ from aiostream import stream
 
 from nova import api
 from nova.actions import Action, MovementController
-from nova.actions.io import WriteAction
 from nova.types import MotionState, Pose, RobotState
 
 logger = logging.getLogger(__name__)
@@ -220,12 +218,12 @@ class AbstractRobot(Device):
     def id(self):
         return self._id
 
-    def _supports_direct_write_actions(self, actions: list[Action]) -> bool:
+    def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:
         return False
 
-    async def _execute_direct_write_actions(self, actions: list[WriteAction]) -> None:
+    async def _execute_direct_non_motion_actions(self, actions: list[Action]) -> None:
         raise NotImplementedError(
-            f"{self.__class__.__name__} does not support direct execution of write-only action lists"
+            f"{self.__class__.__name__} does not support direct execution of non-motion action lists"
         )
 
     @abstractmethod
@@ -438,8 +436,8 @@ class AbstractRobot(Device):
         """
         actions_list = _normalize_actions(actions)
 
-        if self._supports_direct_write_actions(actions_list):
-            await self._execute_direct_write_actions(cast(list[WriteAction], actions_list))
+        if self._supports_direct_non_motion_actions(actions_list):
+            await self._execute_direct_non_motion_actions(actions_list)
             return
 
         joint_trajectory = await self.plan(
@@ -482,8 +480,8 @@ class AbstractRobot(Device):
         """
         actions_list = _normalize_actions(actions)
 
-        if self._supports_direct_write_actions(actions_list):
-            await self._execute_direct_write_actions(cast(list[WriteAction], actions_list))
+        if self._supports_direct_non_motion_actions(actions_list):
+            await self._execute_direct_non_motion_actions(actions_list)
             return
 
         joint_trajectory = await self.plan(

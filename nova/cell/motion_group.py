@@ -147,11 +147,20 @@ class MotionGroup(AbstractRobot):
     def current_motion(self) -> str | None:
         return self._current_motion
 
-    def _supports_direct_write_actions(self, actions: list[Action]) -> bool:
-        return len(actions) > 0 and all(isinstance(action, WriteAction) for action in actions)
+    def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:
+        return len(actions) > 0 and all(
+            isinstance(action, (WriteAction, WaitAction)) for action in actions
+        )
 
-    async def _execute_direct_write_actions(self, actions: list[WriteAction]) -> None:
+    async def _execute_direct_non_motion_actions(self, actions: list[Action]) -> None:
         for action in actions:
+            if isinstance(action, WaitAction):
+                await asyncio.sleep(action.wait_for_in_seconds)
+                continue
+
+            if not isinstance(action, WriteAction):
+                raise TypeError(f"Unsupported direct non-motion action: {type(action).__name__}")
+
             if action.origin == api.models.IOOrigin.BUS_IO:
                 await self._api_client.bus_ios_api.set_bus_io_values(
                     cell=self._cell,
