@@ -257,7 +257,7 @@ def log_colliders_once(entity_path: str, colliders: dict[str, api.models.Collide
                         vertex_positions=mesh_vertices,
                         triangle_indices=triangles,
                         vertex_normals=normals,
-                        albedo_factor=[colors.colors[0]],
+                        albedo_factor=colors.colors[0],
                     ),
                     static=True,
                 )
