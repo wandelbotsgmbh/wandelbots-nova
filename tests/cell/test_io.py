@@ -291,10 +291,7 @@ SET_IO_ON_PATH_TEST_CASES = [
         SetIOOnPathTestCase(
             description="set controller io with a write-only action list",
             controller_io_prestate={"digital_in[0]": False, "digital_in[1]": False},
-            actions=[
-                io_write("digital_in[0]", True),
-                io_write("digital_in[1]", True),
-            ],
+            actions=[io_write("digital_in[0]", True), io_write("digital_in[1]", True)],
             expected_controller_io={"digital_in[0]": True, "digital_in[1]": True},
         ),
         id="write_only_controller_io",

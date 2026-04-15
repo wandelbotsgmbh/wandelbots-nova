@@ -163,8 +163,7 @@ class MotionGroup(AbstractRobot):
 
             if action.origin == api.models.IOOrigin.BUS_IO:
                 await self._api_client.bus_ios_api.set_bus_io_values(
-                    cell=self._cell,
-                    io_value=[api.models.IOValue(action.to_api_model())],
+                    cell=self._cell, io_value=[api.models.IOValue(action.to_api_model())]
                 )
             else:
                 await self._api_client.controller_ios_api.set_output_values(
