@@ -14,7 +14,7 @@ class IOChange:
     """
     Represents a change in an IO value.
 
-    :param old_value: The previous value of the IO. None if it did not exist.
+    :param old_value: The previous value of the IO. None if the value has been observed for the first time.
     :param new_value: The new value of the IO. None if the IO is no longer present
     """
 
