@@ -96,7 +96,7 @@ async def wait_for_bus_io(
     Underlying NATS subscription guarantees at-most-once delivery when the consumer is healthy.
 
     Provided nats_subscription_kwargs should be used to tune the subscription behavior.
-    Additional tuning behaviour can be achieved by adjusting the NATS client configuration
+    Additional tuning behavior can be achieved by adjusting the NATS client configuration
     in the Nova instance.
 
     :param bus_ios: A list of bus IO names to monitor for changes.
