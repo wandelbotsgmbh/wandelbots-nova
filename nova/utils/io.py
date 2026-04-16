@@ -41,6 +41,23 @@ def _convert_value(value: bool | str | float | None) -> bool | int | float | Non
     return value
 
 
+def _build_io_changes(
+    bus_ios: list[str],
+    old_values: dict[str, api.models.IOValue] | None,
+    new_values: dict[str, api.models.IOValue],
+) -> dict[str, IOChange]:
+    """Build a dict of IOChange entries for the requested bus IOs."""
+    return {
+        io: IOChange(
+            old_value=_convert_value(
+                old_values[io].root.value if old_values and io in old_values else None
+            ),
+            new_value=_convert_value(new_values[io].root.value if io in new_values else None),
+        )
+        for io in bus_ios
+    }
+
+
 async def get_bus_io_value(
     ios: list[str], *, nova: Nova | None = None, cell: str = "cell"
 ) -> dict[str, bool | int | float]:
@@ -128,18 +145,7 @@ async def wait_for_bus_io(
         old_values_dict = {value.root.io: value for value in old_values}
 
         # Check initial state before listening for changes
-        should_terminate = on_change(
-            {
-                io: IOChange(
-                    old_value=None,
-                    new_value=_convert_value(
-                        old_values_dict[io].root.value if io in old_values_dict else None
-                    ),
-                )
-                for io in bus_ios
-            }
-        )
-        if should_terminate:
+        if on_change(_build_io_changes(bus_ios, None, old_values_dict)):
             return
 
         async for message in sub.messages:
@@ -148,21 +154,7 @@ async def wait_for_bus_io(
             new_values = TypeAdapter(list[api.models.IOValue]).validate_json(message.data)
             new_values_dict = {value.root.io: value for value in new_values}
 
-            should_terminate = on_change(
-                {
-                    io: IOChange(
-                        old_value=_convert_value(
-                            old_values_dict[io].root.value if io in old_values_dict else None
-                        ),
-                        new_value=_convert_value(
-                            new_values_dict[io].root.value if io in new_values_dict else None
-                        ),
-                    )
-                    for io in bus_ios
-                }
-            )
-
-            if should_terminate:
+            if on_change(_build_io_changes(bus_ios, old_values_dict, new_values_dict)):
                 break
 
             old_values_dict = new_values_dict
