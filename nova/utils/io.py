@@ -87,17 +87,23 @@ async def wait_for_bus_io(
     Wait for changes on specified bus IOs and call the on_change callback when changes occur.
     The function will continue to listen for changes until the on_change callback returns True.
 
+    The callback is first invoked with the current IO state before listening for changes.
+    In this initial call, ``old_value`` is ``None`` and ``new_value`` holds the current value.
+    If the callback returns True for the initial state, the function returns immediately
+    without waiting for any NATS messages.
+
     Note that this function does not guarantee that all IO changes are captured.
     Underlying NATS subscription guarantees at-most-once delivery when the consumer is healthy.
 
     Provided nats_subscription_kwargs should be used to tune the subscription behavior.
-    Additional tuning behaviour can be achieved by adjusting the NATS client configuration in the Nova instance.
+    Additional tuning behaviour can be achieved by adjusting the NATS client configuration
+    in the Nova instance.
 
-
-    :param nova: The Nova instance to use. It should have a connected NATS client.
     :param bus_ios: A list of bus IO names to monitor for changes.
     :param on_change: A callback function that takes a dictionary of IO changes and returns a boolean.
                       If the callback returns True, the function will stop listening for changes.
+                      On the initial call, ``old_value`` is ``None`` for all IOs.
+    :param nova: The Nova instance to use. It should have a connected NATS client.
     :param cell: The cell name to monitor (default is "cell").
     :param nats_subscription_kwargs: Additional keyword arguments to pass to the NATS subscription.
                                      Refer to nats.subscribe() for available options.
@@ -120,6 +126,21 @@ async def wait_for_bus_io(
     try:
         old_values = await nova.api.bus_ios_api.get_bus_io_values(cell=cell, ios=bus_ios)
         old_values_dict = {value.root.io: value for value in old_values}
+
+        # Check initial state before listening for changes
+        should_terminate = on_change(
+            {
+                io: IOChange(
+                    old_value=None,
+                    new_value=_convert_value(
+                        old_values_dict[io].root.value if io in old_values_dict else None
+                    ),
+                )
+                for io in bus_ios
+            }
+        )
+        if should_terminate:
+            return
 
         async for message in sub.messages:
             logger.debug("Received bus IO update message: %s", message.data.decode())
