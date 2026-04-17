@@ -179,7 +179,7 @@ async def calculate_seam_poses(mesh_pose: api.models.Pose) -> tuple[Pose, Pose, 
             virtual_controller(
                 name="ur10e-welding",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                type="universalrobots-ur10e",
             )
         ],
         cleanup_controllers=False,

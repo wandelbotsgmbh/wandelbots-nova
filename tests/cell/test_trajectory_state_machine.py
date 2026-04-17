@@ -24,6 +24,7 @@ def _make_motion_group_state(
     return api.models.MotionGroupState(
         timestamp=datetime.now(timezone.utc),
         sequence_number=1,
+        description_revision=0,
         motion_group="mg-0",
         controller="ctrl-0",
         joint_position=api.models.Joints(root=[0.0] * 6),

@@ -29,7 +29,7 @@ async def setup_controllers() -> AsyncGenerator[tuple[Controller, Controller], N
             virtual_controller(
                 name="ur-test",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                type="universalrobots-ur10e",
             )
         )
 
@@ -38,7 +38,7 @@ async def setup_controllers() -> AsyncGenerator[tuple[Controller, Controller], N
             virtual_controller(
                 name="kuka-test",
                 manufacturer=api.models.Manufacturer.KUKA,
-                type=api.models.VirtualControllerTypes.KUKA_KR16_R2010_2,
+                type="kuka-kr16_r2010_2",
             )
         )
 
