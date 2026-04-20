@@ -1,0 +1,165 @@
+# ============================================================
+# ULTRA-STRICT PYTHON PROJECT TEMPLATE
+# Based on https://github.com/Ranteck/PyStrict-strict-python
+# Tools: uv + ruff + basedpyright
+# ============================================================
+
+[project]
+name = "nova-policy"
+version = "0.1.0"
+description = "Ultra-strict quality config for nova_policy extension code"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "basedpyright>=1.31.7",
+    "poethepoet",
+    "ruff",
+    "pytest",
+    "pytest-asyncio",
+    "radon",
+    "skylos",
+    # runtime deps used by this extension
+    "httpx>=0.28.0,<0.29",
+    "wandelbots-nova",
+    "python-decouple>=3.8",
+    "fastapi>=0.115.6",
+    "uvicorn>=0.34.0",
+    "pydantic>=2.11.4,<3",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = []
+
+# ============================================================
+# POE THE POET - Task Runner
+# ============================================================
+[tool.poe.tasks]
+format = [
+    { cmd = "ruff format ." },
+    { cmd = "ruff check . --fix" },
+    { cmd = "basedpyright --level error" },
+]
+
+check = [
+    { cmd = "ruff check ." },
+    { cmd = "basedpyright --level error" },
+]
+
+lint = { cmd = "ruff check . --fix" }
+lint-unsafe = { cmd = "ruff check . --fix --unsafe-fixes" }
+typecheck = { cmd = "basedpyright --level error" }
+
+# ============================================================
+# RUFF CONFIGURATION - MAXIMUM STRICTNESS
+# ============================================================
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+indent-width = 4
+fix = true
+show-fixes = true
+preview = true
+exclude = [
+    ".venv",
+    "policy-service/.venv",
+    "policy-service/uv.lock",
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "UP",
+    "B",
+    "BLE",
+    "C4",
+    "C90",
+    "T20",
+    "SIM",
+    "N",
+    "Q",
+    "RUF",
+    "ASYNC",
+    "S",
+    "PTH",
+    "ERA",
+    "PL",
+    "PERF",
+    "ANN",
+    "ARG",
+    "FBT",
+    "RET",
+    "TCH",
+]
+ignore = ["E501"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-nested-blocks = 3
+
+[tool.ruff.lint.per-file-ignores]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nova_policy", "policy_service"]
+combine-as-imports = true
+force-sort-within-sections = true
+
+[tool.ruff.lint.flake8-type-checking]
+strict = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+# ============================================================
+# BASEDPYRIGHT CONFIGURATION - STRICT TYPE CHECKING
+# ============================================================
+[tool.basedpyright]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+include = [
+    "client.py",
+    "models.py",
+    "motion_group_extensions.py",
+    "examples",
+    "policy-service/policy_service",
+]
+exclude = [
+    "policy-service/.venv",
+]
+
+reportMissingImports = true
+reportMissingTypeStubs = true
+reportOptionalSubscript = true
+reportOptionalMemberAccess = true
+reportOptionalCall = true
+reportOptionalIterable = true
+reportOptionalContextManager = true
+reportOptionalOperand = true
+reportAny = true
+reportExplicitAny = true
+reportUnknownParameterType = true
+reportUnknownLambdaType = true
+reportUnknownArgumentType = true
+reportUnknownVariableType = true
+reportUnknownMemberType = true
+reportUnusedClass = "error"
+reportUnusedFunction = "error"
+reportUnusedVariable = "error"
+reportUnusedImport = "error"
+reportDuplicateImport = "error"
+
+venvPath = "."
+venv = ".venv"

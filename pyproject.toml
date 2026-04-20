@@ -64,6 +64,7 @@ wandelscript = [
     "numpy>=1.1.19",
 ]
 novax = ["fastapi>=0.115.6", "uvicorn>=0.34.0", "python-decouple>=3.8"]
+nova-policy = ["httpx>=0.28,<0.29"]
 benchmark = [
     "rerun-sdk==0.26.2",
     "requests>=2.32.3",
@@ -81,10 +82,10 @@ ws = "wandelscript.cli:app"
 prerelease = "allow"
 
 [tool.hatch.build.targets.sdist]
-include = ["nova", "nova_rerun_bridge", "wandelscript", "novax"]
+include = ["nova", "nova_policy", "nova_rerun_bridge", "wandelscript", "novax"]
 
 [tool.hatch.build.targets.wheel]
-include = ["nova", "nova_rerun_bridge", "wandelscript", "novax"]
+include = ["nova", "nova_policy", "nova_rerun_bridge", "wandelscript", "novax"]
 
 [build-system]
 requires = ["hatchling"]
@@ -196,4 +197,4 @@ dist_glob_patterns = ["dist/*"]
 upload_to_vcs_release = true
 
 [tool.ruff.lint.isort]
-known-first-party = ["nova", "nova_rerun_bridge", "novax"]
+known-first-party = ["nova", "nova_policy", "nova_rerun_bridge", "novax"]
