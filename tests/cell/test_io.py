@@ -421,3 +421,28 @@ async def test_wait_io_with_noisy_integer(setup_virtual_profinet: tuple[str, ...
         # VERIFY
         async with asyncio.timeout(5):
             await wait_task
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_wait_io_initial_state_already_met(setup_virtual_profinet: tuple[str, ...]):
+    """wait_for_bus_io should return immediately when the initial state already satisfies the callback."""
+    test_bool, _, _, _ = setup_virtual_profinet
+
+    async with Nova() as nova:
+        # SETUP – set the IO to the target value *before* calling wait_for_bus_io
+        await set_bus_io_value({test_bool: True}, nova=nova)
+
+        call_log: list[dict[str, IOChange]] = []
+
+        def on_change(changes: dict[str, IOChange]) -> bool:
+            call_log.append(changes)
+            return changes[test_bool].new_value is True
+
+        # EXECUTE & VERIFY – should return immediately from initial state check
+        async with asyncio.timeout(2):
+            await wait_for_bus_io([test_bool], on_change=on_change, nova=nova)
+
+        assert len(call_log) == 1
+        assert call_log[0][test_bool].old_value is None
+        assert call_log[0][test_bool].new_value is True
