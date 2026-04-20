@@ -19,6 +19,101 @@ def get_model_path(model_name: str) -> str:
     return str(get_project_root() / "models" / f"{model_name}.glb")
 
 
+def _batch_dh_transforms(
+    dh_parameters: list[api.models.DHParameter],
+    all_joint_positions: np.ndarray,
+    mounting_matrix: np.ndarray,
+) -> np.ndarray:
+    """Compute FK for all samples and all links in one vectorised pass.
+
+    Args:
+        dh_parameters: List of DH parameter objects (one per joint).
+        all_joint_positions: Shape ``(N, num_joints)`` joint values.
+        mounting_matrix: ``(4, 4)`` base mounting transform.
+
+    Returns:
+        ``(num_links+1, N, 4, 4)`` accumulated transforms.  Index 0 is the
+        mounting repeated for every sample, index *k* is the accumulated
+        transform after joint *k-1*.
+    """
+    num_samples = all_joint_positions.shape[0]
+    num_joints = len(dh_parameters)
+
+    accumulated = np.tile(mounting_matrix, (num_samples, 1, 1))
+    result = np.empty((num_joints + 1, num_samples, 4, 4))
+    result[0] = accumulated
+
+    for joint_index, dh_param in enumerate(dh_parameters):
+        joint_values = all_joint_positions[:, joint_index]
+
+        direction = -1.0 if dh_param.reverse_rotation_direction else 1.0
+        theta = (dh_param.theta or 0.0) + joint_values * direction
+
+        d = dh_param.d or 0.0
+        a = dh_param.a or 0.0
+        alpha = dh_param.alpha or 0.0
+
+        cos_theta = np.cos(theta)
+        sin_theta = np.sin(theta)
+        cos_alpha = np.cos(alpha)
+        sin_alpha = np.sin(alpha)
+
+        transform = np.zeros((num_samples, 4, 4))
+        transform[:, 0, 0] = cos_theta
+        transform[:, 0, 1] = -sin_theta * cos_alpha
+        transform[:, 0, 2] = sin_theta * sin_alpha
+        transform[:, 0, 3] = a * cos_theta
+        transform[:, 1, 0] = sin_theta
+        transform[:, 1, 1] = cos_theta * cos_alpha
+        transform[:, 1, 2] = -cos_theta * sin_alpha
+        transform[:, 1, 3] = a * sin_theta
+        transform[:, 2, 1] = sin_alpha
+        transform[:, 2, 2] = cos_alpha
+        transform[:, 2, 3] = d
+        transform[:, 3, 3] = 1.0
+
+        accumulated = np.matmul(accumulated, transform)
+        result[joint_index + 1] = accumulated
+
+    return result
+
+
+def _batch_collect(
+    final_transforms: np.ndarray,
+    link_positions: dict[str, list],
+    link_rotations: dict[str, list],
+    entity_path: str,
+) -> None:
+    """Extract translations and axis-angle rotations from ``(N, 4, 4)`` transforms.
+
+    Uses ``scipy.spatial.transform.Rotation.from_matrix`` on the full batch
+    instead of per-sample SVD.
+    """
+    translations = final_transforms[:, :3, 3].tolist()
+    rot_matrices = final_transforms[:, :3, :3]
+
+    rotations = Rotation.from_matrix(rot_matrices)
+    rotvecs = rotations.as_rotvec()
+    angles = np.linalg.norm(rotvecs, axis=1)
+    safe_angles = np.where(angles > 1e-8, angles, 1.0)
+    axes = rotvecs / safe_angles[:, np.newaxis]
+    axes[angles <= 1e-8] = [1.0, 0.0, 0.0]
+
+    angles_list = angles.tolist()
+    axes_list = axes.tolist()
+    rr_rotations = [
+        rr.RotationAxisAngle(axis=axes_list[i], angle=angles_list[i])
+        for i in range(len(angles_list))
+    ]
+
+    if entity_path not in link_positions:
+        link_positions[entity_path] = translations
+        link_rotations[entity_path] = rr_rotations
+    else:
+        link_positions[entity_path].extend(translations)
+        link_rotations[entity_path].extend(rr_rotations)
+
+
 class RobotVisualizer:
     def __init__(
         self,
@@ -642,10 +737,9 @@ class RobotVisualizer:
                     rotation_matrix_z_4x4 = np.eye(4)
                     if len(self.robot.dh_parameters) > link_index:
                         theta = self.robot.dh_parameters[link_index].theta or 0.0
-                        rotation_z_minus_90 = Rotation.from_euler(
+                        rotation_matrix_z_4x4[:3, :3] = Rotation.from_euler(
                             "z", theta, degrees=False
                         ).as_matrix()
-                        rotation_matrix_z_4x4[:3, :3] = rotation_z_minus_90
 
                     # scale positions to mm
                     inverse_transform[:3, 3] *= 1000
@@ -684,136 +778,139 @@ class RobotVisualizer:
     def log_robot_geometries(
         self, trajectory: api.models.JointTrajectory, times_column: rr.TimeColumn
     ):
-        """
-        Log the robot geometries for each link and TCP as separate entities.
+        """Log the robot geometries for each link and TCP as separate entities.
+
+        Uses vectorised FK and batch rotation extraction to avoid per-sample
+        Python loops.
 
         Args:
-            trajectory (list[api.models.TrajectoryData]): The list of trajectory sample points.
-            times_column (rr.TimeColumn): The time column associated with the trajectory points.
+            trajectory: The joint trajectory with sample points.
+            times_column: The time column associated with the trajectory points.
         """
-        link_positions = {}
-        link_rotations = {}
+        if not trajectory.joint_positions:
+            return
 
-        def collect_geometry_data(entity_path, transform):
-            """Helper to collect geometry data for a given entity."""
-            translation = transform[:3, 3].tolist()
-            Rm = transform[:3, :3]
-            axis, angle = self.rotation_matrix_to_axis_angle(Rm)
-            if entity_path not in link_positions:
-                link_positions[entity_path] = []
-                link_rotations[entity_path] = []
-            link_positions[entity_path].append(translation)
-            link_rotations[entity_path].append(rr.RotationAxisAngle(axis=axis, angle=angle))
+        all_joints = np.array([jp.root for jp in trajectory.joint_positions], dtype=np.float64)
 
-        for joint_position in trajectory.joint_positions:
-            transforms = self.compute_forward_kinematics(joint_positions=joint_position.root)
+        mounting_matrix = self.robot.pose_to_matrix(self.robot.mounting)
+        all_transforms = _batch_dh_transforms(self.robot.dh_parameters, all_joints, mounting_matrix)
 
-            # Log robot joint geometries
-            if self.mesh_loaded:
-                for link_index, joint_name in enumerate(self.joint_names):
-                    if link_index >= len(transforms):
-                        break
-                    link_transform = transforms[link_index]
+        link_positions: dict[str, list] = {}
+        link_rotations: dict[str, list] = {}
 
-                    # Get nodes on same layer using dictionary
-                    same_layer_nodes = self.layer_nodes_dict.get(joint_name)
-                    if not same_layer_nodes:
-                        continue
+        root_transform = self.get_transform_matrix()
 
-                    filtered_geoms = []
-                    for node_name in same_layer_nodes:
-                        if node_name in self.scene.geometry:
-                            geom = self.scene.geometry[node_name]
-                            # Add metadata that would normally come from dump
-                            geom.metadata = {"node": node_name}
-                            filtered_geoms.append(geom)
+        # --- Visual meshes ---
+        if self.mesh_loaded:
+            for link_index, joint_name in enumerate(self.joint_names):
+                if link_index >= all_transforms.shape[0]:
+                    break
 
-                    for geom in filtered_geoms:
-                        entity_path = f"{self.base_entity_path}/visual/links/link_{link_index}/mesh/{geom.metadata.get('node')}"
+                link_transforms_batch = all_transforms[link_index]
 
-                        # calculate the inverse transform to get the mesh in the correct position
-                        cumulative_transform, _ = self.scene.graph.get(frame_to=joint_name)
-                        ctransform = cumulative_transform.copy()
-                        inverse_transform = np.linalg.inv(ctransform)
+                same_layer_nodes = self.layer_nodes_dict.get(joint_name)
+                if not same_layer_nodes:
+                    continue
 
-                        # DH theta is rotated, rotate mesh around z in direction of theta
-                        rotation_matrix_z_4x4 = np.eye(4)
-                        if len(self.robot.dh_parameters) > link_index:
-                            theta = self.robot.dh_parameters[link_index].theta or 0.0
-                            rotation_z_minus_90 = Rotation.from_euler(
-                                "z", theta, degrees=False
-                            ).as_matrix()
-                            rotation_matrix_z_4x4[:3, :3] = rotation_z_minus_90
+                filtered_geoms = []
+                for node_name in same_layer_nodes:
+                    if node_name in self.scene.geometry:
+                        geom = self.scene.geometry[node_name]
+                        # Add metadata that would normally come from dump
+                        geom.metadata = {"node": node_name}
+                        filtered_geoms.append(geom)
 
-                        # scale positions to mm
-                        inverse_transform[:3, 3] *= 1000
+                # DH theta is rotated, rotate mesh around z in direction of theta
+                rotation_matrix_z_4x4 = np.eye(4)
+                if len(self.robot.dh_parameters) > link_index:
+                    theta = self.robot.dh_parameters[link_index].theta or 0.0
+                    rotation_matrix_z_4x4[:3, :3] = Rotation.from_euler(
+                        "z", theta, degrees=False
+                    ).as_matrix()
 
-                        root_transform = self.get_transform_matrix()
+                # Calculate the inverse transform to get the mesh in the correct position
+                cumulative_transform, _ = self.scene.graph.get(frame_to=joint_name)
+                inverse_transform = np.linalg.inv(cumulative_transform.copy())
+                # Scale positions to mm
+                inverse_transform[:3, 3] *= 1000
 
-                        transform = root_transform @ inverse_transform
+                static_part = rotation_matrix_z_4x4 @ root_transform @ inverse_transform
+                final_transforms = np.matmul(link_transforms_batch, static_part)
 
-                        final_transform = link_transform @ rotation_matrix_z_4x4 @ transform
-
-                        self.init_mesh(entity_path, geom, joint_name)
-                        collect_geometry_data(entity_path, final_transform)
-
-            # Collect data for link geometries (safety from controller)
-            if self.show_safety_link_chain:
-                for link_index, geometries in self.link_geometries.items():
-                    link_transform = transforms[link_index]
-                    for i, geom in enumerate(geometries):
-                        entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
-                        final_transform = link_transform @ self.geometry_pose_to_matrix(
-                            Pose(geom.pose)
-                        )
-                        self.init_geometry(entity_path, geom)
-                        collect_geometry_data(entity_path, final_transform)
-
-            # Collect data for TCP geometries (safety from controller)
-            if self.show_safety_link_chain and self.tcp_geometries:
-                tcp_transform = transforms[-1]  # End-effector transform
-                for name, geom in self.tcp_geometries.items():
-                    escaped_name = rr.escape_entity_path_part(name)
+                for geom in filtered_geoms:
                     entity_path = (
-                        f"{self.base_entity_path}/safety_from_controller/tcp/{escaped_name}"
+                        f"{self.base_entity_path}/visual/links/"
+                        f"link_{link_index}/mesh/{geom.metadata.get('node')}"
                     )
-                    final_transform = tcp_transform @ self.geometry_pose_to_matrix(Pose(geom.pose))
+                    self.init_mesh(entity_path, geom, joint_name)
+                    _batch_collect(final_transforms, link_positions, link_rotations, entity_path)
+
+        # --- Safety link chain geometries ---
+        if self.show_safety_link_chain:
+            for link_index, geometries in self.link_geometries.items():
+                link_transforms_batch = all_transforms[link_index]
+                for i, geom in enumerate(geometries):
+                    entity_path = (
+                        f"{self.base_entity_path}/safety_from_controller/"
+                        f"links/link_{link_index}/geometry_{i}"
+                    )
                     self.init_geometry(entity_path, geom)
-                    collect_geometry_data(entity_path, final_transform)
 
-            # Collect data for collision link geometries (only if enabled)
-            if self.show_collision_link_chain and self.collision_link_geometries:
-                for link_index, geometries in enumerate(self.collision_link_geometries):
-                    geom_dict = cast(
-                        dict[str, api.models.Collider],
-                        geometries.root if hasattr(geometries, "root") else geometries,
+                    pose_matrix = self.geometry_pose_to_matrix(Pose(geom.pose))
+                    final_transforms = np.matmul(link_transforms_batch, pose_matrix)
+                    _batch_collect(final_transforms, link_positions, link_rotations, entity_path)
+
+        # --- Safety TCP geometries ---
+        if self.show_safety_link_chain and self.tcp_geometries:
+            tcp_transforms_batch = all_transforms[-1]
+            for name, geom in self.tcp_geometries.items():
+                escaped_name = rr.escape_entity_path_part(name)
+                entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/{escaped_name}"
+                self.init_geometry(entity_path, geom)
+
+                pose_matrix = self.geometry_pose_to_matrix(Pose(geom.pose))
+                final_transforms = np.matmul(tcp_transforms_batch, pose_matrix)
+                _batch_collect(final_transforms, link_positions, link_rotations, entity_path)
+
+        # --- Collision link geometries ---
+        if self.show_collision_link_chain and self.collision_link_geometries:
+            for link_index, geometries in enumerate(self.collision_link_geometries):
+                geom_dict = cast(
+                    dict[str, api.models.Collider],
+                    geometries.root if hasattr(geometries, "root") else geometries,
+                )
+                link_transforms_batch = all_transforms[link_index]
+                for geom_id, collider in geom_dict.items():
+                    escaped_geom_id = rr.escape_entity_path_part(str(geom_id))
+                    entity_path = (
+                        f"{self.base_entity_path}/collision/links/"
+                        f"link_{link_index}/geometry_{escaped_geom_id}"
                     )
-                    link_transform = transforms[link_index]
-                    for geom_id, collider in geom_dict.items():
-                        escaped_geom_id = rr.escape_entity_path_part(str(geom_id))
-                        entity_path = f"{self.base_entity_path}/collision/links/link_{link_index}/geometry_{escaped_geom_id}"
-
-                        pose = Pose(collider.pose)
-                        final_transform = link_transform @ self.geometry_pose_to_matrix(pose)
-                        self.init_collision_geometry(entity_path, collider, pose)
-                        collect_geometry_data(entity_path, final_transform)
-
-            # Collect data for collision TCP geometries (only if enabled)
-            if self.show_collision_tool and self.collision_tcp_geometries:
-                tcp_transform = transforms[-1]  # End-effector transform
-                for geom_id, collider in self.collision_tcp_geometries.items():
-                    escaped_id = rr.escape_entity_path_part(geom_id)
-                    entity_path = f"{self.base_entity_path}/collision/tcp/{escaped_id}"
 
                     pose = Pose(collider.pose)
-                    final_transform = tcp_transform @ self.geometry_pose_to_matrix(pose)
+                    self.init_collision_geometry(entity_path, collider, pose)
 
-                    # tcp collision geometries are defined in flange frame
-                    identity_pose = Pose((0, 0, 0, 0, 0, 0))
-                    self.init_collision_geometry(entity_path, collider, identity_pose)
-                    collect_geometry_data(entity_path, final_transform)
+                    pose_matrix = self.geometry_pose_to_matrix(pose)
+                    final_transforms = np.matmul(link_transforms_batch, pose_matrix)
+                    _batch_collect(final_transforms, link_positions, link_rotations, entity_path)
 
-        # Send collected columns for all geometries
+        # --- Collision TCP geometries ---
+        if self.show_collision_tool and self.collision_tcp_geometries:
+            tcp_transforms_batch = all_transforms[-1]
+            for geom_id, collider in self.collision_tcp_geometries.items():
+                escaped_id = rr.escape_entity_path_part(geom_id)
+                entity_path = f"{self.base_entity_path}/collision/tcp/{escaped_id}"
+
+                pose = Pose(collider.pose)
+                # tcp collision geometries are defined in flange frame
+                identity_pose = Pose((0, 0, 0, 0, 0, 0))
+                self.init_collision_geometry(entity_path, collider, identity_pose)
+
+                pose_matrix = self.geometry_pose_to_matrix(pose)
+                final_transforms = np.matmul(tcp_transforms_batch, pose_matrix)
+                _batch_collect(final_transforms, link_positions, link_rotations, entity_path)
+
+        # --- Send all collected columns to rerun ---
         for entity_path, positions in link_positions.items():
             rr.send_columns(
                 entity_path,
