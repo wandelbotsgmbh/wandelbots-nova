@@ -34,7 +34,7 @@ def load_joint_trajectories() -> dict[str, api.models.JointTrajectory]:
             virtual_controller(
                 name="kuka",
                 manufacturer=nova.api.models.Manufacturer.KUKA,
-                type=nova.api.models.VirtualControllerTypes.KUKA_KR210_R2700_2,
+                type="kuka-kr210_r2700_2",
                 controller_config_json=load_controller_config(),
             )
         ]

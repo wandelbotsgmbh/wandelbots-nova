@@ -20,7 +20,7 @@ async def main():
             virtual_controller(
                 name="ur10e",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                type="universalrobots-ur10e",
             )
         )
 

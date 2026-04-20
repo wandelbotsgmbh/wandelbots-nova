@@ -175,22 +175,16 @@ def calculate_handover_orientation(
             virtual_controller(
                 name="fanuc",
                 manufacturer=api.models.Manufacturer.FANUC,
-                type=api.models.VirtualControllerTypes.FANUC_LR_MATE_200I_D7_L,
+                type="fanuc-lrmate200id_7l",
             ),
             virtual_controller(
-                name="kuka",
-                manufacturer=api.models.Manufacturer.KUKA,
-                type=api.models.VirtualControllerTypes.KUKA_KR6_R700_2,
+                name="kuka", manufacturer=api.models.Manufacturer.KUKA, type="kuka-kr6_r700_2"
             ),
             virtual_controller(
-                name="abb",
-                manufacturer=api.models.Manufacturer.ABB,
-                type=api.models.VirtualControllerTypes.ABB_IRB1200_7,
+                name="abb", manufacturer=api.models.Manufacturer.ABB, type="abb-irb1200_7"
             ),
             virtual_controller(
-                name="yaskawa",
-                manufacturer=api.models.Manufacturer.YASKAWA,
-                type=api.models.VirtualControllerTypes.YASKAWA_GP7,
+                name="yaskawa", manufacturer=api.models.Manufacturer.YASKAWA, type="yaskawa-gp7"
             ),
         ],
         cleanup_controllers=False,

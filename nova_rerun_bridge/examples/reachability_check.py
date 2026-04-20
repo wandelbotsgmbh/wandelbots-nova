@@ -39,7 +39,7 @@ def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
             virtual_controller(
                 name="ur10",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                type="universalrobots-ur10e",
             )
         ],
         cleanup_controllers=False,

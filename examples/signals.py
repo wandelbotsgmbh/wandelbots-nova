@@ -32,7 +32,7 @@ from nova.utils.io import IOChange, get_bus_io_value, set_bus_io_value, wait_for
             virtual_controller(
                 name="ur5",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR5E,
+                type="universalrobots-ur5e",
             )
         ],
         cleanup_controllers=False,
