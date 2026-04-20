@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.12.1 (2026-04-20)
+
+### Bug Fixes
+
+- **NDX-665**: Check initial state in wait_for_bus_io before listening for changes (#413)
+  ([#413](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/413),
+  [`bb327b0`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bb327b072633a9f6e64ae7c0980260acc041a590))
+
+
 ## v4.12.0 (2026-04-14)
 
 ### Features
