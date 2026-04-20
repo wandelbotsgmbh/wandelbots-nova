@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v4.13.0 (2026-04-20)
+
+### Features
+
+- **api**: Update wandelbots-api-client to 26.3 (#414)
+  ([#414](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/414),
+  [`8ce1a8e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8ce1a8ea8ac318800672a58ea7f7c1d0aeed308f))
+
+
 ## v4.12.1 (2026-04-20)
 
 ### Bug Fixes
