@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-@pytest.mark.integration
 async def setup_controllers() -> AsyncGenerator[tuple[Controller, Controller], None]:
     async with Nova() as nova:
         cell = nova.cell()
@@ -46,7 +45,6 @@ async def setup_controllers() -> AsyncGenerator[tuple[Controller, Controller], N
 
 
 @pytest.fixture
-@pytest.mark.integration
 async def setup_virtual_profinet() -> AsyncGenerator[tuple[str, ...], None]:
     async with Nova() as nova:
         bus_io_service_ready = asyncio.Event()
