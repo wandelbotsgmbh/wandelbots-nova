@@ -19,6 +19,15 @@ def get_model_path(model_name: str) -> str:
     return str(get_project_root() / "models" / f"{model_name}.glb")
 
 
+def _copy_graph_matrix(matrix: object) -> np.ndarray:
+    """Copy a transform matrix from :meth:`trimesh.scene.transforms.SceneGraph.get`.
+
+    Trimesh/numpy stubs expose the matrix with a covariant dtype variable that does
+    not match :func:`numpy.copy` overloads; building a new array avoids ``call-overload``.
+    """
+    return np.array(matrix, dtype=np.float64, copy=True)
+
+
 class RobotVisualizer:
     def __init__(
         self,
@@ -242,14 +251,14 @@ class RobotVisualizer:
             # if the dh parameters are not at 0,0,0 from the mesh we have to move the first mesh joint
             if "J00" in joint_name:
                 base_transform_, _ = self.scene.graph.get(frame_to=joint_name)
-                base_transform = np.copy(base_transform_)
+                base_transform = _copy_graph_matrix(base_transform_)
             base_transform[:3, 3] *= 1000
 
             # if the mesh has the pivot not in the center, we need to adjust the transform
             cumulative_transform, _ = self.scene.graph.get(
                 frame_to=self.parent_nodes_dict[geom.metadata.get("node")]
             )
-            ctransform = np.copy(cumulative_transform)
+            ctransform = _copy_graph_matrix(cumulative_transform)
 
             # scale positions to mm
             ctransform[:3, 3] *= 1000
@@ -635,7 +644,7 @@ class RobotVisualizer:
 
                     # calculate the inverse transform to get the mesh in the correct position
                     cumulative_transform, _ = self.scene.graph.get(frame_to=joint_name)
-                    ctransform = np.copy(cumulative_transform)
+                    ctransform = _copy_graph_matrix(cumulative_transform)
                     inverse_transform = np.linalg.inv(ctransform)
 
                     # DH theta is rotated, rotate mesh around z in direction of theta
@@ -733,7 +742,7 @@ class RobotVisualizer:
 
                         # calculate the inverse transform to get the mesh in the correct position
                         cumulative_transform, _ = self.scene.graph.get(frame_to=joint_name)
-                        ctransform = np.copy(cumulative_transform)
+                        ctransform = _copy_graph_matrix(cumulative_transform)
                         inverse_transform = np.linalg.inv(ctransform)
 
                         # DH theta is rotated, rotate mesh around z in direction of theta
