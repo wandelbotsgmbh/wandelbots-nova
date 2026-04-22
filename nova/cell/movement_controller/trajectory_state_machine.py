@@ -169,6 +169,15 @@ class TrajectoryExecutionMachine(StateMachine):
         self.location: float | None = None
         super().__init__()
 
+    def _active_configuration_id(self) -> str:
+        """String id for the active configuration (uses :attr:`StateChart.configuration`)."""
+        cfg = self.configuration
+        if not cfg:
+            return ""
+        if len(cfg) == 1:
+            return next(iter(cfg)).id
+        return ",".join(s.id for s in cfg)
+
     # -- Public API -----------------------------------------------------------
 
     def process_motion_state(self, state: api.models.MotionGroupState) -> StateUpdate:
@@ -186,7 +195,7 @@ class TrajectoryExecutionMachine(StateMachine):
             A :class:`StateUpdate` with location, execute presence and
             transition information.
         """
-        previous_state_id: str = self.current_state.id
+        previous_state_id: str = self._active_configuration_id()
         has_execute = state.execute is not None
         location: float | None = None
 
@@ -198,7 +207,7 @@ class TrajectoryExecutionMachine(StateMachine):
                 has_execute=False,
                 state_changed=False,
                 previous_state_id=previous_state_id,
-                current_state_id=self.current_state.id,
+                current_state_id=previous_state_id,
             )
 
         # Execute *is* present ------------------------------------------------
@@ -223,12 +232,13 @@ class TrajectoryExecutionMachine(StateMachine):
                 else:
                     self._keep_pausing()
 
+        current_id = self._active_configuration_id()
         return StateUpdate(
             location=location,
             has_execute=True,
-            state_changed=self.current_state.id != previous_state_id,
+            state_changed=current_id != previous_state_id,
             previous_state_id=previous_state_id,
-            current_state_id=self.current_state.id,
+            current_state_id=current_id,
         )
 
     # -- Convenience properties -----------------------------------------------
