@@ -6,6 +6,12 @@ FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    linux-libc-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml ./
 
 # Enable bytecode compilation

@@ -5,7 +5,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 JsonPrimitive = str | int | float | bool | None
-JsonValue = JsonPrimitive | dict[str, "JsonValue"] | list["JsonValue"]
+JsonValue = JsonPrimitive | dict[str, object] | list[object]
 
 
 class AppState(StrEnum):

@@ -1,22 +1,23 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 import uvicorn
 
-from policy_service.models import HealthzResponse, PolicyInfoResponse, PolicyRunResponse
-from policy_service.runtime import MockPolicyRuntime, PolicyConflictError
-
-if TYPE_CHECKING:
-    from policy_service.models import PolicyStartRequest
+from policy_service.models import (  # noqa: TC001
+    HealthzResponse,
+    PolicyInfoResponse,
+    PolicyRunResponse,
+    PolicyStartRequest,
+)
+from policy_service.runtime import PolicyConflictError, PolicyRuntime
 
 BASE_PATH = os.getenv("BASE_PATH", "")
 
-runtime = MockPolicyRuntime()
+runtime = PolicyRuntime()
 app = FastAPI(
     title="NOVA Policy Service",
     version="0.1.0",
@@ -79,27 +80,23 @@ async def list_policies() -> list[PolicyInfoResponse]:
     ]
 
 
-@app.get("/policies/{policy}", response_model=PolicyInfoResponse)
-async def get_policy(policy: str) -> PolicyInfoResponse:
-    loaded = runtime.loaded_policy == policy
-    return PolicyInfoResponse(policy=policy, loaded=loaded, app_state=runtime.app_state)
-
-
-@app.post("/policies/{policy}/start", response_model=PolicyRunResponse)
+@app.post("/policies/{policy:path}/start", response_model=PolicyRunResponse)
 async def start_policy(policy: str, request: PolicyStartRequest) -> PolicyRunResponse:
     try:
         return await runtime.start(policy, request)
     except PolicyConflictError as exc:
         raise HTTPException(status_code=406, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@app.post("/policies/{policy}/stop", status_code=204)
+@app.post("/policies/{policy:path}/stop", status_code=204)
 async def stop_policy(policy: str, run: str | None = None) -> Response:
     await runtime.stop(policy, run)
     return Response(status_code=204)
 
 
-@app.get("/policies/{policy}/runs/{run}", response_model=PolicyRunResponse)
+@app.get("/policies/{policy:path}/runs/{run}", response_model=PolicyRunResponse)
 async def get_policy_run(policy: str, run: str) -> PolicyRunResponse:
     try:
         return await runtime.get_run(policy, run)
@@ -107,7 +104,13 @@ async def get_policy_run(policy: str, run: str) -> PolicyRunResponse:
         raise HTTPException(status_code=404, detail="Run not found") from exc
 
 
-def main(host: str = "127.0.0.1", port: int = 3000) -> None:
+@app.get("/policies/{policy:path}", response_model=PolicyInfoResponse)
+async def get_policy(policy: str) -> PolicyInfoResponse:
+    loaded = runtime.loaded_policy == policy
+    return PolicyInfoResponse(policy=policy, loaded=loaded, app_state=runtime.app_state)
+
+
+def main(host: str = "0.0.0.0", port: int = 3000) -> None:  # noqa: S104
     uvicorn.run(
         app,
         host=host,
