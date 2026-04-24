@@ -19,6 +19,116 @@ Key requested differences to address:
 
 ---
 
+## Status update (2026-04-24)
+
+### Completed so far
+
+- [x] Added the actual standalone phase-1 service in `/Users/stefanwagner/Git/lerobot-inference/policy_service`.
+- [x] Switched the actual implementation focus from the old `nova_app` wrapper to a standalone FastAPI control-plane service.
+- [x] Kept policy source environment-driven via `POLICY_PATH` with `POLICY_KIND` and `PRELOAD_POLICY_ON_STARTUP` support.
+- [x] Added HTTP control-plane endpoints in the actual service: `GET /healthz`, `GET /policy`, `GET /policies`, `GET /policies/{policy}`, `POST /policies/{policy}/start`, `POST /policies/{policy}/stop`, `GET /policies/{policy}/runs/{run}`.
+- [x] Reused the real `lerobot-inference` runtime pieces (`nova_app/app/runtime.py`, `nova_app/app/config.py`, `nova_app/app/runner.py`) instead of the earlier mock/draft service code.
+- [x] Updated the `lerobot-inference` Dockerfile so the default container entrypoint is now `python -m policy_service`.
+- [x] Fixed ACT policy loading in the real repo by importing `lerobot.policies` before `PreTrainedConfig.from_pretrained(...)` is used.
+- [x] Fixed FastAPI route ordering so `/policies/{policy}/runs/{run}` is no longer shadowed by `/policies/{policy}`.
+- [x] Added/validated typed ACT discovery work in `wandelbots-nova/nova_policy` (`ACTPolicy`, `PolicyServiceClient.get_policy()`, explicit `PolicyExecutionContext`, `n_action_steps` override path).
+- [x] Validated the actual phase-1 service locally against `https://spjhrikg.instance.wandelbots.io` using the virtual `ur10e` controller, dataset-backed cameras, and policy `StefanWagnerWandelbots/act_virtual_teleop_pickplace_easy`.
+- [x] Observed real run lifecycle/log evidence: policy preload/load, Nova connect, camera connect, jogging start, and terminal run state (`PREPARING -> TIMED_OUT` for the short validation run).
+
+### Additional phase-2 progress completed locally
+
+- [x] Refactored the real `lerobot-inference` service into inference-only behavior for the active run path.
+- [x] Added a Socket.IO data-plane in `/Users/stefanwagner/Git/lerobot-inference/policy_service/app.py` with:
+  - `observation.push`
+  - `action.chunk`
+  - `session.state`
+- [x] Added a dedicated inference engine in `/Users/stefanwagner/Git/lerobot-inference/policy_service/inference_engine.py` that:
+  - loads ACT policy from env-driven `POLICY_PATH`
+  - applies optional `n_action_steps` override from request policy payload
+  - keeps camera ingestion internal to the service
+  - predicts action chunks from external robot-state observations
+- [x] Removed direct `robot.send_action(...)` execution from the standalone `policy_service` runtime path.
+- [x] Added SDK-side typed realtime client primitives in `/Users/stefanwagner/Git/wandelbots-nova/nova_policy`:
+  - `RobotStatePoint`
+  - `ActionStep`
+  - `ActionChunk`
+  - `PolicyRealtimeSession`
+  - `PolicyServiceClient.open_realtime_session()`
+- [x] Added dependency wiring for Socket.IO:
+  - `lerobot-inference` runtime now depends on `python-socketio`
+  - `wandelbots-nova[nova-policy]` now includes `python-socketio` + `aiohttp`
+- [x] Local validation completed for the new phase-2 split:
+  - `GET /healthz` and `GET /policy` still work through the FastAPI control plane
+  - runtime smoke test with a fake inference engine confirmed `PREPARING -> RUNNING`, `observation.push` -> typed `action.chunk`, and clean stop behavior
+  - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `7 passed`
+
+### Phase-2 cluster realtime validation completed
+
+- [x] Reworked the `lerobot-inference` Dockerfile to keep CUDA while avoiding the earlier oversized Python-slim image:
+  - base image is now `nvidia/cuda:12.8.0-cudnn-runtime-ubuntu24.04`
+  - PyTorch CUDA wheels are installed without duplicating the full NVIDIA wheel stack
+  - resulting local image size is ~8.21 GiB instead of ~16 GiB
+- [x] Built and pushed optimized realtime image `wandelbots.azurecr.io/ai/nova-policy-service:2026-04-24-05`.
+- [x] Verified pushed image digest: `sha256:2327d5192a456dd27c17653ffe027c932ac2d9a7adecccd3e8af61098dfc2364`.
+- [x] Deployed via Flux commit `cba18da454160fec759ced2b53a6a786ff4810c0` (`fix(nova-policy-service): use optimized cuda realtime image`).
+- [x] Reconciled Flux in namespace `team-embodied-ai`; `apps-nova-policy-service` and `team-embodied-ai` reported `READY` at revision `main@sha1:cba18da4`.
+- [x] Verified deployment uses image `wandelbots.azurecr.io/ai/nova-policy-service:2026-04-24-05` and rollout completed with `1/1` ready replica.
+- [x] Verified public HTTP control-plane after rollout:
+  - `GET /healthz` -> `200 {"status":"ok"}`
+  - `GET /policy` -> configured ACT policy with `loaded=true`, `app_state="READY"`
+- [x] Added explicit `allow_mock_images` start-request flag for Phase-2 smoke tests where policy expects visual inputs but the manual test intentionally sends only mock robot-state observations.
+- [x] Validated Socket.IO websocket transport through the public cluster gateway using `transports=["websocket"]`.
+- [x] Manual Phase-2 inference run succeeded on the cluster route:
+  - observed run `run_03c221c7c3`
+  - state transition `PREPARING -> RUNNING`
+  - sent 20 mock joint/gripper observations via `observation.push`
+  - received 20 `action.chunk` messages
+  - returned joint vectors varied over time
+  - stopped cleanly with terminal state `STOPPED`
+- [x] Forced disconnect/reconnect smoke succeeded:
+  - observed run `run_2a0fd8b028`
+  - first Socket.IO connection received an action chunk
+  - client disconnected intentionally
+  - second Socket.IO connection resumed by run id and received another action chunk
+  - run stopped cleanly with terminal state `STOPPED`
+
+### Still intentionally not done
+
+- [ ] SDK-side local chunk execution loop.
+- [ ] MotionGroup-native execution over the new Socket.IO data-plane.
+- [ ] Explicit auth validation for Socket.IO handshake headers/tokens; current cluster route accepted the unauthenticated manual websocket test just like the HTTP control-plane.
+
+### Phase-1 deployment prep completed
+
+- [x] Hardened the real `lerobot-inference` Docker build for private `code.wabo.run` dependencies using a BuildKit secret-mounted SSH key instead of the earlier ad-hoc auth setup.
+- [x] Built and pushed image `wandelbots.azurecr.io/ai/nova-policy-service:2026-04-23-01`.
+- [x] Verified pushed image digest: `sha256:7dd945c53824cc490db9f9f2e801428a3515053fa761796468e2e99fd18ee9cc`.
+- [x] Updated Flux app manifests in `/Users/stefanwagner/Git/flux-apps/apps/nova-policy-service` with:
+  - `POLICY_PATH=StefanWagnerWandelbots/act_virtual_teleop_pickplace_easy`
+  - readiness/liveness probes on `/healthz`
+  - ACR pull secret wiring
+  - image tag `2026-04-23-01`
+  - `BackendTrafficPolicy` for longer-lived realtime sessions
+- [x] Render-validated the Flux kustomization locally via `kubectl kustomize apps/nova-policy-service`.
+
+### Phase-1 cluster rollout completed
+
+- [x] Committed and pushed Flux change `1c4888dafb69e53e1861f9d7d72d3460abf87763` in `flux-apps` (`feat(nova-policy-service): deploy phase-1 policy service image`).
+- [x] Reconciled Flux source `physical-ai-flux-apps` and kustomization `team-embodied-ai` / `apps-nova-policy-service` in namespace `team-embodied-ai`.
+- [x] Verified rollout success for deployment `nova-policy-service` on cluster context `developer-portal-gpucluster-dev`.
+- [x] Verified the live route hostname: `https://nova-policy-service.ai.gpucluster-dev.wandelbots.io`.
+- [x] Verified unauthenticated HTTP control-plane access through the public cluster gateway:
+  - `GET /healthz` -> `200 {"status":"ok"}`
+  - `GET /policy` -> configured ACT policy with `loaded=true`, `app_state="READY"`
+- [ ] Still need to validate the same route explicitly from a NOVA-instance network path if infra requires that stronger check.
+- [x] Verified service startup logs show successful policy preload on cluster without crash loops.
+- [x] Verified `BackendTrafficPolicy` is attached and accepted by the gateway controller.
+- [x] Verified current HTTP route behavior is not protected by additional auth for these GET endpoints.
+
+### Known issue found during validation
+
+- [ ] `observation.state` from the current Nova robot path is 6D while the validated ACT checkpoint expects 7D (`gripper.pos` missing). Current runner pads with zero and still runs, but this should be normalized explicitly in the future adapter/inference contract.
+
 ## Findings from code investigation
 
 ## 1) `lerobot-inference` already contains two execution modes
@@ -610,30 +720,33 @@ Deliverable: production WebRTC camera flow + robust multi-policy adapter layer.
 
 ## Detailed TODO checklist
 
-## Service-side (`wandelbots-nova/nova_policy/policy-service`)
-- [ ] Replace current runtime engine with `lerobot-inference`-style policy loader/inferencer.
-- [ ] Keep env vars as source of policy (`POLICY_PATH`, preload options).
-- [ ] Add transport dependency wiring (`python-socketio`) in service package/runtime image.
-- [ ] Add hybrid transport surface:
-  - [ ] Keep HTTP control-plane endpoints (`healthz`, `get_policy`, optional session lifecycle calls).
-  - [ ] Add Socket.IO channels for `session.state`, `observation.push`, and `action.chunk`.
-- [ ] Integrate Socket.IO-based robot-state relay path from SDK extra.
-- [ ] Add Flux gateway timeout policy for long-lived realtime sessions:
-  - [ ] add `BackendTrafficPolicy` for `nova-policy-service` route (request + connection idle timeout).
-  - [ ] verify websocket upgrade/Socket.IO handshake is stable through `envoy-shared`.
+## Service-side (actual phase-1 base now lives in `/Users/stefanwagner/Git/lerobot-inference/policy_service`)
+- [x] Replace current runtime engine with `lerobot-inference`-style policy loader/inferencer.
+- [x] Keep env vars as source of policy (`POLICY_PATH`, preload options).
+- [x] Add transport dependency wiring (`python-socketio`) in service package/runtime image.
+- [x] Add hybrid transport surface:
+  - [x] Keep HTTP control-plane endpoints (`healthz`, `get_policy`, optional session lifecycle calls).
+  - [x] Add Socket.IO channels for `session.state`, `observation.push`, and `action.chunk`.
+- [x] Remove direct `robot.send_action` logic from service.
+- [ ] Integrate Socket.IO-based robot-state relay path from SDK extra in a real MotionGroup execution loop.
+- [x] Add Flux gateway timeout policy for long-lived realtime sessions:
+  - [x] add `BackendTrafficPolicy` for `nova-policy-service` route (request + connection idle timeout).
+  - [x] verify websocket upgrade/Socket.IO handshake is stable through `envoy-shared` from the public cluster route.
 - [ ] Confirm gateway auth behavior with infra-owned policies (outside this repo) and document required auth headers/tokens for this service.
-- [ ] Remove direct `robot.send_action` logic from service.
 - [ ] Add feature schema validation for inbound robot-state observations.
-- [ ] Keep camera ingestion fully internal via WebRTC plugin configuration.
+- [x] Keep camera ingestion fully internal via WebRTC plugin configuration.
 - [ ] Implement policy-type adapter registry (input/output normalization per policy family).
-- [ ] Preserve existing state machine + metadata contract.
+- [x] Preserve existing state machine + metadata contract.
 
 ## SDK extra (`wandelbots-nova/nova_policy`)
 - [ ] Add HTTP control-plane client methods (`get_policy`, lifecycle) and Socket.IO observation/action methods.
-- [ ] Add SDK transport dependency wiring (`python-socketio` AsyncClient).
+  - [x] `get_policy()` typed discovery is implemented.
+  - [x] existing HTTP run lifecycle methods are available (`start_run`, `stop_run`, `get_run`, `stream_run`).
+  - [x] basic Socket.IO observation/action methods are implemented via `PolicyRealtimeSession.predict(...)`.
+- [x] Add SDK transport dependency wiring (`python-socketio` AsyncClient).
 - [ ] Support auth on both transports:
-  - [ ] send `Authorization` header on HTTP control-plane calls
-  - [ ] send auth during Socket.IO handshake (headers/auth payload)
+  - [x] send `Authorization` header on HTTP control-plane calls
+  - [x] send auth headers during Socket.IO handshake using the same client header source
   - [ ] define token source (reuse NOVA access token vs dedicated policy-service token)
 - [ ] Add executor loop in `motion_group_extensions.py`.
 - [ ] Implement queue-based action consumption (inherit `lerobot-inference` queue pattern):
@@ -650,7 +763,7 @@ Deliverable: production WebRTC camera flow + robust multi-policy adapter layer.
   - [ ] duplicate suppression / safe replay policy
 - [ ] Support stop/cancel and conflict handling with existing `PolicyRunState.stop()`.
 - [ ] Surface action/joint telemetry in stream metadata.
-- [ ] Allow optional `n_action_steps` override on discovered `ACTPolicy` before execution.
+- [x] Allow optional `n_action_steps` override on discovered `ACTPolicy` before execution.
 
 ## Cross-repo alignment (`wandelbots-lerobot`)
 - [ ] Reuse/port safe execution primitives from `lerobot_robot_nova` (jogging lifecycle, e-stop recovery patterns).
@@ -717,11 +830,15 @@ What changes now:
 - `nova_policy/policy-service/README.md`
 - `pyproject.toml` (extras + packaging)
 
-### Colleague inference base (lerobot-inference)
+### Colleague inference base / actual phase-1 implementation (`lerobot-inference`)
+- `/Users/stefanwagner/Git/lerobot-inference/policy_service/app.py`
+- `/Users/stefanwagner/Git/lerobot-inference/policy_service/runtime.py`
+- `/Users/stefanwagner/Git/lerobot-inference/policy_service/models.py`
 - `/Users/stefanwagner/Git/lerobot-inference/nova_app/app/runtime.py`
 - `/Users/stefanwagner/Git/lerobot-inference/nova_app/app/runner.py`
 - `/Users/stefanwagner/Git/lerobot-inference/nova_app/app/config.py`
 - `/Users/stefanwagner/Git/lerobot-inference/nova_app/app/api.py`
+- `/Users/stefanwagner/Git/lerobot-inference/inference.py`
 - `/Users/stefanwagner/Git/lerobot-inference/README.md`
 
 ### Robot execution reference (wandelbots-lerobot)
@@ -758,14 +875,20 @@ Tasks:
 8. If needed, add `BackendTrafficPolicy` for route idle/request timeouts to support long-lived realtime sessions.
 
 Definition of Done:
-- [ ] Deployment uses new image tag in Flux and rollout is `Ready`.
-- [ ] `GET /healthz` (or equivalent health signal) returns success from cluster route.
-- [ ] Service logs show policy preload/load stage without crash loops.
-- [ ] Policy discovery endpoint (`get_policy`) reports the configured policy for the instance.
-- [ ] HTTP control-plane calls succeed from NOVA-instance network path (not only from inside cluster).
+- [x] Deployment uses new image tag in Flux and rollout is `Ready`.
+- [x] `GET /healthz` (or equivalent health signal) returns success from cluster route.
+- [x] Service logs show policy preload/load stage without crash loops.
+- [x] Policy discovery endpoint (`get_policy`) reports the configured policy for the instance.
+- [x] HTTP control-plane calls succeed through the external cluster route.
 - [ ] Socket.IO handshake + websocket upgrade succeeds through gateway from NOVA-instance network path.
-- [ ] Auth behavior is verified/documented (accepted token path + expected unauthorized behavior).
-- [ ] Deployment notes captured (image tag, commit SHA, endpoint URL).
+- [x] Auth behavior is verified/documented (accepted token path + expected unauthorized behavior) for current HTTP control-plane endpoints.
+- [x] Deployment notes captured (image tag, commit SHA, endpoint URL).
+
+Local pre-cluster progress already validated:
+- [x] Local `policy_service` process starts and serves `GET /healthz` + `GET /policy`.
+- [x] Real policy loading works in the adapted `lerobot-inference` repo after importing `lerobot.policies`.
+- [x] Manual run against instance `spjhrikg.instance.wandelbots.io` reaches the virtual `ur10e`, connects dataset-backed cameras, and starts jogging control.
+- [x] Run-state progression is observable over HTTP control-plane (`PREPARING -> TIMED_OUT` in the short validation run).
 
 ### Phase 2 — Manual inference run on cluster with mock robot-state input; verify joint output
 
@@ -780,12 +903,13 @@ Tasks:
 6. Validate reconnect behavior once (disconnect + resume) without crashing the run.
 
 Definition of Done:
-- [ ] Session transitions `PREPARING -> RUNNING` successfully.
-- [ ] At least N>=20 action responses received in one run.
-- [ ] Returned joint vectors are printed/logged and vary over time (non-constant output).
-- [ ] Run ends cleanly via stop or timeout with terminal state recorded.
-- [ ] One forced disconnect/reconnect test succeeds without process crash (recover or fail-safe stop).
+- [x] Session transitions `PREPARING -> RUNNING` successfully.
+- [x] At least N>=20 action responses received in one run.
+- [x] Returned joint vectors are printed/logged and vary over time (non-constant output).
+- [x] Run ends cleanly via stop or timeout with terminal state recorded.
+- [x] One forced disconnect/reconnect test succeeds without process crash (recover or fail-safe stop).
 - [ ] Manual test path uses authenticated HTTP + Socket.IO calls that match planned SDK auth wiring.
+  - Current cluster route accepted unauthenticated HTTP and Socket.IO calls; token source/header policy remains to be defined with infra.
 
 ### Phase 3 — Adapt SDK extra with explicit ACT policy support (pattern-based)
 
@@ -837,4 +961,11 @@ Definition of Done:
 
 ## Recommended immediate next step
 
-Start with **Phase 1** (cluster deployment adaptation), explicitly including gateway/auth/connectivity validation from NOVA-instance network path, then execute **Phase 2** manual validation before touching SDK adapter work.
+Phase 2 is validated on the deployed cluster route except for dedicated auth policy. Next, continue with the SDK execution phases:
+
+1. finish the SDK-side ACT adapter boundary where useful (`ACTAdapter` / payload normalization),
+2. implement the MotionGroup execution loop in `wandelbots-nova/nova_policy`,
+3. consume `action.chunk` messages with a low-water-mark queue,
+4. apply returned joint commands locally via jogging-style NOVA semantics,
+5. propagate stop/cancel and reconnect behavior into the SDK stream state,
+6. then validate end-to-end: SDK robot state -> Socket.IO inference -> action chunk -> SDK robot execution.

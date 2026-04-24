@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 import uvicorn
 
 from policy_service.models import (  # noqa: TC001
+    ConfiguredPolicyResponse,
     HealthzResponse,
     PolicyInfoResponse,
     PolicyRunResponse,
@@ -21,7 +22,7 @@ runtime = PolicyRuntime()
 app = FastAPI(
     title="NOVA Policy Service",
     version="0.1.0",
-    description="Mock policy control service as a NOVA-native app",
+    description="NOVA-native policy control service",
     root_path=BASE_PATH,
 )
 
@@ -32,6 +33,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup_event() -> None:
+    await runtime.startup()
 
 
 @app.get("/", summary="Open API explorer", response_class=HTMLResponse)
@@ -71,11 +77,29 @@ async def healthz() -> HealthzResponse:
     return HealthzResponse(status="ok")
 
 
+@app.get("/policy", response_model=ConfiguredPolicyResponse)
+async def get_configured_policy() -> ConfiguredPolicyResponse:
+    policy_path = runtime.configured_policy_path
+    if policy_path is None:
+        raise HTTPException(status_code=404, detail="No configured policy. Set POLICY_PATH.")
+
+    return ConfiguredPolicyResponse(
+        kind=runtime.configured_policy_kind,
+        path=policy_path,
+        loaded=runtime.loaded_policy == policy_path,
+        app_state=runtime.app_state,
+    )
+
+
 @app.get("/policies", response_model=list[PolicyInfoResponse])
 async def list_policies() -> list[PolicyInfoResponse]:
     policies = runtime.list_policies()
     return [
-        PolicyInfoResponse(policy=policy, loaded=True, app_state=runtime.app_state)
+        PolicyInfoResponse(
+            policy=policy,
+            loaded=runtime.loaded_policy == policy,
+            app_state=runtime.app_state,
+        )
         for policy in policies
     ]
 
@@ -106,8 +130,15 @@ async def get_policy_run(policy: str, run: str) -> PolicyRunResponse:
 
 @app.get("/policies/{policy:path}", response_model=PolicyInfoResponse)
 async def get_policy(policy: str) -> PolicyInfoResponse:
-    loaded = runtime.loaded_policy == policy
-    return PolicyInfoResponse(policy=policy, loaded=loaded, app_state=runtime.app_state)
+    configured_policy_path = runtime.configured_policy_path
+    if configured_policy_path is None or policy != configured_policy_path:
+        raise HTTPException(status_code=404, detail="Policy not configured")
+
+    return PolicyInfoResponse(
+        policy=configured_policy_path,
+        loaded=runtime.loaded_policy == configured_policy_path,
+        app_state=runtime.app_state,
+    )
 
 
 def main(host: str = "0.0.0.0", port: int = 3000) -> None:  # noqa: S104

@@ -54,5 +54,12 @@ class PolicyInfoResponse(BaseModel):
     app_state: AppState
 
 
+class ConfiguredPolicyResponse(BaseModel):
+    kind: str
+    path: str
+    loaded: bool
+    app_state: AppState
+
+
 class HealthzResponse(BaseModel):
     status: str

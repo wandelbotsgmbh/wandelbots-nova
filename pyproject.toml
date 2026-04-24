@@ -64,7 +64,7 @@ wandelscript = [
     "numpy>=1.1.19",
 ]
 novax = ["fastapi>=0.115.6", "uvicorn>=0.34.0", "python-decouple>=3.8"]
-nova-policy = ["httpx>=0.28,<0.29"]
+nova-policy = ["httpx>=0.28,<0.29", "aiohttp>=3.12,<4", "python-socketio>=5.12,<6"]
 benchmark = [
     "rerun-sdk==0.26.2",
     "requests>=2.32.3",

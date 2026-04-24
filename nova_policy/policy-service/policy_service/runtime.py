@@ -16,7 +16,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_POLICY_DEVICE = os.getenv("POLICY_DEVICE", "cuda")
+
+def _env_flag(name: str, *, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 class PolicyConflictError(RuntimeError):
@@ -46,6 +51,15 @@ class PolicyRuntime:
         self._tasks: set[asyncio.Task[None]] = set()
         self._loader = LeRobotInferenceEngine()
 
+        configured_policy_path = os.getenv("POLICY_PATH", "").strip()
+        configured_policy_kind = os.getenv("POLICY_KIND", "act").strip().lower()
+        configured_device = os.getenv("POLICY_DEVICE", "cuda").strip()
+
+        self._configured_policy_path = configured_policy_path or None
+        self._configured_policy_kind = configured_policy_kind or "act"
+        self._policy_device = configured_device or "cuda"
+        self._preload_policy_on_startup = _env_flag("PRELOAD_POLICY_ON_STARTUP", default=False)
+
     @property
     def app_state(self) -> AppState:
         return self._app_state
@@ -54,10 +68,45 @@ class PolicyRuntime:
     def loaded_policy(self) -> str | None:
         return self._loaded_policy
 
+    @property
+    def configured_policy_path(self) -> str | None:
+        return self._configured_policy_path
+
+    @property
+    def configured_policy_kind(self) -> str:
+        return self._configured_policy_kind
+
+    async def startup(self) -> None:
+        if not self._preload_policy_on_startup:
+            return
+
+        if self._configured_policy_path is None:
+            logger.warning("PRELOAD_POLICY_ON_STARTUP is true but POLICY_PATH is not configured")
+            return
+
+        logger.info("Preloading configured policy: %s", self._configured_policy_path)
+        async with self._lock:
+            self._app_state = AppState.LOADING
+
+        try:
+            await self._loader.ensure_loaded(
+                policy_path=self._configured_policy_path,
+                device=self._policy_device,
+            )
+        except Exception:
+            logger.exception("Failed to preload configured policy")
+            async with self._lock:
+                self._app_state = AppState.ERROR
+            return
+
+        async with self._lock:
+            self._loaded_policy = self._configured_policy_path
+            self._app_state = AppState.READY
+
     def list_policies(self) -> list[str]:
-        if self._loaded_policy is None:
+        if self._configured_policy_path is None:
             return []
-        return [self._loaded_policy]
+        return [self._configured_policy_path]
 
     async def start(self, policy: str, request: PolicyStartRequest) -> PolicyRunResponse:
         logger.info(
@@ -67,7 +116,7 @@ class PolicyRuntime:
         )
 
         policy_path = self._resolve_policy_path(policy=policy, request=request)
-        device = self._resolve_policy_device(request=request)
+        device = self._resolve_policy_device()
 
         async with self._lock:
             if self._active_run_id is not None:
@@ -264,24 +313,31 @@ class PolicyRuntime:
             self._active_run_id = None
         self._app_state = AppState.READY
 
-    @staticmethod
-    def _resolve_policy_path(policy: str, request: PolicyStartRequest) -> str:
-        if request.policy is not None:
-            path_value = request.policy.get("path")
-            if isinstance(path_value, str) and path_value:
-                return path_value
-        if policy:
-            return policy
-        raise ValueError("Policy path must be provided either in URL or request.policy.path")
+    def _resolve_policy_path(self, policy: str, request: PolicyStartRequest) -> str:
+        configured_path = self._configured_policy_path
+        if configured_path is None:
+            raise ValueError("POLICY_PATH must be configured on the service")
 
-    @staticmethod
-    def _resolve_policy_device(request: PolicyStartRequest) -> str:
-        if request.policy is None:
-            return DEFAULT_POLICY_DEVICE
-        device_value = request.policy.get("device")
-        if isinstance(device_value, str) and device_value:
-            return device_value
-        return DEFAULT_POLICY_DEVICE
+        requested_paths: list[str] = []
+        if policy:
+            requested_paths.append(policy)
+
+        if request.policy is not None:
+            request_policy_path = request.policy.get("path")
+            if isinstance(request_policy_path, str) and request_policy_path:
+                requested_paths.append(request_policy_path)
+
+        for requested_path in requested_paths:
+            if requested_path != configured_path:
+                raise ValueError(
+                    "Policy selection is environment-driven. "
+                    "Requested policy does not match configured POLICY_PATH."
+                )
+
+        return configured_path
+
+    def _resolve_policy_device(self) -> str:
+        return self._policy_device
 
     @staticmethod
     def _to_response(record: _RunRecord) -> PolicyRunResponse:

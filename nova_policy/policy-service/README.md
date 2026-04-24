@@ -14,6 +14,7 @@ Server starts on `http://localhost:3000`.
 ## API
 
 - `GET /healthz`
+- `GET /policy` (configured policy discovery)
 - `GET /policies`
 - `GET /policies/{policy}`
 - `POST /policies/{policy}/start`
@@ -22,8 +23,10 @@ Server starts on `http://localhost:3000`.
 
 ## Runtime notes
 
-- Policy path must be provided via URL or `request.policy.path`.
-- Device is resolved from `request.policy.device`, default `cuda`.
+- Policy source is environment-driven (`POLICY_PATH`).
+- Optional policy kind is set via `POLICY_KIND` (defaults to `act`).
+- Optional preload on boot: `PRELOAD_POLICY_ON_STARTUP=true`.
+- Runtime device is service-owned via `POLICY_DEVICE` (defaults to `cuda`).
 - Run responses expose state telemetry via `metadata`.
 
 ## Deploy to GPU cluster (AKS + Flux)

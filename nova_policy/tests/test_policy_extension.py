@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 from nova.cell.motion_group import MotionGroup
 import pytest
 
-from nova_policy import enable_motion_group_policy_extension
+from nova_policy import ACTPolicy, enable_motion_group_policy_extension
 from nova_policy.models import PolicyRun
 
 
@@ -12,7 +12,7 @@ class FakePolicyClient:
         self.started_payload = None
         self.stop_calls: list[tuple[str, str | None]] = []
 
-    async def start_run(self, policy: str, payload: dict):
+    async def start_run(self, policy: str, payload: dict[str, object]):
         self.started_payload = (policy, payload)
         return PolicyRun(run="run_1", policy=policy, state="PREPARING", timeout_s=120.0)
 
@@ -78,3 +78,27 @@ async def test_stream_policy_stop_calls_api(mock_motion_group, monkeypatch):
         break
 
     assert fake_client.stop_calls == [("org/policy", "run_1")]
+
+
+@pytest.mark.asyncio
+async def test_stream_policy_accepts_typed_policy(mock_motion_group, monkeypatch):
+    fake_client = FakePolicyClient()
+    monkeypatch.setattr(
+        "nova_policy.motion_group_extensions._resolve_policy_client",
+        lambda *_: fake_client,
+    )
+
+    async for _state in mock_motion_group.stream_policy(
+        policy=ACTPolicy(path="org/typed-policy", n_action_steps=16),
+        task="pick",
+        timeout_s=120.0,
+    ):
+        break
+
+    assert fake_client.started_payload is not None
+    started_policy, started_payload = fake_client.started_payload
+    assert started_policy == "org/typed-policy"
+    policy_payload = started_payload["policy"]
+    assert isinstance(policy_payload, dict)
+    assert policy_payload["kind"] == "act"
+    assert policy_payload["n_action_steps"] == 16

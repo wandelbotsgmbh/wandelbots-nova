@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from nova.cell.motion_group import MotionGroup
 
-from .client import NovaLeRobotPolicyClient
+from .client import PolicyServiceClient
+from .models import ACTPolicy
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
@@ -16,6 +17,11 @@ if TYPE_CHECKING:
 @runtime_checkable
 class _HasModelDump(Protocol):
     def model_dump(self, *, mode: str, exclude_none: bool) -> dict[str, JsonValue]: ...
+
+
+@dataclass(slots=True)
+class PolicyExecutionContext:
+    cameras: dict[str, dict[str, object]] | None = None
 
 
 @dataclass(slots=True)
@@ -100,34 +106,74 @@ def _api_config_from_motion_group(motion_group: MotionGroup) -> _ApiConfig:
     return api_client_obj.config
 
 
-def _resolve_policy_client(
-    motion_group: MotionGroup, policy_api_url: str | None
-) -> NovaLeRobotPolicyClient:
+def _resolve_policy_client(motion_group: MotionGroup, policy_api_url: str | None) -> PolicyServiceClient:
     config = _api_config_from_motion_group(motion_group)
     base_url = policy_api_url or config.host
-    return NovaLeRobotPolicyClient(base_url=base_url, access_token=config.access_token)
+    return PolicyServiceClient(base_url=base_url, access_token=config.access_token)
 
 
 def _controller_name(motion_group: MotionGroup) -> str:
     return cast("str", getattr(motion_group, "_controller_id"))  # noqa: B009
 
 
-async def execute_policy(
-    self: MotionGroup,
-    policy_path: str,
-    task: str,
-    timeout_s: float,
+def _resolve_policy_spec(
     *,
+    policy: ACTPolicy | None,
+    policy_path: str | None,
+    options: PolicyExecutionOptions,
+) -> ACTPolicy:
+    if policy is None and not policy_path:
+        raise ValueError("Either policy or policy_path must be provided")
+
+    if policy is not None and policy_path and policy.path != policy_path:
+        raise ValueError("policy.path and policy_path must match when both are provided")
+
+    option_steps = options.n_action_steps
+
+    if policy is None:
+        return ACTPolicy(path=cast("str", policy_path), n_action_steps=option_steps)
+
+    if option_steps is None:
+        return policy
+
+    if policy.n_action_steps is None:
+        return ACTPolicy(path=policy.path, n_action_steps=option_steps)
+
+    if option_steps != policy.n_action_steps:
+        raise ValueError("n_action_steps differs between policy and options")
+
+    return policy
+
+
+def _resolve_cameras(
+    options: PolicyExecutionOptions,
+    context: PolicyExecutionContext | None,
+) -> dict[str, dict[str, object]] | None:
+    if context is not None and context.cameras is not None:
+        return context.cameras
+    return options.cameras
+
+
+async def execute_policy(  # noqa: PLR0913
+    self: MotionGroup,
+    policy_path: str | None = None,
+    task: str = "",
+    timeout_s: float = 120.0,
+    *,
+    policy: ACTPolicy | None = None,
     options: PolicyExecutionOptions | None = None,
+    context: PolicyExecutionContext | None = None,
 ) -> PolicyRunState:
     selected_options = options or PolicyExecutionOptions()
     last_state: PolicyRunState | None = None
     async for state in stream_policy(
         self,
         policy_path=policy_path,
+        policy=policy,
         task=task,
         timeout_s=timeout_s,
         options=selected_options,
+        context=context,
     ):
         last_state = state
 
@@ -137,15 +183,22 @@ async def execute_policy(
     return last_state
 
 
-async def stream_policy(
+async def stream_policy(  # noqa: PLR0913
     self: MotionGroup,
-    policy_path: str,
-    task: str,
-    timeout_s: float,
+    policy_path: str | None = None,
+    task: str = "",
+    timeout_s: float = 120.0,
     *,
+    policy: ACTPolicy | None = None,
     options: PolicyExecutionOptions | None = None,
+    context: PolicyExecutionContext | None = None,
 ) -> AsyncIterator[PolicyRunState]:
     selected_options = options or PolicyExecutionOptions()
+    resolved_policy = _resolve_policy_spec(
+        policy=policy,
+        policy_path=policy_path,
+        options=selected_options,
+    )
     client = _resolve_policy_client(self, selected_options.policy_api_url)
 
     resolved_tcp = selected_options.tcp or await self.active_tcp_name() or "flange"
@@ -156,8 +209,9 @@ async def stream_policy(
 
     payload = {
         "policy": {
-            "path": policy_path,
-            "n_action_steps": selected_options.n_action_steps,
+            "kind": resolved_policy.kind,
+            "path": resolved_policy.path,
+            "n_action_steps": resolved_policy.n_action_steps,
             "device": selected_options.device,
         },
         "target": {
@@ -167,7 +221,7 @@ async def stream_policy(
         },
         "task": task,
         "timeout_s": timeout_s,
-        "cameras": selected_options.cameras,
+        "cameras": _resolve_cameras(selected_options, context),
         "gripper": {
             "use_gripper": selected_options.use_gripper,
             "gripper_io_key": selected_options.gripper_io_key,
@@ -176,14 +230,14 @@ async def stream_policy(
     }
     payload_json = cast("dict[str, object]", _to_json_payload(payload))
 
-    run = await client.start_run(policy=policy_path, payload=payload_json)
+    run = await client.start_run(policy=resolved_policy.path, payload=payload_json)
 
     async def stop_run() -> None:
-        await client.stop_run(policy=policy_path, run=run.run)
+        await client.stop_run(policy=resolved_policy.path, run=run.run)
 
     yield PolicyRunState(run=run, stop=stop_run)
 
-    async for status in client.stream_run(policy=policy_path, run=run.run):
+    async for status in client.stream_run(policy=resolved_policy.path, run=run.run):
         yield PolicyRunState(run=status, stop=stop_run)
 
 
