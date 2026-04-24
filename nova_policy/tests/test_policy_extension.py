@@ -6,6 +6,7 @@ import pytest
 
 from nova_policy import ACTAdapter, ACTPolicy, PolicyExecutionOptions, enable_motion_group_policy_extension
 from nova_policy.models import ActionChunk, ActionStep, PolicyRun
+from nova_policy.motion_group_extensions import _compute_joint_velocity_towards_target
 
 
 class FakeRealtimeSession:
@@ -89,6 +90,18 @@ def mock_motion_group():
     mock_setup.model_dump.return_value = {"motion_group_model": "test-model"}
     motion_group.get_setup = AsyncMock(return_value=mock_setup)
     return motion_group
+
+
+def test_compute_joint_velocity_towards_target_clamps_and_applies_tolerance():
+    velocity = _compute_joint_velocity_towards_target(
+        (0.0, 1.0, 2.0),
+        (1.0, 1.005, -1.0),
+        gain=3.0,
+        velocity_limit=1.5,
+        tolerance=0.01,
+    )
+
+    assert velocity == (1.5, 0.0, -1.5)
 
 
 def test_act_adapter_builds_service_policy_payload():

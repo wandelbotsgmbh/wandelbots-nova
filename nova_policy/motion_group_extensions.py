@@ -5,6 +5,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
+from nova import api
 from nova.cell.motion_group import MotionGroup
 
 from .adapters import adapter_for_policy
@@ -42,6 +43,9 @@ class PolicyExecutionOptions:
     low_water_mark: int = 1
     max_observations: int | None = None
     allow_mock_images: bool = False
+    joint_velocity_limit: float = 1.5
+    joint_position_gain: float = 3.0
+    joint_position_tolerance: float = 0.01
 
 
 class _ActionStepQueue:
@@ -131,6 +135,10 @@ class _ApiClientWithConfig(Protocol):
     config: _ApiConfig
 
 
+class _ApiClientWithJogging(_ApiClientWithConfig, Protocol):
+    motion_group_jogging_api: api.api.JoggingApi
+
+
 def _api_config_from_motion_group(motion_group: MotionGroup) -> _ApiConfig:
     api_client_obj = cast("_ApiClientWithConfig", getattr(motion_group, "_api_client"))  # noqa: B009
     return api_client_obj.config
@@ -196,17 +204,75 @@ async def _read_robot_state_point(
     return RobotStatePoint(joints=joints, gripper=gripper)
 
 
+def _compute_joint_velocity_towards_target(
+    current: tuple[float, ...],
+    target: tuple[float, ...],
+    *,
+    gain: float,
+    velocity_limit: float,
+    tolerance: float,
+) -> tuple[float, ...]:
+    velocities: list[float] = []
+    for current_value, target_value in zip(current, target, strict=True):
+        error = target_value - current_value
+        if abs(error) <= tolerance:
+            velocities.append(0.0)
+            continue
+        raw_velocity = error * gain
+        velocities.append(max(-velocity_limit, min(velocity_limit, raw_velocity)))
+    return tuple(velocities)
+
+
+def _target_joints_from_step(step: ActionStep, current: tuple[float, ...]) -> tuple[float, ...]:
+    targets: list[float] = []
+    for index, current_value in enumerate(current):
+        key = f"joint_{index + 1}.pos"
+        targets.append(float(step.joints.get(key, current_value)))
+    return tuple(targets)
+
+
 async def _apply_action_step(
     motion_group: MotionGroup,
     step: ActionStep,
     *,
     tcp: str,
-    control_dt_s: float,
+    options: PolicyExecutionOptions,
 ) -> None:
-    _ = motion_group, step, tcp, control_dt_s
-    raise NotImplementedError(
-        "SDK-side jogging action application is not implemented yet. "
-        "Use PolicyExecutionOptions(realtime=True, execute_actions=False) for inference-loop validation."
+    current = await motion_group.joints()
+    target = _target_joints_from_step(step, current)
+    velocity = _compute_joint_velocity_towards_target(
+        current,
+        target,
+        gain=options.joint_position_gain,
+        velocity_limit=options.joint_velocity_limit,
+        tolerance=options.joint_position_tolerance,
+    )
+    await _send_joint_velocity_once(motion_group, tcp=tcp, velocity=velocity)
+
+
+async def _send_joint_velocity_once(
+    motion_group: MotionGroup,
+    *,
+    tcp: str,
+    velocity: tuple[float, ...],
+) -> None:
+    api_client_obj = cast("_ApiClientWithJogging", getattr(motion_group, "_api_client"))  # noqa: B009
+    controller_id = cast("str", getattr(motion_group, "_controller_id"))  # noqa: B009
+    cell = cast("str", getattr(motion_group, "_cell"))  # noqa: B009
+
+    async def request_generator(_response_stream):
+        yield api.models.ExecuteJoggingRequest(
+            root=api.models.InitializeJoggingRequest(motion_group=motion_group.id, tcp=tcp)
+        )
+        yield api.models.ExecuteJoggingRequest(
+            root=api.models.JointVelocityRequest(velocity=api.models.Joints(root=list(velocity)))
+        )
+        yield api.models.ExecuteJoggingRequest(root=api.models.PauseJoggingRequest())
+
+    await api_client_obj.motion_group_jogging_api.execute_jogging(
+        cell=cell,
+        controller=controller_id,
+        client_request_generator=request_generator,
     )
 
 
@@ -253,7 +319,7 @@ async def _run_realtime_policy_loop(  # noqa: PLR0913
                         motion_group,
                         step,
                         tcp=tcp,
-                        control_dt_s=_control_dt_s_from_metadata(status.metadata) or 0.0,
+                        options=options,
                     )
 
             if action_queue.should_request_chunk(options.low_water_mark):

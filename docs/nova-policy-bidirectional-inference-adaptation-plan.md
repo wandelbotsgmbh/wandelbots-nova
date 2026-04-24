@@ -119,10 +119,25 @@ Key requested differences to address:
   - `PYTHONPATH=. uv run ruff check --config ruff.toml nova_policy/adapters.py nova_policy/motion_group_extensions.py nova_policy/client.py nova_policy/__init__.py nova_policy/tests/test_policy_extension.py` -> passed
   - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `9 passed`
 
+### SDK phase-4 initial jogging work completed locally
+
+- [x] Added guarded SDK-side action application path behind `PolicyExecutionOptions(realtime=True, execute_actions=True)`.
+- [x] Added joint-target normalization from `ActionStep.joints` to ordered NOVA joints.
+- [x] Added proportional joint velocity calculation with configurable:
+  - `joint_velocity_limit`
+  - `joint_position_gain`
+  - `joint_position_tolerance`
+- [x] Added a first NOVA Jogging API sender that initializes jogging, sends one joint-velocity command, then pauses jogging.
+- [x] Added unit coverage for velocity clamping/tolerance behavior.
+- [x] Validation after this continuation:
+  - `PYTHONPATH=. uv run ruff check --config ruff.toml nova_policy/adapters.py nova_policy/motion_group_extensions.py nova_policy/client.py nova_policy/__init__.py nova_policy/tests/test_policy_extension.py` -> passed
+  - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `10 passed`
+
 ### Still intentionally not done
 
-- [ ] SDK-side jogging action application for `execute_actions=True`.
-- [ ] Full MotionGroup-native robot motion over returned `action.chunk` commands.
+- [ ] Validate `execute_actions=True` against the virtual UR10e.
+- [ ] Replace the initial one-shot jogging sender with a continuous jogging lifecycle aligned with `lerobot_robot_nova` before production use.
+- [ ] Full MotionGroup-native robot motion over returned `action.chunk` commands under safety-reviewed limits.
 - [ ] Explicit auth validation for Socket.IO handshake headers/tokens; current cluster route accepted the unauthenticated manual websocket test just like the HTTP control-plane.
 
 ### Phase-1 deployment prep completed
@@ -782,7 +797,8 @@ Deliverable: production WebRTC camera flow + robust multi-policy adapter layer.
   - [ ] Consume one step per `control_dt_s` tick.
   - [x] Trigger next `observation.push` when queue drains or falls below low-water mark.
   - [x] Hold last commanded position if queue drains before next chunk arrives.
-- [ ] Implement local action application path (jogging-style semantics).
+- [ ] Implement production local action application path (jogging-style semantics).
+  - [x] Initial guarded one-shot NOVA Jogging API action sender exists behind `execute_actions=True`.
 - [ ] Configure Socket.IO reconnect/heartbeat behavior (bounded retries/backoff + timeout handling).
 - [ ] Enforce app-level stream semantics across reconnects:
   - [x] monotonic observation `seq`
@@ -991,9 +1007,9 @@ Definition of Done:
 
 Phase 3 is partially implemented locally: ACT payload normalization and opt-in SDK observation/chunk exchange now exist and are unit-tested. Next, continue with the remaining Phase 4 execution work:
 
-1. implement SDK-side jogging action application for `PolicyExecutionOptions(realtime=True, execute_actions=True)`,
-2. align the velocity-control loop with safe primitives from `lerobot_robot_nova`,
-3. consume one queued `action.chunk` step per `control_dt_s` tick against NOVA jogging,
+1. harden SDK-side jogging action application for `PolicyExecutionOptions(realtime=True, execute_actions=True)`,
+2. replace the current one-shot jogging sender with a continuous velocity-control lifecycle aligned with safe primitives from `lerobot_robot_nova`,
+3. consume one queued `action.chunk` step per `control_dt_s` tick against that continuous NOVA jogging lifecycle,
 4. add telemetry for latest observation/action/chunk in `PolicyRunState.metadata`,
-5. validate against the virtual UR10e with a short timeout and stop/cancel checks,
+5. validate `execute_actions=True` against the virtual UR10e with a short timeout and stop/cancel checks,
 6. then resolve the auth-token source for protected HTTP + Socket.IO gateway operation.
