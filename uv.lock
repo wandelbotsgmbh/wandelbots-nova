@@ -1830,11 +1830,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-<<<<<<< Updated upstream
 version = "5.0.0"
-=======
-version = "4.13.0"
->>>>>>> Stashed changes
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },

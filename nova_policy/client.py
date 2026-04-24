@@ -138,6 +138,10 @@ class PolicyServiceClient:
         self._status_poll_interval_s = status_poll_interval_s
         self._headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
 
+    @property
+    def status_poll_interval_s(self) -> float:
+        return self._status_poll_interval_s
+
     async def get_policy(self) -> PolicySpec:
         payload = await self._request_json(
             "GET",

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from nova.cell.motion_group import MotionGroup
 
+from .adapters import adapter_for_policy
 from .client import PolicyServiceClient
-from .models import ACTPolicy
+from .models import ACTPolicy, ActionStep, RobotStatePoint
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
@@ -34,6 +37,33 @@ class PolicyExecutionOptions:
     gripper_io_key: str | None = None
     motion_group_setup: _HasModelDump | None = None
     policy_api_url: str | None = None
+    realtime: bool = False
+    execute_actions: bool = False
+    low_water_mark: int = 1
+    max_observations: int | None = None
+    allow_mock_images: bool = False
+
+
+class _ActionStepQueue:
+    def __init__(self) -> None:
+        self._steps: deque[ActionStep] = deque()
+        self._last_step: ActionStep | None = None
+
+    def enqueue(self, steps: list[ActionStep]) -> None:
+        self._steps.extend(steps)
+
+    def should_request_chunk(self, low_water_mark: int) -> bool:
+        return len(self._steps) <= low_water_mark
+
+    def pop_or_hold(self) -> ActionStep | None:
+        if self._steps:
+            self._last_step = self._steps.popleft()
+            return self._last_step
+        return self._last_step
+
+    @property
+    def queued_steps(self) -> int:
+        return len(self._steps)
 
 
 class PolicyRunState:
@@ -154,6 +184,105 @@ def _resolve_cameras(
     return options.cameras
 
 
+async def _read_robot_state_point(
+    motion_group: MotionGroup,
+    *,
+    tcp: str,
+    use_gripper: bool | None,
+) -> RobotStatePoint:
+    state = await motion_group.get_state(tcp=tcp)
+    joints = {f"joint_{index + 1}.pos": float(value) for index, value in enumerate(state.joints)}
+    gripper = {"gripper.pos": 0.0} if use_gripper else None
+    return RobotStatePoint(joints=joints, gripper=gripper)
+
+
+async def _apply_action_step(
+    motion_group: MotionGroup,
+    step: ActionStep,
+    *,
+    tcp: str,
+    control_dt_s: float,
+) -> None:
+    _ = motion_group, step, tcp, control_dt_s
+    raise NotImplementedError(
+        "SDK-side jogging action application is not implemented yet. "
+        "Use PolicyExecutionOptions(realtime=True, execute_actions=False) for inference-loop validation."
+    )
+
+
+def _control_dt_s_from_metadata(metadata: dict[str, JsonValue] | None) -> float | None:
+    if not isinstance(metadata, dict):
+        return None
+    value = metadata.get("control_dt_s")
+    if not isinstance(value, (int, float)) or value <= 0:
+        return None
+    return float(value)
+
+
+async def _run_realtime_policy_loop(  # noqa: PLR0913
+    motion_group: MotionGroup,
+    *,
+    client: PolicyServiceClient,
+    policy_path: str,
+    run_id: str,
+    task: str,
+    tcp: str,
+    options: PolicyExecutionOptions,
+    stop_run: Callable[[], Awaitable[None]],
+) -> AsyncIterator[PolicyRunState]:
+    realtime = client.open_realtime_session()
+    action_queue = _ActionStepQueue()
+    observation_seq = 0
+    stop_requested = False
+
+    try:
+        while True:
+            status = await client.get_run(policy=policy_path, run=run_id)
+            yield PolicyRunState(run=status, stop=stop_run)
+            if status.state in {"STOPPED", "TIMED_OUT", "FAILED"}:
+                return
+
+            if status.state != "RUNNING":
+                await asyncio.sleep(client.status_poll_interval_s)
+                continue
+
+            if options.execute_actions:
+                step = action_queue.pop_or_hold()
+                if step is not None:
+                    await _apply_action_step(
+                        motion_group,
+                        step,
+                        tcp=tcp,
+                        control_dt_s=_control_dt_s_from_metadata(status.metadata) or 0.0,
+                    )
+
+            if action_queue.should_request_chunk(options.low_water_mark):
+                state_point = await _read_robot_state_point(
+                    motion_group,
+                    tcp=tcp,
+                    use_gripper=options.use_gripper,
+                )
+                chunk = await realtime.predict(
+                    run=run_id,
+                    seq=observation_seq,
+                    state_point=state_point,
+                    task=task,
+                )
+                action_queue.enqueue(chunk.steps)
+                observation_seq += 1
+
+                if options.max_observations is not None and observation_seq >= options.max_observations:
+                    await stop_run()
+                    stop_requested = True
+
+            sleep_s = client.status_poll_interval_s if stop_requested else (
+                _control_dt_s_from_metadata(status.metadata) or client.status_poll_interval_s
+            )
+            await asyncio.sleep(sleep_s)
+    finally:
+        await realtime.close()
+
+
 async def execute_policy(  # noqa: PLR0913
     self: MotionGroup,
     policy_path: str | None = None,
@@ -207,13 +336,9 @@ async def stream_policy(  # noqa: PLR0913
         setup_obj = await self.get_setup(resolved_tcp)
         motion_group_setup = cast("_HasModelDump", setup_obj)
 
+    adapter = adapter_for_policy(resolved_policy)
     payload = {
-        "policy": {
-            "kind": resolved_policy.kind,
-            "path": resolved_policy.path,
-            "n_action_steps": resolved_policy.n_action_steps,
-            "device": selected_options.device,
-        },
+        "policy": adapter.service_policy_payload(device=selected_options.device),
         "target": {
             "controller_name": _controller_name(self),
             "motion_group": self.id,
@@ -227,6 +352,7 @@ async def stream_policy(  # noqa: PLR0913
             "gripper_io_key": selected_options.gripper_io_key,
         },
         "motion_group_setup": _to_json_payload(motion_group_setup),
+        "allow_mock_images": selected_options.allow_mock_images,
     }
     payload_json = cast("dict[str, object]", _to_json_payload(payload))
 
@@ -236,6 +362,20 @@ async def stream_policy(  # noqa: PLR0913
         await client.stop_run(policy=resolved_policy.path, run=run.run)
 
     yield PolicyRunState(run=run, stop=stop_run)
+
+    if selected_options.realtime:
+        async for status in _run_realtime_policy_loop(
+            self,
+            client=client,
+            policy_path=resolved_policy.path,
+            run_id=run.run,
+            task=task,
+            tcp=resolved_tcp,
+            options=selected_options,
+            stop_run=stop_run,
+        ):
+            yield status
+        return
 
     async for status in client.stream_run(policy=resolved_policy.path, run=run.run):
         yield PolicyRunState(run=status, stop=stop_run)

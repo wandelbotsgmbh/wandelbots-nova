@@ -92,10 +92,37 @@ Key requested differences to address:
   - second Socket.IO connection resumed by run id and received another action chunk
   - run stopped cleanly with terminal state `STOPPED`
 
+### SDK phase-3 continuation completed locally
+
+- [x] Added a small SDK-side adapter boundary in `nova_policy/adapters.py`:
+  - `PolicyAdapter`
+  - `ACTAdapter`
+  - `adapter_for_policy(...)`
+- [x] Routed `MotionGroup.stream_policy(...)` start payload construction through `ACTAdapter` for ACT policies.
+- [x] Added an opt-in realtime `MotionGroup.stream_policy(..., options=PolicyExecutionOptions(realtime=True))` loop that:
+  - starts the HTTP control-plane run
+  - waits for `RUNNING`
+  - reads `MotionGroup.get_state(...)`
+  - converts joints into `RobotStatePoint`
+  - sends `observation.push` via `PolicyRealtimeSession.predict(...)`
+  - receives and queues `action.chunk` steps
+  - triggers the next observation when the queue reaches the configured low-water mark
+  - supports `max_observations` for bounded smoke tests
+  - supports stop/cancel through the existing `PolicyRunState.stop()` path
+- [x] Added queue semantics for action chunks in SDK code:
+  - enqueue all chunk steps
+  - pop one step per loop when action execution is enabled
+  - hold the last action step on underflow
+- [x] Added `allow_mock_images` propagation from SDK options to the service start payload for cluster smoke tests.
+- [x] Added/updated tests for ACT adapter payload mapping and realtime robot-state push behavior.
+- [x] Validation after this continuation:
+  - `PYTHONPATH=. uv run ruff check --config ruff.toml nova_policy/adapters.py nova_policy/motion_group_extensions.py nova_policy/client.py nova_policy/__init__.py nova_policy/tests/test_policy_extension.py` -> passed
+  - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `9 passed`
+
 ### Still intentionally not done
 
-- [ ] SDK-side local chunk execution loop.
-- [ ] MotionGroup-native execution over the new Socket.IO data-plane.
+- [ ] SDK-side jogging action application for `execute_actions=True`.
+- [ ] Full MotionGroup-native robot motion over returned `action.chunk` commands.
 - [ ] Explicit auth validation for Socket.IO handshake headers/tokens; current cluster route accepted the unauthenticated manual websocket test just like the HTTP control-plane.
 
 ### Phase-1 deployment prep completed
@@ -728,14 +755,15 @@ Deliverable: production WebRTC camera flow + robust multi-policy adapter layer.
   - [x] Keep HTTP control-plane endpoints (`healthz`, `get_policy`, optional session lifecycle calls).
   - [x] Add Socket.IO channels for `session.state`, `observation.push`, and `action.chunk`.
 - [x] Remove direct `robot.send_action` logic from service.
-- [ ] Integrate Socket.IO-based robot-state relay path from SDK extra in a real MotionGroup execution loop.
+- [x] Integrate Socket.IO-based robot-state relay path from SDK extra in an opt-in MotionGroup realtime loop.
 - [x] Add Flux gateway timeout policy for long-lived realtime sessions:
   - [x] add `BackendTrafficPolicy` for `nova-policy-service` route (request + connection idle timeout).
   - [x] verify websocket upgrade/Socket.IO handshake is stable through `envoy-shared` from the public cluster route.
 - [ ] Confirm gateway auth behavior with infra-owned policies (outside this repo) and document required auth headers/tokens for this service.
 - [ ] Add feature schema validation for inbound robot-state observations.
 - [x] Keep camera ingestion fully internal via WebRTC plugin configuration.
-- [ ] Implement policy-type adapter registry (input/output normalization per policy family).
+- [ ] Implement production policy-type adapter registry (input/output normalization per policy family).
+  - [x] Minimal SDK-side `ACTAdapter` exists for ACT start-payload normalization.
 - [x] Preserve existing state machine + metadata contract.
 
 ## SDK extra (`wandelbots-nova/nova_policy`)
@@ -748,20 +776,20 @@ Deliverable: production WebRTC camera flow + robust multi-policy adapter layer.
   - [x] send `Authorization` header on HTTP control-plane calls
   - [x] send auth headers during Socket.IO handshake using the same client header source
   - [ ] define token source (reuse NOVA access token vs dedicated policy-service token)
-- [ ] Add executor loop in `motion_group_extensions.py`.
+- [x] Add opt-in realtime executor loop in `motion_group_extensions.py` for observation/chunk exchange.
 - [ ] Implement queue-based action consumption (inherit `lerobot-inference` queue pattern):
-  - [ ] Enqueue all steps from received `action.chunk`.
+  - [x] Enqueue all steps from received `action.chunk`.
   - [ ] Consume one step per `control_dt_s` tick.
-  - [ ] Trigger next `observation.push` when queue drains or falls below low-water mark.
-  - [ ] Hold last commanded position if queue drains before next chunk arrives.
+  - [x] Trigger next `observation.push` when queue drains or falls below low-water mark.
+  - [x] Hold last commanded position if queue drains before next chunk arrives.
 - [ ] Implement local action application path (jogging-style semantics).
 - [ ] Configure Socket.IO reconnect/heartbeat behavior (bounded retries/backoff + timeout handling).
 - [ ] Enforce app-level stream semantics across reconnects:
-  - [ ] monotonic observation `seq`
-  - [ ] `action.chunk` correlation via `observation_seq`
-  - [ ] max in-flight observations (default 1)
+  - [x] monotonic observation `seq`
+  - [x] `action.chunk` correlation via `observation_seq`
+  - [x] max in-flight observations (default 1 through request/response sequencing)
   - [ ] duplicate suppression / safe replay policy
-- [ ] Support stop/cancel and conflict handling with existing `PolicyRunState.stop()`.
+- [x] Support stop/cancel and conflict handling with existing `PolicyRunState.stop()`.
 - [ ] Surface action/joint telemetry in stream metadata.
 - [x] Allow optional `n_action_steps` override on discovered `ACTPolicy` before execution.
 
@@ -933,12 +961,12 @@ Tasks:
 8. Use `get_policy()` for discovery (single policy per instance).
 
 Definition of Done:
-- [ ] `ACTAdapter` is used end-to-end for policy type `act`.
-- [ ] SDK `execute_policy`/`stream_policy` can run ACT via Socket.IO channels.
-- [ ] ACT inference knobs are accepted, validated, and reflected in service runtime config.
-- [ ] Unit/integration tests cover adapter mapping + payload conversion + stop flow.
+- [x] `ACTAdapter` is used for SDK ACT start-payload normalization.
+- [x] SDK `stream_policy(..., options=PolicyExecutionOptions(realtime=True))` can run ACT observation/chunk exchange via Socket.IO channels.
+- [x] ACT inference knobs are accepted, validated, and reflected in service runtime config.
+- [x] Unit tests cover adapter mapping + payload conversion + bounded realtime robot-state push flow.
 - [ ] SDK auth propagation works for both HTTP + Socket.IO paths against cluster route.
-- [ ] No direct robot motion is performed by inference service.
+- [x] No direct robot motion is performed by inference service.
 
 ### Phase 4 — SDK-side local execution loop (jogging-style) and end-to-end validation
 
@@ -961,11 +989,11 @@ Definition of Done:
 
 ## Recommended immediate next step
 
-Phase 2 is validated on the deployed cluster route except for dedicated auth policy. Next, continue with the SDK execution phases:
+Phase 3 is partially implemented locally: ACT payload normalization and opt-in SDK observation/chunk exchange now exist and are unit-tested. Next, continue with the remaining Phase 4 execution work:
 
-1. finish the SDK-side ACT adapter boundary where useful (`ACTAdapter` / payload normalization),
-2. implement the MotionGroup execution loop in `wandelbots-nova/nova_policy`,
-3. consume `action.chunk` messages with a low-water-mark queue,
-4. apply returned joint commands locally via jogging-style NOVA semantics,
-5. propagate stop/cancel and reconnect behavior into the SDK stream state,
-6. then validate end-to-end: SDK robot state -> Socket.IO inference -> action chunk -> SDK robot execution.
+1. implement SDK-side jogging action application for `PolicyExecutionOptions(realtime=True, execute_actions=True)`,
+2. align the velocity-control loop with safe primitives from `lerobot_robot_nova`,
+3. consume one queued `action.chunk` step per `control_dt_s` tick against NOVA jogging,
+4. add telemetry for latest observation/action/chunk in `PolicyRunState.metadata`,
+5. validate against the virtual UR10e with a short timeout and stop/cancel checks,
+6. then resolve the auth-token source for protected HTTP + Socket.IO gateway operation.

@@ -1,3 +1,4 @@
+from .adapters import ACTAdapter, PolicyAdapter, adapter_for_policy
 from .client import (
     NovaLeRobotPolicyClient,
     PolicyConflictError,
@@ -13,12 +14,14 @@ from .motion_group_extensions import (
 )
 
 __all__ = [
+    "ACTAdapter",
     "ACTPolicy",
     "ActionChunk",
     "ActionStep",
     "NovaLeRobotPolicyClient",
     "PolicyConflictError",
     "PolicyExecutionContext",
+    "PolicyAdapter",
     "PolicyExecutionOptions",
     "PolicyRealtimeSession",
     "PolicyRun",
@@ -26,5 +29,6 @@ __all__ = [
     "PolicyServiceClient",
     "PolicySpec",
     "RobotStatePoint",
+    "adapter_for_policy",
     "enable_motion_group_policy_extension",
 ]
