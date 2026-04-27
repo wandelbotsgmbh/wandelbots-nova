@@ -228,6 +228,45 @@ async def test_stream_policy_accepts_typed_policy(mock_motion_group, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_stream_policy_realtime_execute_actions_sends_jogging_velocity(
+    mock_motion_group, monkeypatch
+):
+    fake_client = FakePolicyClient()
+    monkeypatch.setattr(
+        "nova_policy.motion_group_extensions._resolve_policy_client",
+        lambda *_: fake_client,
+    )
+    mock_motion_group.get_state = AsyncMock(
+        return_value=SimpleNamespace(joints=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+    )
+    mock_motion_group.joints = AsyncMock(return_value=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+
+    async for _state in mock_motion_group.stream_policy(
+        policy_path="org/policy",
+        task="pick",
+        timeout_s=120.0,
+        options=PolicyExecutionOptions(
+            realtime=True,
+            execute_actions=True,
+            max_observations=2,
+            joint_position_gain=2.0,
+            joint_velocity_limit=0.5,
+        ),
+    ):
+        pass
+
+    jogging_api = mock_motion_group._api_client.motion_group_jogging_api
+    request_types = [type(request.root).__name__ for request in jogging_api.requests]
+    assert request_types == [
+        "InitializeJoggingRequest",
+        "JointVelocityRequest",
+        "PauseJoggingRequest",
+    ]
+    velocity_request = jogging_api.requests[1].root
+    assert tuple(velocity_request.velocity.root) == (0.5, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+
+@pytest.mark.asyncio
 async def test_stream_policy_realtime_pushes_robot_state(mock_motion_group, monkeypatch):
     fake_client = FakePolicyClient()
     monkeypatch.setattr(
