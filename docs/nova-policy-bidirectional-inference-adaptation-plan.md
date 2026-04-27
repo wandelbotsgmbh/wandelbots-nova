@@ -134,16 +134,21 @@ Key requested differences to address:
   - streams queued `JointVelocityRequest` commands,
   - sends `PauseJoggingRequest` on session close,
   - drains jogging responses while commands are streamed.
+- [x] Added realtime option validation so unsafe/invalid combinations fail before a run starts:
+  - `execute_actions=True` requires `realtime=True`
+  - non-negative low-water mark and tolerance
+  - positive max-observation count when provided
+  - positive jogging velocity limit and position gain
 - [x] Added realtime telemetry into yielded `PolicyRunState.metadata["realtime"]`:
   - `next_observation_seq`
   - `last_observation_seq`
   - `queued_action_steps`
   - `last_action_chunk`
   - `last_action_step` when execution is enabled
-- [x] Added unit coverage for velocity clamping/tolerance behavior, continuous jogging request order, and realtime metadata.
+- [x] Added unit coverage for velocity clamping/tolerance behavior, continuous jogging request order, realtime metadata, and option validation.
 - [x] Validation after this continuation:
   - `PYTHONPATH=. uv run ruff check --config ruff.toml nova_policy/motion_group_extensions.py nova_policy/tests/test_policy_extension.py` -> passed
-  - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `11 passed`
+  - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `12 passed`
 
 ### Still intentionally not done
 

@@ -143,6 +143,16 @@ async def test_joint_jogging_session_keeps_connection_open_until_closed(mock_mot
     ]
 
 
+@pytest.mark.asyncio
+async def test_execution_options_validate_realtime_action_mode(mock_motion_group):
+    with pytest.raises(ValueError, match="execute_actions=True requires realtime=True"):
+        async for _state in mock_motion_group.stream_policy(
+            policy_path="org/policy",
+            options=PolicyExecutionOptions(execute_actions=True),
+        ):
+            pass
+
+
 def test_act_adapter_builds_service_policy_payload():
     payload = ACTAdapter(ACTPolicy(path="org/policy", n_action_steps=4)).service_policy_payload(
         device="cuda"

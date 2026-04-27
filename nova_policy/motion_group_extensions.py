@@ -155,6 +155,21 @@ def _controller_name(motion_group: MotionGroup) -> str:
     return cast("str", getattr(motion_group, "_controller_id"))  # noqa: B009
 
 
+def _validate_execution_options(options: PolicyExecutionOptions) -> None:
+    if options.execute_actions and not options.realtime:
+        raise ValueError("execute_actions=True requires realtime=True")
+    if options.low_water_mark < 0:
+        raise ValueError("low_water_mark must be >= 0")
+    if options.max_observations is not None and options.max_observations <= 0:
+        raise ValueError("max_observations must be > 0 when provided")
+    if options.joint_velocity_limit <= 0:
+        raise ValueError("joint_velocity_limit must be > 0")
+    if options.joint_position_gain <= 0:
+        raise ValueError("joint_position_gain must be > 0")
+    if options.joint_position_tolerance < 0:
+        raise ValueError("joint_position_tolerance must be >= 0")
+
+
 def _resolve_policy_spec(
     *,
     policy: ACTPolicy | None,
@@ -505,6 +520,7 @@ async def stream_policy(  # noqa: PLR0913
     context: PolicyExecutionContext | None = None,
 ) -> AsyncIterator[PolicyRunState]:
     selected_options = options or PolicyExecutionOptions()
+    _validate_execution_options(selected_options)
     resolved_policy = _resolve_policy_spec(
         policy=policy,
         policy_path=policy_path,
