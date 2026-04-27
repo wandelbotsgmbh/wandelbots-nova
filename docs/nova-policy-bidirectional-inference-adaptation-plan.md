@@ -128,15 +128,27 @@ Key requested differences to address:
   - `joint_position_gain`
   - `joint_position_tolerance`
 - [x] Added a first NOVA Jogging API sender that initializes jogging, sends one joint-velocity command, then pauses jogging.
-- [x] Added unit coverage for velocity clamping/tolerance behavior.
+- [x] Replaced the one-shot sender with a continuous `_JointJoggingSession` lifecycle that:
+  - opens one NOVA Jogging websocket per realtime policy loop,
+  - sends `InitializeJoggingRequest` once,
+  - streams queued `JointVelocityRequest` commands,
+  - sends `PauseJoggingRequest` on session close,
+  - drains jogging responses while commands are streamed.
+- [x] Added realtime telemetry into yielded `PolicyRunState.metadata["realtime"]`:
+  - `next_observation_seq`
+  - `last_observation_seq`
+  - `queued_action_steps`
+  - `last_action_chunk`
+  - `last_action_step` when execution is enabled
+- [x] Added unit coverage for velocity clamping/tolerance behavior, continuous jogging request order, and realtime metadata.
 - [x] Validation after this continuation:
-  - `PYTHONPATH=. uv run ruff check --config ruff.toml nova_policy/adapters.py nova_policy/motion_group_extensions.py nova_policy/client.py nova_policy/__init__.py nova_policy/tests/test_policy_extension.py` -> passed
-  - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `10 passed`
+  - `PYTHONPATH=. uv run ruff check --config ruff.toml nova_policy/motion_group_extensions.py nova_policy/tests/test_policy_extension.py` -> passed
+  - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `11 passed`
 
 ### Still intentionally not done
 
 - [ ] Validate `execute_actions=True` against the virtual UR10e.
-- [ ] Replace the initial one-shot jogging sender with a continuous jogging lifecycle aligned with `lerobot_robot_nova` before production use.
+- [ ] Validate the continuous jogging lifecycle against virtual UR10e before production use.
 - [ ] Full MotionGroup-native robot motion over returned `action.chunk` commands under safety-reviewed limits.
 - [ ] Explicit auth validation for Socket.IO handshake headers/tokens; current cluster route accepted the unauthenticated manual websocket test just like the HTTP control-plane.
 
@@ -806,7 +818,7 @@ Deliverable: production WebRTC camera flow + robust multi-policy adapter layer.
   - [x] max in-flight observations (default 1 through request/response sequencing)
   - [ ] duplicate suppression / safe replay policy
 - [x] Support stop/cancel and conflict handling with existing `PolicyRunState.stop()`.
-- [ ] Surface action/joint telemetry in stream metadata.
+- [x] Surface action/joint telemetry in stream metadata.
 - [x] Allow optional `n_action_steps` override on discovered `ACTPolicy` before execution.
 
 ## Cross-repo alignment (`wandelbots-lerobot`)
@@ -1008,8 +1020,8 @@ Definition of Done:
 Phase 3 is partially implemented locally: ACT payload normalization and opt-in SDK observation/chunk exchange now exist and are unit-tested. Next, continue with the remaining Phase 4 execution work:
 
 1. harden SDK-side jogging action application for `PolicyExecutionOptions(realtime=True, execute_actions=True)`,
-2. replace the current one-shot jogging sender with a continuous velocity-control lifecycle aligned with safe primitives from `lerobot_robot_nova`,
-3. consume one queued `action.chunk` step per `control_dt_s` tick against that continuous NOVA jogging lifecycle,
-4. add telemetry for latest observation/action/chunk in `PolicyRunState.metadata`,
+2. validate the continuous velocity-control lifecycle against safe primitives from `lerobot_robot_nova`,
+3. consume one queued `action.chunk` step per `control_dt_s` tick against the virtual UR10e,
+4. tune velocity limits/gains and add safety limit checks from NOVA setup data,
 5. validate `execute_actions=True` against the virtual UR10e with a short timeout and stop/cancel checks,
 6. then resolve the auth-token source for protected HTTP + Socket.IO gateway operation.

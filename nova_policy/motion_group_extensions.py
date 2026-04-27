@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -10,12 +11,12 @@ from nova.cell.motion_group import MotionGroup
 
 from .adapters import adapter_for_policy
 from .client import PolicyServiceClient
-from .models import ACTPolicy, ActionStep, RobotStatePoint
+from .models import ACTPolicy, ActionChunk, ActionStep, PolicyRun, RobotStatePoint
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
 
-    from .models import JsonValue, PolicyRun
+    from .models import JsonValue
 
 
 @runtime_checkable
@@ -231,11 +232,85 @@ def _target_joints_from_step(step: ActionStep, current: tuple[float, ...]) -> tu
     return tuple(targets)
 
 
+class _JointJoggingSession:
+    def __init__(self, motion_group: MotionGroup, *, tcp: str) -> None:
+        self._motion_group = motion_group
+        self._tcp = tcp
+        self._commands: asyncio.Queue[tuple[float, ...] | None] = asyncio.Queue()
+        self._task: asyncio.Task[None] | None = None
+        self._closed = False
+
+    async def command(self, velocity: tuple[float, ...]) -> None:
+        if self._closed:
+            raise RuntimeError("Cannot send joint jogging command after session was closed")
+        if self._task is None:
+            self._task = asyncio.create_task(self._run())
+        if self._task.done():
+            self._task.result()
+        await self._commands.put(velocity)
+
+    async def close(self) -> None:
+        self._closed = True
+        if self._task is None:
+            return
+        await self._commands.put(None)
+        await self._task
+
+    async def _run(self) -> None:
+        api_client_obj = cast(
+            "_ApiClientWithJogging", getattr(self._motion_group, "_api_client")  # noqa: B009
+        )
+        controller_id = cast("str", getattr(self._motion_group, "_controller_id"))  # noqa: B009
+        cell = cast("str", getattr(self._motion_group, "_cell"))  # noqa: B009
+
+        await api_client_obj.motion_group_jogging_api.execute_jogging(
+            cell=cell,
+            controller=controller_id,
+            client_request_generator=self._request_generator,
+        )
+
+    async def _request_generator(self, response_stream):
+        response_drain = asyncio.create_task(_drain_jogging_responses(response_stream))
+        try:
+            yield _initialize_jogging_request(self._motion_group.id, self._tcp)
+            while True:
+                velocity = await self._commands.get()
+                if velocity is None:
+                    break
+                yield _joint_velocity_request(velocity)
+            yield _pause_jogging_request()
+        finally:
+            response_drain.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await response_drain
+
+
+async def _drain_jogging_responses(response_stream) -> None:
+    async for _response in response_stream:
+        pass
+
+
+def _initialize_jogging_request(motion_group_id: str, tcp: str):
+    return api.models.ExecuteJoggingRequest(
+        root=api.models.InitializeJoggingRequest(motion_group=motion_group_id, tcp=tcp)
+    )
+
+
+def _joint_velocity_request(velocity: tuple[float, ...]):
+    return api.models.ExecuteJoggingRequest(
+        root=api.models.JointVelocityRequest(velocity=api.models.Joints(root=list(velocity)))
+    )
+
+
+def _pause_jogging_request():
+    return api.models.ExecuteJoggingRequest(root=api.models.PauseJoggingRequest())
+
+
 async def _apply_action_step(
     motion_group: MotionGroup,
     step: ActionStep,
     *,
-    tcp: str,
+    jogging_session: _JointJoggingSession,
     options: PolicyExecutionOptions,
 ) -> None:
     current = await motion_group.joints()
@@ -247,32 +322,55 @@ async def _apply_action_step(
         velocity_limit=options.joint_velocity_limit,
         tolerance=options.joint_position_tolerance,
     )
-    await _send_joint_velocity_once(motion_group, tcp=tcp, velocity=velocity)
+    await jogging_session.command(velocity)
 
 
-async def _send_joint_velocity_once(
-    motion_group: MotionGroup,
+def _action_step_to_metadata(step: ActionStep) -> dict[str, JsonValue]:
+    metadata: dict[str, JsonValue] = {"joints": dict(step.joints)}
+    if step.gripper is not None:
+        metadata["gripper"] = dict(step.gripper)
+    if step.io is not None:
+        metadata["io"] = dict(step.io)
+    return metadata
+
+
+def _chunk_to_metadata(chunk: ActionChunk) -> dict[str, JsonValue]:
+    return {
+        "chunk_id": chunk.chunk_id,
+        "observation_seq": chunk.observation_seq,
+        "n_action_steps": chunk.n_action_steps,
+        "control_dt_s": chunk.control_dt_s,
+        "inference_latency_ms": chunk.inference_latency_ms,
+    }
+
+
+def _with_realtime_metadata(
+    run: PolicyRun,
     *,
-    tcp: str,
-    velocity: tuple[float, ...],
-) -> None:
-    api_client_obj = cast("_ApiClientWithJogging", getattr(motion_group, "_api_client"))  # noqa: B009
-    controller_id = cast("str", getattr(motion_group, "_controller_id"))  # noqa: B009
-    cell = cast("str", getattr(motion_group, "_cell"))  # noqa: B009
-
-    async def request_generator(_response_stream):
-        yield api.models.ExecuteJoggingRequest(
-            root=api.models.InitializeJoggingRequest(motion_group=motion_group.id, tcp=tcp)
-        )
-        yield api.models.ExecuteJoggingRequest(
-            root=api.models.JointVelocityRequest(velocity=api.models.Joints(root=list(velocity)))
-        )
-        yield api.models.ExecuteJoggingRequest(root=api.models.PauseJoggingRequest())
-
-    await api_client_obj.motion_group_jogging_api.execute_jogging(
-        cell=cell,
-        controller=controller_id,
-        client_request_generator=request_generator,
+    observation_seq: int,
+    queued_action_steps: int,
+    last_chunk: ActionChunk | None,
+    last_action_step: ActionStep | None,
+) -> PolicyRun:
+    metadata = dict(run.metadata or {})
+    realtime_metadata: dict[str, JsonValue] = {
+        "next_observation_seq": observation_seq,
+        "last_observation_seq": observation_seq - 1 if observation_seq > 0 else None,
+        "queued_action_steps": queued_action_steps,
+    }
+    if last_chunk is not None:
+        realtime_metadata["last_action_chunk"] = _chunk_to_metadata(last_chunk)
+    if last_action_step is not None:
+        realtime_metadata["last_action_step"] = _action_step_to_metadata(last_action_step)
+    metadata["realtime"] = realtime_metadata
+    return PolicyRun(
+        run=run.run,
+        policy=run.policy,
+        state=run.state,
+        start_time=run.start_time,
+        timeout_s=run.timeout_s,
+        elapsed_s=run.elapsed_s,
+        metadata=metadata,
     )
 
 
@@ -297,14 +395,26 @@ async def _run_realtime_policy_loop(  # noqa: PLR0913
     stop_run: Callable[[], Awaitable[None]],
 ) -> AsyncIterator[PolicyRunState]:
     realtime = client.open_realtime_session()
+    jogging_session = _JointJoggingSession(motion_group, tcp=tcp) if options.execute_actions else None
     action_queue = _ActionStepQueue()
     observation_seq = 0
+    last_chunk: ActionChunk | None = None
+    last_action_step: ActionStep | None = None
     stop_requested = False
 
     try:
         while True:
             status = await client.get_run(policy=policy_path, run=run_id)
-            yield PolicyRunState(run=status, stop=stop_run)
+            yield PolicyRunState(
+                run=_with_realtime_metadata(
+                    status,
+                    observation_seq=observation_seq,
+                    queued_action_steps=action_queue.queued_steps,
+                    last_chunk=last_chunk,
+                    last_action_step=last_action_step,
+                ),
+                stop=stop_run,
+            )
             if status.state in {"STOPPED", "TIMED_OUT", "FAILED"}:
                 return
 
@@ -315,12 +425,15 @@ async def _run_realtime_policy_loop(  # noqa: PLR0913
             if options.execute_actions:
                 step = action_queue.pop_or_hold()
                 if step is not None:
+                    if jogging_session is None:
+                        raise RuntimeError("Jogging session is required when execute_actions=True")
                     await _apply_action_step(
                         motion_group,
                         step,
-                        tcp=tcp,
+                        jogging_session=jogging_session,
                         options=options,
                     )
+                    last_action_step = step
 
             if action_queue.should_request_chunk(options.low_water_mark):
                 state_point = await _read_robot_state_point(
@@ -335,6 +448,7 @@ async def _run_realtime_policy_loop(  # noqa: PLR0913
                     task=task,
                 )
                 action_queue.enqueue(chunk.steps)
+                last_chunk = chunk
                 observation_seq += 1
 
                 if options.max_observations is not None and observation_seq >= options.max_observations:
@@ -346,6 +460,8 @@ async def _run_realtime_policy_loop(  # noqa: PLR0913
             )
             await asyncio.sleep(sleep_s)
     finally:
+        if jogging_session is not None:
+            await jogging_session.close()
         await realtime.close()
 
 

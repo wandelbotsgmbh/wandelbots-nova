@@ -6,7 +6,10 @@ import pytest
 
 from nova_policy import ACTAdapter, ACTPolicy, PolicyExecutionOptions, enable_motion_group_policy_extension
 from nova_policy.models import ActionChunk, ActionStep, PolicyRun
-from nova_policy.motion_group_extensions import _compute_joint_velocity_towards_target
+from nova_policy.motion_group_extensions import (
+    _JointJoggingSession,
+    _compute_joint_velocity_towards_target,
+)
 
 
 class FakeRealtimeSession:
@@ -38,6 +41,22 @@ class FakeRealtimeSession:
 
     async def close(self):
         self.closed = True
+
+
+class FakeJoggingApi:
+    def __init__(self):
+        self.requests: list[object] = []
+        self.calls: list[tuple[str, str]] = []
+
+    async def execute_jogging(self, *, cell, controller, client_request_generator):
+        self.calls.append((cell, controller))
+
+        async def responses():
+            if False:
+                yield None
+
+        async for request in client_request_generator(responses()):
+            self.requests.append(request)
 
 
 class FakePolicyClient:
@@ -78,6 +97,7 @@ def mock_motion_group():
     enable_motion_group_policy_extension()
     mock_api_client = MagicMock()
     mock_api_client.config = MagicMock(access_token="token")
+    mock_api_client.motion_group_jogging_api = FakeJoggingApi()
 
     motion_group = MotionGroup(
         api_client=mock_api_client,
@@ -102,6 +122,25 @@ def test_compute_joint_velocity_towards_target_clamps_and_applies_tolerance():
     )
 
     assert velocity == (1.5, 0.0, -1.5)
+
+
+@pytest.mark.asyncio
+async def test_joint_jogging_session_keeps_connection_open_until_closed(mock_motion_group):
+    session = _JointJoggingSession(mock_motion_group, tcp="flange")
+
+    await session.command((0.1, 0.0, -0.1, 0.0, 0.0, 0.0))
+    await session.command((0.2, 0.0, -0.2, 0.0, 0.0, 0.0))
+    await session.close()
+
+    jogging_api = mock_motion_group._api_client.motion_group_jogging_api
+    assert jogging_api.calls == [("cell", "controller")]
+    request_types = [type(request.root).__name__ for request in jogging_api.requests]
+    assert request_types == [
+        "InitializeJoggingRequest",
+        "JointVelocityRequest",
+        "JointVelocityRequest",
+        "PauseJoggingRequest",
+    ]
 
 
 def test_act_adapter_builds_service_policy_payload():
@@ -190,6 +229,7 @@ async def test_stream_policy_realtime_pushes_robot_state(mock_motion_group, monk
     )
 
     seen_states = []
+    seen_metadata = []
     async for state in mock_motion_group.stream_policy(
         policy_path="org/policy",
         task="pick",
@@ -202,9 +242,22 @@ async def test_stream_policy_realtime_pushes_robot_state(mock_motion_group, monk
         ),
     ):
         seen_states.append(state.state)
+        seen_metadata.append(state.metadata)
 
     assert seen_states == ["PREPARING", "RUNNING", "RUNNING", "STOPPED"]
     assert fake_client.stop_calls == [("org/policy", "run_1")]
+    assert seen_metadata[-1] is not None
+    realtime_metadata = seen_metadata[-1]["realtime"]
+    assert isinstance(realtime_metadata, dict)
+    assert realtime_metadata["last_observation_seq"] == 1
+    assert realtime_metadata["queued_action_steps"] == 2
+    assert realtime_metadata["last_action_chunk"] == {
+        "chunk_id": "chunk_1",
+        "observation_seq": 1,
+        "n_action_steps": 1,
+        "control_dt_s": 0.01,
+        "inference_latency_ms": 1.0,
+    }
     assert fake_client.realtime_session.closed is True
     assert [call["seq"] for call in fake_client.realtime_session.predict_calls] == [0, 1]
     assert fake_client.realtime_session.predict_calls[0]["observation"] == {
