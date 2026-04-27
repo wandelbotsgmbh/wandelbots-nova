@@ -97,6 +97,8 @@ class PolicyRealtimeSession:
         loop = asyncio.get_running_loop()
         future: asyncio.Future[ActionChunk] = loop.create_future()
         pending_key = (run, seq)
+        if pending_key in self._pending_chunks:
+            raise RuntimeError(f"Observation seq {seq} for run '{run}' is already in flight")
         self._pending_chunks[pending_key] = future
 
         try:

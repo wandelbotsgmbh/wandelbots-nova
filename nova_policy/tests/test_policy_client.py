@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -132,6 +133,34 @@ async def test_realtime_session_predict_uses_socketio(monkeypatch):
         "reconnection_delay": 0.25,
         "reconnection_delay_max": 2.0,
     }
+
+
+@pytest.mark.asyncio
+async def test_realtime_session_rejects_duplicate_inflight_observation(monkeypatch):
+    class FakeAsyncClient:
+        connected = True
+
+        def on(self, _event: str):
+            def decorator(handler):
+                return handler
+
+            return decorator
+
+    monkeypatch.setattr(
+        "nova_policy.client._load_socketio_module",
+        lambda: SimpleNamespace(AsyncClient=lambda **_kwargs: FakeAsyncClient()),
+    )
+
+    client = PolicyServiceClient(base_url="http://policy-service")
+    session = client.open_realtime_session()
+    session._pending_chunks[("run_1", 3)] = asyncio.get_running_loop().create_future()
+
+    with pytest.raises(RuntimeError, match="already in flight"):
+        await session.predict(
+            run="run_1",
+            seq=3,
+            state_point=RobotStatePoint(joints={"joint_1.pos": 0.5}),
+        )
 
 
 def test_realtime_reconnection_options_are_validated():
