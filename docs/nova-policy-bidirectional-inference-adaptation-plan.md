@@ -207,7 +207,8 @@ Key requested differences to address:
 
 ### Known issue found during validation
 
-- [ ] `observation.state` from the current Nova robot path is 6D while the validated ACT checkpoint expects 7D (`gripper.pos` missing). Current runner pads with zero and still runs, but this should be normalized explicitly in the future adapter/inference contract.
+- [x] `observation.state` from the current Nova robot path is 6D while the validated ACT checkpoint expects 7D (`gripper.pos` missing). Current runner pads with zero and still runs, but this should be normalized explicitly in the future adapter/inference contract.
+  - Service-side schema validation now injects `gripper.pos=0.0` when gripper input is enabled but the pushed observation omits it, and surfaces this in action chunk diagnostics.
 
 ## Findings from code investigation
 
@@ -813,7 +814,10 @@ Deliverable: production WebRTC camera flow + robust multi-policy adapter layer.
   - [x] add `BackendTrafficPolicy` for `nova-policy-service` route (request + connection idle timeout).
   - [x] verify websocket upgrade/Socket.IO handshake is stable through `envoy-shared` from the public cluster route.
 - [ ] Confirm gateway auth behavior with infra-owned policies (outside this repo) and document required auth headers/tokens for this service.
-- [ ] Add feature schema validation for inbound robot-state observations.
+- [x] Add feature schema validation for inbound robot-state observations.
+  - [x] Validate required joint features resolved for the active run.
+  - [x] Reject non-numeric or non-finite joint/gripper observations.
+  - [x] Explicitly default missing `gripper.pos` to `0.0` when gripper input is enabled and return diagnostics.
 - [x] Keep camera ingestion fully internal via WebRTC plugin configuration.
 - [ ] Implement production policy-type adapter registry (input/output normalization per policy family).
   - [x] Minimal SDK-side `ACTAdapter` exists for ACT start-payload normalization.
