@@ -155,6 +155,10 @@ Key requested differences to address:
   - `last_action_step` when execution is enabled
   - `last_action_command` with current joints, target joints, command velocity, and effective velocity limits
 - [x] Added unit coverage for velocity clamping/tolerance behavior, setup-derived safety limits, continuous jogging request order, realtime metadata, option validation, bounded Socket.IO reconnect options, duplicate in-flight observation suppression, and the guarded `execute_actions=True` realtime loop path.
+- [x] Added `nova_policy/examples/realtime_policy_ur10e_validation.py` as the safe manual validation entry point for:
+  - observation/chunk smoke with `EXECUTE_ACTIONS=false` (default),
+  - guarded virtual-controller jogging validation with `EXECUTE_ACTIONS=true`,
+  - conservative default velocity/gain/setup-limit-scale settings.
 - [x] Validation after this continuation:
   - `PYTHONPATH=. uv run ruff check --config ruff.toml nova_policy/motion_group_extensions.py nova_policy/tests/test_policy_extension.py` -> passed
   - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `18 passed`
