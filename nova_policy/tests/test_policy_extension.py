@@ -282,7 +282,8 @@ async def test_stream_policy_realtime_execute_actions_sends_jogging_velocity(
     )
     mock_motion_group.joints = AsyncMock(return_value=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
 
-    async for _state in mock_motion_group.stream_policy(
+    seen_metadata = []
+    async for state in mock_motion_group.stream_policy(
         policy_path="org/policy",
         task="pick",
         timeout_s=120.0,
@@ -294,7 +295,16 @@ async def test_stream_policy_realtime_execute_actions_sends_jogging_velocity(
             joint_velocity_limit=0.5,
         ),
     ):
-        pass
+        seen_metadata.append(state.metadata)
+
+    realtime_metadata = seen_metadata[-1]["realtime"]
+    assert isinstance(realtime_metadata, dict)
+    assert realtime_metadata["last_action_command"] == {
+        "current_joints": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        "target_joints": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        "command_velocity": [0.5, 0.0, 0.0, 0.0, 0.0, 0.0],
+        "velocity_limits": [0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+    }
 
     jogging_api = mock_motion_group._api_client.motion_group_jogging_api
     request_types = [type(request.root).__name__ for request in jogging_api.requests]

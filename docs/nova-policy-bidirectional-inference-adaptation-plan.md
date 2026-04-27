@@ -153,6 +153,7 @@ Key requested differences to address:
   - `queued_action_steps`
   - `last_action_chunk`
   - `last_action_step` when execution is enabled
+  - `last_action_command` with current joints, target joints, command velocity, and effective velocity limits
 - [x] Added unit coverage for velocity clamping/tolerance behavior, setup-derived safety limits, continuous jogging request order, realtime metadata, option validation, bounded Socket.IO reconnect options, duplicate in-flight observation suppression, and the guarded `execute_actions=True` realtime loop path.
 - [x] Validation after this continuation:
   - `PYTHONPATH=. uv run ruff check --config ruff.toml nova_policy/motion_group_extensions.py nova_policy/tests/test_policy_extension.py` -> passed

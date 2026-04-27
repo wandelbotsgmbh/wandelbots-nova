@@ -428,7 +428,7 @@ async def _apply_action_step(
     jogging_session: _JointJoggingSession,
     options: PolicyExecutionOptions,
     motion_group_setup: object | None,
-) -> None:
+) -> dict[str, JsonValue]:
     current = await motion_group.joints()
     target = _target_joints_from_step(step, current)
     safety_limits = _extract_joint_safety_limits(motion_group_setup, len(current))
@@ -447,6 +447,7 @@ async def _apply_action_step(
             tolerance=options.joint_position_tolerance,
         )
     else:
+        velocity_limits = tuple(options.joint_velocity_limit for _ in current)
         velocity = _compute_joint_velocity_towards_target(
             current,
             target,
@@ -455,6 +456,12 @@ async def _apply_action_step(
             tolerance=options.joint_position_tolerance,
         )
     await jogging_session.command(velocity)
+    return {
+        "current_joints": list(current),
+        "target_joints": list(target),
+        "command_velocity": list(velocity),
+        "velocity_limits": list(velocity_limits),
+    }
 
 
 def _action_step_to_metadata(step: ActionStep) -> dict[str, JsonValue]:
@@ -483,6 +490,7 @@ def _with_realtime_metadata(
     queued_action_steps: int,
     last_chunk: ActionChunk | None,
     last_action_step: ActionStep | None,
+    last_action_command: dict[str, JsonValue] | None,
 ) -> PolicyRun:
     metadata = dict(run.metadata or {})
     realtime_metadata: dict[str, JsonValue] = {
@@ -494,6 +502,8 @@ def _with_realtime_metadata(
         realtime_metadata["last_action_chunk"] = _chunk_to_metadata(last_chunk)
     if last_action_step is not None:
         realtime_metadata["last_action_step"] = _action_step_to_metadata(last_action_step)
+    if last_action_command is not None:
+        realtime_metadata["last_action_command"] = last_action_command
     metadata["realtime"] = realtime_metadata
     return PolicyRun(
         run=run.run,
@@ -533,6 +543,7 @@ async def _run_realtime_policy_loop(  # noqa: PLR0913
     observation_seq = 0
     last_chunk: ActionChunk | None = None
     last_action_step: ActionStep | None = None
+    last_action_command: dict[str, JsonValue] | None = None
     stop_requested = False
 
     try:
@@ -545,6 +556,7 @@ async def _run_realtime_policy_loop(  # noqa: PLR0913
                     queued_action_steps=action_queue.queued_steps,
                     last_chunk=last_chunk,
                     last_action_step=last_action_step,
+                    last_action_command=last_action_command,
                 ),
                 stop=stop_run,
             )
@@ -560,7 +572,7 @@ async def _run_realtime_policy_loop(  # noqa: PLR0913
                 if step is not None:
                     if jogging_session is None:
                         raise RuntimeError("Jogging session is required when execute_actions=True")
-                    await _apply_action_step(
+                    last_action_command = await _apply_action_step(
                         motion_group,
                         step,
                         jogging_session=jogging_session,
