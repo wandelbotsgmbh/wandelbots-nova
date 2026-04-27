@@ -136,21 +136,27 @@ Key requested differences to address:
   - drains jogging responses while commands are streamed.
 - [x] Added bounded Socket.IO reconnection settings on `PolicyServiceClient` and pass them into `python-socketio`.
 - [x] Added duplicate in-flight `(run, seq)` suppression in `PolicyRealtimeSession.predict(...)`.
+- [x] Added setup-derived safety limit handling for local action execution:
+  - extracts joint position and velocity limits from `motion_group_setup.global_limits.joints`,
+  - rejects action targets outside configured joint position ranges,
+  - clamps commanded joint velocities to `min(joint_velocity_limit, setup_velocity * setup_velocity_limit_scale)`,
+  - keeps the behavior configurable through `enforce_setup_limits` and `setup_velocity_limit_scale`.
 - [x] Added realtime option validation so unsafe/invalid combinations fail before a run starts:
   - `execute_actions=True` requires `realtime=True`
   - non-negative low-water mark and tolerance
   - positive max-observation count when provided
   - positive jogging velocity limit and position gain
+  - setup velocity scale in `(0, 1]`
 - [x] Added realtime telemetry into yielded `PolicyRunState.metadata["realtime"]`:
   - `next_observation_seq`
   - `last_observation_seq`
   - `queued_action_steps`
   - `last_action_chunk`
   - `last_action_step` when execution is enabled
-- [x] Added unit coverage for velocity clamping/tolerance behavior, continuous jogging request order, realtime metadata, option validation, bounded Socket.IO reconnect options, duplicate in-flight observation suppression, and the guarded `execute_actions=True` realtime loop path.
+- [x] Added unit coverage for velocity clamping/tolerance behavior, setup-derived safety limits, continuous jogging request order, realtime metadata, option validation, bounded Socket.IO reconnect options, duplicate in-flight observation suppression, and the guarded `execute_actions=True` realtime loop path.
 - [x] Validation after this continuation:
   - `PYTHONPATH=. uv run ruff check --config ruff.toml nova_policy/motion_group_extensions.py nova_policy/tests/test_policy_extension.py` -> passed
-  - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `15 passed`
+  - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `18 passed`
 
 ### Still intentionally not done
 
@@ -1031,6 +1037,6 @@ Phase 3 is partially implemented locally: ACT payload normalization and opt-in S
 1. harden SDK-side jogging action application for `PolicyExecutionOptions(realtime=True, execute_actions=True)`,
 2. validate the continuous velocity-control lifecycle against safe primitives from `lerobot_robot_nova`,
 3. consume one queued `action.chunk` step per `control_dt_s` tick against the virtual UR10e,
-4. tune velocity limits/gains and add safety limit checks from NOVA setup data,
+4. tune velocity limits/gains against the NOVA setup-derived safety limit checks,
 5. validate `execute_actions=True` against the virtual UR10e with a short timeout and stop/cancel checks,
 6. then resolve the auth-token source for protected HTTP + Socket.IO gateway operation.

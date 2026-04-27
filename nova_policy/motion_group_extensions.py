@@ -29,6 +29,13 @@ class PolicyExecutionContext:
     cameras: dict[str, dict[str, object]] | None = None
 
 
+@dataclass(slots=True, frozen=True)
+class _JointSafetyLimit:
+    lower_position: float | None = None
+    upper_position: float | None = None
+    velocity: float | None = None
+
+
 @dataclass(slots=True)
 class PolicyExecutionOptions:
     tcp: str | None = None
@@ -47,6 +54,8 @@ class PolicyExecutionOptions:
     joint_velocity_limit: float = 1.5
     joint_position_gain: float = 3.0
     joint_position_tolerance: float = 0.01
+    enforce_setup_limits: bool = True
+    setup_velocity_limit_scale: float = 0.25
 
 
 class _ActionStepQueue:
@@ -168,6 +177,8 @@ def _validate_execution_options(options: PolicyExecutionOptions) -> None:
         raise ValueError("joint_position_gain must be > 0")
     if options.joint_position_tolerance < 0:
         raise ValueError("joint_position_tolerance must be >= 0")
+    if options.setup_velocity_limit_scale <= 0 or options.setup_velocity_limit_scale > 1:
+        raise ValueError("setup_velocity_limit_scale must be in the interval (0, 1]")
 
 
 def _resolve_policy_spec(
@@ -245,6 +256,95 @@ def _target_joints_from_step(step: ActionStep, current: tuple[float, ...]) -> tu
         key = f"joint_{index + 1}.pos"
         targets.append(float(step.joints.get(key, current_value)))
     return tuple(targets)
+
+
+def _field(value: object, name: str) -> object:
+    if isinstance(value, dict):
+        return value.get(name)
+    return getattr(value, name, None)
+
+
+def _as_float_or_none(value: object) -> float | None:
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def _extract_joint_safety_limits(
+    motion_group_setup: object | None,
+    joint_count: int,
+) -> tuple[_JointSafetyLimit, ...]:
+    if motion_group_setup is None:
+        return tuple(_JointSafetyLimit() for _ in range(joint_count))
+
+    global_limits = _field(motion_group_setup, "global_limits")
+    joints = _field(global_limits, "joints")
+    if not isinstance(joints, list):
+        return tuple(_JointSafetyLimit() for _ in range(joint_count))
+
+    safety_limits: list[_JointSafetyLimit] = []
+    for joint in joints[:joint_count]:
+        position = _field(joint, "position")
+        safety_limits.append(
+            _JointSafetyLimit(
+                lower_position=_as_float_or_none(_field(position, "lower_limit")),
+                upper_position=_as_float_or_none(_field(position, "upper_limit")),
+                velocity=_as_float_or_none(_field(joint, "velocity")),
+            )
+        )
+
+    while len(safety_limits) < joint_count:
+        safety_limits.append(_JointSafetyLimit())
+
+    return tuple(safety_limits)
+
+
+def _validate_target_joints_against_limits(
+    target: tuple[float, ...],
+    safety_limits: tuple[_JointSafetyLimit, ...],
+) -> None:
+    for index, (target_value, safety_limit) in enumerate(zip(target, safety_limits, strict=True)):
+        joint_name = f"joint_{index + 1}"
+        lower = safety_limit.lower_position
+        upper = safety_limit.upper_position
+        if lower is not None and target_value < lower:
+            raise ValueError(f"{joint_name} target {target_value} is below setup limit {lower}")
+        if upper is not None and target_value > upper:
+            raise ValueError(f"{joint_name} target {target_value} is above setup limit {upper}")
+
+
+def _effective_joint_velocity_limit(
+    *,
+    configured_limit: float,
+    safety_limits: tuple[_JointSafetyLimit, ...],
+    setup_velocity_limit_scale: float,
+) -> tuple[float, ...]:
+    limits: list[float] = []
+    for safety_limit in safety_limits:
+        if safety_limit.velocity is None or safety_limit.velocity <= 0:
+            limits.append(configured_limit)
+            continue
+        limits.append(min(configured_limit, safety_limit.velocity * setup_velocity_limit_scale))
+    return tuple(limits)
+
+
+def _compute_joint_velocity_towards_target_with_limits(
+    current: tuple[float, ...],
+    target: tuple[float, ...],
+    *,
+    gain: float,
+    velocity_limits: tuple[float, ...],
+    tolerance: float,
+) -> tuple[float, ...]:
+    velocities: list[float] = []
+    for current_value, target_value, velocity_limit in zip(
+        current, target, velocity_limits, strict=True
+    ):
+        error = target_value - current_value
+        if abs(error) <= tolerance:
+            velocities.append(0.0)
+            continue
+        raw_velocity = error * gain
+        velocities.append(max(-velocity_limit, min(velocity_limit, raw_velocity)))
+    return tuple(velocities)
 
 
 class _JointJoggingSession:
@@ -327,16 +427,33 @@ async def _apply_action_step(
     *,
     jogging_session: _JointJoggingSession,
     options: PolicyExecutionOptions,
+    motion_group_setup: object | None,
 ) -> None:
     current = await motion_group.joints()
     target = _target_joints_from_step(step, current)
-    velocity = _compute_joint_velocity_towards_target(
-        current,
-        target,
-        gain=options.joint_position_gain,
-        velocity_limit=options.joint_velocity_limit,
-        tolerance=options.joint_position_tolerance,
-    )
+    safety_limits = _extract_joint_safety_limits(motion_group_setup, len(current))
+    if options.enforce_setup_limits:
+        _validate_target_joints_against_limits(target, safety_limits)
+        velocity_limits = _effective_joint_velocity_limit(
+            configured_limit=options.joint_velocity_limit,
+            safety_limits=safety_limits,
+            setup_velocity_limit_scale=options.setup_velocity_limit_scale,
+        )
+        velocity = _compute_joint_velocity_towards_target_with_limits(
+            current,
+            target,
+            gain=options.joint_position_gain,
+            velocity_limits=velocity_limits,
+            tolerance=options.joint_position_tolerance,
+        )
+    else:
+        velocity = _compute_joint_velocity_towards_target(
+            current,
+            target,
+            gain=options.joint_position_gain,
+            velocity_limit=options.joint_velocity_limit,
+            tolerance=options.joint_position_tolerance,
+        )
     await jogging_session.command(velocity)
 
 
@@ -407,6 +524,7 @@ async def _run_realtime_policy_loop(  # noqa: PLR0913
     task: str,
     tcp: str,
     options: PolicyExecutionOptions,
+    motion_group_setup: object | None,
     stop_run: Callable[[], Awaitable[None]],
 ) -> AsyncIterator[PolicyRunState]:
     realtime = client.open_realtime_session()
@@ -447,6 +565,7 @@ async def _run_realtime_policy_loop(  # noqa: PLR0913
                         step,
                         jogging_session=jogging_session,
                         options=options,
+                        motion_group_setup=motion_group_setup,
                     )
                     last_action_step = step
 
@@ -570,6 +689,7 @@ async def stream_policy(  # noqa: PLR0913
             task=task,
             tcp=resolved_tcp,
             options=selected_options,
+            motion_group_setup=motion_group_setup,
             stop_run=stop_run,
         ):
             yield status

@@ -9,6 +9,8 @@ from nova_policy.models import ActionChunk, ActionStep, PolicyRun
 from nova_policy.motion_group_extensions import (
     _JointJoggingSession,
     _compute_joint_velocity_towards_target,
+    _effective_joint_velocity_limit,
+    _extract_joint_safety_limits,
 )
 
 
@@ -110,6 +112,45 @@ def mock_motion_group():
     mock_setup.model_dump.return_value = {"motion_group_model": "test-model"}
     motion_group.get_setup = AsyncMock(return_value=mock_setup)
     return motion_group
+
+
+def test_extract_joint_safety_limits_from_setup_dict():
+    limits = _extract_joint_safety_limits(
+        {
+            "global_limits": {
+                "joints": [
+                    {
+                        "position": {"lower_limit": -1.0, "upper_limit": 1.0},
+                        "velocity": 2.0,
+                    },
+                    {
+                        "position": {"lower_limit": -2.0, "upper_limit": 2.0},
+                        "velocity": 3.0,
+                    },
+                ]
+            }
+        },
+        joint_count=3,
+    )
+
+    assert limits[0].lower_position == -1.0
+    assert limits[0].upper_position == 1.0
+    assert limits[0].velocity == 2.0
+    assert limits[1].velocity == 3.0
+    assert limits[2].velocity is None
+
+
+def test_effective_joint_velocity_limit_uses_scaled_setup_limit():
+    limits = _extract_joint_safety_limits(
+        {"global_limits": {"joints": [{"velocity": 2.0}, {"velocity": 10.0}]}},
+        joint_count=2,
+    )
+
+    assert _effective_joint_velocity_limit(
+        configured_limit=1.5,
+        safety_limits=limits,
+        setup_velocity_limit_scale=0.25,
+    ) == (0.5, 1.5)
 
 
 def test_compute_joint_velocity_towards_target_clamps_and_applies_tolerance():
@@ -264,6 +305,41 @@ async def test_stream_policy_realtime_execute_actions_sends_jogging_velocity(
     ]
     velocity_request = jogging_api.requests[1].root
     assert tuple(velocity_request.velocity.root) == (0.5, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+
+@pytest.mark.asyncio
+async def test_stream_policy_realtime_execute_actions_applies_setup_velocity_limit(
+    mock_motion_group, monkeypatch
+):
+    fake_client = FakePolicyClient()
+    monkeypatch.setattr(
+        "nova_policy.motion_group_extensions._resolve_policy_client",
+        lambda *_: fake_client,
+    )
+    mock_motion_group.get_state = AsyncMock(
+        return_value=SimpleNamespace(joints=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+    )
+    mock_motion_group.joints = AsyncMock(return_value=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+
+    async for _state in mock_motion_group.stream_policy(
+        policy_path="org/policy",
+        task="pick",
+        timeout_s=120.0,
+        options=PolicyExecutionOptions(
+            realtime=True,
+            execute_actions=True,
+            max_observations=2,
+            joint_position_gain=2.0,
+            joint_velocity_limit=0.5,
+            setup_velocity_limit_scale=0.25,
+            motion_group_setup={"global_limits": {"joints": [{"velocity": 1.0}] * 6}},
+        ),
+    ):
+        pass
+
+    jogging_api = mock_motion_group._api_client.motion_group_jogging_api
+    velocity_request = jogging_api.requests[1].root
+    assert tuple(velocity_request.velocity.root) == (0.25, 0.0, 0.0, 0.0, 0.0, 0.0)
 
 
 @pytest.mark.asyncio
