@@ -158,7 +158,15 @@ Key requested differences to address:
 - [x] Added `nova_policy/examples/realtime_policy_ur10e_validation.py` as the safe manual validation entry point for:
   - observation/chunk smoke with `EXECUTE_ACTIONS=false` (default),
   - guarded virtual-controller jogging validation with `EXECUTE_ACTIONS=true`,
-  - conservative default velocity/gain/setup-limit-scale settings.
+  - conservative default velocity/gain/setup-limit-scale settings,
+  - policy-service `/healthz` + `/policy` preflight,
+  - NOVA/NATS TCP preflight and bounded NOVA open timeout for clearer local failure modes.
+- [x] Attempted safe validation with `EXECUTE_ACTIONS=false MAX_OBSERVATIONS=2`:
+  - policy service preflight succeeded against `https://nova-policy-service.ai.gpucluster-dev.wandelbots.io`,
+  - `/healthz` returned `{"status":"ok"}`,
+  - `/policy` returned ACT policy `StefanWagnerWandelbots/act_virtual_teleop_pickplace_easy` with `loaded=true`,
+  - validation was blocked before starting a run because the configured NOVA/NATS endpoint `172.31.11.142:80` was not reachable from the local environment,
+  - no robot motion was commanded (`EXECUTE_ACTIONS=false`).
 - [x] Validation after this continuation:
   - `PYTHONPATH=. uv run ruff check --config ruff.toml nova_policy/motion_group_extensions.py nova_policy/tests/test_policy_extension.py` -> passed
   - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `18 passed`
