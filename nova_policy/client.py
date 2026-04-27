@@ -45,12 +45,20 @@ class PolicyRealtimeSession:
         base_url: str,
         headers: Mapping[str, str],
         timeout_s: float,
+        reconnection_attempts: int,
+        reconnection_delay_s: float,
+        reconnection_delay_max_s: float,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._headers = dict(headers)
         self._timeout_s = timeout_s
         self._socketio_module = _load_socketio_module()
-        self._client = self._socketio_module.AsyncClient(reconnection=True)
+        self._client = self._socketio_module.AsyncClient(
+            reconnection=True,
+            reconnection_attempts=reconnection_attempts,
+            reconnection_delay=reconnection_delay_s,
+            reconnection_delay_max=reconnection_delay_max_s,
+        )
         self._pending_chunks: dict[tuple[str, int], asyncio.Future[ActionChunk]] = {}
         self._latest_session_state: dict[str, object] | None = None
         self._install_handlers()
@@ -132,10 +140,21 @@ class PolicyServiceClient:
         access_token: str | None = None,
         timeout_s: float = 60.0,
         status_poll_interval_s: float = 0.25,
+        realtime_reconnection_attempts: int = 5,
+        realtime_reconnection_delay_s: float = 0.5,
+        realtime_reconnection_delay_max_s: float = 5.0,
     ) -> None:
+        if realtime_reconnection_attempts < 0:
+            raise ValueError("realtime_reconnection_attempts must be >= 0")
+        if realtime_reconnection_delay_s <= 0 or realtime_reconnection_delay_max_s <= 0:
+            raise ValueError("realtime reconnection delays must be > 0")
+
         self._base_url = base_url.rstrip("/")
         self._timeout_s = timeout_s
         self._status_poll_interval_s = status_poll_interval_s
+        self._realtime_reconnection_attempts = realtime_reconnection_attempts
+        self._realtime_reconnection_delay_s = realtime_reconnection_delay_s
+        self._realtime_reconnection_delay_max_s = realtime_reconnection_delay_max_s
         self._headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
 
     @property
@@ -192,6 +211,9 @@ class PolicyServiceClient:
             base_url=self._base_url,
             headers=self._headers,
             timeout_s=self._timeout_s,
+            reconnection_attempts=self._realtime_reconnection_attempts,
+            reconnection_delay_s=self._realtime_reconnection_delay_s,
+            reconnection_delay_max_s=self._realtime_reconnection_delay_max_s,
         )
 
     @staticmethod

@@ -64,6 +64,7 @@ async def test_realtime_session_predict_uses_socketio(monkeypatch):
         def __init__(self):
             self.connected = False
             self.handlers: dict[str, object] = {}
+            self.options: dict[str, object] = {}
 
         def on(self, event: str):
             def decorator(handler):
@@ -100,12 +101,22 @@ async def test_realtime_session_predict_uses_socketio(monkeypatch):
             return {"accepted": True}
 
     fake_client = FakeAsyncClient()
+    def async_client_factory(**kwargs):
+        fake_client.options = kwargs
+        return fake_client
+
     monkeypatch.setattr(
         "nova_policy.client._load_socketio_module",
-        lambda: SimpleNamespace(AsyncClient=lambda reconnection=True: fake_client),
+        lambda: SimpleNamespace(AsyncClient=async_client_factory),
     )
 
-    client = PolicyServiceClient(base_url="http://policy-service", timeout_s=1.5)
+    client = PolicyServiceClient(
+        base_url="http://policy-service",
+        timeout_s=1.5,
+        realtime_reconnection_attempts=3,
+        realtime_reconnection_delay_s=0.25,
+        realtime_reconnection_delay_max_s=2.0,
+    )
     session = client.open_realtime_session()
     chunk = await session.predict(
         run="run_1",
@@ -115,3 +126,14 @@ async def test_realtime_session_predict_uses_socketio(monkeypatch):
 
     assert chunk.chunk_id == "chunk_1"
     assert chunk.steps[0].joints == {"joint_1.pos": 1.23}
+    assert fake_client.options == {
+        "reconnection": True,
+        "reconnection_attempts": 3,
+        "reconnection_delay": 0.25,
+        "reconnection_delay_max": 2.0,
+    }
+
+
+def test_realtime_reconnection_options_are_validated():
+    with pytest.raises(ValueError, match="realtime_reconnection_attempts"):
+        PolicyServiceClient(base_url="http://policy-service", realtime_reconnection_attempts=-1)

@@ -134,6 +134,7 @@ Key requested differences to address:
   - streams queued `JointVelocityRequest` commands,
   - sends `PauseJoggingRequest` on session close,
   - drains jogging responses while commands are streamed.
+- [x] Added bounded Socket.IO reconnection settings on `PolicyServiceClient` and pass them into `python-socketio`.
 - [x] Added realtime option validation so unsafe/invalid combinations fail before a run starts:
   - `execute_actions=True` requires `realtime=True`
   - non-negative low-water mark and tolerance
@@ -145,10 +146,10 @@ Key requested differences to address:
   - `queued_action_steps`
   - `last_action_chunk`
   - `last_action_step` when execution is enabled
-- [x] Added unit coverage for velocity clamping/tolerance behavior, continuous jogging request order, realtime metadata, option validation, and the guarded `execute_actions=True` realtime loop path.
+- [x] Added unit coverage for velocity clamping/tolerance behavior, continuous jogging request order, realtime metadata, option validation, bounded Socket.IO reconnect options, and the guarded `execute_actions=True` realtime loop path.
 - [x] Validation after this continuation:
   - `PYTHONPATH=. uv run ruff check --config ruff.toml nova_policy/motion_group_extensions.py nova_policy/tests/test_policy_extension.py` -> passed
-  - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `13 passed`
+  - `PYTHONPATH=. uv run pytest -q nova_policy/tests` -> `14 passed`
 
 ### Still intentionally not done
 
@@ -816,7 +817,8 @@ Deliverable: production WebRTC camera flow + robust multi-policy adapter layer.
   - [x] Hold last commanded position if queue drains before next chunk arrives.
 - [ ] Implement production local action application path (jogging-style semantics).
   - [x] Initial guarded one-shot NOVA Jogging API action sender exists behind `execute_actions=True`.
-- [ ] Configure Socket.IO reconnect/heartbeat behavior (bounded retries/backoff + timeout handling).
+- [x] Configure Socket.IO reconnect/heartbeat behavior (bounded retries/backoff + timeout handling).
+  - `PolicyServiceClient` exposes bounded realtime reconnection attempts and backoff settings.
 - [ ] Enforce app-level stream semantics across reconnects:
   - [x] monotonic observation `seq`
   - [x] `action.chunk` correlation via `observation_seq`
