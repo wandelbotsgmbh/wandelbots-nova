@@ -92,6 +92,33 @@ Key requested differences to address:
   - second Socket.IO connection resumed by run id and received another action chunk
   - run stopped cleanly with terminal state `STOPPED`
 
+### Service observation-schema validation rollout completed
+
+- [x] Added inbound robot-state observation schema validation in the actual `lerobot-inference` service:
+  - validates required joint features resolved for the active run,
+  - rejects non-numeric or non-finite joint/gripper values,
+  - explicitly defaults missing `gripper.pos` to `0.0` when gripper input is enabled,
+  - returns `diagnostics.observation_schema.defaulted_features` when defaulting occurs.
+- [x] Source commit in `lerobot-inference`: `7fc1b2d` (`fix(policy-service): validate pushed observation schema`).
+- [x] Built CUDA image `wandelbots.azurecr.io/ai/nova-policy-service:2026-04-27-01` for `linux/amd64`.
+- [x] Local image smoke passed:
+  - schema helper defaulted missing `gripper.pos`,
+  - `from policy_service.app import app` returned `ASGIApp`.
+- [x] Pushed image digest: `sha256:861a895e2342ccf150be9d7b34bb5f4c1503e6c65c55bd609e14eeae40c89309`.
+- [x] Deployed via Flux commit `faf8fa98bd5846db2d64a1a9de9eedfdbe517e73` (`fix(nova-policy-service): deploy observation schema validation`).
+- [x] Reconciled Flux in namespace `team-embodied-ai` and verified deployment rollout completed.
+- [x] Verified deployed image `wandelbots.azurecr.io/ai/nova-policy-service:2026-04-27-01` with `1/1` ready replica.
+- [x] Verified public HTTP control-plane after rollout:
+  - `GET /healthz` -> `200 {"status":"ok"}`,
+  - `GET /policy` -> configured ACT policy with `loaded=true`, `app_state="READY"`.
+- [x] Cluster schema smoke succeeded through the public Socket.IO websocket route:
+  - observed run `run_ec1b8720ea`,
+  - start payload used `use_gripper=true`, `allow_mock_images=true`, `n_action_steps=1`,
+  - pushed six joint features and intentionally omitted `gripper.pos`,
+  - `observation.push` ack returned `accepted=true`,
+  - received `action.chunk` diagnostics `{"observation_schema":{"defaulted_features":["gripper.pos"]}}`,
+  - stopped cleanly with terminal state `STOPPED`.
+
 ### SDK phase-3 continuation completed locally
 
 - [x] Added a small SDK-side adapter boundary in `nova_policy/adapters.py`:
