@@ -35,27 +35,40 @@ class MotionSettings(pydantic.BaseModel):
             Maximum joint acceleration in [rad/s^2] for each joint.
             Either leave this field empty or set a value for each joint.
 
+        joint_jerk_limits:
+            Maximum joint jerk in [rad/s^3] for each joint.
+            Either leave this field empty or set a value for each joint. (experimental)
+
         tcp_velocity_limit:
             Maximum allowed TCP velocity in [mm/s].
 
         tcp_acceleration_limit:
             Maximum allowed TCP acceleration in [mm/s^2].
 
+        tcp_jerk_limit:
+            Maximum allowed TCP jerk in [mm/s^3]. (experimental)
+
         tcp_orientation_velocity_limit:
             Maximum allowed TCP rotation velocity in [rad/s].
 
         tcp_orientation_acceleration_limit:
             Maximum allowed TCP rotation acceleration in [rad/s^2].
+
+        tcp_orientation_jerk_limit:
+            Maximum allowed TCP rotation jerk in [rad/s^3]. (experimental)
     """
 
     blending_auto: int | None = pydantic.Field(default=None)
     blending_radius: float | None = pydantic.Field(default=None)
     joint_velocity_limits: tuple[float, ...] | None = pydantic.Field(default=None)
     joint_acceleration_limits: tuple[float, ...] | None = pydantic.Field(default=None)
+    joint_jerk_limits: tuple[float, ...] | None = pydantic.Field(default=None)
     tcp_velocity_limit: float | None = pydantic.Field(default=DEFAULT_TCP_VELOCITY_LIMIT)
     tcp_acceleration_limit: float | None = pydantic.Field(default=None)
+    tcp_jerk_limit: float | None = pydantic.Field(default=None)
     tcp_orientation_velocity_limit: float | None = pydantic.Field(default=None)
     tcp_orientation_acceleration_limit: float | None = pydantic.Field(default=None)
+    tcp_orientation_jerk_limit: float | None = pydantic.Field(default=None)
 
     position_zone_radius: float | None = pydantic.Field(default=None, deprecated=True)
     min_blending_velocity: int | None = pydantic.Field(default=None, deprecated=True)
@@ -81,11 +94,19 @@ class MotionSettings(pydantic.BaseModel):
         if blending_radius is not None and blending_auto is not None:
             raise ValueError("Can't set both blending_radius and blending_auto")
 
-        if self.joint_acceleration_limits is not None and self.joint_velocity_limits is not None:
-            if len(self.joint_acceleration_limits) != len(self.joint_velocity_limits):
-                raise ValueError(
-                    "joint_acceleration_limits and joint_velocity_limits must have the same length."
-                )
+        joint_limits_lengths = [
+            len(lim)
+            for lim in (
+                self.joint_velocity_limits,
+                self.joint_acceleration_limits,
+                self.joint_jerk_limits,
+            )
+            if lim is not None
+        ]
+        if len(set(joint_limits_lengths)) > 1:
+            raise ValueError(
+                "joint_velocity_limits, joint_acceleration_limits, and joint_jerk_limits must have the same length."
+            )
         return self
 
     def has_blending_settings(self) -> bool:
@@ -96,10 +117,13 @@ class MotionSettings(pydantic.BaseModel):
             [
                 self.tcp_velocity_limit,
                 self.tcp_acceleration_limit,
+                self.tcp_jerk_limit,
                 self.tcp_orientation_velocity_limit,
                 self.tcp_orientation_acceleration_limit,
+                self.tcp_orientation_jerk_limit,
                 self.joint_velocity_limits,
                 self.joint_acceleration_limits,
+                self.joint_jerk_limits,
             ]
         )
 
@@ -111,10 +135,13 @@ class MotionSettings(pydantic.BaseModel):
             joint_acceleration_limits=list(self.joint_acceleration_limits)
             if self.joint_acceleration_limits
             else None,
+            joint_jerk_limits=list(self.joint_jerk_limits) if self.joint_jerk_limits else None,
             tcp_velocity_limit=self.tcp_velocity_limit,
             tcp_acceleration_limit=self.tcp_acceleration_limit,
+            tcp_jerk_limit=self.tcp_jerk_limit,
             tcp_orientation_velocity_limit=self.tcp_orientation_velocity_limit,
             tcp_orientation_acceleration_limit=self.tcp_orientation_acceleration_limit,
+            tcp_orientation_jerk_limit=self.tcp_orientation_jerk_limit,
         )
 
     def as_blending_setting(self) -> api.models.BlendingPosition | api.models.BlendingAuto:
@@ -134,12 +161,16 @@ class MotionSettings(pydantic.BaseModel):
         return api.models.CartesianLimits(
             velocity=self.tcp_velocity_limit,
             acceleration=self.tcp_acceleration_limit,
+            jerk=self.tcp_jerk_limit,
             orientation_velocity=self.tcp_orientation_velocity_limit,
             orientation_acceleration=self.tcp_orientation_acceleration_limit,
+            orientation_jerk=self.tcp_orientation_jerk_limit,
         )
 
     def as_joint_limits(self) -> list[api.models.JointLimits] | None:
-        if self.joint_velocity_limits is None and self.joint_acceleration_limits is None:
+        if not any(
+            [self.joint_velocity_limits, self.joint_acceleration_limits, self.joint_jerk_limits]
+        ):
             return None
 
         if self.joint_velocity_limits is not None:
@@ -147,6 +178,9 @@ class MotionSettings(pydantic.BaseModel):
 
         if self.joint_acceleration_limits is not None:
             length = len(self.joint_acceleration_limits)
+
+        if self.joint_jerk_limits is not None:
+            length = len(self.joint_jerk_limits)
 
         limits = []
         for i in range(length):
@@ -160,7 +194,8 @@ class MotionSettings(pydantic.BaseModel):
                 if self.joint_acceleration_limits is not None
                 else None
             )
-            limit = api.models.JointLimits(velocity=velocity, acceleration=acceleration)
+            jerk = self.joint_jerk_limits[i] if self.joint_jerk_limits is not None else None
+            limit = api.models.JointLimits(velocity=velocity, acceleration=acceleration, jerk=jerk)
             limits.append(limit)
 
         return limits
