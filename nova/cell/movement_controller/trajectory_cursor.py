@@ -153,6 +153,7 @@ class Operation:
         expected_response_type: The API response type expected for this operation.
         target_location: Target location for targeted movements (forward_to, backward_to).
         interrupt_requested: Flag indicating if cancellation was requested.
+        op_id: Monotonic operation identifier for matching commands to responses.
     """
 
     future: asyncio.Future[OperationResult]
@@ -160,6 +161,7 @@ class Operation:
     operation_state: OperationState
     start_location: float
     expected_response_type: ExpectedResponseType
+    op_id: int = 0
     target_location: Optional[float] = None
     interrupt_requested: bool = False
 
@@ -177,6 +179,12 @@ class OperationHandler:
 
     def __init__(self):
         self._operation: Optional[Operation] = None
+        self._op_counter: int = 0
+
+    @property
+    def current_op_id(self) -> int:
+        """The operation ID of the current operation, or 0 if none."""
+        return self._operation.op_id if self._operation else 0
 
     def start(
         self,
@@ -203,6 +211,7 @@ class OperationHandler:
         if self._operation and not self._operation.future.done():
             self._operation.future.cancel()
 
+        self._op_counter += 1
         future: asyncio.Future[OperationResult] = asyncio.Future()
         self._operation = Operation(
             future=future,
@@ -210,6 +219,7 @@ class OperationHandler:
             operation_state=OperationState.INITIAL,
             start_location=start_location,
             expected_response_type=expected_response_type,
+            op_id=self._op_counter,
             target_location=target_location,
             interrupt_requested=False,
         )
@@ -218,21 +228,22 @@ class OperationHandler:
     def set_commanded(self):
         """Transition operation state to COMMANDED.
 
-        Called when the movement command has been sent to the controller
-        This is idempotent if already in RUNNING state (due to race conditions
-        between state updates and response processing).
+        Called when the movement command has been sent to the controller.
+        Idempotent from COMMANDED and RUNNING states to handle race conditions
+        between state updates and response processing.
 
         Raises:
             RuntimeError: If transition from current state is invalid.
         """
-        assert self._operation is not None
-        # we fail if we are already commanded since that would be a logic error
-        assert self._operation.operation_state is not OperationState.COMMANDED
+        if self._operation is None:
+            logger.warning("set_commanded() called with no operation — ignoring")
+            return
         if self._operation.operation_state == OperationState.INITIAL:
             self._operation.operation_state = OperationState.COMMANDED
-        elif self._operation.operation_state == OperationState.RUNNING:
-            # no-op, already running; this can happen if we process the motion group state with
-            # the execute set before the ExecuteTrajectoryResponse
+        elif self._operation.operation_state in (OperationState.COMMANDED, OperationState.RUNNING):
+            # Already commanded or running — no-op.
+            # COMMANDED: can happen if a stale response slips through.
+            # RUNNING: can happen if state monitor sets RUNNING before the response arrives.
             pass
         else:
             raise RuntimeError(
@@ -361,6 +372,53 @@ ExecuteTrajectoryRequestCommand = Union[
 
 
 @dataclass(frozen=True)
+class Intent:
+    """Captures the user's movement intent without immediately constructing API commands.
+
+    Public methods like ``forward()`` and ``pause()`` write an Intent to a single
+    slot.  The ``_request_loop`` reads the slot, builds the concrete API commands
+    via :meth:`to_commands`, and yields them.  If two intents arrive before the
+    loop wakes, only the latest one is sent — no stale commands ever reach the
+    server.
+    """
+
+    operation_type: OperationType
+    target_location: float | None = None
+    playback_speed_in_percent: int | None = None
+
+    def to_commands(self) -> list[ExecuteTrajectoryRequestCommand]:
+        """Build the concrete API commands for this intent."""
+        commands: list[ExecuteTrajectoryRequestCommand] = []
+        if self.playback_speed_in_percent is not None:
+            commands.append(
+                api.models.PlaybackSpeedRequest(
+                    playback_speed_in_percent=self.playback_speed_in_percent
+                )
+            )
+        if self.operation_type is OperationType.PAUSE:
+            commands.append(api.models.PauseMovementRequest())
+        else:
+            direction = (
+                api.models.Direction.DIRECTION_FORWARD
+                if self.operation_type in (OperationType.FORWARD, OperationType.FORWARD_TO)
+                else api.models.Direction.DIRECTION_BACKWARD
+            )
+            commands.append(
+                api.models.StartMovementRequest(
+                    direction=direction,
+                    target_location=(
+                        api.models.Location(root=self.target_location)
+                        if self.target_location is not None
+                        else None
+                    ),
+                    start_on_io=None,
+                    pause_on_io=None,
+                )
+            )
+        return commands
+
+
+@dataclass(frozen=True)
 class _QueueSentinel:
     """Marker type used only as a sentinel for queue termination."""
 
@@ -433,9 +491,9 @@ class TrajectoryCursor:
                     f"number of actions ({expected_end_location}). "
                     f"Expected location to be approximately {expected_end_location}.0"
                 )
-        self._command_queue: asyncio.Queue[ExecuteTrajectoryRequestCommand | _QueueSentinel] = (
-            asyncio.Queue()
-        )
+        self._pending_intent: Intent | None = None
+        self._intent_event = asyncio.Event()
+        self._stop_event = asyncio.Event()
         self._in_queue: asyncio.Queue[api.models.MotionGroupState | _QueueSentinel] = (
             asyncio.Queue()
         )
@@ -540,6 +598,15 @@ class TrajectoryCursor:
         }
         return {option for option, available in options.items() if available}
 
+    def _set_intent(self, intent: Intent) -> None:
+        """Record the latest user intent and wake the request loop.
+
+        Any previously pending intent that hasn't been consumed yet is silently
+        overwritten — only the most recent intent matters.
+        """
+        self._pending_intent = intent
+        self._intent_event.set()
+
     def forward(
         self, target_location: float | None = None, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[OperationResult]:
@@ -562,23 +629,13 @@ class TrajectoryCursor:
         if target_location is not None:
             self._target_location = target_location
 
-        if playback_speed_in_percent is not None:
-            self._command_queue.put_nowait(
-                api.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
-            )
-        self._command_queue.put_nowait(
-            api.models.StartMovementRequest(
-                direction=api.models.Direction.DIRECTION_FORWARD,
-                target_location=(
-                    api.models.Location(root=target_location)
-                    if target_location is not None
-                    else None
-                ),
-                start_on_io=None,
-                pause_on_io=None,
+        self._set_intent(
+            Intent(
+                operation_type=OperationType.FORWARD,
+                target_location=target_location,
+                playback_speed_in_percent=playback_speed_in_percent,
             )
         )
-
         return future
 
     def backward(
@@ -600,23 +657,13 @@ class TrajectoryCursor:
             OperationType.BACKWARD, expected_response_type=api.models.StartMovementResponse
         )
 
-        if playback_speed_in_percent is not None:
-            self._command_queue.put_nowait(
-                api.models.PlaybackSpeedRequest(playback_speed_in_percent=playback_speed_in_percent)
-            )
-        self._command_queue.put_nowait(
-            api.models.StartMovementRequest(
-                direction=api.models.Direction.DIRECTION_BACKWARD,
-                target_location=(
-                    api.models.Location(root=target_location)
-                    if target_location is not None
-                    else None
-                ),
-                start_on_io=None,
-                pause_on_io=None,
+        self._set_intent(
+            Intent(
+                operation_type=OperationType.BACKWARD,
+                target_location=target_location,
+                playback_speed_in_percent=playback_speed_in_percent,
             )
         )
-
         return future
 
     def forward_to(
@@ -745,16 +792,23 @@ class TrajectoryCursor:
         future = self._start_operation(
             OperationType.PAUSE, expected_response_type=api.models.PauseMovementResponse
         )
-        self._command_queue.put_nowait(api.models.PauseMovementRequest())
+        self._set_intent(Intent(operation_type=OperationType.PAUSE))
         return future
 
     def detach(self):
         """Detach from the trajectory, stopping control but not necessarily movement.
 
         This signals the cursor to stop processing commands and state updates.
+        Any in-progress operation future is cancelled so awaiters get CancelledError
+        instead of hanging indefinitely.
         Note: This does not guarantee the robot will stop moving immediately.
         """
-        self._command_queue.put_nowait(_QUEUE_SENTINEL)
+        if self._operation_handler.in_progress():
+            op = self._operation_handler.current_operation
+            if op is not None and not op.future.done():
+                op.future.cancel()
+        self._stop_event.set()
+        self._intent_event.set()  # wake _request_loop so it sees the stop
         self._in_queue.put_nowait(_QUEUE_SENTINEL)
 
     def _start_operation(
@@ -765,9 +819,6 @@ class TrajectoryCursor:
         target_location: Optional[float] = None,
     ) -> asyncio.Future[OperationResult]:
         """Start a new operation, returning a Future that will be resolved when the operation completes."""
-        # Transition the state machine back to executing for each new operation
-        if not self._state_machine.is_executing:
-            self._state_machine.send("start")
         return self._operation_handler.start(
             operation_type,
             start_location=self._current_location,
@@ -862,37 +913,37 @@ class TrajectoryCursor:
 
     async def _request_loop(self) -> ExecuteTrajectoryRequestStream:
         while True:
-            command = await self._command_queue.get()
-            if command is _QUEUE_SENTINEL:
-                self._command_queue.task_done()
+            # Wait for either a new intent or a stop signal.
+            await self._intent_event.wait()
+
+            if self._stop_event.is_set():
                 break
-            logger.debug(f"Processing command: {command}")
-            assert isinstance(
-                command,
-                (
-                    api.models.InitializeMovementRequest,
-                    api.models.StartMovementRequest,
-                    api.models.PauseMovementRequest,
-                    api.models.PlaybackSpeedRequest,
-                ),
-            )
-            yield command
 
-            if isinstance(command, api.models.StartMovementRequest):
-                match command.direction:
-                    case api.models.Direction.DIRECTION_FORWARD:
-                        target_action = self.current_action
-                        await motion_started.send_async(
-                            self, event=self._get_motion_event(target_action)
-                        )
-                    case api.models.Direction.DIRECTION_BACKWARD:
-                        target_action = self.current_action
-                        await motion_started.send_async(
-                            self, event=self._get_motion_event(target_action)
-                        )
+            # Consume the pending intent atomically.
+            intent = self._pending_intent
+            self._pending_intent = None
+            self._intent_event.clear()
 
-            # yield await self._command_queue.get()
-            self._command_queue.task_done()
+            if intent is None:
+                continue
+
+            commands = intent.to_commands()
+            for command in commands:
+                logger.debug(f"Processing command: {command}")
+                yield command
+
+                if isinstance(command, api.models.StartMovementRequest):
+                    match command.direction:
+                        case api.models.Direction.DIRECTION_FORWARD:
+                            target_action = self.current_action
+                            await motion_started.send_async(
+                                self, event=self._get_motion_event(target_action)
+                            )
+                        case api.models.Direction.DIRECTION_BACKWARD:
+                            target_action = self.current_action
+                            await motion_started.send_async(
+                                self, event=self._get_motion_event(target_action)
+                            )
 
     async def _motion_group_state_monitor(self, ready_event: asyncio.Event):
         """Monitor motion group state and update operation status accordingly.
@@ -907,6 +958,17 @@ class TrajectoryCursor:
         try:
             async for motion_group_state in self._motion_group_state_stream:
                 ready_event.set()
+
+                # Ensure the state machine is in executing state when an operation
+                # is active.  This replaces the old manual kick in _start_operation()
+                # and correctly handles resuming after paused/ended states.
+                if (
+                    self._operation_handler.in_progress()
+                    and not self._state_machine.is_executing
+                    and not self._state_machine.is_ending
+                    and not self._state_machine.is_pausing
+                ):
+                    self._state_machine.send("start")
 
                 # Skip if no operation in progress
                 current_op = self._operation_handler.current_operation
@@ -955,7 +1017,14 @@ class TrajectoryCursor:
         try:
             async for response in self._response_stream:
                 logger.debug(f"Received response: {response}")
-                assert self._is_operation_in_progress()
+
+                # If no operation is in progress, log and skip
+                if not self._is_operation_in_progress():
+                    logger.debug(
+                        f"Response received with no operation in progress: {type(response.root).__name__} — skipping"
+                    )
+                    continue
+
                 current_op = self._operation_handler.current_operation
                 assert current_op is not None
 
