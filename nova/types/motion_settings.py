@@ -81,10 +81,14 @@ class MotionSettings(pydantic.BaseModel):
         return f"__ms_{field}"
 
     def _get_blending_radius(self) -> float | None:
-        return self.blending_radius or self.position_zone_radius
+        if self.blending_radius is not None:
+            return self.blending_radius
+        return self.position_zone_radius
 
     def _get_blending_auto(self) -> int | None:
-        return self.blending_auto or self.min_blending_velocity
+        if self.blending_auto is not None:
+            return self.blending_auto
+        return self.min_blending_velocity
 
     @pydantic.model_validator(mode="after")
     def validate_blending_settings(self) -> "MotionSettings":
@@ -110,17 +114,22 @@ class MotionSettings(pydantic.BaseModel):
         return self
 
     def has_blending_settings(self) -> bool:
-        return any([self._get_blending_auto(), self._get_blending_radius()])
+        return self._get_blending_auto() is not None or self._get_blending_radius() is not None
 
     def has_limits_override(self) -> bool:
         return any(
-            [
+            value is not None
+            for value in [
                 self.tcp_velocity_limit,
                 self.tcp_acceleration_limit,
                 self.tcp_jerk_limit,
                 self.tcp_orientation_velocity_limit,
                 self.tcp_orientation_acceleration_limit,
                 self.tcp_orientation_jerk_limit,
+            ]
+        ) or any(
+            joint_limits is not None and len(joint_limits) > 0
+            for joint_limits in [
                 self.joint_velocity_limits,
                 self.joint_acceleration_limits,
                 self.joint_jerk_limits,
@@ -149,7 +158,7 @@ class MotionSettings(pydantic.BaseModel):
             raise ValueError("No blending settings set")
 
         blending_radius = self._get_blending_radius()
-        if blending_radius:
+        if blending_radius is not None:
             return api.models.BlendingPosition(
                 position_zone_radius=blending_radius, blending_name="BlendingPosition"
             )
