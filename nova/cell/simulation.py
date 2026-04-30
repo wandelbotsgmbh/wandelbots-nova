@@ -151,6 +151,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
+        payload: str | api.models.Payload | None = None,
     ) -> api.models.JointTrajectory:
         """
         A simple example planner that:

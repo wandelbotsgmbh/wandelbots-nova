@@ -169,20 +169,110 @@ class MotionGroup(AbstractRobot):
         motion_group_description = await self._fetch_motion_group_description()
         return motion_group_description.motion_group_model.root
 
-    async def get_setup(self, tcp_name: str | None = None) -> api.models.MotionGroupSetup:
+    async def get_setup(
+        self, tcp_name: str | None = None, payload: str | api.models.Payload | None = None
+    ) -> api.models.MotionGroupSetup:
         """Get the motion group setup.
 
+        The returned setup carries a single payload that the planner uses for dynamics
+        (torque limits, acceleration scaling, ...). The payload is resolved using the
+        following precedence (first match wins):
+
+        1. If the caller passes ``payload`` explicitly, it is used. A string is looked
+           up in ``description.payloads`` (raises ``KeyError`` if unknown); a
+           ``Payload`` instance is used as-is (this also allows passing ad-hoc
+           payloads that are not registered on the controller).
+        2. **Convention:** if ``tcp_name`` is provided AND ``description.payloads``
+           contains an entry whose key equals ``tcp_name``, that payload is used. A
+           payload registered under the same name as a TCP is implicitly considered
+           the payload for that tool. Document/register payloads accordingly to take
+           advantage of this default.
+        3. Otherwise the active payload selected on the controller
+           (``MotionGroupState.payload``) is looked up in ``description.payloads``.
+        4. Otherwise, if exactly one payload is registered, it is used.
+        5. Otherwise no payload is set.
+
         Args:
-            tcp_name (str): The TCP to get the setup for.
+            tcp_name: The TCP to get the setup for. Also feeds into payload
+                resolution rule 2.
+            payload: Explicit payload override. A string resolves a registered
+                payload by name; a ``Payload`` instance is used directly.
 
         Returns:
             api.models.MotionGroupSetup: The motion group setup.
+
+        Raises:
+            KeyError: If ``payload`` is a string that is not present in
+                ``description.payloads``.
         """
-        # TODO allow to specify payload
         motion_group_description = await self._fetch_motion_group_description()
-        return motion_group_setup_from_motion_group_description(
-            motion_group_description=motion_group_description, tcp_name=tcp_name
+        resolved_payload = await self._resolve_payload(
+            payload=payload, tcp_name=tcp_name, motion_group_description=motion_group_description
         )
+        return motion_group_setup_from_motion_group_description(
+            motion_group_description=motion_group_description,
+            tcp_name=tcp_name,
+            payload=resolved_payload,
+        )
+
+    async def _resolve_payload(
+        self,
+        payload: str | api.models.Payload | None,
+        tcp_name: str | None,
+        motion_group_description: api.models.MotionGroupDescription,
+    ) -> api.models.Payload | None:
+        """Resolve a payload using the precedence documented in :meth:`get_setup`."""
+        payloads = motion_group_description.payloads or {}
+
+        # Rule 1: explicit caller arg
+        if isinstance(payload, api.models.Payload):
+            return payload
+        if isinstance(payload, str):
+            return payloads[payload]
+
+        # Rule 2: TCP-name convention
+        if tcp_name is not None and tcp_name in payloads:
+            return payloads[tcp_name]
+
+        # Rule 3: active payload from controller state
+        try:
+            state = await self._fetch_state()
+        except Exception as e:
+            logger.debug(f"Could not fetch motion group state for payload resolution: {e}")
+            state = None
+        active_id = state.payload if state is not None else None
+        if active_id is not None and active_id in payloads:
+            return payloads[active_id]
+
+        # Rule 4: single registered payload
+        if len(payloads) == 1:
+            return next(iter(payloads.values()))
+
+        # Rule 5: nothing
+        return None
+
+    async def payloads(self) -> dict[str, api.models.Payload]:
+        """Return the payloads registered on the controller for this motion group.
+
+        Maps payload id to its full :class:`api.models.Payload` configuration.
+        """
+        motion_group_description = await self._fetch_motion_group_description()
+        return dict(motion_group_description.payloads or {})
+
+    async def payload_names(self) -> list[str]:
+        """Return the ids of the payloads registered for this motion group."""
+        return list((await self.payloads()).keys())
+
+    async def active_payload_name(self) -> str | None:
+        """Return the id of the payload currently selected on the controller, if any."""
+        return (await self._fetch_state()).payload
+
+    async def active_payload(self) -> api.models.Payload | None:
+        """Return the :class:`api.models.Payload` currently selected on the controller."""
+        active = await self.active_payload_name()
+        if active is None:
+            return None
+        return (await self.payloads()).get(active)
 
     async def get_mounting(self) -> Pose | None:
         """Get the mounting of the motion group.
@@ -672,6 +762,7 @@ class MotionGroup(AbstractRobot):
         tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
+        payload: str | api.models.Payload | None = None,
     ) -> api.models.JointTrajectory:
         if not actions:
             raise ValueError("No actions provided")
@@ -691,7 +782,16 @@ class MotionGroup(AbstractRobot):
                     )
 
         current_joints = start_joint_position or await self.joints()
-        motion_group_setup = motion_group_setup or await self.get_setup(tcp)
+        if motion_group_setup is None:
+            motion_group_setup = await self.get_setup(tcp_name=tcp, payload=payload)
+        elif payload is not None:
+            # Caller supplied both an explicit setup and a payload override;
+            # the explicit payload wins. Do not mutate the caller's setup.
+            motion_group_setup = motion_group_setup.model_copy(deep=True)
+            description = await self._fetch_motion_group_description()
+            motion_group_setup.payload = await self._resolve_payload(
+                payload=payload, tcp_name=tcp, motion_group_description=description
+            )
 
         # TODO: can be done in parallel, would be a big performance boost
         all_trajectories = []

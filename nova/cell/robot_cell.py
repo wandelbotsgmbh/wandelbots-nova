@@ -225,6 +225,7 @@ class AbstractRobot(Device):
         tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
+        payload: str | api.models.Payload | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -233,6 +234,7 @@ class AbstractRobot(Device):
                 Only motion actions are considered for planning.
             tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
+            payload (str | api.models.Payload | None): Override for the dynamics payload used by the planner.
 
         Returns:
             api.models.JointTrajectory: The planned joint trajectory
@@ -244,6 +246,7 @@ class AbstractRobot(Device):
         tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
+        payload: str | api.models.Payload | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions.
 
@@ -255,6 +258,11 @@ class AbstractRobot(Device):
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
             motion_group_setup (api.models.MotionGroupSetup | None): The motion group setup to be used for planning.
                  If None, the motion group setup will be fetched from the robot.
+            payload (str | api.models.Payload | None): Override for the dynamics payload used by the planner.
+                A string is resolved against the controller's registered payloads; an
+                :class:`api.models.Payload` instance is used directly. When ``None``, the payload is
+                resolved using the precedence documented in :meth:`MotionGroup.get_setup`.
+                When ``motion_group_setup`` is also provided, this overrides its ``payload`` field.
 
         Returns:
             api.models.JointTrajectory: The planned joint trajectory
@@ -274,6 +282,7 @@ class AbstractRobot(Device):
                 tcp=tcp,
                 start_joint_position=start_joint_position,
                 motion_group_setup=motion_group_setup,
+                payload=payload,
             )
 
             # Automatic viewer integration - log planning results if viewers are active
@@ -417,6 +426,7 @@ class AbstractRobot(Device):
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        payload: str | api.models.Payload | None = None,
     ) -> AsyncIterable[MotionState]:
         """Plan and execute a trajectory for the given actions.
 
@@ -427,8 +437,12 @@ class AbstractRobot(Device):
             movement_controller (MovementController | None): The movement controller to be used. Defaults to move_forward.
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
+            payload (str | api.models.Payload | None): Override for the dynamics payload used by the planner.
+                See :meth:`plan` for resolution rules.
         """
-        joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
+        joint_trajectory = await self.plan(
+            actions, tcp, start_joint_position=start_joint_position, payload=payload
+        )
         motion_state_stream = self.stream_execute(
             joint_trajectory,
             tcp,
@@ -449,6 +463,7 @@ class AbstractRobot(Device):
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        payload: str | api.models.Payload | None = None,
     ) -> None:
         """Plan and execute a trajectory for the given actions.
 
@@ -459,12 +474,16 @@ class AbstractRobot(Device):
             movement_controller (MovementController | None): The movement controller to be used. Defaults to move_forward.
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
+            payload (str | api.models.Payload | None): Override for the dynamics payload used by the planner.
+                See :meth:`plan` for resolution rules.
 
         Raises:
             NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a target
                 pose in a collision-free motion.
         """
-        joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
+        joint_trajectory = await self.plan(
+            actions, tcp, start_joint_position=start_joint_position, payload=payload
+        )
         await self.execute(
             joint_trajectory,
             tcp,
