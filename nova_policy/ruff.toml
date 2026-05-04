@@ -1,0 +1,66 @@
+# Ultra-strict ruff configuration for nova/policy/ package
+# Based on https://github.com/Ranteck/PyStrict-strict-python
+
+extend = "../ruff.toml"
+
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "BLE",    # flake8-blind-except (no bare except:)
+    "C4",     # flake8-comprehensions
+    "C90",    # mccabe complexity
+    "T20",    # flake8-print (no print statements)
+    "SIM",    # flake8-simplify
+    "N",      # pep8-naming
+    "RUF",    # Ruff-specific rules
+    "S",      # flake8-bandit (security)
+    "PTH",    # flake8-use-pathlib
+    "PL",     # pylint (includes PLR1702: too-many-nested-blocks)
+    "PERF",   # perflint (performance)
+    "ANN",    # flake8-annotations (require type hints)
+    "ARG",    # flake8-unused-arguments
+    "FBT",    # flake8-boolean-trap (no boolean positional args)
+    "RET",    # flake8-return
+    "TCH",    # flake8-type-checking
+]
+
+ignore = [
+    "E501",    # Line too long (formatter handles this)
+    "S101",    # Allow assert (tests might import from here)
+    "PLR0913", # Too many arguments (PID controller needs them)
+]
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.pylint]
+max-nested-blocks = 3
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"**/tests/**" = [
+    "S101", "S105", "PLR2004", "ANN", "FBT", "T20",
+    "PLC0415", "PERF401", "SIM102", "SIM103", "SIM114",
+    "TC001", "TC003", "ARG", "B018",
+]
+"**/examples/**" = [
+    "S101", "S105", "S110", "PLR2004", "PLR0912", "PLR0915",
+    "PLW0602", "PLW0603", "ANN", "FBT", "T20",
+    "PLC0415", "PERF401", "SIM102", "SIM103", "SIM114",
+    "TC001", "TC003", "ARG", "RUF003",
+    "BLE001", "B008", "B905", "C901",
+]
+
+[lint.isort]
+known-first-party = ["nova"]
+combine-as-imports = true
+
+[lint.flake8-type-checking]
+strict = true

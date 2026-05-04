@@ -1888,7 +1888,7 @@ requires-dist = [
     { name = "wandelbots-api-client", specifier = "~=26.3.0" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
 ]
-provides-extras = ["nova-rerun-bridge", "wandelscript", "novax", "benchmark"]
+provides-extras = ["nova-rerun-bridge", "wandelscript", "novax", "policy", "benchmark"]
 
 [package.metadata.requires-dev]
 dev = [

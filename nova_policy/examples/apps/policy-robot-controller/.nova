@@ -1,0 +1,4 @@
+name: policy-robot-controller
+type: app
+port: 3000
+appIcon: app_icon.png
