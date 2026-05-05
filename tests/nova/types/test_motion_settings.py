@@ -13,6 +13,21 @@ def test_different_joint_limits_length_raises():
         )
 
 
+def test_mismatched_joint_jerk_limits_length_raises():
+    """joint_jerk_limits length must match joint_velocity_limits and joint_acceleration_limits."""
+    with pytest.raises(ValueError):
+        MotionSettings(
+            joint_velocity_limits=[0.5, 0.5, 0.5],
+            joint_jerk_limits=[1.0, 1.0, 1.0, 1.0],
+        )
+
+    with pytest.raises(ValueError):
+        MotionSettings(
+            joint_acceleration_limits=[1.0, 1.0, 1.0],
+            joint_jerk_limits=[2.0, 2.0],
+        )
+
+
 def test_motion_settings_with_no_explicit_tcp_limits():
     motion_settings = MotionSettings()
     tcp_cartesian_limits = motion_settings.as_tcp_cartesian_limits()
@@ -37,6 +52,18 @@ def test_motion_settings_tcp_cartesian_limits():
     )
 
 
+def test_motion_settings_tcp_cartesian_limits_jerk_fields():
+    """as_tcp_cartesian_limits() must populate jerk and orientation_jerk from the new fields."""
+    motion_settings = MotionSettings(
+        tcp_jerk_limit=3.0,
+        tcp_orientation_jerk_limit=0.8,
+    )
+
+    cartesian_limits = motion_settings.as_tcp_cartesian_limits()
+    assert cartesian_limits.jerk == motion_settings.tcp_jerk_limit
+    assert cartesian_limits.orientation_jerk == motion_settings.tcp_orientation_jerk_limit
+
+
 def test_motion_settings_as_joint_limits():
     motion_settings = MotionSettings()
     limits = motion_settings.as_joint_limits()
@@ -55,6 +82,35 @@ def test_joint_velocity_limits():
     for i in range(6):
         assert limits[i].velocity == motion_settings.joint_velocity_limits[i]
         assert limits[i].acceleration == motion_settings.joint_acceleration_limits[i]
+
+
+def test_joint_jerk_limits():
+    """as_joint_limits() must set the jerk field on each JointLimits entry."""
+    motion_settings = MotionSettings(
+        joint_velocity_limits=[0.5, 0.5, 0.5],
+        joint_jerk_limits=[2.0, 2.0, 2.0],
+    )
+
+    limits = motion_settings.as_joint_limits()
+    assert limits is not None
+    assert len(limits) == 3
+    for i in range(3):
+        assert limits[i].velocity == motion_settings.joint_velocity_limits[i]
+        assert limits[i].jerk == motion_settings.joint_jerk_limits[i]
+        assert limits[i].acceleration is None
+
+
+def test_joint_jerk_limits_only():
+    """as_joint_limits() works when only joint_jerk_limits is set (no velocity/acceleration)."""
+    motion_settings = MotionSettings(joint_jerk_limits=[3.0, 3.0, 3.0, 3.0, 3.0, 3.0])
+
+    limits = motion_settings.as_joint_limits()
+    assert limits is not None
+    assert len(limits) == 6
+    for i in range(6):
+        assert limits[i].jerk == motion_settings.joint_jerk_limits[i]
+        assert limits[i].velocity is None
+        assert limits[i].acceleration is None
 
 
 def test_blending_settings():
@@ -97,8 +153,10 @@ def test_zero_scalar_limits_are_treated_as_overrides():
     """All scalar TCP limits should count as overrides even when explicitly set to zero."""
     assert MotionSettings(tcp_velocity_limit=0.0).has_limits_override() is True
     assert MotionSettings(tcp_acceleration_limit=0.0).has_limits_override() is True
+    assert MotionSettings(tcp_jerk_limit=0.0).has_limits_override() is True
     assert MotionSettings(tcp_orientation_velocity_limit=0.0).has_limits_override() is True
     assert MotionSettings(tcp_orientation_acceleration_limit=0.0).has_limits_override() is True
+    assert MotionSettings(tcp_orientation_jerk_limit=0.0).has_limits_override() is True
 
 
 def test_to_motion_command_keeps_zero_limit_overrides():
