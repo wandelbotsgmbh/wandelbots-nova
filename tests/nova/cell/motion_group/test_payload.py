@@ -266,6 +266,54 @@ class TestPlanForwardsPayload:
 
 
 # ---------------------------------------------------------------------------
+# Payload override emits info log warning the user
+# ---------------------------------------------------------------------------
+
+
+class TestPayloadOverrideWarning:
+    """Verify that using payload_override logs a warning about controller configuration."""
+
+    EXPECTED_LOG_FRAGMENT = "Ensure the physical controller is configured with the same payload"
+
+    @pytest.mark.asyncio
+    async def test_get_setup_with_payload_object_logs_warning(self, caplog):
+        mg, _ = _build_mock_motion_group(payloads={"a": _payload("a", 1.0)}, active_payload=None)
+        custom = _payload("custom", 9.9)
+        with caplog.at_level("INFO", logger="nova.cell.motion_group"):
+            await mg.get_setup(payload_override=custom)
+        assert any(self.EXPECTED_LOG_FRAGMENT in msg for msg in caplog.messages)
+
+    @pytest.mark.asyncio
+    async def test_get_setup_with_payload_name_logs_warning(self, caplog):
+        mg, _ = _build_mock_motion_group(payloads={"a": _payload("a", 1.0)}, active_payload=None)
+        with caplog.at_level("INFO", logger="nova.cell.motion_group"):
+            await mg.get_setup(payload_override="a")
+        assert any(self.EXPECTED_LOG_FRAGMENT in msg for msg in caplog.messages)
+
+    @pytest.mark.asyncio
+    async def test_plan_with_setup_and_payload_object_logs_warning(self, caplog):
+        mg, _ = _build_mock_motion_group(payloads={"a": _payload("a", 1.0)}, active_payload=None)
+        supplied_setup = models.MotionGroupSetup(
+            motion_group_model=models.MotionGroupModel("test-model"), cycle_time=8
+        )
+        custom = _payload("custom", 5.0)
+        with caplog.at_level("INFO", logger="nova.cell.motion_group"):
+            await mg.plan(
+                [jnt((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))],
+                motion_group_setup=supplied_setup,
+                payload_override=custom,
+            )
+        assert any(self.EXPECTED_LOG_FRAGMENT in msg for msg in caplog.messages)
+
+    @pytest.mark.asyncio
+    async def test_no_warning_without_override(self, caplog):
+        mg, _ = _build_mock_motion_group(payloads={"a": _payload("a", 1.0)}, active_payload=None)
+        with caplog.at_level("INFO", logger="nova.cell.motion_group"):
+            await mg.get_setup()
+        assert not any(self.EXPECTED_LOG_FRAGMENT in msg for msg in caplog.messages)
+
+
+# ---------------------------------------------------------------------------
 # Integration: planning the same path with two different payloads must yield
 # different trajectories on a live virtual controller.
 # ---------------------------------------------------------------------------

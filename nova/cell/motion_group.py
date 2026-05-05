@@ -809,12 +809,21 @@ class MotionGroup(AbstractRobot):
             # Caller supplied both an explicit setup and a payload override;
             # the explicit payload wins. Do not mutate the caller's setup.
             motion_group_setup = motion_group_setup.model_copy(deep=True)
-            description = await self._fetch_motion_group_description()
-            motion_group_setup.payload = await self._resolve_payload(
-                payload_override=payload_override,
-                tcp_name=tcp,
-                motion_group_description=description,
-            )
+            if isinstance(payload_override, api.models.Payload):
+                # Already a concrete Payload — no need to fetch the description.
+                logger.info(
+                    "Using explicit payload override '%s' for planning. "
+                    "Ensure the physical controller is configured with the same payload.",
+                    payload_override.name,
+                )
+                motion_group_setup.payload = payload_override
+            else:
+                description = await self._fetch_motion_group_description()
+                motion_group_setup.payload = await self._resolve_payload(
+                    payload_override=payload_override,
+                    tcp_name=tcp,
+                    motion_group_description=description,
+                )
 
         # TODO: can be done in parallel, would be a big performance boost
         all_trajectories = []
