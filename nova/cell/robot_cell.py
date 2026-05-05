@@ -234,6 +234,7 @@ class AbstractRobot(Device):
                 Only motion actions are considered for planning.
             tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
+                position of the robot is used.
             payload (str | api.models.Payload | None): Override for the dynamics payload used by the planner.
 
         Returns:
@@ -254,8 +255,8 @@ class AbstractRobot(Device):
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
                 Only motion actions are considered for planning.
             tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
-            start_joint_position: the initial position of the robot
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
+                position of the robot is used.
             motion_group_setup (api.models.MotionGroupSetup | None): The motion group setup to be used for planning.
                  If None, the motion group setup will be fetched from the robot.
             payload (str | api.models.Payload | None): Override for the dynamics payload used by the planner.
