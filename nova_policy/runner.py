@@ -72,7 +72,7 @@ class PolicyRunner:
             chunk: The action chunk containing joints and optional IO.
 
         Raises:
-            SafetyStopError: If a safety guard triggers during the next tick.
+            GuardStopError: If a safety guard triggers during the next tick.
         """
         for group_id, steps in chunk.joints.items():
             session = self._sessions.get(group_id)

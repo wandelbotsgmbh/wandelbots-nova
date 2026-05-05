@@ -13,12 +13,11 @@ from typing import TYPE_CHECKING, Any
 
 from nova.cell.motion_group import MotionGroup
 from nova.types import RobotState
-
-from nova_policy.feature_map import FeatureMap
 from nova_policy.runner import PolicyRunner
-from nova_policy.types import ActionChunk, PolicyDone, PolicyWaiting, SafetyStopError
+from nova_policy.types import ActionChunk, GuardStopError, PolicyDone, PolicyWaiting
 
 if TYPE_CHECKING:
+    from nova_policy.feature_map import FeatureMap
     from nova_policy.policy_client import PolicyClient
     from nova_policy.types import PolicyRunnerConfig, SafetyGuard
 
@@ -151,12 +150,12 @@ class PolicyExecutor:
         self._stop_event.set()
         if self._task is not None:
             self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, SafetyStopError, OSError):
+            with contextlib.suppress(asyncio.CancelledError, GuardStopError, OSError):
                 await self._task
             self._task = None
 
         if self._runner is not None:
-            with contextlib.suppress(SafetyStopError, OSError):
+            with contextlib.suppress(GuardStopError, OSError):
                 await self._runner.stop()
             self._runner = None
 
@@ -199,6 +198,9 @@ class PolicyExecutor:
             pass
         except (OSError, RuntimeError) as e:
             logger.error("Executor error: %s", e)
+            self.status.message = f"Error: {e}"
+        except Exception as e:
+            logger.exception("Executor crashed")
             self.status.message = f"Error: {e}"
         finally:
             self.status.phase = Phase.IDLE
@@ -265,7 +267,7 @@ class PolicyExecutor:
 
                 await asyncio.sleep(interval)
 
-        except SafetyStopError as e:
+        except GuardStopError as e:
             return EpisodeResult(
                 reason="safety_guard",
                 steps=step,
@@ -275,6 +277,10 @@ class PolicyExecutor:
         except asyncio.CancelledError:
             pass
         except (OSError, RuntimeError) as e:
+            return EpisodeResult(
+                reason="error", steps=step, duration_s=time.monotonic() - start_time, error=e
+            )
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError) as e:
             return EpisodeResult(
                 reason="error", steps=step, duration_s=time.monotonic() - start_time, error=e
             )
@@ -350,6 +356,22 @@ class PolicyExecutor:
     def _check_session_failures(self, step: int, start_time: float) -> EpisodeResult | None:
         for session in self._runner._sessions.values():
             if session.has_failed:
+                reason_str = session.failure_reason or ""
+                if "Safety guard" in reason_str:
+                    # Extract guard name from message like:
+                    # "Safety guard 'speed_guard' triggered stop for motion group '0@ur10e'"
+                    guard_name = reason_str.split("'")[1] if "'" in reason_str else "unknown"
+                    logger.warning(
+                        "Safety guard stopped session for %s: %s",
+                        session.motion_group_id,
+                        session.failure_reason,
+                    )
+                    return EpisodeResult(
+                        reason="safety_guard",
+                        steps=step,
+                        duration_s=time.monotonic() - start_time,
+                        guard_name=guard_name,
+                    )
                 logger.error(
                     "Jogging session failed for %s: %s",
                     session.motion_group_id,

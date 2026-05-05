@@ -78,7 +78,7 @@ class FeatureMap:
                 )
                 closed = bool(io_values[0].root.value) if io_values else False
                 obs[group.gripper_key] = 100.0 if closed else 0.0
-            except Exception:
+            except (OSError, ValueError, IndexError, TypeError):
                 obs[group.gripper_key] = 0.0
 
         return obs

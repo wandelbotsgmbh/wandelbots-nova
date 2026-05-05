@@ -181,7 +181,7 @@ asyncio.run(main())
 
 The policy **cannot** directly stop the executor or the jogging. It can only signal "episode done" (`{"done": true}` or return `None`), which triggers `on_reset()` and puts the executor back in READY. To fully stop, call `executor.stop()` from your application code.
 
-When the executor stops (for any reason), it calls `notify_stopped(reason)` on the policy client before closing. For `WebSocketPolicyClient`, this sends `{"executor_stopped": true, "reason": "estop"}` to the policy server. The policy can use this to clean up state. This is optional — policies that don't handle it just see a WebSocket close.
+When the executor stops (for any reason), it calls `notify_stopped(reason)` on the policy client before closing. For `NatsPolicyClient`, this publishes `{"executor_stopped": true, "reason": "estop"}` to the NATS subject. The policy can use this to clean up state. This is optional — policies that don't handle it can ignore the message.
 
 ## Policy Client (Transport Layer)
 
@@ -197,11 +197,20 @@ class PolicyClient(Protocol):
 Built-in implementations:
 
 ```python
-# WebSocket (remote inference server — policy can be any language)
-policy = WebSocketPolicyClient("ws://gpu-server:8000/predict")
+# NATS (app-to-app on Nova platform — preferred)
+import nats
+nc = await nats.connect("nats://localhost:4222")
+policy = NatsPolicyClient(nc, subject="nova.v2.cells.cell.apps.mock-policy-service.predict")
 
 # Local Python function (testing, local model)
 policy = CallbackPolicyClient(my_model.predict)  # returns ActionChunk | None
+
+# GR00T ZeroMQ server (GR00T observation/action format, custom decoder required)
+policy = Gr00tPolicyClient(
+    host="gpu-server",
+    port=5555,
+    decode_action=my_gr00t_decoder,
+)
 ```
 
 ### Wire Protocol
@@ -300,7 +309,7 @@ flowchart TB
     Tick["Jogging Tick"] --> Check{"All guards<br/>return True?"}
     Check -->|Yes| Send["Send velocities"]
     Check -->|No| Zero["Send zero velocity"]
-    Zero --> Raise["Raise SafetyStopError"]
+    Zero --> Raise["Raise GuardStopError"]
 ```
 
 ```python
@@ -316,7 +325,7 @@ executor = PolicyExecutor(..., safety_guards=[workspace_guard])
 |---|---|
 | [`dual_robot_policy.py`](examples/dual_robot_policy.py) | PolicyExecutor: two robots, safety guards, on_reset, CallbackPolicyClient |
 | [`low_level_pid_jogging.py`](examples/low_level_pid_jogging.py) | PolicyRunner: manual send()/observe() loop, direct PID control |
-| [`apps/`](examples/apps/) | Deployed: mock policy service + robot controller as Nova apps (WebSocket) |
+| [`apps/`](examples/apps/) | Deployed: mock policy service + robot controller as Nova apps (NATS) |
 
 ```bash
 NOVA_API=http://your-instance PYTHONPATH=. python nova_policy/examples/dual_robot_policy.py
@@ -338,7 +347,7 @@ PolicyRunnerConfig(
 ```
 nova_policy/
 ├── executor.py              # PolicyExecutor (lifecycle, episodes, state machine)
-├── policy_client.py         # PolicyClient protocol + WebSocket/Callback impls
+├── policy_client.py         # PolicyClient protocol + Callback impl
 ├── runner.py                # PolicyRunner (low-level PID orchestrator)
 ├── pid_jogging_session.py   # Per-group jogging websocket + PID
 ├── velocity_controller.py   # PID+FF (pure math, no I/O)
@@ -355,8 +364,9 @@ flowchart TB
     Runner --> Session["PidJoggingSession<br/>per-group jogging"]
     Session --> PID["VelocityController<br/>pure math"]
     Client["PolicyClient<br/>(protocol)"] --> Executor
-    WS["WebSocketPolicyClient"] -.-> Client
+    NATS["NatsPolicyClient"] -.-> Client
     CB["CallbackPolicyClient"] -.-> Client
+    GR00T["Gr00tPolicyClient"] -.-> Client
     Custom["YourCustomClient"] -.-> Client
 ```
 

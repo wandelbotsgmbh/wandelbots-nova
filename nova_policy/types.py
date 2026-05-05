@@ -126,7 +126,7 @@ class ActionChunk(pydantic.BaseModel):
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> ActionChunk:
-        """Construct from a plain dictionary (e.g. from JSON/WebSocket message)."""
+        """Construct from a plain dictionary (e.g. from JSON message)."""
         resp = PolicyResponse.model_validate(data)
         if resp.joints is None:
             msg = "Response has no joints"
@@ -166,7 +166,7 @@ class GuardState:
 SafetyGuard = Callable[[GuardState], bool]
 
 
-class SafetyStopError(Exception):
+class GuardStopError(Exception):
     """Raised when a safety guard returns False."""
 
     def __init__(self, motion_group_id: str, guard_name: str) -> None:

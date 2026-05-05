@@ -1,14 +1,14 @@
 [project]
 name = "mock_policy_service"
 version = "0.0.1"
-description = "Mock policy service that outputs sinusoidal joint targets via WebSocket"
+description = "Mock policy service that outputs sinusoidal joint targets via NATS"
 requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
     "fastapi>=0.115.6",
     "uvicorn>=0.34.0",
     "python-decouple~=3.8",
-    "websockets>=14.1.0,<15",
+    "nats-py>=2.9.0,<3",
 ]
 
 [dependency-groups]

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from nova import api
 from nova.types import Pose, RobotState
-from nova_policy.types import GuardState, SafetyStopError
+from nova_policy.types import GuardState, GuardStopError
 from nova_policy.velocity_controller import VelocityController
 
 if TYPE_CHECKING:
@@ -188,7 +188,7 @@ class PidJoggingSession:
         for task, _name in [(self._jogging_task, "jogging"), (self._state_task, "state")]:
             if task is not None:
                 task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
+                with contextlib.suppress(asyncio.CancelledError, OSError, Exception):
                     await task
 
         self._jogging_task = None
@@ -259,6 +259,15 @@ class PidJoggingSession:
             )
         except asyncio.CancelledError:
             pass
+        except GuardStopError as e:
+            self._failed = True
+            self._failure_reason = str(e)
+            self._running = False
+            logger.warning(
+                "Safety guard stopped jogging for %s: %s",
+                self.motion_group_id,
+                e,
+            )
         except (OSError, RuntimeError) as e:
             if self._running:
                 self._failed = True
@@ -319,7 +328,7 @@ class PidJoggingSession:
                         "Safety guard '%s' triggered for %s", guard_name, self.motion_group_id
                     )
                     self._running = False
-                    raise SafetyStopError(self.motion_group_id, guard_name)
+                    raise GuardStopError(self.motion_group_id, guard_name)
 
             self._prev_state = current_robot_state
             self._prev_tick_time = now

@@ -5,6 +5,8 @@ description = "PID-controlled jogging for policy execution on NOVA robots"
 requires-python = ">=3.11"
 dependencies = [
     "wandelbots-nova>=4.0.0,<5",
+    "msgpack>=1.1.0,<2",
+    "pyzmq>=26.0.0,<27",
 ]
 
 [build-system]

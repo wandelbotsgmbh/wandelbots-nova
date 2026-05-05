@@ -1,15 +1,17 @@
 [project]
-name = "policy_robot_controller"
+name = "groot_robot_controller"
 version = "0.0.1"
-description = "Nova app that connects to a policy service and controls robots via PID jogging"
+description = "Nova app that connects to a GR00T-style ZMQ policy service and controls two robots via PID jogging"
 requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
     "wandelbots-nova>=4.0.0,<5",
     "python-decouple~=3.8",
-    "nats-py>=2.9.0,<3",
     "uvicorn>=0.34.0",
     "fastapi>=0.115.6",
+    "numpy>1.1.19",
+    "msgpack>=1.1.0,<2",
+    "pyzmq>=26.0.0,<27",
 ]
 
 [dependency-groups]

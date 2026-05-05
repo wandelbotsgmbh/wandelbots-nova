@@ -9,14 +9,16 @@ from __future__ import annotations
 
 from nova_policy.executor import EpisodeResult, ExecutorStatus, Phase, PolicyExecutor
 from nova_policy.feature_map import FeatureGroup, FeatureMap
-from nova_policy.policy_client import CallbackPolicyClient, PolicyClient, WebSocketPolicyClient
+from nova_policy.gr00t_client import Gr00tPolicyClient
+from nova_policy.nats_client import NatsPolicyClient
+from nova_policy.policy_client import CallbackPolicyClient, PolicyClient
 from nova_policy.runner import PolicyRunner
 from nova_policy.types import (
     ActionChunk,
     GuardState,
+    GuardStopError,
     PolicyResponse,
     PolicyRunnerConfig,
-    SafetyStopError,
 )
 
 __all__ = [
@@ -26,13 +28,14 @@ __all__ = [
     "ExecutorStatus",
     "FeatureGroup",
     "FeatureMap",
+    "Gr00tPolicyClient",
     "GuardState",
+    "GuardStopError",
+    "NatsPolicyClient",
     "Phase",
     "PolicyClient",
     "PolicyExecutor",
     "PolicyResponse",
     "PolicyRunner",
     "PolicyRunnerConfig",
-    "SafetyStopError",
-    "WebSocketPolicyClient",
 ]

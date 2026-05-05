@@ -64,7 +64,10 @@ wandelscript = [
     "numpy>=1.1.19",
 ]
 novax = ["fastapi>=0.115.6", "uvicorn>=0.34.0", "python-decouple>=3.8"]
-policy = []  # no extra deps beyond nova core
+policy = [
+    "msgpack>=1.1.0,<2",
+    "pyzmq>=26.0.0,<27",
+]
 benchmark = [
     "rerun-sdk==0.26.2",
     "requests>=2.32.3",

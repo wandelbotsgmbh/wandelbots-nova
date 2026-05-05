@@ -1,41 +1,65 @@
-# policy-robot-controller
+# Policy Robot Controller
 
-Prepares robots for policy execution and runs PID jogging when the policy starts.
+Nova app that manages robot lifecycle for policy execution via PID jogging. Uses NATS to communicate with a policy service.
 
-## API
+## What it does
 
-| Endpoint | Description |
-|---|---|
-| `POST /prepare` | Connect to robots, move to home, open jogging, connect to policy WS |
-| `POST /stop` | Cancel execution, return to home |
-| `GET /status` | Current phase (IDLE/PREPARING/READY/EXECUTING/STOPPING), step count |
+- Connects to one or more motion groups on a Nova instance
+- Opens PID jogging sessions
+- Sends observations to a policy service via NATS request/reply
+- Applies returned joint targets through PID velocity control
+- Manages multi-episode lifecycle with home-position resets
 
-## Build & Install
+## Endpoints
 
-This app depends on `nova_policy` from the repo root. Copy it into the build context before installing:
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/status` | Current executor phase (IDLE, RESETTING, READY, EXECUTING) |
+| POST | `/start` | Start the executor with given config |
+| POST | `/stop` | Stop execution, close connections, return to IDLE |
+
+## Start Request
+
+```json
+{
+  "nats_subject": "nova.v2.cells.cell.apps.mock-policy-service.predict",
+  "motion_groups": "0@ur10e,0@ur10e-2",
+  "home_joints": "0,-1.571,1.571,-1.571,-1.571,0;0,-1.571,-1.571,-1.571,1.571,0",
+  "timeout_s": 0
+}
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `nats_subject` | `nova.v2.cells.cell.apps.mock-policy-service.predict` | NATS subject for policy inference |
+| `motion_groups` | `0@ur10e,0@ur10e-2` | Comma-separated motion group IDs |
+| `home_joints` | see above | Semicolon-separated home joints per MG |
+| `timeout_s` | `0` | Episode timeout (0 = infinite) |
+
+## Environment Variables
+
+- `NATS_BROKER` — NATS server URL (injected automatically by Nova platform)
+- `NATS_SUBJECT` — Default NATS subject (overridable per request)
+- `BASE_PATH` — URL prefix (injected by Nova platform)
+
+## Deploy
 
 ```bash
 cd nova_policy/examples/apps/policy-robot-controller
 cp -r ../../../../nova_policy .
 nova app install . --omit-credentials
-rm -rf nova_policy  # cleanup
+rm -rf nova_policy
 ```
 
-## Parameters (POST /prepare)
-
-| Parameter | Default | Description |
-|---|---|---|
-| `policy_url` | `ws://app-mock-policy-service:8080/.../predict` | Policy WebSocket |
-| `motion_groups` | `0@ur10e,0@ur10e-2` | Motion group IDs |
-| `home_joints` | `0,-1.571,...;0,-1.571,...` | Home positions per group |
-| `duration_s` | `120` | Max timeout |
-
-## Local Development
-
-For local development, install `nova_policy` as editable:
+## Usage
 
 ```bash
-cd nova_policy/examples/apps/policy-robot-controller
-uv pip install -e ../../../../nova_policy
-uv run python -m policy_robot_controller
+# Start execution
+curl -X POST http://<instance>/cell/policy-robot-controller/start
+
+# Check status
+curl http://<instance>/cell/policy-robot-controller/status
+
+# Stop
+curl -X POST http://<instance>/cell/policy-robot-controller/stop
 ```

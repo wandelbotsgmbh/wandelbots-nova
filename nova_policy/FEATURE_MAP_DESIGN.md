@@ -52,7 +52,7 @@ feature_map = FeatureMap(groups=[
 
 executor = PolicyExecutor(
     feature_map=feature_map,
-    policy=WebSocketPolicyClient(url),
+    policy=NatsPolicyClient(nc, subject="nova.v2.cells.cell.apps.mock-policy-service.predict"),
     on_reset=reset_robots,
 )
 ```

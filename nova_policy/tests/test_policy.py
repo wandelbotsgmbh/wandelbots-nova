@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from nova_policy.tests.mock_source import MockActionSource
-from nova_policy.types import ActionChunk, PolicyRunnerConfig, SafetyStopError
+from nova_policy.types import ActionChunk, GuardStopError, PolicyRunnerConfig
 from nova_policy.velocity_controller import VelocityController
 
 
@@ -141,11 +141,11 @@ class TestPolicyRunnerConfig:
         assert cfg.state_rate_ms == 10
 
 
-class TestSafetyStopError:
-    """Tests for SafetyStopError."""
+class TestGuardStopError:
+    """Tests for GuardStopError."""
 
     def test_error_message(self) -> None:
-        err = SafetyStopError("0@ur5e", "workspace_guard")
+        err = GuardStopError("0@ur5e", "workspace_guard")
         assert "workspace_guard" in str(err)
         assert "0@ur5e" in str(err)
         assert err.motion_group_id == "0@ur5e"

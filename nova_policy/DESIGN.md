@@ -314,7 +314,7 @@ runner = PolicyRunner(
 )
 ```
 
-If **any** guard returns `False`, the runner sends zero velocities and raises `SafetyStopError`.
+If **any** guard returns `False`, the runner sends zero velocities and raises `GuardStopError`.
 
 ### Graceful Shutdown on SIGTERM / Unhandled Exit
 
