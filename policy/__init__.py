@@ -18,6 +18,7 @@ from policy.types import (
     EmergencyStopError,
     GuardState,
     GuardStopError,
+    MotionError,
     PolicyResponse,
     PolicyRunnerConfig,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "Gr00tPolicyClient",
     "GuardState",
     "GuardStopError",
+    "MotionError",
     "NatsPolicyClient",
     "Phase",
     "PolicyClient",

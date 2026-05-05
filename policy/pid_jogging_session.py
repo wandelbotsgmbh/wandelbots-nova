@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from nova import api
 from nova.types import Pose, RobotState
-from policy.types import GuardState, GuardStopError
+from policy.types import GuardState, GuardStopError, MotionError
 from policy.velocity_controller import VelocityController
 
 if TYPE_CHECKING:
@@ -39,10 +39,12 @@ class PidJoggingSession:
         config: PolicyRunnerConfig,
         *,
         safety_guards: list[SafetyGuard] | None = None,
+        io_values: dict[str, object] | None = None,
     ) -> None:
         self._motion_group = motion_group
         self._config = config
         self._safety_guards = safety_guards or []
+        self._io_values = io_values
         self._pid = VelocityController(
             velocity_limit=config.velocity_limit,
             tolerance=config.tolerance,
@@ -74,6 +76,9 @@ class PidJoggingSession:
         self._state_task: asyncio.Task[None] | None = None
         self._running = False
         self._failed = False
+
+        # IO write deduplication — only write when value changes
+        self._last_io_written: dict[str, ValueType] = {}
         self._failure_reason: str = ""
 
     @property
@@ -121,14 +126,16 @@ class PidJoggingSession:
     async def write_ios(self, ios: dict[str, ValueType]) -> None:
         """Write IO values via the motion group's API client.
 
-        Args:
-            ios: Mapping of io_key → value.
+        Only writes values that have changed since the last write (deduplication).
         """
         api_client = self._motion_group._api_client
         cell = self._motion_group._cell
         controller_id = self._motion_group._controller_id
 
         for key, value in ios.items():
+            # Skip if value hasn't changed
+            if self._last_io_written.get(key) == value:
+                continue
             try:
                 if isinstance(value, bool):
                     io_value = api.models.IOBooleanValue(io=key, value=value)
@@ -140,7 +147,8 @@ class PidJoggingSession:
                 await api_client.controller_ios_api.set_output_values(
                     cell=cell, controller=controller_id, io_value=[io_value]
                 )
-            except (OSError, RuntimeError, ValueError) as e:
+                self._last_io_written[key] = value
+            except Exception as e:  # noqa: BLE001
                 logger.warning("Failed to write IO %s=%s: %s", key, value, e)
 
     async def start(self) -> None:
@@ -215,23 +223,23 @@ class PidJoggingSession:
         except (OSError, RuntimeError) as e:
             logger.error("State stream error for %s: %s", self.motion_group_id, e)
 
+    async def _resolve_tcp(self) -> str:
+        """Get the TCP name for jogging."""
+        tcp = await self._motion_group.active_tcp_name()
+        if tcp is not None:
+            return tcp
+        tcp_names = await self._motion_group.tcp_names()
+        if tcp_names:
+            return tcp_names[0]
+        logger.warning("No TCP found for %s", self.motion_group_id)
+        return ""
+
     async def _jogging_loop(self) -> None:
         """Run the jogging API websocket, streaming velocity commands."""
         api_gateway = self._motion_group._api_client
         cell = self._motion_group._cell
         controller_id = self._motion_group._controller_id
-
-        # Determine TCP from motion group's active TCP
-        tcp = await self._motion_group.active_tcp_name()
-        if tcp is None:
-            tcp_names = await self._motion_group.tcp_names()
-            if tcp_names:
-                tcp = tcp_names[0]
-            else:
-                logger.warning(
-                    "No TCP found for %s, jogging may not work correctly", self.motion_group_id
-                )
-                tcp = ""
+        tcp = await self._resolve_tcp()
 
         async def client_request_generator(
             response_stream: AsyncGenerator[api.models.ExecuteJoggingResponse, None],
@@ -243,9 +251,13 @@ class PidJoggingSession:
             yield api.models.ExecuteJoggingRequest(init_req)
 
             # Stream velocity commands
-            async for _ in response_stream:
+            async for response in response_stream:
                 if not self._running:
                     return
+                # Check for motion errors (joint limits, self-collision)
+                if hasattr(response.root, "kind") and response.root.kind == "MOTION_ERROR":
+                    msg = getattr(response.root, "message", "unknown motion error")
+                    raise MotionError(self.motion_group_id, msg)
                 velocity = self._compute_velocity_with_safety()
                 yield api.models.ExecuteJoggingRequest(
                     api.models.JointVelocityRequest(velocity=velocity)
@@ -259,12 +271,12 @@ class PidJoggingSession:
             )
         except asyncio.CancelledError:
             pass
-        except GuardStopError as e:
+        except (GuardStopError, MotionError) as e:
             self._failed = True
             self._failure_reason = str(e)
             self._running = False
             logger.warning(
-                "Safety guard stopped jogging for %s: %s",
+                "Jogging stopped for %s: %s",
                 self.motion_group_id,
                 e,
             )
@@ -320,6 +332,7 @@ class PidJoggingSession:
                 prev_state=self._prev_state,
                 dt=dt,
                 motion_group_id=self.motion_group_id,
+                io_values=self._io_values,
             )
             for guard in self._safety_guards:
                 if not guard(ctx):

@@ -11,7 +11,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from policy.runner import PolicyRunner
-from policy.types import ActionChunk, EmergencyStopError, GuardStopError
+from policy.types import ActionChunk, EmergencyStopError, GuardStopError, MotionError
 
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
@@ -117,7 +117,9 @@ class PolicyExecutor:
 
         Raises:
             GuardStopError: A safety guard triggered.
-            RuntimeError: E-stop detected or connection lost.
+            MotionError: Joint limit or self-collision detected.
+            EmergencyStopError: E-stop or protective stop.
+            RuntimeError: Connection lost or other error.
         """
         self._stop_event.clear()
         self.result = None
@@ -130,6 +132,10 @@ class PolicyExecutor:
                 motion_group_id="",
                 guard_name=result.guard_name or "unknown",
             )
+        if result.reason == "motion_error":
+            if isinstance(result.error, MotionError):
+                raise result.error
+            raise MotionError(motion_group_id="unknown", message=str(result.error))
         if result.reason == "estop":
             if isinstance(result.error, EmergencyStopError):
                 raise result.error
@@ -146,7 +152,7 @@ class PolicyExecutor:
     async def _cleanup(self) -> ExecutionResult:
         """Clean up runner and policy connection, return final result."""
         if self._runner is not None:
-            with contextlib.suppress(GuardStopError, EmergencyStopError, OSError):
+            with contextlib.suppress(GuardStopError, MotionError, EmergencyStopError, OSError):
                 await self._runner.stop()
             self._runner = None
 
@@ -179,8 +185,18 @@ class PolicyExecutor:
             )
 
             async with self._runner:
-                await self._policy.connect(self.mg_ids)
-                self.result = await self._execute()
+                # Start IO streams for FeatureMap (O(1) reads instead of HTTP)
+                if self._feature_map is not None:
+                    await self._feature_map.start()
+                    # Share IO cache values with sessions so guards can read IOs
+                    for cache in self._feature_map._io_caches:
+                        self._runner.set_io_values_ref(cache._mg.id, cache.values)
+                try:
+                    await self._policy.connect(self.mg_ids)
+                    self.result = await self._execute()
+                finally:
+                    if self._feature_map is not None:
+                        await self._feature_map.stop()
 
         except asyncio.CancelledError:
             pass
@@ -301,6 +317,14 @@ class PolicyExecutor:
                         duration_s=time.monotonic() - start_time,
                         last_state=last_obs,
                         guard_name=guard_name,
+                    )
+                if "Motion error" in reason_str:
+                    return ExecutionResult(
+                        reason="motion_error",
+                        steps=step,
+                        duration_s=time.monotonic() - start_time,
+                        last_state=last_obs,
+                        error=MotionError(session.motion_group_id, reason_str),
                     )
                 return ExecutionResult(
                     reason="connection_lost",

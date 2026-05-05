@@ -126,6 +126,8 @@ class GuardState:
     prev_state: RobotState | None
     dt: float
     motion_group_id: str
+    io_values: dict[str, object] | None = None
+    """Latest IO values from the stream cache (if available). Keys are IO names."""
 
 
 SafetyGuard = Callable[[GuardState], bool]
@@ -147,8 +149,6 @@ class EmergencyStopError(Exception):
 
     This covers all safety stops: emergency stop, protective stop (cell door opened),
     safety violation, fault, etc. — any state where the robot cannot be moved.
-
-    See ``SafetyStateType`` in the NOVA API for the full list of states.
     """
 
     def __init__(self, controller_id: str, safety_state: str = "") -> None:
@@ -158,3 +158,15 @@ class EmergencyStopError(Exception):
         if safety_state:
             msg += f" (state: {safety_state})"
         super().__init__(msg)
+
+
+class MotionError(Exception):
+    """Raised when the jogging API reports a motion error.
+
+    This happens when the commanded velocity would move the robot into
+    a joint limit or cause a self-collision.
+    """
+
+    def __init__(self, motion_group_id: str, message: str) -> None:
+        self.motion_group_id = motion_group_id
+        super().__init__(f"Motion error on '{motion_group_id}': {message}")

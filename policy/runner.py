@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Background IO tasks — stored to prevent GC
+_io_tasks: set[asyncio.Task[None]] = set()
+
 
 class PolicyRunner:
     """Orchestrates PID-controlled jogging for one or more motion groups.
@@ -63,6 +66,12 @@ class PolicyRunner:
         """IDs of all managed motion groups."""
         return list(self._sessions.keys())
 
+    def set_io_values_ref(self, motion_group_id: str, io_values: dict[str, object]) -> None:
+        """Attach a shared IO values dict to a session (for guards to read)."""
+        session = self._sessions.get(motion_group_id)
+        if session is not None:
+            session._io_values = io_values
+
     async def send(self, chunk: ActionChunk) -> None:
         """Send an action chunk to the motion groups.
 
@@ -81,13 +90,15 @@ class PolicyRunner:
                 continue
             session.update_chunk(steps=steps, dt_ms=chunk.dt_ms)
 
-        # Fire IO commands
+        # Fire IO commands (non-blocking — don't wait for HTTP response)
         if chunk.ios:
             for group_id, ios in chunk.ios.items():
                 session = self._sessions.get(group_id)
                 if session is None:
                     continue
-                await session.write_ios(ios)
+                task = asyncio.create_task(session.write_ios(ios))
+                _io_tasks.add(task)
+                task.add_done_callback(_io_tasks.discard)
 
     async def observe(self) -> dict[str, RobotState]:
         """Get current state for all motion groups.

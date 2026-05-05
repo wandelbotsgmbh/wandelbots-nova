@@ -7,7 +7,7 @@ This demonstrates:
 - Policy operates on named features (left_joint_1.pos, right_gripper.pos)
 - Policy never sees motion group IDs — fully hardware-agnostic
 - Time-based execution (timeout_s)
-- Safety guards
+- Safety guards (workspace, speed, and IO-based sensor trigger)
 
 Prerequisites:
 - Set env variables (or .env file):
@@ -29,6 +29,7 @@ from policy import (
     FeatureMap,
     GuardState,
     GuardStopError,
+    MotionError,
     PolicyExecutor,
 )
 
@@ -51,8 +52,8 @@ async def mock_policy(obs: dict[str, Any]) -> dict[str, float]:
     *current* observed positions. The output depends only on the input
     observation — no internal state.
 
-    Input:  {"left_joint_1.pos": 0.1, ..., "right_joint_1.pos": ...}
-    Output: {"left_joint_1.pos": 0.15, ..., "left_gripper.pos": 50.0, ...}
+    Input:  {"left_joint_1.pos": 0.1, ..., "left_gripper": 0.0, ...}
+    Output: {"left_joint_1.pos": 0.15, ..., "left_gripper": 1.0, ...}
     """
     amplitude = 0.08
     features: dict[str, float] = {}
@@ -61,10 +62,9 @@ async def mock_policy(obs: dict[str, Any]) -> dict[str, float]:
             key = f"{role}_joint_{i + 1}.pos"
             current = obs.get(key, 0.0)
             features[key] = current + amplitude * math.sin(current * 5.0 + i * 0.4)
-        # Gripper: open if the first joint is positive, close otherwise
-        gripper_key = f"{role}_gripper.pos"
+        # Gripper: close if the first joint is positive, open otherwise
         first_joint = obs.get(f"{role}_joint_1.pos", 0.0)
-        features[gripper_key] = 100.0 if first_joint > 0 else 0.0
+        features[f"{role}_gripper"] = 1.0 if first_joint > 0 else 0.0
 
     return features
 
@@ -91,6 +91,37 @@ def speed_guard(ctx: GuardState) -> bool:
     return speed < 5000.0
 
 
+def io_guard(ctx: GuardState) -> bool:
+    """Stop when the conveyor belt sensor detects a box.
+
+    Reads digital_in[0] from the IO stream cache (no HTTP call).
+    Returns False (= stop) when the sensor goes True.
+    """
+    if ctx.io_values is None:
+        return True
+    sensor_value = ctx.io_values.get("digital_in[0]")
+    if sensor_value is True:
+        return False  # Box detected → stop policy
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Move to home
+# ---------------------------------------------------------------------------
+
+
+async def move_to_home(mg1, mg2) -> None:
+    """Move both robots to their home positions concurrently."""
+    tcp1 = (await mg1.tcp_names())[0]
+    tcp2 = (await mg2.tcp_names())[0]
+    traj1 = await mg1.plan([joint_ptp(HOME_LEFT)], tcp1)
+    traj2 = await mg2.plan([joint_ptp(HOME_RIGHT)], tcp2)
+    await asyncio.gather(
+        mg1.execute(traj1, tcp1, actions=[joint_ptp(HOME_LEFT)]),
+        mg2.execute(traj2, tcp2, actions=[joint_ptp(HOME_RIGHT)]),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -104,25 +135,21 @@ async def main() -> None:
         mg1 = ctrl1[0]
         mg2 = ctrl2[0]
 
-        # Move both robots to home
         print("Moving to home...")
-        tcp1 = (await mg1.tcp_names())[0]
-        tcp2 = (await mg2.tcp_names())[0]
-        traj1 = await mg1.plan([joint_ptp(HOME_LEFT)], tcp1)
-        traj2 = await mg2.plan([joint_ptp(HOME_RIGHT)], tcp2)
-        await asyncio.gather(
-            mg1.execute(traj1, tcp1, actions=[joint_ptp(HOME_LEFT)]),
-            mg2.execute(traj2, tcp2, actions=[joint_ptp(HOME_RIGHT)]),
-        )
+        await move_to_home(mg1, mg2)
 
         # Run policy
         feature_map = FeatureMap(
             groups=[
                 FeatureGroup(
-                    motion_group=mg1, role="left", num_joints=6, gripper_io="digital_out[0]"
+                    motion_group=mg1,
+                    name="left",
+                    ios={"gripper": "digital_out[0]", "conveyor_sensor": "digital_in[0]"},
                 ),
                 FeatureGroup(
-                    motion_group=mg2, role="right", num_joints=6, gripper_io="digital_out[0]"
+                    motion_group=mg2,
+                    name="right",
+                    ios={"gripper": "digital_out[0]"},
                 ),
             ]
         )
@@ -130,11 +157,11 @@ async def main() -> None:
         executor = PolicyExecutor(
             feature_map=feature_map,
             policy=CallbackPolicyClient(mock_policy),
-            safety_guards=[workspace_guard, speed_guard],
+            safety_guards=[workspace_guard, speed_guard, io_guard],
             timeout_s=10.0,
         )
 
-        print("Running policy for 10s...")
+        print("Running policy for 10s (or until conveyor sensor triggers)...")
         try:
             result = await executor.run()
             print(
@@ -142,6 +169,8 @@ async def main() -> None:
             )
         except GuardStopError as e:
             print(f"Safety guard triggered: {e.guard_name}")
+        except MotionError as e:
+            print(f"Motion error (joint limit / collision): {e}")
         except EmergencyStopError as e:
             print(f"Emergency stop on controller: {e.controller_id}")
         except RuntimeError as e:
