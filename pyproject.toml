@@ -85,10 +85,10 @@ ws = "wandelscript.cli:app"
 prerelease = "allow"
 
 [tool.hatch.build.targets.sdist]
-include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "nova_policy"]
+include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "policy"]
 
 [tool.hatch.build.targets.wheel]
-include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "nova_policy"]
+include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "policy"]
 
 [build-system]
 requires = ["hatchling"]

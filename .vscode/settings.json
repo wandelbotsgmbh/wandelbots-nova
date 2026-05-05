@@ -27,5 +27,6 @@
     "statusBar.debuggingBackground": "#7C21D7",
     "statusBar.noFolderBackground": "#7C21D7",
     "statussBar.prominentBackground": "#7C21D7"
-  }
+  },
+  "python.analysis.typeCheckingMode": "off"
 }
