@@ -338,7 +338,7 @@ async def test_payload_changes_planned_trajectory(ur_mg):
             tcp="Flange",
             payload_override=heavy,
         )
-    except Exception as e:  # pragma: no cover - depends on backend behavior
+    except api.ApiException as e:  # pragma: no cover - depends on backend behavior
         pytest.skip(f"Controller does not accept ad-hoc payloads: {e}")
 
     light_sig = _trajectory_signature(light_traj)
