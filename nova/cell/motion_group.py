@@ -170,7 +170,7 @@ class MotionGroup(AbstractRobot):
         return motion_group_description.motion_group_model.root
 
     async def get_setup(
-        self, tcp_name: str | None = None, payload: str | api.models.Payload | None = None
+        self, tcp_name: str | None = None, payload_override: str | api.models.Payload | None = None
     ) -> api.models.MotionGroupSetup:
         """Get the motion group setup.
 
@@ -178,10 +178,15 @@ class MotionGroup(AbstractRobot):
         (torque limits, acceleration scaling, ...). The payload is resolved using the
         following precedence (first match wins):
 
-        1. If the caller passes ``payload`` explicitly, it is used. A string is looked
-           up in ``description.payloads`` (raises ``KeyError`` if unknown); a
-           ``Payload`` instance is used as-is (this also allows passing ad-hoc
+        1. If the caller passes ``payload_override`` explicitly, it is used. A string
+           is looked up in ``description.payloads`` (raises ``KeyError`` if unknown);
+           a ``Payload`` instance is used as-is (this also allows passing ad-hoc
            payloads that are not registered on the controller).
+
+           .. warning:: Only use this if you have ensured the physical controller is
+              configured with the same payload. In most cases the automatic resolution
+              (rules 2–4) is correct and should be preferred.
+
         2. **Convention:** if ``tcp_name`` is provided AND ``description.payloads``
            contains an entry whose key equals ``tcp_name``, that payload is used. A
            payload registered under the same name as a TCP is implicitly considered
@@ -195,19 +200,23 @@ class MotionGroup(AbstractRobot):
         Args:
             tcp_name: The TCP to get the setup for. Also feeds into payload
                 resolution rule 2.
-            payload: Explicit payload override. A string resolves a registered
-                payload by name; a ``Payload`` instance is used directly.
+            payload_override: Explicit payload override. A string resolves a
+                registered payload by name; a ``Payload`` instance is used directly.
+                Only use this when you are certain the physical controller is
+                configured with the same payload.
 
         Returns:
             api.models.MotionGroupSetup: The motion group setup.
 
         Raises:
-            KeyError: If ``payload`` is a string that is not present in
+            KeyError: If ``payload_override`` is a string that is not present in
                 ``description.payloads``.
         """
         motion_group_description = await self._fetch_motion_group_description()
         resolved_payload = await self._resolve_payload(
-            payload=payload, tcp_name=tcp_name, motion_group_description=motion_group_description
+            payload_override=payload_override,
+            tcp_name=tcp_name,
+            motion_group_description=motion_group_description,
         )
         return motion_group_setup_from_motion_group_description(
             motion_group_description=motion_group_description,
@@ -217,7 +226,7 @@ class MotionGroup(AbstractRobot):
 
     async def _resolve_payload(
         self,
-        payload: str | api.models.Payload | None,
+        payload_override: str | api.models.Payload | None,
         tcp_name: str | None,
         motion_group_description: api.models.MotionGroupDescription,
     ) -> api.models.Payload | None:
@@ -225,10 +234,20 @@ class MotionGroup(AbstractRobot):
         payloads = motion_group_description.payloads or {}
 
         # Rule 1: explicit caller arg
-        if isinstance(payload, api.models.Payload):
-            return payload
-        if isinstance(payload, str):
-            return payloads[payload]
+        if isinstance(payload_override, api.models.Payload):
+            logger.info(
+                "Using explicit payload override '%s' for planning. "
+                "Ensure the physical controller is configured with the same payload.",
+                payload_override.name,
+            )
+            return payload_override
+        if isinstance(payload_override, str):
+            logger.info(
+                "Using explicit payload override '%s' for planning. "
+                "Ensure the physical controller is configured with the same payload.",
+                payload_override,
+            )
+            return payloads[payload_override]
 
         # Rule 2: TCP-name convention
         if tcp_name is not None and tcp_name in payloads:
@@ -762,7 +781,7 @@ class MotionGroup(AbstractRobot):
         tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
-        payload: str | api.models.Payload | None = None,
+        payload_override: str | api.models.Payload | None = None,
     ) -> api.models.JointTrajectory:
         if not actions:
             raise ValueError("No actions provided")
@@ -783,14 +802,18 @@ class MotionGroup(AbstractRobot):
 
         current_joints = start_joint_position or await self.joints()
         if motion_group_setup is None:
-            motion_group_setup = await self.get_setup(tcp_name=tcp, payload=payload)
-        elif payload is not None:
+            motion_group_setup = await self.get_setup(
+                tcp_name=tcp, payload_override=payload_override
+            )
+        elif payload_override is not None:
             # Caller supplied both an explicit setup and a payload override;
             # the explicit payload wins. Do not mutate the caller's setup.
             motion_group_setup = motion_group_setup.model_copy(deep=True)
             description = await self._fetch_motion_group_description()
             motion_group_setup.payload = await self._resolve_payload(
-                payload=payload, tcp_name=tcp, motion_group_description=description
+                payload_override=payload_override,
+                tcp_name=tcp,
+                motion_group_description=description,
             )
 
         # TODO: can be done in parallel, would be a big performance boost

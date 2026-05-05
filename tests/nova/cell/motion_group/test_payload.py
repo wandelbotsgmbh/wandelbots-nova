@@ -102,7 +102,7 @@ class TestGetSetupPayloadResolution:
             payloads={"a": _payload("a", 1.0), "b": _payload("b", 2.0)}, active_payload="a"
         )
         custom = _payload("custom", 9.9)
-        setup = await mg.get_setup(payload=custom)
+        setup = await mg.get_setup(payload_override=custom)
         assert setup.payload is custom
 
     @pytest.mark.asyncio
@@ -110,7 +110,7 @@ class TestGetSetupPayloadResolution:
         mg, _ = _build_mock_motion_group(
             payloads={"a": _payload("a", 1.0), "b": _payload("b", 2.0)}, active_payload="a"
         )
-        setup = await mg.get_setup(payload="b")
+        setup = await mg.get_setup(payload_override="b")
         assert setup.payload is not None
         assert setup.payload.name == "b"
         assert setup.payload.payload == 2.0
@@ -119,7 +119,7 @@ class TestGetSetupPayloadResolution:
     async def test_rule1_explicit_unknown_name_raises_keyerror(self):
         mg, _ = _build_mock_motion_group(payloads={"a": _payload("a", 1.0)}, active_payload=None)
         with pytest.raises(KeyError):
-            await mg.get_setup(payload="missing")
+            await mg.get_setup(payload_override="missing")
 
     @pytest.mark.asyncio
     async def test_rule2_tcp_name_match_beats_active_id(self):
@@ -216,7 +216,7 @@ class TestPlanForwardsPayload:
         )
         custom = _payload("custom", 7.7)
 
-        await mg.plan([jnt((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))], payload=custom)
+        await mg.plan([jnt((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))], payload_override=custom)
 
         plan_call = mock_client.trajectory_planning_api.plan_trajectory.await_args
         request = plan_call.kwargs["plan_trajectory_request"]
@@ -228,7 +228,7 @@ class TestPlanForwardsPayload:
         b = _payload("b", 2.0)
         mg, mock_client = _build_mock_motion_group(payloads={"a": a, "b": b}, active_payload=None)
 
-        await mg.plan([jnt((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))], payload="b")
+        await mg.plan([jnt((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))], payload_override="b")
 
         request = mock_client.trajectory_planning_api.plan_trajectory.await_args.kwargs[
             "plan_trajectory_request"
@@ -254,7 +254,7 @@ class TestPlanForwardsPayload:
         await mg.plan(
             [jnt((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))],
             motion_group_setup=supplied_setup,
-            payload=override,
+            payload_override=override,
         )
 
         request = mock_client.trajectory_planning_api.plan_trajectory.await_args.kwargs[
@@ -292,11 +292,20 @@ async def ur_mg():
             yield mg
 
 
-def _trajectory_signature(trajectory: models.JointTrajectory) -> tuple[float, tuple[float, ...]]:
-    """Reduce a trajectory to a comparable signature: total duration and final joints."""
+def _trajectory_signature(
+    trajectory: models.JointTrajectory,
+) -> tuple[float, int, tuple[float, ...], tuple[float, ...], tuple[float, ...]]:
+    """Reduce a trajectory to a comparable signature.
+
+    Returns: (total_duration, num_waypoints, first_joints, mid_joints, final_joints)
+    """
+    positions = trajectory.joint_positions or []
     duration = trajectory.times[-1] if trajectory.times else 0.0
-    final = tuple(trajectory.joint_positions[-1].root) if trajectory.joint_positions else ()
-    return duration, final
+    n = len(positions)
+    first = tuple(positions[0].root) if n > 0 else ()
+    mid = tuple(positions[n // 2].root) if n > 0 else ()
+    final = tuple(positions[-1].root) if n > 0 else ()
+    return duration, n, first, mid, final
 
 
 @pytest.mark.asyncio
@@ -321,13 +330,13 @@ async def test_payload_changes_planned_trajectory(ur_mg):
             start_joint_position=tuple(initial),
             actions=[jnt(target_joints)],
             tcp="Flange",
-            payload=light,
+            payload_override=light,
         )
         heavy_traj = await ur_mg.plan(
             start_joint_position=tuple(initial),
             actions=[jnt(target_joints)],
             tcp="Flange",
-            payload=heavy,
+            payload_override=heavy,
         )
     except Exception as e:  # pragma: no cover - depends on backend behavior
         pytest.skip(f"Controller does not accept ad-hoc payloads: {e}")

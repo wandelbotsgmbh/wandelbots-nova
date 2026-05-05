@@ -60,7 +60,7 @@ async def main(ctx: nova.ProgramContext):
         # 3) Override by referencing a registered payload name (if available).
         #    This raises KeyError when the name is unknown — fall back to default.
         if "heavy_gripper" in registered:
-            await motion_group.plan_and_execute(actions, tcp, payload="heavy_gripper")
+            await motion_group.plan_and_execute(actions, tcp, payload_override="heavy_gripper")
 
         # 4) Override with an ad-hoc Payload that does not need to be registered.
         custom = api.models.Payload(
@@ -68,7 +68,7 @@ async def main(ctx: nova.ProgramContext):
             payload=2.5,
             center_of_mass=api.models.Vector3d(root=[0.0, 0.0, 60.0]),
         )
-        await motion_group.plan_and_execute(actions, tcp, payload=custom)
+        await motion_group.plan_and_execute(actions, tcp, payload_override=custom)
 
 
 if __name__ == "__main__":
