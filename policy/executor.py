@@ -15,6 +15,7 @@ from policy.types import ActionChunk, EmergencyStopError, GuardStopError, Motion
 
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
+    from policy.cameras import CameraSet
     from policy.feature_map import FeatureMap
     from policy.policy_client import PolicyClient
     from policy.types import PolicyRunnerConfig, SafetyGuard
@@ -62,6 +63,9 @@ class PolicyExecutor:
     Two observation modes:
     1. Direct: pass motion_groups, policy receives {mg_id: RobotState}.
     2. FeatureMap: pass a FeatureMap, policy receives flat feature dicts.
+
+    Images from WebRTC cameras can be included by passing a CameraSet.
+    The executor waits for all cameras to produce frames before starting motion.
     """
 
     def __init__(
@@ -70,6 +74,7 @@ class PolicyExecutor:
         policy: PolicyClient | None = None,
         *,
         feature_map: FeatureMap | None = None,
+        cameras: CameraSet | None = None,
         config: PolicyRunnerConfig | None = None,
         safety_guards: list[SafetyGuard] | None = None,
         timeout_s: float = 0,
@@ -90,6 +95,7 @@ class PolicyExecutor:
             raise ValueError(msg)
 
         self._policy = policy
+        self._cameras = cameras
         self._config = config
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
@@ -97,6 +103,7 @@ class PolicyExecutor:
 
         self._runner: PolicyRunner | None = None
         self._stop_event = asyncio.Event()
+        self._last_obs: dict[str, Any] | None = None
 
         self.status = ExecutorStatus()
         self.result: ExecutionResult | None = None
@@ -108,6 +115,16 @@ class PolicyExecutor:
     @property
     def mg_ids(self) -> list[str]:
         return [mg.id for mg in self._motion_groups]
+
+    @property
+    def last_observation(self) -> dict[str, Any] | None:
+        """The most recent observation (robot state + camera images).
+
+        Available during and after execution. Returns None before the first
+        observation is collected. This allows external code (UI, logging,
+        dashboards) to inspect the current robot state while the executor runs.
+        """
+        return self._last_obs
 
     async def run(self) -> ExecutionResult:
         """Run execution, blocking until timeout or stop.
@@ -184,6 +201,12 @@ class PolicyExecutor:
                 safety_guards=self._safety_guards,
             )
 
+            # Connect cameras BEFORE opening jogging (ICE negotiation can take seconds)
+            if self._cameras is not None:
+                logger.info("Connecting cameras...")
+                await self._cameras.connect()
+                logger.info("All cameras ready")
+
             async with self._runner:
                 # Start IO streams for FeatureMap (O(1) reads instead of HTTP)
                 if self._feature_map is not None:
@@ -191,10 +214,13 @@ class PolicyExecutor:
                     # Share IO cache values with sessions so guards can read IOs
                     for cache in self._feature_map._io_caches:
                         self._runner.set_io_values_ref(cache._mg.id, cache.values)
+
                 try:
                     await self._policy.connect(self.mg_ids)
                     self.result = await self._execute()
                 finally:
+                    if self._cameras is not None:
+                        await self._cameras.disconnect()
                     if self._feature_map is not None:
                         await self._feature_map.stop()
 
@@ -233,6 +259,7 @@ class PolicyExecutor:
                     await asyncio.sleep(interval)
                     continue
                 last_obs = obs
+                self._last_obs = obs
 
                 # Query policy
                 action = await self._get_action(obs)
@@ -280,8 +307,17 @@ class PolicyExecutor:
         if not robot_states:
             return None
         if self._feature_map is not None:
-            return await self._feature_map.build_observation(robot_states)
-        return robot_states
+            obs = await self._feature_map.build_observation(robot_states)
+        else:
+            obs = robot_states
+
+        # Add camera images to observation
+        if self._cameras is not None:
+            images = self._cameras.read()
+            for cam_name, frame in images.items():
+                obs[cam_name] = frame
+
+        return obs
 
     async def _get_action(self, obs: dict[str, Any]) -> ActionChunk:
         """Query policy and ensure we get an ActionChunk back."""
@@ -318,13 +354,15 @@ class PolicyExecutor:
                         last_state=last_obs,
                         guard_name=guard_name,
                     )
-                if "Motion error" in reason_str:
+                if "Motion error" in reason_str or "Jogging paused" in reason_str:
+                    # Extract the original message (after "Motion error on 'mg_id': ")
+                    msg = reason_str.split(": ", 1)[-1] if ": " in reason_str else reason_str
                     return ExecutionResult(
                         reason="motion_error",
                         steps=step,
                         duration_s=time.monotonic() - start_time,
                         last_state=last_obs,
-                        error=MotionError(session.motion_group_id, reason_str),
+                        error=MotionError(session.motion_group_id, msg),
                     )
                 return ExecutionResult(
                     reason="connection_lost",

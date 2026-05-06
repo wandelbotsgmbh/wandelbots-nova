@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from policy.nats_client import NatsPolicyClient
+from policy.nats_wire import pack, unpack
 from policy.types import ActionChunk
 
 
@@ -21,9 +21,9 @@ def _make_nats_client() -> MagicMock:
 
 
 def _reply(data: dict[str, Any]) -> MagicMock:
-    """Create a mock NATS message with JSON payload."""
+    """Create a mock NATS message with msgpack payload."""
     msg = MagicMock()
-    msg.data = json.dumps(data).encode()
+    msg.data = pack(data)
     return msg
 
 
@@ -85,7 +85,7 @@ async def test_close_is_noop():
 
 @pytest.mark.asyncio
 async def test_structured_observation_serialization():
-    """Verify that structured per-MG observations are properly packaged."""
+    """Structured per-MG observations are passed through as-is."""
     nc = _make_nats_client()
     nc.request.return_value = _reply({
         "joints": {"0@ur10e": [[0, 0, 0, 0, 0, 0]], "0@ur10e-2": [[0, 0, 0, 0, 0, 0]]},
@@ -100,10 +100,9 @@ async def test_structured_observation_serialization():
     }
     await client.get_actions(obs)
 
-    sent_payload = json.loads(nc.request.call_args[0][1].decode())
+    sent_payload = unpack(nc.request.call_args[0][1])
     assert "0@ur10e" in sent_payload
     assert "0@ur10e-2" in sent_payload
-    assert sent_payload["0@ur10e"]["motion_group_id"] == "0@ur10e"
 
 
 @pytest.mark.asyncio
@@ -120,7 +119,7 @@ async def test_flat_observation_passthrough():
     flat_obs = {"left_joint_1.pos": 0.1, "left_joint_2.pos": -1.5, "left_gripper.pos": 50.0}
     await client.get_actions(flat_obs)
 
-    sent_payload = json.loads(nc.request.call_args[0][1].decode())
+    sent_payload = unpack(nc.request.call_args[0][1])
     assert sent_payload == flat_obs
 
 
@@ -138,3 +137,44 @@ async def test_action_with_ios():
 
     assert isinstance(result, ActionChunk)
     assert result.ios == {"0@ur10e": {"digital_out[0]": True}}
+
+
+@pytest.mark.asyncio
+async def test_observation_with_images():
+    """Images are published on separate NATS subjects, scalars go via request/reply."""
+    import numpy as np
+
+    from policy.nats_wire import unpack_image
+
+    nc = _make_nats_client()
+    nc.request.return_value = _reply({
+        "features": {"left_joint_1.pos": 0.1},
+    })
+
+    client = NatsPolicyClient(nc, subject="s")
+    await client.connect(["0@ur10e"])
+
+    # Observation with an image
+    obs = {
+        "left_joint_1.pos": 0.05,
+        "flange": np.zeros((480, 640, 3), dtype=np.uint8),
+    }
+    result = await client.get_actions(obs)
+
+    assert isinstance(result, dict)
+    assert result["left_joint_1.pos"] == 0.1
+
+    # Image was published on a separate subject
+    nc.publish.assert_awaited_once()
+    pub_call = nc.publish.call_args
+    assert pub_call[0][0] == "s.images.flange"
+    img_decoded = unpack_image(pub_call[0][1])
+    assert isinstance(img_decoded, np.ndarray)
+    assert img_decoded.shape == (480, 640, 3)
+
+    # Scalars were sent via request (without the image)
+    sent_bytes = nc.request.call_args[0][1]
+    decoded = unpack(sent_bytes)
+    assert decoded["left_joint_1.pos"] == 0.05
+    assert "flange" not in decoded
+    assert decoded["__images__"] == ["flange"]

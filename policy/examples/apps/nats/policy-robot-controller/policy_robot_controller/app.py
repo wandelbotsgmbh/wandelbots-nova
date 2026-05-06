@@ -1,6 +1,8 @@
 """Policy Robot Controller — runs one policy episode via PID jogging.
 
-Moves robots to home, then runs the policy via NATS until timeout or /stop.
+Moves robots to home, connects cameras, then runs the policy via NATS
+until timeout or /stop.  Camera images are included in the observations
+sent to the policy service over NATS (msgpack-serialized).
 
 Provides:
 - GET /status
@@ -21,12 +23,20 @@ from decouple import config
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from policy import FeatureGroup, FeatureMap, NatsPolicyClient, PolicyExecutor
+from policy import (
+    CameraSet,
+    FeatureGroup,
+    FeatureMap,
+    NatsPolicyClient,
+    PolicyExecutor,
+    WebRTCCameraConfig,
+)
 from policy.executor import ExecutorStatus
 from pydantic import BaseModel, Field
 
 from nova import Nova
 from nova.actions import joint_ptp
+from nova.types import MotionSettings
 
 if TYPE_CHECKING:
     from policy.executor import ExecutionResult
@@ -41,10 +51,11 @@ NATS_SUBJECT = config(
     default="nova.v2.cells.cell.apps.mock-policy-service.predict",
     cast=str,
 )
+CAMERA_SERVER = config("CAMERA_SERVER", default="http://172.31.11.80:9100", cast=str)
 
 app = FastAPI(
     title="Policy Robot Controller",
-    version="1.0.0",
+    version="1.1.0",
     root_path=BASE_PATH,
     docs_url="/",
 )
@@ -63,11 +74,35 @@ _nats_client: nats.aio.client.Client | None = None
 _run_task: asyncio.Task[ExecutionResult] | None = None
 
 
+class CameraConfig(BaseModel):
+    """One camera to attach to the executor."""
+
+    name: str = Field(description="Feature name for this camera (e.g. 'flange')")
+    device_id: str = Field(description="Camera device ID / serial number")
+    width: int = 640
+    height: int = 480
+    fps: int = 30
+
+
 class StartRequest(BaseModel):
     nats_subject: str = Field(default=NATS_SUBJECT)
     motion_groups: str = Field(default="0@ur10e,0@ur10e-2")
-    home_joints: str = Field(default="0,-1.571,1.571,-1.571,-1.571,0;0,-1.571,-1.571,-1.571,1.571,0")
+    home_joints: str = Field(
+        default="0,-1.571,1.571,-1.571,-1.571,0;0,-1.571,-1.571,-1.571,1.571,0",
+    )
     timeout_s: float = Field(default=10.0, ge=0)
+    camera_server: str = Field(
+        default=CAMERA_SERVER,
+        description="Camera server base URL (e.g. http://app-mock-camera-server:8080/cell/mock-camera-server). Empty = no cameras.",
+    )
+    cameras: list[CameraConfig] = Field(
+        default=[
+            CameraConfig(name="flange", device_id="315122271048"),
+            CameraConfig(name="left", device_id="314522065367"),
+            CameraConfig(name="right", device_id="319522063360"),
+        ],
+        description="List of cameras to connect. Empty = no cameras.",
+    )
 
 
 @app.get("/status", response_model=ExecutorStatus)
@@ -79,7 +114,7 @@ async def get_status():
 
 @app.post("/start", response_model=ExecutorStatus)
 async def start(req: StartRequest = StartRequest()):
-    """Move to home, then run policy. Returns immediately."""
+    """Move to home, connect cameras, then run policy. Returns immediately."""
     global _executor, _nova, _nats_client, _run_task
 
     if _executor is not None and _executor.phase != "IDLE":
@@ -113,22 +148,45 @@ async def start(req: StartRequest = StartRequest()):
         ]
     )
 
+    # Build camera set if cameras are configured
+    cameras: CameraSet | None = None
+    if req.camera_server and req.cameras:
+        camera_configs = {
+            cam.name: WebRTCCameraConfig(
+                api_url=req.camera_server,
+                device_id=cam.device_id,
+                width=cam.width,
+                height=cam.height,
+                fps=cam.fps,
+            )
+            for cam in req.cameras
+        }
+        cameras = CameraSet(configs=camera_configs)
+        logger.info("Cameras configured: %s via %s", list(camera_configs.keys()), req.camera_server)
+
     _executor = PolicyExecutor(
         feature_map=feature_map,
+        cameras=cameras,
         policy=NatsPolicyClient(_nats_client, subject=req.nats_subject, timeout=5.0),
         timeout_s=req.timeout_s,
     )
 
     async def run() -> ExecutionResult:
-        # Move to home
-        home_tasks = []
-        for mg, home in zip(mgs, homes, strict=False):
-            tcp = (await mg.tcp_names())[0]
-            traj = await mg.plan([joint_ptp(home)], tcp)
-            home_tasks.append(mg.execute(traj, tcp, actions=[joint_ptp(home)]))
-        await asyncio.gather(*home_tasks)
-        # Run policy
-        return await _executor.run()
+        try:
+            # Move to home (10x default speed)
+            fast = MotionSettings(tcp_velocity_limit=500.0)
+            home_tasks = []
+            for mg, home in zip(mgs, homes, strict=False):
+                tcp = (await mg.tcp_names())[0]
+                traj = await mg.plan([joint_ptp(home, settings=fast)], tcp)
+                home_tasks.append(mg.execute(traj, tcp, actions=[joint_ptp(home, settings=fast)]))
+            await asyncio.gather(*home_tasks)
+            # Run policy
+            return await _executor.run()
+        except Exception as e:
+            logger.exception("Run task failed")
+            _executor.status.message = f"Error: {e}"
+            raise
 
     _run_task = asyncio.create_task(run())
     return _executor.status
@@ -166,7 +224,7 @@ async def app_icon():
 
 
 def main():
-    uvicorn.run(app, host="0.0.0.0", port=3000, log_level="info", proxy_headers=True, forwarded_allow_ips="*")  # noqa: S104
+    uvicorn.run(app, host="0.0.0.0", port=3000, log_level="info")  # noqa: S104
 
 
 if __name__ == "__main__":

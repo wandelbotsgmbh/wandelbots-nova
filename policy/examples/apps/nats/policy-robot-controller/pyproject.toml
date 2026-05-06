@@ -8,6 +8,11 @@ dependencies = [
     "wandelbots-nova>=4.0.0,<5",
     "python-decouple~=3.8",
     "nats-py>=2.9.0,<3",
+    "msgpack>=1.1.0,<2",
+    "numpy>=1.26.0,<3",
+    "aiortc>=1.9.0,<2",
+    "requests>=2.31.0,<3",
+    "opencv-python-headless>=4.9.0,<5",
     "uvicorn>=0.34.0",
     "fastapi>=0.115.6",
 ]

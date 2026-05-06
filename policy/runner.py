@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import signal
 from typing import TYPE_CHECKING
@@ -135,6 +136,15 @@ class PolicyRunner:
         """Stop all sessions and deregister signal handlers."""
         await self.stop()
         self._deregister_signal_handlers()
+        # Close the SDK's aiohttp sessions used by jogging/state-stream WebSockets
+        closed: set[int] = set()
+        for session in self._sessions.values():
+            api_client = session._motion_group._api_client
+            client_id = id(api_client)
+            if client_id not in closed:
+                closed.add(client_id)
+                with contextlib.suppress(Exception):
+                    await api_client.close()
         return False
 
     # -------------------------------------------------------------------------

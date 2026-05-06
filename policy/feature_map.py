@@ -100,6 +100,7 @@ class _IOStreamCache:
             self._ready.set()
             return
 
+        stream = None
         try:
             stream = api_client.controller_ios_api.stream_io_values(
                 cell=cell,
@@ -117,6 +118,11 @@ class _IOStreamCache:
             logger.warning("IO stream for %s ended: %s", self._mg.id, e)
         except Exception:
             logger.exception("IO stream for %s crashed", self._mg.id)
+        finally:
+            # Explicitly close the async generator to release the underlying WebSocket
+            if stream is not None:
+                with contextlib.suppress(Exception):
+                    await stream.aclose()
 
 
 @dataclass

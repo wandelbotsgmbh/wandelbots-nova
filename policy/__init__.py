@@ -7,6 +7,7 @@ velocity commands sent via the NOVA Jogging API.
 
 from __future__ import annotations
 
+from policy.cameras import CameraSet, WebRTCCameraConfig
 from policy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
 from policy.feature_map import FeatureGroup, FeatureMap
 from policy.gr00t_client import Gr00tPolicyClient
@@ -26,6 +27,7 @@ from policy.types import (
 __all__ = [
     "ActionChunk",
     "CallbackPolicyClient",
+    "CameraSet",
     "EmergencyStopError",
     "ExecutionResult",
     "ExecutorStatus",
@@ -42,5 +44,6 @@ __all__ = [
     "PolicyResponse",
     "PolicyRunner",
     "PolicyRunnerConfig",
+    "WebRTCCameraConfig",
     "WebSocketPolicyClient",
 ]

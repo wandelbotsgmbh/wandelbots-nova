@@ -1,17 +1,27 @@
-"""Stateless mock policy service — observation in, action out via NATS."""
+"""Stateless mock policy service — observation in, action out via NATS.
+
+Subscribes to:
+- ``NATS_SUBJECT`` for scalar observations (request/reply)
+- ``NATS_SUBJECT.images.*`` for camera images (publish, latest-frame semantics)
+
+When a prediction request arrives, merges the latest images with the
+scalar observation and runs inference.
+"""
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 from contextlib import asynccontextmanager
 from typing import Any
 
+import numpy as np
 import uvicorn
 from decouple import config
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
+
+from mock_policy_service.nats_wire import pack, unpack, unpack_image
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,11 +34,13 @@ NATS_SUBJECT = config(
     cast=str,
 )
 
-AMPLITUDE = 0.08
+AMPLITUDE = 0.3
 
 _nats_client: object | None = None
-_nats_sub: object | None = None
+_nats_subs: list[object] = []
 _nats_requests: int = 0
+_latest_images: dict[str, np.ndarray] = {}
+_last_image_shapes: dict[str, tuple[int, ...]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -37,9 +49,16 @@ _nats_requests: int = 0
 
 
 def predict(obs: dict[str, Any]) -> dict[str, Any]:
-    """obs → action. Deterministic: same input produces same output."""
+    """obs → action. Deterministic: same input produces same output.
+
+    Scalar features → sinusoidal offset.
+    Images (numpy arrays) → logged but not used for action computation.
+    """
     features: dict[str, float] = {}
     for key, value in obs.items():
+        if isinstance(value, np.ndarray):
+            _last_image_shapes[key] = value.shape
+            continue
         if not isinstance(value, (int, float)):
             continue
         current = float(value)
@@ -48,8 +67,14 @@ def predict(obs: dict[str, Any]) -> dict[str, Any]:
             j1_val = float(obs.get(f"{prefix}_joint_1.pos", 0.0))
             features[key] = 1.0 if j1_val > 0 else 0.0
         else:
+            # Use sum of ALL joint values as phase — creates coupled oscillation
+            # that never converges (each joint's motion perturbs the others)
+            all_joints_sum = sum(
+                float(v) for k, v in obs.items()
+                if isinstance(v, (int, float)) and ".pos" in str(k)
+            )
             phase = float(sum(ord(ch) for ch in key) % 360) * math.pi / 180.0
-            features[key] = current + AMPLITUDE * math.sin(current * 5.0 + phase * 0.3)
+            features[key] = current + AMPLITUDE * math.sin(all_joints_sum * 3.0 + phase)
     return {"features": features}
 
 
@@ -59,35 +84,61 @@ def predict(obs: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _start_nats() -> None:
-    global _nats_client, _nats_sub
+    global _nats_client
     if not NATS_BROKER:
         logger.info("NATS_BROKER not set — NATS disabled")
         return
     import nats
 
     _nats_client = await nats.connect(servers=NATS_BROKER, max_reconnect_attempts=10)
-    _nats_sub = await _nats_client.subscribe(NATS_SUBJECT, cb=_nats_handler)  # type: ignore[union-attr]
-    logger.info("NATS subscribed on %r", NATS_SUBJECT)
+
+    # Subscribe to scalar observations (request/reply)
+    sub = await _nats_client.subscribe(NATS_SUBJECT, cb=_nats_handler)
+    _nats_subs.append(sub)
+
+    # Subscribe to image publications
+    img_sub = await _nats_client.subscribe(f"{NATS_SUBJECT}.images.*", cb=_image_handler)
+    _nats_subs.append(img_sub)
+
+    logger.info("NATS subscribed on %r (+ images.*)", NATS_SUBJECT)
 
 
 async def _stop_nats() -> None:
-    global _nats_client, _nats_sub
-    if _nats_sub is not None:
-        await _nats_sub.unsubscribe()  # type: ignore[union-attr]
-        _nats_sub = None
+    global _nats_client
+    for sub in _nats_subs:
+        await sub.unsubscribe()  # type: ignore[union-attr]
+    _nats_subs.clear()
     if _nats_client is not None:
         await _nats_client.drain()  # type: ignore[union-attr]
         _nats_client = None
 
 
+async def _image_handler(msg: Any) -> None:
+    """Store latest image per camera name."""
+    # Subject: nova.v2...predict.images.<camera_name>
+    camera_name = msg.subject.rsplit(".", maxsplit=1)[-1]
+    try:
+        _latest_images[camera_name] = unpack_image(msg.data)
+    except Exception:
+        logger.exception("Image decode error for %s", camera_name)
+
+
 async def _nats_handler(msg: Any) -> None:
+    """Handle scalar observation request, merge with latest images, reply."""
     global _nats_requests
     _nats_requests += 1
     try:
-        obs = json.loads(msg.data.decode())
+        obs = unpack(msg.data)
+
+        # Merge latest images into observation
+        image_names = obs.pop("__images__", [])
+        for name in image_names:
+            if name in _latest_images:
+                obs[name] = _latest_images[name]
+
         reply = predict(obs)
         if msg.reply and _nats_client is not None:
-            await _nats_client.publish(msg.reply, json.dumps(reply).encode())  # type: ignore[union-attr]
+            await _nats_client.publish(msg.reply, pack(reply))  # type: ignore[union-attr]
     except Exception:
         logger.exception("NATS handler error")
 
@@ -118,6 +169,8 @@ async def status():
         "nats_connected": _nats_client is not None,
         "nats_subject": NATS_SUBJECT,
         "nats_requests": _nats_requests,
+        "last_image_shapes": {k: list(v) for k, v in _last_image_shapes.items()},
+        "active_cameras": list(_latest_images.keys()),
     }
 
 

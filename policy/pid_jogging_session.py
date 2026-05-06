@@ -71,6 +71,14 @@ class PidJoggingSession:
         self._prev_state: RobotState | None = None
         self._prev_tick_time: float | None = None
 
+        # Limit/standstill detection from state stream
+        self._joint_limit_reached: list[bool] | None = None
+        self._standstill: bool = False
+        self._jogging_paused_reason: str | None = None  # NOVA's pause reason
+        self._jogging_paused_detail: str = ""  # description or joint indices
+        self._paused_tick_count: int = 0
+        self._pause_raise_after: int = 10  # ticks (~100ms) — confirm it's not transient
+
         # Task management
         self._jogging_task: asyncio.Task[None] | None = None
         self._state_task: asyncio.Task[None] | None = None
@@ -79,6 +87,7 @@ class PidJoggingSession:
 
         # IO write deduplication — only write when value changes
         self._last_io_written: dict[str, ValueType] = {}
+        self._io_write_lock = asyncio.Lock()
         self._failure_reason: str = ""
 
     @property
@@ -127,6 +136,7 @@ class PidJoggingSession:
         """Write IO values via the motion group's API client.
 
         Only writes values that have changed since the last write (deduplication).
+        Writes are serialized per session to avoid 429 rate limit errors.
         """
         api_client = self._motion_group._api_client
         cell = self._motion_group._cell
@@ -136,20 +146,24 @@ class PidJoggingSession:
             # Skip if value hasn't changed
             if self._last_io_written.get(key) == value:
                 continue
-            try:
-                if isinstance(value, bool):
-                    io_value = api.models.IOBooleanValue(io=key, value=value)
-                elif isinstance(value, (int, float)):
-                    io_value = api.models.IOFloatValue(io=key, value=float(value))
-                else:
-                    io_value = api.models.IOStringValue(io=key, value=str(value))
+            async with self._io_write_lock:
+                # Re-check after acquiring lock (another coroutine may have written)
+                if self._last_io_written.get(key) == value:
+                    continue
+                try:
+                    if isinstance(value, bool):
+                        io_value = api.models.IOBooleanValue(io=key, value=value)
+                    elif isinstance(value, (int, float)):
+                        io_value = api.models.IOFloatValue(io=key, value=float(value))
+                    else:
+                        io_value = api.models.IOStringValue(io=key, value=str(value))
 
-                await api_client.controller_ios_api.set_output_values(
-                    cell=cell, controller=controller_id, io_value=[io_value]
-                )
-                self._last_io_written[key] = value
-            except Exception as e:  # noqa: BLE001
-                logger.warning("Failed to write IO %s=%s: %s", key, value, e)
+                    await api_client.controller_ios_api.set_output_values(
+                        cell=cell, controller=controller_id, io_value=[io_value]
+                    )
+                    self._last_io_written[key] = value
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("Failed to write IO %s=%s: %s", key, value, e)
 
     async def start(self) -> None:
         """Start the state stream and jogging loop.
@@ -209,19 +223,66 @@ class PidJoggingSession:
 
     async def _stream_state(self) -> None:
         """Continuously read joint positions from the motion group state stream."""
+        stream = None
         try:
-            async for state in self._motion_group.stream_state(
+            stream = self._motion_group.stream_state(
                 response_rate_msecs=self._config.state_rate_ms
-            ):
+            )
+            async for state in stream:
                 self._current_joints = list(state.joint_position)
                 if state.tcp_pose is not None:
                     self._current_tcp_pose = Pose(state.tcp_pose)
                 if state.tcp is not None:
                     self._current_tcp_name = state.tcp
+                # Track limit/standstill flags from NOVA
+                if hasattr(state, "joint_limit_reached") and state.joint_limit_reached is not None:
+                    self._joint_limit_reached = state.joint_limit_reached.limit_reached
+                if hasattr(state, "standstill"):
+                    self._standstill = state.standstill
+                # Track jogging pause reason from execute.details
+                self._read_jogging_state(state)
         except asyncio.CancelledError:
             pass
         except (OSError, RuntimeError) as e:
             logger.error("State stream error for %s: %s", self.motion_group_id, e)
+        finally:
+            if stream is not None:
+                with contextlib.suppress(Exception):
+                    await stream.aclose()
+
+    def _read_jogging_state(self, state: object) -> None:
+        """Extract jogging pause reason from MotionGroupState.execute.details."""
+        execute = getattr(state, "execute", None)
+        if execute is None:
+            self._jogging_paused_reason = None
+            self._jogging_paused_detail = ""
+            return
+
+        details = getattr(execute, "details", None)
+        if details is None:
+            self._jogging_paused_reason = None
+            self._jogging_paused_detail = ""
+            return
+
+        jog_state = getattr(details, "state", None)
+        if jog_state is None:
+            self._jogging_paused_reason = None
+            self._jogging_paused_detail = ""
+            return
+
+        kind = getattr(jog_state, "kind", "RUNNING")
+        if kind == "RUNNING":
+            self._jogging_paused_reason = None
+            self._jogging_paused_detail = ""
+        else:
+            self._jogging_paused_reason = kind
+            # Extract extra info if available
+            if hasattr(jog_state, "joint_indices"):
+                self._jogging_paused_detail = f"joints: {jog_state.joint_indices}"
+            elif hasattr(jog_state, "description"):
+                self._jogging_paused_detail = jog_state.description
+            else:
+                self._jogging_paused_detail = ""
 
     async def _resolve_tcp(self) -> str:
         """Get the TCP name for jogging."""
@@ -259,6 +320,7 @@ class PidJoggingSession:
                     msg = getattr(response.root, "message", "unknown motion error")
                     raise MotionError(self.motion_group_id, msg)
                 velocity = self._compute_velocity_with_safety()
+                self._check_standstill()
                 yield api.models.ExecuteJoggingRequest(
                     api.models.JointVelocityRequest(velocity=velocity)
                 )
@@ -308,6 +370,39 @@ class PidJoggingSession:
 
         return self._steps[self._step_index]
 
+    def _check_standstill(self) -> None:
+        """Detect if NOVA paused jogging due to limits, collision, or singularity.
+
+        NOVA reports the exact reason via execute.details.state in the state stream:
+        - PAUSED_NEAR_JOINT_LIMIT (includes joint_indices)
+        - PAUSED_NEAR_COLLISION (includes description)
+        - PAUSED_NEAR_SINGULARITY (includes description)
+
+        We wait a few ticks to confirm it's not transient before raising.
+        """
+        if self._jogging_paused_reason is None:
+            self._paused_tick_count = 0
+            return
+
+        # Only care about motion-blocking pauses
+        blocking_pauses = {
+            "PAUSED_NEAR_JOINT_LIMIT",
+            "PAUSED_NEAR_COLLISION",
+            "PAUSED_NEAR_SINGULARITY",
+        }
+        if self._jogging_paused_reason not in blocking_pauses:
+            self._paused_tick_count = 0
+            return
+
+        self._paused_tick_count += 1
+        if self._paused_tick_count >= self._pause_raise_after:
+            reason = self._jogging_paused_reason.replace("PAUSED_NEAR_", "").lower()
+            detail = f" ({self._jogging_paused_detail})" if self._jogging_paused_detail else ""
+            raise MotionError(
+                self.motion_group_id,
+                f"Jogging paused: {reason}{detail}",
+            )
+
     def _compute_velocity_with_safety(self) -> list[float]:
         """Compute velocity command, running safety guards."""
         if self._num_joints is None:
@@ -320,13 +415,17 @@ class PidJoggingSession:
         if current is None or target is None:
             return [0.0] * n
 
-        # Run safety guards
-        if self._safety_guards and self._current_tcp_pose is not None:
-            now = time.monotonic()
-            dt = now - self._prev_tick_time if self._prev_tick_time is not None else 0.01
+        # Build current robot state (used by guards and standstill detection)
+        current_robot_state = None
+        if self._current_tcp_pose is not None:
             current_robot_state = RobotState(
                 pose=self._current_tcp_pose, tcp=self._current_tcp_name, joints=tuple(current)
             )
+
+        # Run safety guards
+        if self._safety_guards and current_robot_state is not None:
+            now = time.monotonic()
+            dt = now - self._prev_tick_time if self._prev_tick_time is not None else 0.01
             ctx = GuardState(
                 state=current_robot_state,
                 prev_state=self._prev_state,
@@ -342,8 +441,10 @@ class PidJoggingSession:
                     )
                     self._running = False
                     raise GuardStopError(self.motion_group_id, guard_name)
-
-            self._prev_state = current_robot_state
             self._prev_tick_time = now
+
+        # Always track prev_state for standstill detection
+        if current_robot_state is not None:
+            self._prev_state = current_robot_state
 
         return self._pid.compute(current, target)

@@ -9,6 +9,9 @@ dependencies = [
     "uvicorn>=0.34.0",
     "python-decouple~=3.8",
     "nats-py>=2.9.0,<3",
+    "msgpack>=1.1.0,<2",
+    "numpy>=1.26.0,<3",
+    "opencv-python-headless>=4.9.0,<5",
 ]
 
 [dependency-groups]

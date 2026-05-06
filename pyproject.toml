@@ -65,8 +65,11 @@ wandelscript = [
 ]
 novax = ["fastapi>=0.115.6", "uvicorn>=0.34.0", "python-decouple>=3.8"]
 policy = [
+    "aiortc>=1.14.0",
     "msgpack>=1.1.0,<2",
+    "opencv-python>=4.13.0.92",
     "pyzmq>=26.0.0,<27",
+    "requests>=2.33.1",
 ]
 benchmark = [
     "rerun-sdk==0.26.2",

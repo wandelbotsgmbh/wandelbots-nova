@@ -4,15 +4,14 @@ FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
-COPY pyproject.toml ./
+COPY pyproject.toml uv.lock ./
 
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
 RUN --mount=from=uv,source=/uv,target=/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --no-install-project --no-dev
+    uv sync --locked --no-install-project --no-dev
 
 # policy is copied from the repo root before building (see README)
 COPY policy policy/
