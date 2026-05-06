@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.1.0 (2026-05-06)
+
+### Features
+
+- **NDX-696**: Add jerk limit fields to MotionSettings and fix zero value blending bug (#416)
+  ([#416](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/416),
+  [`ab52952`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ab52952a6b0965435e8e6e145031af094fa38c37))
+
+
 ## v5.0.1 (2026-05-06)
 
 ### Bug Fixes
