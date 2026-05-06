@@ -3,9 +3,9 @@ name: "SAST: pip-audit"
 
 on:
   pull_request:
-    branches: ["main"]
+    branches: [ "main" ]
   push:
-    branches: ["main"]
+    branches: [ "main" ]
   schedule:
     - cron: "33 4 * * 1" # weekly
 
@@ -21,6 +21,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+          pip-version: ">=26.1.1"
 
       - name: Set up Python environment
         run: |
