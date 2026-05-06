@@ -17,15 +17,11 @@ def test_mismatched_joint_jerk_limits_length_raises():
     """joint_jerk_limits length must match joint_velocity_limits and joint_acceleration_limits."""
     with pytest.raises(ValueError):
         MotionSettings(
-            joint_velocity_limits=[0.5, 0.5, 0.5],
-            joint_jerk_limits=[1.0, 1.0, 1.0, 1.0],
+            joint_velocity_limits=[0.5, 0.5, 0.5], joint_jerk_limits=[1.0, 1.0, 1.0, 1.0]
         )
 
     with pytest.raises(ValueError):
-        MotionSettings(
-            joint_acceleration_limits=[1.0, 1.0, 1.0],
-            joint_jerk_limits=[2.0, 2.0],
-        )
+        MotionSettings(joint_acceleration_limits=[1.0, 1.0, 1.0], joint_jerk_limits=[2.0, 2.0])
 
 
 def test_motion_settings_with_no_explicit_tcp_limits():
@@ -54,10 +50,7 @@ def test_motion_settings_tcp_cartesian_limits():
 
 def test_motion_settings_tcp_cartesian_limits_jerk_fields():
     """as_tcp_cartesian_limits() must populate jerk and orientation_jerk from the new fields."""
-    motion_settings = MotionSettings(
-        tcp_jerk_limit=3.0,
-        tcp_orientation_jerk_limit=0.8,
-    )
+    motion_settings = MotionSettings(tcp_jerk_limit=3.0, tcp_orientation_jerk_limit=0.8)
 
     cartesian_limits = motion_settings.as_tcp_cartesian_limits()
     assert cartesian_limits.jerk == motion_settings.tcp_jerk_limit
@@ -87,8 +80,7 @@ def test_joint_velocity_limits():
 def test_joint_jerk_limits():
     """as_joint_limits() must set the jerk field on each JointLimits entry."""
     motion_settings = MotionSettings(
-        joint_velocity_limits=[0.5, 0.5, 0.5],
-        joint_jerk_limits=[2.0, 2.0, 2.0],
+        joint_velocity_limits=[0.5, 0.5, 0.5], joint_jerk_limits=[2.0, 2.0, 2.0]
     )
 
     limits = motion_settings.as_joint_limits()
