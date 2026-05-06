@@ -177,6 +177,3 @@ nova_rerun_bridge/nova_rerun_bridge_app/nova
 
 kubeconfig
 **/kubeconfig
-
-benchmark_results
-examples/payload.py
