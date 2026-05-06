@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.0.1 (2026-05-06)
+
+### Bug Fixes
+
+- **NDX-698**: Use payload defaults and per-call overrides in planning (#417)
+  ([#417](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/417),
+  [`853f91a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/853f91a5666f38294b3d9e59b9e03155ea33e35b))
+
+
 ## v5.0.0 (2026-04-22)
 
 ### Bug Fixes
