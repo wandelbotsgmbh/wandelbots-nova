@@ -88,6 +88,9 @@ class FeatureGroup:
     zeros are appended. Extra joints in the action are dropped.
     0 = auto (use the robot's actual joint count)."""
 
+    tcp: str = ""
+    """TCP name for jogging and state streaming. Empty = robot's default."""
+
     @property
     def resolved_joint_key(self) -> str:
         """Resolved feature name for joints."""
@@ -205,6 +208,14 @@ class FeatureMap:
     def get_motion_groups(self) -> list[MotionGroup]:
         """Get all motion groups in order."""
         return [group.motion_group for group in self.groups]
+
+    @property
+    def tcp(self) -> str:
+        """TCP name from the first group that has one set (or empty for default)."""
+        for group in self.groups:
+            if group.tcp:
+                return group.tcp
+        return ""
 
     async def start(self) -> None:
         """Open IO streams for all controllers referenced by the feature groups."""

@@ -80,25 +80,54 @@ class WebRTCCameraConfig:
 class CameraSet:
     """A named collection of cameras to connect and read from.
 
-    Usage::
+    Usage (verbose)::
 
         cameras = CameraSet(configs={
             "flange": WebRTCCameraConfig(api_url="...", device_id="315122271048"),
-            "left": WebRTCCameraConfig(api_url="...", device_id="314522065367"),
         })
-        await cameras.connect()
-        frames = cameras.read()  # {"flange": np.array(...), "left": np.array(...)}
-        await cameras.disconnect()
+
+    Usage (compact — shared api_url/resolution/fps)::
+
+        cameras = CameraSet(
+            api_url="http://localhost:9100",
+            devices={"flange": "315122271048", "left": "314522065367"},
+        )
 
     When ``frame_history > 1``, each camera maintains a buffer of the last N frames.
     ``read()`` then returns arrays with shape ``(T, H, W, 3)`` instead of ``(H, W, 3)``.
-    Until the buffer is full, earlier slots are filled with the first received frame.
     """
 
     configs: dict[str, WebRTCCameraConfig] = field(default_factory=dict)
     frame_history: int = 1
     _connections: dict[str, _WebRTCConnection] = field(default_factory=dict, repr=False)
     _buffers: dict[str, list[NDArray[Any]]] = field(default_factory=dict, repr=False)
+
+    def __init__(
+        self,
+        configs: dict[str, WebRTCCameraConfig] | None = None,
+        *,
+        api_url: str = "",
+        devices: dict[str, str] | None = None,
+        width: int = 640,
+        height: int = 480,
+        fps: int = 30,
+        frame_history: int = 1,
+    ) -> None:
+        self._connections: dict[str, _WebRTCConnection] = {}
+        self._buffers: dict[str, list[NDArray[Any]]] = {}
+        self.frame_history = frame_history
+
+        if configs:
+            self.configs = configs
+        elif devices and api_url:
+            self.configs = {
+                name: WebRTCCameraConfig(
+                    api_url=api_url, device_id=device_id, width=width, height=height, fps=fps,
+                )
+                for name, device_id in devices.items()
+            }
+        else:
+            self.configs = {}
 
     async def connect(self, timeout_s: float = 30.0) -> None:
         """Connect all cameras and wait for first frames.
@@ -344,15 +373,14 @@ class _WebRTCConnection:
 
     async def _receive_frames(self, track: object) -> None:
         """Continuously receive frames and store the latest one."""
-        import cv2  # noqa: PLC0415
         from aiortc.mediastreams import MediaStreamError  # noqa: PLC0415
 
         try:
             while True:
                 frame = await track.recv()  # type: ignore[union-attr]
-                # Convert to numpy BGR then to RGB
+                # Convert BGR to RGB via numpy slice (avoids opencv dependency)
                 img = frame.to_ndarray(format="bgr24")
-                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                img_rgb = img[:, :, ::-1].copy()
                 with self._frame_lock:
                     self._frame = img_rgb
                 # Signal first frame

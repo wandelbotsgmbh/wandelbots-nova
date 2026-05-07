@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 import time
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
@@ -14,11 +15,13 @@ from policy.runner import PolicyRunner
 from policy.types import ActionChunk, EmergencyStopError, GuardStopError, MotionError
 
 if TYPE_CHECKING:
-    from nova.cell.motion_group import MotionGroup
     from policy.cameras import CameraSet
     from policy.feature_map import FeatureMap
     from policy.policy_client import PolicyClient
     from policy.types import PolicyRunnerConfig, SafetyGuard
+
+# Type for bare async policy functions
+_PolicyFn = Callable[[dict[str, Any]], Coroutine[Any, Any, dict[str, float] | ActionChunk]]
 
 logger = logging.getLogger(__name__)
 
@@ -67,29 +70,36 @@ class PolicyExecutor:
     def __init__(
         self,
         feature_map: FeatureMap,
-        policy: PolicyClient,
+        policy: _PolicyFn | PolicyClient,
         *,
         cameras: CameraSet | None = None,
-        tcp: str = "",
         config: PolicyRunnerConfig | None = None,
         safety_guards: list[SafetyGuard] | None = None,
         timeout_s: float = 0,
-        rate_hz: float = 30,
+        inference_hz: float = 30,
     ) -> None:
         self._motion_groups = feature_map.get_motion_groups()
         self._feature_map = feature_map
 
-        self._policy = policy
+        # Accept bare async function as policy (no wrapper needed)
+        if callable(policy) and not hasattr(policy, "get_actions"):
+            from policy.policy_client import CallbackPolicyClient  # noqa: PLC0415
+
+            self._policy: PolicyClient = CallbackPolicyClient(policy)
+        else:
+            self._policy = policy  # type: ignore[assignment]
+
         self._cameras = cameras
-        self._tcp = tcp
         self._config = config
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
-        self._rate_hz = rate_hz
+        self._inference_hz = inference_hz
 
         self._runner: PolicyRunner | None = None
         self._stop_event = asyncio.Event()
         self._last_obs: dict[str, Any] | None = None
+        self._estop_error: EmergencyStopError | None = None
+        self._estop_task: asyncio.Task[None] | None = None
 
         self.status = ExecutorStatus()
         self.result: ExecutionResult | None = None
@@ -184,7 +194,7 @@ class PolicyExecutor:
             self._runner = PolicyRunner(
                 motion_groups=self._motion_groups,
                 config=self._config,
-                tcp=self._tcp,
+                tcp=self._feature_map.tcp,
                 safety_guards=self._safety_guards,
             )
 
@@ -203,8 +213,16 @@ class PolicyExecutor:
 
                 try:
                     await self._policy.connect(self.mg_ids)
+                    self._estop_task = asyncio.create_task(
+                        self._monitor_estop(), name="estop-monitor"
+                    )
                     self.result = await self._execute()
                 finally:
+                    if self._estop_task is not None:
+                        self._estop_task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await self._estop_task
+                        self._estop_task = None
                     if self._cameras is not None:
                         await self._cameras.disconnect()
                     await self._feature_map.stop()
@@ -226,7 +244,7 @@ class PolicyExecutor:
         """Run the observe-act loop until termination."""
         step = 0
         start_time = time.monotonic()
-        interval = 1.0 / self._rate_hz
+        interval = 1.0 / self._inference_hz
         last_obs: dict[str, Any] | None = None
 
         self.status.phase = Phase.EXECUTING
@@ -259,9 +277,14 @@ class PolicyExecutor:
                 if failure is not None:
                     return failure
 
-                estop = await self._check_estop(step, start_time, last_obs)
-                if estop is not None:
-                    return estop
+                if self._estop_error is not None:
+                    return ExecutionResult(
+                        reason="estop",
+                        steps=step,
+                        duration_s=time.monotonic() - start_time,
+                        last_state=last_obs,
+                        error=self._estop_error,
+                    )
 
                 await asyncio.sleep(interval)
 
@@ -355,68 +378,58 @@ class PolicyExecutor:
                 )
         return None
 
-    async def _check_estop(
-        self, step: int, start_time: float, last_obs: dict[str, Any] | None,
-    ) -> ExecutionResult | None:
-        """Check e-stop every ~1 second (every 30 steps at 30Hz)."""
-        if step % 30 != 0:
-            return None
-        for mg in self._motion_groups:
-            result = await self._check_estop_for_group(mg, step, start_time, last_obs)
-            if result is not None:
-                return result
-        return None
-
-    async def _check_estop_for_group(
-        self, mg: MotionGroup, step: int, start_time: float, last_obs: dict[str, Any] | None,
-    ) -> ExecutionResult | None:
-        try:
-            estop_state = await mg._api_client.virtual_controller_api.get_emergency_stop(
-                cell=mg._cell, controller=mg._controller_id
-            )
-            if estop_state.active:
-                return self._safety_stop_result(
-                    mg._controller_id, "SAFETY_STATE_DEVICE_EMERGENCY_STOP",
-                    step, start_time, last_obs,
-                )
-        except (OSError, RuntimeError, ValueError):
-            return await self._check_safety_state(mg, step, start_time, last_obs)
-        return None
-
     _OPERATIONAL_SAFETY_STATES = frozenset({"SAFETY_STATE_NORMAL", "SAFETY_STATE_REDUCED"})
 
-    async def _check_safety_state(
-        self, mg: MotionGroup, step: int, start_time: float, last_obs: dict[str, Any] | None,
-    ) -> ExecutionResult | None:
-        try:
-            ctrl_state = await mg._api_client.controller_api.get_current_robot_controller_state(
-                cell=mg._cell, controller=mg._controller_id
-            )
-            safety = str(getattr(ctrl_state, "safety_state", ""))
-            if safety and safety not in self._OPERATIONAL_SAFETY_STATES:
-                return self._safety_stop_result(
-                    mg._controller_id, safety, step, start_time, last_obs,
-                )
-        except (OSError, RuntimeError, ValueError):
-            pass
-        return None
+    async def _monitor_estop(self) -> None:
+        """Background task: stream controller state and detect e-stop.
 
-    def _safety_stop_result(
-        self,
-        controller_id: str,
-        safety_state: str,
-        step: int,
-        start_time: float,
-        last_obs: dict[str, Any] | None,
-    ) -> ExecutionResult:
-        logger.error("Safety stop on %s: %s", controller_id, safety_state)
-        return ExecutionResult(
-            reason="estop",
-            steps=step,
-            duration_s=time.monotonic() - start_time,
-            last_state=last_obs,
-            error=EmergencyStopError(controller_id, safety_state),
-        )
+        Uses the controller state-stream WebSocket (no polling).
+        Sets ``_estop_error`` when any controller enters a non-operational
+        safety state (e-stop, protective stop, fault, etc.).
+        """
+        # Deduplicate controllers (multiple motion groups may share one)
+        seen: set[str] = set()
+        controllers: list[tuple[str, object]] = []
+        for mg in self._motion_groups:
+            if mg._controller_id not in seen:
+                seen.add(mg._controller_id)
+                controllers.append((mg._controller_id, mg._api_client))
+
+        tasks = [asyncio.create_task(self._watch_controller(cid, api)) for cid, api in controllers]
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _watch_controller(self, controller_id: str, api_client: object) -> None:
+        """Watch a single controller's state stream for safety state changes."""
+        cell = self._motion_groups[0]._cell
+        stream = None
+        try:
+            stream = api_client.controller_api.stream_robot_controller_state(
+                cell=cell,
+                controller=controller_id,
+                response_rate=1000,
+            )
+            async for state in stream:
+                safety_raw = getattr(state, "safety_state", None)
+                if safety_raw is None:
+                    continue
+                safety = safety_raw.name if hasattr(safety_raw, "name") else str(safety_raw)
+                if safety not in self._OPERATIONAL_SAFETY_STATES:
+                    logger.error("E-stop detected on %s: %s", controller_id, safety)
+                    self._estop_error = EmergencyStopError(controller_id, safety)
+                    return
+        except asyncio.CancelledError:
+            raise
+        except (OSError, RuntimeError):
+            pass
+        finally:
+            if stream is not None:
+                with contextlib.suppress(Exception):
+                    await stream.aclose()
 
     @staticmethod
     def _result(
