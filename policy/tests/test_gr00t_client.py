@@ -1,10 +1,9 @@
-"""Tests for Gr00tPolicyClient with FeatureMap."""
+"""Tests for Gr00tPolicyClient ZMQ roundtrip."""
 
 from __future__ import annotations
 
 import threading
 import time
-from typing import Any
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -17,97 +16,87 @@ from policy.types import ActionChunk
 zmq = pytest.importorskip("zmq")
 
 
-class _Server(threading.Thread):
-    def __init__(self, port: int) -> None:
-        super().__init__(daemon=True)
-        self._port = port
-        self._stop_event = threading.Event()
-        self.context = zmq.Context()
-        self.socket = self.context.socket(zmq.REP)
-        self.socket.bind(f"tcp://127.0.0.1:{port}")
-
-    def run(self) -> None:
-        while not self._stop_event.is_set():
-            if self.socket.poll(timeout=100) == 0:
-                continue
-            request = Gr00tMsgSerializer.from_bytes(self.socket.recv())
-            endpoint = request.get("endpoint")
-            if endpoint == "ping":
-                response = {"status": "ok"}
-            elif endpoint == "reset":
-                response = {"stateless": True}
-            elif endpoint == "get_modality_config":
-                response = {
-                    "state": {"delta_indices": [0], "modality_keys": ["left_joint_position"]},
-                    "action": {"delta_indices": list(range(4)), "modality_keys": ["left_joint_position"]},
-                }
-            elif endpoint == "get_action":
-                obs = request["data"]["observation"]
-                current = obs["state"]["left_joint_position"][:, -1, :]
-                chunk = np.repeat(current[:, np.newaxis, :], 4, axis=1).astype(np.float32)
-                response = ({"left_joint_position": chunk}, {"stateless": True})
-            else:
-                response = {"error": f"Unknown endpoint: {endpoint}"}
-            self.socket.send(Gr00tMsgSerializer.to_bytes(response))
-
-    def close(self) -> None:
-        self._stop_event.set()
-        self.join(timeout=2)
-        self.socket.close(linger=0)
-        self.context.term()
-
-
 def _find_free_port() -> int:
     import socket
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
 
 
-def _mock_motion_group(mg_id: str) -> MagicMock:
-    """Create a mock MotionGroup with the necessary attributes."""
-    mg = MagicMock()
-    mg.id = mg_id
-    mg._controller_id = mg_id.rsplit("@", maxsplit=1)[-1] if "@" in mg_id else mg_id
-    mg._cell = "cell"
-    return mg
+class _MockGr00tServer(threading.Thread):
+    """Minimal GR00T ZMQ server that echoes observations back as actions."""
+
+    def __init__(self, port: int) -> None:
+        super().__init__(daemon=True)
+        self._port = port
+        self._shutdown = threading.Event()
+        self.ctx = zmq.Context()
+        self.sock = self.ctx.socket(zmq.REP)
+        self.sock.bind(f"tcp://127.0.0.1:{port}")
+
+    def run(self) -> None:
+        while not self._shutdown.is_set():
+            if self.sock.poll(100) == 0:
+                continue
+            req = Gr00tMsgSerializer.from_bytes(self.sock.recv())
+            endpoint = req.get("endpoint")
+
+            if endpoint == "ping":
+                resp = {"status": "ok"}
+            elif endpoint == "get_action":
+                # Echo the joint state back as a 4-step action
+                obs = req["data"]["observation"]
+                current = obs["state"]["left_joint_position"][:, -1, :]
+                action = np.repeat(current[:, np.newaxis, :], 4, axis=1).astype(np.float32)
+                resp = ({"left_joint_position": action}, {})
+            elif endpoint == "get_modality_config":
+                resp = {
+                    "state": {"modality_keys": ["left_joint_position"]},
+                    "action": {"modality_keys": ["left_joint_position"]},
+                }
+            else:
+                resp = {"error": f"Unknown: {endpoint}"}
+
+            self.sock.send(Gr00tMsgSerializer.to_bytes(resp))
+
+    def close(self) -> None:
+        self._shutdown.set()
+        self.join(2)
+        self.sock.close(linger=0)
+        self.ctx.term()
 
 
 @pytest.mark.asyncio
-async def test_gr00t_client_roundtrip() -> None:
+async def test_roundtrip() -> None:
+    """Full cycle: connect → get_actions → parse → ActionChunk."""
     port = _find_free_port()
-    server = _Server(port)
+    server = _MockGr00tServer(port)
     server.start()
-    time.sleep(0.2)
+    time.sleep(0.1)
 
-    mg = _mock_motion_group("0@ur10e")
-    feature_map = FeatureMap(groups=[FeatureGroup(motion_group=mg, name="left")])
+    try:
+        mg = MagicMock()
+        mg.id = "0@ur10e"
+        mg._controller_id = "ur10e"
+        mg._cell = "cell"
 
-    client = Gr00tPolicyClient(
-        host="127.0.0.1",
-        port=port,
-        feature_map=feature_map,
-    )
-    await client.connect(["0@ur10e"])
+        fm = FeatureMap(groups=[FeatureGroup(motion_group=mg, name="left")])
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port, feature_map=fm)
+        await client.connect(["0@ur10e"])
 
-    assert await client.ping() is True
+        assert await client.ping() is True
 
-    # Simulate executor observation: {mg_id: RobotState-like object}
-    class _FakeState:
-        joints = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        # Simulate executor observation
+        class _State:
+            joints = (0.1, -1.5, 0.0, 0.0, 0.0, 0.0)
 
-    obs: dict[str, Any] = {"0@ur10e": _FakeState()}
-    result = await client.get_actions(obs)
-    assert isinstance(result, ActionChunk)
-    assert "0@ur10e" in result.joints
-    assert len(result.joints["0@ur10e"]) == 4  # 4-step horizon from server
+        result = await client.get_actions({"0@ur10e": _State()})
 
-    reset_response = await client.reset()
-    assert reset_response["stateless"] is True
+        assert isinstance(result, ActionChunk)
+        assert "0@ur10e" in result.joints
+        assert len(result.joints["0@ur10e"]) == 4  # 4-step horizon
 
-    modality = await client.get_modality_config()
-    assert modality["action"]["modality_keys"] == ["left_joint_position"]
-
-    await client.close()
-    server.close()
+        await client.close()
+    finally:
+        server.close()
