@@ -89,9 +89,9 @@ asyncio.run(main())
 
 ```python
 executor = PolicyExecutor(
-    motion_groups=[mg1, mg2],       # or feature_map=... for flat features
+    feature_map=feature_map,
     policy=my_policy_client,
-    cameras=camera_set,             # optional WebRTC cameras
+    cameras=camera_set,             # WebRTC cameras
     timeout_s=10.0,                 # 0 = run until stop()
     safety_guards=[guard_fn],
     rate_hz=30,
@@ -341,44 +341,39 @@ NATS wire format:
 
 ### Data Flow
 
-```
-PolicyExecutor.run()
-  │
-  ├─ CameraSet.connect()        # WebRTC ICE negotiation
-  ├─ FeatureMap.start()          # IO streaming
-  ├─ PolicyRunner.__aenter__()   # opens jogging sessions
-  │
-  │  ┌─ loop at rate_hz ────────────────────────────────────┐
-  │  │  1. runner.observe()     → dict[str, RobotState]     │
-  │  │  2. feature_map.build()  → flat obs + IO values      │
-  │  │  3. cameras.read()       → numpy images              │
-  │  │  4. policy.get_actions() → ActionChunk               │
-  │  │  5. runner.send(chunk)   → PID → velocity → robot    │
-  │  │  6. check guards, estop, collision                   │
-  │  └──────────────────────────────────────────────────────┘
-  │
-  ├─ PolicyRunner.__aexit__()    # zero velocity, close jogging
-  ├─ FeatureMap.stop()           # close IO streams
-  ├─ CameraSet.disconnect()      # close WebRTC
-  └─ return ExecutionResult
+```mermaid
+flowchart TD
+    run["PolicyExecutor.run()"] --> cam["CameraSet.connect()"]
+    cam --> io["FeatureMap.start() — IO streaming"]
+    io --> jog["PolicyRunner — open jogging sessions"]
+    jog --> loop
+
+    subgraph loop["Loop at rate_hz"]
+        direction TB
+        observe["1. runner.observe() → RobotState"] --> build["2. feature_map.build() → flat obs + IOs"]
+        build --> read["3. cameras.read() → numpy images"]
+        read --> infer["4. policy.get_actions() → ActionChunk"]
+        infer --> send["5. runner.send(chunk) → PID → velocity"]
+        send --> check["6. check guards, estop, collision"]
+    end
+
+    loop --> cleanup["Close jogging, IO streams, cameras"]
+    cleanup --> result["return ExecutionResult"]
 ```
 
 ### Safety Architecture
 
-```
-PID Jogging Tick (~100Hz)
-  │
-  ├─ Read joint state (NOVA state stream)
-  ├─ Read IO values (IO stream cache)
-  ├─ Run safety guards (user-defined, access to state + IOs)
-  │     └─ returns False → GuardStopError (zero velocity immediately)
-  ├─ Check NOVA jogging state:
-  │     └─ PAUSED_NEAR_COLLISION → MotionError (after 10 tick confirmation)
-  │     └─ PAUSED_NEAR_JOINT_LIMIT → MotionError
-  │     └─ PAUSED_NEAR_SINGULARITY → MotionError
-  ├─ Check safety state:
-  │     └─ not NORMAL/REDUCED → EmergencyStopError
-  └─ PID compute → send velocity
+```mermaid
+flowchart TD
+    tick["PID Jogging Tick"] --> state["Read joint state"]
+    state --> ioread["Read IO values from stream cache"]
+    ioread --> guards["Run safety guards"]
+    guards -->|"returns False"| gstop["GuardStopError"]
+    guards -->|"ok"| jstate["Check NOVA jogging state"]
+    jstate -->|"PAUSED_NEAR_COLLISION\nPAUSED_NEAR_JOINT_LIMIT\nPAUSED_NEAR_SINGULARITY"| merr["MotionError"]
+    jstate -->|"ok"| safety["Check safety state"]
+    safety -->|"not NORMAL/REDUCED"| estop["EmergencyStopError"]
+    safety -->|"ok"| pid["PID compute → send velocity"]
 ```
 
 ### PID Controller
