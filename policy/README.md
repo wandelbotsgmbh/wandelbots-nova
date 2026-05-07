@@ -135,7 +135,7 @@ Policy services return msgpack-encoded responses:
 {"joints": {"0@ur10e": [[step0], [step1], ..., [step15]]}, "dt_ms": 33.0}
 
 # Flat features (FeatureMap mode):
-{"features": {"left_joint_1.pos": 0.1, "left_gripper.pos": 50.0}}
+{"features": {"left_joint_position_1": 0.1, "left_gripper": 50.0}}
 ```
 
 ## FeatureMap
@@ -149,19 +149,31 @@ feature_map = FeatureMap(groups=[
     FeatureGroup(
         motion_group=mg1,
         name="left",
-        ios={"gripper": "digital_out[0]"},
+        ios={"left_gripper": "digital_out[0]"},
     ),
     FeatureGroup(
         motion_group=mg2,
         name="right",
-        ios={"gripper": "digital_out[0]"},
+        ios={"right_gripper": "digital_out[0]"},
     ),
 ])
 
 executor = PolicyExecutor(feature_map=feature_map, policy=client, timeout_s=10.0)
 ```
 
-Policy sees: `{"left_joint_1.pos": ..., "left_gripper": 0.0, "right_joint_1.pos": ...}`
+Policy sees: `{"left_joint_position_1": ..., "left_gripper": 0.0, "right_joint_position_1": ...}`
+
+For GR00T array-based policies, override keys to match the server:
+```python
+FeatureGroup(
+    motion_group=mg1,
+    name="left",
+    joint_key="left_arm",
+    tcp_key="left_eef_9d",
+    tcp_format=TcpFormat.ROT6D,
+    ios={"left_gripper": "digital_out[0]"},
+)
+```
 
 IO values are streamed for real-time guard access at the controller's update rate.
 

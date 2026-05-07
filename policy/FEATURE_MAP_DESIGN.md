@@ -11,21 +11,21 @@ This matches how LeRobot handles dual-arm policies. Feature names ARE the contra
 ```python
 # Observation (flat dict):
 {
-    "left_joint_1.pos": 0.1,
-    "left_joint_2.pos": -1.5,
+    "left_joint_position_1": 0.1,
+    "left_joint_position_2": -1.5,
     ...
     "left_gripper": 0.0,       # IO value (float, from digital bool)
-    "right_joint_1.pos": 0.2,
+    "right_joint_position_1": 0.2,
     ...
     "right_gripper": 100.0,
 }
 
 # Action (same flat structure):
 {
-    "left_joint_1.pos": 0.15,
+    "left_joint_position_1": 0.15,
     ...
     "left_gripper": 50.0,
-    "right_joint_1.pos": 0.25,
+    "right_joint_position_1": 0.25,
     ...
 }
 ```
@@ -36,29 +36,45 @@ This matches how LeRobot handles dual-arm policies. Feature names ARE the contra
 @dataclass
 class FeatureGroup:
     motion_group: MotionGroup
-    name: str                           # prefix for feature keys (e.g. "left", "right")
-    ios: dict[str, str] = field(...)    # feature_name → hardware_io_key
-
-    def joint_key(self, joint_index: int) -> str:
-        return f"{self.name}_joint_{joint_index + 1}.pos"
-
-    def io_feature_key(self, io_name: str) -> str:
-        return f"{self.name}_{io_name}"
+    name: str                          # default prefix for feature keys
+    ios: dict[str, str] | None         # policy_name → hardware_io_key
+    joint_key: str = ""                # override joint feature name (default: "{name}_joint_position")
+    tcp_key: str = ""                  # override TCP feature name (default: "{name}_tcp")
+    tcp_format: TcpFormat = NONE       # TCP representation (NONE, ROTATION_VECTOR, QUATERNION, ROT6D)
+    model_dof: int = 0                 # expected joint count (0 = auto from robot)
+    io_threshold: float = 0.5          # bool conversion threshold for IO actions
 ```
+
+Key resolution:
+- **Joints**: `{joint_key}_{i}` where `joint_key` defaults to `{name}_joint_position` → e.g. `left_joint_position_1`
+- **TCP**: `{tcp_key}_{i}` where `tcp_key` defaults to `{name}_tcp` (only if `tcp_format != NONE`)
+- **IOs**: dict keys used directly as feature names
 
 Example:
 ```python
 FeatureGroup(
     motion_group=mg1,
     name="left",
-    ios={"gripper": "digital_out[0]", "conveyor_sensor": "digital_in[3]"},
+    ios={"left_gripper": "digital_out[0]", "left_conveyor_sensor": "digital_in[3]"},
 )
 ```
 
 Produces features:
-- `left_joint_1.pos` through `left_joint_6.pos`
+- `left_joint_position_1` through `left_joint_position_6`
 - `left_gripper` (mapped to `digital_out[0]`)
 - `left_conveyor_sensor` (mapped to `digital_in[3]`)
+
+For GR00T (array-based), override `joint_key` to match the server's expected keys:
+```python
+FeatureGroup(
+    motion_group=mg1,
+    name="left",
+    joint_key="left_arm",
+    tcp_key="left_eef_9d",
+    tcp_format=TcpFormat.ROT6D,
+    ios={"left_gripper": "digital_out[0]"},
+)
+```
 
 ## FeatureMap
 
@@ -88,12 +104,12 @@ feature_map = FeatureMap(groups=[
     FeatureGroup(
         motion_group=mg1,
         name="left",
-        ios={"gripper": "digital_out[0]"},
+        ios={"left_gripper": "digital_out[0]"},
     ),
     FeatureGroup(
         motion_group=mg2,
         name="right",
-        ios={"gripper": "digital_out[0]"},
+        ios={"right_gripper": "digital_out[0]"},
     ),
 ])
 
