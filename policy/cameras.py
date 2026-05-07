@@ -36,6 +36,8 @@ import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
@@ -87,10 +89,16 @@ class CameraSet:
         await cameras.connect()
         frames = cameras.read()  # {"flange": np.array(...), "left": np.array(...)}
         await cameras.disconnect()
+
+    When ``frame_history > 1``, each camera maintains a buffer of the last N frames.
+    ``read()`` then returns arrays with shape ``(T, H, W, 3)`` instead of ``(H, W, 3)``.
+    Until the buffer is full, earlier slots are filled with the first received frame.
     """
 
     configs: dict[str, WebRTCCameraConfig] = field(default_factory=dict)
+    frame_history: int = 1
     _connections: dict[str, _WebRTCConnection] = field(default_factory=dict, repr=False)
+    _buffers: dict[str, list[NDArray[Any]]] = field(default_factory=dict, repr=False)
 
     async def connect(self, timeout_s: float = 30.0) -> None:
         """Connect all cameras and wait for first frames.
@@ -112,10 +120,13 @@ class CameraSet:
         logger.info("All %d cameras connected and producing frames", len(self.configs))
 
     def read(self) -> dict[str, NDArray[Any]]:
-        """Read the latest frame from each camera.
+        """Read frames from each camera.
 
         Returns:
-            Dict mapping camera name → numpy array (H, W, 3) uint8 RGB.
+            Dict mapping camera name → numpy array.
+            - If ``frame_history == 1``: shape ``(H, W, 3)`` uint8 RGB.
+            - If ``frame_history > 1``: shape ``(T, H, W, 3)`` uint8 RGB,
+              where T is the history length (oldest first).
 
         Raises:
             RuntimeError: If a camera has no frame available.
@@ -126,7 +137,20 @@ class CameraSet:
             if frame is None:
                 msg = f"Camera '{name}' has no frame available"
                 raise RuntimeError(msg)
-            frames[name] = frame
+
+            if self.frame_history <= 1:
+                frames[name] = frame
+            else:
+                buf = self._buffers.setdefault(name, [])
+                buf.append(frame)
+                # Keep only the last N frames
+                if len(buf) > self.frame_history:
+                    buf.pop(0)
+                # Pad with first frame if buffer not full yet
+                while len(buf) < self.frame_history:
+                    buf.insert(0, buf[0])
+                frames[name] = np.stack(buf, axis=0)  # (T, H, W, 3)
+
         return frames
 
     def is_ready(self) -> bool:

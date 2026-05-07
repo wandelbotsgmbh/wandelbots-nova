@@ -29,6 +29,7 @@ Run:
 import asyncio
 import math
 import os
+import time
 from typing import Any
 
 import numpy as np
@@ -47,6 +48,7 @@ from policy import (
 
 from nova import Nova
 from nova.actions import joint_ptp
+from nova.types import MotionSettings
 
 HOME_LEFT = (0.0, -1.571, 1.571, -1.571, -1.571, 0.0)
 HOME_RIGHT = (0.0, -1.571, -1.571, -1.571, 1.571, 0.0)
@@ -62,20 +64,26 @@ CAM_RIGHT = os.environ.get("CAM_RIGHT", "319522063360")
 # ---------------------------------------------------------------------------
 
 _step_counter = 0
+_start_time: float | None = None
 
 
 async def mock_policy(obs: dict[str, Any]) -> dict[str, float]:
-    """Stateless mock policy using flat feature names + camera images.
+    """Mock policy using time-based oscillation.
 
-    Receives joint observations and camera images. In a real policy (ACT,
-    Diffusion Policy, etc.) the images would be passed through a inference.
-    Here we demonstrate the interface and verify images arrive.
+    Uses wall clock for smooth sinusoidal motion that visibly oscillates
+    without drifting in one direction. Each joint moves with a different
+    phase offset for varied motion.
 
-    Input:  {"left_joint_1.pos": 0.1, ..., "flange": np.array(480,640,3), ...}
-    Output: {"left_joint_1.pos": 0.15, ..., "left_gripper": 1.0, ...}
+    Input:  {"left_joint_position_1": 0.1, ..., "flange": np.array(480,640,3), ...}
+    Output: {"left_joint_position_1": 0.15, ..., "gripper": 1.0, ...}
     """
-    global _step_counter
+    global _step_counter, _start_time
     _step_counter += 1
+    if _start_time is None:
+        _start_time = time.monotonic()
+    t = time.monotonic() - _start_time
+    freq = 2.0  # Hz
+    amplitude = 0.3
 
     # Verify camera images are present and correctly shaped
     for cam_name in ("flange", "left", "right"):
@@ -92,24 +100,17 @@ async def mock_policy(obs: dict[str, Any]) -> dict[str, float]:
         elif _step_counter == 1:
             print(f"  [step {_step_counter:>3}] {cam_name:>6}: NOT IN OBS")
 
-    # Compute actions from joint state (images would inform a real policy)
-    amplitude = 0.08
+    # Compute actions: time-based sinusoidal oscillation
     features: dict[str, float] = {}
-
-    # Sum of all joints creates coupled oscillation that never converges
-    all_joints_sum = sum(
-        float(obs.get(f"{r}_joint_{j}.pos", 0.0)) for r in ("left", "right") for j in range(1, 7)
-    )
-
     for role in ("left", "right"):
+        role_phase = 0.0 if role == "left" else math.pi
         for i in range(6):
-            key = f"{role}_joint_{i + 1}.pos"
+            key = f"{role}_joint_position_{i + 1}"
             current = obs.get(key, 0.0)
-            phase = i * 0.4 + (0.0 if role == "left" else math.pi)
-            features[key] = current + amplitude * math.sin(all_joints_sum * 3.0 + phase)
-        # Gripper: close if the first joint is positive, open otherwise
-        first_joint = obs.get(f"{role}_joint_1.pos", 0.0)
-        features[f"{role}_gripper"] = 1.0 if first_joint > 0 else 0.0
+            phase = role_phase + i * 0.7
+            features[key] = current + amplitude * math.sin(2.0 * math.pi * freq * t + phase)
+        # Gripper: slow toggle at 0.25 Hz
+        features[f"{role}_gripper"] = 1.0 if math.sin(0.5 * math.pi * t + role_phase) > 0 else 0.0
 
     return features
 
@@ -156,14 +157,15 @@ def io_guard(ctx: GuardState) -> bool:
 
 
 async def move_to_home(mg1, mg2) -> None:
-    """Move both robots to their home positions concurrently."""
+    """Move both robots to their home positions concurrently (10x default speed)."""
+    fast = MotionSettings(tcp_velocity_limit=500.0)
     tcp1 = (await mg1.tcp_names())[0]
     tcp2 = (await mg2.tcp_names())[0]
-    traj1 = await mg1.plan([joint_ptp(HOME_LEFT)], tcp1)
-    traj2 = await mg2.plan([joint_ptp(HOME_RIGHT)], tcp2)
+    traj1 = await mg1.plan([joint_ptp(HOME_LEFT, settings=fast)], tcp1)
+    traj2 = await mg2.plan([joint_ptp(HOME_RIGHT, settings=fast)], tcp2)
     await asyncio.gather(
-        mg1.execute(traj1, tcp1, actions=[joint_ptp(HOME_LEFT)]),
-        mg2.execute(traj2, tcp2, actions=[joint_ptp(HOME_RIGHT)]),
+        mg1.execute(traj1, tcp1, actions=[joint_ptp(HOME_LEFT, settings=fast)]),
+        mg2.execute(traj2, tcp2, actions=[joint_ptp(HOME_RIGHT, settings=fast)]),
     )
 
 
@@ -189,9 +191,9 @@ async def main() -> None:
                 FeatureGroup(
                     motion_group=mg1,
                     name="left",
-                    ios={"gripper": "digital_out[0]", "conveyor_sensor": "digital_in[0]"},
+                    ios={"left_gripper": "digital_out[0]", "left_conveyor_sensor": "digital_in[0]"},
                 ),
-                FeatureGroup(motion_group=mg2, name="right", ios={"gripper": "digital_out[0]"}),
+                FeatureGroup(motion_group=mg2, name="right", ios={"right_gripper": "digital_out[0]"}),
             ]
         )
 

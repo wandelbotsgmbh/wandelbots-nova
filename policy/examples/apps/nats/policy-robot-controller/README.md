@@ -1,22 +1,21 @@
-# Policy Robot Controller
+# Policy Robot Controller (NATS)
 
-Nova app that manages robot lifecycle for policy execution via PID jogging. Uses NATS to communicate with a policy service.
+Nova app that manages robot lifecycle for policy execution via PID jogging. Queries a policy service over NATS request/reply.
 
 ## What it does
 
-- Connects to one or more motion groups on a Nova instance
-- Opens PID jogging sessions
-- Sends observations to a policy service via NATS request/reply
-- Applies returned joint targets through PID velocity control
-- Manages multi-episode lifecycle with home-position resets
+1. Connects to one or more motion groups
+2. Moves all robots to home positions
+3. Runs a policy episode via PID jogging (queries policy over NATS)
+4. Detects e-stop, self-collision, joint limits
 
 ## Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/status` | Current executor phase (IDLE, RESETTING, READY, EXECUTING) |
-| POST | `/start` | Start the executor with given config |
-| POST | `/stop` | Stop execution, close connections, return to IDLE |
+| GET | `/status` | Current phase (IDLE / HOMING / EXECUTING) |
+| POST | `/start` | Start execution with given config |
+| POST | `/stop` | Stop execution, return to IDLE |
 
 ## Start Request
 
@@ -25,28 +24,17 @@ Nova app that manages robot lifecycle for policy execution via PID jogging. Uses
   "nats_subject": "nova.v2.cells.cell.apps.mock-policy-service.predict",
   "motion_groups": "0@ur10e,0@ur10e-2",
   "home_joints": "0,-1.571,1.571,-1.571,-1.571,0;0,-1.571,-1.571,-1.571,1.571,0",
-  "timeout_s": 0
+  "timeout_s": 30,
+  "camera_server": "",
+  "cameras": []
 }
 ```
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `nats_subject` | `nova.v2.cells.cell.apps.mock-policy-service.predict` | NATS subject for policy inference |
-| `motion_groups` | `0@ur10e,0@ur10e-2` | Comma-separated motion group IDs |
-| `home_joints` | see above | Semicolon-separated home joints per MG |
-| `timeout_s` | `0` | Episode timeout (0 = infinite) |
-
-## Environment Variables
-
-- `NATS_BROKER` — NATS server URL (injected automatically by Nova platform)
-- `NATS_SUBJECT` — Default NATS subject (overridable per request)
-- `BASE_PATH` — URL prefix (injected by Nova platform)
 
 ## Deploy
 
 ```bash
-cd policy/examples/apps/policy-robot-controller
-cp -r ../../../../policy .
+cd policy/examples/apps/nats/policy-robot-controller
+cp -r ../../../../../policy .
 nova app install . --omit-credentials
 rm -rf policy
 ```
@@ -54,12 +42,14 @@ rm -rf policy
 ## Usage
 
 ```bash
-# Start execution
-curl -X POST http://<instance>/cell/policy-robot-controller/start
+# Start (robots home first, then run policy for 30s)
+curl -X POST http://<instance>/cell/policy-robot-controller/start \
+  -H "Content-Type: application/json" \
+  -d '{"timeout_s": 30}'
 
-# Check status
+# Monitor
 curl http://<instance>/cell/policy-robot-controller/status
 
-# Stop
+# Stop early
 curl -X POST http://<instance>/cell/policy-robot-controller/stop
 ```

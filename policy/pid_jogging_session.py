@@ -38,11 +38,13 @@ class PidJoggingSession:
         motion_group: MotionGroup,
         config: PolicyRunnerConfig,
         *,
+        tcp: str = "",
         safety_guards: list[SafetyGuard] | None = None,
         io_values: dict[str, object] | None = None,
     ) -> None:
         self._motion_group = motion_group
         self._config = config
+        self._tcp = tcp
         self._safety_guards = safety_guards or []
         self._io_values = io_values
         self._pid = VelocityController(
@@ -286,6 +288,8 @@ class PidJoggingSession:
 
     async def _resolve_tcp(self) -> str:
         """Get the TCP name for jogging."""
+        if self._tcp:
+            return self._tcp
         tcp = await self._motion_group.active_tcp_name()
         if tcp is not None:
             return tcp

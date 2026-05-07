@@ -75,6 +75,7 @@ class PolicyExecutor:
         *,
         feature_map: FeatureMap | None = None,
         cameras: CameraSet | None = None,
+        tcp: str = "",
         config: PolicyRunnerConfig | None = None,
         safety_guards: list[SafetyGuard] | None = None,
         timeout_s: float = 0,
@@ -96,6 +97,7 @@ class PolicyExecutor:
 
         self._policy = policy
         self._cameras = cameras
+        self._tcp = tcp
         self._config = config
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
@@ -198,6 +200,7 @@ class PolicyExecutor:
             self._runner = PolicyRunner(
                 motion_groups=self._motion_groups,
                 config=self._config,
+                tcp=self._tcp,
                 safety_guards=self._safety_guards,
             )
 

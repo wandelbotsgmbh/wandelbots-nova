@@ -40,7 +40,7 @@ def unpack(data: bytes) -> dict[str, Any]:
 
 def pack_image(img: np.ndarray) -> bytes:
     """Compress a single RGB image to PNG bytes. Lossless, SIMD-accelerated."""
-    import cv2  # noqa: PLC0415
+    import cv2
 
     bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     _, buf = cv2.imencode(".png", bgr, [cv2.IMWRITE_PNG_COMPRESSION, _PNG_LEVEL])
@@ -49,7 +49,7 @@ def pack_image(img: np.ndarray) -> bytes:
 
 def unpack_image(data: bytes) -> np.ndarray:
     """Decompress PNG bytes back to an RGB numpy array."""
-    import cv2  # noqa: PLC0415
+    import cv2
 
     bgr = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
     return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)

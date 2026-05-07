@@ -40,6 +40,7 @@ class PolicyRunner:
         motion_groups: list[MotionGroup],
         config: PolicyRunnerConfig | None = None,
         *,
+        tcp: str = "",
         safety_guards: list[SafetyGuard] | None = None,
     ) -> None:
         """Initialize the PolicyRunner.
@@ -47,6 +48,7 @@ class PolicyRunner:
         Args:
             motion_groups: Motion groups to control.
             config: PID configuration. Defaults to training-time values.
+            tcp: TCP name for jogging and state streaming. Empty = robot's default.
             safety_guards: Optional safety callbacks. All must return True each tick.
         """
         self._config = config or PolicyRunnerConfig()
@@ -55,7 +57,7 @@ class PolicyRunner:
 
         for mg in motion_groups:
             session = PidJoggingSession(
-                motion_group=mg, config=self._config, safety_guards=self._safety_guards
+                motion_group=mg, config=self._config, tcp=tcp, safety_guards=self._safety_guards
             )
             self._sessions[mg.id] = session
 

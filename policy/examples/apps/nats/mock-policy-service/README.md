@@ -1,44 +1,58 @@
-# Mock Policy Service
+# Mock Policy Service (NATS)
 
-Stateless NATS policy mock for `PolicyExecutor`.
+Stateless policy inference service for `PolicyExecutor`. Communicates via NATS request/reply.
 
 ## What it does
 
-- Subscribes to a NATS subject (default `nova.v2.cells.cell.apps.mock-policy-service.predict`)
-- Receives observation JSON via NATS request/reply
-- Returns deterministic sinusoidal joint targets as `PolicyResponse` JSON
-- Stateless: equal observations produce equal actions
-- Configurable via `POST /configure`
+- Subscribes to a NATS subject (default `nova.policy.predict`)
+- Receives observations (joint positions + optional images) via NATS request/reply
+- Returns deterministic action chunks as `PolicyResponse` JSON
+- Stateless: same observations always produce the same actions
+- Also accepts images published on `<subject>.images.<camera_name>`
+
+## Mock policy behavior
+
+Uses a coupled oscillator: `sin(sum_of_all_joints * 3.0 + phase)`. This produces continuous motion that never converges to a fixed point (important for testing) while remaining completely stateless.
 
 ## Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Health check |
-| GET | `/status` | Shows NATS connection state, request count, config |
+| GET | `/status` | NATS state, request count, config |
 | POST | `/configure` | Update inference params (amplitude, chunk_size, etc.) |
 
 ## NATS Protocol
 
-The service subscribes to `NATS_SUBJECT` (default `nova.v2.cells.cell.apps.mock-policy-service.predict`) and responds via request/reply:
+**Subject:** Configurable via `NATS_SUBJECT` env var (default `nova.policy.predict`)
 
 ```
-→ Request (observation):
-  {"joints": [0.1, -1.5, ...], "motion_group_id": "0@ur10e"}
+→ Request (msgpack observation):
+  scalars: {"0@ur10e": {"joints": [...], "motion_group_id": "0@ur10e"}}
 
-← Reply (PolicyResponse):
+← Reply (msgpack PolicyResponse):
   {"joints": {"0@ur10e": [[step0], [step1], ..., [step15]]}, "dt_ms": 33.0}
 ```
 
-## Configuration
+Images arrive on separate subjects: `nova.policy.predict.images.flange` (PNG-encoded).
 
-Environment variables:
-- `NATS_BROKER` — NATS server URL (injected automatically by Nova platform)
-- `NATS_SUBJECT` — Subject to subscribe to (default: `nova.v2.cells.cell.apps.mock-policy-service.predict`)
-- `BASE_PATH` — URL prefix (injected by Nova platform)
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NATS_BROKER` | (injected by Nova) | NATS server URL |
+| `NATS_SUBJECT` | `nova.policy.predict` | Subject to subscribe to |
+| `BASE_PATH` | (injected by Nova) | URL prefix for HTTP routes |
 
 ## Deploy
 
 ```bash
-nova app install policy/examples/apps/mock-policy-service --omit-credentials
+nova app install policy/examples/apps/nats/mock-policy-service --omit-credentials
+```
+
+## Verify
+
+```bash
+curl http://<instance>/cell/mock-policy-service/status
+# → {"ready":true,"nats_connected":true,"nats_subject":"nova.policy.predict","nats_requests":0,...}
 ```

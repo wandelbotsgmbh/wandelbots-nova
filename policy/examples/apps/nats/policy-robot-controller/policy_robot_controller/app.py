@@ -143,7 +143,7 @@ async def start(req: StartRequest = StartRequest()):
 
     feature_map = FeatureMap(
         groups=[
-            FeatureGroup(motion_group=mg, name=f"arm_{i}", ios={"gripper": "digital_out[0]"})
+            FeatureGroup(motion_group=mg, name=f"arm_{i}", ios={f"arm_{i}_gripper": "digital_out[0]"})
             for i, mg in enumerate(mgs)
         ]
     )

@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from policy.cameras import CameraSet, WebRTCCameraConfig
 from policy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
-from policy.feature_map import FeatureGroup, FeatureMap
+from policy.feature_map import FeatureGroup, FeatureMap, TcpFormat
 from policy.gr00t_client import Gr00tPolicyClient
 from policy.nats_client import NatsPolicyClient
 from policy.policy_client import CallbackPolicyClient, PolicyClient, WebSocketPolicyClient
+from policy.pose import pose_to_tcp
 from policy.runner import PolicyRunner
 from policy.types import (
     ActionChunk,
@@ -44,6 +45,8 @@ __all__ = [
     "PolicyResponse",
     "PolicyRunner",
     "PolicyRunnerConfig",
+    "TcpFormat",
     "WebRTCCameraConfig",
     "WebSocketPolicyClient",
+    "pose_to_tcp",
 ]

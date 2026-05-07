@@ -41,6 +41,7 @@ _nats_subs: list[object] = []
 _nats_requests: int = 0
 _latest_images: dict[str, np.ndarray] = {}
 _last_image_shapes: dict[str, tuple[int, ...]] = {}
+_start_time: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -49,11 +50,19 @@ _last_image_shapes: dict[str, tuple[int, ...]] = {}
 
 
 def predict(obs: dict[str, Any]) -> dict[str, Any]:
-    """obs → action. Deterministic: same input produces same output.
+    """obs → action. Time-based oscillation around current position.
 
-    Scalar features → sinusoidal offset.
-    Images (numpy arrays) → logged but not used for action computation.
+    Uses server-side clock for smooth sinusoidal motion that visibly
+    oscillates without drifting.
     """
+    import time
+
+    global _start_time
+    if _start_time is None:
+        _start_time = time.monotonic()
+    t = time.monotonic() - _start_time
+    freq = 2.0  # Hz
+
     features: dict[str, float] = {}
     for key, value in obs.items():
         if isinstance(value, np.ndarray):
@@ -63,18 +72,11 @@ def predict(obs: dict[str, Any]) -> dict[str, Any]:
             continue
         current = float(value)
         if "gripper" in key:
-            prefix = key.rsplit("_gripper", maxsplit=1)[0]
-            j1_val = float(obs.get(f"{prefix}_joint_1.pos", 0.0))
-            features[key] = 1.0 if j1_val > 0 else 0.0
+            # Slow toggle at 0.25 Hz
+            features[key] = 1.0 if math.sin(0.5 * math.pi * t) > 0 else 0.0
         else:
-            # Use sum of ALL joint values as phase — creates coupled oscillation
-            # that never converges (each joint's motion perturbs the others)
-            all_joints_sum = sum(
-                float(v) for k, v in obs.items()
-                if isinstance(v, (int, float)) and ".pos" in str(k)
-            )
             phase = float(sum(ord(ch) for ch in key) % 360) * math.pi / 180.0
-            features[key] = current + AMPLITUDE * math.sin(all_joints_sum * 3.0 + phase)
+            features[key] = current + AMPLITUDE * math.sin(2.0 * math.pi * freq * t + phase)
     return {"features": features}
 
 

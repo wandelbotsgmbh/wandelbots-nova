@@ -1,90 +1,95 @@
 # mock-groot-policy-service
 
-Stateless mock of a GR00T inference server for a **dual-arm** policy.
+Stateless mock of a GR00T inference server for a dual-arm UR10e embodiment.
 
-It exposes the same core ZMQ endpoints as GR00T:
+Drop-in replacement for a real NVIDIA GR00T server — same ZMQ protocol, same observation/action format.
 
-- `ping`
-- `get_action`
-- `reset`
-- `get_modality_config`
-- `kill`
+## ZMQ Endpoints
 
-The app also exposes HTTP endpoints for observability:
+| Endpoint | Description |
+|----------|-------------|
+| `ping` | Health check |
+| `get_action` | Observation → action chunk |
+| `reset` | No-op (returns `{}`) |
+| `get_modality_config` | Embodiment metadata (with `__ModalityConfig_class__` envelope) |
+| `kill` | Shutdown |
 
-- `GET /health`
-- `GET /status`
+## HTTP Endpoints
 
-## Key behavior
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | HTTP health check |
+| GET | `/status` | Request count, last keys received |
 
-- **Stateless inference**: predictions are a pure function of the current observation
-- **GR00T-style transport**: ZMQ `REQ/REP` + `msgpack`
-- **Dual-arm contract**: expects state keys `left_arm`, `right_arm`, `left_gripper`, `right_gripper`
-- **Language contract**: expects `language.task`
-- **Multi-step output**: returns action chunks with configurable horizon
-- **No episode state**: `reset()` is a no-op and returns `{"stateless": true}`
-
-## Install
-
-```bash
-nova app install . --omit-credentials
-```
-
-## Nova app networking
-
-From another Nova app in the same cell, connect to:
-
-```text
-host=app-mock-groot-policy-service
-port=5555
-```
-
-## Example with `policy.Gr00tPolicyClient`
-
-```python
-from policy import Gr00tPolicyClient
-
-policy = Gr00tPolicyClient(
-    host="app-mock-groot-policy-service",
-    port=5555,
-    decode_action=my_decoder,
-)
-```
-
-## Action/Observation format
-
-Observation:
+## Observation format
 
 ```python
 {
     "state": {
-        "left_arm": np.ndarray[(1, 1, 6)],
-        "right_arm": np.ndarray[(1, 1, 6)],
-        "left_gripper": np.ndarray[(1, 1, 1)],
-        "right_gripper": np.ndarray[(1, 1, 1)],
+        "left_arm":      np.ndarray(1, 1, 6),   # float32, joint positions (rad)
+        "right_arm":     np.ndarray(1, 1, 6),   # float32
+        "left_eef_9d":   np.ndarray(1, 1, 9),   # float32, XYZ (m) + rot6d
+        "right_eef_9d":  np.ndarray(1, 1, 9),   # float32
+        "left_gripper":  np.ndarray(1, 1, 1),   # float32, 0=open 100=closed
+        "right_gripper": np.ndarray(1, 1, 1),   # float32
+    },
+    "video": {
+        "flange": np.ndarray(1, 1, H, W, 3),   # uint8 RGB (at least one required)
     },
     "language": {
-        "task": [["Coordinate both arms and move smoothly."]],
+        "annotation.language.language_instruction": [["Pick up the object."]],
     },
 }
 ```
 
-Response:
+## Action format
 
 ```python
 (
     {
-        "left_arm": np.ndarray[(1, T, 6)],
-        "right_arm": np.ndarray[(1, T, 6)],
-        "left_gripper": np.ndarray[(1, T, 1)],
-        "right_gripper": np.ndarray[(1, T, 1)],
+        "left_arm":      np.ndarray(1, 16, 6),  # absolute joint targets
+        "right_arm":     np.ndarray(1, 16, 6),
+        "left_gripper":  np.ndarray(1, 16, 1),  # 0-100 gripper position
+        "right_gripper": np.ndarray(1, 16, 1),
     },
-    {"stateless": True, "dt_ms": 33.0, ...},
+    {},  # info dict (empty)
 )
 ```
 
-## Status endpoint
+## Transport
+
+- **Protocol:** ZMQ REQ/REP
+- **Serialization:** msgpack with `__ndarray_class__` numpy transport
+- **Port:** 5555 (container-internal)
+
+## Deploy
 
 ```bash
-curl http://<IP>/cell/mock-groot-policy-service/status
+nova app install policy/examples/apps/zmq/mock-groot-policy-service --omit-credentials
 ```
+
+Expose ZMQ port for inter-app access:
+
+```bash
+kubectl apply -n cell -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-groot-zmq
+spec:
+  selector:
+    app: app-mock-groot-policy-service
+  ports:
+    - name: zmq
+      port: 5555
+      targetPort: 5555
+EOF
+```
+
+Other apps connect to `mock-groot-zmq:5555`.
+
+## Inference behavior
+
+Time-based oscillation (not observation-dependent) that produces visible motion:
+- Arms: sinusoidal joint offsets, per-joint amplitude scaling (base still, wrist moves most)
+- Grippers: slow toggle at ~0.25 Hz

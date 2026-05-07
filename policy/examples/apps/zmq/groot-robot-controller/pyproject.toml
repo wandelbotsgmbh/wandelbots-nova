@@ -12,6 +12,9 @@ dependencies = [
     "numpy>1.1.19",
     "msgpack>=1.1.0,<2",
     "pyzmq>=26.0.0,<27",
+    "aiortc>=1.9.0,<2",
+    "opencv-python-headless>=4.9.0",
+    "requests>=2.31.0",
 ]
 
 [dependency-groups]
