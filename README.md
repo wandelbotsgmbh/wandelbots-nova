@@ -140,6 +140,8 @@ Curated examples in this repository showcase typical SDK workflows:
 
 <img width="100%" alt="thumbnail" src="https://github.com/user-attachments/assets/6f0c441e-b133-4a3a-bf0e-0e947d3efad4" />
 
+8. **Merge trajectories with blending**: [merge_trajectories.py](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/merge_trajectories.py)
+
 ## Wandelscript (deprecated)
 
 > [!WARNING]

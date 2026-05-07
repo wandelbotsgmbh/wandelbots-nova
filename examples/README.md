@@ -12,6 +12,7 @@ Examples on how to use the wandelbots-nova library.
 7. [Cycle events](cycle_events.py)
 8. [Run Wandelscript files](run_wandelscript_file.py)
 9. [Serialize program](serialize_program.py)
+10. [Merge trajectories with blending](merge_trajectories.py)
 
 ## Usage
 
