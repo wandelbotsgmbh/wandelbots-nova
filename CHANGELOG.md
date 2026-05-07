@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.0.0 (2026-04-22)
+
+### Bug Fixes
+
+- Pin NOVA API to version ~26.3 (#415)
+  ([#415](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/415),
+  [`5881677`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5881677d65330656c42cac051d55df2691096744))
+
+
 ## v4.13.0 (2026-04-20)
 
 ### Features
