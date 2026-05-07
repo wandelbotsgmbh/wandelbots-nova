@@ -103,7 +103,7 @@ async def main() -> None:
         )
 
         executor = PolicyExecutor(
-            motion_groups=[mg],
+            feature_map=feature_map,
             cameras=cameras,
             policy=client,
             tcp=tcp,

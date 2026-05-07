@@ -47,21 +47,20 @@ pip install wandelbots-nova[policy]
 
 ```python
 import asyncio
-import math
 from typing import Any
 
 from nova import Nova
-from policy import ActionChunk, CallbackPolicyClient, PolicyExecutor
+from policy import CallbackPolicyClient, FeatureGroup, FeatureMap, PolicyExecutor
 
 
-async def my_policy(obs: dict[str, Any]) -> ActionChunk:
+async def my_policy(obs: dict[str, Any]) -> dict[str, float]:
     """Stateless policy: obs in → actions out."""
-    joints = {}
-    for mg_id, state in obs.items():
-        current = list(state.joints)
-        target = [j + 0.05 * math.sin(j * 3.0 + i * 0.4) for i, j in enumerate(current)]
-        joints[mg_id] = [target]
-    return ActionChunk(joints=joints)
+    import math
+    actions = {}
+    for key, value in obs.items():
+        if "joint_position" in key:
+            actions[key] = value + 0.05 * math.sin(value * 3.0)
+    return actions
 
 
 async def main():
@@ -70,8 +69,12 @@ async def main():
         ctrl = await cell.controller("ur10e")
         mg = ctrl[0]
 
+        feature_map = FeatureMap(groups=[
+            FeatureGroup(motion_group=mg, name="arm"),
+        ])
+
         executor = PolicyExecutor(
-            motion_groups=[mg],
+            feature_map=feature_map,
             policy=CallbackPolicyClient(my_policy),
             timeout_s=10.0,
         )

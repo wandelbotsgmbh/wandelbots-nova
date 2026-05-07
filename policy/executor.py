@@ -60,20 +60,15 @@ class PolicyExecutor:
     The policy is a pure function: obs → actions. It never signals "done".
     Execution runs until timeout_s expires or stop() is called externally.
 
-    Two observation modes:
-    1. Direct: pass motion_groups, policy receives {mg_id: RobotState}.
-    2. FeatureMap: pass a FeatureMap, policy receives flat feature dicts.
-
     Images from WebRTC cameras can be included by passing a CameraSet.
     The executor waits for all cameras to produce frames before starting motion.
     """
 
     def __init__(
         self,
-        motion_groups: list[MotionGroup] | None = None,
-        policy: PolicyClient | None = None,
+        feature_map: FeatureMap,
+        policy: PolicyClient,
         *,
-        feature_map: FeatureMap | None = None,
         cameras: CameraSet | None = None,
         tcp: str = "",
         config: PolicyRunnerConfig | None = None,
@@ -81,19 +76,8 @@ class PolicyExecutor:
         timeout_s: float = 0,
         rate_hz: float = 30,
     ) -> None:
-        if feature_map is not None:
-            self._motion_groups = feature_map.get_motion_groups()
-            self._feature_map = feature_map
-        elif motion_groups is not None:
-            self._motion_groups = motion_groups
-            self._feature_map = None
-        else:
-            msg = "Provide either motion_groups or feature_map"
-            raise ValueError(msg)
-
-        if policy is None:
-            msg = "policy is required"
-            raise ValueError(msg)
+        self._motion_groups = feature_map.get_motion_groups()
+        self._feature_map = feature_map
 
         self._policy = policy
         self._cameras = cameras
@@ -212,11 +196,10 @@ class PolicyExecutor:
 
             async with self._runner:
                 # Start IO streams for FeatureMap (O(1) reads instead of HTTP)
-                if self._feature_map is not None:
-                    await self._feature_map.start()
-                    # Share IO cache values with sessions so guards can read IOs
-                    for cache in self._feature_map._io_caches:
-                        self._runner.set_io_values_ref(cache._mg.id, cache.values)
+                await self._feature_map.start()
+                # Share IO cache values with sessions so guards can read IOs
+                for cache in self._feature_map._io_caches:
+                    self._runner.set_io_values_ref(cache._mg.id, cache.values)
 
                 try:
                     await self._policy.connect(self.mg_ids)
@@ -224,8 +207,7 @@ class PolicyExecutor:
                 finally:
                     if self._cameras is not None:
                         await self._cameras.disconnect()
-                    if self._feature_map is not None:
-                        await self._feature_map.stop()
+                    await self._feature_map.stop()
 
         except asyncio.CancelledError:
             pass
@@ -309,10 +291,7 @@ class PolicyExecutor:
         robot_states = await self._runner.observe()
         if not robot_states:
             return None
-        if self._feature_map is not None:
-            obs = await self._feature_map.build_observation(robot_states)
-        else:
-            obs = robot_states
+        obs = await self._feature_map.build_observation(robot_states)
 
         # Add camera images to observation
         if self._cameras is not None:
@@ -330,7 +309,7 @@ class PolicyExecutor:
             return result
 
         # FeatureMap mode: policy returned a flat feature dict
-        if isinstance(result, dict) and self._feature_map is not None:
+        if isinstance(result, dict):
             joints, ios = self._feature_map.parse_action(result)
             if joints:
                 return ActionChunk(joints=joints, ios=ios)

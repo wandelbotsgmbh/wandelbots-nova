@@ -187,7 +187,7 @@ async def start(req: StartRequest = StartRequest()) -> ExecutorStatus:
     )
 
     _executor = PolicyExecutor(
-        motion_groups=mgs,
+        feature_map=feature_map,
         cameras=cameras,
         policy=gr00t_client,
         timeout_s=req.timeout_s,
