@@ -1,30 +1,7 @@
-"""WebRTC camera client for policy observations.
+"""WebRTC camera connection internals.
 
-Connects to camera devices via a WebRTC REST API and continuously receives
-frames in a background thread. The latest frame is always available for
-the policy executor to include in observations.
-
-Camera config format (matching LeRobot conventions)::
-
-    cameras = {
-        "flange": WebRTCCameraConfig(
-            api_url="http://172.31.11.129:8000",
-            device_id="315122271048",
-            width=640,
-            height=480,
-            fps=30,
-        ),
-        "left": WebRTCCameraConfig(
-            api_url="http://172.31.11.129:8000",
-            device_id="314522065367",
-            width=640,
-            height=480,
-            fps=30,
-        ),
-    }
-
-The policy receives images as numpy arrays with shape (H, W, 3) in RGB format,
-keyed by camera name — the same format LeRobot uses.
+Manages a single WebRTC peer connection with background frame reception.
+This module is an implementation detail — users interact with ``CameraSet``.
 """
 
 from __future__ import annotations
@@ -33,13 +10,13 @@ import asyncio
 import contextlib
 import logging
 import threading
-from dataclasses import dataclass, field
+import time
 from typing import TYPE_CHECKING, Any
-
-import numpy as np
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
+    from policy.cameras._cameras import WebRTCCameraConfig
 
 logger = logging.getLogger(__name__)
 
@@ -55,153 +32,29 @@ except ImportError:
     pass
 
 
-@dataclass
-class WebRTCCameraConfig:
-    """Configuration for a single WebRTC camera.
+def require_aiortc() -> None:
+    """Raise if aiortc is not installed."""
+    if not _aiortc_available:
+        msg = "aiortc is required for WebRTC cameras. Install with: pip install aiortc"
+        raise ModuleNotFoundError(msg)
 
-    Attributes:
-        api_url: Base URL of the camera REST API (e.g. "http://172.31.11.129:8000").
-        device_id: Camera device identifier (e.g. serial number "315122271048").
-        width: Frame width in pixels.
-        height: Frame height in pixels.
-        fps: Desired frames per second.
-        stream_type: Stream type to request ("color" or "depth").
+
+class WebRTCConnection:
+    """Manages a single WebRTC camera connection with background frame reception.
+
+    Handles the full lifecycle:
+    1. Start camera hardware stream via REST API
+    2. WebRTC offer/answer exchange
+    3. Background frame reception in a dedicated event loop thread
+    4. Thread-safe frame access with staleness tracking
     """
-
-    api_url: str
-    device_id: str
-    width: int = 640
-    height: int = 480
-    fps: int = 30
-    stream_type: str = "color"
-
-
-@dataclass
-class CameraSet:
-    """A named collection of cameras to connect and read from.
-
-    Usage (verbose)::
-
-        cameras = CameraSet(configs={
-            "flange": WebRTCCameraConfig(api_url="...", device_id="315122271048"),
-        })
-
-    Usage (compact — shared api_url/resolution/fps)::
-
-        cameras = CameraSet(
-            api_url="http://localhost:9100",
-            devices={"flange": "315122271048", "left": "314522065367"},
-        )
-
-    When ``frame_history > 1``, each camera maintains a buffer of the last N frames.
-    ``read()`` then returns arrays with shape ``(T, H, W, 3)`` instead of ``(H, W, 3)``.
-    """
-
-    configs: dict[str, WebRTCCameraConfig] = field(default_factory=dict)
-    frame_history: int = 1
-    _connections: dict[str, _WebRTCConnection] = field(default_factory=dict, repr=False)
-    _buffers: dict[str, list[NDArray[Any]]] = field(default_factory=dict, repr=False)
-
-    def __init__(
-        self,
-        configs: dict[str, WebRTCCameraConfig] | None = None,
-        *,
-        api_url: str = "",
-        devices: dict[str, str] | None = None,
-        width: int = 640,
-        height: int = 480,
-        fps: int = 30,
-        frame_history: int = 1,
-    ) -> None:
-        self._connections: dict[str, _WebRTCConnection] = {}
-        self._buffers: dict[str, list[NDArray[Any]]] = {}
-        self.frame_history = frame_history
-
-        if configs:
-            self.configs = configs
-        elif devices and api_url:
-            self.configs = {
-                name: WebRTCCameraConfig(
-                    api_url=api_url, device_id=device_id, width=width, height=height, fps=fps,
-                )
-                for name, device_id in devices.items()
-            }
-        else:
-            self.configs = {}
-
-    async def connect(self, timeout_s: float = 30.0) -> None:
-        """Connect all cameras and wait for first frames.
-
-        Raises RuntimeError if any camera fails to connect or produce a frame
-        within ``timeout_s`` seconds.
-        """
-        if not _aiortc_available:
-            msg = "aiortc is required for WebRTC cameras. Install with: pip install aiortc"
-            raise ModuleNotFoundError(msg)
-
-        tasks = []
-        for name, cfg in self.configs.items():
-            conn = _WebRTCConnection(name, cfg)
-            self._connections[name] = conn
-            tasks.append(conn.connect(timeout_s=timeout_s))
-
-        await asyncio.gather(*tasks)
-        logger.info("All %d cameras connected and producing frames", len(self.configs))
-
-    def read(self) -> dict[str, NDArray[Any]]:
-        """Read frames from each camera.
-
-        Returns:
-            Dict mapping camera name → numpy array.
-            - If ``frame_history == 1``: shape ``(H, W, 3)`` uint8 RGB.
-            - If ``frame_history > 1``: shape ``(T, H, W, 3)`` uint8 RGB,
-              where T is the history length (oldest first).
-
-        Raises:
-            RuntimeError: If a camera has no frame available.
-        """
-        frames: dict[str, NDArray[Any]] = {}
-        for name, conn in self._connections.items():
-            frame = conn.latest_frame()
-            if frame is None:
-                msg = f"Camera '{name}' has no frame available"
-                raise RuntimeError(msg)
-
-            if self.frame_history <= 1:
-                frames[name] = frame
-            else:
-                buf = self._buffers.setdefault(name, [])
-                buf.append(frame)
-                # Keep only the last N frames
-                if len(buf) > self.frame_history:
-                    buf.pop(0)
-                # Pad with first frame if buffer not full yet
-                while len(buf) < self.frame_history:
-                    buf.insert(0, buf[0])
-                frames[name] = np.stack(buf, axis=0)  # (T, H, W, 3)
-
-        return frames
-
-    def is_ready(self) -> bool:
-        """Check if all cameras have at least one frame available."""
-        return all(conn.latest_frame() is not None for conn in self._connections.values())
-
-    async def disconnect(self) -> None:
-        """Disconnect all cameras and release resources."""
-        tasks = [conn.disconnect() for conn in self._connections.values()]
-        await asyncio.gather(*tasks, return_exceptions=True)
-        self._connections.clear()
-        logger.info("All cameras disconnected")
-
-
-class _WebRTCConnection:
-    """Manages a single WebRTC camera connection with background frame reception."""
 
     def __init__(self, name: str, config: WebRTCCameraConfig) -> None:
         self._name = name
         self._config = config
         self._pc: Any = None
         self._frame: NDArray[Any] | None = None
+        self._frame_time: float = 0.0
         self._frame_lock = threading.Lock()
         self._frame_event = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -212,6 +65,13 @@ class _WebRTCConnection:
         """Get the most recent frame (thread-safe)."""
         with self._frame_lock:
             return self._frame
+
+    def frame_age_s(self) -> float:
+        """Seconds since the last frame was received. Returns inf if no frame yet."""
+        with self._frame_lock:
+            if self._frame is None:
+                return float("inf")
+            return time.monotonic() - self._frame_time
 
     async def connect(self, timeout_s: float = 30.0) -> None:
         """Establish WebRTC connection, start stream, wait for first frame."""
@@ -252,7 +112,7 @@ class _WebRTCConnection:
         # Cancel the frame receiver task first so it doesn't raise MediaStreamError
         if self._receive_task is not None and self._loop is not None:
             self._loop.call_soon_threadsafe(self._receive_task.cancel)
-            await asyncio.sleep(0.1)  # Give it a moment to cancel
+            await asyncio.sleep(0.1)
             self._receive_task = None
 
         if self._pc is not None and self._loop is not None:
@@ -283,16 +143,18 @@ class _WebRTCConnection:
 
         logger.info("Camera '%s' disconnected", self._name)
 
+    # ------------------------------------------------------------------
+    # REST API — camera hardware stream control
+    # ------------------------------------------------------------------
+
     @staticmethod
     def _start_stream(api_url: str, cfg: WebRTCCameraConfig) -> None:
         """Start the camera hardware stream via REST API."""
         import requests  # noqa: PLC0415
 
-        # Stop any existing stream
         with contextlib.suppress(OSError, RuntimeError):
             requests.post(f"{api_url}/api/devices/{cfg.device_id}/stream/stop", timeout=5)
 
-        # Get sensor info
         sensors_url = f"{api_url}/api/devices/{cfg.device_id}/sensors/"
         resp = requests.get(sensors_url, timeout=10)
         resp.raise_for_status()
@@ -311,7 +173,6 @@ class _WebRTCConnection:
             msg = f"No sensor supports stream_type='{cfg.stream_type}' on device {cfg.device_id}"
             raise RuntimeError(msg)
 
-        # Start stream
         fmt = "rgb8" if cfg.stream_type == "color" else "z16"
         payload = {
             "configs": [
@@ -328,7 +189,14 @@ class _WebRTCConnection:
             f"{api_url}/api/devices/{cfg.device_id}/stream/start", json=payload, timeout=30
         )
         resp.raise_for_status()
-        logger.info("Camera '%s' stream started (%dx%d@%dfps)", cfg.device_id, cfg.width, cfg.height, cfg.fps)
+        logger.info(
+            "Camera '%s' stream started (%dx%d@%dfps)",
+            cfg.device_id, cfg.width, cfg.height, cfg.fps,
+        )
+
+    # ------------------------------------------------------------------
+    # WebRTC signaling + frame reception
+    # ------------------------------------------------------------------
 
     async def _setup_webrtc(self, api_url: str, cfg: WebRTCCameraConfig) -> None:
         """Create WebRTC connection and start receiving frames."""
@@ -341,7 +209,6 @@ class _WebRTCConnection:
             if hasattr(track, "kind") and track.kind == "video":
                 self._receive_task = asyncio.ensure_future(self._receive_frames(track))
 
-        # Request offer from server
         resp = await asyncio.to_thread(
             requests.post,
             f"{api_url}/api/webrtc/offer",
@@ -351,11 +218,9 @@ class _WebRTCConnection:
         resp.raise_for_status()
         offer_data = resp.json()
 
-        # Set remote description (server's offer)
         offer = RTCSessionDescription(sdp=offer_data["sdp"], type=offer_data["type"])
         await self._pc.setRemoteDescription(offer)
 
-        # Create and send answer
         answer = await self._pc.createAnswer()
         await self._pc.setLocalDescription(answer)
 
@@ -378,15 +243,14 @@ class _WebRTCConnection:
         try:
             while True:
                 frame = await track.recv()  # type: ignore[union-attr]
-                # Convert BGR to RGB via numpy slice (avoids opencv dependency)
                 img = frame.to_ndarray(format="bgr24")
                 img_rgb = img[:, :, ::-1].copy()
                 with self._frame_lock:
                     self._frame = img_rgb
-                # Signal first frame
+                    self._frame_time = time.monotonic()
                 if not self._frame_event.is_set():
                     self._frame_event.set()
         except (asyncio.CancelledError, MediaStreamError):
-            pass  # Normal shutdown — track closed by disconnect()
+            pass
         except (OSError, RuntimeError) as e:
             logger.debug("Camera '%s' frame receiver stopped: %s", self._name, e)

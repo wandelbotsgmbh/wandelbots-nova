@@ -1,17 +1,17 @@
+# Metadata for the policy extra package.
+# This is NOT an independently installable package — it ships as part of
+# wandelbots-nova and is activated via: pip install wandelbots-nova[policy]
+#
+# Dependencies are declared in the root pyproject.toml under
+# [project.optional-dependencies] policy = [...]
+
 [project]
 name = "nova-policy"
-version = "0.1.0"
-description = "PID-controlled jogging for policy execution on NOVA robots"
+version = "0.1.0-alpha"
+description = "EXPERIMENTAL: PID-controlled jogging for policy execution on NOVA robots"
 requires-python = ">=3.11"
-dependencies = [
-    "wandelbots-nova>=4.0.0,<5",
-    "msgpack>=1.1.0,<2",
-    "pyzmq>=26.0.0,<27",
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-include = ["policy"]

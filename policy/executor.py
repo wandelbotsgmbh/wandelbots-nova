@@ -11,11 +11,13 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
+from policy._sdk import get_api_gateway, get_cell, get_controller_id
+from policy.io import IOStreamCache
 from policy.runner import PolicyRunner
 from policy.types import ActionChunk, EmergencyStopError, GuardStopError, MotionError
 
 if TYPE_CHECKING:
-    from policy.cameras import CameraSet
+    from policy.cameras import CameraSource
     from policy.feature_map import FeatureMap
     from policy.policy_client import PolicyClient
     from policy.types import PolicyRunnerConfig, SafetyGuard
@@ -62,9 +64,6 @@ class PolicyExecutor:
 
     The policy is a pure function: obs → actions. It never signals "done".
     Execution runs until timeout_s expires or stop() is called externally.
-
-    Images from WebRTC cameras can be included by passing a CameraSet.
-    The executor waits for all cameras to produce frames before starting motion.
     """
 
     def __init__(
@@ -72,7 +71,7 @@ class PolicyExecutor:
         feature_map: FeatureMap,
         policy: _PolicyFn | PolicyClient,
         *,
-        cameras: CameraSet | None = None,
+        cameras: CameraSource | None = None,
         config: PolicyRunnerConfig | None = None,
         safety_guards: list[SafetyGuard] | None = None,
         timeout_s: float = 0,
@@ -98,8 +97,8 @@ class PolicyExecutor:
         self._runner: PolicyRunner | None = None
         self._stop_event = asyncio.Event()
         self._last_obs: dict[str, Any] | None = None
-        self._estop_error: EmergencyStopError | None = None
-        self._estop_task: asyncio.Task[None] | None = None
+        self._estop_monitor: EstopMonitor | None = None
+        self._io_caches: list[IOStreamCache] = []
 
         self.status = ExecutorStatus()
         self.result: ExecutionResult | None = None
@@ -117,8 +116,7 @@ class PolicyExecutor:
         """The most recent observation (robot state + camera images).
 
         Available during and after execution. Returns None before the first
-        observation is collected. This allows external code (UI, logging,
-        dashboards) to inspect the current robot state while the executor runs.
+        observation is collected.
         """
         return self._last_obs
 
@@ -139,7 +137,6 @@ class PolicyExecutor:
         await self._run()
         result = await self._cleanup()
 
-        # Raise on exceptional stops so users handle them with try/except
         if result.reason == "safety_guard":
             raise GuardStopError(
                 motion_group_id="",
@@ -185,7 +182,7 @@ class PolicyExecutor:
         return self.result
 
     # -------------------------------------------------------------------------
-    # Execution loop
+    # Execution lifecycle
     # -------------------------------------------------------------------------
 
     async def _run(self) -> None:
@@ -198,34 +195,26 @@ class PolicyExecutor:
                 safety_guards=self._safety_guards,
             )
 
-            # Connect cameras BEFORE opening jogging (ICE negotiation can take seconds)
             if self._cameras is not None:
                 logger.info("Connecting cameras...")
                 await self._cameras.connect()
                 logger.info("All cameras ready")
 
             async with self._runner:
-                # Start IO streams for FeatureMap (O(1) reads instead of HTTP)
-                await self._feature_map.start()
-                # Share IO cache values with sessions so guards can read IOs
-                for cache in self._feature_map._io_caches:
-                    self._runner.set_io_values_ref(cache._mg.id, cache.values)
+                await self._start_io_streams()
 
                 try:
                     await self._policy.connect(self.mg_ids)
-                    self._estop_task = asyncio.create_task(
-                        self._monitor_estop(), name="estop-monitor"
-                    )
+                    self._estop_monitor = EstopMonitor(self._motion_groups)
+                    await self._estop_monitor.start()
                     self.result = await self._execute()
                 finally:
-                    if self._estop_task is not None:
-                        self._estop_task.cancel()
-                        with contextlib.suppress(asyncio.CancelledError):
-                            await self._estop_task
-                        self._estop_task = None
+                    if self._estop_monitor is not None:
+                        await self._estop_monitor.stop()
+                        self._estop_monitor = None
                     if self._cameras is not None:
                         await self._cameras.disconnect()
-                    await self._feature_map.stop()
+                    await self._stop_io_streams()
 
         except asyncio.CancelledError:
             pass
@@ -240,6 +229,10 @@ class PolicyExecutor:
         finally:
             self.status.phase = Phase.IDLE
 
+    # -------------------------------------------------------------------------
+    # Observe → act loop
+    # -------------------------------------------------------------------------
+
     async def _execute(self) -> ExecutionResult:
         """Run the observe-act loop until termination."""
         step = 0
@@ -252,39 +245,30 @@ class PolicyExecutor:
 
         try:
             while not self._stop_event.is_set():
-                # Check timeout
                 if self._timeout_s > 0 and (time.monotonic() - start_time) >= self._timeout_s:
-                    return self._result("timeout", step, start_time, last_obs)
+                    return _result("timeout", step, start_time, last_obs)
 
                 # Observe
-                obs = await self._get_observation()
-                if obs is None:
+                robot_states = await self._runner.observe()
+                if not robot_states:
                     await asyncio.sleep(interval)
                     continue
-                last_obs = obs
-                self._last_obs = obs
+                images = self._cameras.read() if self._cameras else None
+                self._last_obs = robot_states
+                last_obs = robot_states
 
-                # Query policy
-                action = await self._get_action(obs)
-
-                # Send to robot
+                # Query policy → send to robot
+                action = await self._policy.get_actions(
+                    robot_states, self._feature_map, images, self._all_io_values or None,
+                )
                 await self._runner.send(action)
                 step += 1
                 self.status.step = step
 
-                # Safety checks
-                failure = self._check_session_failures(step, start_time, last_obs)
+                # Check failures
+                failure = self._check_failures(step, start_time, last_obs)
                 if failure is not None:
                     return failure
-
-                if self._estop_error is not None:
-                    return ExecutionResult(
-                        reason="estop",
-                        steps=step,
-                        duration_s=time.monotonic() - start_time,
-                        last_state=last_obs,
-                        error=self._estop_error,
-                    )
 
                 await asyncio.sleep(interval)
 
@@ -304,98 +288,133 @@ class PolicyExecutor:
                 last_state=last_obs, error=e,
             )
 
-        return self._result("stopped", step, start_time, last_obs)
+        return _result("stopped", step, start_time, last_obs)
 
-    # -------------------------------------------------------------------------
-    # Observation + action helpers
-    # -------------------------------------------------------------------------
-
-    async def _get_observation(self) -> dict[str, Any] | None:
-        robot_states = await self._runner.observe()
-        if not robot_states:
-            return None
-        obs = await self._feature_map.build_observation(robot_states)
-
-        # Add camera images to observation
-        if self._cameras is not None:
-            images = self._cameras.read()
-            for cam_name, frame in images.items():
-                obs[cam_name] = frame
-
-        return obs
-
-    async def _get_action(self, obs: dict[str, Any]) -> ActionChunk:
-        """Query policy and ensure we get an ActionChunk back."""
-        result = await self._policy.get_actions(obs)
-
-        if isinstance(result, ActionChunk):
-            return result
-
-        # FeatureMap mode: policy returned a flat feature dict
-        if isinstance(result, dict):
-            joints, ios = self._feature_map.parse_action(result)
-            if joints:
-                return ActionChunk(joints=joints, ios=ios)
-
-        msg = f"Policy must return ActionChunk or feature dict, got {type(result).__name__}"
-        raise TypeError(msg)
-
-    # -------------------------------------------------------------------------
-    # Safety checks
-    # -------------------------------------------------------------------------
-
-    def _check_session_failures(
+    def _check_failures(
         self, step: int, start_time: float, last_obs: dict[str, Any] | None,
     ) -> ExecutionResult | None:
+        """Check for session failures and e-stop."""
+        # Session failures (jogging connection lost, guard, motion error)
         for session in self._runner._sessions.values():
-            if session.has_failed:
-                reason_str = session.failure_reason or ""
-                if "Safety guard" in reason_str:
-                    guard_name = reason_str.split("'")[1] if "'" in reason_str else "unknown"
-                    return ExecutionResult(
-                        reason="safety_guard",
-                        steps=step,
-                        duration_s=time.monotonic() - start_time,
-                        last_state=last_obs,
-                        guard_name=guard_name,
-                    )
-                if "Motion error" in reason_str or "Jogging paused" in reason_str:
-                    # Extract the original message (after "Motion error on 'mg_id': ")
-                    msg = reason_str.split(": ", 1)[-1] if ": " in reason_str else reason_str
-                    return ExecutionResult(
-                        reason="motion_error",
-                        steps=step,
-                        duration_s=time.monotonic() - start_time,
-                        last_state=last_obs,
-                        error=MotionError(session.motion_group_id, msg),
-                    )
+            if not session.has_failed:
+                continue
+            reason_str = session.failure_reason or ""
+            if "Safety guard" in reason_str:
+                guard_name = reason_str.split("'")[1] if "'" in reason_str else "unknown"
                 return ExecutionResult(
-                    reason="connection_lost",
-                    steps=step,
+                    reason="safety_guard", steps=step,
+                    duration_s=time.monotonic() - start_time,
+                    last_state=last_obs, guard_name=guard_name,
+                )
+            if "Motion error" in reason_str or "Jogging paused" in reason_str:
+                msg = reason_str.split(": ", 1)[-1] if ": " in reason_str else reason_str
+                return ExecutionResult(
+                    reason="motion_error", steps=step,
                     duration_s=time.monotonic() - start_time,
                     last_state=last_obs,
-                    error=RuntimeError(session.failure_reason),
+                    error=MotionError(session.motion_group_id, msg),
                 )
+            return ExecutionResult(
+                reason="connection_lost", steps=step,
+                duration_s=time.monotonic() - start_time,
+                last_state=last_obs,
+                error=RuntimeError(session.failure_reason),
+            )
+
+        # E-stop
+        if self._estop_monitor is not None and self._estop_monitor.error is not None:
+            return ExecutionResult(
+                reason="estop", steps=step,
+                duration_s=time.monotonic() - start_time,
+                last_state=last_obs, error=self._estop_monitor.error,
+            )
+
         return None
 
-    _OPERATIONAL_SAFETY_STATES = frozenset({"SAFETY_STATE_NORMAL", "SAFETY_STATE_REDUCED"})
+    # -------------------------------------------------------------------------
+    # IO stream management
+    # -------------------------------------------------------------------------
 
-    async def _monitor_estop(self) -> None:
-        """Background task: stream controller state and detect e-stop.
+    async def _start_io_streams(self) -> None:
+        """Open IO WebSocket streams and wire caches to sessions for guards."""
+        io_by_ctrl = self._feature_map.io_keys_by_controller()
+        for group in self._feature_map.groups:
+            ctrl_id = get_controller_id(group.motion_group)
+            io_keys = io_by_ctrl.get(ctrl_id)
+            if not io_keys:
+                continue
+            if any(get_controller_id(c.motion_group) == ctrl_id for c in self._io_caches):
+                continue
+            cache = IOStreamCache(group.motion_group, io_keys)
+            self._io_caches.append(cache)
+            await cache.start()
 
-        Uses the controller state-stream WebSocket (no polling).
-        Sets ``_estop_error`` when any controller enters a non-operational
-        safety state (e-stop, protective stop, fault, etc.).
-        """
-        # Deduplicate controllers (multiple motion groups may share one)
+        for cache in self._io_caches:
+            self._runner.set_io_values_ref(cache.motion_group.id, cache.values)
+
+    async def _stop_io_streams(self) -> None:
+        """Close all IO streams."""
+        for cache in self._io_caches:
+            await cache.stop()
+        self._io_caches.clear()
+
+    @property
+    def _all_io_values(self) -> dict[str, object]:
+        """Merged IO values from all caches."""
+        merged: dict[str, object] = {}
+        for cache in self._io_caches:
+            merged.update(cache.values)
+        return merged
+
+
+def _result(
+    reason: str, step: int, start_time: float, last_obs: dict[str, Any] | None = None,
+) -> ExecutionResult:
+    return ExecutionResult(
+        reason=reason, steps=step, duration_s=time.monotonic() - start_time, last_state=last_obs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# E-stop monitor (internal to executor)
+# ---------------------------------------------------------------------------
+
+_OPERATIONAL_SAFETY_STATES = frozenset({"SAFETY_STATE_NORMAL", "SAFETY_STATE_REDUCED"})
+
+
+class EstopMonitor:
+    """Streams controller state and detects safety stops.
+
+    Runs one background WebSocket per unique controller. Sets ``error``
+    when any controller enters a non-operational safety state.
+    """
+
+    def __init__(self, motion_groups: list[object]) -> None:
+        self._motion_groups = motion_groups
+        self._task: asyncio.Task[None] | None = None
+        self.error: EmergencyStopError | None = None
+
+    async def start(self) -> None:
+        self._task = asyncio.create_task(self._run(), name="estop-monitor")
+
+    async def stop(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
+
+    async def _run(self) -> None:
         seen: set[str] = set()
-        controllers: list[tuple[str, object]] = []
+        tasks: list[asyncio.Task[None]] = []
         for mg in self._motion_groups:
-            if mg._controller_id not in seen:
-                seen.add(mg._controller_id)
-                controllers.append((mg._controller_id, mg._api_client))
-
-        tasks = [asyncio.create_task(self._watch_controller(cid, api)) for cid, api in controllers]
+            ctrl_id = get_controller_id(mg)
+            if ctrl_id not in seen:
+                seen.add(ctrl_id)
+                tasks.append(asyncio.create_task(
+                    self._watch(ctrl_id, get_api_gateway(mg)),
+                    name=f"estop-watch-{ctrl_id}",
+                ))
         try:
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
@@ -403,24 +422,21 @@ class PolicyExecutor:
                 t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _watch_controller(self, controller_id: str, api_client: object) -> None:
-        """Watch a single controller's state stream for safety state changes."""
-        cell = self._motion_groups[0]._cell
+    async def _watch(self, controller_id: str, api_client: object) -> None:
+        cell = get_cell(self._motion_groups[0])
         stream = None
         try:
             stream = api_client.controller_api.stream_robot_controller_state(
-                cell=cell,
-                controller=controller_id,
-                response_rate=1000,
+                cell=cell, controller=controller_id, response_rate=100,
             )
             async for state in stream:
                 safety_raw = getattr(state, "safety_state", None)
                 if safety_raw is None:
                     continue
                 safety = safety_raw.name if hasattr(safety_raw, "name") else str(safety_raw)
-                if safety not in self._OPERATIONAL_SAFETY_STATES:
+                if safety not in _OPERATIONAL_SAFETY_STATES:
                     logger.error("E-stop detected on %s: %s", controller_id, safety)
-                    self._estop_error = EmergencyStopError(controller_id, safety)
+                    self.error = EmergencyStopError(controller_id, safety)
                     return
         except asyncio.CancelledError:
             raise
@@ -430,11 +446,3 @@ class PolicyExecutor:
             if stream is not None:
                 with contextlib.suppress(Exception):
                     await stream.aclose()
-
-    @staticmethod
-    def _result(
-        reason: str, step: int, start_time: float, last_obs: dict[str, Any] | None = None,
-    ) -> ExecutionResult:
-        return ExecutionResult(
-            reason=reason, steps=step, duration_s=time.monotonic() - start_time, last_state=last_obs,
-        )

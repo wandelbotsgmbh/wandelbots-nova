@@ -77,7 +77,7 @@ def predict(obs: dict[str, Any]) -> dict[str, Any]:
         else:
             phase = float(sum(ord(ch) for ch in key) % 360) * math.pi / 180.0
             features[key] = current + AMPLITUDE * math.sin(2.0 * math.pi * freq * t + phase)
-    return {"features": features}
+    return features
 
 
 # ---------------------------------------------------------------------------

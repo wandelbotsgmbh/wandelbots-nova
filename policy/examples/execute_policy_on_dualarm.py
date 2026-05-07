@@ -2,6 +2,7 @@
 Example: Run a mock policy on two UR10e robots with cameras.
 
 Demonstrates:
+- @nova.program decorator for program operator integration
 - FeatureMap for LeRobot-compatible flat feature dicts
 - WebRTC cameras — images included in every observation
 - Safety guards (workspace, speed, IO sensor)
@@ -20,7 +21,6 @@ import math
 import os
 from typing import Any
 
-import numpy as np  # noqa: F401 — used by policy at runtime
 from policy import (
     CameraSet,
     EmergencyStopError,
@@ -32,8 +32,11 @@ from policy import (
     PolicyExecutor,
 )
 
-from nova import Nova
+import nova
+from nova import api, run_program
 from nova.actions import joint_ptp
+from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
 
 HOME_LEFT = (0.0, -1.571, 1.571, -1.571, -1.571, 0.0)
@@ -117,54 +120,73 @@ async def move_to_home(mg1, mg2) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Program
 # ---------------------------------------------------------------------------
 
 
-async def main() -> None:
-    async with Nova() as nova:
-        cell = nova.cell()
-        mg1 = (await cell.controller("ur10e"))[0]
-        mg2 = (await cell.controller("ur10e-2"))[0]
-
-        print("Moving to home...")
-        await move_to_home(mg1, mg2)
-
-        feature_map = FeatureMap(groups=[
-            FeatureGroup(
-                motion_group=mg1, name="left",
-                ios={"left_gripper": "digital_out[0]", "left_conveyor_sensor": "digital_in[0]"},
+@nova.program(
+    id="dual_arm_policy",
+    name="Dual-Arm Policy Execution",
+    description="Run a mock policy on two UR10e robots with cameras and safety guards.",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur10e",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type="universalrobots-ur10e",
             ),
-            FeatureGroup(motion_group=mg2, name="right", ios={"right_gripper": "digital_out[0]"}),
-        ])
+            virtual_controller(
+                name="ur10e-2",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type="universalrobots-ur10e",
+            ),
+        ],
+        cleanup_controllers=False,
+    ),
+)
+async def dual_arm_policy(ctx: nova.ProgramContext):
+    cell = ctx.nova.cell()
+    mg1 = (await cell.controller("ur10e"))[0]
+    mg2 = (await cell.controller("ur10e-2"))[0]
 
-        cameras = CameraSet(
-            api_url=CAMERA_SERVER,
-            devices={"flange": "315122271048", "left": "314522065367", "right": "319522063360"},
-            width=640,
-            height=480,
-            fps=15,
-        )
+    print("Moving to home...")
+    await move_to_home(mg1, mg2)
 
-        executor = PolicyExecutor(
-            feature_map=feature_map,
-            policy=mock_policy,
-            cameras=cameras,
-            safety_guards=[workspace_guard, speed_guard, io_guard],
-            timeout_s=10.0,
-        )
+    feature_map = FeatureMap(groups=[
+        FeatureGroup(
+            motion_group=mg1, name="left",
+            ios={"left_gripper": "digital_out[0]", "left_conveyor_sensor": "digital_in[0]"},
+        ),
+        FeatureGroup(motion_group=mg2, name="right", ios={"right_gripper": "digital_out[0]"}),
+    ])
 
-        print("Running policy for 10s...")
-        try:
-            result = await executor.run()
-            print(f"Done: reason={result.reason} steps={result.steps} duration={result.duration_s:.1f}s")
-        except GuardStopError as e:
-            print(f"Safety guard triggered: {e.guard_name}")
-        except MotionError as e:
-            print(f"Motion error: {e}")
-        except EmergencyStopError as e:
-            print(f"Emergency stop: {e.controller_id}")
+    cameras = CameraSet(
+        api_url=CAMERA_SERVER,
+        devices={"flange": "315122271048", "left": "314522065367", "right": "319522063360"},
+        width=640,
+        height=480,
+        fps=15,
+    ) if CAMERA_SERVER else None
+
+    executor = PolicyExecutor(
+        feature_map=feature_map,
+        policy=mock_policy,
+        cameras=cameras,
+        safety_guards=[workspace_guard, speed_guard, io_guard],
+        timeout_s=10.0,
+    )
+
+    print("Running policy for 10s...")
+    try:
+        result = await executor.run()
+        print(f"Done: reason={result.reason} steps={result.steps} duration={result.duration_s:.1f}s")
+    except GuardStopError as e:
+        print(f"Safety guard triggered: {e.guard_name}")
+    except MotionError as e:
+        print(f"Motion error: {e}")
+    except EmergencyStopError as e:
+        print(f"Emergency stop: {e.controller_id}")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_program(dual_arm_policy)

@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from policy.feature_map import FeatureGroup, FeatureMap
-from policy.gr00t_client import Gr00tMsgSerializer, Gr00tPolicyClient
+from policy.groot import Gr00tMsgSerializer, Gr00tPolicyClient
 from policy.types import ActionChunk
 
 zmq = pytest.importorskip("zmq")
@@ -82,7 +82,7 @@ async def test_roundtrip() -> None:
         mg._cell = "cell"
 
         fm = FeatureMap(groups=[FeatureGroup(motion_group=mg, name="left")])
-        client = Gr00tPolicyClient(host="127.0.0.1", port=port, feature_map=fm)
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
 
         assert await client.ping() is True
@@ -91,7 +91,7 @@ async def test_roundtrip() -> None:
         class _State:
             joints = (0.1, -1.5, 0.0, 0.0, 0.0, 0.0)
 
-        result = await client.get_actions({"0@ur10e": _State()})
+        result = await client.get_actions({"0@ur10e": _State()}, fm)
 
         assert isinstance(result, ActionChunk)
         assert "0@ur10e" in result.joints

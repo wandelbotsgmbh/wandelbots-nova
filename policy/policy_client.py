@@ -3,65 +3,92 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 from policy.types import ActionChunk
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    from nova.types import RobotState
+    from policy.feature_map import FeatureMap
 
 logger = logging.getLogger(__name__)
 
 
-class PolicyClient(Protocol):
-    """Protocol for policy action sources.
+class PolicyClient:
+    """Base class for policy action sources.
 
-    A policy is a pure function: obs → actions.
+    A policy is a pure function: (robot states, images) → ActionChunk.
     It never signals "done" — episode termination is an executor concern.
+
+    The executor owns the ``FeatureMap`` and passes it to ``get_actions()``
+    on every call. Clients use it for obs/action translation without
+    storing a reference.
     """
 
     async def connect(self, motion_group_ids: list[str]) -> None:
         """Establish connection to the policy service."""
-        ...
 
-    async def get_actions(self, obs: dict[str, Any]) -> ActionChunk | dict[str, float]:
-        """Send observation, receive action chunk.
+    async def get_actions(
+        self,
+        states: dict[str, RobotState],
+        feature_map: FeatureMap,
+        images: dict[str, NDArray[Any]] | None = None,
+        io_values: dict[str, object] | None = None,
+    ) -> ActionChunk:
+        """Receive robot states + camera images, return action chunk.
+
+        Args:
+            states: Dict mapping motion group ID → current RobotState.
+            feature_map: The executor's FeatureMap for obs/action translation.
+            images: Dict mapping camera name → numpy array (H,W,3) or (T,H,W,3).
+                    None if no cameras configured.
+            io_values: Dict mapping hardware IO key → current value.
+                       None if no IOs configured.
 
         Returns:
-            ActionChunk — joint targets to execute.
-            dict[str, float] — flat feature dict (FeatureMap mode).
+            ActionChunk with joint targets (and optional IOs) to execute.
         """
-        ...
+        msg = "Subclasses must implement get_actions"
+        raise NotImplementedError(msg)
 
     async def close(self) -> None:
         """Close the connection."""
-        ...
 
 
-
-class CallbackPolicyClient:
+class CallbackPolicyClient(PolicyClient):
     """Policy client that calls a local async function.
 
-    The function receives observations and must return:
-    - An ActionChunk
-    - A dict with "joints" key (converted to ActionChunk)
-    - A flat feature dict (FeatureMap mode)
+    The user function receives a flat feature dict and returns either:
+    - A flat feature dict (keys matching the FeatureMap)
+    - An ActionChunk directly
+    - A dict with "joints" key
     """
 
     def __init__(self, fn: object) -> None:
         self._fn = fn
 
-    async def connect(self, motion_group_ids: list[str]) -> None:
-        pass
+    async def get_actions(
+        self,
+        states: dict[str, RobotState],
+        feature_map: FeatureMap,
+        images: dict[str, NDArray[Any]] | None = None,
+        io_values: dict[str, object] | None = None,
+    ) -> ActionChunk:
+        obs: dict[str, Any] = feature_map.build_observation(states, io_values)
+        if images:
+            obs.update(images)
 
-    async def get_actions(self, obs: dict[str, Any]) -> ActionChunk | dict[str, float]:
         result = await self._fn(obs)  # type: ignore[operator]
+
         if isinstance(result, ActionChunk):
             return result
         if isinstance(result, dict):
             if "joints" in result:
                 return ActionChunk.from_dict(result)
-            # Flat feature dict
-            return result  # type: ignore[return-value]
-        msg = f"Policy callback must return ActionChunk or dict, got {type(result).__name__}"
+            joints, ios = feature_map.parse_action(result)
+            if joints:
+                return ActionChunk(joints=joints, ios=ios)
+        msg = f"Policy must return ActionChunk or dict, got {type(result).__name__}"
         raise TypeError(msg)
-
-    async def close(self) -> None:
-        pass

@@ -21,7 +21,7 @@ ValueType = int | str | bool | float | Pose
 class PolicyResponse(pydantic.BaseModel):
     """Serializable response from a policy server (wire format).
 
-    This is what a policy service returns over NATS/WebSocket/ZMQ.
+    This is what a policy service returns over NATS/ZMQ.
     The policy always returns actions — it never signals "done".
 
     Examples:
@@ -39,9 +39,6 @@ class PolicyResponse(pydantic.BaseModel):
             joints={"0@ur10e": [[step0], [step1], ..., [step15]]},
             dt_ms=33.0,
         )
-
-        # Flat features (LeRobot-style):
-        PolicyResponse(features={"left_joint_1.pos": 0.1, ...})
     """
 
     joints: dict[str, list[list[float]]] | None = None
@@ -49,9 +46,6 @@ class PolicyResponse(pydantic.BaseModel):
 
     ios: dict[str, dict[str, bool | int | float | str]] | None = None
     """Motion group id → {io_key: value}."""
-
-    features: dict[str, float] | None = None
-    """Flat feature dict (LeRobot-style). Alternative to joints/ios."""
 
     dt_ms: float = 0.0
     """Time spacing between steps in milliseconds."""

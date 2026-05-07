@@ -29,7 +29,7 @@ def _state(joints: tuple[float, ...]) -> MagicMock:
 @pytest.mark.asyncio
 async def test_build_observation_single_arm() -> None:
     fm = FeatureMap(groups=[FeatureGroup(motion_group=_mg(), name="left")])
-    obs = await fm.build_observation({"0@ur10e": _state((0.1, -1.5, 0.0))})
+    obs = fm.build_observation({"0@ur10e": _state((0.1, -1.5, 0.0))})
 
     assert obs == {
         "left_joint_position_1": 0.1,
@@ -44,7 +44,7 @@ async def test_build_observation_dual_arm() -> None:
         FeatureGroup(motion_group=_mg("0@left", "left"), name="left"),
         FeatureGroup(motion_group=_mg("0@right", "right"), name="right"),
     ])
-    obs = await fm.build_observation({
+    obs = fm.build_observation({
         "0@left": _state((1.0,)),
         "0@right": _state((2.0,)),
     })
@@ -56,7 +56,7 @@ async def test_build_observation_dual_arm() -> None:
 @pytest.mark.asyncio
 async def test_build_observation_custom_joint_key() -> None:
     fm = FeatureMap(groups=[FeatureGroup(motion_group=_mg(), name="arm", joint_key="state")])
-    obs = await fm.build_observation({"0@ur10e": _state((0.5,))})
+    obs = fm.build_observation({"0@ur10e": _state((0.5,))})
 
     assert obs == {"state_1": 0.5}
 

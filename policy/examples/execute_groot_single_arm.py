@@ -11,7 +11,7 @@ expected input resolution). Camera names match OXE_DROID video keys.
 Prerequisites:
     NOVA_API=http://<instance-ip> (with ur10e controller)
     GR00T server running at 172.31.11.129:30555
-    Camera server running at 172.31.11.80:9100
+    Camera server running at 192.168.1.8:9100
 
 Run:
     NOVA_API=http://172.31.10.248 PYTHONPATH=. uv run --with pyzmq --with msgpack \
@@ -20,7 +20,6 @@ Run:
 
 from __future__ import annotations
 
-import asyncio
 import time
 
 from policy import (
@@ -30,11 +29,13 @@ from policy import (
     Gr00tPolicyClient,
     PolicyExecutor,
     TcpFormat,
-    WebRTCCameraConfig,
 )
 
-from nova import Nova
+import nova
+from nova import api, run_program
 from nova.actions import joint_ptp
+from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
 
 GROOT_HOST = "172.31.11.129"
@@ -44,89 +45,95 @@ TIMEOUT_S = 10.0
 CAMERA_SERVER = "http://192.168.1.8:9100"
 VIDEO_SIZE = 224
 VIDEO_HISTORY = 2
+CAMERA_FPS = 15
 
 
-async def main() -> None:
-    nova = Nova()
-    nova.nats.connect = lambda **_: asyncio.sleep(0)  # type: ignore[assignment]
-    await nova.open()
-    try:
-        cell = nova.cell()
-        ctrl = await cell.controller("ur10e")
-        mg = ctrl[0]
-
-        # Move to home
-        print("Moving to home...")
-        fast = MotionSettings(tcp_velocity_limit=500.0)
-        tcp = (await mg.tcp_names())[0]
-        traj = await mg.plan([joint_ptp(HOME, settings=fast)], tcp)
-        await mg.execute(traj, tcp, actions=[joint_ptp(HOME, settings=fast)])
-        print("  At home.")
-
-        # FeatureMap: single arm with gripper + TCP pose
-        # Note: model_dof=7 is only needed because OXE_DROID was trained on 7-DOF
-        # and our UR10e has 6. For matching-DOF robots, omit it.
-        feature_map = FeatureMap(groups=[
-            FeatureGroup(
-                motion_group=mg,
-                name="arm",
-                joint_key="joint_position",
-                ios={"gripper_position": "digital_out[0]"},
-                tcp_format=TcpFormat.ROT6D,
-                tcp_key="eef_9d",
-                model_dof=7,
+@nova.program(
+    id="groot_single_arm",
+    name="GR00T Single-Arm Policy",
+    description="Run GR00T N1.7 inference on a single UR10e with 3 cameras.",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur10e",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type="universalrobots-ur10e",
             ),
-        ])
+        ],
+        cleanup_controllers=False,
+    ),
+)
+async def groot_single_arm(ctx: nova.ProgramContext):
+    cell = ctx.nova.cell()
+    ctrl = await cell.controller("ur10e")
+    mg = ctrl[0]
 
-        # Cameras: 224x224 matching GR00T input, T=2 history
-        # Names must match GR00T's expected video keys from get_modality_config()
-        cameras = CameraSet(
-            configs={
-                "exterior_image_1_left": WebRTCCameraConfig(
-                    api_url=CAMERA_SERVER, device_id="315122271048",
-                    width=VIDEO_SIZE, height=VIDEO_SIZE, fps=30,
-                ),
-                "wrist_image_left": WebRTCCameraConfig(
-                    api_url=CAMERA_SERVER, device_id="314522065367",
-                    width=VIDEO_SIZE, height=VIDEO_SIZE, fps=30,
-                ),
-            },
-            frame_history=VIDEO_HISTORY,
-        )
+    # Move to home
+    print("Moving to home...")
+    fast = MotionSettings(tcp_velocity_limit=500.0)
+    tcp = (await mg.tcp_names())[0]
+    traj = await mg.plan([joint_ptp(HOME, settings=fast)], tcp)
+    await mg.execute(traj, tcp, actions=[joint_ptp(HOME, settings=fast)])
+    print("  At home.")
 
-        # GR00T client — all mapping is in the FeatureMap
-        client = Gr00tPolicyClient(
-            host=GROOT_HOST,
-            port=GROOT_PORT,
-            feature_map=feature_map,
-            language="Pick up the object on the table.",
-        )
-
-        executor = PolicyExecutor(
-            feature_map=feature_map,
-            cameras=cameras,
-            policy=client,
+    # FeatureMap: single arm with gripper + TCP pose
+    feature_map = FeatureMap(groups=[
+        FeatureGroup(
+            motion_group=mg,
+            name="arm",
+            joint_key="joint_position",
+            ios={"gripper_position": "digital_out[0]"},
+            tcp_format=TcpFormat.ROT6D,
+            tcp_key="eef_9d",
             tcp=tcp,
-            timeout_s=TIMEOUT_S,
-        )
+            model_dof=7,
+        ),
+    ])
 
-        print(f"Running GR00T policy for {TIMEOUT_S}s...")
-        print(f"  Server: {GROOT_HOST}:{GROOT_PORT}")
-        print(f"  Cameras: 2x {VIDEO_SIZE}x{VIDEO_SIZE} via {CAMERA_SERVER}")
-        print()
+    # Cameras: 224x224@15fps via WebRTC, T=2 history
+    cameras = CameraSet(
+        api_url=CAMERA_SERVER,
+        devices={
+            "exterior_image_1_left": "315122271048",
+            "wrist_image_left": "314522065367",
+            "exterior_image_2_left": "319522063360",
+        },
+        width=VIDEO_SIZE,
+        height=VIDEO_SIZE,
+        fps=CAMERA_FPS,
+        frame_history=VIDEO_HISTORY,
+    )
 
-        t0 = time.monotonic()
-        try:
-            result = await executor.run()
-            dt = time.monotonic() - t0
-            print(f"\nDone: reason={result.reason} steps={result.steps} duration={dt:.1f}s")
+    # GR00T client
+    client = Gr00tPolicyClient(
+        host=GROOT_HOST,
+        port=GROOT_PORT,
+        language="Pick up the object on the table.",
+    )
+
+    executor = PolicyExecutor(
+        feature_map=feature_map,
+        cameras=cameras,
+        policy=client,
+        timeout_s=TIMEOUT_S,
+    )
+
+    print(f"Running GR00T policy for {TIMEOUT_S}s...")
+    print(f"  Server: {GROOT_HOST}:{GROOT_PORT}")
+    print(f"  Cameras: 3x {VIDEO_SIZE}x{VIDEO_SIZE} via {CAMERA_SERVER}")
+    print()
+
+    t0 = time.monotonic()
+    try:
+        result = await executor.run()
+        dt = time.monotonic() - t0
+        print(f"\nDone: reason={result.reason} steps={result.steps} duration={dt:.1f}s")
+        if result.steps > 0:
             print(f"  Inference rate: {result.steps / dt:.1f} Hz")
-        except Exception as e:
-            dt = time.monotonic() - t0
-            print(f"\nError after {dt:.1f}s: {type(e).__name__}: {e}")
-    finally:
-        await nova.close()
+    except Exception as e:
+        dt = time.monotonic() - t0
+        print(f"\nError after {dt:.1f}s: {type(e).__name__}: {e}")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_program(groot_single_arm)

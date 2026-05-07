@@ -269,11 +269,13 @@
     fetch("/status").then(r => r.json()).then(d => {
       const port = window.location.port || "9100";
       const ip = d.host_ip || "localhost";
-      document.getElementById("code-snippet").textContent = `cameras = CameraSet(configs={
-    "flange": CameraConfig(api_url="http://${ip}:${port}", device_id="315122271048"),
-    "left":   CameraConfig(api_url="http://${ip}:${port}", device_id="314522065367"),
-    "right":  CameraConfig(api_url="http://${ip}:${port}", device_id="319522063360"),
-})`;
+      document.getElementById("code-snippet").textContent = `cameras = CameraSet(
+    api_url="http://${ip}:${port}",
+    devices={"flange": "315122271048", "left": "314522065367", "right": "319522063360"},
+    width=640,
+    height=480,
+    fps=15,
+)`;
     });
   </script>
 </body>

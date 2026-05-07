@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import signal
 from typing import TYPE_CHECKING
 
+from policy._sdk import get_api_gateway
 from policy.pid_jogging_session import PidJoggingSession
 from policy.types import PolicyRunnerConfig
 
@@ -17,9 +17,6 @@ if TYPE_CHECKING:
     from policy.types import ActionChunk, SafetyGuard
 
 logger = logging.getLogger(__name__)
-
-# Background IO tasks — stored to prevent GC
-_io_tasks: set[asyncio.Task[None]] = set()
 
 
 class PolicyRunner:
@@ -55,14 +52,13 @@ class PolicyRunner:
         self._safety_guards = safety_guards or []
         self._sessions: dict[str, PidJoggingSession] = {}
 
+        self._io_tasks: set[asyncio.Task[None]] = set()
+
         for mg in motion_groups:
             session = PidJoggingSession(
                 motion_group=mg, config=self._config, tcp=tcp, safety_guards=self._safety_guards
             )
             self._sessions[mg.id] = session
-
-        self._original_sigterm: signal.Handlers | None = None
-        self._original_sigint: signal.Handlers | None = None
 
     @property
     def motion_group_ids(self) -> list[str]:
@@ -100,8 +96,8 @@ class PolicyRunner:
                 if session is None:
                     continue
                 task = asyncio.create_task(session.write_ios(ios))
-                _io_tasks.add(task)
-                task.add_done_callback(_io_tasks.discard)
+                self._io_tasks.add(task)
+                task.add_done_callback(self._io_tasks.discard)
 
     async def observe(self) -> dict[str, RobotState]:
         """Get current state for all motion groups.
@@ -126,8 +122,7 @@ class PolicyRunner:
     # -------------------------------------------------------------------------
 
     async def __aenter__(self) -> PolicyRunner:
-        """Start all jogging sessions and register signal handlers."""
-        self._register_signal_handlers()
+        """Start all jogging sessions."""
         for session in self._sessions.values():
             await session.start()
         return self
@@ -135,49 +130,21 @@ class PolicyRunner:
     async def __aexit__(
         self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: object
     ) -> bool:
-        """Stop all sessions and deregister signal handlers."""
+        """Stop all sessions and clean up resources."""
         await self.stop()
-        self._deregister_signal_handlers()
+
+        # Wait for pending IO tasks to finish
+        if self._io_tasks:
+            await asyncio.gather(*self._io_tasks, return_exceptions=True)
+            self._io_tasks.clear()
+
         # Close the SDK's aiohttp sessions used by jogging/state-stream WebSockets
         closed: set[int] = set()
         for session in self._sessions.values():
-            api_client = session._motion_group._api_client
+            api_client = get_api_gateway(session._motion_group)
             client_id = id(api_client)
             if client_id not in closed:
                 closed.add(client_id)
                 with contextlib.suppress(Exception):
                     await api_client.close()
         return False
-
-    # -------------------------------------------------------------------------
-    # Signal handling for graceful shutdown
-    # -------------------------------------------------------------------------
-
-    def _register_signal_handlers(self) -> None:
-        """Register SIGTERM/SIGINT handlers to ensure zero velocity on kill."""
-        try:
-            loop = asyncio.get_running_loop()
-            self._original_sigterm = signal.getsignal(signal.SIGTERM)
-            self._original_sigint = signal.getsignal(signal.SIGINT)
-            loop.add_signal_handler(signal.SIGTERM, self._emergency_stop)
-            loop.add_signal_handler(signal.SIGINT, self._emergency_stop)
-        except (NotImplementedError, RuntimeError):
-            # Signal handlers not available (e.g. Windows, non-main thread)
-            logger.debug("Signal handlers not available, skipping registration")
-
-    def _deregister_signal_handlers(self) -> None:
-        """Restore original signal handlers."""
-        try:
-            loop = asyncio.get_running_loop()
-            loop.remove_signal_handler(signal.SIGTERM)
-            loop.remove_signal_handler(signal.SIGINT)
-        except (NotImplementedError, RuntimeError):
-            pass
-
-    def _emergency_stop(self) -> None:
-        """Emergency stop: cancel all sessions immediately."""
-        logger.warning("Emergency stop triggered (signal received)")
-        for session in self._sessions.values():
-            session._running = False
-            session._steps = []
-            session._pid.reset()

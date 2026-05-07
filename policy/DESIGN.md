@@ -1,0 +1,142 @@
+# Design Internals
+
+> Internal architecture documentation for contributors. For usage, see [README.md](README.md).
+
+## Design Principles
+
+1. **Policy is stateless**: `obs → actions`. No lifecycle, no "done" signal, no episode state.
+2. **Executor owns everything**: start, stop, safety, timeout, camera connection.
+3. **Robot control stays on IPC**: Never on the remote GPU server.
+4. **Single episode**: `run()` executes one episode. Caller handles multi-episode loops.
+5. **Exceptions for abnormal stops**: `GuardStopError`, `EmergencyStopError`, `MotionError`.
+6. **Normal returns for expected stops**: timeout, explicit stop.
+
+## Wire Format (PolicyResponse)
+
+Policy services return msgpack-encoded responses:
+
+```python
+# Single-step action:
+{"joints": {"0@ur10e": [[j1, j2, j3, j4, j5, j6]]}, "ios": {"0@ur10e": {"digital_out[0]": True}}, "dt_ms": 33.0}
+
+# Multi-step chunk (ACT, Diffusion Policy, RTC):
+{"joints": {"0@ur10e": [[step0], [step1], ..., [step15]]}, "dt_ms": 33.0}
+
+# Flat features (FeatureMap mode):
+{"left_joint_position_1": 0.1, "left_gripper": 50.0, ...}
+```
+
+When the response contains a `joints` key, it is parsed as structured. Otherwise the entire dict is treated as flat features and converted via `FeatureMap.parse_action()`.
+
+## FeatureGroup Details
+
+```python
+@dataclass
+class FeatureGroup:
+    motion_group: MotionGroup
+    name: str                          # default prefix for feature keys
+    ios: dict[str, str] | None         # policy_name → hardware_io_key
+    joint_key: str = ""                # override (default: "{name}_joint_position")
+    tcp_key: str = ""                  # override (default: "{name}_tcp")
+    tcp_format: TcpFormat = NONE       # NONE, ROTATION_VECTOR, QUATERNION, ROT6D
+    model_dof: int = 0                 # expected DOF (0 = auto from robot)
+    io_threshold: float = 0.5          # bool conversion threshold for IO actions
+```
+
+Key resolution:
+- **Joints**: `{joint_key}_{i}` → e.g. `left_joint_position_1`
+- **TCP**: `{tcp_key}_{i}` (only if `tcp_format != NONE`)
+- **IOs**: dict keys used directly as feature names
+
+## IO Handling
+
+- **Reads**: `FeatureMap.start()` opens one WebSocket stream per controller. Values update at controller rate. Guards and observations read from this shared cache.
+- **Writes**: Fire-and-forget with deduplication (only writes on value change to avoid 429s).
+- **Threshold**: Bool IO written when float feature crosses `io_threshold` (default 0.5).
+
+## Collision & Limit Detection
+
+The executor uses NOVA's jogging state signals to detect when the robot is blocked:
+
+- **Self-collision** → raises `MotionError("Jogging paused: PAUSED_NEAR_COLLISION")`
+- **Joint limit** → raises `MotionError("Jogging paused: PAUSED_NEAR_JOINT_LIMIT")`
+- **Singularity** → raises `MotionError("Jogging paused: PAUSED_NEAR_SINGULARITY")`
+
+No heuristics — uses the actual controller state reported by NOVA.
+
+## Data Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Exec as PolicyExecutor
+    participant Cam as CameraSet
+    participant FM as FeatureMap
+    participant Runner as PolicyRunner
+    participant Policy as Policy (remote)
+
+    User->>Exec: run()
+    Exec->>Cam: connect() — WebRTC ICE
+    Exec->>FM: start() — IO stream WebSockets
+    Exec->>Runner: open jogging sessions
+
+    loop Every tick (rate_hz)
+        Exec->>Runner: observe() → RobotState
+        Exec->>FM: build() → flat obs + IO values
+        Exec->>Cam: read() → numpy images
+        Exec->>Policy: get_actions(obs) → features/chunk
+        Exec->>FM: parse_action() → joints + IOs
+        Exec->>Runner: send(chunk) → PID → velocity
+        Exec->>Exec: check guards, estop, collision
+    end
+
+    Exec->>Runner: stop jogging
+    Exec->>FM: stop() — close IO streams
+    Exec->>Cam: disconnect()
+    Exec-->>User: ExecutionResult
+```
+
+## Safety Architecture
+
+```mermaid
+flowchart TD
+    tick["PID Jogging Tick"] --> state["Read joint state"]
+    state --> ioread["Read IO values from stream cache"]
+    ioread --> guards["Run safety guards"]
+    guards -->|"returns False"| gstop["GuardStopError"]
+    guards -->|"ok"| jstate["Check NOVA jogging state"]
+    jstate -->|"PAUSED_NEAR_COLLISION\nPAUSED_NEAR_JOINT_LIMIT\nPAUSED_NEAR_SINGULARITY"| merr["MotionError"]
+    jstate -->|"ok"| safety["Check safety state"]
+    safety -->|"not NORMAL/REDUCED"| estop["EmergencyStopError"]
+    safety -->|"ok"| pid["PID compute → send velocity"]
+```
+
+## PID Controller
+
+Pure math, no I/O:
+
+- P-gain: 3.0 (must match training recording)
+- D-gain: 0.1
+- I-gain: 0.0 (disabled)
+- Anti-windup: clamp integral at ±2.0
+- Velocity limit: 1.5 rad/s per joint
+
+## File Structure
+
+```
+policy/
+├── executor.py              # PolicyExecutor: run(), stop(), safety orchestration
+├── runner.py                # PolicyRunner: manages multiple PidJoggingSessions
+├── pid_jogging_session.py   # Per-group: jogging + PID + IO write + standstill
+├── velocity_controller.py   # PID math (P, I, D, FF, anti-windup, velocity clamp)
+├── feature_map.py           # FeatureMap + FeatureGroup
+├── io.py                    # IOStreamCache + IOWriter
+├── cameras/                 # CameraSource protocol, WebRTC, CameraSet
+├── policy_client.py         # PolicyClient base + CallbackPolicyClient
+├── nats/                    # NatsPolicyClient + msgpack/PNG wire format
+├── groot/                   # Gr00tPolicyClient + ZMQ transport
+├── pose.py                  # TCP pose conversion (rotation vector → quat/rot6d)
+├── types.py                 # ActionChunk, PolicyResponse, GuardState, errors
+├── _sdk.py                  # Adapter for Nova SDK private attributes
+└── tests/
+```
