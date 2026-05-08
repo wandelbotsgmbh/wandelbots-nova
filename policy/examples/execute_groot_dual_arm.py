@@ -36,7 +36,7 @@ GROOT_HOST = "172.31.11.129"
 GROOT_PORT = 30555
 HOME_LEFT = (1.047, -0.698, 1.745, -3.142, 0.873, 2.094)
 HOME_RIGHT = (-1.047, -2.356, -1.745, 0.0, -0.873, -2.094)
-TIMEOUT_S = 30.0
+TIMEOUT_S = 120.0
 CAMERA_SERVER = "http://172.31.11.129:8080"
 VIDEO_SIZE = 224
 CAMERA_FPS = 15
@@ -121,7 +121,8 @@ async def groot_dual_arm(ctx: nova.ProgramContext):
 
     # GR00T client
     client = Gr00tPolicyClient(
-        host=GROOT_HOST, port=GROOT_PORT, language="Pick up the chest on the table.",
+        host=GROOT_HOST, port=GROOT_PORT,
+        language="Pick up the box and place it onto the conveyor.",
         timeout_ms=60000,
     )
 
