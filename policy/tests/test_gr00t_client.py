@@ -9,8 +9,8 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from policy.feature_map import FeatureGroup, FeatureMap
 from policy.groot import Gr00tMsgSerializer, Gr00tPolicyClient
+from policy.schema import Observation, PolicySchema
 from policy.types import ActionChunk
 
 zmq = pytest.importorskip("zmq")
@@ -45,15 +45,14 @@ class _MockGr00tServer(threading.Thread):
             if endpoint == "ping":
                 resp = {"status": "ok"}
             elif endpoint == "get_action":
-                # Echo the joint state back as a 4-step action
                 obs = req["data"]["observation"]
-                current = obs["state"]["left_joint_position"][:, -1, :]
+                current = obs["state"]["left_joints"][:, -1, :]
                 action = np.repeat(current[:, np.newaxis, :], 4, axis=1).astype(np.float32)
-                resp = ({"left_joint_position": action}, {})
+                resp = ({"left_joints": action}, {})
             elif endpoint == "get_modality_config":
                 resp = {
-                    "state": {"modality_keys": ["left_joint_position"]},
-                    "action": {"modality_keys": ["left_joint_position"]},
+                    "state": {"modality_keys": ["left_joints"]},
+                    "action": {"modality_keys": ["left_joints"]},
                 }
             else:
                 resp = {"error": f"Unknown: {endpoint}"}
@@ -81,17 +80,22 @@ async def test_roundtrip() -> None:
         mg._controller_id = "ur10e"
         mg._cell = "cell"
 
-        fm = FeatureMap(groups=[FeatureGroup(motion_group=mg, name="left")])
+        schema = PolicySchema(observations=[
+            Observation.joint_positions("left_joints", source=mg),
+        ])
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
 
         assert await client.ping() is True
 
-        # Simulate executor observation
         class _State:
             joints = (0.1, -1.5, 0.0, 0.0, 0.0, 0.0)
+            pose = None
+            tcp = None
+            joint_torques = None
+            joint_currents = None
 
-        result = await client.get_actions({"0@ur10e": _State()}, fm)
+        result = await client.get_actions({"0@ur10e": _State()}, schema)
 
         assert isinstance(result, ActionChunk)
         assert "0@ur10e" in result.joints

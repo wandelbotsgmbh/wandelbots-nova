@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from nova.types import RobotState
-    from policy.feature_map import FeatureMap
+    from policy.schema import PolicySchema
 
 logger = logging.getLogger(__name__)
 
@@ -76,13 +76,13 @@ class NatsPolicyClient(PolicyClient):
     async def get_actions(
         self,
         states: dict[str, RobotState],
-        feature_map: FeatureMap,
+        schema: PolicySchema,
         images: dict[str, NDArray[Any]] | None = None,
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
         """Build flat obs, publish images separately, request/reply for actions."""
         # Build flat scalar observation
-        flat_obs: dict[str, Any] = feature_map.build_observation(states, io_values)
+        flat_obs: dict[str, Any] = schema.build_observation(states, io_values)
 
         # Publish images on separate subjects
         image_names: list[str] = []
@@ -99,24 +99,24 @@ class NatsPolicyClient(PolicyClient):
         payload = pack(flat_obs)
         msg = await self._nc.request(self._subject, payload, timeout=self._timeout)
         raw = _unpack_response(msg.data)
-        return self._parse_response(raw, feature_map)
+        return self._parse_response(raw, schema)
 
     async def close(self) -> None:
         """No-op — caller owns the NATS connection lifecycle."""
         logger.info("NatsPolicyClient closed (NATS connection still owned by caller)")
 
-    def _parse_response(self, raw: dict[str, Any], feature_map: FeatureMap) -> ActionChunk:
+    def _parse_response(self, raw: dict[str, Any], schema: PolicySchema) -> ActionChunk:
         """Parse the reply into an ActionChunk.
 
         If the response has 'joints', parse as structured PolicyResponse.
-        Otherwise treat the entire dict as flat features and convert via FeatureMap.
+        Otherwise treat the entire dict as flat features and convert via schema.
         """
         if "joints" in raw and raw["joints"] is not None:
             resp = PolicyResponse.model_validate(raw)
             return ActionChunk(joints=resp.joints, ios=resp.ios, dt_ms=resp.dt_ms)
 
-        # Flat feature dict — parse via feature_map
-        joints, ios = feature_map.parse_action(raw)
+        # Flat feature dict — parse via schema
+        joints, ios = schema.parse_action(raw)
         if joints:
             return ActionChunk(joints=joints, ios=ios)
 

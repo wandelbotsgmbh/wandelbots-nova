@@ -14,13 +14,16 @@ Opens on **http://localhost:9100**. Streams 3 cameras (flange, left, right) at 4
 ## Use with PolicyExecutor
 
 ```python
-from policy import CameraSet, WebRTCCameraConfig
+from policy import Observation, PolicySchema, WebRTCCameras
 
-cameras = CameraSet(configs={
-    "flange": WebRTCCameraConfig(api_url="http://localhost:9100", device_id="315122271048"),
-    "left": WebRTCCameraConfig(api_url="http://localhost:9100", device_id="314522065367"),
-    "right": WebRTCCameraConfig(api_url="http://localhost:9100", device_id="319522063360"),
-})
+cameras = WebRTCCameras(api_url="http://localhost:9100", width=640, height=480, fps=15)
+
+schema = PolicySchema(observations=[
+    # ... joint observations ...
+    Observation.image("flange", source=cameras.device("315122271048")),
+    Observation.image("left", source=cameras.device("314522065367")),
+    Observation.image("right", source=cameras.device("319522063360")),
+])
 ```
 
 Images arrive as `numpy.ndarray` shape `(480, 640, 3)` dtype `uint8` (RGB).

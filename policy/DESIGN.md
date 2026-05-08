@@ -22,37 +22,35 @@ Policy services return msgpack-encoded responses:
 # Multi-step chunk (ACT, Diffusion Policy, RTC):
 {"joints": {"0@ur10e": [[step0], [step1], ..., [step15]]}, "dt_ms": 33.0}
 
-# Flat features (FeatureMap mode):
-{"left_joint_position_1": 0.1, "left_gripper": 50.0, ...}
+# Flat features (PolicySchema mode):
+{"left_joints_1": 0.1, "left_gripper": 50.0, ...}
 ```
 
-When the response contains a `joints` key, it is parsed as structured. Otherwise the entire dict is treated as flat features and converted via `FeatureMap.parse_action()`.
+When the response contains a `joints` key, it is parsed as structured. Otherwise the entire dict is treated as flat features and converted via `PolicySchema.parse_action()`.
 
-## FeatureGroup Details
+## PolicySchema Observations
 
 ```python
-@dataclass
-class FeatureGroup:
-    motion_group: MotionGroup
-    name: str                          # default prefix for feature keys
-    ios: dict[str, str] | None         # policy_name → hardware_io_key
-    joint_key: str = ""                # override (default: "{name}_joint_position")
-    tcp_key: str = ""                  # override (default: "{name}_tcp")
-    tcp_format: TcpFormat = NONE       # NONE, ROTATION_VECTOR, QUATERNION, ROT6D
-    model_dof: int = 0                 # expected DOF (0 = auto from robot)
-    io_threshold: float = 0.5          # bool conversion threshold for IO actions
+Observation.joint_positions("key", source=mg)        # joint positions (writable by default)
+Observation.tcp("key", source=mg, format=TcpFormat)   # TCP pose (read-only)
+Observation.io("key", source=mg, io="hw_key",
+               mapping=BoolMapping(on=100.0))          # IO with value mapping
+Observation.image("key", source=camera_device)         # camera image
+Observation.constant("key", value="...")               # static value
+Observation.joint_torques("key", source=mg)            # torques (read-only)
+Observation.joint_currents("key", source=mg)           # currents (read-only)
 ```
 
-Key resolution:
-- **Joints**: `{joint_key}_{i}` → e.g. `left_joint_position_1`
-- **TCP**: `{tcp_key}_{i}` (only if `tcp_format != NONE`)
-- **IOs**: dict keys used directly as feature names
+Key resolution for flat features:
+- **Joints**: `{key}_{i}` → e.g. `left_joints_1`, `left_joints_2`, ...
+- **TCP**: `{key}_{i}` (only if format is set)
+- **IOs**: key used directly as feature name
 
 ## IO Handling
 
-- **Reads**: `FeatureMap.start()` opens one WebSocket stream per controller. Values update at controller rate. Guards and observations read from this shared cache.
+- **Reads**: Executor opens one WebSocket stream per controller (`IOStreamCache`). Values update at controller rate. Guards and observations read from this shared cache.
 - **Writes**: Fire-and-forget with deduplication (only writes on value change to avoid 429s).
-- **Threshold**: Bool IO written when float feature crosses `io_threshold` (default 0.5).
+- **Mappings**: `BoolMapping`, `ScaleMapping`, `EnumMapping`, `IdentityMapping` for bidirectional hardware↔policy conversion.
 
 ## Collision & Limit Detection
 
@@ -70,28 +68,27 @@ No heuristics — uses the actual controller state reported by NOVA.
 sequenceDiagram
     participant User
     participant Exec as PolicyExecutor
-    participant Cam as CameraSet
-    participant FM as FeatureMap
+    participant Schema as PolicySchema
+    participant Cam as CameraSources
     participant Runner as PolicyRunner
     participant Policy as Policy (remote)
 
     User->>Exec: run()
     Exec->>Cam: connect() — WebRTC ICE
-    Exec->>FM: start() — IO stream WebSockets
+    Exec->>Exec: start IO streams
     Exec->>Runner: open jogging sessions
 
-    loop Every tick (rate_hz)
+    loop Every tick (inference_hz)
         Exec->>Runner: observe() → RobotState
-        Exec->>FM: build() → flat obs + IO values
+        Exec->>Schema: build_observation() → flat obs + IO values
         Exec->>Cam: read() → numpy images
-        Exec->>Policy: get_actions(obs) → features/chunk
-        Exec->>FM: parse_action() → joints + IOs
+        Exec->>Policy: get_actions(states, schema, images, io_values) → ActionChunk
         Exec->>Runner: send(chunk) → PID → velocity
         Exec->>Exec: check guards, estop, collision
     end
 
     Exec->>Runner: stop jogging
-    Exec->>FM: stop() — close IO streams
+    Exec->>Exec: stop IO streams
     Exec->>Cam: disconnect()
     Exec-->>User: ExecutionResult
 ```
@@ -129,9 +126,9 @@ policy/
 ├── runner.py                # PolicyRunner: manages multiple PidJoggingSessions
 ├── pid_jogging_session.py   # Per-group: jogging + PID + IO write + standstill
 ├── velocity_controller.py   # PID math (P, I, D, FF, anti-windup, velocity clamp)
-├── feature_map.py           # FeatureMap + FeatureGroup
+├── schema.py                # PolicySchema, Observation, Action, mappings
 ├── io.py                    # IOStreamCache + IOWriter
-├── cameras/                 # CameraSource protocol, WebRTC, CameraSet
+├── cameras/                 # CameraSource protocol, WebRTC, WebRTCCameras factory
 ├── policy_client.py         # PolicyClient base + CallbackPolicyClient
 ├── nats/                    # NatsPolicyClient + msgpack/PNG wire format
 ├── groot/                   # Gr00tPolicyClient + ZMQ transport

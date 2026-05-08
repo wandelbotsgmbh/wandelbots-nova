@@ -71,6 +71,8 @@ class PidJoggingSession:
 
         # Current joint state (updated by state stream)
         self._current_joints: list[float] | None = None
+        self._current_joint_torques: list[float] | None = None
+        self._current_joint_currents: list[float] | None = None
         self._current_tcp_pose: Pose | None = None
         self._current_tcp_name: str | None = None
         self._num_joints: int | None = None
@@ -111,6 +113,16 @@ class PidJoggingSession:
             pose=self._current_tcp_pose,
             tcp=self._current_tcp_name,
             joints=tuple(self._current_joints),
+            joint_torques=(
+                tuple(self._current_joint_torques)
+                if self._current_joint_torques is not None
+                else None
+            ),
+            joint_currents=(
+                tuple(self._current_joint_currents)
+                if self._current_joint_currents is not None
+                else None
+            ),
         )
 
     @property
@@ -149,6 +161,16 @@ class PidJoggingSession:
 
         initial_state = await self._motion_group.get_state()
         self._current_joints = list(initial_state.joints)
+        self._current_joint_torques = (
+            list(initial_state.joint_torques)
+            if getattr(initial_state, "joint_torques", None) is not None
+            else None
+        )
+        self._current_joint_currents = (
+            list(initial_state.joint_currents)
+            if getattr(initial_state, "joint_currents", None) is not None
+            else None
+        )
         self._current_tcp_pose = initial_state.pose
         self._current_tcp_name = initial_state.tcp
         self._num_joints = len(initial_state.joints)
@@ -192,6 +214,16 @@ class PidJoggingSession:
             )
             async for state in stream:
                 self._current_joints = list(state.joint_position)
+                self._current_joint_torques = (
+                    list(state.joint_torque.root)
+                    if getattr(state, "joint_torque", None) is not None
+                    else None
+                )
+                self._current_joint_currents = (
+                    list(state.joint_current.root)
+                    if getattr(state, "joint_current", None) is not None
+                    else None
+                )
                 if state.tcp_pose is not None:
                     self._current_tcp_pose = Pose(state.tcp_pose)
                 if state.tcp is not None:
@@ -327,6 +359,16 @@ class PidJoggingSession:
                 pose=self._current_tcp_pose,
                 tcp=self._current_tcp_name,
                 joints=tuple(self._current_joints),
+                joint_torques=(
+                    tuple(self._current_joint_torques)
+                    if self._current_joint_torques is not None
+                    else None
+                ),
+                joint_currents=(
+                    tuple(self._current_joint_currents)
+                    if self._current_joint_currents is not None
+                    else None
+                ),
             )
 
         # Run safety guards

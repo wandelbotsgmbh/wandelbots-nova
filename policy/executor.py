@@ -18,9 +18,8 @@ from policy.runner import PolicyRunner
 from policy.types import ActionChunk, EmergencyStopError, GuardStopError, MotionError
 
 if TYPE_CHECKING:
-    from policy.cameras import CameraSource
-    from policy.feature_map import FeatureMap
     from policy.policy_client import PolicyClient
+    from policy.schema import PolicySchema
     from policy.types import PolicyRunnerConfig, SafetyGuard
 
 # Type for bare async policy functions
@@ -69,18 +68,17 @@ class PolicyExecutor:
 
     def __init__(
         self,
-        feature_map: FeatureMap,
+        schema: PolicySchema,
         policy: _PolicyFn | PolicyClient,
         *,
-        cameras: CameraSource | None = None,
         config: PolicyRunnerConfig | None = None,
         safety_guards: list[SafetyGuard] | None = None,
         timeout_s: float = 0,
         inference_hz: float = 30,
         camera_max_age_s: float = 30.0,
     ) -> None:
-        self._motion_groups = feature_map.get_motion_groups()
-        self._feature_map = feature_map
+        self._schema = schema
+        self._motion_groups = schema.get_motion_groups()
 
         # Accept bare async function as policy (no wrapper needed)
         if callable(policy) and not hasattr(policy, "get_actions"):
@@ -90,7 +88,6 @@ class PolicyExecutor:
         else:
             self._policy = policy  # type: ignore[assignment]
 
-        self._cameras = cameras
         self._config = config
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
@@ -98,6 +95,7 @@ class PolicyExecutor:
         self._camera_max_age_s = camera_max_age_s
 
         self._runner: PolicyRunner | None = None
+        self._camera_sources: dict[str, Any] = {}  # policy_key -> connected source
         self._stop_event = asyncio.Event()
         self._last_obs: dict[str, Any] | None = None
         self._estop_monitor: EstopMonitor | None = None
@@ -194,13 +192,14 @@ class PolicyExecutor:
             self._runner = PolicyRunner(
                 motion_groups=self._motion_groups,
                 config=self._config,
-                tcp=self._feature_map.tcp,
+                tcp=self._schema.tcp,
                 safety_guards=self._safety_guards,
             )
 
-            if self._cameras is not None:
+            image_sources = self._schema.image_sources
+            if image_sources:
                 logger.info("Connecting cameras...")
-                await self._cameras.connect()
+                await self._connect_cameras(image_sources)
                 logger.info("All cameras ready")
 
             async with self._runner:
@@ -215,8 +214,8 @@ class PolicyExecutor:
                     if self._estop_monitor is not None:
                         await self._estop_monitor.stop()
                         self._estop_monitor = None
-                    if self._cameras is not None:
-                        await self._cameras.disconnect()
+                    if self._camera_sources:
+                        await self._disconnect_cameras()
                     await self._stop_io_streams()
 
         except asyncio.CancelledError:
@@ -256,13 +255,13 @@ class PolicyExecutor:
                 if not robot_states:
                     await asyncio.sleep(interval)
                     continue
-                images = self._cameras.read(max_age_s=self._camera_max_age_s) if self._cameras else None
+                images = self._read_cameras() if self._camera_sources else None
                 self._last_obs = robot_states
                 last_obs = robot_states
 
                 # Query policy → send to robot
                 action = await self._policy.get_actions(
-                    robot_states, self._feature_map, images, self._all_io_values or None,
+                    robot_states, self._schema, images, self._all_io_values or None,
                 )
                 await self._runner.send(action)
                 step += 1
@@ -310,15 +309,21 @@ class PolicyExecutor:
 
     async def _start_io_streams(self) -> None:
         """Open IO WebSocket streams and wire caches to sessions for guards."""
-        io_by_ctrl = self._feature_map.io_keys_by_controller()
-        for group in self._feature_map.groups:
-            ctrl_id = get_controller_id(group.motion_group)
+        io_by_ctrl = self._schema.io_keys_by_controller()
+        if not io_by_ctrl:
+            return
+
+        # Use one MG per controller to open IO stream
+        started_ctrls: set[str] = set()
+        for mg in self._motion_groups:
+            ctrl_id = get_controller_id(mg)
+            if ctrl_id in started_ctrls:
+                continue
             io_keys = io_by_ctrl.get(ctrl_id)
             if not io_keys:
                 continue
-            if any(get_controller_id(c.motion_group) == ctrl_id for c in self._io_caches):
-                continue
-            cache = IOStreamCache(group.motion_group, io_keys)
+            started_ctrls.add(ctrl_id)
+            cache = IOStreamCache(mg, io_keys)
             self._io_caches.append(cache)
             await cache.start()
 
@@ -338,6 +343,41 @@ class PolicyExecutor:
         for cache in self._io_caches:
             merged.update(cache.values)
         return merged
+
+    # -------------------------------------------------------------------------
+    # Camera management (built from schema image observations)
+    # -------------------------------------------------------------------------
+
+    async def _connect_cameras(self, sources: dict[str, object]) -> None:
+        """Connect all camera sources from the schema."""
+        import asyncio as _aio  # noqa: PLC0415
+
+        tasks = []
+        for key, source in sources.items():
+            self._camera_sources[key] = source
+            if hasattr(source, "connect"):
+                tasks.append(source.connect())  # type: ignore[union-attr]
+        if tasks:
+            await _aio.gather(*tasks)
+
+    async def _disconnect_cameras(self) -> None:
+        """Disconnect all camera sources."""
+        tasks = [
+            source.disconnect()  # type: ignore[union-attr]
+            for source in self._camera_sources.values()
+            if hasattr(source, "disconnect")
+        ]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._camera_sources.clear()
+
+    def _read_cameras(self) -> dict[str, Any]:
+        """Read one frame from each camera source."""
+        frames: dict[str, Any] = {}
+        for key, source in self._camera_sources.items():
+            if hasattr(source, "read"):
+                frames[key] = source.read(max_age_s=self._camera_max_age_s)  # type: ignore[union-attr]
+        return frames
 
 
 def _result(

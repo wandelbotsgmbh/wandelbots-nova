@@ -8,8 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from policy.executor import PolicyExecutor
-from policy.feature_map import FeatureGroup, FeatureMap
-from policy.types import ActionChunk
+from policy.schema import Observation, PolicySchema
 
 
 def _mg(mg_id: str = "0@ur10e") -> MagicMock:
@@ -21,12 +20,10 @@ def _mg(mg_id: str = "0@ur10e") -> MagicMock:
     return mg
 
 
-def _feature_map() -> FeatureMap:
-    return FeatureMap(groups=[FeatureGroup(motion_group=_mg(), name="arm")])
-
-
-def _action() -> ActionChunk:
-    return ActionChunk(joints={"0@ur10e": [[0.1, -1.5, 0.0, 0.0, 0.0, 0.0]]}, dt_ms=0.0)
+def _schema() -> PolicySchema:
+    return PolicySchema(observations=[
+        Observation.joint_positions("arm_joints", source=_mg()),
+    ])
 
 
 class _FakeRunner:
@@ -34,10 +31,8 @@ class _FakeRunner:
 
     def __init__(self):
         self._sessions = {}
-        self._entered = False
 
     async def __aenter__(self):
-        self._entered = True
         return self
 
     async def __aexit__(self, *args):
@@ -48,6 +43,8 @@ class _FakeRunner:
         state.joints = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         state.pose = None
         state.tcp = None
+        state.joint_torques = None
+        state.joint_currents = None
         return {"0@ur10e": state}
 
     async def send(self, action):
@@ -63,18 +60,12 @@ class _FakeRunner:
 @pytest.mark.asyncio
 async def test_timeout_returns_result():
     """Executor stops after timeout_s and returns 'timeout' reason."""
-    fm = _feature_map()
-
-    call_count = 0
+    s = _schema()
 
     async def policy(obs):
-        nonlocal call_count
-        call_count += 1
-        return {"arm_joint_position_1": 0.1, "arm_joint_position_2": 0.0,
-                "arm_joint_position_3": 0.0, "arm_joint_position_4": 0.0,
-                "arm_joint_position_5": 0.0, "arm_joint_position_6": 0.0}
+        return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
 
-    executor = PolicyExecutor(fm, policy, timeout_s=0.2, inference_hz=100)
+    executor = PolicyExecutor(s, policy, timeout_s=0.2, inference_hz=100)
 
     with patch("policy.executor.PolicyRunner") as mock_runner, \
          patch("policy.executor.EstopMonitor") as mock_estop:
@@ -89,14 +80,12 @@ async def test_timeout_returns_result():
 @pytest.mark.asyncio
 async def test_stop_returns_stopped():
     """Calling stop() signals executor to end with 'stopped' reason."""
-    fm = _feature_map()
+    s = _schema()
 
     async def policy(obs):
-        return {"arm_joint_position_1": 0.0, "arm_joint_position_2": 0.0,
-                "arm_joint_position_3": 0.0, "arm_joint_position_4": 0.0,
-                "arm_joint_position_5": 0.0, "arm_joint_position_6": 0.0}
+        return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
 
-    executor = PolicyExecutor(fm, policy, timeout_s=0, inference_hz=100)
+    executor = PolicyExecutor(s, policy, timeout_s=0, inference_hz=100)
 
     async def stop_after_delay():
         await asyncio.sleep(0.1)
@@ -118,14 +107,12 @@ async def test_stop_returns_stopped():
 @pytest.mark.asyncio
 async def test_bare_function_accepted_as_policy():
     """A bare async function (not PolicyClient subclass) is auto-wrapped."""
-    fm = _feature_map()
+    s = _schema()
 
     async def my_policy(obs):
-        return {"arm_joint_position_1": 0.0, "arm_joint_position_2": 0.0,
-                "arm_joint_position_3": 0.0, "arm_joint_position_4": 0.0,
-                "arm_joint_position_5": 0.0, "arm_joint_position_6": 0.0}
+        return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
 
-    executor = PolicyExecutor(fm, my_policy, timeout_s=0.1, inference_hz=50)
+    executor = PolicyExecutor(s, my_policy, timeout_s=0.1, inference_hz=50)
 
     with patch("policy.executor.PolicyRunner") as mock_runner, \
          patch("policy.executor.EstopMonitor") as mock_estop:
@@ -141,14 +128,12 @@ async def test_bare_function_accepted_as_policy():
 @pytest.mark.asyncio
 async def test_last_observation_populated():
     """last_observation is set during execution."""
-    fm = _feature_map()
+    s = _schema()
 
     async def policy(obs):
-        return {"arm_joint_position_1": 0.0, "arm_joint_position_2": 0.0,
-                "arm_joint_position_3": 0.0, "arm_joint_position_4": 0.0,
-                "arm_joint_position_5": 0.0, "arm_joint_position_6": 0.0}
+        return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
 
-    executor = PolicyExecutor(fm, policy, timeout_s=0.1, inference_hz=50)
+    executor = PolicyExecutor(s, policy, timeout_s=0.1, inference_hz=50)
 
     with patch("policy.executor.PolicyRunner") as mock_runner, \
          patch("policy.executor.EstopMonitor") as mock_estop:

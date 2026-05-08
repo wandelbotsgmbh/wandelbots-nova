@@ -21,11 +21,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from novax import Novax
 from policy import (
-    CameraSet,
-    FeatureGroup,
-    FeatureMap,
     Gr00tPolicyClient,
+    Observation,
     PolicyExecutor,
+    PolicySchema,
+    WebRTCCameras,
 )
 from policy.executor import ExecutorStatus
 from pydantic import BaseModel, Field
@@ -58,6 +58,65 @@ CAM_RIGHT_WRIST = "World_Robot_Robot_0_R__0_00_robotics_usecase_gripper_asm_tn__
 HOME_LEFT = "1.047,-0.698,1.745,-3.142,0.873,2.094"
 HOME_RIGHT = "-1.047,-2.356,-1.745,0.0,-0.873,-2.094"
 DEFAULT_CAMERAS = f"exterior_image_1:{CAM_CONTEXT},exterior_image_2:{CAM_TARGET},left_wrist_image:{CAM_LEFT_WRIST},right_wrist_image:{CAM_RIGHT_WRIST}"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_homes(home_joints: str) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    homes_raw = home_joints.split(";")
+    return (
+        tuple(float(v) for v in homes_raw[0].strip().split(",")),
+        tuple(float(v) for v in homes_raw[1].strip().split(",")),
+    )
+
+
+async def _move_to_home(mg_left, mg_right, home_left, home_right) -> None:
+    fast = MotionSettings(tcp_velocity_limit=500.0)
+    tcp_left = (await mg_left.tcp_names())[0]
+    tcp_right = (await mg_right.tcp_names())[0]
+    t1 = await mg_left.plan([joint_ptp(home_left, settings=fast)], tcp_left)
+    t2 = await mg_right.plan([joint_ptp(home_right, settings=fast)], tcp_right)
+    await asyncio.gather(
+        mg_left.execute(t1, tcp_left, actions=[joint_ptp(home_left, settings=fast)]),
+        mg_right.execute(t2, tcp_right, actions=[joint_ptp(home_right, settings=fast)]),
+    )
+
+
+def _build_schema(
+    mg_left,
+    mg_right,
+    *,
+    camera_server: str = "",
+    camera_devices: str = "",
+    camera_size: int = 224,
+    camera_fps: int = 15,
+    language: str = "",
+) -> PolicySchema:
+    observations = [
+        Observation.joint_positions("left_joint_positions", source=mg_left),
+        Observation.joint_positions("right_joint_positions", source=mg_right),
+    ]
+
+    if language:
+        observations.append(Observation.constant("language", value=language))
+
+    if camera_server and camera_devices:
+        cameras = WebRTCCameras(
+            api_url=camera_server, width=camera_size, height=camera_size,
+            fps=camera_fps, frame_history=1,
+        )
+        for raw_entry in camera_devices.split(","):
+            entry = raw_entry.strip()
+            if ":" in entry:
+                name, device_id = entry.split(":", 1)
+                observations.append(
+                    Observation.image(name.strip(), source=cameras.device(device_id.strip()))
+                )
+
+    return PolicySchema(observations=observations)
 
 
 # ---------------------------------------------------------------------------
@@ -113,63 +172,30 @@ async def groot_dual_arm_controller(
     cell = ctx.nova.cell()
     cycle = Cycle(cell=cell, extra={"program": "groot_dual_arm_controller"})
 
-    # Parse homes
-    homes_raw = home_joints.split(";")
-    home_left = tuple(float(v) for v in homes_raw[0].strip().split(","))
-    home_right = tuple(float(v) for v in homes_raw[1].strip().split(","))
+    home_left, home_right = _parse_homes(home_joints)
 
-    # Connect motion groups
     ctrl_left = await cell.controller("ur5e-left")
     ctrl_right = await cell.controller("ur5e-right")
     mg_left = ctrl_left[0]
     mg_right = ctrl_right[0]
 
-    # Move to home
-    fast = MotionSettings(tcp_velocity_limit=500.0)
-    tcp_left = (await mg_left.tcp_names())[0]
-    tcp_right = (await mg_right.tcp_names())[0]
-    t1 = await mg_left.plan([joint_ptp(home_left, settings=fast)], tcp_left)
-    t2 = await mg_right.plan([joint_ptp(home_right, settings=fast)], tcp_right)
-    await asyncio.gather(
-        mg_left.execute(t1, tcp_left, actions=[joint_ptp(home_left, settings=fast)]),
-        mg_right.execute(t2, tcp_right, actions=[joint_ptp(home_right, settings=fast)]),
+    await _move_to_home(mg_left, mg_right, home_left, home_right)
+
+    schema = _build_schema(
+        mg_left, mg_right,
+        camera_server=camera_server,
+        camera_devices=camera_devices,
+        camera_size=camera_size,
+        camera_fps=camera_fps,
+        language=language,
     )
 
-    # FeatureMap: keys match GR00T modality config
-    feature_map = FeatureMap(groups=[
-        FeatureGroup(motion_group=mg_left, name="left", joint_key="left_joint_positions", tcp=tcp_left),
-        FeatureGroup(motion_group=mg_right, name="right", joint_key="right_joint_positions", tcp=tcp_right),
-    ])
-
-    # Cameras
-    devices = {}
-    for raw_entry in camera_devices.split(","):
-        entry = raw_entry.strip()
-        if ":" in entry:
-            name, device_id = entry.split(":", 1)
-            devices[name.strip()] = device_id.strip()
-
-    cameras = CameraSet(
-        api_url=camera_server,
-        devices=devices,
-        width=camera_size,
-        height=camera_size,
-        fps=camera_fps,
-        frame_history=1,
-    ) if devices else None
-
-    # GR00T client
     client = Gr00tPolicyClient(
         host=groot_host, port=groot_port,
         language=language, timeout_ms=60000,
     )
 
-    executor = PolicyExecutor(
-        feature_map=feature_map,
-        cameras=cameras,
-        policy=client,
-        timeout_s=timeout_s,
-    )
+    executor = PolicyExecutor(schema, client, timeout_s=timeout_s)
 
     await cycle.start()
     try:
@@ -192,7 +218,7 @@ novax_app = Novax()
 
 app = FastAPI(
     title="GR00T Dual-Arm Controller",
-    version="1.0.0",
+    version="2.0.0",
     root_path=BASE_PATH,
     docs_url="/",
 )
@@ -216,8 +242,6 @@ app.add_middleware(
 _executor: PolicyExecutor | None = None
 _nova_instance: nova.Nova | None = None
 _run_task: asyncio.Task[ExecutionResult] | None = None
-
-
 _last_error: str = ""
 
 
@@ -259,62 +283,35 @@ async def start(req: StartRequest = StartRequest()):
         _last_error = f"Nova connect failed: {type(e).__name__}: {e}"
         logger.exception("Failed to connect to Nova")
         return ExecutorStatus(message=_last_error)
-    cell = _nova_instance.cell()
 
-    homes_raw = req.home_joints.split(";")
-    home_left = tuple(float(v) for v in homes_raw[0].strip().split(","))
-    home_right = tuple(float(v) for v in homes_raw[1].strip().split(","))
+    cell = _nova_instance.cell()
+    home_left, home_right = _parse_homes(req.home_joints)
 
     ctrl_left = await cell.controller("ur5e-left")
     ctrl_right = await cell.controller("ur5e-right")
     mg_left = ctrl_left[0]
     mg_right = ctrl_right[0]
 
-    feature_map = FeatureMap(groups=[
-        FeatureGroup(motion_group=mg_left, name="left", joint_key="left_joint_positions"),
-        FeatureGroup(motion_group=mg_right, name="right", joint_key="right_joint_positions"),
-    ])
-
-    devices = {}
-    for raw_entry in req.camera_devices.split(","):
-        entry = raw_entry.strip()
-        if ":" in entry:
-            name, device_id = entry.split(":", 1)
-            devices[name.strip()] = device_id.strip()
-
-    cameras = CameraSet(
-        api_url=req.camera_server,
-        devices=devices,
-        width=req.camera_size,
-        height=req.camera_size,
-        fps=req.camera_fps,
-        frame_history=1,
-    ) if devices else None
+    schema = _build_schema(
+        mg_left, mg_right,
+        camera_server=req.camera_server,
+        camera_devices=req.camera_devices,
+        camera_size=req.camera_size,
+        camera_fps=req.camera_fps,
+        language=req.language,
+    )
 
     client = Gr00tPolicyClient(
         host=req.groot_host, port=req.groot_port,
         language=req.language, timeout_ms=60000,
     )
 
-    _executor = PolicyExecutor(
-        feature_map=feature_map,
-        cameras=cameras,
-        policy=client,
-        timeout_s=req.timeout_s,
-    )
+    _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s)
 
     async def run() -> ExecutionResult:
         global _last_error
         try:
-            fast = MotionSettings(tcp_velocity_limit=500.0)
-            tcp_left = (await mg_left.tcp_names())[0]
-            tcp_right = (await mg_right.tcp_names())[0]
-            t1 = await mg_left.plan([joint_ptp(home_left, settings=fast)], tcp_left)
-            t2 = await mg_right.plan([joint_ptp(home_right, settings=fast)], tcp_right)
-            await asyncio.gather(
-                mg_left.execute(t1, tcp_left, actions=[joint_ptp(home_left, settings=fast)]),
-                mg_right.execute(t2, tcp_right, actions=[joint_ptp(home_right, settings=fast)]),
-            )
+            await _move_to_home(mg_left, mg_right, home_left, home_right)
             return await _executor.run()
         except Exception as e:
             _last_error = f"{type(e).__name__}: {e}"

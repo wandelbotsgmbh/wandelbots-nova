@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 import numpy as np
 import pytest
 
-from policy.feature_map import FeatureGroup, FeatureMap
 from policy.nats import NatsPolicyClient, pack, unpack
+from policy.schema import Observation, PolicySchema
 from policy.types import ActionChunk
 
 
@@ -33,9 +33,9 @@ def _mock_mg(mg_id: str = "0@ur10e") -> MagicMock:
     return mg
 
 
-def _feature_map(mg_id: str = "0@ur10e") -> FeatureMap:
+def _schema(mg_id: str = "0@ur10e") -> PolicySchema:
     mg = _mock_mg(mg_id)
-    return FeatureMap(groups=[FeatureGroup(motion_group=mg, name="arm")])
+    return PolicySchema(observations=[Observation.joint_positions("arm_joints", source=mg)])
 
 
 def _robot_state(joints: list[float] | None = None) -> MagicMock:
@@ -43,6 +43,8 @@ def _robot_state(joints: list[float] | None = None) -> MagicMock:
     state.joints = tuple(joints or [0.0] * 6)
     state.pose = None
     state.tcp = None
+    state.joint_torques = None
+    state.joint_currents = None
     return state
 
 
@@ -54,10 +56,10 @@ async def test_returns_action_chunk() -> None:
         "dt_ms": 33.0,
     })
 
-    fm = _feature_map()
+    s = _schema()
     client = NatsPolicyClient(nc, subject="test")
     await client.connect(["0@ur10e"])
-    result = await client.get_actions({"0@ur10e": _robot_state()}, fm)
+    result = await client.get_actions({"0@ur10e": _robot_state()}, s)
 
     assert isinstance(result, ActionChunk)
     assert result.joints["0@ur10e"] == [[0.1, -1.5, 0.0, 0.0, 0.0, 0.0]]
@@ -66,18 +68,16 @@ async def test_returns_action_chunk() -> None:
 
 @pytest.mark.asyncio
 async def test_returns_flat_features() -> None:
-    """Flat feature response gets parsed back into ActionChunk via feature_map."""
+    """Flat feature response gets parsed back into ActionChunk via schema."""
     nc = _nc()
     nc.request.return_value = _reply({
-        "arm_joint_position_1": 0.1, "arm_joint_position_2": -1.5,
-        "arm_joint_position_3": 0.0, "arm_joint_position_4": 0.0,
-        "arm_joint_position_5": 0.0, "arm_joint_position_6": 0.0,
+        f"arm_joints_{i}": float(i) * 0.1 for i in range(1, 7)
     })
 
-    fm = _feature_map()
+    s = _schema()
     client = NatsPolicyClient(nc)
     await client.connect(["0@ur10e"])
-    result = await client.get_actions({"0@ur10e": _robot_state()}, fm)
+    result = await client.get_actions({"0@ur10e": _robot_state()}, s)
 
     assert isinstance(result, ActionChunk)
     assert "0@ur10e" in result.joints
@@ -88,12 +88,12 @@ async def test_empty_response_raises() -> None:
     nc = _nc()
     nc.request.return_value = _reply({})
 
-    fm = _feature_map()
+    s = _schema()
     client = NatsPolicyClient(nc)
     await client.connect(["0@ur10e"])
 
     with pytest.raises(RuntimeError, match="no joints or features"):
-        await client.get_actions({"0@ur10e": _robot_state()}, fm)
+        await client.get_actions({"0@ur10e": _robot_state()}, s)
 
 
 @pytest.mark.asyncio
@@ -104,12 +104,12 @@ async def test_images_published_separately() -> None:
         "joints": {"0@ur10e": [[0.1, -1.5, 0.0, 0.0, 0.0, 0.0]]},
     })
 
-    fm = _feature_map()
+    s = _schema()
     client = NatsPolicyClient(nc, subject="s")
     await client.connect(["0@ur10e"])
 
     images = {"cam": np.zeros((480, 640, 3), dtype=np.uint8)}
-    await client.get_actions({"0@ur10e": _robot_state()}, fm, images=images)
+    await client.get_actions({"0@ur10e": _robot_state()}, s, images=images)
 
     # Image published on separate subject
     nc.publish.assert_awaited_once()
@@ -117,6 +117,6 @@ async def test_images_published_separately() -> None:
 
     # Scalars sent via request (without the image)
     scalars = unpack(nc.request.call_args[0][1])
-    assert "arm_joint_position_1" in scalars
+    assert "arm_joints_1" in scalars
     assert "cam" not in scalars
     assert scalars["__images__"] == ["cam"]

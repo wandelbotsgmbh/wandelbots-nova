@@ -21,12 +21,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from novax import Novax
 from policy import (
-    CameraSet,
-    FeatureGroup,
-    FeatureMap,
+    BoolMapping,
     NatsPolicyClient,
+    Observation,
     PolicyExecutor,
-    WebRTCCameraConfig,
+    PolicySchema,
+    WebRTCCameras,
 )
 from policy.executor import ExecutorStatus
 from pydantic import BaseModel, Field
@@ -53,7 +53,73 @@ NATS_SUBJECT = config(
     default="nova.v2.cells.cell.apps.mock-policy-service.predict",
     cast=str,
 )
-CAMERA_SERVER = config("CAMERA_SERVER", default="http://172.31.11.80:9100", cast=str)
+CAMERA_SERVER = config("CAMERA_SERVER", default="", cast=str)
+
+HOME_LEFT = "1.047,-0.698,1.745,-3.142,0.873,2.094"
+HOME_RIGHT = "-1.047,-2.356,-1.745,0.0,-0.873,-2.094"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_homes(home_joints: str, mg_ids: list[str]) -> list[tuple[float, ...]]:
+    homes_raw = home_joints.split(";") if ";" in home_joints else [home_joints] * len(mg_ids)
+    return [tuple(float(v) for v in h.strip().split(",")) for h in homes_raw]
+
+
+async def _move_to_home(mgs, homes) -> None:
+    fast = MotionSettings(tcp_velocity_limit=500.0)
+    tasks = []
+    for mg, home in zip(mgs, homes, strict=False):
+        tcp = (await mg.tcp_names())[0]
+        traj = await mg.plan([joint_ptp(home, settings=fast)], tcp)
+        tasks.append(mg.execute(traj, tcp, actions=[joint_ptp(home, settings=fast)]))
+    await asyncio.gather(*tasks)
+
+
+def _build_schema(
+    mgs,
+    *,
+    gripper_ios: str = "",
+    camera_server: str = "",
+    camera_devices: str = "",
+    camera_width: int = 640,
+    camera_height: int = 480,
+    camera_fps: int = 15,
+) -> PolicySchema:
+    observations = []
+
+    # Joint positions per arm
+    for i, mg in enumerate(mgs):
+        observations.append(Observation.joint_positions(f"arm_{i}_joints", source=mg))
+
+    # Gripper IOs
+    gripper_io_list = [x.strip() for x in gripper_ios.split(",") if x.strip()]
+    for i, mg in enumerate(mgs):
+        if i < len(gripper_io_list):
+            observations.append(
+                Observation.io(
+                    f"arm_{i}_gripper", source=mg, io=gripper_io_list[i],
+                    mapping=BoolMapping(on=100.0),
+                )
+            )
+
+    # Cameras
+    if camera_server and camera_devices:
+        cameras = WebRTCCameras(
+            api_url=camera_server, width=camera_width, height=camera_height, fps=camera_fps,
+        )
+        for raw_entry in camera_devices.split(","):
+            entry = raw_entry.strip()
+            if ":" in entry:
+                name, device_id = entry.split(":", 1)
+                observations.append(
+                    Observation.image(name.strip(), source=cameras.device(device_id.strip()))
+                )
+
+    return PolicySchema(observations=observations)
 
 
 # ---------------------------------------------------------------------------
@@ -93,20 +159,17 @@ async def nats_policy_controller(
         description="Comma-separated motion group IDs",
     ),
     home_joints: str = Field(
-        default="1.047,-0.698,1.745,-3.142,0.873,2.094;-1.047,-2.356,-1.745,0.0,-0.873,-2.094",
+        default=f"{HOME_LEFT};{HOME_RIGHT}",
         description="Semicolon-separated home joint positions per motion group",
     ),
     gripper_ios: str = Field(
         default="digital_out[0],digital_out[0]",
         description="Comma-separated gripper IO key per motion group",
     ),
-    camera_server: str = Field(
-        default="",
-        description="WebRTC camera server URL (empty = no cameras)",
-    ),
+    camera_server: str = Field(default="", description="WebRTC camera server URL (empty = no cameras)"),
     camera_devices: str = Field(
         default="",
-        description="Comma-separated camera entries as name:device_id (e.g. 'flange:315122271048,left:314522065367')",
+        description="Comma-separated camera entries as name:device_id",
     ),
     camera_width: int = Field(default=640, description="Camera frame width"),
     camera_height: int = Field(default=480, description="Camera frame height"),
@@ -117,8 +180,7 @@ async def nats_policy_controller(
     cycle = Cycle(cell=cell, extra={"program": "nats_policy_controller"})
 
     mg_ids = [mg.strip() for mg in motion_groups.split(",")]
-    homes_raw = home_joints.split(";") if ";" in home_joints else [home_joints] * len(mg_ids)
-    homes = [tuple(float(v) for v in h.strip().split(",")) for h in homes_raw]
+    homes = _parse_homes(home_joints, mg_ids)
 
     mgs = []
     for mg_id in mg_ids:
@@ -126,53 +188,26 @@ async def nats_policy_controller(
         ctrl = await cell.controller(ctrl_name)
         mgs.append(ctrl.motion_group(mg_id))
 
-    # Move to home
-    fast = MotionSettings(tcp_velocity_limit=500.0)
-    home_tasks = []
-    for mg, home in zip(mgs, homes, strict=False):
-        tcp = (await mg.tcp_names())[0]
-        traj = await mg.plan([joint_ptp(home, settings=fast)], tcp)
-        home_tasks.append(mg.execute(traj, tcp, actions=[joint_ptp(home, settings=fast)]))
-    await asyncio.gather(*home_tasks)
+    await _move_to_home(mgs, homes)
 
-    # Connect NATS
     nats_config = ctx.nova.config.nats_client_config or {}
     nats_url = NATS_BROKER or nats_config.get("servers", "nats://localhost:4222")
     nc = await nats.connect(servers=nats_url, max_reconnect_attempts=10)
 
     try:
-        gripper_io_list = [x.strip() for x in gripper_ios.split(",") if x.strip()]
-        feature_map = FeatureMap(groups=[
-            FeatureGroup(
-                motion_group=mg,
-                name=f"arm_{i}",
-                ios={f"arm_{i}_gripper": gripper_io_list[i]} if i < len(gripper_io_list) else None,
-            )
-            for i, mg in enumerate(mgs)
-        ])
-
-        # Build cameras if configured
-        cameras: CameraSet | None = None
-        if camera_server and camera_devices:
-            devices = {}
-            for raw_entry in camera_devices.split(","):
-                entry = raw_entry.strip()
-                if ":" in entry:
-                    name, device_id = entry.split(":", 1)
-                    devices[name.strip()] = device_id.strip()
-            if devices:
-                cameras = CameraSet(
-                    api_url=camera_server,
-                    devices=devices,
-                    width=camera_width,
-                    height=camera_height,
-                    fps=camera_fps,
-                )
+        schema = _build_schema(
+            mgs,
+            gripper_ios=gripper_ios,
+            camera_server=camera_server,
+            camera_devices=camera_devices,
+            camera_width=camera_width,
+            camera_height=camera_height,
+            camera_fps=camera_fps,
+        )
 
         executor = PolicyExecutor(
-            feature_map=feature_map,
-            cameras=cameras,
-            policy=NatsPolicyClient(nc, subject=nats_subject, timeout=5.0),
+            schema,
+            NatsPolicyClient(nc, subject=nats_subject, timeout=5.0),
             timeout_s=timeout_s,
         )
 
@@ -195,7 +230,7 @@ novax_app = Novax()
 
 app = FastAPI(
     title="Policy Robot Controller",
-    version="1.2.0",
+    version="2.0.0",
     root_path=BASE_PATH,
     docs_url="/",
 )
@@ -213,7 +248,7 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
-# Manual REST control (kept for backwards compatibility / ad-hoc use)
+# Manual REST control
 # ---------------------------------------------------------------------------
 
 _executor: PolicyExecutor | None = None
@@ -225,26 +260,19 @@ _run_task: asyncio.Task[ExecutionResult] | None = None
 class CameraConfig(BaseModel):
     name: str
     device_id: str
-    width: int = 640
-    height: int = 480
-    fps: int = 30
 
 
 class StartRequest(BaseModel):
     nats_subject: str = Field(default=NATS_SUBJECT)
     motion_groups: str = Field(default="0@ur5e-left,0@ur5e-right")
-    home_joints: str = Field(
-        default="1.047,-0.698,1.745,-3.142,0.873,2.094;-1.047,-2.356,-1.745,0.0,-0.873,-2.094",
-    )
+    home_joints: str = Field(default=f"{HOME_LEFT};{HOME_RIGHT}")
     timeout_s: float = Field(default=10.0, ge=0)
+    gripper_ios: str = Field(default="digital_out[0],digital_out[0]")
     camera_server: str = Field(default=CAMERA_SERVER)
-    cameras: list[CameraConfig] = Field(
-        default=[
-            CameraConfig(name="flange", device_id="315122271048"),
-            CameraConfig(name="left", device_id="314522065367"),
-            CameraConfig(name="right", device_id="319522063360"),
-        ],
-    )
+    cameras: list[CameraConfig] = Field(default=[])
+    camera_width: int = Field(default=640)
+    camera_height: int = Field(default=480)
+    camera_fps: int = Field(default=15)
 
 
 @app.get("/status", response_model=ExecutorStatus)
@@ -274,8 +302,7 @@ async def start(req: StartRequest = StartRequest()):
         _nats_client = await nats.connect(servers=nats_url, max_reconnect_attempts=10)
 
     mg_ids = [mg.strip() for mg in req.motion_groups.split(",")]
-    homes_raw = req.home_joints.split(";") if ";" in req.home_joints else [req.home_joints] * len(mg_ids)
-    homes = [tuple(float(v) for v in h.strip().split(",")) for h in homes_raw]
+    homes = _parse_homes(req.home_joints, mg_ids)
 
     mgs = []
     for mg_id in mg_ids:
@@ -283,40 +310,34 @@ async def start(req: StartRequest = StartRequest()):
         ctrl = await cell.controller(ctrl_name)
         mgs.append(ctrl.motion_group(mg_id))
 
-    feature_map = FeatureMap(
-        groups=[
-            FeatureGroup(motion_group=mg, name=f"arm_{i}", ios={f"arm_{i}_gripper": "digital_out[0]"})
-            for i, mg in enumerate(mgs)
-        ]
+    # Build camera_devices string from camera list
+    camera_devices = ",".join(f"{c.name}:{c.device_id}" for c in req.cameras)
+
+    schema = _build_schema(
+        mgs,
+        gripper_ios=req.gripper_ios,
+        camera_server=req.camera_server,
+        camera_devices=camera_devices,
+        camera_width=req.camera_width,
+        camera_height=req.camera_height,
+        camera_fps=req.camera_fps,
     )
 
-    cameras: CameraSet | None = None
-    if req.camera_server and req.cameras:
-        camera_configs = {
-            cam.name: WebRTCCameraConfig(
-                api_url=req.camera_server, device_id=cam.device_id,
-                width=cam.width, height=cam.height, fps=cam.fps,
-            )
-            for cam in req.cameras
-        }
-        cameras = CameraSet(configs=camera_configs)
-
     _executor = PolicyExecutor(
-        feature_map=feature_map,
-        cameras=cameras,
-        policy=NatsPolicyClient(_nats_client, subject=req.nats_subject, timeout=5.0),
+        schema,
+        NatsPolicyClient(_nats_client, subject=req.nats_subject, timeout=5.0),
         timeout_s=req.timeout_s,
     )
 
     async def run() -> ExecutionResult:
-        fast = MotionSettings(tcp_velocity_limit=500.0)
-        home_tasks = []
-        for mg, home in zip(mgs, homes, strict=False):
-            tcp = (await mg.tcp_names())[0]
-            traj = await mg.plan([joint_ptp(home, settings=fast)], tcp)
-            home_tasks.append(mg.execute(traj, tcp, actions=[joint_ptp(home, settings=fast)]))
-        await asyncio.gather(*home_tasks)
-        return await _executor.run()
+        try:
+            await _move_to_home(mgs, homes)
+            return await _executor.run()
+        except Exception as e:
+            logger.exception("Run task failed")
+            if _executor is not None:
+                _executor.status.message = f"{type(e).__name__}: {e}"
+            raise
 
     _run_task = asyncio.create_task(run())
     return _executor.status

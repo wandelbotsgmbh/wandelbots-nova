@@ -5,24 +5,25 @@ ZMQ transport for NVIDIA GR00T inference servers.
 ## Usage
 
 ```python
-from policy import FeatureMap, FeatureGroup, TcpFormat
-from policy.groot import Gr00tPolicyClient
+from policy import Gr00tPolicyClient, Observation, PolicyExecutor, PolicySchema, TcpFormat
 
-feature_map = FeatureMap(groups=[
-    FeatureGroup(
-        motion_group=mg,
-        name="left",
-        joint_key="left_arm",
-        tcp_key="left_eef_9d",
-        tcp_format=TcpFormat.ROT6D,
-        ios={"left_gripper": "digital_out[0]"},
-    ),
+schema = PolicySchema(observations=[
+    Observation.joint_positions("left_arm", source=mg_left),
+    Observation.tcp("left_eef_9d", source=mg_left, format=TcpFormat.ROT6D),
+    Observation.joint_positions("right_arm", source=mg_right),
+    Observation.tcp("right_eef_9d", source=mg_right, format=TcpFormat.ROT6D),
+    Observation.io("left_gripper", source=mg_left, io="digital_out[0]",
+                   mapping=BoolMapping(on=100.0)),
+    Observation.constant("language", value="Pick up the box."),
 ])
 
-client = Gr00tPolicyClient(host="gpu-server", port=5555)
+client = Gr00tPolicyClient(host="gpu-server", port=5555, language="Pick up the box.")
+
+executor = PolicyExecutor(schema, client, timeout_s=30.0)
+result = await executor.run()
 ```
 
-The client uses `FeatureGroup` properties (`joint_key`, `tcp_key`, `tcp_format`, `ios`) to build GR00T-compatible numpy array observations and decode the returned action arrays.
+The client uses `PolicySchema` observations to build GR00T-compatible numpy array observations and decode the returned action arrays. Joint position keys become `state.<key>`, TCP keys become `state.<key>`, IO keys become `state.<key>`.
 
 ## Wire Protocol
 
@@ -31,21 +32,19 @@ Uses the GR00T REQ/REP msgpack protocol:
 - **Observations**: numpy arrays serialized as `.npy` bytes inside msgpack
 - **Actions**: returned as `(action_dict, info_dict)` tuple
 
-## FeatureGroup Keys for GR00T
+## Observation Keys for GR00T
 
-Override the default key names to match your GR00T embodiment config:
+The `key` argument in each `Observation.*()` call becomes the GR00T state key:
 
 ```python
-FeatureGroup(
-    motion_group=mg,
-    name="left",
-    joint_key="left_arm",          # → obs["state.left_arm"]
-    tcp_key="left_eef_9d",         # → obs["state.left_eef_9d"]
-    ios={"left_gripper": "..."},   # → obs["state.left_gripper"]
-    tcp_format=TcpFormat.ROT6D,    # position + 6D rotation
-    model_dof=7,                   # pad/truncate to match model
-)
+Observation.joint_positions("left_arm", source=mg)     # → obs["state.left_arm"]
+Observation.tcp("left_eef_9d", source=mg,
+                format=TcpFormat.ROT6D)                 # → obs["state.left_eef_9d"]
+Observation.io("left_gripper", source=mg,
+               io="digital_out[0]")                     # → obs["state.left_gripper"]
 ```
+
+Use `model_dof` on `Gr00tPolicyClient` to pad/truncate joints to match the model's expected DOF.
 
 ## Example Apps
 

@@ -55,7 +55,7 @@ import asyncio
 
 import aiohttp
 from nova import Nova
-from policy import FeatureGroup, FeatureMap, PolicyExecutor
+from policy import Observation, PolicyExecutor, PolicySchema
 
 POLICY_URL = "http://gpu-server:8080/predict"
 
@@ -66,8 +66,8 @@ async def main():
         ctrl = await cell.controller("ur10e")
         mg = ctrl[0]
 
-        feature_map = FeatureMap(groups=[
-            FeatureGroup(motion_group=mg, name="arm"),
+        schema = PolicySchema(observations=[
+            Observation.joint_positions("arm_joints", source=mg),
         ])
 
         session = aiohttp.ClientSession()
@@ -77,8 +77,8 @@ async def main():
                 return await resp.json()
 
         executor = PolicyExecutor(
-            feature_map=feature_map,
-            policy=my_policy,   # any async callable works
+            schema,
+            my_policy,   # any async callable works
             timeout_s=10.0,
         )
 
@@ -95,10 +95,10 @@ There's no hidden state machine — the executor owns all complexity (PID contro
 IO streaming, e-stop detection). Any async function that maps `obs → actions` works.
 
 The `obs` dict passed to the policy contains flat named features:
-- **Joint positions** — `arm_joint_position_1` … `arm_joint_position_6`
-- **IO values** — if configured via `FeatureGroup.ios`
-- **TCP pose** — if configured via `FeatureGroup.tcp_format`
-- **Camera images** — numpy arrays, if a `CameraSet` is passed to the executor
+- **Joint positions** — `arm_joints_1` … `arm_joints_6`
+- **IO values** — if configured via `Observation.io()`
+- **TCP pose** — if configured via `Observation.tcp()`
+- **Camera images** — numpy arrays, if `Observation.image()` entries are present
 
 The policy returns a dict with the same keys containing target values.
 
@@ -118,12 +118,11 @@ See [`nats/README.md`](nats/README.md) and [`groot/README.md`](groot/README.md) 
 
 ```python
 executor = PolicyExecutor(
-    feature_map=feature_map,
-    policy=my_policy_client,
-    cameras=camera_set,             # WebRTC cameras
+    schema,
+    my_policy_client,
     timeout_s=10.0,                 # 0 = run until stop()
     safety_guards=[guard_fn],
-    rate_hz=30,
+    inference_hz=30,
 )
 
 # Blocking — runs until timeout/stop/error:
@@ -154,29 +153,25 @@ executor.stop()
 
 See [`nats/README.md`](nats/README.md) and [`groot/README.md`](groot/README.md) for transport-specific details.
 
-## FeatureMap
+## PolicySchema
 
 Decouples the policy from hardware topology. The policy sees a flat dictionary of named features — it never knows about motion groups, controllers, or hardware IO keys. Feature names are the contract between training and inference.
 
 ```python
-from policy import FeatureMap, FeatureGroup, PolicyExecutor
+from policy import BoolMapping, Observation, PolicyExecutor, PolicySchema
 
-feature_map = FeatureMap(groups=[
-    FeatureGroup(
-        motion_group=mg_left,
-        name="left",
-        ios={"left_gripper": "digital_out[0]"},
-    ),
-    FeatureGroup(
-        motion_group=mg_right,
-        name="right",
-        ios={"right_gripper": "digital_out[0]"},
-    ),
+schema = PolicySchema(observations=[
+    Observation.joint_positions("left_joints", source=mg_left),
+    Observation.joint_positions("right_joints", source=mg_right),
+    Observation.io("left_gripper", source=mg_left, io="digital_out[0]",
+                   mapping=BoolMapping(on=100.0)),
+    Observation.io("right_gripper", source=mg_right, io="digital_out[0]",
+                   mapping=BoolMapping(on=100.0)),
 ])
 
 executor = PolicyExecutor(
-    feature_map=feature_map,
-    policy=my_policy,
+    schema,
+    my_policy,
     timeout_s=10.0,
 )
 ```
@@ -185,13 +180,13 @@ This produces observations like:
 
 ```python
 {
-    "left_joint_position_1": 0.1,
-    "left_joint_position_2": -1.5,
+    "left_joints_1": 0.1,
+    "left_joints_2": -1.5,
     ...
     "left_gripper": 0.0,
-    "right_joint_position_1": 0.2,
+    "right_joints_1": 0.2,
     ...
-    "right_gripper": 1.0,
+    "right_gripper": 100.0,
 }
 ```
 
@@ -199,31 +194,29 @@ The policy returns the same keys with target values.
 
 ## Cameras
 
-WebRTC cameras are attached to the executor. Images are included in every observation:
+WebRTC cameras are declared in the schema via `Observation.image()`:
 
 ```python
-from policy import CameraSet
+from policy import Observation, PolicySchema, WebRTCCameras
 
-cameras = CameraSet(
+cameras = WebRTCCameras(
     api_url="http://192.168.1.8:9100",
-    devices={"flange": "315122271048", "left": "314522065367"},
-    width=640,
-    height=480,
-    fps=15,
+    width=640, height=480, fps=15,
 )
 
-executor = PolicyExecutor(
-    feature_map=feature_map,
-    cameras=cameras,
-    policy=my_policy,
-    timeout_s=10.0,
-)
+schema = PolicySchema(observations=[
+    Observation.joint_positions("arm_joints", source=mg),
+    Observation.image("flange", source=cameras.device("315122271048")),
+    Observation.image("left", source=cameras.device("314522065367")),
+])
+
+executor = PolicyExecutor(schema, my_policy, timeout_s=10.0)
 ```
 
 Images arrive as `numpy.ndarray` (H×W×3, uint8, RGB) in the observation dict:
 
 ```python
-obs["camera.flange"]  # shape (480, 640, 3), dtype uint8
+obs["flange"]  # shape (480, 640, 3), dtype uint8
 ```
 
 ## Safety Guards
@@ -242,7 +235,7 @@ def io_guard(ctx: GuardState) -> bool:
     sensor = ctx.io_values.get("digital_in[3]")
     return sensor != 1  # stop if sensor goes high
 
-executor = PolicyExecutor(..., safety_guards=[workspace_guard, io_guard])
+executor = PolicyExecutor(schema, policy, safety_guards=[workspace_guard, io_guard])
 ```
 
 ## Examples
@@ -251,8 +244,9 @@ executor = PolicyExecutor(..., safety_guards=[workspace_guard, io_guard])
 |---------|-------------|
 | [`JOGGING.md`](JOGGING.md) | **PID Jogging** — direct position-controlled jogging with `jog_joints()` / `jog_tcp()` |
 | [`jogging_dualarm.py`](examples/jogging_dualarm.py) | Single-arm + dual-arm jogging, joint + TCP modes |
-| [`execute_policy_on_dualarm.py`](examples/execute_policy_on_dualarm.py) | Two UR10e robots, FeatureMap, cameras, safety guards |
+| [`execute_policy_on_dualarm.py`](examples/execute_policy_on_dualarm.py) | Two UR5e robots, PolicySchema, cameras, safety guards |
 | [`execute_groot_single_arm.py`](examples/execute_groot_single_arm.py) | Single arm with GR00T ZMQ inference server |
+| [`execute_groot_dual_arm.py`](examples/execute_groot_dual_arm.py) | Dual arm with GR00T ZMQ + 4 cameras |
 | [`apps/nats/`](examples/apps/nats/) | NATS mock policy + robot controller (deployable Nova apps) |
 | [`apps/zmq/`](examples/apps/zmq/) | GR00T ZMQ mock policy + robot controller (deployable) |
 | [`apps/mock-camera-server/`](examples/apps/mock-camera-server/) | WebRTC camera server for development without real cameras |

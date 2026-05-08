@@ -12,15 +12,26 @@ velocity commands sent via the NOVA Jogging API.
 
 from __future__ import annotations
 
-from policy.cameras import CameraSet, CameraSource, WebRTCCameraConfig
+from policy.cameras import CameraSet, CameraSource, WebRTCCameraConfig, WebRTCCameras
 from policy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
-from policy.feature_map import FeatureGroup, FeatureMap, GroupObservation, TcpFormat
 from policy.groot import Gr00tPolicyClient
 from policy.jogger import JointJogger, TcpJogger, jog_joints, jog_tcp
 from policy.nats import NatsPolicyClient
 from policy.policy_client import CallbackPolicyClient, PolicyClient
 from policy.pose import pose_to_tcp
 from policy.runner import PolicyRunner
+from policy.schema import (
+    Action,
+    BoolMapping,
+    EnumMapping,
+    GroupedObservation,
+    IdentityMapping,
+    Mapping,
+    Observation,
+    PolicySchema,
+    ScaleMapping,
+    TcpFormat,
+)
 from policy.types import (
     ActionChunk,
     EmergencyStopError,
@@ -32,31 +43,38 @@ from policy.types import (
 )
 
 __all__ = [
+    "Action",
     "ActionChunk",
+    "BoolMapping",
     "CallbackPolicyClient",
     "CameraSet",
     "CameraSource",
     "EmergencyStopError",
+    "EnumMapping",
     "ExecutionResult",
     "ExecutorStatus",
-    "FeatureGroup",
-    "FeatureMap",
     "Gr00tPolicyClient",
-    "GroupObservation",
+    "GroupedObservation",
     "GuardState",
     "GuardStopError",
+    "IdentityMapping",
     "JointJogger",
+    "Mapping",
     "MotionError",
     "NatsPolicyClient",
+    "Observation",
     "Phase",
     "PolicyClient",
     "PolicyExecutor",
     "PolicyResponse",
     "PolicyRunner",
     "PolicyRunnerConfig",
+    "PolicySchema",
+    "ScaleMapping",
     "TcpFormat",
     "TcpJogger",
     "WebRTCCameraConfig",
+    "WebRTCCameras",
     "jog_joints",
     "jog_tcp",
     "pose_to_tcp",

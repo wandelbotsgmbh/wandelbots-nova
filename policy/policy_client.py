@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from nova.types import RobotState
-    from policy.feature_map import FeatureMap
+    from policy.schema import PolicySchema
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +22,8 @@ class PolicyClient:
     A policy is a pure function: (robot states, images) → ActionChunk.
     It never signals "done" — episode termination is an executor concern.
 
-    The executor owns the ``FeatureMap`` and passes it to ``get_actions()``
-    on every call. Clients use it for obs/action translation without
-    storing a reference.
+    The executor owns the ``PolicySchema`` and passes it to ``get_actions()``
+    on every call.
     """
 
     async def connect(self, motion_group_ids: list[str]) -> None:
@@ -33,7 +32,7 @@ class PolicyClient:
     async def get_actions(
         self,
         states: dict[str, RobotState],
-        feature_map: FeatureMap,
+        schema: PolicySchema,
         images: dict[str, NDArray[Any]] | None = None,
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
@@ -41,7 +40,7 @@ class PolicyClient:
 
         Args:
             states: Dict mapping motion group ID → current RobotState.
-            feature_map: The executor's FeatureMap for obs/action translation.
+            schema: The executor's PolicySchema for obs/action translation.
             images: Dict mapping camera name → numpy array (H,W,3) or (T,H,W,3).
                     None if no cameras configured.
             io_values: Dict mapping hardware IO key → current value.
@@ -61,7 +60,7 @@ class CallbackPolicyClient(PolicyClient):
     """Policy client that calls a local async function.
 
     The user function receives a flat feature dict and returns either:
-    - A flat feature dict (keys matching the FeatureMap)
+    - A flat feature dict (keys matching the PolicySchema)
     - An ActionChunk directly
     - A dict with "joints" key
     """
@@ -72,11 +71,11 @@ class CallbackPolicyClient(PolicyClient):
     async def get_actions(
         self,
         states: dict[str, RobotState],
-        feature_map: FeatureMap,
+        schema: PolicySchema,
         images: dict[str, NDArray[Any]] | None = None,
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
-        obs: dict[str, Any] = feature_map.build_observation(states, io_values)
+        obs: dict[str, Any] = schema.build_observation(states, io_values)
         if images:
             obs.update(images)
 
@@ -87,7 +86,7 @@ class CallbackPolicyClient(PolicyClient):
         if isinstance(result, dict):
             if "joints" in result:
                 return ActionChunk.from_dict(result)
-            joints, ios = feature_map.parse_action(result)
+            joints, ios = schema.parse_action(result)
             if joints:
                 return ActionChunk(joints=joints, ios=ios)
         msg = f"Policy must return ActionChunk or dict, got {type(result).__name__}"

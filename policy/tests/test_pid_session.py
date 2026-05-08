@@ -36,6 +36,18 @@ def test_no_target_returns_zero():
     assert vel == [0.0] * 6
 
 
+def test_current_state_includes_optional_joint_signals():
+    s = _session()
+    s._current_joint_torques = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    s._current_joint_currents = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5]
+
+    state = s.current_state
+
+    assert state is not None
+    assert state.joint_torques == (0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
+    assert state.joint_currents == (1.0, 1.1, 1.2, 1.3, 1.4, 1.5)
+
+
 def test_target_drives_velocity():
     s = _session()
     s.update_chunk([[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]], dt_ms=0.0)

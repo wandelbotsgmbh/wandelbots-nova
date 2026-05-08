@@ -1,16 +1,9 @@
 """
-Example: Run a mock policy on two UR10e robots with cameras.
-
-Demonstrates:
-- @nova.program decorator for program operator integration
-- FeatureMap for LeRobot-compatible flat feature dicts
-- WebRTC cameras — images included in every observation
-- Safety guards (workspace, speed, IO sensor)
-- Time-based execution (timeout_s)
+Example: Run a mock policy on two UR5e robots with cameras.
 
 Prerequisites:
     NOVA_API=http://<instance-ip>
-    CAMERA_SERVER=http://localhost:9100
+    CAMERA_SERVER=http://192.168.1.22:9100  (optional)
 
 Run:
     PYTHONPATH=. python policy/examples/execute_policy_on_dualarm.py
@@ -22,15 +15,16 @@ import os
 from typing import Any
 
 from policy import (
-    CameraSet,
+    BoolMapping,
     EmergencyStopError,
-    FeatureGroup,
-    FeatureMap,
-    GuardState,
     GuardStopError,
     MotionError,
+    Observation,
     PolicyExecutor,
+    PolicySchema,
+    WebRTCCameras,
 )
+from policy.types import GuardState
 
 import nova
 from nova import api, run_program
@@ -42,51 +36,30 @@ from nova.types import MotionSettings
 HOME_LEFT = (1.047, -0.698, 1.745, -3.142, 0.873, 2.094)
 HOME_RIGHT = (-1.047, -2.356, -1.745, 0.0, -0.873, -2.094)
 
-CAMERA_SERVER = os.environ.get("CAMERA_SERVER", "http://localhost:9100")
-
-
-# ---------------------------------------------------------------------------
-# Policy: obs → actions. Stateless pure function.
-# ---------------------------------------------------------------------------
+CAMERA_SERVER = os.environ.get("CAMERA_SERVER", "http://192.168.1.22:9100")
 
 
 async def mock_policy(obs: dict[str, Any]) -> dict[str, float]:
-    """Mock policy — replace with your own inference call.
-
-    In production, you would call a remote API here (HTTP, NATS, ZMQ, etc.)
-    passing the full observation dict including camera images as numpy arrays.
-    The obs contains joint positions, IO values, and camera frames.
-
-    This mock computes sinusoidal offsets from current joint positions.
-    """
+    """Mock policy — replace with your own inference call."""
     features: dict[str, float] = {}
     for role in ("left", "right"):
         role_phase = 0.0 if role == "left" else math.pi
-        all_joints_sum = sum(obs.get(f"{role}_joint_position_{i}", 0.0) for i in range(1, 7))
+        all_joints_sum = sum(obs.get(f"{role}_joints_{i}", 0.0) for i in range(1, 7))
         for i in range(1, 7):
-            key = f"{role}_joint_position_{i}"
+            key = f"{role}_joints_{i}"
             current = obs.get(key, 0.0)
             phase = role_phase + i * 0.7
-            features[key] = current + 0.3 * math.sin(all_joints_sum * 3.0 + phase)
-        # Gripper: based on shoulder joint sign
-        shoulder = obs.get(f"{role}_joint_position_2", 0.0)
-        features[f"{role}_gripper"] = 1.0 if shoulder > 0 else 0.0
-
+            features[key] = current + 0.05 * math.sin(all_joints_sum * 3.0 + phase)
+        shoulder = obs.get(f"{role}_joints_2", 0.0)
+        features[f"{role}_gripper"] = 100.0 if shoulder > 0 else 0.0
     return features
 
 
-# ---------------------------------------------------------------------------
-# Safety guards
-# ---------------------------------------------------------------------------
-
-
 def workspace_guard(ctx: GuardState) -> bool:
-    """Stop if TCP Z drops below -500mm."""
     return ctx.state.pose.position[2] > -500
 
 
 def speed_guard(ctx: GuardState) -> bool:
-    """Stop if TCP moves faster than 5000mm/s."""
     if ctx.prev_state is None or ctx.dt < 0.005:
         return True
     p0 = ctx.prev_state.pose.position
@@ -96,19 +69,12 @@ def speed_guard(ctx: GuardState) -> bool:
 
 
 def io_guard(ctx: GuardState) -> bool:
-    """Stop when conveyor sensor detects a box (digital_in[0] = True)."""
     if ctx.io_values is None:
         return True
     return ctx.io_values.get("digital_in[0]") is not True
 
 
-# ---------------------------------------------------------------------------
-# Move to home
-# ---------------------------------------------------------------------------
-
-
 async def move_to_home(mg1, mg2) -> None:
-    """Move both robots to home concurrently."""
     fast = MotionSettings(tcp_velocity_limit=500.0)
     tcp1, tcp2 = (await mg1.tcp_names())[0], (await mg2.tcp_names())[0]
     t1 = await mg1.plan([joint_ptp(HOME_LEFT, settings=fast)], tcp1)
@@ -119,15 +85,9 @@ async def move_to_home(mg1, mg2) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Program
-# ---------------------------------------------------------------------------
-
-
 @nova.program(
     id="dual_arm_policy",
     name="Dual-Arm Policy Execution",
-    description="Run a mock policy on two UR10e robots with cameras and safety guards.",
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -152,26 +112,29 @@ async def dual_arm_policy(ctx: nova.ProgramContext):
     print("Moving to home...")
     await move_to_home(mg1, mg2)
 
-    feature_map = FeatureMap(groups=[
-        FeatureGroup(
-            motion_group=mg1, name="left",
-            ios={"left_gripper": "digital_out[0]", "left_conveyor_sensor": "digital_in[0]"},
-        ),
-        FeatureGroup(motion_group=mg2, name="right", ios={"right_gripper": "digital_out[0]"}),
-    ])
+    observations = [
+        Observation.joint_positions("left_joints", source=mg1),
+        Observation.joint_positions("right_joints", source=mg2),
+        Observation.io("left_gripper", source=mg1, io="digital_out[0]",
+                       mapping=BoolMapping(on=100.0)),
+        Observation.io("right_gripper", source=mg2, io="digital_out[0]",
+                       mapping=BoolMapping(on=100.0)),
+        Observation.io("left_sensor", source=mg1, io="digital_in[0]", writable=False),
+    ]
 
-    cameras = CameraSet(
-        api_url=CAMERA_SERVER,
-        devices={"flange": "315122271048", "left": "314522065367", "right": "319522063360"},
-        width=640,
-        height=480,
-        fps=15,
-    ) if CAMERA_SERVER else None
+    if CAMERA_SERVER:
+        cameras = WebRTCCameras(api_url=CAMERA_SERVER, width=640, height=480, fps=15)
+        observations.extend([
+            Observation.image("flange", source=cameras.device("315122271048")),
+            Observation.image("left", source=cameras.device("314522065367")),
+            Observation.image("right", source=cameras.device("319522063360")),
+        ])
+
+    schema = PolicySchema(observations=observations)
 
     executor = PolicyExecutor(
-        feature_map=feature_map,
-        policy=mock_policy,
-        cameras=cameras,
+        schema,
+        mock_policy,
         safety_guards=[workspace_guard, speed_guard, io_guard],
         timeout_s=10.0,
     )

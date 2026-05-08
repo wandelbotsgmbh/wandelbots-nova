@@ -451,7 +451,15 @@ class MotionGroup(AbstractRobot):
             tcps = await self.tcps()
             tcp_offset = Pose(position=tcps[tcp].position, orientation=tcps[tcp].orientation)
             pose = Pose(motion_group_state.flange_pose) @ tcp_offset
-        return RobotState(pose=pose, tcp=tcp, joints=tuple(motion_group_state.joint_position))
+        joint_torques = getattr(motion_group_state, "joint_torque", None)
+        joint_currents = getattr(motion_group_state, "joint_current", None)
+        return RobotState(
+            pose=pose,
+            tcp=tcp,
+            joints=tuple(motion_group_state.joint_position),
+            joint_torques=tuple(joint_torques.root) if joint_torques is not None else None,
+            joint_currents=tuple(joint_currents.root) if joint_currents is not None else None,
+        )
 
     async def stream_state(
         self, response_rate_msecs: int | None = None

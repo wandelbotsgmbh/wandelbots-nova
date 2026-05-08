@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import uvicorn
 from decouple import config
@@ -21,13 +21,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from novax import Novax
 from policy import (
-    CameraSet,
-    FeatureGroup,
-    FeatureMap,
+    BoolMapping,
     Gr00tPolicyClient,
+    Observation,
     PolicyExecutor,
+    PolicySchema,
     TcpFormat,
-    WebRTCCameraConfig,
+    WebRTCCameras,
 )
 from policy.executor import ExecutorStatus
 from pydantic import BaseModel, Field
@@ -51,6 +51,81 @@ BASE_PATH = config("BASE_PATH", default="", cast=str)
 CAMERA_SERVER = config("CAMERA_SERVER", default="", cast=str)
 GROOT_HOST = config("GROOT_HOST", default="app-mock-groot-policy-service", cast=str)
 GROOT_PORT = config("GROOT_PORT", default=5555, cast=int)
+
+HOME_LEFT = "1.047,-0.698,1.745,-3.142,0.873,2.094"
+HOME_RIGHT = "-1.047,-2.356,-1.745,0.0,-0.873,-2.094"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_homes(home_joints: str, mg_ids: list[str]) -> list[tuple[float, ...]]:
+    homes_raw = home_joints.split(";") if ";" in home_joints else [home_joints] * len(mg_ids)
+    return [tuple(float(v) for v in h.strip().split(",")) for h in homes_raw]
+
+
+async def _move_to_home(mgs, homes) -> None:
+    fast = MotionSettings(tcp_velocity_limit=500.0)
+    tasks = []
+    for mg, home in zip(mgs, homes, strict=False):
+        tcp = (await mg.tcp_names())[0]
+        traj = await mg.plan([joint_ptp(home, settings=fast)], tcp)
+        tasks.append(mg.execute(traj, tcp, actions=[joint_ptp(home, settings=fast)]))
+    await asyncio.gather(*tasks)
+
+
+def _build_schema(
+    mgs: list[MotionGroup],
+    *,
+    gripper_ios: str = "",
+    language: str = "",
+    camera_server: str = "",
+    camera_devices: str = "",
+    camera_width: int = 224,
+    camera_height: int = 224,
+    camera_fps: int = 15,
+) -> PolicySchema:
+    observations = [
+        Observation.joint_positions("left_arm", source=mgs[0]),
+        Observation.tcp("left_eef_9d", source=mgs[0], format=TcpFormat.ROT6D),
+        Observation.joint_positions("right_arm", source=mgs[1]),
+        Observation.tcp("right_eef_9d", source=mgs[1], format=TcpFormat.ROT6D),
+    ]
+
+    gripper_io_list = [x.strip() for x in gripper_ios.split(",") if x.strip()]
+    if gripper_io_list:
+        observations.append(
+            Observation.io(
+                "left_gripper", source=mgs[0], io=gripper_io_list[0],
+                mapping=BoolMapping(on=100.0),
+            )
+        )
+    if len(gripper_io_list) > 1:
+        observations.append(
+            Observation.io(
+                "right_gripper", source=mgs[1], io=gripper_io_list[1],
+                mapping=BoolMapping(on=100.0),
+            )
+        )
+
+    if language:
+        observations.append(Observation.constant("language", value=language))
+
+    if camera_server and camera_devices:
+        cameras = WebRTCCameras(
+            api_url=camera_server, width=camera_width, height=camera_height, fps=camera_fps,
+        )
+        for raw_entry in camera_devices.split(","):
+            entry = raw_entry.strip()
+            if ":" in entry:
+                name, device_id = entry.split(":", 1)
+                observations.append(
+                    Observation.image(name.strip(), source=cameras.device(device_id.strip()))
+                )
+
+    return PolicySchema(observations=observations)
 
 
 # ---------------------------------------------------------------------------
@@ -92,21 +167,15 @@ async def groot_policy_controller(
         description="Comma-separated motion group IDs",
     ),
     home_joints: str = Field(
-        default="1.047,-0.698,1.745,-3.142,0.873,2.094;-1.047,-2.356,-1.745,0.0,-0.873,-2.094",
+        default=f"{HOME_LEFT};{HOME_RIGHT}",
         description="Semicolon-separated home joint positions per motion group",
     ),
     gripper_ios: str = Field(
         default="digital_out[0],digital_out[0]",
         description="Comma-separated gripper IO key per motion group",
     ),
-    camera_server: str = Field(
-        default="",
-        description="WebRTC camera server URL (empty = no cameras)",
-    ),
-    camera_devices: str = Field(
-        default="",
-        description="Comma-separated camera entries as name:device_id (e.g. 'exterior_image_1_left:315122271048')",
-    ),
+    camera_server: str = Field(default="", description="WebRTC camera server URL (empty = no cameras)"),
+    camera_devices: str = Field(default="", description="Comma-separated camera entries as name:device_id"),
     camera_width: int = Field(default=224, description="Camera frame width"),
     camera_height: int = Field(default=224, description="Camera frame height"),
     camera_fps: int = Field(default=15, description="Camera frames per second"),
@@ -116,8 +185,7 @@ async def groot_policy_controller(
     cycle = Cycle(cell=cell, extra={"program": "groot_policy_controller"})
 
     mg_ids = [mg.strip() for mg in motion_groups.split(",")]
-    homes_raw = home_joints.split(";") if ";" in home_joints else [home_joints] * len(mg_ids)
-    homes = [tuple(float(v) for v in h.strip().split(",")) for h in homes_raw]
+    homes = _parse_homes(home_joints, mg_ids)
 
     mgs: list[MotionGroup] = []
     for mg_id in mg_ids:
@@ -125,58 +193,24 @@ async def groot_policy_controller(
         ctrl = await cell.controller(ctrl_name)
         mgs.append(ctrl.motion_group(mg_id))
 
-    # Move to home
-    fast = MotionSettings(tcp_velocity_limit=500.0)
-    home_tasks = []
-    for mg, home in zip(mgs, homes, strict=False):
-        tcp = (await mg.tcp_names())[0]
-        traj = await mg.plan([joint_ptp(home, settings=fast)], tcp)
-        home_tasks.append(mg.execute(traj, tcp, actions=[joint_ptp(home, settings=fast)]))
-    await asyncio.gather(*home_tasks)
+    await _move_to_home(mgs, homes)
 
-    gripper_io_list = [x.strip() for x in gripper_ios.split(",") if x.strip()]
-    feature_map = FeatureMap(groups=[
-        FeatureGroup(
-            motion_group=mgs[0], name="left",
-            joint_key="left_arm", tcp_key="left_eef_9d", tcp_format=TcpFormat.ROT6D,
-            ios={"left_gripper": gripper_io_list[0]} if gripper_io_list else None,
-        ),
-        FeatureGroup(
-            motion_group=mgs[1], name="right",
-            joint_key="right_arm", tcp_key="right_eef_9d", tcp_format=TcpFormat.ROT6D,
-            ios={"right_gripper": gripper_io_list[1]} if len(gripper_io_list) > 1 else None,
-        ),
-    ])
-
-    # Build cameras if configured
-    cameras: CameraSet | None = None
-    if camera_server and camera_devices:
-        devices = {}
-        for raw_entry in camera_devices.split(","):
-            entry = raw_entry.strip()
-            if ":" in entry:
-                name, device_id = entry.split(":", 1)
-                devices[name.strip()] = device_id.strip()
-        if devices:
-            cameras = CameraSet(
-                api_url=camera_server,
-                devices=devices,
-                width=camera_width,
-                height=camera_height,
-                fps=camera_fps,
-            )
+    schema = _build_schema(
+        mgs,
+        gripper_ios=gripper_ios,
+        language=language,
+        camera_server=camera_server,
+        camera_devices=camera_devices,
+        camera_width=camera_width,
+        camera_height=camera_height,
+        camera_fps=camera_fps,
+    )
 
     client = Gr00tPolicyClient(
-        host=policy_host, port=policy_port,
-        language=language,
+        host=policy_host, port=policy_port, language=language,
     )
 
-    executor = PolicyExecutor(
-        feature_map=feature_map,
-        cameras=cameras,
-        policy=client,
-        timeout_s=timeout_s,
-    )
+    executor = PolicyExecutor(schema, client, timeout_s=timeout_s)
 
     await cycle.start()
     try:
@@ -196,7 +230,7 @@ novax_app = Novax()
 
 app = FastAPI(
     title="GR00T Robot Controller",
-    version="0.4.0",
+    version="2.0.0",
     root_path=BASE_PATH,
     docs_url="/",
 )
@@ -222,26 +256,19 @@ _nova_instance: nova.Nova | None = None
 _run_task: asyncio.Task[ExecutionResult] | None = None
 
 
-class CameraConfigModel(BaseModel):
-    name: str
-    device_id: str
-    width: int = 640
-    height: int = 480
-    fps: int = 30
-
-
 class StartRequest(BaseModel):
     policy_host: str = Field(default=GROOT_HOST)
     policy_port: int = Field(default=GROOT_PORT)
     motion_groups: str = Field(default="0@ur5e-left,0@ur5e-right")
-    home_joints: str = Field(
-        default="1.047,-0.698,1.745,-3.142,0.873,2.094;-1.047,-2.356,-1.745,0.0,-0.873,-2.094",
-    )
+    home_joints: str = Field(default=f"{HOME_LEFT};{HOME_RIGHT}")
     gripper_ios: str = Field(default="digital_out[0],digital_out[0]")
     language: str = Field(default="Coordinate both arms and move smoothly.")
     timeout_s: float = Field(default=10.0, ge=0)
     camera_server: str = Field(default=CAMERA_SERVER)
-    cameras: list[CameraConfigModel] = Field(default=[])
+    camera_devices: str = Field(default="")
+    camera_width: int = Field(default=224)
+    camera_height: int = Field(default=224)
+    camera_fps: int = Field(default=15)
 
 
 @app.get("/status", response_model=ExecutorStatus)
@@ -264,9 +291,7 @@ async def start(req: StartRequest = StartRequest()) -> ExecutorStatus:
     cell = _nova_instance.cell()
 
     mg_ids = [mg.strip() for mg in req.motion_groups.split(",") if mg.strip()]
-    homes_raw = req.home_joints.split(";")
-    homes = [tuple(float(v) for v in h.strip().split(",")) for h in homes_raw]
-    gripper_io_list = [x.strip() for x in req.gripper_ios.split(",") if x.strip()]
+    homes = _parse_homes(req.home_joints, mg_ids)
 
     mgs: list[MotionGroup] = []
     for mg_id in mg_ids:
@@ -274,45 +299,25 @@ async def start(req: StartRequest = StartRequest()) -> ExecutorStatus:
         ctrl = await cell.controller(ctrl_name)
         mgs.append(ctrl.motion_group(mg_id))
 
-    feature_map = FeatureMap(groups=[
-        FeatureGroup(
-            motion_group=mgs[0], name="left",
-            joint_key="left_arm", tcp_key="left_eef_9d", tcp_format=TcpFormat.ROT6D,
-            ios={"left_gripper": gripper_io_list[0] if gripper_io_list else "digital_out[0]"},
-        ),
-        FeatureGroup(
-            motion_group=mgs[1], name="right",
-            joint_key="right_arm", tcp_key="right_eef_9d", tcp_format=TcpFormat.ROT6D,
-            ios={"right_gripper": gripper_io_list[1] if len(gripper_io_list) > 1 else "digital_out[0]"},
-        ),
-    ])
-
-    cameras: Any = None
-    if req.camera_server and req.cameras:
-        cam_configs = {
-            cam.name: WebRTCCameraConfig(
-                api_url=req.camera_server, device_id=cam.device_id,
-                width=cam.width, height=cam.height, fps=cam.fps,
-            )
-            for cam in req.cameras
-        }
-        cameras = CameraSet(configs=cam_configs)
+    schema = _build_schema(
+        mgs,
+        gripper_ios=req.gripper_ios,
+        language=req.language,
+        camera_server=req.camera_server,
+        camera_devices=req.camera_devices,
+        camera_width=req.camera_width,
+        camera_height=req.camera_height,
+        camera_fps=req.camera_fps,
+    )
 
     _executor = PolicyExecutor(
-        feature_map=feature_map,
-        cameras=cameras,
-        policy=Gr00tPolicyClient(host=req.policy_host, port=req.policy_port, language=req.language),
+        schema,
+        Gr00tPolicyClient(host=req.policy_host, port=req.policy_port, language=req.language),
         timeout_s=req.timeout_s,
     )
 
     async def run() -> ExecutionResult:
-        fast = MotionSettings(tcp_velocity_limit=500.0)
-        tasks = []
-        for mg, home in zip(mgs, homes, strict=False):
-            tcp = (await mg.tcp_names())[0]
-            traj = await mg.plan([joint_ptp(home, settings=fast)], tcp)
-            tasks.append(mg.execute(traj, tcp, actions=[joint_ptp(home, settings=fast)]))
-        await asyncio.gather(*tasks)
+        await _move_to_home(mgs, homes)
         return await _executor.run()
 
     _run_task = asyncio.create_task(run())
