@@ -16,6 +16,7 @@ from policy.cameras import CameraSet, CameraSource, WebRTCCameraConfig
 from policy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
 from policy.feature_map import FeatureGroup, FeatureMap, GroupObservation, TcpFormat
 from policy.groot import Gr00tPolicyClient
+from policy.jogger import JointJogger, TcpJogger, jog_joints, jog_tcp
 from policy.nats import NatsPolicyClient
 from policy.policy_client import CallbackPolicyClient, PolicyClient
 from policy.pose import pose_to_tcp
@@ -44,6 +45,7 @@ __all__ = [
     "GroupObservation",
     "GuardState",
     "GuardStopError",
+    "JointJogger",
     "MotionError",
     "NatsPolicyClient",
     "Phase",
@@ -53,6 +55,9 @@ __all__ = [
     "PolicyRunner",
     "PolicyRunnerConfig",
     "TcpFormat",
+    "TcpJogger",
     "WebRTCCameraConfig",
+    "jog_joints",
+    "jog_tcp",
     "pose_to_tcp",
 ]

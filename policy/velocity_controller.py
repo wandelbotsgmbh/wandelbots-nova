@@ -22,7 +22,7 @@ class VelocityController:
     the target changes or positions are within tolerance.
     """
 
-    velocity_limit: float = 1.5
+    velocity_limit: float | list[float] = 1.5
     tolerance: float = 0.01
     p_gain: float = 3.0
     i_gain: float = 0.0
@@ -35,6 +35,12 @@ class VelocityController:
     _prev_target: list[float] | None = field(default=None, init=False, repr=False)
     _prev_time: float | None = field(default=None, init=False, repr=False)
     _integral: list[float] | None = field(default=None, init=False, repr=False)
+
+    def _limit(self, index: int) -> float:
+        """Get velocity limit for a given axis."""
+        if isinstance(self.velocity_limit, list):
+            return self.velocity_limit[index]
+        return self.velocity_limit
 
     def reset(self) -> None:
         """Reset all internal PID state."""
@@ -106,7 +112,7 @@ class VelocityController:
                 - self.d_gain * deriv[i]
                 + ff[i]
             )
-            vel = max(-self.velocity_limit, min(self.velocity_limit, vel))
+            vel = max(-self._limit(i), min(self._limit(i), vel))
             velocities.append(vel)
 
         return velocities

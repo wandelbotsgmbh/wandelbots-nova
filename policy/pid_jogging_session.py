@@ -41,16 +41,18 @@ class PidJoggingSession:
         config: PolicyRunnerConfig,
         *,
         tcp: str = "",
+        mode: str = "joint",
         safety_guards: list[SafetyGuard] | None = None,
         io_values: dict[str, object] | None = None,
     ) -> None:
         self._motion_group = motion_group
         self._config = config
         self._tcp = tcp
+        self._mode = mode  # "joint" or "cartesian"
         self._safety_guards = safety_guards or []
         self._io_values = io_values
         self._pid = VelocityController(
-            velocity_limit=config.velocity_limit,
+            velocity_limit=self._resolve_velocity_limit_for_mode(),
             tolerance=config.tolerance,
             p_gain=config.p_gain,
             i_gain=config.i_gain,
@@ -83,6 +85,19 @@ class PidJoggingSession:
         self._running = False
         self._failed = False
         self._failure_reason: str = ""
+
+    def _resolve_velocity_limit_for_mode(self) -> float | list[float]:
+        """Resolve velocity limit considering the jogging mode."""
+        if self._mode == "cartesian":
+            return [
+                self._config.tcp_velocity_limit,
+                self._config.tcp_velocity_limit,
+                self._config.tcp_velocity_limit,
+                self._config.tcp_orientation_velocity_limit,
+                self._config.tcp_orientation_velocity_limit,
+                self._config.tcp_orientation_velocity_limit,
+            ]
+        return self._config.velocity_limit
 
     @property
     def motion_group_id(self) -> str:
@@ -219,7 +234,7 @@ class PidJoggingSession:
                 velocity = self._compute_velocity_with_safety()
                 self._jog_tracker.check()
                 yield api.models.ExecuteJoggingRequest(
-                    api.models.JointVelocityRequest(velocity=velocity)
+                    self._make_velocity_request(velocity)
                 )
 
         try:
@@ -273,22 +288,45 @@ class PidJoggingSession:
 
         return self._steps[self._step_index]
 
+    def _make_velocity_request(
+        self, velocity: list[float],
+    ) -> api.models.JointVelocityRequest | api.models.TcpVelocityRequest:
+        """Wrap velocity list into the right request type for the current mode."""
+        if self._mode == "cartesian":
+            return api.models.TcpVelocityRequest(
+                translation=api.models.Vector3d(velocity[:3]),
+                rotation=api.models.Vector3d(velocity[3:6]),
+            )
+        return api.models.JointVelocityRequest(velocity=velocity)
+
+    def _get_current_for_pid(self) -> list[float] | None:
+        """Get current position vector for PID: joints or TCP pose."""
+        if self._mode == "cartesian":
+            if self._current_tcp_pose is None:
+                return None
+            return list(self._current_tcp_pose.position) + list(self._current_tcp_pose.orientation)
+        return self._current_joints
+
+    def _get_zero_velocity(self) -> list[float]:
+        """Return zero velocity of the right dimension."""
+        if self._mode == "cartesian":
+            return [0.0] * 6
+        return [0.0] * (self._num_joints or 6)
+
     def _compute_velocity_with_safety(self) -> list[float]:
         """Compute velocity command, running safety guards first."""
-        if self._num_joints is None:
-            return []
-
-        n = self._num_joints
-        current = self._current_joints
+        current = self._get_current_for_pid()
         target = self._get_active_target()
 
         if current is None or target is None:
-            return [0.0] * n
+            return self._get_zero_velocity()
 
         current_robot_state = None
-        if self._current_tcp_pose is not None:
+        if self._current_tcp_pose is not None and self._current_joints is not None:
             current_robot_state = RobotState(
-                pose=self._current_tcp_pose, tcp=self._current_tcp_name, joints=tuple(current)
+                pose=self._current_tcp_pose,
+                tcp=self._current_tcp_name,
+                joints=tuple(self._current_joints),
             )
 
         # Run safety guards

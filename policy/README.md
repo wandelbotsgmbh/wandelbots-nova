@@ -249,6 +249,8 @@ executor = PolicyExecutor(..., safety_guards=[workspace_guard, io_guard])
 
 | Example | Description |
 |---------|-------------|
+| [`JOGGING.md`](JOGGING.md) | **PID Jogging** — direct position-controlled jogging with `jog_joints()` / `jog_tcp()` |
+| [`jogging_dualarm.py`](examples/jogging_dualarm.py) | Single-arm + dual-arm jogging, joint + TCP modes |
 | [`execute_policy_on_dualarm.py`](examples/execute_policy_on_dualarm.py) | Two UR10e robots, FeatureMap, cameras, safety guards |
 | [`execute_groot_single_arm.py`](examples/execute_groot_single_arm.py) | Single arm with GR00T ZMQ inference server |
 | [`apps/nats/`](examples/apps/nats/) | NATS mock policy + robot controller (deployable Nova apps) |

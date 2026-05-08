@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from policy._sdk import get_api_gateway, get_cell, get_controller_id
+from policy._sdk import get_controller_id
+from policy.estop import EstopMonitor, check_estop, check_sessions
 from policy.io import IOStreamCache
 from policy.runner import PolicyRunner
 from policy.types import ActionChunk, EmergencyStopError, GuardStopError, MotionError
@@ -266,9 +267,8 @@ class PolicyExecutor:
                 self.status.step = step
 
                 # Check failures
-                failure = self._check_failures(step, start_time, last_obs)
-                if failure is not None:
-                    return failure
+                check_sessions(self._runner._sessions)
+                check_estop(self._estop_monitor)
 
                 await asyncio.sleep(interval)
 
@@ -280,6 +280,18 @@ class PolicyExecutor:
                 last_state=last_obs,
                 guard_name=e.guard_name,
             )
+        except MotionError as e:
+            return ExecutionResult(
+                reason="motion_error", steps=step,
+                duration_s=time.monotonic() - start_time,
+                last_state=last_obs, error=e,
+            )
+        except EmergencyStopError as e:
+            return ExecutionResult(
+                reason="estop", steps=step,
+                duration_s=time.monotonic() - start_time,
+                last_state=last_obs, error=e,
+            )
         except asyncio.CancelledError:
             pass
         except (OSError, RuntimeError) as e:
@@ -289,47 +301,6 @@ class PolicyExecutor:
             )
 
         return _result("stopped", step, start_time, last_obs)
-
-    def _check_failures(
-        self, step: int, start_time: float, last_obs: dict[str, Any] | None,
-    ) -> ExecutionResult | None:
-        """Check for session failures and e-stop."""
-        # Session failures (jogging connection lost, guard, motion error)
-        for session in self._runner._sessions.values():
-            if not session.has_failed:
-                continue
-            reason_str = session.failure_reason or ""
-            if "Safety guard" in reason_str:
-                guard_name = reason_str.split("'")[1] if "'" in reason_str else "unknown"
-                return ExecutionResult(
-                    reason="safety_guard", steps=step,
-                    duration_s=time.monotonic() - start_time,
-                    last_state=last_obs, guard_name=guard_name,
-                )
-            if "Motion error" in reason_str or "Jogging paused" in reason_str:
-                msg = reason_str.split(": ", 1)[-1] if ": " in reason_str else reason_str
-                return ExecutionResult(
-                    reason="motion_error", steps=step,
-                    duration_s=time.monotonic() - start_time,
-                    last_state=last_obs,
-                    error=MotionError(session.motion_group_id, msg),
-                )
-            return ExecutionResult(
-                reason="connection_lost", steps=step,
-                duration_s=time.monotonic() - start_time,
-                last_state=last_obs,
-                error=RuntimeError(session.failure_reason),
-            )
-
-        # E-stop
-        if self._estop_monitor is not None and self._estop_monitor.error is not None:
-            return ExecutionResult(
-                reason="estop", steps=step,
-                duration_s=time.monotonic() - start_time,
-                last_state=last_obs, error=self._estop_monitor.error,
-            )
-
-        return None
 
     # -------------------------------------------------------------------------
     # IO stream management
@@ -374,75 +345,3 @@ def _result(
         reason=reason, steps=step, duration_s=time.monotonic() - start_time, last_state=last_obs,
     )
 
-
-# ---------------------------------------------------------------------------
-# E-stop monitor (internal to executor)
-# ---------------------------------------------------------------------------
-
-_OPERATIONAL_SAFETY_STATES = frozenset({"SAFETY_STATE_NORMAL", "SAFETY_STATE_REDUCED"})
-
-
-class EstopMonitor:
-    """Streams controller state and detects safety stops.
-
-    Runs one background WebSocket per unique controller. Sets ``error``
-    when any controller enters a non-operational safety state.
-    """
-
-    def __init__(self, motion_groups: list[object]) -> None:
-        self._motion_groups = motion_groups
-        self._task: asyncio.Task[None] | None = None
-        self.error: EmergencyStopError | None = None
-
-    async def start(self) -> None:
-        self._task = asyncio.create_task(self._run(), name="estop-monitor")
-
-    async def stop(self) -> None:
-        if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
-
-    async def _run(self) -> None:
-        seen: set[str] = set()
-        tasks: list[asyncio.Task[None]] = []
-        for mg in self._motion_groups:
-            ctrl_id = get_controller_id(mg)
-            if ctrl_id not in seen:
-                seen.add(ctrl_id)
-                tasks.append(asyncio.create_task(
-                    self._watch(ctrl_id, get_api_gateway(mg)),
-                    name=f"estop-watch-{ctrl_id}",
-                ))
-        try:
-            await asyncio.gather(*tasks)
-        except asyncio.CancelledError:
-            for t in tasks:
-                t.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-
-    async def _watch(self, controller_id: str, api_client: object) -> None:
-        cell = get_cell(self._motion_groups[0])
-        stream = None
-        try:
-            stream = api_client.controller_api.stream_robot_controller_state(
-                cell=cell, controller=controller_id, response_rate=100,
-            )
-            async for state in stream:
-                safety_raw = getattr(state, "safety_state", None)
-                if safety_raw is None:
-                    continue
-                safety = safety_raw.name if hasattr(safety_raw, "name") else str(safety_raw)
-                if safety not in _OPERATIONAL_SAFETY_STATES:
-                    logger.error("E-stop detected on %s: %s", controller_id, safety)
-                    self.error = EmergencyStopError(controller_id, safety)
-                    return
-        except asyncio.CancelledError:
-            raise
-        except (OSError, RuntimeError):
-            pass
-        finally:
-            if stream is not None:
-                with contextlib.suppress(Exception):
-                    await stream.aclose()
