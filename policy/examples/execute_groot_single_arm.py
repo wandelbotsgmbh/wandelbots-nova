@@ -1,20 +1,13 @@
 """
-Example: Run a real GR00T N1.7 inference server against a single UR10e.
-
-The GR00T server at 172.31.11.129:30555 uses the OXE_DROID embodiment (7-DOF).
-Since our UR10e has 6 joints, we set ``model_dof=7`` on the FeatureGroup which
-causes the Gr00tPolicyClient to pad joints on input and truncate on output.
-
-The camera server delivers 224x224 frames directly via WebRTC (matching GR00T's
-expected input resolution). Camera names match OXE_DROID video keys.
+Example: Run a real GR00T inference server on a single UR10e.
 
 Prerequisites:
     NOVA_API=http://<instance-ip> (with ur10e controller)
-    GR00T server running at 172.31.11.129:30555
-    Camera server running at 192.168.1.8:9100
+    GR00T server running at GROOT_HOST:GROOT_PORT
+    Camera server running at CAMERA_SERVER
 
 Run:
-    NOVA_API=http://172.31.10.248 PYTHONPATH=. uv run --with pyzmq --with msgpack \
+    NOVA_API=http://172.31.13.112 PYTHONPATH=. uv run --with pyzmq --with msgpack \
         python policy/examples/execute_groot_single_arm.py
 """
 
@@ -28,7 +21,6 @@ from policy import (
     FeatureMap,
     Gr00tPolicyClient,
     PolicyExecutor,
-    TcpFormat,
 )
 
 import nova
@@ -41,17 +33,16 @@ from nova.types import MotionSettings
 GROOT_HOST = "172.31.11.129"
 GROOT_PORT = 30555
 HOME = (0.0, -1.571, 1.571, -1.571, -1.571, 0.0)
-TIMEOUT_S = 10.0
-CAMERA_SERVER = "http://192.168.1.8:9100"
+TIMEOUT_S = 30.0
+CAMERA_SERVER = "http://192.168.1.22:9100"
 VIDEO_SIZE = 224
-VIDEO_HISTORY = 2
 CAMERA_FPS = 15
 
 
 @nova.program(
     id="groot_single_arm",
     name="GR00T Single-Arm Policy",
-    description="Run GR00T N1.7 inference on a single UR10e with 3 cameras.",
+    description="Run GR00T inference on a single UR10e with 3 cameras.",
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -76,21 +67,17 @@ async def groot_single_arm(ctx: nova.ProgramContext):
     await mg.execute(traj, tcp, actions=[joint_ptp(HOME, settings=fast)])
     print("  At home.")
 
-    # FeatureMap: single arm with gripper + TCP pose
+    # FeatureMap: single arm, key matches GR00T modality config
     feature_map = FeatureMap(groups=[
         FeatureGroup(
             motion_group=mg,
             name="arm",
             joint_key="joint_position",
-            ios={"gripper_position": "digital_out[0]"},
-            tcp_format=TcpFormat.ROT6D,
-            tcp_key="eef_9d",
             tcp=tcp,
-            model_dof=7,
         ),
     ])
 
-    # Cameras: 224x224@15fps via WebRTC, T=2 history
+    # Cameras: 224x224@15fps via WebRTC
     cameras = CameraSet(
         api_url=CAMERA_SERVER,
         devices={
@@ -101,7 +88,7 @@ async def groot_single_arm(ctx: nova.ProgramContext):
         width=VIDEO_SIZE,
         height=VIDEO_SIZE,
         fps=CAMERA_FPS,
-        frame_history=VIDEO_HISTORY,
+        frame_history=1,
     )
 
     # GR00T client

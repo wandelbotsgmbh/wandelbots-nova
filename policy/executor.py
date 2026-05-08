@@ -77,6 +77,7 @@ class PolicyExecutor:
         safety_guards: list[SafetyGuard] | None = None,
         timeout_s: float = 0,
         inference_hz: float = 30,
+        camera_max_age_s: float = 30.0,
     ) -> None:
         self._motion_groups = feature_map.get_motion_groups()
         self._feature_map = feature_map
@@ -94,6 +95,7 @@ class PolicyExecutor:
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
         self._inference_hz = inference_hz
+        self._camera_max_age_s = camera_max_age_s
 
         self._runner: PolicyRunner | None = None
         self._stop_event = asyncio.Event()
@@ -254,7 +256,7 @@ class PolicyExecutor:
                 if not robot_states:
                     await asyncio.sleep(interval)
                     continue
-                images = self._cameras.read() if self._cameras else None
+                images = self._cameras.read(max_age_s=self._camera_max_age_s) if self._cameras else None
                 self._last_obs = robot_states
                 last_obs = robot_states
 
