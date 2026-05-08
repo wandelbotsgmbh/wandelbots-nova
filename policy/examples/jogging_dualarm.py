@@ -15,6 +15,7 @@ Run:
 """
 
 import math
+import time
 
 from policy import EmergencyStopError, MotionError, jog_joints, jog_tcp
 
@@ -27,9 +28,6 @@ from nova.types import Pose
 HOME_LEFT = [1.047, -0.698, 1.745, -3.142, 0.873, 2.094]
 HOME_RIGHT = [-1.047, -2.356, -1.745, 0.0, -0.873, -2.094]
 
-DURATION = 5.0  # seconds per demo
-HZ = 30
-
 
 # ---------------------------------------------------------------------------
 # 1) Single-arm joint jogging
@@ -37,18 +35,21 @@ HZ = 30
 
 
 async def demo_single_joint(mg):
-    """Oscillate joint 4 on a single arm."""
+    """Oscillate joint 4 for 5 seconds."""
     print("\n=== Single-arm joint jogging ===")
-    t = 0.0
+    duration = 5.0  # seconds
+    amplitude = 0.3  # radians
+    frequency = 0.5  # Hz
+
     async with jog_joints(mg) as jogger:
-        async for state in jogger:
-            target = list(state.joints)
-            target[3] += 0.3 * math.sin(t * 2 * math.pi * 0.5)
-            jogger.target = target
-            t += 1 / HZ
-            if t > DURATION:
+        t0 = time.monotonic()
+        async for state in jogger:  # yields at ~100Hz
+            t = time.monotonic() - t0
+            if t >= duration:
                 break
-    print(f"  {int(t * HZ)} steps")
+            target = list(state.joints)
+            target[3] += amplitude * math.sin(2 * math.pi * frequency * t)
+            jogger.target = target
 
 
 # ---------------------------------------------------------------------------
@@ -57,30 +58,27 @@ async def demo_single_joint(mg):
 
 
 async def demo_single_tcp(mg, tcp_name: str):
-    """Trace a circle in XY with the TCP."""
+    """Trace a 30mm circle in 2.5 seconds."""
     print("\n=== Single-arm TCP jogging ===")
-    t = 0.0
+    duration = 2.5  # seconds for one full circle
+    radius = 30.0  # mm
+
     async with jog_tcp(mg, tcp=tcp_name) as jogger:
-        # Read the starting pose from the first state
-        start_pose: Pose | None = None
-        async for state in jogger:
+        t0 = time.monotonic()
+        start_pose = None
+        async for state in jogger:  # yields at ~100Hz
+            t = time.monotonic() - t0
+            if t >= duration:
+                break
             if start_pose is None:
                 start_pose = state.pose
-            radius = 30.0  # mm
-            freq = 0.3  # Hz
-            target = Pose(
-                start_pose.position[0] + radius * math.cos(2 * math.pi * freq * t),
-                start_pose.position[1] + radius * math.sin(2 * math.pi * freq * t),
+            angle = 2 * math.pi * (t / duration)  # 0 → 2π over duration
+            jogger.target = Pose(
+                start_pose.position[0] + radius * math.cos(angle),
+                start_pose.position[1] + radius * math.sin(angle),
                 start_pose.position[2],
-                start_pose.orientation[0],
-                start_pose.orientation[1],
-                start_pose.orientation[2],
+                *start_pose.orientation,
             )
-            jogger.target = target
-            t += 1 / HZ
-            if t > DURATION:
-                break
-    print(f"  {int(t * HZ)} steps")
 
 
 # ---------------------------------------------------------------------------
@@ -89,24 +87,24 @@ async def demo_single_tcp(mg, tcp_name: str):
 
 
 async def demo_dual_joint(mg1, mg2):
-    """Mirror-symmetric oscillation on two arms."""
+    """Mirror-symmetric oscillation on two arms for 5 seconds."""
     print("\n=== Dual-arm joint jogging ===")
-    t = 0.0
-    async with jog_joints([mg1, mg2]) as jogger:
-        async for states in jogger:
-            s1, s2 = states[mg1], states[mg2]
-            t1 = list(s1.joints)
-            t2 = list(s2.joints)
+    duration = 5.0  # seconds
+    amplitude = 0.3  # radians
+    frequency = 0.5  # Hz
 
-            wave = 0.3 * math.sin(t * 2 * math.pi * 0.5)
+    async with jog_joints([mg1, mg2]) as jogger:
+        t0 = time.monotonic()
+        async for states in jogger:  # yields at ~100Hz
+            t = time.monotonic() - t0
+            if t >= duration:
+                break
+            wave = amplitude * math.sin(2 * math.pi * frequency * t)
+            t1 = list(states[mg1].joints)
+            t2 = list(states[mg2].joints)
             t1[3] += wave
             t2[3] -= wave  # mirror
-
             jogger.target = {mg1: t1, mg2: t2}
-            t += 1 / HZ
-            if t > DURATION:
-                break
-    print(f"  {int(t * HZ)} steps")
 
 
 # ---------------------------------------------------------------------------
@@ -115,38 +113,38 @@ async def demo_dual_joint(mg1, mg2):
 
 
 async def demo_dual_tcp(mg1, mg2, tcp1: str, tcp2: str):
-    """Both TCPs trace circles — left clockwise, right counter-clockwise."""
+    """Both TCPs trace 30mm circles for 5 seconds — left CW, right CCW."""
     print("\n=== Dual-arm TCP jogging ===")
-    t = 0.0
+    duration = 5.0  # seconds
+    radius = 30.0  # mm
+    frequency = 0.3  # Hz
+
     async with jog_tcp({mg1: tcp1, mg2: tcp2}) as jogger:
-        start1: Pose | None = None
-        start2: Pose | None = None
-        async for states in jogger:
+        t0 = time.monotonic()
+        start1 = None
+        start2 = None
+        async for states in jogger:  # yields at ~100Hz
+            t = time.monotonic() - t0
+            if t >= duration:
+                break
             if start1 is None:
                 start1 = states[mg1].pose
                 start2 = states[mg2].pose
-
-            radius = 30.0
-            freq = 0.3
-            angle = 2 * math.pi * freq * t
-
-            target1 = Pose(
-                start1.position[0] + radius * math.cos(angle),
-                start1.position[1] + radius * math.sin(angle),
-                start1.position[2],
-                *start1.orientation,
-            )
-            target2 = Pose(
-                start2.position[0] + radius * math.cos(-angle),
-                start2.position[1] + radius * math.sin(-angle),
-                start2.position[2],
-                *start2.orientation,
-            )
-            jogger.target = {mg1: target1, mg2: target2}
-            t += 1 / HZ
-            if t > DURATION:
-                break
-    print(f"  {int(t * HZ)} steps")
+            angle = 2 * math.pi * frequency * t
+            jogger.target = {
+                mg1: Pose(
+                    start1.position[0] + radius * math.cos(angle),
+                    start1.position[1] + radius * math.sin(angle),
+                    start1.position[2],
+                    *start1.orientation,
+                ),
+                mg2: Pose(
+                    start2.position[0] + radius * math.cos(-angle),
+                    start2.position[1] + radius * math.sin(-angle),
+                    start2.position[2],
+                    *start2.orientation,
+                ),
+            }
 
 
 # ---------------------------------------------------------------------------
