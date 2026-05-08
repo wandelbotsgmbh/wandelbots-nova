@@ -2,7 +2,7 @@
 Example: Run a real GR00T inference server on a single UR10e.
 
 Prerequisites:
-    NOVA_API=http://<instance-ip> (with ur10e controller)
+    NOVA_API=http://<instance-ip> (with ur5e-left controller)
     GR00T server running at GROOT_HOST:GROOT_PORT
     Camera server running at CAMERA_SERVER
 
@@ -32,7 +32,7 @@ from nova.types import MotionSettings
 
 GROOT_HOST = "172.31.11.129"
 GROOT_PORT = 30555
-HOME = (0.0, -1.571, 1.571, -1.571, -1.571, 0.0)
+HOME = (1.047, -0.698, 1.745, -3.142, 0.873, 2.094)
 TIMEOUT_S = 30.0
 CAMERA_SERVER = "http://192.168.1.22:9100"
 VIDEO_SIZE = 224
@@ -46,9 +46,9 @@ CAMERA_FPS = 15
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name="ur10e",
+                name="ur5e-left",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type="universalrobots-ur10e",
+                type="universalrobots-ur5e",
             ),
         ],
         cleanup_controllers=False,
@@ -56,7 +56,7 @@ CAMERA_FPS = 15
 )
 async def groot_single_arm(ctx: nova.ProgramContext):
     cell = ctx.nova.cell()
-    ctrl = await cell.controller("ur10e")
+    ctrl = await cell.controller("ur5e-left")
     mg = ctrl[0]
 
     # Move to home

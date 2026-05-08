@@ -24,8 +24,8 @@ from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import Pose
 
-HOME_LEFT = [0.0, -1.571, 1.571, -1.571, -1.571, 0.0]
-HOME_RIGHT = [0.0, -1.571, -1.571, -1.571, 1.571, 0.0]
+HOME_LEFT = [1.047, -0.698, 1.745, -3.142, 0.873, 2.094]
+HOME_RIGHT = [-1.047, -2.356, -1.745, 0.0, -0.873, -2.094]
 
 DURATION = 5.0  # seconds per demo
 HZ = 30
@@ -161,14 +161,14 @@ async def demo_dual_tcp(mg1, mg2, tcp1: str, tcp2: str):
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name="ur10e",
+                name="ur5e-left",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type="universalrobots-ur10e",
+                type="universalrobots-ur5e",
             ),
             virtual_controller(
-                name="ur10e-2",
+                name="ur5e-right",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type="universalrobots-ur10e",
+                type="universalrobots-ur5e",
             ),
         ],
         cleanup_controllers=False,
@@ -176,8 +176,8 @@ async def demo_dual_tcp(mg1, mg2, tcp1: str, tcp2: str):
 )
 async def jogging_dualarm(ctx: nova.ProgramContext):
     cell = ctx.nova.cell()
-    mg1 = (await cell.controller("ur10e"))[0]
-    mg2 = (await cell.controller("ur10e-2"))[0]
+    mg1 = (await cell.controller("ur5e-left"))[0]
+    mg2 = (await cell.controller("ur5e-right"))[0]
     tcp1 = (await mg1.tcp_names())[0]
     tcp2 = (await mg2.tcp_names())[0]
 

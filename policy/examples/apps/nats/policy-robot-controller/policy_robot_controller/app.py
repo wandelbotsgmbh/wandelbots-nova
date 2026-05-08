@@ -64,18 +64,18 @@ CAMERA_SERVER = config("CAMERA_SERVER", default="http://172.31.11.80:9100", cast
 @nova.program(
     id="nats_policy_controller",
     name="NATS Policy Controller",
-    description="Run a policy via NATS on two UR10e robots with optional cameras.",
+    description="Run a policy via NATS on two UR5e robots with optional cameras.",
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name="ur10e",
+                name="ur5e-left",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type="universalrobots-ur10e",
+                type="universalrobots-ur5e",
             ),
             virtual_controller(
-                name="ur10e-2",
+                name="ur5e-right",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type="universalrobots-ur10e",
+                type="universalrobots-ur5e",
             ),
         ],
         cleanup_controllers=False,
@@ -89,11 +89,11 @@ async def nats_policy_controller(
     ),
     timeout_s: float = Field(default=10.0, description="Execution timeout in seconds (0 = unlimited)"),
     motion_groups: str = Field(
-        default="0@ur10e,0@ur10e-2",
+        default="0@ur5e-left,0@ur5e-right",
         description="Comma-separated motion group IDs",
     ),
     home_joints: str = Field(
-        default="0,-1.571,1.571,-1.571,-1.571,0;0,-1.571,-1.571,-1.571,1.571,0",
+        default="1.047,-0.698,1.745,-3.142,0.873,2.094;-1.047,-2.356,-1.745,0.0,-0.873,-2.094",
         description="Semicolon-separated home joint positions per motion group",
     ),
     gripper_ios: str = Field(
@@ -232,9 +232,9 @@ class CameraConfig(BaseModel):
 
 class StartRequest(BaseModel):
     nats_subject: str = Field(default=NATS_SUBJECT)
-    motion_groups: str = Field(default="0@ur10e,0@ur10e-2")
+    motion_groups: str = Field(default="0@ur5e-left,0@ur5e-right")
     home_joints: str = Field(
-        default="0,-1.571,1.571,-1.571,-1.571,0;0,-1.571,-1.571,-1.571,1.571,0",
+        default="1.047,-0.698,1.745,-3.142,0.873,2.094;-1.047,-2.356,-1.745,0.0,-0.873,-2.094",
     )
     timeout_s: float = Field(default=10.0, ge=0)
     camera_server: str = Field(default=CAMERA_SERVER)

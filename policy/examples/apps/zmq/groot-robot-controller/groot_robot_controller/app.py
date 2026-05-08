@@ -61,18 +61,18 @@ GROOT_PORT = config("GROOT_PORT", default=5555, cast=int)
 @nova.program(
     id="groot_policy_controller",
     name="GR00T Policy Controller",
-    description="Run a GR00T policy on two UR10e robots via ZMQ.",
+    description="Run a GR00T policy on two UR5e robots via ZMQ.",
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name="ur10e",
+                name="ur5e-left",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type="universalrobots-ur10e",
+                type="universalrobots-ur5e",
             ),
             virtual_controller(
-                name="ur10e-2",
+                name="ur5e-right",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type="universalrobots-ur10e",
+                type="universalrobots-ur5e",
             ),
         ],
         cleanup_controllers=False,
@@ -88,11 +88,11 @@ async def groot_policy_controller(
     ),
     timeout_s: float = Field(default=10.0, description="Execution timeout in seconds (0 = unlimited)"),
     motion_groups: str = Field(
-        default="0@ur10e,0@ur10e-2",
+        default="0@ur5e-left,0@ur5e-right",
         description="Comma-separated motion group IDs",
     ),
     home_joints: str = Field(
-        default="0,-1.571,1.571,-1.571,-1.571,0;0,-1.571,-1.571,-1.571,1.571,0",
+        default="1.047,-0.698,1.745,-3.142,0.873,2.094;-1.047,-2.356,-1.745,0.0,-0.873,-2.094",
         description="Semicolon-separated home joint positions per motion group",
     ),
     gripper_ios: str = Field(
@@ -233,9 +233,9 @@ class CameraConfigModel(BaseModel):
 class StartRequest(BaseModel):
     policy_host: str = Field(default=GROOT_HOST)
     policy_port: int = Field(default=GROOT_PORT)
-    motion_groups: str = Field(default="0@ur10e,0@ur10e-2")
+    motion_groups: str = Field(default="0@ur5e-left,0@ur5e-right")
     home_joints: str = Field(
-        default="0,-1.571,1.571,-1.571,-1.571,0;0,-1.571,-1.571,-1.571,1.571,0",
+        default="1.047,-0.698,1.745,-3.142,0.873,2.094;-1.047,-2.356,-1.745,0.0,-0.873,-2.094",
     )
     gripper_ios: str = Field(default="digital_out[0],digital_out[0]")
     language: str = Field(default="Coordinate both arms and move smoothly.")

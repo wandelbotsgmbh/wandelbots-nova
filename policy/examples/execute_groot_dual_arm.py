@@ -9,7 +9,7 @@ The GR00T server expects a dual-arm embodiment with:
 - Language: ``annotation.language.language_instruction``
 
 Prerequisites:
-    NOVA_API=http://<instance-ip> (with ur10e + ur10e-2 controllers)
+    NOVA_API=http://<instance-ip> (with ur5e-left + ur5e-right controllers)
     GR00T server running at GROOT_HOST:GROOT_PORT
     Camera server running at CAMERA_SERVER
 
@@ -34,8 +34,8 @@ from nova.types import MotionSettings
 
 GROOT_HOST = "172.31.11.129"
 GROOT_PORT = 30555
-HOME_LEFT = (0.0, -1.571, 1.571, -1.571, -1.571, 0.0)
-HOME_RIGHT = (0.0, -1.571, -1.571, -1.571, 1.571, 0.0)
+HOME_LEFT = (1.047, -0.698, 1.745, -3.142, 0.873, 2.094)
+HOME_RIGHT = (-1.047, -2.356, -1.745, 0.0, -0.873, -2.094)
 TIMEOUT_S = 30.0
 CAMERA_SERVER = "http://192.168.1.22:9100"
 VIDEO_SIZE = 224
@@ -49,14 +49,14 @@ CAMERA_FPS = 15
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name="ur10e",
+                name="ur5e-left",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type="universalrobots-ur10e",
+                type="universalrobots-ur5e",
             ),
             virtual_controller(
-                name="ur10e-2",
+                name="ur5e-right",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type="universalrobots-ur10e",
+                type="universalrobots-ur5e",
             ),
         ],
         cleanup_controllers=False,
@@ -64,8 +64,8 @@ CAMERA_FPS = 15
 )
 async def groot_dual_arm(ctx: nova.ProgramContext):
     cell = ctx.nova.cell()
-    ctrl_left = await cell.controller("ur10e")
-    ctrl_right = await cell.controller("ur10e-2")
+    ctrl_left = await cell.controller("ur5e-left")
+    ctrl_right = await cell.controller("ur5e-right")
     mg_left = ctrl_left[0]
     mg_right = ctrl_right[0]
 
