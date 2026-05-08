@@ -37,9 +37,15 @@ GROOT_PORT = 30555
 HOME_LEFT = (1.047, -0.698, 1.745, -3.142, 0.873, 2.094)
 HOME_RIGHT = (-1.047, -2.356, -1.745, 0.0, -0.873, -2.094)
 TIMEOUT_S = 30.0
-CAMERA_SERVER = "http://192.168.1.22:9100"
+CAMERA_SERVER = "http://172.31.11.129:8080"
 VIDEO_SIZE = 224
 CAMERA_FPS = 15
+
+# Isaac Sim camera device IDs → GR00T video keys
+CAM_RIGHT_WRIST = "World_Robot_Robot_0_R__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripperasm_io0_tn__01_00_CAMERA_ASMBLY__INTEL_D405_right_wrist_camera"
+CAM_LEFT_WRIST = "World_Robot_Robot_0_L__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripperasm_io0_tn__01_00_CAMERA_ASMBLY__INTEL_D405_left_wrist_camera"
+CAM_CONTEXT = "World_EnvAssets_rack_env0__3_00_intel_d456_screw_adapter_asm_context_camera"
+CAM_TARGET = "World_EnvAssets_rack_env0_target_cam_stand_d405_prt_01_tn__target_cam_stand_d405prt_ta0_target_camera"
 
 
 @nova.program(
@@ -102,10 +108,10 @@ async def groot_dual_arm(ctx: nova.ProgramContext):
     cameras = CameraSet(
         api_url=CAMERA_SERVER,
         devices={
-            "exterior_image_1": "315122271048",
-            "exterior_image_2": "319522063360",
-            "left_wrist_image": "314522065367",
-            "right_wrist_image": "314522065367",  # same cam — no physical right wrist cam
+            "exterior_image_1": CAM_CONTEXT,
+            "exterior_image_2": CAM_TARGET,
+            "left_wrist_image": CAM_LEFT_WRIST,
+            "right_wrist_image": CAM_RIGHT_WRIST,
         },
         width=VIDEO_SIZE,
         height=VIDEO_SIZE,
@@ -115,7 +121,8 @@ async def groot_dual_arm(ctx: nova.ProgramContext):
 
     # GR00T client
     client = Gr00tPolicyClient(
-        host=GROOT_HOST, port=GROOT_PORT, language="Pick up the chest on the table."
+        host=GROOT_HOST, port=GROOT_PORT, language="Pick up the chest on the table.",
+        timeout_ms=60000,
     )
 
     executor = PolicyExecutor(
