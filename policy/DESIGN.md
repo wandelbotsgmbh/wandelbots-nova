@@ -42,6 +42,7 @@ Observation.joint_currents("key", source=mg)           # currents (read-only)
 ```
 
 Key resolution for flat features:
+
 - **Joints**: `{key}_{i}` → e.g. `left_joints_1`, `left_joints_2`, ...
 - **TCP**: `{key}_{i}` (only if format is set)
 - **IOs**: key used directly as feature name
@@ -117,23 +118,3 @@ Pure math, no I/O:
 - I-gain: 0.0 (disabled)
 - Anti-windup: clamp integral at ±2.0
 - Velocity limit: 1.5 rad/s per joint
-
-## File Structure
-
-```
-policy/
-├── executor.py              # PolicyExecutor: run(), stop(), safety orchestration
-├── runner.py                # PolicyRunner: manages multiple PidJoggingSessions
-├── pid_jogging_session.py   # Per-group: jogging + PID + IO write + standstill
-├── velocity_controller.py   # PID math (P, I, D, FF, anti-windup, velocity clamp)
-├── schema.py                # PolicySchema, Observation, Action, mappings
-├── io.py                    # IOStreamCache + IOWriter
-├── cameras/                 # CameraSource protocol, WebRTC, WebRTCCameras factory
-├── policy_client.py         # PolicyClient base + CallbackPolicyClient
-├── nats/                    # NatsPolicyClient + msgpack/PNG wire format
-├── groot/                   # Gr00tPolicyClient + ZMQ transport
-├── pose.py                  # TCP pose conversion (rotation vector → quat/rot6d)
-├── types.py                 # ActionChunk, PolicyResponse, GuardState, errors
-├── _sdk.py                  # Adapter for Nova SDK private attributes
-└── tests/
-```

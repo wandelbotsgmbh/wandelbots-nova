@@ -95,6 +95,7 @@ There's no hidden state machine — the executor owns all complexity (PID contro
 IO streaming, e-stop detection). Any async function that maps `obs → actions` works.
 
 The `obs` dict passed to the policy contains flat named features:
+
 - **Joint positions** — `arm_joints_1` … `arm_joints_6`
 - **IO values** — if configured via `Observation.io()`
 - **TCP pose** — if configured via `Observation.tcp()`
@@ -104,11 +105,11 @@ The policy returns a dict with the same keys containing target values.
 
 For common transports, built-in clients handle serialization and protocol quirks:
 
-| Client | Transport | What it adds |
-|--------|-----------|-------|
-| Bare async function | Any | Nothing — you own the transport |
-| `NatsPolicyClient` | NATS request/reply | msgpack encoding, image splitting (NATS 1MB limit) |
-| `Gr00tPolicyClient` | ZMQ | numpy array conversion, DOF padding, GR00T envelope format |
+| Client              | Transport          | What it adds                                               |
+| ------------------- | ------------------ | ---------------------------------------------------------- |
+| Bare async function | Any                | Nothing — you own the transport                            |
+| `NatsPolicyClient`  | NATS request/reply | msgpack encoding, image splitting (NATS 1MB limit)         |
+| `Gr00tPolicyClient` | ZMQ                | numpy array conversion, DOF padding, GR00T envelope format |
 
 See [`nats/README.md`](nats/README.md) and [`groot/README.md`](groot/README.md) for details.
 
@@ -134,22 +135,22 @@ executor.stop()
 
 ### Execution terminates when
 
-| Trigger | Behavior |
-|---------|----------|
-| `timeout_s` expires | Returns `ExecutionResult(reason="timeout")` |
-| `executor.stop()` called | Returns `ExecutionResult(reason="stopped")` |
-| Safety guard returns `False` | Raises `GuardStopError` |
-| E-stop / protective stop | Raises `EmergencyStopError` |
-| Self-collision / joint limit | Raises `MotionError` |
-| Connection lost | Raises `RuntimeError` |
+| Trigger                      | Behavior                                    |
+| ---------------------------- | ------------------------------------------- |
+| `timeout_s` expires          | Returns `ExecutionResult(reason="timeout")` |
+| `executor.stop()` called     | Returns `ExecutionResult(reason="stopped")` |
+| Safety guard returns `False` | Raises `GuardStopError`                     |
+| E-stop / protective stop     | Raises `EmergencyStopError`                 |
+| Self-collision / joint limit | Raises `MotionError`                        |
+| Connection lost              | Raises `RuntimeError`                       |
 
 ### Policy Clients
 
-| Client | Transport | Use case |
-|--------|-----------|----------|
-| Bare async function | Any (you choose) | Most flexible — use any transport |
-| `NatsPolicyClient` | NATS request/reply | App-to-app on Nova platform |
-| `Gr00tPolicyClient` | ZMQ (msgpack) | NVIDIA GR00T inference servers |
+| Client              | Transport          | Use case                          |
+| ------------------- | ------------------ | --------------------------------- |
+| Bare async function | Any (you choose)   | Most flexible — use any transport |
+| `NatsPolicyClient`  | NATS request/reply | App-to-app on Nova platform       |
+| `Gr00tPolicyClient` | ZMQ (msgpack)      | NVIDIA GR00T inference servers    |
 
 See [`nats/README.md`](nats/README.md) and [`groot/README.md`](groot/README.md) for transport-specific details.
 
@@ -240,13 +241,12 @@ executor = PolicyExecutor(schema, policy, safety_guards=[workspace_guard, io_gua
 
 ## Examples
 
-| Example | Description |
-|---------|-------------|
-| [`JOGGING.md`](JOGGING.md) | **PID Jogging** — direct position-controlled jogging with `jog_joints()` / `jog_tcp()` |
-| [`jogging_dualarm.py`](examples/jogging_dualarm.py) | Single-arm + dual-arm jogging, joint + TCP modes |
-| [`execute_policy_on_dualarm.py`](examples/execute_policy_on_dualarm.py) | Two UR5e robots, PolicySchema, cameras, safety guards |
-| [`execute_groot_single_arm.py`](examples/execute_groot_single_arm.py) | Single arm with GR00T ZMQ inference server |
-| [`execute_groot_dual_arm.py`](examples/execute_groot_dual_arm.py) | Dual arm with GR00T ZMQ + 4 cameras |
-| [`apps/nats/`](examples/apps/nats/) | NATS mock policy + robot controller (deployable Nova apps) |
-| [`apps/zmq/`](examples/apps/zmq/) | GR00T ZMQ mock policy + robot controller (deployable) |
-| [`apps/mock-camera-server/`](examples/apps/mock-camera-server/) | WebRTC camera server for development without real cameras |
+| Example                                                                 | Description                                                                            |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| [`JOGGING.md`](JOGGING.md)                                              | **PID Jogging** — direct position-controlled jogging with `jog_joints()` / `jog_tcp()` |
+| [`jogging_dualarm.py`](examples/jogging_dualarm.py)                     | Single-arm + dual-arm jogging, joint + TCP modes                                       |
+| [`execute_policy_on_dualarm.py`](examples/execute_policy_on_dualarm.py) | Two UR5e robots, PolicySchema, cameras, safety guards                                  |
+| [`execute_groot_dual_arm.py`](examples/execute_groot_dual_arm.py)       | Dual arm with GR00T ZMQ + 4 cameras                                                    |
+| [`apps/nats/`](examples/apps/nats/)                                     | NATS mock policy + robot controller (deployable Nova apps)                             |
+| [`apps/zmq/`](examples/apps/zmq/)                                       | GR00T ZMQ mock policy + robot controller (deployable)                                  |
+| [`apps/mock-camera-server/`](examples/apps/mock-camera-server/)         | WebRTC camera server for development without real cameras                              |
