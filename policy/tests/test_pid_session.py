@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from unittest.mock import MagicMock
 
+import pytest
+
 from nova.types import Pose
 from policy.pid_jogging_session import PidJoggingSession
 from policy.types import GuardStopError, PolicyRunnerConfig
@@ -132,3 +134,61 @@ def test_update_chunk_resets_index():
     s.update_chunk([[0.9] * 6], dt_ms=0.0)
     assert s._step_index == 0
     assert s._get_active_target() == [0.9] * 6
+
+
+@pytest.mark.asyncio
+async def test_callback_policy_through_schema_to_pid():
+    """End-to-end: callback policy adds 1.0 to each joint → schema parses → PID drives toward target."""
+    from policy.schema import Observation, PolicySchema
+
+    mg = MagicMock()
+    mg.id = "0@ur10e"
+    mg._controller_id = "ur10e"
+    mg._cell = "cell"
+
+    schema = PolicySchema(observations=[
+        Observation.joint_positions("joints", source=mg),
+    ])
+
+    # Policy: increase every joint by 1.0
+    async def add_one_policy(obs, _schema, images=None, io_values=None):
+        return {k: v + 1.0 for k, v in obs.items()}
+
+    # Simulate current robot state
+    current_joints = [0.1, -1.5, 0.0, 0.5, -0.3, 1.2]
+    state = MagicMock()
+    state.joints = tuple(current_joints)
+    state.pose = None
+    state.tcp = None
+    state.joint_torques = None
+    state.joint_currents = None
+
+    # Build observation via schema
+    obs = await schema.build_observation({"0@ur10e": state})
+    assert obs == {
+        "joints_1": 0.1, "joints_2": -1.5, "joints_3": 0.0,
+        "joints_4": 0.5, "joints_5": -0.3, "joints_6": 1.2,
+    }
+
+    # Run through policy callback
+    action_dict = await add_one_policy(obs, schema)
+    expected_targets = [j + 1.0 for j in current_joints]
+    for i, expected in enumerate(expected_targets, 1):
+        assert action_dict[f"joints_{i}"] == pytest.approx(expected)
+
+    # Parse action via schema → ActionChunk-style joints
+    joints, ios = await schema.parse_action(action_dict)
+    assert "0@ur10e" in joints
+    assert joints["0@ur10e"] == [expected_targets]
+    assert ios is None
+
+    # Feed into PID session
+    s = _session()
+    s._current_joints = list(current_joints)
+    s.update_chunk(joints["0@ur10e"], dt_ms=0.0)
+
+    vel = s._compute_velocity_with_safety()
+
+    # Every joint should drive positively (target = current + 1.0)
+    for i, v in enumerate(vel):
+        assert v > 0, f"Joint {i} velocity should be positive, got {v}"

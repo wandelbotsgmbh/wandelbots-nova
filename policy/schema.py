@@ -264,6 +264,19 @@ class _ObsStateField:
     state_field: str
 
 
+@dataclass
+class _ObsComputed:
+    """Observation resolved by calling an async function at every inference step.
+
+    The function receives the current flat observation dict (built so far)
+    and returns a dict of additional key-value pairs to merge in.
+
+    Use for external data sources like OPC UA, databases, HTTP APIs, etc.
+    """
+
+    fn: Any  # async (obs: dict) -> dict[str, Any]
+
+
 ObservationEntry = (
     _ObsJointPositions
     | _ObsJointTorques
@@ -274,6 +287,7 @@ ObservationEntry = (
     | _ObsImage
     | _ObsConstant
     | _ObsStateField
+    | _ObsComputed
 )
 
 
@@ -373,6 +387,28 @@ class Observation:
         """Observe a raw state field (generic escape hatch for uncommon fields)."""
         return _ObsStateField(key=key, source=source, state_field=field)
 
+    @staticmethod
+    def computed(fn: object) -> _ObsComputed:
+        """Call an async function at every inference step to add custom observations.
+
+        The function receives the current observation dict (joints, IOs, constants
+        already filled in) and returns a dict of additional key-value pairs.
+
+        Use for external data sources like OPC UA, databases, HTTP APIs, etc.
+
+        Example::
+
+            async def read_opcua(obs: dict) -> dict:
+                values = await opcua_client.read_values(["ns=2;s=Temperature", "ns=2;s=Force"])
+                return {"temperature": values[0], "force_z": values[1]}
+
+            schema = PolicySchema(observations=[
+                Observation.joint_positions("arm_joints", source=mg),
+                Observation.computed(read_opcua),
+            ])
+        """
+        return _ObsComputed(fn=fn)
+
 
 # ---------------------------------------------------------------------------
 # Action entries
@@ -398,7 +434,18 @@ class _ActIO:
     mapping: Mapping = field(default_factory=IdentityMapping)
 
 
-ActionEntry = _ActJointPositions | _ActIO
+@dataclass
+class _ActComputed:
+    """Action resolved by calling an async function when the policy returns.
+
+    The function receives the full action dict from the policy and can trigger
+    arbitrary side effects (write to OPC UA, trigger PLC, send HTTP, etc.).
+    """
+
+    fn: Any  # async (action: dict) -> None
+
+
+ActionEntry = _ActJointPositions | _ActIO | _ActComputed
 
 
 class Action:
@@ -424,6 +471,26 @@ class Action:
     ) -> _ActIO:
         """IO write action (digital/analog output)."""
         return _ActIO(key=key, target=target, io=io, mapping=mapping or IdentityMapping())
+
+    @staticmethod
+    def computed(fn: object) -> _ActComputed:
+        """Call an async function whenever the policy returns an action.
+
+        The function receives the full action dict from the policy and can
+        trigger arbitrary side effects — write to OPC UA, PLC, HTTP API, etc.
+
+        Example::
+
+            async def write_plc(action: dict) -> None:
+                conveyor_speed = action.get("conveyor_speed", 0.0)
+                await plc_client.write("ns=2;s=ConveyorSpeed", conveyor_speed)
+
+            schema = PolicySchema(
+                observations=[Observation.joint_positions("joints", source=mg)],
+                actions=[Action.computed(write_plc)],
+            )
+        """
+        return _ActComputed(fn=fn)
 
 
 # ---------------------------------------------------------------------------
@@ -506,6 +573,8 @@ class PolicySchema:
         self._act_io_mappings: list[_IOMapping] = []
         self._constants: dict[str, Any] = {}
         self._image_sources: dict[str, object] = {}
+        self._computed_obs_fns: list[Any] = []  # async (obs) -> dict
+        self._computed_act_fns: list[Any] = []  # async (action) -> None
 
         self._compile()
         self._validate()
@@ -541,6 +610,8 @@ class PolicySchema:
                     )
                 )
                 keys.add(act.key)
+            elif isinstance(act, _ActComputed):
+                self._computed_act_fns.append(act.fn)
         return keys
 
     def _compile_observations(self, explicit_action_keys: set[str]) -> None:
@@ -578,6 +649,8 @@ class PolicySchema:
                 self._image_sources[obs.key] = obs.source
             elif isinstance(obs, _ObsConstant):
                 self._constants[obs.key] = obs.value
+            elif isinstance(obs, _ObsComputed):
+                self._computed_obs_fns.append(obs.fn)
 
     def _validate(self) -> None:
         """Validate schema consistency."""
@@ -600,10 +673,14 @@ class PolicySchema:
 
     @staticmethod
     def _obs_key(entry: ObservationEntry) -> str:
+        if isinstance(entry, _ObsComputed):
+            return f"__computed_{id(entry)}__"
         return entry.key
 
     @staticmethod
     def _act_key(entry: ActionEntry) -> str:
+        if isinstance(entry, _ActComputed):
+            return f"__computed_{id(entry)}__"
         return entry.key
 
     # ------------------------------------------------------------------
@@ -658,21 +735,25 @@ class PolicySchema:
     # Observation building
     # ------------------------------------------------------------------
 
-    def build_observation(
+    async def build_observation(
         self,
         states: dict[str, RobotState],
         io_values: dict[str, object] | None = None,
-    ) -> dict[str, float]:
+    ) -> dict[str, Any]:
         """Build a flat feature dict from current robot states.
 
-        Used by CallbackPolicyClient and NatsPolicyClient.
+        Used by CallbackPolicyClient.
         """
-        obs: dict[str, float] = {}
+        obs: dict[str, Any] = {}
         self._build_obs_joints(obs, states)
         self._build_obs_tcp(obs, states)
         self._build_obs_optional_joints(obs, states)
         self._build_obs_ios(obs, io_values)
         obs.update(self._constants)
+        for fn in self._computed_obs_fns:
+            extra = await fn(obs)
+            if isinstance(extra, dict):
+                obs.update(extra)
         return obs
 
     def _build_obs_joints(self, obs: dict[str, float], states: dict[str, RobotState]) -> None:
@@ -787,7 +868,7 @@ class PolicySchema:
     # Action parsing
     # ------------------------------------------------------------------
 
-    def parse_action(self, action: dict[str, float]) -> tuple[
+    async def parse_action(self, action: dict[str, float]) -> tuple[
         dict[str, list[list[float]]],
         dict[str, dict[str, bool | int | float | str]] | None,
     ]:
@@ -820,5 +901,9 @@ class PolicySchema:
                 continue
             hw_value = m.mapping.to_hardware(float(action[m.key]))
             ios.setdefault(m.motion_group.id, {})[m.hardware_key] = hw_value
+
+        # Computed action side effects
+        for fn in self._computed_act_fns:
+            await fn(action)
 
         return joints, ios or None

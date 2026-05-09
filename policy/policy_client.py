@@ -75,7 +75,7 @@ class CallbackPolicyClient(PolicyClient):
         images: dict[str, NDArray[Any]] | None = None,
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
-        obs: dict[str, Any] = schema.build_observation(states, io_values)
+        obs: dict[str, Any] = await schema.build_observation(states, io_values)
         if images:
             obs.update(images)
 
@@ -86,7 +86,7 @@ class CallbackPolicyClient(PolicyClient):
         if isinstance(result, dict):
             if "joints" in result:
                 return ActionChunk.from_dict(result)
-            joints, ios = schema.parse_action(result)
+            joints, ios = await schema.parse_action(result)
             if joints:
                 return ActionChunk(joints=joints, ios=ios)
         msg = f"Policy must return ActionChunk or dict, got {type(result).__name__}"

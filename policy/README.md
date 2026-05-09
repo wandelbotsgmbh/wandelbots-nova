@@ -29,7 +29,7 @@ flowchart LR
         WebRTC["WebRTC streams"]
     end
 
-    Policy <-->|"NATS / ZMQ"| Executor
+    Policy <-->|"ZMQ / HTTP / custom"| Executor
     WebRTC <-->|"WebRTC"| Cameras
     Executor --> PID --> Jogging --> Robot
     Executor --> Safety
@@ -90,28 +90,27 @@ async def main():
 asyncio.run(main())
 ```
 
-The policy client is just an adapter: **reformat obs → call your server → reformat response**.
-There's no hidden state machine — the executor owns all complexity (PID control, safety,
-IO streaming, e-stop detection). Any async function that maps `obs → actions` works.
+Any async function that maps `obs → actions` works. The executor owns all complexity
+(PID control, safety, IO streaming, e-stop detection).
 
-The `obs` dict passed to the policy contains flat named features:
+The `obs` dict contains flat named features — everything declared in the schema:
 
 - **Joint positions** — `arm_joints_1` … `arm_joints_6`
-- **IO values** — if configured via `Observation.io()`
+- **Joint velocities, torques, currents** — if configured via `Observation.joint_torques()` etc.
 - **TCP pose** — if configured via `Observation.tcp()`
+- **IO values** — if configured via `Observation.io()`
 - **Camera images** — numpy arrays, if `Observation.image()` entries are present
+- **Constants** — static values like language instructions via `Observation.constant()`
+- **Computed values** — from external sources (OPC UA, PLC, etc.) via `Observation.computed()`
 
 The policy returns a dict with the same keys containing target values.
 
-For common transports, built-in clients handle serialization and protocol quirks:
+For [NVIDIA GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers, a built-in
+`Gr00tPolicyClient` handles ZMQ transport, numpy array conversion, and the GR00T envelope
+format. See [`gr00t/README.md`](gr00t/README.md) for details.
 
-| Client              | Transport          | What it adds                                               |
-| ------------------- | ------------------ | ---------------------------------------------------------- |
-| Bare async function | Any                | Nothing — you own the transport                            |
-| `NatsPolicyClient`  | NATS request/reply | msgpack encoding, image splitting (NATS 1MB limit)         |
-| `Gr00tPolicyClient` | ZMQ                | numpy array conversion, DOF padding, GR00T envelope format |
-
-See [`nats/README.md`](nats/README.md) and [`groot/README.md`](groot/README.md) for details.
+▶ Full example: [`execute_custom_policy_on_dual_arm.py`](examples/execute_custom_policy_on_dual_arm.py) — two UR5e robots with cameras, IOs, and safety guards.\
+▶ GR00T example: [`execute_gr00t_dual_arm.py`](examples/execute_gr00t_dual_arm.py) — dual arm with GR00T ZMQ + 4 cameras.
 
 ## API
 
@@ -144,19 +143,44 @@ executor.stop()
 | Self-collision / joint limit | Raises `MotionError`                        |
 | Connection lost              | Raises `RuntimeError`                       |
 
-### Policy Clients
-
-| Client              | Transport          | Use case                          |
-| ------------------- | ------------------ | --------------------------------- |
-| Bare async function | Any (you choose)   | Most flexible — use any transport |
-| `NatsPolicyClient`  | NATS request/reply | App-to-app on Nova platform       |
-| `Gr00tPolicyClient` | ZMQ (msgpack)      | NVIDIA GR00T inference servers    |
-
-See [`nats/README.md`](nats/README.md) and [`groot/README.md`](groot/README.md) for transport-specific details.
-
 ## PolicySchema
 
 Decouples the policy from hardware topology. The policy sees a flat dictionary of named features — it never knows about motion groups, controllers, or hardware IO keys. Feature names are the contract between training and inference.
+
+```mermaid
+flowchart LR
+    subgraph Hardware["Hardware (NOVA)"]
+        MG_L["mg_left\n0@ur5e-left"]
+        MG_R["mg_right\n0@ur5e-right"]
+        IO_L["digital_out[0]\n(left gripper)"]
+        IO_R["digital_out[0]\n(right gripper)"]
+        CAM["WebRTC camera\n640×480 RGB"]
+    end
+
+    subgraph Schema["PolicySchema"]
+        direction TB
+        OBS["Observations\n─────────────\njoint_positions · tcp\nio · image · constant\ncomputed"]
+        ACT["Actions\n─────────────\njoint targets\nIO writes\ncomputed side effects"]
+    end
+
+    subgraph Policy["Policy (flat dict)"]
+        OBS_DICT["obs dict\n─────────────\nleft_joints_1: 0.1\nleft_joints_2: -1.5\n…\nleft_gripper: 0.0\nright_joints_1: 0.2\n…\nright_gripper: 100.0\nflange_cam: ndarray"]
+        ACT_DICT["action dict\n─────────────\nleft_joints_1: 0.15\nleft_joints_2: -1.4\n…\nleft_gripper: 100.0\nright_joints_1: 0.25\n…\nright_gripper: 0.0"]
+    end
+
+    MG_L -->|"joints, tcp"| OBS
+    MG_R -->|"joints, tcp"| OBS
+    IO_L -->|"bool → 0/100"| OBS
+    IO_R -->|"bool → 0/100"| OBS
+    CAM -->|"RGB frame"| OBS
+    OBS -->|"build_observation()"| OBS_DICT
+    OBS_DICT -->|"policy(obs)"| ACT_DICT
+    ACT_DICT -->|"parse_action()"| ACT
+    ACT -->|"PID jogging"| MG_L
+    ACT -->|"PID jogging"| MG_R
+    ACT -->|"100→True"| IO_L
+    ACT -->|"0→False"| IO_R
+```
 
 ```python
 from policy import BoolMapping, Observation, PolicyExecutor, PolicySchema
@@ -170,11 +194,7 @@ schema = PolicySchema(observations=[
                    mapping=BoolMapping(on=100.0)),
 ])
 
-executor = PolicyExecutor(
-    schema,
-    my_policy,
-    timeout_s=10.0,
-)
+executor = PolicyExecutor(schema, my_policy, timeout_s=10.0)
 ```
 
 This produces observations like:
@@ -192,6 +212,72 @@ This produces observations like:
 ```
 
 The policy returns the same keys with target values.
+
+### IO actions
+
+By default, writable IOs (`Observation.io(...)`) are bidirectional — the policy can both observe and control them. The `mapping` converts between hardware values and policy values:
+
+```python
+# Policy sees "gripper" as 0.0 (closed) or 100.0 (open)
+# Hardware writes True/False to digital_out[0]
+Observation.io("gripper", source=mg, io="digital_out[0]",
+               mapping=BoolMapping(on=100.0))
+```
+
+When the policy returns `{"gripper": 100.0}`, the executor writes `True` to `digital_out[0]`.
+When it returns `{"gripper": 0.0}`, it writes `False`.
+
+For read-only sensors, set `writable=False`:
+
+```python
+Observation.io("sensor", source=mg, io="digital_in[0]", writable=False)
+```
+
+If observation and action need different hardware keys, use an explicit `Action.io()`:
+
+```python
+from policy import Action
+
+schema = PolicySchema(
+    observations=[
+        Observation.io("gripper", source=mg, io="analog_in[0]", writable=False),
+    ],
+    actions=[
+        Action.io("gripper", target=mg, io="digital_out[0]",
+                  mapping=BoolMapping(on=1.0)),
+    ],
+)
+```
+
+### Computed observations
+
+Inject data from external sources (OPC UA, PLC, HTTP, databases) at every inference step:
+
+```python
+async def read_opcua(obs: dict) -> dict:
+    values = await opcua_client.read(["ns=2;s=Temperature", "ns=2;s=ForceZ"])
+    return {"temperature": values[0], "force_z": values[1]}
+
+schema = PolicySchema(observations=[
+    Observation.joint_positions("arm_joints", source=mg),
+    Observation.computed(read_opcua),
+])
+```
+
+### Computed actions
+
+Trigger external side effects when the policy returns an action:
+
+```python
+async def write_plc(action: dict) -> None:
+    conveyor_speed = action.get("conveyor_speed", 0.0)
+    await plc_client.write("ns=2;s=ConveyorSpeed", conveyor_speed)
+
+schema = PolicySchema(
+    observations=[Observation.joint_positions("joints", source=mg)],
+    actions=[Action.computed(write_plc)],
+)
+```
 
 ## Cameras
 
@@ -214,11 +300,7 @@ schema = PolicySchema(observations=[
 executor = PolicyExecutor(schema, my_policy, timeout_s=10.0)
 ```
 
-Images arrive as `numpy.ndarray` (H×W×3, uint8, RGB) in the observation dict:
-
-```python
-obs["flange"]  # shape (480, 640, 3), dtype uint8
-```
+Images arrive as `numpy.ndarray` (H×W×3, uint8, RGB) in the observation dict.
 
 ## Safety Guards
 
@@ -239,14 +321,26 @@ def io_guard(ctx: GuardState) -> bool:
 executor = PolicyExecutor(schema, policy, safety_guards=[workspace_guard, io_guard])
 ```
 
-## Examples
+## PID Jogging (without a policy)
 
-| Example                                                                 | Description                                                                            |
-| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| [`JOGGING.md`](JOGGING.md)                                              | **PID Jogging** — direct position-controlled jogging with `jog_joints()` / `jog_tcp()` |
-| [`jogging_dualarm.py`](examples/jogging_dualarm.py)                     | Single-arm + dual-arm jogging, joint + TCP modes                                       |
-| [`execute_policy_on_dualarm.py`](examples/execute_policy_on_dualarm.py) | Two UR5e robots, PolicySchema, cameras, safety guards                                  |
-| [`execute_groot_dual_arm.py`](examples/execute_groot_dual_arm.py)       | Dual arm with GR00T ZMQ + 4 cameras                                                    |
-| [`apps/nats/`](examples/apps/nats/)                                     | NATS mock policy + robot controller (deployable Nova apps)                             |
-| [`apps/zmq/`](examples/apps/zmq/)                                       | GR00T ZMQ mock policy + robot controller (deployable)                                  |
-| [`apps/mock-camera-server/`](examples/apps/mock-camera-server/)         | WebRTC camera server for development without real cameras                              |
+The PID jogging layer can be used standalone — no policy, no schema, no cameras. Useful for
+teleoperation, scripted motions, or testing:
+
+```python
+from policy import jog_joints
+
+async with jog_joints(mg) as jogger:
+    jogger.target = [0.0, -1.57, 1.57, -1.57, -1.57, 0.0]
+    async for state in jogger:
+        print(state.joints)
+```
+
+See [`JOGGING.md`](JOGGING.md) for joint and TCP modes, dual-arm control, and PID tuning.\
+▶ Example: [`jogging_dual_arm.py`](examples/jogging_dual_arm.py)
+
+## Deployable Apps
+
+| App                                                                     | Description                                                   |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------- |
+| [`apps/gr00t/`](examples/apps/gr00t/)                                   | GR00T ZMQ mock policy + robot controller (deployable Nova apps) |
+| [`apps/mock-camera-server/`](examples/apps/mock-camera-server/)         | WebRTC camera server for development without real cameras     |

@@ -14,9 +14,8 @@ from __future__ import annotations
 
 from policy.cameras import CameraSet, CameraSource, WebRTCCameraConfig, WebRTCCameras
 from policy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
-from policy.groot import Gr00tPolicyClient
+from policy.gr00t import Gr00tPolicyClient
 from policy.jogger import JointJogger, TcpJogger, jog_joints, jog_tcp
-from policy.nats import NatsPolicyClient
 from policy.policy_client import CallbackPolicyClient, PolicyClient
 from policy.pose import pose_to_tcp
 from policy.runner import PolicyRunner
@@ -61,7 +60,6 @@ __all__ = [
     "JointJogger",
     "Mapping",
     "MotionError",
-    "NatsPolicyClient",
     "Observation",
     "Phase",
     "PolicyClient",

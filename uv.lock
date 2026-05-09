@@ -2026,7 +2026,6 @@ novax = [
 policy = [
     { name = "aiortc" },
     { name = "msgpack" },
-    { name = "nats-py" },
     { name = "opencv-python" },
     { name = "pyzmq" },
     { name = "requests" },
@@ -2077,7 +2076,6 @@ requires-dist = [
     { name = "loguru", specifier = ">=0.7.2,<0.8" },
     { name = "msgpack", marker = "extra == 'policy'", specifier = ">=1.1.0,<2" },
     { name = "nats-py", specifier = ">=2.11.0" },
-    { name = "nats-py", marker = "extra == 'policy'", specifier = ">=2.9.0,<3" },
     { name = "numpy", specifier = ">1.1.19" },
     { name = "numpy", marker = "extra == 'wandelscript'", specifier = ">=1.1.19" },
     { name = "opencv-python", marker = "extra == 'policy'", specifier = ">=4.13.0.92" },

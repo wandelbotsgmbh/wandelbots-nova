@@ -21,7 +21,7 @@ ValueType = int | str | bool | float | Pose
 class PolicyResponse(pydantic.BaseModel):
     """Serializable response from a policy server (wire format).
 
-    This is what a policy service returns over NATS/ZMQ.
+    This is what a policy service returns over ZMQ.
     The policy always returns actions — it never signals "done".
 
     Examples:

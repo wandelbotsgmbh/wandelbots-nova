@@ -103,7 +103,7 @@ except EmergencyStopError as e:
 
 ## Full example
 
-See [`examples/jogging_dualarm.py`](examples/jogging_dualarm.py) for all four modes
+See [`examples/jogging_dual_arm.py`](examples/jogging_dual_arm.py) for all four modes
 (single joint, single TCP, dual joint, dual TCP) on two UR10e robots with error handling.
 
 Minimal single-arm example:

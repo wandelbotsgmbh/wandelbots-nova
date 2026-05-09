@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from policy.groot import Gr00tMsgSerializer, Gr00tPolicyClient
+from policy.gr00t import Gr00tMsgSerializer, Gr00tPolicyClient
 from policy.schema import Observation, PolicySchema
 from policy.types import ActionChunk
 
