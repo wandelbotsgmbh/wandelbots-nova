@@ -9,9 +9,8 @@ format, keyed by camera name — the same format LeRobot uses.
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import numpy as np
@@ -110,132 +109,6 @@ class WebRTCCameraConfig:
     height: int = 480
     fps: int = 30
     stream_type: str = "color"
-
-
-# ---------------------------------------------------------------------------
-# CameraSet — named collection of WebRTC cameras
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class CameraSet:
-    """A named collection of cameras to connect and read from.
-
-    Usage (verbose)::
-
-        cameras = CameraSet(configs={
-            "flange": WebRTCCameraConfig(api_url="...", device_id="315122271048"),
-        })
-
-    Usage (compact — shared api_url/resolution/fps)::
-
-        cameras = CameraSet(
-            api_url="http://localhost:9100",
-            devices={"flange": "315122271048", "left": "314522065367"},
-        )
-
-    When ``frame_history > 1``, each camera maintains a buffer of the last N frames.
-    ``read()`` then returns arrays with shape ``(T, H, W, 3)`` instead of ``(H, W, 3)``.
-    """
-
-    configs: dict[str, WebRTCCameraConfig] = field(default_factory=dict)
-    frame_history: int = 1
-
-    def __init__(
-        self,
-        configs: dict[str, WebRTCCameraConfig] | None = None,
-        *,
-        api_url: str = "",
-        devices: dict[str, str] | None = None,
-        width: int = 640,
-        height: int = 480,
-        fps: int = 30,
-        frame_history: int = 1,
-    ) -> None:
-        self.frame_history = frame_history
-        self._connections: dict[str, Any] = {}  # name → WebRTCConnection
-        self._buffers: dict[str, list[NDArray[Any]]] = {}
-
-        if configs:
-            self.configs = configs
-        elif devices and api_url:
-            self.configs = {
-                name: WebRTCCameraConfig(
-                    api_url=api_url, device_id=device_id, width=width, height=height, fps=fps,
-                )
-                for name, device_id in devices.items()
-            }
-        else:
-            self.configs = {}
-
-    async def connect(self, timeout_s: float = 30.0) -> None:
-        """Connect all cameras and wait for first frames.
-
-        Raises RuntimeError if any camera fails to connect or produce a frame
-        within ``timeout_s`` seconds.
-        """
-        from policy.cameras.webrtc import WebRTCConnection, require_aiortc  # noqa: PLC0415
-
-        require_aiortc()
-
-        tasks = []
-        for name, cfg in self.configs.items():
-            conn = WebRTCConnection(name, cfg)
-            self._connections[name] = conn
-            tasks.append(conn.connect(timeout_s=timeout_s))
-
-        await asyncio.gather(*tasks)
-        logger.info("All %d cameras connected and producing frames", len(self.configs))
-
-    def read(self, max_age_s: float = 5.0) -> dict[str, NDArray[Any]]:
-        """Read frames from each camera.
-
-        Args:
-            max_age_s: Maximum age of a frame in seconds before raising.
-
-        Returns:
-            Dict mapping camera name → numpy array.
-            - If ``frame_history == 1``: shape ``(H, W, 3)`` uint8 RGB.
-            - If ``frame_history > 1``: shape ``(T, H, W, 3)`` uint8 RGB.
-
-        Raises:
-            RuntimeError: If a camera has no frame or frame is stale.
-        """
-        frames: dict[str, NDArray[Any]] = {}
-        for name, conn in self._connections.items():
-            frame = conn.latest_frame()
-            if frame is None:
-                msg = f"Camera '{name}' has no frame available"
-                raise RuntimeError(msg)
-
-            age = conn.frame_age_s()
-            if age > max_age_s:
-                msg = f"Camera '{name}' frame is stale ({age:.1f}s old, limit {max_age_s:.1f}s)"
-                raise RuntimeError(msg)
-
-            if self.frame_history <= 1:
-                frames[name] = frame
-            else:
-                buf = self._buffers.setdefault(name, [])
-                buf.append(frame)
-                if len(buf) > self.frame_history:
-                    buf.pop(0)
-                while len(buf) < self.frame_history:
-                    buf.insert(0, buf[0])
-                frames[name] = np.stack(buf, axis=0)
-
-        return frames
-
-    def is_ready(self) -> bool:
-        """Check if all cameras have at least one frame available."""
-        return all(conn.latest_frame() is not None for conn in self._connections.values())
-
-    async def disconnect(self) -> None:
-        """Disconnect all cameras and release resources."""
-        tasks = [conn.disconnect() for conn in self._connections.values()]
-        await asyncio.gather(*tasks, return_exceptions=True)
-        self._connections.clear()
-        logger.info("All cameras disconnected")
 
 
 # ---------------------------------------------------------------------------

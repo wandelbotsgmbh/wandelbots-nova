@@ -24,35 +24,16 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from policy._sdk import get_controller_id
-from policy.pose import pose_to_tcp
+from policy.pose import TcpFormat, pose_to_tcp
 
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# TCP format enum
-# ---------------------------------------------------------------------------
-
-
-class TcpFormat(StrEnum):
-    """TCP pose representation format."""
-
-    ROTATION_VECTOR = "rotation_vector"
-    """[x, y, z, rx, ry, rz] — 6 values."""
-
-    QUATERNION = "quaternion"
-    """[x, y, z, qx, qy, qz, qw] — 7 values."""
-
-    ROT6D = "rot6d"
-    """[x, y, z, r1x, r1y, r1z, r2x, r2y, r2z] — 9 values. GR00T format."""
 
 
 # ---------------------------------------------------------------------------
@@ -218,15 +199,6 @@ class _ObsTcp:
 
 
 @dataclass
-class _ObsFlange:
-    """Observe flange pose (no tool offset)."""
-
-    key: str
-    source: MotionGroup
-    format: TcpFormat = TcpFormat.ROTATION_VECTOR
-
-
-@dataclass
 class _ObsIO:
     """Observe an IO value."""
 
@@ -256,15 +228,6 @@ class _ObsConstant:
 
 
 @dataclass
-class _ObsStateField:
-    """Observe a raw state field (generic escape hatch)."""
-
-    key: str
-    source: MotionGroup
-    state_field: str
-
-
-@dataclass
 class _ObsComputed:
     """Observation resolved by calling an async function at every inference step.
 
@@ -282,11 +245,9 @@ ObservationEntry = (
     | _ObsJointTorques
     | _ObsJointCurrents
     | _ObsTcp
-    | _ObsFlange
     | _ObsIO
     | _ObsImage
     | _ObsConstant
-    | _ObsStateField
     | _ObsComputed
 )
 
@@ -337,16 +298,6 @@ class Observation:
         return _ObsTcp(key=key, source=source, tcp=tcp, format=format)
 
     @staticmethod
-    def flange(
-        key: str,
-        source: MotionGroup,
-        *,
-        format: TcpFormat = TcpFormat.ROTATION_VECTOR,
-    ) -> _ObsFlange:
-        """Observe flange pose (no tool offset)."""
-        return _ObsFlange(key=key, source=source, format=format)
-
-    @staticmethod
     def io(
         key: str,
         source: MotionGroup,
@@ -381,11 +332,6 @@ class Observation:
     def constant(key: str, value: object) -> _ObsConstant:
         """A constant value included in every observation (e.g. language instruction)."""
         return _ObsConstant(key=key, value=value)
-
-    @staticmethod
-    def state_field(key: str, source: MotionGroup, *, field: str) -> _ObsStateField:
-        """Observe a raw state field (generic escape hatch for uncommon fields)."""
-        return _ObsStateField(key=key, source=source, state_field=field)
 
     @staticmethod
     def computed(fn: object) -> _ObsComputed:
@@ -625,8 +571,8 @@ class PolicySchema:
                 self._joint_mappings.append(mapping)
                 if obs.writable and obs.key not in explicit_action_keys:
                     self._joint_action_mappings.append(mapping)
-            elif isinstance(obs, (_ObsTcp, _ObsFlange)):
-                tcp_name = obs.tcp if isinstance(obs, _ObsTcp) else ""
+            elif isinstance(obs, _ObsTcp):
+                tcp_name = obs.tcp
                 self._tcp_mappings.append(
                     _TcpMapping(key=obs.key, source=obs.source, tcp=tcp_name, format=obs.format)
                 )

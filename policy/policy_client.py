@@ -85,7 +85,7 @@ class CallbackPolicyClient(PolicyClient):
             return result
         if isinstance(result, dict):
             if "joints" in result:
-                return ActionChunk.from_dict(result)
+                return ActionChunk(**result)
             joints, ios = await schema.parse_action(result)
             if joints:
                 return ActionChunk(joints=joints, ios=ios)

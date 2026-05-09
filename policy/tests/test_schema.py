@@ -12,7 +12,6 @@ from policy.schema import (
     IdentityMapping,
     Observation,
     PolicySchema,
-    ScaleMapping,
 )
 
 
@@ -247,13 +246,6 @@ def test_bool_mapping():
     assert m.to_hardware(80.0) is True
     assert m.to_hardware(20.0) is False
 
-
-def test_scale_mapping():
-    m = ScaleMapping(hardware_min=0.0, hardware_max=10.0, policy_min=0.0, policy_max=1.0)
-    assert m.to_policy(5.0) == pytest.approx(0.5)
-    assert m.to_hardware(0.5) == pytest.approx(5.0)
-    assert m.to_policy(0.0) == pytest.approx(0.0)
-    assert m.to_policy(10.0) == pytest.approx(1.0)
 
 
 # ---------------------------------------------------------------------------

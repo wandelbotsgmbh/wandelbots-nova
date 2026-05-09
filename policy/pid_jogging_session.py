@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from nova import api
 from nova.types import Pose, RobotState
-from policy._sdk import get_api_gateway, get_cell
+from policy._sdk import get_api_gateway, get_cell, get_controller_id
 from policy.io import IOWriter
 from policy.types import GuardState, GuardStopError, MotionError
 from policy.velocity_controller import VelocityController
@@ -107,6 +107,12 @@ class PidJoggingSession:
 
     @property
     def current_state(self) -> RobotState | None:
+        if self._current_joints is None or self._current_tcp_pose is None:
+            return None
+        return self._build_robot_state()
+
+    def _build_robot_state(self) -> RobotState | None:
+        """Construct a RobotState from cached values."""
         if self._current_joints is None or self._current_tcp_pose is None:
             return None
         return RobotState(
@@ -246,7 +252,7 @@ class PidJoggingSession:
         """Run the jogging API websocket, streaming velocity commands."""
         api_gateway = get_api_gateway(self._motion_group)
         cell = get_cell(self._motion_group)
-        controller_id = self._motion_group.id.split("@")[1] if "@" in self._motion_group.id else self._motion_group.id
+        controller_id = get_controller_id(self._motion_group)
         tcp = await self._resolve_tcp()
 
         async def client_request_generator(
@@ -353,23 +359,7 @@ class PidJoggingSession:
         if current is None or target is None:
             return self._get_zero_velocity()
 
-        current_robot_state = None
-        if self._current_tcp_pose is not None and self._current_joints is not None:
-            current_robot_state = RobotState(
-                pose=self._current_tcp_pose,
-                tcp=self._current_tcp_name,
-                joints=tuple(self._current_joints),
-                joint_torques=(
-                    tuple(self._current_joint_torques)
-                    if self._current_joint_torques is not None
-                    else None
-                ),
-                joint_currents=(
-                    tuple(self._current_joint_currents)
-                    if self._current_joint_currents is not None
-                    else None
-                ),
-            )
+        current_robot_state = self._build_robot_state()
 
         # Run safety guards
         if self._safety_guards and current_robot_state is not None:

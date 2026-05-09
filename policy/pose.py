@@ -7,11 +7,25 @@ policy models (quaternion, rot6d).
 from __future__ import annotations
 
 import math
+from enum import StrEnum
 
 _ANGLE_EPSILON = 1e-8
 
 
-def pose_to_tcp(pose: object, fmt: str) -> list[float]:
+class TcpFormat(StrEnum):
+    """TCP pose representation format."""
+
+    ROTATION_VECTOR = "rotation_vector"
+    """[x, y, z, rx, ry, rz] — 6 values."""
+
+    QUATERNION = "quaternion"
+    """[x, y, z, qx, qy, qz, qw] — 7 values."""
+
+    ROT6D = "rot6d"
+    """[x, y, z, r1x, r1y, r1z, r2x, r2y, r2z] — 9 values. GR00T format."""
+
+
+def pose_to_tcp(pose: object, fmt: TcpFormat | str) -> list[float]:
     """Convert a Nova Pose to TCP values in the requested format.
 
     Parameters
@@ -20,7 +34,8 @@ def pose_to_tcp(pose: object, fmt: str) -> list[float]:
         A Nova ``Pose`` object with ``.position`` (x, y, z in mm) and
         ``.orientation`` (rotation vector in radians).
     fmt:
-        One of ``"rotation_vector"``, ``"quaternion"``, ``"rot6d"``.
+        A ``TcpFormat`` enum value or one of
+        ``"rotation_vector"``, ``"quaternion"``, ``"rot6d"``.
 
     Returns
     -------
@@ -37,13 +52,15 @@ def pose_to_tcp(pose: object, fmt: str) -> list[float]:
     y = float(pos.y) / 1000.0
     z = float(pos.z) / 1000.0
 
-    if fmt == "rotation_vector":
+    fmt_str = str(fmt)
+
+    if fmt_str == TcpFormat.ROTATION_VECTOR:
         return [x, y, z, float(ori.x), float(ori.y), float(ori.z)]
 
     ax, ay, az = float(ori.x), float(ori.y), float(ori.z)
     angle = math.sqrt(ax * ax + ay * ay + az * az)
 
-    if fmt == "quaternion":
+    if fmt_str == TcpFormat.QUATERNION:
         if angle < _ANGLE_EPSILON:
             return [x, y, z, 0.0, 0.0, 0.0, 1.0]
         half = angle / 2.0
@@ -51,6 +68,9 @@ def pose_to_tcp(pose: object, fmt: str) -> list[float]:
         return [x, y, z, ax * s, ay * s, az * s, math.cos(half)]
 
     # rot6d (GR00T format): first two columns of rotation matrix
+    if fmt_str != TcpFormat.ROT6D:
+        msg = f"Unknown TcpFormat: {fmt!r}"
+        raise ValueError(msg)
     if angle < _ANGLE_EPSILON:
         return [x, y, z, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
 

@@ -12,7 +12,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from policy._sdk import get_controller_id
-from policy.estop import EstopMonitor, check_estop, check_sessions
+from policy.estop import EstopMonitor, check_estop
 from policy.io import IOStreamCache
 from policy.runner import PolicyRunner
 from policy.types import ActionChunk, EmergencyStopError, GuardStopError, MotionError
@@ -268,7 +268,7 @@ class PolicyExecutor:
                 self.status.step = step
 
                 # Check failures
-                check_sessions(self._runner._sessions)
+                self._runner.check_health()
                 check_estop(self._estop_monitor)
 
                 await asyncio.sleep(interval)

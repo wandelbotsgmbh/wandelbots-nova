@@ -53,6 +53,9 @@ class _FakeRunner:
     async def stop(self):
         pass
 
+    def check_health(self):
+        pass
+
     def set_io_values_ref(self, mg_id, ref):
         pass
 

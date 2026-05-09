@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -16,39 +15,6 @@ if TYPE_CHECKING:
 
 # Reuse the SDK's IO value type
 ValueType = int | str | bool | float | Pose
-
-
-class PolicyResponse(pydantic.BaseModel):
-    """Serializable response from a policy server (wire format).
-
-    This is what a policy service returns over ZMQ.
-    The policy always returns actions — it never signals "done".
-
-    Examples:
-        # Action targets:
-        PolicyResponse(joints={"0@ur10e": [[0.1, -1.5, ...]]})
-
-        # Action targets with IO:
-        PolicyResponse(
-            joints={"0@ur10e": [[0.1, -1.5, ...]]},
-            ios={"0@ur10e": {"digital_out[0]": True}},
-        )
-
-        # Multi-step chunk (ACT/Diffusion Policy output):
-        PolicyResponse(
-            joints={"0@ur10e": [[step0], [step1], ..., [step15]]},
-            dt_ms=33.0,
-        )
-    """
-
-    joints: dict[str, list[list[float]]] | None = None
-    """Motion group id → sequence of joint targets (radians)."""
-
-    ios: dict[str, dict[str, bool | int | float | str]] | None = None
-    """Motion group id → {io_key: value}."""
-
-    dt_ms: float = 0.0
-    """Time spacing between steps in milliseconds."""
 
 
 class ActionChunk(pydantic.BaseModel):
@@ -72,30 +38,6 @@ class ActionChunk(pydantic.BaseModel):
 
     dt_ms: float = 0.0
     """Time spacing between steps in milliseconds. 0 = single-step."""
-
-    timestamp: float | None = None
-    """When this chunk was produced (seconds since epoch). Auto-filled if None."""
-
-    def model_post_init(self, _context: object) -> None:
-        if self.timestamp is None:
-            self.timestamp = time.time()
-
-    @classmethod
-    def from_response(cls, resp: PolicyResponse) -> ActionChunk:
-        """Create from a PolicyResponse (assumes it has joints)."""
-        if resp.joints is None:
-            msg = "PolicyResponse has no joints"
-            raise ValueError(msg)
-        return cls(joints=resp.joints, ios=resp.ios, dt_ms=resp.dt_ms)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, object]) -> ActionChunk:
-        """Construct from a plain dictionary (e.g. from JSON message)."""
-        resp = PolicyResponse.model_validate(data)
-        if resp.joints is None:
-            msg = "Response has no joints"
-            raise ValueError(msg)
-        return cls(joints=resp.joints, ios=resp.ios, dt_ms=resp.dt_ms)
 
 
 @dataclass

@@ -117,6 +117,18 @@ class PolicyRunner:
         for session in self._sessions.values():
             await session.stop()
 
+    def check_health(self) -> None:
+        """Check all sessions for failures. Raises on first error found.
+
+        Raises:
+            GuardStopError: A safety guard triggered.
+            MotionError: Joint limit, self-collision, or singularity.
+            RuntimeError: Jogging connection lost or unknown failure.
+        """
+        from policy.estop import check_sessions  # noqa: PLC0415
+
+        check_sessions(self._sessions)
+
     # -------------------------------------------------------------------------
     # Async context manager
     # -------------------------------------------------------------------------
