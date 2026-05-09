@@ -148,39 +148,23 @@ executor.stop()
 Decouples the policy from hardware topology. The policy sees a flat dictionary of named features — it never knows about motion groups, controllers, or hardware IO keys. Feature names are the contract between training and inference.
 
 ```mermaid
-flowchart LR
-    subgraph Hardware["Hardware (NOVA)"]
-        MG_L["mg_left\n0@ur5e-left"]
-        MG_R["mg_right\n0@ur5e-right"]
-        IO_L["digital_out[0]\n(left gripper)"]
-        IO_R["digital_out[0]\n(right gripper)"]
-        CAM["WebRTC camera\n640×480 RGB"]
-    end
+flowchart TB
+    HW["Hardware\n0@ur5e-left · 0@ur5e-right\ndigital_out · WebRTC cameras"]
 
-    subgraph Schema["PolicySchema"]
-        direction TB
-        OBS["Observations\n─────────────\njoint_positions · tcp\nio · image · constant\ncomputed"]
-        ACT["Actions\n─────────────\njoint targets\nIO writes\ncomputed side effects"]
-    end
+    OBS["build_observation()\n\nleft_joints_1…6 — joint positions in rad\nright_joints_1…6 — joint positions in rad\nleft_gripper — 0.0 or 100.0\nright_gripper — 0.0 or 100.0\nflange_cam — ndarray H×W×3"]
 
-    subgraph Policy["Policy (flat dict)"]
-        OBS_DICT["obs dict\n─────────────\nleft_joints_1: 0.1\nleft_joints_2: -1.5\n…\nleft_gripper: 0.0\nright_joints_1: 0.2\n…\nright_gripper: 100.0\nflange_cam: ndarray"]
-        ACT_DICT["action dict\n─────────────\nleft_joints_1: 0.15\nleft_joints_2: -1.4\n…\nleft_gripper: 100.0\nright_joints_1: 0.25\n…\nright_gripper: 0.0"]
-    end
+    POL["policy · obs → actions"]
 
-    MG_L -->|"joints, tcp"| OBS
-    MG_R -->|"joints, tcp"| OBS
-    IO_L -->|"bool → 0/100"| OBS
-    IO_R -->|"bool → 0/100"| OBS
-    CAM -->|"RGB frame"| OBS
-    OBS -->|"build_observation()"| OBS_DICT
-    OBS_DICT -->|"policy(obs)"| ACT_DICT
-    ACT_DICT -->|"parse_action()"| ACT
-    ACT -->|"PID jogging"| MG_L
-    ACT -->|"PID jogging"| MG_R
-    ACT -->|"100→True"| IO_L
-    ACT -->|"0→False"| IO_R
+    ACT["parse_action()\n\nleft_joints → PID velocity jog on 0@ur5e-left\nright_joints → PID velocity jog on 0@ur5e-right\nleft_gripper 100.0 → digital_out﹝0﹞ = True\nright_gripper 0.0 → digital_out﹝0﹞ = False"]
+
+    HW -- "read joints · IOs · camera frames" --> OBS
+    OBS -- "flat dict" --> POL
+    POL -- "flat dict" --> ACT
+    ACT -- "execute · repeat at inference_hz" --> HW
 ```
+
+The schema maps hardware names to policy feature names, applies value conversions
+(e.g. `bool ↔ 0/100`), and dispatches actions to PID jogging (joints) or IO writes (grippers).
 
 ```python
 from policy import BoolMapping, Observation, PolicyExecutor, PolicySchema
