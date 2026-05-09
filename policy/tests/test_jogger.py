@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from policy.jogger import JointJogger, TcpJogger, jog_joints, jog_tcp
-from policy.types import EmergencyStopError, GuardStopError, MotionError, PolicyRunnerConfig
+from policy.types import EmergencyStopError, GuardStopError, MotionError, PidConfig
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -60,7 +60,7 @@ class TestJogJointsFactory:
 
     def test_custom_config(self):
         mg = _mock_mg()
-        cfg = PolicyRunnerConfig(p_gain=5.0)
+        cfg = PidConfig(p_gain=5.0)
         jogger = jog_joints(mg, config=cfg)
         assert jogger._sessions[mg]._config.p_gain == 5.0
 
@@ -302,7 +302,7 @@ class TestPerAxisVelocityLimit:
         assert abs(vel[1]) <= 100.0
 
     def test_config_fields_match_nova_api(self):
-        """PolicyRunnerConfig uses NOVA-style field names."""
-        cfg = PolicyRunnerConfig(tcp_velocity_limit=500.0, tcp_orientation_velocity_limit=2.0)
+        """PidConfig uses NOVA-style field names."""
+        cfg = PidConfig(tcp_velocity_limit=500.0, tcp_orientation_velocity_limit=2.0)
         assert cfg.tcp_velocity_limit == 500.0
         assert cfg.tcp_orientation_velocity_limit == 2.0

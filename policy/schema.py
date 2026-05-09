@@ -92,67 +92,6 @@ class BoolMapping(Mapping):
         return policy_value >= self.threshold
 
 
-class ScaleMapping(Mapping):
-    """Linear scale mapping between hardware and policy ranges.
-
-    Parameters
-    ----------
-    hardware_min, hardware_max:
-        Hardware value range.
-    policy_min, policy_max:
-        Policy value range.
-    """
-
-    def __init__(
-        self,
-        hardware_min: float = 0.0,
-        hardware_max: float = 1.0,
-        policy_min: float = 0.0,
-        policy_max: float = 1.0,
-    ) -> None:
-        self.hardware_min = hardware_min
-        self.hardware_max = hardware_max
-        self.policy_min = policy_min
-        self.policy_max = policy_max
-
-    def to_policy(self, hardware_value: object) -> float:
-        v = float(hardware_value)  # type: ignore[arg-type]
-        hw_range = self.hardware_max - self.hardware_min
-        if hw_range == 0:
-            return self.policy_min
-        normalized = (v - self.hardware_min) / hw_range
-        return self.policy_min + normalized * (self.policy_max - self.policy_min)
-
-    def to_hardware(self, policy_value: float) -> float:
-        pol_range = self.policy_max - self.policy_min
-        if pol_range == 0:
-            return self.hardware_min
-        normalized = (policy_value - self.policy_min) / pol_range
-        return self.hardware_min + normalized * (self.hardware_max - self.hardware_min)
-
-
-class EnumMapping(Mapping):
-    """Map between hardware enum/string values and policy floats.
-
-    Parameters
-    ----------
-    forward:
-        hardware_value → policy_value mapping.
-    """
-
-    def __init__(self, forward: dict[str | bool, float]) -> None:
-        self._forward = forward
-        self._reverse = {v: k for k, v in forward.items()}
-
-    def to_policy(self, hardware_value: object) -> float:
-        return self._forward.get(hardware_value, 0.0)  # type: ignore[arg-type]
-
-    def to_hardware(self, policy_value: float) -> bool | int | float | str:
-        # Find the closest mapped value
-        closest_key = min(self._reverse.keys(), key=lambda k: abs(k - policy_value))
-        return self._reverse[closest_key]  # type: ignore[return-value]
-
-
 # ---------------------------------------------------------------------------
 # Observation entries
 # ---------------------------------------------------------------------------

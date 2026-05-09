@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from nova.cell.motion_group import MotionGroup
-    from policy.types import PolicyRunnerConfig, SafetyGuard, ValueType
+    from policy.types import PidConfig, SafetyGuard, ValueType
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class PidJoggingSession:
     def __init__(
         self,
         motion_group: MotionGroup,
-        config: PolicyRunnerConfig,
+        config: PidConfig,
         *,
         tcp: str = "",
         mode: str = "joint",
@@ -100,6 +100,11 @@ class PidJoggingSession:
                 self._config.tcp_orientation_velocity_limit,
             ]
         return self._config.velocity_limit
+
+    @property
+    def motion_group(self) -> MotionGroup:
+        """The motion group this session controls."""
+        return self._motion_group
 
     @property
     def motion_group_id(self) -> str:

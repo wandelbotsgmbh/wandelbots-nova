@@ -64,19 +64,19 @@ class CameraSource(Protocol):
         """Connect to camera hardware. Called once before execution starts."""
         ...
 
-    def read(self, max_age_s: float = 5.0) -> dict[str, NDArray[Any]]:
-        """Read the latest frame from each camera.
+    def read(self, max_age_s: float = 5.0) -> NDArray[Any]:
+        """Read the latest frame from this camera.
 
         Args:
             max_age_s: Maximum acceptable frame age in seconds.
                 Implementations should raise if a frame is older than this.
 
         Returns:
-            Dict mapping camera name → numpy array.
-            Typically ``(H, W, 3)`` uint8 RGB, but shape depends on implementation.
+            Numpy array, typically ``(H, W, 3)`` uint8 RGB.
+            May be ``(T, H, W, 3)`` if frame history is enabled.
 
         Raises:
-            RuntimeError: If a camera has no frame available or frame is stale.
+            RuntimeError: If no frame available or frame is stale.
         """
         ...
 

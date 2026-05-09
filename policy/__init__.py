@@ -21,7 +21,6 @@ from policy.pose import TcpFormat, pose_to_tcp
 from policy.schema import (
     Action,
     BoolMapping,
-    GroupedObservation,
     IdentityMapping,
     Mapping,
     Observation,
@@ -33,7 +32,7 @@ from policy.types import (
     GuardState,
     GuardStopError,
     MotionError,
-    PolicyRunnerConfig,
+    PidConfig,
 )
 
 __all__ = [
@@ -46,7 +45,6 @@ __all__ = [
     "ExecutionResult",
     "ExecutorStatus",
     "Gr00tPolicyClient",
-    "GroupedObservation",
     "GuardState",
     "GuardStopError",
     "IdentityMapping",
@@ -54,9 +52,9 @@ __all__ = [
     "Mapping",
     "MotionError",
     "Observation",
+    "PidConfig",
     "PolicyClient",
     "PolicyExecutor",
-    "PolicyRunnerConfig",
     "PolicySchema",
     "TcpFormat",
     "TcpJogger",

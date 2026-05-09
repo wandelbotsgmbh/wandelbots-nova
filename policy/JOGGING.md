@@ -145,12 +145,12 @@ asyncio.run(main())
 
 ## PID tuning
 
-The defaults work for most cases. If you need to adjust tracking behavior, pass a `PolicyRunnerConfig`:
+The defaults work for most cases. If you need to adjust tracking behavior, pass a `PidConfig`:
 
 ```python
-from policy import PolicyRunnerConfig, jog_joints
+from policy import PidConfig, jog_joints
 
-config = PolicyRunnerConfig(
+config = PidConfig(
     p_gain=3.0,           # proportional gain (higher = stiffer tracking)
     d_gain=0.1,           # derivative gain (higher = more damping)
     i_gain=0.0,           # integral gain (usually leave at 0)
@@ -162,7 +162,7 @@ async with jog_joints(mg, config=config) as jogger:
     ...
 ```
 
-`jog_tcp` uses cartesian-appropriate defaults automatically (`velocity_limit=250` mm/s, `tolerance=1.0` mm). Override with your own `PolicyRunnerConfig` if needed.
+`jog_tcp` uses cartesian-appropriate defaults automatically (`velocity_limit=250` mm/s, `tolerance=1.0` mm). Override with your own `PidConfig` if needed.
 
 | Parameter | Joint default | TCP default | Effect |
 |-----------|--------------|-------------|--------|

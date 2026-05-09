@@ -2,11 +2,9 @@
 
 Deployable Nova apps demonstrating policy execution patterns.
 
-## `zmq/` — ZeroMQ (GR00T)
+## `gr00t/` — GR00T ZMQ
 
-Direct ZMQ REQ/REP for NVIDIA GR00T-compatible inference servers. Uses msgpack serialization with numpy array transport.
-
-- **[`gr00t-dual-arm-controller`](zmq/gr00t-dual-arm-controller/)** — Dual-arm UR5e controller with 4 Isaac Sim cameras.
+- **[`gr00t-dual-arm-controller`](gr00t/gr00t-dual-arm-controller/)** — Dual-arm UR5e controller with 4 Isaac Sim cameras, using GR00T ZMQ inference.
 
 ## `mock-camera-server/` — WebRTC camera mock
 

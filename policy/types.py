@@ -41,7 +41,7 @@ class ActionChunk(pydantic.BaseModel):
 
 
 @dataclass
-class PolicyRunnerConfig:
+class PidConfig:
     """Configuration for the PolicyRunner PID velocity controller."""
 
     velocity_limit: float | list[float] = 1.5

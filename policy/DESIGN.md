@@ -51,7 +51,7 @@ Key resolution for flat features:
 
 - **Reads**: Executor opens one WebSocket stream per controller (`IOStreamCache`). Values update at controller rate. Guards and observations read from this shared cache.
 - **Writes**: Fire-and-forget with deduplication (only writes on value change to avoid 429s).
-- **Mappings**: `BoolMapping`, `ScaleMapping`, `EnumMapping`, `IdentityMapping` for bidirectional hardware↔policy conversion.
+- **Mappings**: `BoolMapping`, `IdentityMapping` for bidirectional hardware↔policy conversion.
 
 ## Collision & Limit Detection
 
@@ -71,24 +71,24 @@ sequenceDiagram
     participant Exec as PolicyExecutor
     participant Schema as PolicySchema
     participant Cam as CameraSources
-    participant Runner as PolicyRunner
+    participant Sessions as PidJoggingSessions
     participant Policy as Policy (remote)
 
     User->>Exec: run()
     Exec->>Cam: connect() — WebRTC ICE
     Exec->>Exec: start IO streams
-    Exec->>Runner: open jogging sessions
+    Exec->>Sessions: start jogging
 
     loop Every tick (inference_hz)
-        Exec->>Runner: observe() → RobotState
+        Exec->>Sessions: observe() → RobotState
         Exec->>Schema: build_observation() → flat obs + IO values
         Exec->>Cam: read() → numpy images
         Exec->>Policy: get_actions(states, schema, images, io_values) → ActionChunk
-        Exec->>Runner: send(chunk) → PID → velocity
+        Exec->>Sessions: send(chunk) → PID → velocity
         Exec->>Exec: check guards, estop, collision
     end
 
-    Exec->>Runner: stop jogging
+    Exec->>Sessions: stop jogging
     Exec->>Exec: stop IO streams
     Exec->>Cam: disconnect()
     Exec-->>User: ExecutionResult

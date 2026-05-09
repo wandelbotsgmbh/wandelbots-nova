@@ -17,6 +17,7 @@ def _mg(mg_id: str = "0@ur10e") -> MagicMock:
     mg._controller_id = mg_id.split("@")[1] if "@" in mg_id else mg_id
     mg._cell = "cell"
     mg._api_client = MagicMock()
+    mg._api_client.close = AsyncMock()
     return mg
 
 
@@ -26,38 +27,24 @@ def _schema() -> PolicySchema:
     ])
 
 
-class _FakeRunner:
-    """Minimal mock runner that returns state on observe and accepts sends."""
-
-    def __init__(self):
-        self._sessions = {}
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *args):
-        pass
-
-    async def observe(self):
-        state = MagicMock()
-        state.joints = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-        state.pose = None
-        state.tcp = None
-        state.joint_torques = None
-        state.joint_currents = None
-        return {"0@ur10e": state}
-
-    async def send(self, action):
-        pass
-
-    async def stop(self):
-        pass
-
-    def check_health(self):
-        pass
-
-    def set_io_values_ref(self, mg_id, ref):
-        pass
+def _fake_session() -> MagicMock:
+    """Create a mock PidJoggingSession."""
+    session = MagicMock()
+    session.motion_group = MagicMock()
+    session.motion_group_id = "0@ur10e"
+    session.has_failed = False
+    session.failure_reason = ""
+    session.start = AsyncMock()
+    session.stop = AsyncMock()
+    session.write_ios = AsyncMock()
+    state = MagicMock()
+    state.joints = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    state.pose = None
+    state.tcp = None
+    state.joint_torques = None
+    state.joint_currents = None
+    session.current_state = state
+    return session
 
 
 @pytest.mark.asyncio
@@ -70,9 +57,9 @@ async def test_timeout_returns_result():
 
     executor = PolicyExecutor(s, policy, timeout_s=0.2, inference_hz=100)
 
-    with patch("policy.executor.PolicyRunner") as mock_runner, \
+    with patch("policy.executor.PidJoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
-        mock_runner.return_value = _FakeRunner()
+        mock_session_cls.return_value = _fake_session()
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
 
         result = await executor.run()
@@ -94,9 +81,9 @@ async def test_stop_returns_stopped():
         await asyncio.sleep(0.1)
         executor.stop()
 
-    with patch("policy.executor.PolicyRunner") as mock_runner, \
+    with patch("policy.executor.PidJoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
-        mock_runner.return_value = _FakeRunner()
+        mock_session_cls.return_value = _fake_session()
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
 
         task = asyncio.create_task(stop_after_delay())
@@ -117,9 +104,9 @@ async def test_bare_function_accepted_as_policy():
 
     executor = PolicyExecutor(s, my_policy, timeout_s=0.1, inference_hz=50)
 
-    with patch("policy.executor.PolicyRunner") as mock_runner, \
+    with patch("policy.executor.PidJoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
-        mock_runner.return_value = _FakeRunner()
+        mock_session_cls.return_value = _fake_session()
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
 
         result = await executor.run()
@@ -138,9 +125,9 @@ async def test_last_observation_populated():
 
     executor = PolicyExecutor(s, policy, timeout_s=0.1, inference_hz=50)
 
-    with patch("policy.executor.PolicyRunner") as mock_runner, \
+    with patch("policy.executor.PidJoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
-        mock_runner.return_value = _FakeRunner()
+        mock_session_cls.return_value = _fake_session()
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
 
         await executor.run()

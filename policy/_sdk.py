@@ -9,7 +9,7 @@ Do NOT import this from outside the policy package.
     This module accesses ``MotionGroup._api_client``, ``._cell``, and
     ``._controller_id`` which are **not part of the public SDK API**.
     These attributes may change or be removed in future SDK releases.
-    This package pins ``wandelbots-nova>=4.0.0,<5`` to limit exposure.
+    This package pins ``wandelbots-nova>=5.1.0,<6`` to limit exposure.
     If the SDK changes these internals, only this file needs updating.
 """
 

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, overload
 
 from policy.estop import EstopMonitor, check_estop, check_sessions
 from policy.pid_jogging_session import PidJoggingSession
-from policy.types import PolicyRunnerConfig
+from policy.types import PidConfig
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -142,10 +142,10 @@ class JointJogger(_BaseJogger):
         self,
         motion_groups: list[MotionGroup],
         *,
-        config: PolicyRunnerConfig | None = None,
+        config: PidConfig | None = None,
         safety_guards: list[SafetyGuard] | None = None,
     ) -> None:
-        cfg = config or PolicyRunnerConfig()
+        cfg = config or PidConfig()
         sessions: dict[MotionGroup, PidJoggingSession] = {}
         for mg in motion_groups:
             sessions[mg] = PidJoggingSession(
@@ -203,10 +203,10 @@ class TcpJogger(_BaseJogger):
         self,
         motion_groups: dict[MotionGroup, str],
         *,
-        config: PolicyRunnerConfig | None = None,
+        config: PidConfig | None = None,
         safety_guards: list[SafetyGuard] | None = None,
     ) -> None:
-        cfg = config or PolicyRunnerConfig()
+        cfg = config or PidConfig()
         sessions: dict[MotionGroup, PidJoggingSession] = {}
         for mg, tcp in motion_groups.items():
             sessions[mg] = PidJoggingSession(
@@ -266,7 +266,7 @@ class TcpJogger(_BaseJogger):
 def jog_joints(
     motion_groups: MotionGroup,
     *,
-    config: PolicyRunnerConfig | None = ...,
+    config: PidConfig | None = ...,
     safety_guards: list[SafetyGuard] | None = ...,
 ) -> JointJogger: ...
 
@@ -275,7 +275,7 @@ def jog_joints(
 def jog_joints(
     motion_groups: list[MotionGroup],
     *,
-    config: PolicyRunnerConfig | None = ...,
+    config: PidConfig | None = ...,
     safety_guards: list[SafetyGuard] | None = ...,
 ) -> JointJogger: ...
 
@@ -283,7 +283,7 @@ def jog_joints(
 def jog_joints(
     motion_groups: MotionGroup | list[MotionGroup],
     *,
-    config: PolicyRunnerConfig | None = None,
+    config: PidConfig | None = None,
     safety_guards: list[SafetyGuard] | None = None,
 ) -> JointJogger:
     """Create a PID-controlled joint position jogger.
@@ -319,7 +319,7 @@ def jog_tcp(
     motion_groups: MotionGroup,
     *,
     tcp: str,
-    config: PolicyRunnerConfig | None = ...,
+    config: PidConfig | None = ...,
     safety_guards: list[SafetyGuard] | None = ...,
 ) -> TcpJogger: ...
 
@@ -328,7 +328,7 @@ def jog_tcp(
 def jog_tcp(
     motion_groups: dict[MotionGroup, str],
     *,
-    config: PolicyRunnerConfig | None = ...,
+    config: PidConfig | None = ...,
     safety_guards: list[SafetyGuard] | None = ...,
 ) -> TcpJogger: ...
 
@@ -337,7 +337,7 @@ def jog_tcp(
     motion_groups: MotionGroup | dict[MotionGroup, str],
     *,
     tcp: str = "",
-    config: PolicyRunnerConfig | None = None,
+    config: PidConfig | None = None,
     safety_guards: list[SafetyGuard] | None = None,
 ) -> TcpJogger:
     """Create a PID-controlled TCP pose jogger.

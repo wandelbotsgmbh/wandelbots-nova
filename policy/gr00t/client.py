@@ -185,9 +185,7 @@ class Gr00tPolicyClient(PolicyClient):
 
             if gobs.ios is not None:
                 for io_name, io_val in gobs.ios.items():
-                    state[io_name] = _to_state_array(
-                        [io_val * 100.0 if io_val <= 1.0 else io_val]
-                    )
+                    state[io_name] = _to_state_array([io_val])
 
         return state
 

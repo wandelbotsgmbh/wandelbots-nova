@@ -9,7 +9,7 @@ import pytest
 
 from nova.types import Pose
 from policy.pid_jogging_session import PidJoggingSession
-from policy.types import GuardStopError, PolicyRunnerConfig
+from policy.types import GuardStopError, PidConfig
 
 
 def _session(
@@ -23,7 +23,7 @@ def _session(
     mg._controller_id = "ur10e"
     mg._cell = "cell"
     mg._api_client = MagicMock()
-    config = PolicyRunnerConfig(velocity_limit=velocity_limit, tolerance=tolerance)
+    config = PidConfig(velocity_limit=velocity_limit, tolerance=tolerance)
     session = PidJoggingSession(mg, config, safety_guards=guards)
     session._num_joints = 6
     session._current_joints = [0.0] * 6

@@ -12,15 +12,16 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from policy._sdk import get_controller_id
-from policy.estop import EstopMonitor, check_estop
+from policy.estop import EstopMonitor, check_estop, check_sessions
 from policy.io import IOStreamCache
-from policy.runner import PolicyRunner
-from policy.types import ActionChunk, EmergencyStopError, GuardStopError, MotionError
+from policy.pid_jogging_session import PidJoggingSession
+from policy.types import ActionChunk, EmergencyStopError, GuardStopError, MotionError, PidConfig
 
 if TYPE_CHECKING:
+    from policy.cameras import CameraSource
     from policy.policy_client import PolicyClient
     from policy.schema import PolicySchema
-    from policy.types import PolicyRunnerConfig, SafetyGuard
+    from policy.types import SafetyGuard
 
 # Type for bare async policy functions
 _PolicyFn = Callable[[dict[str, Any]], Coroutine[Any, Any, dict[str, float] | ActionChunk]]
@@ -49,14 +50,12 @@ class ExecutionResult:
     """Result of a policy execution run."""
 
     reason: str
-    """Why execution ended: 'timeout' | 'stopped' | 'safety_guard' | 'estop' | 'error'"""
+    """Why execution ended: 'timeout' | 'stopped'"""
 
     steps: int = 0
     duration_s: float = 0.0
     last_state: dict[str, Any] | None = None
     """Last observed robot state (per motion group). Useful to know where the robot stopped."""
-    error: Exception | None = None
-    guard_name: str | None = None
 
 
 class PolicyExecutor:
@@ -71,7 +70,7 @@ class PolicyExecutor:
         schema: PolicySchema,
         policy: _PolicyFn | PolicyClient,
         *,
-        config: PolicyRunnerConfig | None = None,
+        config: PidConfig | None = None,
         safety_guards: list[SafetyGuard] | None = None,
         timeout_s: float = 0,
         inference_hz: float = 30,
@@ -88,18 +87,19 @@ class PolicyExecutor:
         else:
             self._policy = policy  # type: ignore[assignment]
 
-        self._config = config
+        self._config = config or PidConfig()
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
         self._inference_hz = inference_hz
         self._camera_max_age_s = camera_max_age_s
 
-        self._runner: PolicyRunner | None = None
-        self._camera_sources: dict[str, Any] = {}  # policy_key -> connected source
+        self._sessions: dict[str, PidJoggingSession] = {}
+        self._camera_sources: dict[str, CameraSource] = {}
         self._stop_event = asyncio.Event()
         self._last_obs: dict[str, Any] | None = None
         self._estop_monitor: EstopMonitor | None = None
         self._io_caches: list[IOStreamCache] = []
+        self._io_tasks: set[asyncio.Task[None]] = set()
 
         self.status = ExecutorStatus()
         self.result: ExecutionResult | None = None
@@ -135,108 +135,96 @@ class PolicyExecutor:
         """
         self._stop_event.clear()
         self.result = None
-        await self._run()
-        result = await self._cleanup()
+        try:
+            await self._run()
+        finally:
+            await self._cleanup()
 
-        if result.reason == "safety_guard":
-            raise GuardStopError(
-                motion_group_id="",
-                guard_name=result.guard_name or "unknown",
-            )
-        if result.reason == "motion_error":
-            if isinstance(result.error, MotionError):
-                raise result.error
-            raise MotionError(motion_group_id="unknown", message=str(result.error))
-        if result.reason == "estop":
-            if isinstance(result.error, EmergencyStopError):
-                raise result.error
-            raise EmergencyStopError(controller_id="unknown")
-        if result.reason in ("connection_lost", "error"):
-            raise result.error if result.error else RuntimeError(result.reason)
-
-        return result
+        if self.result is None:
+            self.result = ExecutionResult(reason="stopped", steps=self.status.step)
+        return self.result
 
     def stop(self) -> None:
         """Signal the executor to stop. Non-blocking — run() will return shortly after."""
         self._stop_event.set()
 
-    async def _cleanup(self) -> ExecutionResult:
-        """Clean up runner and policy connection, return final result."""
-        if self._runner is not None:
+    async def _cleanup(self) -> None:
+        """Stop all sessions and close policy connection."""
+        for session in self._sessions.values():
             with contextlib.suppress(GuardStopError, MotionError, EmergencyStopError, OSError):
-                await self._runner.stop()
-            self._runner = None
+                await session.stop()
+
+        # Wait for pending IO tasks
+        if self._io_tasks:
+            await asyncio.gather(*self._io_tasks, return_exceptions=True)
+            self._io_tasks.clear()
+
+        self._sessions.clear()
 
         with contextlib.suppress(OSError, RuntimeError):
             await self._policy.close()
 
         self.status = ExecutorStatus(phase=Phase.IDLE)
 
-        if self.result is None:
-            self.result = ExecutionResult(reason="stopped", steps=self.status.step)
-        logger.info(
-            "PolicyExecutor stopped: reason=%s steps=%d duration=%.1fs",
-            self.result.reason,
-            self.result.steps,
-            self.result.duration_s,
-        )
-        return self.result
+        if self.result is not None:
+            logger.info(
+                "PolicyExecutor stopped: reason=%s steps=%d duration=%.1fs",
+                self.result.reason,
+                self.result.steps,
+                self.result.duration_s,
+            )
 
     # -------------------------------------------------------------------------
     # Execution lifecycle
     # -------------------------------------------------------------------------
 
     async def _run(self) -> None:
-        """Main execution: open jogging, loop observe→act, close."""
-        try:
-            self._runner = PolicyRunner(
-                motion_groups=self._motion_groups,
+        """Main execution: create sessions, loop observe→act, clean up.
+
+        Exceptions (GuardStopError, MotionError, EmergencyStopError) propagate
+        to run().
+        """
+        # Create and start sessions
+        for mg in self._motion_groups:
+            self._sessions[mg.id] = PidJoggingSession(
+                motion_group=mg,
                 config=self._config,
                 tcp=self._schema.tcp,
                 safety_guards=self._safety_guards,
             )
 
-            image_sources = self._schema.image_sources
-            if image_sources:
-                logger.info("Connecting cameras...")
-                await self._connect_cameras(image_sources)
-                logger.info("All cameras ready")
+        image_sources = self._schema.image_sources
+        if image_sources:
+            logger.info("Connecting cameras...")
+            await self._connect_cameras(image_sources)
+            logger.info("All cameras ready")
 
-            async with self._runner:
-                await self._start_io_streams()
+        for session in self._sessions.values():
+            await session.start()
 
-                try:
-                    await self._policy.connect(self.mg_ids)
-                    self._estop_monitor = EstopMonitor(self._motion_groups)
-                    await self._estop_monitor.start()
-                    self.result = await self._execute()
-                finally:
-                    if self._estop_monitor is not None:
-                        await self._estop_monitor.stop()
-                        self._estop_monitor = None
-                    if self._camera_sources:
-                        await self._disconnect_cameras()
-                    await self._stop_io_streams()
-
-        except asyncio.CancelledError:
-            pass
-        except (OSError, RuntimeError) as e:
-            logger.error("Executor error: %s", e)
-            self.status.message = f"Error: {e}"
-            self.result = ExecutionResult(reason="error", steps=self.status.step, error=e)
-        except Exception as e:
-            logger.exception("Executor crashed")
-            self.status.message = f"Error: {e}"
-            self.result = ExecutionResult(reason="error", steps=self.status.step, error=e)
+        try:
+            await self._start_io_streams()
+            await self._policy.connect(self.mg_ids)
+            self._estop_monitor = EstopMonitor(self._motion_groups)
+            await self._estop_monitor.start()
+            self.result = await self._execute()
         finally:
-            self.status.phase = Phase.IDLE
+            if self._estop_monitor is not None:
+                await self._estop_monitor.stop()
+                self._estop_monitor = None
+            if self._camera_sources:
+                await self._disconnect_cameras()
+            await self._stop_io_streams()
 
     # -------------------------------------------------------------------------
     # Observe → act loop
     # -------------------------------------------------------------------------
 
     async def _execute(self) -> ExecutionResult:
-        """Run the observe-act loop until termination."""
+        """Run the observe-act loop until termination.
+
+        Raises GuardStopError, MotionError, EmergencyStopError directly.
+        """
         step = 0
         start_time = time.monotonic()
         interval = 1.0 / self._inference_hz
@@ -245,63 +233,65 @@ class PolicyExecutor:
         self.status.phase = Phase.EXECUTING
         self.status.message = "Running policy..."
 
-        try:
-            while not self._stop_event.is_set():
-                if self._timeout_s > 0 and (time.monotonic() - start_time) >= self._timeout_s:
-                    return _result("timeout", step, start_time, last_obs)
+        while not self._stop_event.is_set():
+            if self._timeout_s > 0 and (time.monotonic() - start_time) >= self._timeout_s:
+                return _result("timeout", step, start_time, last_obs)
 
-                # Observe
-                robot_states = await self._runner.observe()
-                if not robot_states:
-                    await asyncio.sleep(interval)
-                    continue
-                images = self._read_cameras() if self._camera_sources else None
-                self._last_obs = robot_states
-                last_obs = robot_states
-
-                # Query policy → send to robot
-                action = await self._policy.get_actions(
-                    robot_states, self._schema, images, self._all_io_values or None,
-                )
-                await self._runner.send(action)
-                step += 1
-                self.status.step = step
-
-                # Check failures
-                self._runner.check_health()
-                check_estop(self._estop_monitor)
-
+            # Observe
+            robot_states = self._observe()
+            if not robot_states:
                 await asyncio.sleep(interval)
+                continue
+            images = self._read_cameras() if self._camera_sources else None
+            self._last_obs = robot_states
+            last_obs = robot_states
 
-        except GuardStopError as e:
-            return ExecutionResult(
-                reason="safety_guard",
-                steps=step,
-                duration_s=time.monotonic() - start_time,
-                last_state=last_obs,
-                guard_name=e.guard_name,
+            # Query policy → send to robot
+            action = await self._policy.get_actions(
+                robot_states, self._schema, images, self._all_io_values or None,
             )
-        except MotionError as e:
-            return ExecutionResult(
-                reason="motion_error", steps=step,
-                duration_s=time.monotonic() - start_time,
-                last_state=last_obs, error=e,
-            )
-        except EmergencyStopError as e:
-            return ExecutionResult(
-                reason="estop", steps=step,
-                duration_s=time.monotonic() - start_time,
-                last_state=last_obs, error=e,
-            )
-        except asyncio.CancelledError:
-            pass
-        except (OSError, RuntimeError) as e:
-            return ExecutionResult(
-                reason="error", steps=step, duration_s=time.monotonic() - start_time,
-                last_state=last_obs, error=e,
-            )
+            self._send(action)
+            step += 1
+            self.status.step = step
+
+            # Check failures — raises directly on error
+            check_sessions(self._sessions)
+            check_estop(self._estop_monitor)
+
+            await asyncio.sleep(interval)
 
         return _result("stopped", step, start_time, last_obs)
+
+    # -------------------------------------------------------------------------
+    # Session operations (inlined from former PolicyRunner)
+    # -------------------------------------------------------------------------
+
+    def _observe(self) -> dict[str, Any]:
+        """Get current state for all motion groups."""
+        result: dict[str, Any] = {}
+        for group_id, session in self._sessions.items():
+            state = session.current_state
+            if state is not None:
+                result[group_id] = state
+        return result
+
+    def _send(self, chunk: ActionChunk) -> None:
+        """Send an action chunk to the motion groups."""
+        for group_id, steps in chunk.joints.items():
+            session = self._sessions.get(group_id)
+            if session is None:
+                logger.warning("Unknown motion group in chunk: %s", group_id)
+                continue
+            session.update_chunk(steps=steps, dt_ms=chunk.dt_ms)
+
+        if chunk.ios:
+            for group_id, ios in chunk.ios.items():
+                session = self._sessions.get(group_id)
+                if session is None:
+                    continue
+                task = asyncio.create_task(session.write_ios(ios))
+                self._io_tasks.add(task)
+                task.add_done_callback(self._io_tasks.discard)
 
     # -------------------------------------------------------------------------
     # IO stream management
@@ -313,7 +303,6 @@ class PolicyExecutor:
         if not io_by_ctrl:
             return
 
-        # Use one MG per controller to open IO stream
         started_ctrls: set[str] = set()
         for mg in self._motion_groups:
             ctrl_id = get_controller_id(mg)
@@ -328,7 +317,9 @@ class PolicyExecutor:
             await cache.start()
 
         for cache in self._io_caches:
-            self._runner.set_io_values_ref(cache.motion_group.id, cache.values)
+            session = self._sessions.get(cache.motion_group.id)
+            if session is not None:
+                session._io_values = cache.values
 
     async def _stop_io_streams(self) -> None:
         """Close all IO streams."""
@@ -345,39 +336,31 @@ class PolicyExecutor:
         return merged
 
     # -------------------------------------------------------------------------
-    # Camera management (built from schema image observations)
+    # Camera management
     # -------------------------------------------------------------------------
 
-    async def _connect_cameras(self, sources: dict[str, object]) -> None:
+    async def _connect_cameras(self, sources: dict[str, CameraSource]) -> None:
         """Connect all camera sources from the schema."""
-        import asyncio as _aio  # noqa: PLC0415
-
         tasks = []
         for key, source in sources.items():
             self._camera_sources[key] = source
-            if hasattr(source, "connect"):
-                tasks.append(source.connect())  # type: ignore[union-attr]
+            tasks.append(source.connect())
         if tasks:
-            await _aio.gather(*tasks)
+            await asyncio.gather(*tasks)
 
     async def _disconnect_cameras(self) -> None:
         """Disconnect all camera sources."""
-        tasks = [
-            source.disconnect()  # type: ignore[union-attr]
-            for source in self._camera_sources.values()
-            if hasattr(source, "disconnect")
-        ]
+        tasks = [source.disconnect() for source in self._camera_sources.values()]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._camera_sources.clear()
 
     def _read_cameras(self) -> dict[str, Any]:
         """Read one frame from each camera source."""
-        frames: dict[str, Any] = {}
-        for key, source in self._camera_sources.items():
-            if hasattr(source, "read"):
-                frames[key] = source.read(max_age_s=self._camera_max_age_s)  # type: ignore[union-attr]
-        return frames
+        return {
+            key: source.read(max_age_s=self._camera_max_age_s)
+            for key, source in self._camera_sources.items()
+        }
 
 
 def _result(
@@ -386,4 +369,3 @@ def _result(
     return ExecutionResult(
         reason=reason, steps=step, duration_s=time.monotonic() - start_time, last_state=last_obs,
     )
-
