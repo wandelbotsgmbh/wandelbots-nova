@@ -55,8 +55,8 @@ class Mapping:
         return policy_value
 
 
-class IdentityMapping(Mapping):
-    """Pass-through mapping. Policy and hardware values are the same."""
+# IdentityMapping is just Mapping — kept as an alias for clarity in user code.
+IdentityMapping = Mapping
 
 
 class BoolMapping(Mapping):
@@ -110,20 +110,12 @@ class _ObsJointPositions:
 
 
 @dataclass
-class _ObsJointTorques:
-    """Observe joint torques (read-only)."""
+class _ObsOptionalJointSignal:
+    """Observe an optional per-joint signal (torques or currents). Read-only."""
 
     key: str
     source: MotionGroup
-    default: list[float] | None = None
-
-
-@dataclass
-class _ObsJointCurrents:
-    """Observe joint currents (read-only)."""
-
-    key: str
-    source: MotionGroup
+    field_name: str  # attribute name on RobotState: "joint_torques" or "joint_currents"
     default: list[float] | None = None
 
 
@@ -181,8 +173,7 @@ class _ObsComputed:
 
 ObservationEntry = (
     _ObsJointPositions
-    | _ObsJointTorques
-    | _ObsJointCurrents
+    | _ObsOptionalJointSignal
     | _ObsTcp
     | _ObsIO
     | _ObsImage
@@ -211,9 +202,9 @@ class Observation:
         source: MotionGroup,
         *,
         default: list[float] | None = None,
-    ) -> _ObsJointTorques:
+    ) -> _ObsOptionalJointSignal:
         """Observe joint torques (read-only). Optional default if controller doesn't provide them."""
-        return _ObsJointTorques(key=key, source=source, default=default)
+        return _ObsOptionalJointSignal(key=key, source=source, field_name="joint_torques", default=default)
 
     @staticmethod
     def joint_currents(
@@ -221,9 +212,9 @@ class Observation:
         source: MotionGroup,
         *,
         default: list[float] | None = None,
-    ) -> _ObsJointCurrents:
+    ) -> _ObsOptionalJointSignal:
         """Observe joint currents (read-only). Optional default if controller doesn't provide them."""
-        return _ObsJointCurrents(key=key, source=source, default=default)
+        return _ObsOptionalJointSignal(key=key, source=source, field_name="joint_currents", default=default)
 
     @staticmethod
     def tcp(
@@ -413,23 +404,6 @@ class _TcpMapping:
     format: TcpFormat
 
 
-@dataclass
-class GroupedObservation:
-    """Per-motion-group extracted observation data.
-
-    Produced by ``PolicySchema.build_grouped_observation()`` and consumed by
-    policy clients to build their transport-specific formats.
-    """
-
-    motion_group_id: str
-    key: str
-    joints: list[float]
-    tcp: list[float] | None = None
-    tcp_key: str = ""
-    ios: dict[str, float] | None = None
-    """IO policy-key → policy-float value."""
-
-
 # ---------------------------------------------------------------------------
 # PolicySchema
 # ---------------------------------------------------------------------------
@@ -616,6 +590,26 @@ class PolicySchema:
             result.setdefault(ctrl, set()).add(m.hardware_key)
         return {k: sorted(v) for k, v in result.items() if v}
 
+    @property
+    def joint_mappings(self) -> list[_JointMapping]:
+        """Joint observation mappings (policy key → motion groups). Read-only."""
+        return self._joint_mappings
+
+    @property
+    def tcp_mappings(self) -> list[_TcpMapping]:
+        """TCP observation mappings (policy key → motion group + format). Read-only."""
+        return self._tcp_mappings
+
+    @property
+    def obs_io_mappings(self) -> list[_IOMapping]:
+        """IO observation mappings (policy key → hardware key). Read-only."""
+        return self._obs_io_mappings
+
+    @property
+    def constants(self) -> dict[str, Any]:
+        """Constant observation values. Read-only."""
+        return self._constants
+
     # ------------------------------------------------------------------
     # Observation building
     # ------------------------------------------------------------------
@@ -663,13 +657,9 @@ class PolicySchema:
         self, obs: dict[str, float], states: dict[str, RobotState],
     ) -> None:
         for entry in self._observations:
-            if isinstance(entry, _ObsJointTorques):
+            if isinstance(entry, _ObsOptionalJointSignal):
                 state = states.get(entry.source.id)
-                values = getattr(state, "joint_torques", None) if state is not None else None
-                self._fill_optional_array(obs, entry.key, values, entry.default)
-            elif isinstance(entry, _ObsJointCurrents):
-                state = states.get(entry.source.id)
-                values = getattr(state, "joint_currents", None) if state is not None else None
+                values = getattr(state, entry.field_name, None) if state is not None else None
                 self._fill_optional_array(obs, entry.key, values, entry.default)
 
     @staticmethod
@@ -693,61 +683,6 @@ class PolicySchema:
             raw = io_values.get(m.hardware_key)
             obs[m.key] = m.mapping.to_policy(raw) if raw is not None else 0.0
 
-    def build_grouped_observation(
-        self,
-        states: dict[str, RobotState],
-        io_values: dict[str, object] | None = None,
-    ) -> list[GroupedObservation]:
-        """Build per-motion-group observations (used by GR00T client)."""
-        result: list[GroupedObservation] = []
-        seen_mg: set[str] = set()
-        for m in self._joint_mappings:
-            for mg in m.sources:
-                if mg.id in seen_mg:
-                    continue
-                seen_mg.add(mg.id)
-                state = states.get(mg.id)
-                if state is None:
-                    continue
-                result.append(self._build_group_obs(mg, m.key, state, io_values))
-        return result
-
-    def _build_group_obs(
-        self,
-        mg: MotionGroup,
-        key: str,
-        state: RobotState,
-        io_values: dict[str, object] | None,
-    ) -> GroupedObservation:
-        """Build a single GroupedObservation for one motion group."""
-        tcp_vals, tcp_key = self._find_tcp_for_mg(mg, state)
-        io_floats = self._find_ios_for_mg(mg, io_values)
-        return GroupedObservation(
-            motion_group_id=mg.id, key=key, joints=list(state.joints),
-            tcp=tcp_vals, tcp_key=tcp_key, ios=io_floats,
-        )
-
-    def _find_tcp_for_mg(
-        self, mg: MotionGroup, state: RobotState,
-    ) -> tuple[list[float] | None, str]:
-        for tm in self._tcp_mappings:
-            if tm.source.id == mg.id and hasattr(state, "pose") and state.pose is not None:
-                return pose_to_tcp(state.pose, tm.format), tm.key
-        return None, ""
-
-    def _find_ios_for_mg(
-        self, mg: MotionGroup, io_values: dict[str, object] | None,
-    ) -> dict[str, float] | None:
-        if io_values is None:
-            return None
-        result: dict[str, float] | None = None
-        for iom in self._obs_io_mappings:
-            if iom.motion_group.id == mg.id:
-                if result is None:
-                    result = {}
-                raw = io_values.get(iom.hardware_key)
-                result[iom.key] = iom.mapping.to_policy(raw) if raw is not None else 0.0
-        return result
 
     # ------------------------------------------------------------------
     # Action parsing

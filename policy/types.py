@@ -42,17 +42,12 @@ class ActionChunk(pydantic.BaseModel):
 
 @dataclass
 class PidConfig:
-    """Configuration for the PolicyRunner PID velocity controller."""
+    """Configuration for the PID velocity controller."""
 
     velocity_limit: float | list[float] = 1.5
-    """Joint velocity limit in rad/s. Scalar (all joints) or per-joint list.
-    Only used for joint jogging. Matches ``joint_velocity_limits`` in NOVA API."""
+    """Velocity limit in rad/s (joints) or mm/s + rad/s (TCP).
+    Scalar applies to all axes; list sets per-axis limits."""
 
-    tcp_velocity_limit: float = 250.0
-    """TCP translation velocity limit in mm/s. Only used for TCP jogging."""
-
-    tcp_orientation_velocity_limit: float = 1.5
-    """TCP rotation velocity limit in rad/s. Only used for TCP jogging."""
     tolerance: float = 0.01
     p_gain: float = 3.0
     i_gain: float = 0.0

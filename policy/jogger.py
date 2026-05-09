@@ -204,13 +204,31 @@ class TcpJogger(_BaseJogger):
         motion_groups: dict[MotionGroup, str],
         *,
         config: PidConfig | None = None,
+        tcp_velocity_limit: float = 250.0,
+        tcp_orientation_velocity_limit: float = 1.5,
         safety_guards: list[SafetyGuard] | None = None,
     ) -> None:
         cfg = config or PidConfig()
+        # Build per-axis velocity limits for cartesian mode: [tx, ty, tz, rx, ry, rz]
+        tcp_limits = [
+            tcp_velocity_limit, tcp_velocity_limit, tcp_velocity_limit,
+            tcp_orientation_velocity_limit, tcp_orientation_velocity_limit,
+            tcp_orientation_velocity_limit,
+        ]
+        tcp_cfg = PidConfig(
+            velocity_limit=tcp_limits,
+            tolerance=cfg.tolerance,
+            p_gain=cfg.p_gain,
+            i_gain=cfg.i_gain,
+            d_gain=cfg.d_gain,
+            ff_gain=cfg.ff_gain,
+            integral_limit=cfg.integral_limit,
+            state_rate_ms=cfg.state_rate_ms,
+        )
         sessions: dict[MotionGroup, PidJoggingSession] = {}
         for mg, tcp in motion_groups.items():
             sessions[mg] = PidJoggingSession(
-                motion_group=mg, config=cfg, tcp=tcp, mode="cartesian",
+                motion_group=mg, config=tcp_cfg, tcp=tcp, mode="cartesian",
                 safety_guards=safety_guards,
             )
         mg_list = list(motion_groups.keys())
@@ -320,6 +338,8 @@ def jog_tcp(
     *,
     tcp: str,
     config: PidConfig | None = ...,
+    tcp_velocity_limit: float = ...,
+    tcp_orientation_velocity_limit: float = ...,
     safety_guards: list[SafetyGuard] | None = ...,
 ) -> TcpJogger: ...
 
@@ -329,6 +349,8 @@ def jog_tcp(
     motion_groups: dict[MotionGroup, str],
     *,
     config: PidConfig | None = ...,
+    tcp_velocity_limit: float = ...,
+    tcp_orientation_velocity_limit: float = ...,
     safety_guards: list[SafetyGuard] | None = ...,
 ) -> TcpJogger: ...
 
@@ -338,6 +360,8 @@ def jog_tcp(
     *,
     tcp: str = "",
     config: PidConfig | None = None,
+    tcp_velocity_limit: float = 250.0,
+    tcp_orientation_velocity_limit: float = 1.5,
     safety_guards: list[SafetyGuard] | None = None,
 ) -> TcpJogger:
     """Create a PID-controlled TCP pose jogger.
@@ -346,7 +370,9 @@ def jog_tcp(
         motion_groups: Single motion group (with ``tcp`` kwarg) or
             ``dict[MotionGroup, str]`` mapping each group to its TCP name.
         tcp: TCP name when passing a single motion group.
-        config: PID controller configuration. Uses cartesian defaults if None.
+        config: PID controller configuration.
+        tcp_velocity_limit: TCP translation velocity limit in mm/s.
+        tcp_orientation_velocity_limit: TCP rotation velocity limit in rad/s.
         safety_guards: Optional callbacks run on every PID tick.
 
     Returns:
@@ -365,5 +391,15 @@ def jog_tcp(
                 jogger.target = Pose(500, 200, 300, 0, 3.14, 0)
     """
     if isinstance(motion_groups, dict):
-        return TcpJogger(motion_groups, config=config, safety_guards=safety_guards)
-    return TcpJogger({motion_groups: tcp}, config=config, safety_guards=safety_guards)
+        return TcpJogger(
+            motion_groups, config=config,
+            tcp_velocity_limit=tcp_velocity_limit,
+            tcp_orientation_velocity_limit=tcp_orientation_velocity_limit,
+            safety_guards=safety_guards,
+        )
+    return TcpJogger(
+        {motion_groups: tcp}, config=config,
+        tcp_velocity_limit=tcp_velocity_limit,
+        tcp_orientation_velocity_limit=tcp_orientation_velocity_limit,
+        safety_guards=safety_guards,
+    )

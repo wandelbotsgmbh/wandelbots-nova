@@ -82,7 +82,6 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
 
     client = Gr00tPolicyClient(
         host=GROOT_HOST, port=GROOT_PORT,
-        language="Pick up the box and place it onto the conveyor.",
         timeout_ms=60000,
     )
 

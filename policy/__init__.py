@@ -12,7 +12,7 @@ velocity commands sent via the NOVA Jogging API.
 
 from __future__ import annotations
 
-from policy.cameras import CameraSource, WebRTCCameraConfig, WebRTCCameras
+from policy.cameras import CameraSource, WebRTCCameras
 from policy.executor import ExecutionResult, ExecutorStatus, PolicyExecutor
 from policy.gr00t import Gr00tPolicyClient
 from policy.jogger import JointJogger, TcpJogger, jog_joints, jog_tcp
@@ -21,7 +21,6 @@ from policy.pose import TcpFormat, pose_to_tcp
 from policy.schema import (
     Action,
     BoolMapping,
-    IdentityMapping,
     Mapping,
     Observation,
     PolicySchema,
@@ -47,7 +46,6 @@ __all__ = [
     "Gr00tPolicyClient",
     "GuardState",
     "GuardStopError",
-    "IdentityMapping",
     "JointJogger",
     "Mapping",
     "MotionError",
@@ -58,7 +56,6 @@ __all__ = [
     "PolicySchema",
     "TcpFormat",
     "TcpJogger",
-    "WebRTCCameraConfig",
     "WebRTCCameras",
     "jog_joints",
     "jog_tcp",

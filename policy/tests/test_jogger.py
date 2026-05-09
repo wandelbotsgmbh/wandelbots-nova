@@ -301,8 +301,16 @@ class TestPerAxisVelocityLimit:
         assert abs(vel[0]) <= 1.0
         assert abs(vel[1]) <= 100.0
 
-    def test_config_fields_match_nova_api(self):
-        """PidConfig uses NOVA-style field names."""
-        cfg = PidConfig(tcp_velocity_limit=500.0, tcp_orientation_velocity_limit=2.0)
-        assert cfg.tcp_velocity_limit == 500.0
-        assert cfg.tcp_orientation_velocity_limit == 2.0
+    def test_tcp_velocity_limits_on_jogger(self):
+        """TCP velocity limits are set on the jogger, not on PidConfig."""
+        mg = _mock_mg()
+        jogger = jog_tcp(
+            mg, tcp="Flange",
+            tcp_velocity_limit=500.0,
+            tcp_orientation_velocity_limit=2.0,
+        )
+        session = jogger._sessions[mg]
+        # The session's PID should have per-axis limits
+        limits = session._pid.velocity_limit
+        assert isinstance(limits, list)
+        assert limits == [500.0, 500.0, 500.0, 2.0, 2.0, 2.0]

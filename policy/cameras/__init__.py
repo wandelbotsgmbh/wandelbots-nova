@@ -1,13 +1,11 @@
 """Camera sources for policy observations.
 
-Provides the ``CameraSource`` protocol, ``WebRTCCameraConfig``,
-and ``WebRTCCameras`` factory.
+Provides the ``CameraSource`` protocol and ``WebRTCCameras`` factory.
 """
 
-from policy.cameras._cameras import CameraSource, WebRTCCameraConfig, WebRTCCameras
+from policy.cameras._cameras import CameraSource, WebRTCCameras
 
 __all__ = [
     "CameraSource",
-    "WebRTCCameraConfig",
     "WebRTCCameras",
 ]

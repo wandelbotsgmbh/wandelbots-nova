@@ -52,7 +52,7 @@ class PidJoggingSession:
         self._safety_guards = safety_guards or []
         self._io_values = io_values
         self._pid = VelocityController(
-            velocity_limit=self._resolve_velocity_limit_for_mode(),
+            velocity_limit=config.velocity_limit,
             tolerance=config.tolerance,
             p_gain=config.p_gain,
             i_gain=config.i_gain,
@@ -87,19 +87,6 @@ class PidJoggingSession:
         self._running = False
         self._failed = False
         self._failure_reason: str = ""
-
-    def _resolve_velocity_limit_for_mode(self) -> float | list[float]:
-        """Resolve velocity limit considering the jogging mode."""
-        if self._mode == "cartesian":
-            return [
-                self._config.tcp_velocity_limit,
-                self._config.tcp_velocity_limit,
-                self._config.tcp_velocity_limit,
-                self._config.tcp_orientation_velocity_limit,
-                self._config.tcp_orientation_velocity_limit,
-                self._config.tcp_orientation_velocity_limit,
-            ]
-        return self._config.velocity_limit
 
     @property
     def motion_group(self) -> MotionGroup:

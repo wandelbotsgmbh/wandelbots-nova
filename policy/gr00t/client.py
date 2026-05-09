@@ -17,6 +17,7 @@ import numpy as np
 
 from policy.gr00t.transport import Gr00tZmqTransport, require_dict
 from policy.policy_client import PolicyClient
+from policy.pose import pose_to_tcp
 from policy.types import ActionChunk
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,8 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from typing import Any
 
-    from policy.schema import GroupedObservation, PolicySchema
+    from nova.types import RobotState
+    from policy.schema import PolicySchema
 
 _RESPONSE_PAIR_SIZE = 2
 _IMAGE_NDIM_SINGLE = 3  # (H, W, C)
@@ -36,15 +38,15 @@ _ACTION_NDIM = 3
 class Gr00tPolicyClient(PolicyClient):
     """Policy client for GR00T ZeroMQ inference servers.
 
-    Uses the executor's ``PolicySchema`` (passed to ``get_actions()``) to build
-    GR00T observations and decode GR00T actions.
+    Receives the same raw ``(states, schema, images, io_values)`` as every
+    other policy client. Internally converts to GR00T's numpy format using
+    the schema's joint/TCP/IO mappings, sends over ZMQ, and decodes the
+    response back to an ``ActionChunk``.
 
     Parameters
     ----------
     host:
         Hostname of the GR00T ZMQ server.
-    language:
-        Language instruction sent with every observation.
     port:
         ZMQ port (default 5555).
     timeout_ms:
@@ -61,7 +63,6 @@ class Gr00tPolicyClient(PolicyClient):
         self,
         host: str,
         *,
-        language: str = "",
         port: int = 5555,
         timeout_ms: int = 15000,
         api_token: str | None = None,
@@ -71,7 +72,6 @@ class Gr00tPolicyClient(PolicyClient):
         self._transport = Gr00tZmqTransport(
             host=host, port=port, timeout_ms=timeout_ms, api_token=api_token,
         )
-        self._language = language
         self._dt_ms = dt_ms
         self._model_dof = model_dof
         self._motion_group_ids: list[str] = []
@@ -85,14 +85,13 @@ class Gr00tPolicyClient(PolicyClient):
 
     async def get_actions(
         self,
-        states: dict[str, Any],
+        states: dict[str, RobotState],
         schema: PolicySchema,
         images: dict[str, Any] | None = None,
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
-        """Build GR00T observation from robot states + images, send, decode response."""
-        grouped = schema.build_grouped_observation(states, io_values)
-        groot_obs = self._build_groot_obs(grouped, images)
+        """Build GR00T observation from raw states + images, send, decode response."""
+        groot_obs = self._build_groot_obs(states, schema, images, io_values)
 
         response = await asyncio.to_thread(
             self._transport.call,
@@ -105,7 +104,7 @@ class Gr00tPolicyClient(PolicyClient):
 
         action_raw = require_dict(response[0], name="GR00T action")
         info_raw = require_dict(response[1], name="GR00T info")
-        return self._decode_action(grouped, action_raw, info_raw)
+        return self._decode_action(schema, action_raw, info_raw)
 
     async def close(self) -> None:
         """Close the socket and terminate the ZMQ context."""
@@ -132,62 +131,76 @@ class Gr00tPolicyClient(PolicyClient):
         return require_dict(response, name="GR00T get_modality_config response")
 
     # ------------------------------------------------------------------
-    # Observation building
+    # Observation building — reads raw states via schema mappings
     # ------------------------------------------------------------------
 
     def _build_groot_obs(
         self,
-        grouped: list[GroupedObservation],
-        images: dict[str, Any] | None = None,
+        states: dict[str, RobotState],
+        schema: PolicySchema,
+        images: dict[str, Any] | None,
+        io_values: dict[str, object] | None,
     ) -> dict[str, Any]:
-        """Convert grouped observations → GR00T format."""
-        state = self._grouped_to_numpy(grouped)
-        groot_obs: dict[str, Any] = {"state": state}
+        """Convert raw robot states → GR00T observation format."""
+        state_dict = self._build_state_dict(states, schema, io_values)
+        groot_obs: dict[str, Any] = {"state": state_dict}
 
         if images:
             video = _build_video(images)
             if video:
                 groot_obs["video"] = video
 
-        if self._language:
+        language = schema.constants.get("language", "")
+        if language:
             groot_obs["language"] = {
-                "annotation.language.language_instruction": [[self._language]],
+                "annotation.language.language_instruction": [[language]],
             }
 
         return groot_obs
 
-    def _grouped_to_numpy(
-        self, grouped: list[GroupedObservation],
+    def _build_state_dict(
+        self,
+        states: dict[str, RobotState],
+        schema: PolicySchema,
+        io_values: dict[str, object] | None,
     ) -> dict[str, np.ndarray]:
-        """Convert GroupedObservation list to GR00T numpy state dict."""
-        state: dict[str, np.ndarray] = {}
+        """Build the GR00T state dict from robot states via schema mappings."""
+        state_dict: dict[str, np.ndarray] = {}
 
-        for gobs in grouped:
-            joints = gobs.joints
+        for m in schema.joint_mappings:
+            for mg in m.sources:
+                s = states.get(mg.id)
+                if s is None:
+                    continue
+                joints = list(s.joints)
+                self._actual_dof[mg.id] = len(joints)
+                joints = self._pad_joints(mg.id, joints)
+                state_dict[m.key] = _to_state_array(joints)
 
-            # Track actual DOF for action truncation
-            self._actual_dof[gobs.motion_group_id] = len(joints)
+        for tm in schema.tcp_mappings:
+            s = states.get(tm.source.id)
+            if s is not None and hasattr(s, "pose") and s.pose is not None:
+                state_dict[tm.key] = _to_state_array(pose_to_tcp(s.pose, tm.format))
 
-            # Pad if model expects more joints
-            if self._model_dof > len(joints):
-                if gobs.motion_group_id not in self._dof_warned:
-                    self._dof_warned.add(gobs.motion_group_id)
-                    logger.warning(
-                        "Model expects %d joints but %s has %d — padding with zeros",
-                        self._model_dof, gobs.motion_group_id, len(joints),
-                    )
-                joints = [*joints, *([0.0] * (self._model_dof - len(joints)))]
+        if io_values:
+            for iom in schema.obs_io_mappings:
+                raw = io_values.get(iom.hardware_key)
+                val = iom.mapping.to_policy(raw) if raw is not None else 0.0
+                state_dict[iom.key] = _to_state_array([val])
 
-            state[gobs.key] = _to_state_array(joints)
+        return state_dict
 
-            if gobs.tcp is not None and gobs.tcp_key:
-                state[gobs.tcp_key] = _to_state_array(gobs.tcp)
-
-            if gobs.ios is not None:
-                for io_name, io_val in gobs.ios.items():
-                    state[io_name] = _to_state_array([io_val])
-
-        return state
+    def _pad_joints(self, mg_id: str, joints: list[float]) -> list[float]:
+        """Pad joints to model_dof if needed."""
+        if self._model_dof > len(joints):
+            if mg_id not in self._dof_warned:
+                self._dof_warned.add(mg_id)
+                logger.warning(
+                    "Model expects %d joints but %s has %d — padding with zeros",
+                    self._model_dof, mg_id, len(joints),
+                )
+            return [*joints, *([0.0] * (self._model_dof - len(joints)))]
+        return joints
 
     # ------------------------------------------------------------------
     # Action decoding
@@ -195,28 +208,29 @@ class Gr00tPolicyClient(PolicyClient):
 
     def _decode_action(
         self,
-        grouped: list[GroupedObservation],
+        schema: PolicySchema,
         action: dict[str, object],
         info: dict[str, object],
     ) -> ActionChunk:
         """Convert GR00T action arrays → ActionChunk."""
         joints: dict[str, list[list[float]]] = {}
 
-        for gobs in grouped:
-            arr = action.get(gobs.key)
+        for m in schema.joint_mappings:
+            arr = action.get(m.key)
             if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM:
-                joint_data = arr[0].astype(np.float32)
-                actual_dof = self._actual_dof.get(gobs.motion_group_id)
-                if actual_dof and joint_data.shape[1] > actual_dof:
-                    joint_data = joint_data[:, :actual_dof]
-                joints[gobs.motion_group_id] = joint_data.tolist()
+                for mg in m.sources:
+                    joint_data = arr[0].astype(np.float32)
+                    actual_dof = self._actual_dof.get(mg.id)
+                    if actual_dof and joint_data.shape[1] > actual_dof:
+                        joint_data = joint_data[:, :actual_dof]
+                    joints[mg.id] = joint_data.tolist()
 
         dt_ms = float(info.get("dt_ms", self._dt_ms))
         return ActionChunk(joints=joints, dt_ms=dt_ms)
 
 
 # ---------------------------------------------------------------------------
-# Shared helpers
+# Helpers
 # ---------------------------------------------------------------------------
 
 

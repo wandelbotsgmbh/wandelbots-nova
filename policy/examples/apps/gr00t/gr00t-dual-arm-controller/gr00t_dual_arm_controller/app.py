@@ -192,7 +192,7 @@ async def gr00t_dual_arm_controller(
 
     client = Gr00tPolicyClient(
         host=groot_host, port=groot_port,
-        language=language, timeout_ms=60000,
+        timeout_ms=60000,
     )
 
     executor = PolicyExecutor(schema, client, timeout_s=timeout_s)
@@ -303,7 +303,7 @@ async def start(req: StartRequest = StartRequest()):
 
     client = Gr00tPolicyClient(
         host=req.groot_host, port=req.groot_port,
-        language=req.language, timeout_ms=60000,
+        timeout_ms=60000,
     )
 
     _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s)

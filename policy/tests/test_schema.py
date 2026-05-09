@@ -275,23 +275,6 @@ def test_duplicate_action_key_raises():
 
 
 # ---------------------------------------------------------------------------
-# Grouped observation (GR00T)
-# ---------------------------------------------------------------------------
-
-
-def test_grouped_observation():
-    mg = _mg()
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("arm", source=mg),
-    ])
-    grouped = schema.build_grouped_observation({"0@ur10e": _state((0.1, -1.5))})
-    assert len(grouped) == 1
-    assert grouped[0].key == "arm"
-    assert grouped[0].joints == [0.1, -1.5]
-    assert grouped[0].motion_group_id == "0@ur10e"
-
-
-# ---------------------------------------------------------------------------
 # Schema introspection
 # ---------------------------------------------------------------------------
 
