@@ -184,7 +184,7 @@ class Gr00tPolicyClient(PolicyClient):
 
         if io_values:
             for iom in schema.obs_io_mappings:
-                raw = io_values.get(iom.hardware_key)
+                raw = io_values.get(iom.io)
                 val = iom.mapping.to_policy(raw) if raw is not None else 0.0
                 state_dict[iom.key] = _to_state_array([val])
 

@@ -15,6 +15,7 @@ import os
 from typing import Any
 
 from policy import (
+    Action,
     BoolMapping,
     EmergencyStopError,
     GuardStopError,
@@ -40,7 +41,14 @@ CAMERA_SERVER = os.environ.get("CAMERA_SERVER", "http://192.168.1.22:9100")
 
 
 async def mock_policy(obs: dict[str, Any]) -> dict[str, float]:
-    """Mock policy — replace with your own inference call."""
+    """Mock policy — replace with your own inference call.
+
+    The observation dict contains all declared entries:
+    - ``left_joints_1`` .. ``left_joints_6`` — joint positions
+    - ``left_gripper`` — gripper state (0.0 or 100.0)
+    - ``elapsed_s`` — from Observation.computed (see below)
+    - camera images if configured
+    """
     features: dict[str, float] = {}
     for role in ("left", "right"):
         role_phase = 0.0 if role == "left" else math.pi
@@ -53,6 +61,38 @@ async def mock_policy(obs: dict[str, Any]) -> dict[str, float]:
         shoulder = obs.get(f"{role}_joints_2", 0.0)
         features[f"{role}_gripper"] = 100.0 if shoulder > 0 else 0.0
     return features
+
+
+# ---------------------------------------------------------------------------
+# Computed observation: add custom data to the observation each step.
+# The function receives the obs dict built so far and returns extra entries.
+# ---------------------------------------------------------------------------
+
+_step_counter = 0
+
+
+async def count_steps(obs: dict[str, Any]) -> dict[str, Any]:
+    """Example Observation.computed — adds a step counter and elapsed seconds."""
+    global _step_counter
+    _step_counter += 1
+    return {"step": _step_counter, "elapsed_s": _step_counter / 30.0}
+
+
+# ---------------------------------------------------------------------------
+# Computed action: trigger side effects when the policy returns.
+# The function receives the full action dict from the policy.
+# ---------------------------------------------------------------------------
+
+
+_action_count = 0
+
+
+async def log_action(action: dict[str, Any]) -> None:
+    """Example Action.computed — logs every 100th action."""
+    global _action_count
+    _action_count += 1
+    if _action_count % 100 == 0:
+        print(f"  [action logger] step={_action_count}")
 
 
 def workspace_guard(ctx: GuardState) -> bool:
@@ -120,6 +160,8 @@ async def dual_arm_policy(ctx: nova.ProgramContext):
         Observation.io("right_gripper", source=mg2, io="digital_out[0]",
                        mapping=BoolMapping(on=100.0)),
         Observation.io("left_sensor", source=mg1, io="digital_in[0]", writable=False),
+        # Computed observations add custom data each step
+        Observation.computed(count_steps),
     ]
 
     if CAMERA_SERVER:
@@ -130,7 +172,11 @@ async def dual_arm_policy(ctx: nova.ProgramContext):
             Observation.image("right", source=cameras.device("319522063360")),
         ])
 
-    schema = PolicySchema(observations=observations)
+    schema = PolicySchema(
+        observations=observations,
+        # Computed actions trigger side effects when the policy returns
+        actions=[Action.computed(log_action)],
+    )
 
     executor = PolicyExecutor(
         schema,

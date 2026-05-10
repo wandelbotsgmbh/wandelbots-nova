@@ -11,7 +11,7 @@
 5. **Exceptions for abnormal stops**: `GuardStopError`, `EmergencyStopError`, `MotionError`.
 6. **Normal returns for expected stops**: timeout, explicit stop.
 
-## Wire Format (PolicyResponse)
+## Wire Format
 
 Policy services return msgpack-encoded responses:
 
@@ -39,6 +39,15 @@ Observation.image("key", source=camera_device)         # camera image
 Observation.constant("key", value="...")               # static value
 Observation.joint_torques("key", source=mg)            # torques (read-only)
 Observation.joint_currents("key", source=mg)           # currents (read-only)
+Observation.computed(async_fn)                          # custom async data source
+```
+
+Action entries (only needed when action key differs from observation):
+
+```python
+Action.joint_positions("key", target=mg)               # explicit joint action
+Action.io("key", target=mg, io="hw_key")               # explicit IO write
+Action.computed(async_fn)                               # async side effect (PLC, OPC UA, etc.)
 ```
 
 Key resolution for flat features:
