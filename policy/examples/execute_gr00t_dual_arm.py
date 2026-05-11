@@ -11,14 +11,13 @@ from __future__ import annotations
 import asyncio
 import time
 
-from policy import Gr00tPolicyClient, Observation, PolicyExecutor, PolicySchema, WebRTCCameras
-
 import nova
 from nova import api, run_program
 from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
+from policy import Gr00tPolicyClient, Observation, PolicyExecutor, PolicySchema, WebRTCCameras
 
 GROOT_HOST = "172.31.11.129"
 GROOT_PORT = 30555

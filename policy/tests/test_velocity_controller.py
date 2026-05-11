@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from policy.velocity_controller import VelocityController
+from policy.pidjogging.velocity_controller import VelocityController
 
 
 def test_on_target_returns_zero() -> None:

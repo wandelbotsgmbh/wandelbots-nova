@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import logging
-import time
 from collections.abc import Callable, Coroutine
+import contextlib
 from dataclasses import dataclass
 from enum import StrEnum
+import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from policy._sdk import get_controller_id
 from policy.estop import EstopMonitor, check_estop, check_sessions
 from policy.io import IOStreamCache
-from policy.pid_jogging_session import PidJoggingSession
+from policy.pidjogging import PidJoggingSession
 from policy.types import ActionChunk, EmergencyStopError, GuardStopError, MotionError, PidConfig
 
 if TYPE_CHECKING:
@@ -33,7 +33,10 @@ class Phase(StrEnum):
     """Executor lifecycle phase."""
 
     IDLE = "IDLE"
+    CONNECTING = "CONNECTING"
     EXECUTING = "EXECUTING"
+    COMPLETED = "COMPLETED"
+    ERROR = "ERROR"
 
 
 @dataclass
@@ -135,8 +138,15 @@ class PolicyExecutor:
         """
         self._stop_event.clear()
         self.result = None
+        self.status = ExecutorStatus(phase=Phase.CONNECTING, message="Connecting...")
         try:
             await self._run()
+        except (GuardStopError, MotionError, EmergencyStopError):
+            self.status = ExecutorStatus(phase=Phase.ERROR, step=self.status.step, message=str(self.result) if self.result else "")
+            raise
+        except Exception:
+            self.status = ExecutorStatus(phase=Phase.ERROR, step=self.status.step, message="Unexpected error")
+            raise
         finally:
             await self._cleanup()
 
@@ -164,7 +174,8 @@ class PolicyExecutor:
         with contextlib.suppress(OSError, RuntimeError):
             await self._policy.close()
 
-        self.status = ExecutorStatus(phase=Phase.IDLE)
+        if self.status.phase not in (Phase.ERROR, Phase.COMPLETED):
+            self.status = ExecutorStatus(phase=Phase.IDLE)
 
         if self.result is not None:
             logger.info(
@@ -220,6 +231,7 @@ class PolicyExecutor:
             self._estop_monitor = EstopMonitor(self._motion_groups)
             await self._estop_monitor.start()
             self.result = await self._execute()
+            self.status.phase = Phase.COMPLETED
         finally:
             if self._estop_monitor is not None:
                 await self._estop_monitor.stop()

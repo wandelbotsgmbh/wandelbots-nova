@@ -9,9 +9,147 @@
 name = "nova-policy"
 version = "0.1.0-alpha"
 description = "EXPERIMENTAL: PID-controlled jogging for policy execution on NOVA robots"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# ============================================================
+# RUFF CONFIGURATION - MAXIMUM STRICTNESS
+# ============================================================
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+indent-width = 4
+fix = true
+show-fixes = true
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "BLE",    # flake8-blind-except (no bare except:)
+    "C4",     # flake8-comprehensions
+    "C90",    # mccabe complexity
+    "T20",    # flake8-print (no print statements)
+    "SIM",    # flake8-simplify
+    "N",      # pep8-naming
+    "RUF",    # Ruff-specific rules
+    "S",      # flake8-bandit (security)
+    "PTH",    # flake8-use-pathlib
+    "PL",     # pylint (includes PLR1702: too-many-nested-blocks)
+    "PERF",   # perflint (performance)
+    "ANN",    # flake8-annotations (require type hints)
+    "ARG",    # flake8-unused-arguments
+    "FBT",    # flake8-boolean-trap (no boolean positional args)
+    "RET",    # flake8-return
+    "TCH",    # flake8-type-checking
+]
+
+ignore = [
+    "E501",    # Line too long (formatter handles this)
+    "S101",    # Allow assert (tests might import from here)
+    "PLR0913", # Too many arguments (PID controller needs them)
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-nested-blocks = 3
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"**/tests/**" = [
+    "S101", "S105", "PLR2004", "ANN", "FBT", "T20",
+    "PLC0415", "PERF401", "SIM102", "SIM103", "SIM114",
+    "TC001", "TC003", "ARG", "B018",
+]
+"**/examples/**" = [
+    "S101", "S105", "S110", "PLR2004", "PLR0912", "PLR0915",
+    "PLW0602", "PLW0603", "ANN", "FBT", "T20",
+    "PLC0415", "PERF401", "SIM102", "SIM103", "SIM114",
+    "TC001", "TC003", "ARG", "RUF003",
+    "BLE001", "B008", "B905", "C901",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nova", "policy"]
+combine-as-imports = true
+force-sort-within-sections = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-type-checking]
+strict = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+# ============================================================
+# BASEDPYRIGHT CONFIGURATION
+# ============================================================
+[tool.basedpyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+reportMissingImports = true
+reportMissingTypeStubs = true
+reportOptionalSubscript = true
+reportOptionalMemberAccess = true
+reportOptionalCall = true
+reportUnknownParameterType = true
+reportUnknownVariableType = true
+reportUnknownMemberType = true
+reportUntypedFunctionDecorator = true
+reportUntypedClassDecorator = true
+reportIncompatibleMethodOverride = true
+reportPrivateUsage = true
+reportConstantRedefinition = true
+reportUnusedClass = "error"
+reportUnusedFunction = "error"
+reportUnusedVariable = "error"
+reportUnusedImport = "error"
+reportDuplicateImport = "error"
+reportUnnecessaryIsInstance = "error"
+reportUnnecessaryCast = "error"
+reportUnnecessaryComparison = "error"
+reportImplicitOverride = true
+reportShadowedImports = true
+reportDeprecated = "warning"
+exclude = [
+    "**/__pycache__",
+    ".venv",
+    "build",
+    "dist",
+]
+venvPath = "."
+venv = ".venv"
+
+# ============================================================
+# PYTEST CONFIGURATION
+# ============================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::pydantic.warnings.PydanticDeprecatedSince20",
+]
+markers = [
+    "integration: marks tests as integration tests",
 ]

@@ -14,21 +14,13 @@ import contextlib
 import logging
 from typing import TYPE_CHECKING
 
-import uvicorn
 from decouple import config
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from novax import Novax
-from policy import (
-    Gr00tPolicyClient,
-    Observation,
-    PolicyExecutor,
-    PolicySchema,
-    WebRTCCameras,
-)
-from policy.executor import ExecutorStatus
 from pydantic import BaseModel, Field
+import uvicorn
 
 import nova
 from nova import api
@@ -37,6 +29,14 @@ from nova.cell import virtual_controller
 from nova.events import Cycle
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
+from policy import (
+    Gr00tPolicyClient,
+    Observation,
+    PolicyExecutor,
+    PolicySchema,
+    WebRTCCameras,
+)
+from policy.executor import ExecutorStatus
 
 if TYPE_CHECKING:
     from policy.executor import ExecutionResult

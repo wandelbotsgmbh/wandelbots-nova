@@ -1,13 +1,13 @@
-"""Pose conversion utilities for policy observations.
+"""End-effector pose conversion for GR00T.
 
-Converts Nova's rotation-vector poses to various representations used by
-policy models (quaternion, rot6d).
+Converts Nova's rotation-vector poses to the representations
+expected by GR00T models (quaternion, rot6d).
 """
 
 from __future__ import annotations
 
-import math
 from enum import StrEnum
+import math
 
 _ANGLE_EPSILON = 1e-8
 
@@ -25,7 +25,7 @@ class TcpFormat(StrEnum):
     """[x, y, z, r1x, r1y, r1z, r2x, r2y, r2z] — 9 values. GR00T format."""
 
 
-def pose_to_tcp(pose: object, fmt: TcpFormat | str, *, position_scale: float = 0.001) -> list[float]:
+def pose_to_eef(pose: object, fmt: TcpFormat | str, *, position_scale: float = 0.001) -> list[float]:
     """Convert a Nova Pose to TCP values in the requested format.
 
     Parameters

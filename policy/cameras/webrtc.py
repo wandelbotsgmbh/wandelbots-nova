@@ -1,30 +1,33 @@
-"""WebRTC camera connection internals.
+"""WebRTC camera implementation.
 
-Manages a single WebRTC peer connection with background frame reception.
-This module is an implementation detail — users interact with ``CameraSet``.
+Provides ``WebRTCCameras`` factory and ``WebRTCDevice`` — a ``CameraSource``
+implementation that connects to cameras via WebRTC signaling.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+from dataclasses import dataclass
 import logging
 import threading
 import time
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+import requests
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
-
-    from policy.cameras._cameras import WebRTCCameraConfig
 
 logger = logging.getLogger(__name__)
 
 # Optional imports — aiortc is heavy and not always needed
 _aiortc_available = False
 try:
+    from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
+    from aiortc.mediastreams import MediaStreamError
     import av.logging
-    from aiortc import RTCPeerConnection, RTCSessionDescription
 
     av.logging.set_level(av.logging.ERROR)
     _aiortc_available = True
@@ -39,13 +42,44 @@ def require_aiortc() -> None:
         raise ModuleNotFoundError(msg)
 
 
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class WebRTCCameraConfig:
+    """Configuration for a single WebRTC camera.
+
+    Attributes:
+        api_url: Base URL of the camera REST API (e.g. "http://172.31.11.129:8000").
+        device_id: Camera device identifier (e.g. serial number "315122271048").
+        width: Frame width in pixels.
+        height: Frame height in pixels.
+        fps: Desired frames per second.
+        stream_type: Stream type to request ("color" or "depth").
+    """
+
+    api_url: str
+    device_id: str
+    width: int = 640
+    height: int = 480
+    fps: int = 30
+    stream_type: str = "color"
+
+
+# ---------------------------------------------------------------------------
+# WebRTC connection
+# ---------------------------------------------------------------------------
+
+
 class WebRTCConnection:
     """Manages a single WebRTC camera connection with background frame reception.
 
     Handles the full lifecycle:
     1. Start camera hardware stream via REST API
     2. WebRTC offer/answer exchange
-    3. Background frame reception in a dedicated event loop thread
+    3. Background frame reception task
     4. Thread-safe frame access with staleness tracking
     """
 
@@ -79,7 +113,7 @@ class WebRTCConnection:
         # 1. Start camera stream
         await asyncio.to_thread(self._start_stream, api_url, cfg)
 
-        # 2. Set up WebRTC peer connection in the current event loop
+        # 2. Set up WebRTC peer connection
         await self._setup_webrtc(api_url, cfg)
 
         # 3. Wait for first frame
@@ -107,8 +141,6 @@ class WebRTCConnection:
 
         # Stop camera stream (best-effort)
         try:
-            import requests  # noqa: PLC0415
-
             api_url = self._config.api_url.rstrip("/")
             requests.post(
                 f"{api_url}/api/devices/{self._config.device_id}/stream/stop", timeout=5
@@ -125,8 +157,6 @@ class WebRTCConnection:
     @staticmethod
     def _start_stream(api_url: str, cfg: WebRTCCameraConfig) -> None:
         """Start the camera hardware stream via REST API."""
-        import requests  # noqa: PLC0415
-
         with contextlib.suppress(OSError, RuntimeError):
             requests.post(f"{api_url}/api/devices/{cfg.device_id}/stream/stop", timeout=5)
 
@@ -175,9 +205,6 @@ class WebRTCConnection:
 
     async def _setup_webrtc(self, api_url: str, cfg: WebRTCCameraConfig) -> None:
         """Create WebRTC connection and start receiving frames."""
-        import requests  # noqa: PLC0415
-        from aiortc import RTCConfiguration  # noqa: PLC0415
-
         # No STUN/TURN — only host candidates on the local network.
         self._pc = RTCPeerConnection(
             configuration=RTCConfiguration(iceServers=[]),
@@ -197,14 +224,7 @@ class WebRTCConnection:
         resp.raise_for_status()
         offer_data = resp.json()
 
-        # Filter remote SDP to only keep candidates matching the server IP.
-        # Other interfaces (Docker bridge, VPN, IPv6) are unreachable from
-        # Nova instances and cause 30-60s ICE connectivity check timeouts.
-        from urllib.parse import urlparse  # noqa: PLC0415
-
-        server_ip = urlparse(api_url).hostname or ""
-        sdp = _filter_sdp_candidates(offer_data["sdp"], server_ip)
-        offer = RTCSessionDescription(sdp=sdp, type=offer_data["type"])
+        offer = RTCSessionDescription(sdp=offer_data["sdp"], type=offer_data["type"])
         await self._pc.setRemoteDescription(offer)
 
         answer = await self._pc.createAnswer()
@@ -224,8 +244,6 @@ class WebRTCConnection:
 
     async def _receive_frames(self, track: object) -> None:
         """Continuously receive frames and store the latest one."""
-        from aiortc.mediastreams import MediaStreamError  # noqa: PLC0415
-
         try:
             while True:
                 frame = await track.recv()  # type: ignore[union-attr]
@@ -242,22 +260,128 @@ class WebRTCConnection:
             logger.debug("Camera '%s' frame receiver stopped: %s", self._name, e)
 
 
-_CANDIDATE_IP_INDEX = 4
+# ---------------------------------------------------------------------------
+# WebRTCDevice — CameraSource implementation
+# ---------------------------------------------------------------------------
 
 
-def _filter_sdp_candidates(sdp: str, server_ip: str) -> str:
-    """Keep only ICE candidates matching the server's IP.
+class WebRTCDevice:
+    """A single WebRTC camera device that implements the CameraSource protocol.
 
-    Remote ICE candidates (srflx, IPv6, other interfaces) cause long
-    ICE connectivity check timeouts when unreachable.
+    Created by ``WebRTCCameras.device()``. Do not instantiate directly.
     """
-    lines = []
-    for line in sdp.split("\r\n"):
-        if line.startswith("a=candidate:"):
-            parts = line.split()
-            # parts[4] is the candidate IP address
-            if len(parts) > _CANDIDATE_IP_INDEX and parts[_CANDIDATE_IP_INDEX] == server_ip:
-                lines.append(line)
-        else:
-            lines.append(line)
-    return "\r\n".join(lines)
+
+    def __init__(self, config: WebRTCCameraConfig, *, frame_history: int = 1) -> None:
+        self._config = config
+        self._frame_history = frame_history
+        self._connection: WebRTCConnection | None = None
+        self._buffer: list[NDArray[Any]] = []
+
+    async def connect(self, timeout_s: float = 30.0) -> None:
+        """Connect this camera via WebRTC."""
+        require_aiortc()
+        self._connection = WebRTCConnection(self._config.device_id, self._config)
+        await self._connection.connect(timeout_s=timeout_s)
+        logger.info("WebRTCDevice '%s' connected", self._config.device_id)
+
+    def read(self, max_age_s: float = 30.0) -> NDArray[Any]:
+        """Read the latest frame (or stacked frames if frame_history > 1).
+
+        Returns:
+            ``(H, W, 3)`` uint8 RGB if ``frame_history == 1``.
+            ``(T, H, W, 3)`` uint8 RGB if ``frame_history > 1``.
+
+        Raises:
+            RuntimeError: If no frame available or frame is stale.
+        """
+        if self._connection is None:
+            msg = f"Camera '{self._config.device_id}' not connected"
+            raise RuntimeError(msg)
+
+        frame = self._connection.latest_frame()
+        if frame is None:
+            msg = f"Camera '{self._config.device_id}' has no frame"
+            raise RuntimeError(msg)
+
+        age = self._connection.frame_age_s()
+        if age > max_age_s:
+            msg = f"Camera '{self._config.device_id}' frame stale ({age:.1f}s > {max_age_s:.1f}s)"
+            raise RuntimeError(msg)
+
+        if self._frame_history <= 1:
+            return frame
+
+        self._buffer.append(frame)
+        if len(self._buffer) > self._frame_history:
+            self._buffer.pop(0)
+        while len(self._buffer) < self._frame_history:
+            self._buffer.insert(0, self._buffer[0])
+        return np.stack(self._buffer, axis=0)
+
+    async def disconnect(self) -> None:
+        """Disconnect this camera."""
+        if self._connection is not None:
+            await self._connection.disconnect()
+            self._connection = None
+        self._buffer.clear()
+
+
+# ---------------------------------------------------------------------------
+# WebRTCCameras factory
+# ---------------------------------------------------------------------------
+
+
+class WebRTCCameras:
+    """Factory for WebRTC camera sources.
+
+    Shared camera settings (server URL, resolution, fps) are configured once.
+    Call ``.device(id)`` to create a per-device ``CameraSource``.
+
+    Usage::
+
+        webrtc = WebRTCCameras(
+            api_url="http://192.168.1.22:9100",
+            width=224, height=224, fps=15,
+        )
+
+        schema = PolicySchema(
+            observations=[
+                Observation.image("cam_left", source=webrtc.device("315122271048")),
+                Observation.image("cam_right", source=webrtc.device("319522063360")),
+            ],
+        )
+    """
+
+    def __init__(
+        self,
+        api_url: str,
+        *,
+        width: int = 640,
+        height: int = 480,
+        fps: int = 30,
+        frame_history: int = 1,
+    ) -> None:
+        self._api_url = api_url
+        self._width = width
+        self._height = height
+        self._fps = fps
+        self._frame_history = frame_history
+
+    def device(self, device_id: str, *, frame_history: int | None = None) -> WebRTCDevice:
+        """Create a camera source for a specific device.
+
+        Args:
+            device_id: Camera device identifier (serial number, Isaac Sim path, etc.).
+            frame_history: Override the factory default for this device.
+        """
+        cfg = WebRTCCameraConfig(
+            api_url=self._api_url,
+            device_id=device_id,
+            width=self._width,
+            height=self._height,
+            fps=self._fps,
+        )
+        return WebRTCDevice(cfg, frame_history=frame_history or self._frame_history)
+
+
+# ---------------------------------------------------------------------------

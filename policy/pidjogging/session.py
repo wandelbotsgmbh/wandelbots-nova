@@ -15,10 +15,10 @@ from typing import TYPE_CHECKING
 from nova import api
 from nova.types import Pose, RobotState
 from policy._sdk import get_api_gateway, get_cell, get_controller_id
-from policy.action_queue import ActionQueue
 from policy.io import IOWriter
+from policy.pidjogging.action_queue import ActionQueue
+from policy.pidjogging.velocity_controller import VelocityController
 from policy.types import GuardState, GuardStopError, MotionError
-from policy.velocity_controller import VelocityController
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

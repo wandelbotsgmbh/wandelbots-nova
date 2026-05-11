@@ -21,7 +21,7 @@ import logging
 from typing import TYPE_CHECKING, overload
 
 from policy.estop import EstopMonitor, check_estop, check_sessions
-from policy.pid_jogging_session import PidJoggingSession
+from policy.pidjogging import PidJoggingSession
 from policy.types import PidConfig
 
 if TYPE_CHECKING:
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_CARTESIAN_DIMS = 6
+_CARTESIAN_DIMS = 6  # x, y, z, rx, ry, rz — fixed by NOVA jogging API
 
 
 # ---------------------------------------------------------------------------

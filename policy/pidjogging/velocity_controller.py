@@ -6,8 +6,8 @@ clamped velocity commands using proportional-integral-derivative control.
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
+import time
 
 # Minimum time delta to prevent division-by-zero in derivative calculation.
 _MIN_DT: float = 0.001

@@ -18,9 +18,9 @@ Use explicit ``Action`` entries only when the action key differs.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+import logging
 from typing import TYPE_CHECKING, Any
 
 from policy._sdk import get_controller_id

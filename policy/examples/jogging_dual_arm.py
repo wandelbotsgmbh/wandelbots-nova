@@ -18,13 +18,12 @@ Run:
 import math
 import time
 
-from policy import EmergencyStopError, MotionError, jog_joints, jog_tcp
-
 import nova
 from nova import api, run_program
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import Pose
+from policy import EmergencyStopError, MotionError, jog_joints, jog_tcp
 
 HOME_LEFT = [0.0, -1.571, 0.0, -1.571, -1.571, 0.0]
 HOME_RIGHT = [0.0, -1.571, 0.0, -1.571, 1.571, 0.0]

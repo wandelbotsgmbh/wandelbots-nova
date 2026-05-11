@@ -82,7 +82,11 @@ SafetyGuard = Callable[[GuardState], bool]
 
 
 class GuardStopError(Exception):
-    """Raised when a safety guard returns False."""
+    """Raised when a user-defined safety guard triggers a stop.
+
+    This is specific to the policy executor's safety guard system.
+    Not related to Nova SDK's ``RobotMotionError`` which covers trajectory planning.
+    """
 
     def __init__(self, motion_group_id: str, guard_name: str) -> None:
         self.motion_group_id = motion_group_id
@@ -95,8 +99,9 @@ class GuardStopError(Exception):
 class EmergencyStopError(Exception):
     """Raised when the robot controller enters a non-operational safety state.
 
-    This covers all safety stops: emergency stop, protective stop (cell door opened),
-    safety violation, fault, etc. — any state where the robot cannot be moved.
+    Covers e-stop, protective stop, cell door, safety violation, fault, etc.
+    The Nova SDK does not have an equivalent — it handles e-stop at the
+    controller level, not as a Python exception.
     """
 
     def __init__(self, controller_id: str, safety_state: str = "") -> None:
@@ -109,10 +114,11 @@ class EmergencyStopError(Exception):
 
 
 class MotionError(Exception):
-    """Raised when the jogging API reports a motion error.
+    """Raised when jogging detects a motion-blocking condition.
 
-    This happens when the commanded velocity would move the robot into
-    a joint limit or cause a self-collision.
+    This happens when the PID jogging session detects that the robot is paused
+    (joint limit, self-collision, singularity). Distinct from Nova SDK's
+    ``RobotMotionError`` which covers trajectory planning/execution failures.
     """
 
     def __init__(self, motion_group_id: str, message: str) -> None:

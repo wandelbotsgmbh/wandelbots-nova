@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from policy.gr00t.eef import TcpFormat, pose_to_eef
 from policy.gr00t.transport import Gr00tZmqTransport, require_dict
 from policy.policy_client import PolicyClient
-from policy.pose import TcpFormat, pose_to_tcp
 from policy.types import ActionChunk
 
 logger = logging.getLogger(__name__)
@@ -183,7 +183,7 @@ class Gr00tPolicyClient(PolicyClient):
             s = states.get(tm.source.id)
             if s is not None and hasattr(s, "pose") and s.pose is not None:
                 state_dict[tm.key] = _to_state_array(
-                    pose_to_tcp(s.pose, self._tcp_format)
+                    pose_to_eef(s.pose, self._tcp_format)
                 )
 
         if io_values:

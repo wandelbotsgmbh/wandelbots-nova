@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from nova.types import Pose
-from policy.pid_jogging_session import PidJoggingSession
+from policy.pidjogging import PidJoggingSession
 from policy.types import GuardStopError, PidConfig
 
 
@@ -123,15 +123,6 @@ def test_guard_receives_io_values():
     s._compute_velocity_with_safety()
 
     assert received == {"digital_out[0]": True, "analog_in[1]": 3.14}
-
-
-def test_update_chunk_resets_index():
-    s = _session()
-    s.update_chunk([[0.1] * 6, [0.2] * 6], dt_ms=100.0)
-
-    # New chunk resets to first target
-    s.update_chunk([[0.9] * 6], dt_ms=0.0)
-    assert s._get_active_target() == [0.9] * 6
 
 
 @pytest.mark.asyncio

@@ -15,6 +15,12 @@ import math
 import time
 from typing import Any
 
+import nova
+from nova import api, run_program
+from nova.actions import joint_ptp
+from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
+from nova.types import MotionSettings
 from policy import (
     EmergencyStopError,
     GuardStopError,
@@ -23,13 +29,6 @@ from policy import (
     PolicyExecutor,
     PolicySchema,
 )
-
-import nova
-from nova import api, run_program
-from nova.actions import joint_ptp
-from nova.cell import virtual_controller
-from nova.program import ProgramPreconditions
-from nova.types import MotionSettings
 
 HOME = (0.0, -1.571, 0.5, -0.5, -1.571, 0.0)
 CIRCLE_RADIUS = 20.0  # mm

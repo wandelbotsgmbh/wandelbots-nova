@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Any
 
 import pyarrow.parquet as pq
-from policy import ActionChunk, Observation, PolicyExecutor, PolicySchema
 
 import nova
 from nova import api, run_program
@@ -29,6 +28,7 @@ from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
+from policy import ActionChunk, Observation, PolicyExecutor, PolicySchema
 
 DATASET = Path(os.environ.get(
     "DATASET", "/Users/stefanwagner/Downloads/Data_Recordings_old",

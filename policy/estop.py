@@ -11,7 +11,7 @@ from policy._sdk import get_api_gateway, get_cell, get_controller_id
 from policy.types import EmergencyStopError, GuardStopError, MotionError
 
 if TYPE_CHECKING:
-    from policy.pid_jogging_session import PidJoggingSession
+    from policy.pidjogging import PidJoggingSession
 
 logger = logging.getLogger(__name__)
 

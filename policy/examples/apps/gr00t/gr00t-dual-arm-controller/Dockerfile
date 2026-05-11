@@ -2,26 +2,25 @@ FROM ghcr.io/astral-sh/uv:0.7.3 AS uv
 
 FROM python:3.12-slim-bookworm
 
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml ./
 
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
 RUN --mount=from=uv,source=/uv,target=/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-install-project --no-dev
-
-# policy is copied from the repo root before building (see README)
-COPY policy policy/
+    uv sync --no-install-project --no-dev
 
 COPY static static/
 COPY gr00t_dual_arm_controller gr00t_dual_arm_controller/
 
 RUN --mount=from=uv,source=/uv,target=/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev
+    uv sync --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"
 

@@ -123,5 +123,5 @@ class IOWriter:
                         cell=cell, controller=controller_id, io_value=[io_value]
                     )
                     self._last_written[key] = value
-                except Exception as e:  # noqa: BLE001
+                except (OSError, RuntimeError, ValueError, KeyError) as e:
                     logger.warning("Failed to write IO %s=%s: %s", key, value, e)

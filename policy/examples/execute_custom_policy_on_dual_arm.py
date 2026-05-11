@@ -1,6 +1,13 @@
 """
 Example: Run a mock policy on two UR5e robots with cameras.
 
+Demonstrates advanced features:
+- Safety guards (workspace boundary)
+- Computed observations (step counter)
+- Computed actions (logging side effects)
+- IO control (gripper open/close)
+- Camera image observations
+
 Prerequisites:
     NOVA_API=http://<instance-ip>
     CAMERA_SERVER=http://192.168.1.22:9100  (optional)
@@ -14,6 +21,12 @@ import math
 import os
 from typing import Any
 
+import nova
+from nova import api, run_program
+from nova.actions import joint_ptp
+from nova.cell import virtual_controller
+from nova.program import ProgramPreconditions
+from nova.types import MotionSettings
 from policy import (
     Action,
     BoolMapping,
@@ -26,13 +39,6 @@ from policy import (
     WebRTCCameras,
 )
 from policy.types import GuardState
-
-import nova
-from nova import api, run_program
-from nova.actions import joint_ptp
-from nova.cell import virtual_controller
-from nova.program import ProgramPreconditions
-from nova.types import MotionSettings
 
 HOME_LEFT = (1.047, -0.698, 1.745, -3.142, 0.873, 2.094)
 HOME_RIGHT = (-1.047, -2.356, -1.745, 0.0, -0.873, -2.094)
