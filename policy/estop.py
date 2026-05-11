@@ -8,7 +8,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from policy._sdk import get_api_gateway, get_cell, get_controller_id
-from policy.types import EmergencyStopError, GuardStopError, MotionError
+from policy.types import EmergencyStopError
 
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
@@ -25,7 +25,7 @@ _OPERATIONAL_SAFETY_STATES = frozenset({"SAFETY_STATE_NORMAL", "SAFETY_STATE_RED
 
 
 def check_sessions(sessions: dict[object, PidJoggingSession]) -> None:
-    """Check all sessions for failures. Raises on first error found.
+    """Check all sessions for failures. Re-raises the original exception.
 
     Raises:
         GuardStopError: A safety guard triggered.
@@ -35,14 +35,10 @@ def check_sessions(sessions: dict[object, PidJoggingSession]) -> None:
     for session in sessions.values():
         if not session.has_failed:
             continue
-        reason = session.failure_reason or "unknown"
-        if "Safety guard" in reason:
-            guard_name = reason.split("'")[1] if "'" in reason else "unknown"
-            raise GuardStopError(session.motion_group_id, guard_name)
-        if "Motion error" in reason or "Jogging paused" in reason:
-            msg = reason.split(": ", 1)[-1] if ": " in reason else reason
-            raise MotionError(session.motion_group_id, msg)
-        raise RuntimeError(reason)
+        exc = session._failure_exception
+        if exc is not None:
+            raise exc
+        raise RuntimeError(session.failure_reason or "unknown session failure")
 
 
 def check_estop(monitor: EstopMonitor | None) -> None:

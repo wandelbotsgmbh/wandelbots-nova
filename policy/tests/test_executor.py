@@ -34,6 +34,7 @@ def _fake_session() -> MagicMock:
     session.motion_group_id = "0@ur10e"
     session.has_failed = False
     session.failure_reason = ""
+    session._failure_exception = None
     session.start = AsyncMock()
     session.stop = AsyncMock()
     session.write_ios = AsyncMock()

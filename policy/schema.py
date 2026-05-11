@@ -391,6 +391,34 @@ class PolicySchema:
         return [o for o in self._observations if isinstance(o, _ObsIO)]
 
     @property
+    def io_action_keys(self) -> list[tuple[str, MotionGroup, str, Mapping]]:
+        """Action-side IO keys: explicit Action.io() + inferred from action=True."""
+        explicit_keys = {a.key for a in self._actions if isinstance(a, _ActIO)}
+        result: list[tuple[str, MotionGroup, str, Mapping]] = [
+            (a.key, a.target, a.io, a.mapping) for a in self._actions if isinstance(a, _ActIO)
+        ]
+        result.extend(
+            (o.key, o.source, o.io, o.mapping)
+            for o in self._observations
+            if isinstance(o, _ObsIO) and o.action and o.key not in explicit_keys
+        )
+        return result
+
+    @property
+    def tcp_action_keys(self) -> list[tuple[str, MotionGroup]]:
+        """Action-side TCP keys: explicit Action.tcp() + inferred from action=True."""
+        explicit_keys = {a.key for a in self._actions if isinstance(a, _ActTcp)}
+        result: list[tuple[str, MotionGroup]] = [
+            (a.key, a.target) for a in self._actions if isinstance(a, _ActTcp)
+        ]
+        result.extend(
+            (o.key, o.source)
+            for o in self._observations
+            if isinstance(o, _ObsTcp) and o.action and o.key not in explicit_keys
+        )
+        return result
+
+    @property
     def constants(self) -> dict[str, Any]:
         return {o.key: o.value for o in self._observations if isinstance(o, _ObsConstant)}
 
@@ -521,8 +549,7 @@ class PolicySchema:
         for o in self._observations:
             if isinstance(o, _ObsComputed):
                 extra = await o.fn(obs)
-                if isinstance(extra, dict):
-                    obs.update(extra)
+                obs.update(extra)
 
     # -- Parse action --
 

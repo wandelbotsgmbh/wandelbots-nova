@@ -82,6 +82,7 @@ class PidJoggingSession:
         self._running = False
         self._failed = False
         self._failure_reason: str = ""
+        self._failure_exception: BaseException | None = None
 
     def set_io_values_ref(self, values: dict[str, object]) -> None:
         """Set the shared IO values dict (from IOStreamCache)."""
@@ -274,12 +275,14 @@ class PidJoggingSession:
         except (GuardStopError, MotionError) as e:
             self._failed = True
             self._failure_reason = str(e)
+            self._failure_exception = e
             self._running = False
             logger.warning("Jogging stopped for %s: %s", self.motion_group_id, e)
         except (OSError, RuntimeError) as e:
             if self._running:
                 self._failed = True
                 self._failure_reason = str(e)
+                self._failure_exception = e
                 self._running = False
                 logger.error(
                     "Jogging connection lost for %s: %s", self.motion_group_id, e,

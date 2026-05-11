@@ -25,6 +25,7 @@ def _mock_session(mg_id: str = "0@ur10e", num_joints: int = 6) -> MagicMock:
     session._num_joints = num_joints
     session.has_failed = False
     session.failure_reason = ""
+    session._failure_exception = None
     session.current_state = MagicMock()
     session.current_state.joints = tuple([0.0] * num_joints)
     session.start = AsyncMock()
@@ -113,7 +114,7 @@ class TestErrorPropagation:
     async def test_motion_error(self):
         jogger, (mg,) = TestJointJoggerTarget()._make("0@ur10e")
         jogger._sessions[mg].has_failed = True
-        jogger._sessions[mg].failure_reason = "Motion error on '0@ur10e': joint_limit"
+        jogger._sessions[mg]._failure_exception = MotionError("0@ur10e", "joint_limit")
         with pytest.raises(MotionError):
             async for _ in jogger:
                 break
@@ -122,7 +123,7 @@ class TestErrorPropagation:
     async def test_guard_stop(self):
         jogger, (mg,) = TestJointJoggerTarget()._make("0@ur10e")
         jogger._sessions[mg].has_failed = True
-        jogger._sessions[mg].failure_reason = "Safety guard 'workspace_guard' triggered"
+        jogger._sessions[mg]._failure_exception = GuardStopError("0@ur10e", "workspace_guard")
         with pytest.raises(GuardStopError):
             async for _ in jogger:
                 break
@@ -131,7 +132,7 @@ class TestErrorPropagation:
     async def test_connection_error(self):
         jogger, (mg,) = TestJointJoggerTarget()._make("0@ur10e")
         jogger._sessions[mg].has_failed = True
-        jogger._sessions[mg].failure_reason = "connection reset"
+        jogger._sessions[mg]._failure_exception = RuntimeError("connection reset")
         with pytest.raises(RuntimeError, match="connection reset"):
             async for _ in jogger:
                 break

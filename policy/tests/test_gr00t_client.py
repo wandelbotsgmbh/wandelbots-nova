@@ -481,3 +481,196 @@ async def test_ping() -> None:
         await client.close()
     finally:
         server.close()
+
+
+@pytest.mark.asyncio
+async def test_io_action_decoding() -> None:
+    """IO actions from GR00T response should be decoded into ActionChunk.ios."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+
+    # GR00T returns joint action + gripper IO as numpy arrays
+    action_arr = np.zeros((1, 4, 6), dtype=np.float32)
+    gripper_arr = np.array([[[1.0]]], dtype=np.float32)  # (B=1, T=1, D=1)
+    server.action_response = (
+        {"arm": action_arr, "gripper": gripper_arr},
+        {"dt_ms": 33.0},
+    )
+    server.start()
+    time.sleep(0.1)
+
+    try:
+        from policy.schema import BoolMapping
+
+        mg = _mg()
+        schema = PolicySchema(observations=[
+            Observation.joint_positions("arm", source=mg),
+            Observation.io("gripper", source=mg, io="digital_out[0]",
+                           mapping=BoolMapping(on=1.0)),
+        ])
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+
+        result = await client.get_actions({"0@ur10e": _state((0.0,) * 6)}, schema)
+
+        assert isinstance(result, ActionChunk)
+        assert result.ios is not None
+        assert "0@ur10e" in result.ios
+        assert "digital_out[0]" in result.ios["0@ur10e"]
+        # BoolMapping(on=1.0) with threshold=0.5: 1.0 >= 0.5 → True
+        assert result.ios["0@ur10e"]["digital_out[0]"] is True
+
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
+async def test_io_action_bool_mapping_off() -> None:
+    """IO value below threshold should map to False."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+
+    action_arr = np.zeros((1, 1, 6), dtype=np.float32)
+    gripper_arr = np.array([[[0.0]]], dtype=np.float32)
+    server.action_response = (
+        {"arm": action_arr, "gripper": gripper_arr},
+        {"dt_ms": 33.0},
+    )
+    server.start()
+    time.sleep(0.1)
+
+    try:
+        from policy.schema import BoolMapping
+
+        mg = _mg()
+        schema = PolicySchema(observations=[
+            Observation.joint_positions("arm", source=mg),
+            Observation.io("gripper", source=mg, io="digital_out[0]",
+                           mapping=BoolMapping(on=1.0)),
+        ])
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+
+        result = await client.get_actions({"0@ur10e": _state((0.0,) * 6)}, schema)
+
+        assert result.ios is not None
+        assert result.ios["0@ur10e"]["digital_out[0]"] is False
+
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
+async def test_io_action_not_in_response() -> None:
+    """If GR00T doesn't return an IO key, ios should be None."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+
+    action_arr = np.zeros((1, 1, 6), dtype=np.float32)
+    server.action_response = ({"arm": action_arr}, {"dt_ms": 33.0})
+    server.start()
+    time.sleep(0.1)
+
+    try:
+        from policy.schema import BoolMapping
+
+        mg = _mg()
+        schema = PolicySchema(observations=[
+            Observation.joint_positions("arm", source=mg),
+            Observation.io("gripper", source=mg, io="digital_out[0]",
+                           mapping=BoolMapping(on=1.0)),
+        ])
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+
+        result = await client.get_actions({"0@ur10e": _state((0.0,) * 6)}, schema)
+
+        # No gripper key in response → no IOs
+        assert result.ios is None
+
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
+async def test_tcp_action_decoding() -> None:
+    """TCP actions from GR00T response should be decoded into ActionChunk.tcp."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+
+    # GR00T returns joint action + TCP action as numpy arrays
+    joint_arr = np.zeros((1, 4, 6), dtype=np.float32)
+    tcp_arr = np.array([[[100.0, 200.0, 300.0, 0.1, 0.2, 0.3],
+                         [101.0, 201.0, 301.0, 0.11, 0.21, 0.31]]], dtype=np.float32)  # (1, 2, 6)
+    server.action_response = (
+        {"arm": joint_arr, "eef": tcp_arr},
+        {"dt_ms": 33.0},
+    )
+    server.start()
+    time.sleep(0.1)
+
+    try:
+        mg = _mg()
+        schema = PolicySchema(observations=[
+            Observation.joint_positions("arm", source=mg),
+            Observation.tcp("eef", source=mg, action=True),
+        ])
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+
+        # Need a state with a pose for the observation
+        pose = MagicMock()
+        pose.position = MagicMock(x=100.0, y=200.0, z=300.0)
+        pose.orientation = MagicMock(x=0.1, y=0.2, z=0.3)
+        result = await client.get_actions(
+            {"0@ur10e": _state((0.0,) * 6, pose=pose)}, schema
+        )
+
+        assert isinstance(result, ActionChunk)
+        assert "0@ur10e" in result.tcp
+        assert len(result.tcp["0@ur10e"]) == 2  # 2 timesteps
+        np.testing.assert_allclose(
+            result.tcp["0@ur10e"][0], [100.0, 200.0, 300.0, 0.1, 0.2, 0.3], atol=1e-5,
+        )
+
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
+async def test_tcp_action_not_in_response() -> None:
+    """If GR00T doesn't return a TCP key, tcp should be empty."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+
+    joint_arr = np.zeros((1, 1, 6), dtype=np.float32)
+    server.action_response = ({"arm": joint_arr}, {"dt_ms": 33.0})
+    server.start()
+    time.sleep(0.1)
+
+    try:
+        mg = _mg()
+        schema = PolicySchema(observations=[
+            Observation.joint_positions("arm", source=mg),
+            Observation.tcp("eef", source=mg, action=True),
+        ])
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+
+        pose = MagicMock()
+        pose.position = MagicMock(x=0.0, y=0.0, z=0.0)
+        pose.orientation = MagicMock(x=0.0, y=0.0, z=0.0)
+        result = await client.get_actions(
+            {"0@ur10e": _state((0.0,) * 6, pose=pose)}, schema
+        )
+
+        # No eef key in response → empty tcp dict
+        assert result.tcp == {}
+
+        await client.close()
+    finally:
+        server.close()

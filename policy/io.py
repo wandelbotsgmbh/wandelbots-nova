@@ -105,10 +105,8 @@ class IOWriter:
         cell = get_cell(self._motion_group)
         controller_id = get_controller_id(self._motion_group)
 
-        for key, value in ios.items():
-            if self._last_written.get(key) == value:
-                continue
-            async with self._lock:
+        async with self._lock:
+            for key, value in ios.items():
                 if self._last_written.get(key) == value:
                     continue
                 try:

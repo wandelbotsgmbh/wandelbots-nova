@@ -36,12 +36,15 @@ _ACTION_NDIM = 3
 
 
 class Gr00tPolicyClient(PolicyClient):
-    """Policy client for GR00T ZeroMQ inference servers.
+    """Policy client for NVIDIA GR00T N1.7 ZeroMQ inference servers.
 
     Receives the same raw ``(states, schema, images, io_values)`` as every
     other policy client. Internally converts to GR00T's numpy format using
     the schema's joint/TCP/IO mappings, sends over ZMQ, and decodes the
     response back to an ``ActionChunk``.
+
+    This implementation targets GR00T protocol version
+    :data:`~policy.gr00t.GROOT_PROTOCOL_VERSION`.
 
     Parameters
     ----------
@@ -57,6 +60,8 @@ class Gr00tPolicyClient(PolicyClient):
         Default step spacing if not in action info.
     model_dof:
         If set, pad/truncate joint arrays to this DOF. 0 = use actual.
+    tcp_format:
+        TCP pose representation format sent to the server.
     """
 
     def __init__(
@@ -170,6 +175,7 @@ class Gr00tPolicyClient(PolicyClient):
         state_dict: dict[str, np.ndarray] = {}
 
         for m in schema.joint_mappings:
+            concat_joints: list[float] = []
             for mg in m.sources:
                 s = states.get(mg.id)
                 if s is None:
@@ -177,7 +183,9 @@ class Gr00tPolicyClient(PolicyClient):
                 joints = list(s.joints)
                 self._actual_dof[mg.id] = len(joints)
                 joints = self._pad_joints(mg.id, joints)
-                state_dict[m.key] = _to_state_array(joints)
+                concat_joints.extend(joints)
+            if concat_joints:
+                state_dict[m.key] = _to_state_array(concat_joints)
 
         for tm in schema.tcp_mappings:
             s = states.get(tm.source.id)
@@ -218,6 +226,7 @@ class Gr00tPolicyClient(PolicyClient):
     ) -> ActionChunk:
         """Convert GR00T action arrays → ActionChunk."""
         joints: dict[str, list[list[float]]] = {}
+        ios: dict[str, dict[str, bool | int | float | str]] = {}
 
         for key, mgs in schema.joint_action_keys:
             arr = action.get(key)
@@ -229,8 +238,26 @@ class Gr00tPolicyClient(PolicyClient):
                         joint_data = joint_data[:, :actual_dof]
                     joints[mg.id] = joint_data.tolist()
 
+        # Decode IO actions
+        for key, mg, hw_key, mapping in schema.io_action_keys:
+            arr = action.get(key)
+            if isinstance(arr, np.ndarray):
+                # GR00T IO arrays are (B, T, 1) — take the last timestep
+                val = float(arr.flat[-1])
+                ios.setdefault(mg.id, {})[hw_key] = mapping.to_hardware(val)
+            elif key in action:
+                val = float(action[key])  # type: ignore[arg-type]
+                ios.setdefault(mg.id, {})[hw_key] = mapping.to_hardware(val)
+
+        # Decode TCP actions
+        tcp_targets: dict[str, list[list[float]]] = {}
+        for key, mg in schema.tcp_action_keys:
+            arr = action.get(key)
+            if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM:
+                tcp_targets[mg.id] = arr[0].astype(np.float32).tolist()
+
         dt_ms = float(info.get("dt_ms", self._dt_ms))
-        return ActionChunk(joints=joints, dt_ms=dt_ms)
+        return ActionChunk(joints=joints, tcp=tcp_targets, ios=ios or None, dt_ms=dt_ms)
 
 
 # ---------------------------------------------------------------------------
