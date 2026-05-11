@@ -15,6 +15,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -80,7 +81,6 @@ async def replay_episode(ctx: nova.ProgramContext):
     tcp_r = (await mg_right.tcp_names())[0]
     t1 = await mg_left.plan([joint_ptp(start_left, settings=fast)], tcp_l)
     t2 = await mg_right.plan([joint_ptp(start_right, settings=fast)], tcp_r)
-    import asyncio
     await asyncio.gather(
         mg_left.execute(t1, tcp_l, actions=[joint_ptp(start_left, settings=fast)]),
         mg_right.execute(t2, tcp_r, actions=[joint_ptp(start_right, settings=fast)]),

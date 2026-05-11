@@ -407,65 +407,6 @@ async def test_action_decoding_dual_arm() -> None:
         server.close()
 
 
-@pytest.mark.asyncio
-async def test_dof_padding() -> None:
-    """When model_dof > actual, joints should be zero-padded."""
-    port = _find_free_port()
-    server = _RecordingGr00tServer(port)
-    server.start()
-    time.sleep(0.1)
-
-    try:
-        mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-        ])
-        # Model expects 7 DOF but UR has 6
-        client = Gr00tPolicyClient(host="127.0.0.1", port=port, model_dof=7)
-        await client.connect(["0@ur10e"])
-
-        joints = (0.1, -1.5, 0.0, 0.5, -0.3, 1.2)
-        await client.get_actions({"0@ur10e": _state(joints)}, schema)
-
-        state = server.last_observation["state"]
-        arr = state["arm"]
-        assert arr.shape == (1, 1, 7)  # padded to 7
-        np.testing.assert_allclose(arr[0, 0, :6], list(joints), atol=1e-6)
-        assert arr[0, 0, 6] == 0.0  # pad value
-
-        await client.close()
-    finally:
-        server.close()
-
-
-@pytest.mark.asyncio
-async def test_dof_truncation_on_action() -> None:
-    """When model returns more DOF than robot has, truncate action."""
-    port = _find_free_port()
-    server = _RecordingGr00tServer(port)
-
-    # Model returns 7 joints but robot has 6
-    action_arr = np.random.randn(1, 4, 7).astype(np.float32)
-    server.action_response = ({"arm": action_arr}, {})
-    server.start()
-    time.sleep(0.1)
-
-    try:
-        mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-        ])
-        client = Gr00tPolicyClient(host="127.0.0.1", port=port, model_dof=7)
-        await client.connect(["0@ur10e"])
-
-        result = await client.get_actions({"0@ur10e": _state((0.0,) * 6)}, schema)
-
-        # Should be truncated to 6
-        assert len(result.joints["0@ur10e"][0]) == 6
-
-        await client.close()
-    finally:
-        server.close()
 
 
 @pytest.mark.asyncio

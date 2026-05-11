@@ -58,8 +58,6 @@ class Gr00tPolicyClient(PolicyClient):
         Optional API token for authenticated servers.
     dt_ms:
         Default step spacing if not in action info.
-    model_dof:
-        If set, pad/truncate joint arrays to this DOF. 0 = use actual.
     tcp_format:
         TCP pose representation format sent to the server.
     """
@@ -72,18 +70,15 @@ class Gr00tPolicyClient(PolicyClient):
         timeout_ms: int = 15000,
         api_token: str | None = None,
         dt_ms: float = 33.0,
-        model_dof: int = 0,
         tcp_format: TcpFormat = TcpFormat.ROT6D,
     ) -> None:
         self._transport = Gr00tZmqTransport(
             host=host, port=port, timeout_ms=timeout_ms, api_token=api_token,
         )
         self._dt_ms = dt_ms
-        self._model_dof = model_dof
         self._tcp_format = tcp_format
         self._motion_group_ids: list[str] = []
         self._actual_dof: dict[str, int] = {}
-        self._dof_warned: set[str] = set()
 
     async def connect(self, motion_group_ids: list[str]) -> None:
         """Create the ZMQ REQ socket."""
@@ -182,7 +177,6 @@ class Gr00tPolicyClient(PolicyClient):
                     continue
                 joints = list(s.joints)
                 self._actual_dof[mg.id] = len(joints)
-                joints = self._pad_joints(mg.id, joints)
                 concat_joints.extend(joints)
             if concat_joints:
                 state_dict[m.key] = _to_state_array(concat_joints)
@@ -201,18 +195,6 @@ class Gr00tPolicyClient(PolicyClient):
                 state_dict[iom.key] = _to_state_array([val])
 
         return state_dict
-
-    def _pad_joints(self, mg_id: str, joints: list[float]) -> list[float]:
-        """Pad joints to model_dof if needed."""
-        if self._model_dof > len(joints):
-            if mg_id not in self._dof_warned:
-                self._dof_warned.add(mg_id)
-                logger.warning(
-                    "Model expects %d joints but %s has %d — padding with zeros",
-                    self._model_dof, mg_id, len(joints),
-                )
-            return [*joints, *([0.0] * (self._model_dof - len(joints)))]
-        return joints
 
     # ------------------------------------------------------------------
     # Action decoding

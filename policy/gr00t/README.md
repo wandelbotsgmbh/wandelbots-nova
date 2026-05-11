@@ -49,8 +49,6 @@ Observation.io("left_gripper", source=mg,
                io="digital_out[0]")                     # → obs["state.left_gripper"]
 ```
 
-Use `model_dof` on `Gr00tPolicyClient` to pad/truncate joints to match the model's expected DOF.
-
 ## Example Apps
 
 See [`examples/apps/gr00t/`](../examples/apps/gr00t/) for deployable Nova app examples.

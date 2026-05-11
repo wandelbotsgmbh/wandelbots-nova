@@ -41,8 +41,8 @@ _center: dict[str, float] = {}
 async def tcp_circle_policy(obs: dict[str, Any]) -> dict[str, float]:
     """Policy that traces a circle in the XY plane.
 
-    Receives:  eef_1..eef_6 = [x, y, z, rx, ry, rz] in mm / rad
-    Returns:   eef_1..eef_6 = target TCP pose (absolute, mm / rad)
+    Receives:  eef_x, eef_y, eef_z, eef_rx, eef_ry, eef_rz in mm / rad
+    Returns:   eef_x..eef_rz = target TCP pose (absolute, mm / rad)
     """
     global _start_time, _center
 
@@ -82,7 +82,7 @@ async def tcp_circle_policy(obs: dict[str, Any]) -> dict[str, float]:
 )
 async def tcp_policy(ctx: nova.ProgramContext):
     global _center
-    _center = []
+    _center = {}
 
     cell = ctx.nova.cell()
     mg = (await cell.controller("ur5e-left"))[0]
