@@ -70,7 +70,7 @@ async def test_concatenated_observation():
     right = _mg("0@right", "right")
     schema = PolicySchema(
         observations=[
-            Observation.joint_positions("state", source=[left, right], writable=False),
+            Observation.joint_positions("state", source=[left, right], action=False),
         ],
         actions=[
             Action.joint_positions("action", target=[left, right]),
@@ -143,24 +143,24 @@ async def test_joint_torques_default():
 
 @pytest.mark.asyncio
 async def test_inferred_joint_action():
-    """Joint action should be automatically inferred from writable joint observation."""
+    """Joint action should be automatically inferred from action joint observation."""
     mg = _mg()
     schema = PolicySchema(observations=[
         Observation.joint_positions("joints", source=mg),
     ])
-    joints, ios = await schema.parse_action({"joints_1": 0.5, "joints_2": -1.0})
+    joints, _tcp, ios = await schema.parse_action({"joints_1": 0.5, "joints_2": -1.0})
     assert joints == {"0@ur10e": [[0.5, -1.0]]}
     assert ios is None
 
 
 @pytest.mark.asyncio
-async def test_non_writable_no_inferred_action():
-    """writable=False should not infer an action."""
+async def test_non_action_no_inferred_action():
+    """action=False should not infer an action."""
     mg = _mg()
     schema = PolicySchema(observations=[
-        Observation.joint_positions("state", source=mg, writable=False),
+        Observation.joint_positions("state", source=mg, action=False),
     ])
-    joints, _ios = await schema.parse_action({"state_1": 0.5})
+    joints, _tcp, _ios = await schema.parse_action({"state_1": 0.5})
     assert joints == {}
 
 
@@ -170,13 +170,13 @@ async def test_explicit_action_different_key():
     mg = _mg()
     schema = PolicySchema(
         observations=[
-            Observation.joint_positions("obs_state", source=mg, writable=False),
+            Observation.joint_positions("obs_state", source=mg, action=False),
         ],
         actions=[
             Action.joint_positions("action", target=mg),
         ],
     )
-    joints, _ios = await schema.parse_action({"action_1": 0.5, "action_2": -1.0})
+    joints, _tcp, _ios = await schema.parse_action({"action_1": 0.5, "action_2": -1.0})
     assert joints == {"0@ur10e": [[0.5, -1.0]]}
 
 
@@ -190,8 +190,8 @@ async def test_io_action_with_bool_mapping():
                            mapping=BoolMapping(on=100.0)),
         ],
     )
-    _, ios_open = await schema.parse_action({"joints_1": 0.0, "gripper": 80.0})
-    _, ios_closed = await schema.parse_action({"joints_1": 0.0, "gripper": 20.0})
+    _, _tcp, ios_open = await schema.parse_action({"joints_1": 0.0, "gripper": 80.0})
+    _, _tcp, ios_closed = await schema.parse_action({"joints_1": 0.0, "gripper": 20.0})
     assert ios_open == {"0@ur10e": {"digital_out[0]": True}}
     assert ios_closed == {"0@ur10e": {"digital_out[0]": False}}
 
@@ -202,13 +202,13 @@ async def test_concatenated_action():
     right = _mg("0@right", "right")
     schema = PolicySchema(
         observations=[
-            Observation.joint_positions("state", source=[left, right], writable=False),
+            Observation.joint_positions("state", source=[left, right], action=False),
         ],
         actions=[
             Action.joint_positions("action", target=[left, right]),
         ],
     )
-    joints, _ = await schema.parse_action({
+    joints, _tcp, _ = await schema.parse_action({
         "action_1": 1.0, "action_2": 2.0,
         "action_3": 3.0, "action_4": 4.0,
     })
@@ -222,7 +222,7 @@ async def test_no_matching_action_keys():
     schema = PolicySchema(observations=[
         Observation.joint_positions("joints", source=mg),
     ])
-    joints, ios = await schema.parse_action({"unrelated": 1.0})
+    joints, _tcp, ios = await schema.parse_action({"unrelated": 1.0})
     assert joints == {}
     assert ios is None
 
@@ -297,7 +297,7 @@ def test_io_keys_by_controller():
     schema = PolicySchema(
         observations=[
             Observation.joint_positions("joints", source=mg),
-            Observation.io("sensor", source=mg, io="digital_in[0]", writable=False),
+            Observation.io("sensor", source=mg, io="digital_in[0]", action=False),
             Observation.io("gripper", source=mg, io="digital_out[0]"),
         ],
     )
@@ -306,7 +306,7 @@ def test_io_keys_by_controller():
 
 
 @pytest.mark.asyncio
-async def test_writable_io_infers_action():
+async def test_action_io_infers_action():
     """Writable IO observation auto-infers a matching action."""
     mg = _mg()
     schema = PolicySchema(observations=[
@@ -314,19 +314,19 @@ async def test_writable_io_infers_action():
         Observation.io("gripper", source=mg, io="digital_out[0]",
                        mapping=BoolMapping(on=100.0)),
     ])
-    _, ios = await schema.parse_action({"joints_1": 0.0, "gripper": 80.0})
+    _, _tcp, ios = await schema.parse_action({"joints_1": 0.0, "gripper": 80.0})
     assert ios == {"0@ur10e": {"digital_out[0]": True}}
 
 
 @pytest.mark.asyncio
-async def test_non_writable_io_no_action():
-    """Non-writable IO observation does not infer an action."""
+async def test_non_action_io_no_action():
+    """Non-action IO observation does not infer an action."""
     mg = _mg()
     schema = PolicySchema(observations=[
         Observation.joint_positions("joints", source=mg),
-        Observation.io("sensor", source=mg, io="digital_in[0]", writable=False),
+        Observation.io("sensor", source=mg, io="digital_in[0]", action=False),
     ])
-    _, ios = await schema.parse_action({"joints_1": 0.0, "sensor": 1.0})
+    _, _tcp, ios = await schema.parse_action({"joints_1": 0.0, "sensor": 1.0})
     assert ios is None
 
 
@@ -337,7 +337,7 @@ async def test_explicit_action_overrides_inferred_io():
     schema = PolicySchema(
         observations=[
             Observation.joint_positions("joints", source=mg),
-            Observation.io("gripper", source=mg, io="digital_in[2]", writable=False),
+            Observation.io("gripper", source=mg, io="digital_in[2]", action=False),
         ],
         actions=[
             Action.io("gripper", target=mg, io="digital_out[0]",
@@ -345,7 +345,7 @@ async def test_explicit_action_overrides_inferred_io():
         ],
     )
     # Reads from digital_in[2], writes to digital_out[0]
-    _, ios = await schema.parse_action({"joints_1": 0.0, "gripper": 0.8})
+    _, _tcp, ios = await schema.parse_action({"joints_1": 0.0, "gripper": 0.8})
     assert ios == {"0@ur10e": {"digital_out[0]": True}}
 
 
@@ -412,7 +412,7 @@ async def test_computed_action():
         observations=[Observation.joint_positions("joints", source=mg)],
         actions=[Action.computed(write_plc)],
     )
-    joints, _ = await schema.parse_action({"joints_1": 0.5, "conveyor_speed": 42.0})
+    joints, _tcp, _ = await schema.parse_action({"joints_1": 0.5, "conveyor_speed": 42.0})
     assert joints == {"0@ur10e": [[0.5]]}
     assert triggered["conveyor"] == 42.0
 
@@ -433,7 +433,39 @@ async def test_computed_action_with_io():
         ],
         actions=[Action.computed(log_action)],
     )
-    _, ios = await schema.parse_action({"joints_1": 0.0, "gripper": 80.0})
+    _, _tcp, ios = await schema.parse_action({"joints_1": 0.0, "gripper": 80.0})
     assert ios == {"0@ur10e": {"digital_out[0]": True}}
     assert len(log) == 1
     assert log[0]["gripper"] == 80.0
+
+
+
+def test_relative_motion_groups():
+    """relative_motion_groups() returns MG IDs with mode='relative'."""
+    mg1 = _mg()
+    mg2 = _mg("0@ur10e-2")
+    schema = PolicySchema(observations=[
+        Observation.joint_positions("left", source=mg1, mode="relative"),
+        Observation.joint_positions("right", source=mg2, mode="absolute"),
+    ])
+    assert schema.relative_motion_groups() == {"0@ur10e"}
+
+
+def test_relative_motion_groups_empty_when_all_absolute():
+    mg = _mg()
+    schema = PolicySchema(observations=[
+        Observation.joint_positions("arm", source=mg),
+    ])
+    assert schema.relative_motion_groups() == set()
+
+
+@pytest.mark.asyncio
+async def test_parse_action_ignores_mode():
+    """parse_action returns raw values regardless of mode — executor handles conversion."""
+    mg = _mg()
+    schema = PolicySchema(observations=[
+        Observation.joint_positions("arm", source=mg, mode="relative"),
+    ])
+    joints, _tcp, _ = await schema.parse_action({"arm_1": 0.1, "arm_2": -0.2})
+    # Values returned as-is (deltas), not converted
+    assert joints["0@ur10e"][0] == [0.1, -0.2]

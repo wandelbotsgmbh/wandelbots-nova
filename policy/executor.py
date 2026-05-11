@@ -185,13 +185,25 @@ class PolicyExecutor:
         to run().
         """
         # Create and start sessions
+        tcp_groups = self._schema.tcp_action_groups()
         for mg in self._motion_groups:
-            self._sessions[mg.id] = PidJoggingSession(
-                motion_group=mg,
-                config=self._config,
-                tcp=self._schema.tcp,
-                safety_guards=self._safety_guards,
-            )
+            if mg.id in tcp_groups:
+                tcp_name = tcp_groups[mg.id] or self._schema.tcp
+                tcp_config = self._make_tcp_config()
+                self._sessions[mg.id] = PidJoggingSession(
+                    motion_group=mg,
+                    config=tcp_config,
+                    tcp=tcp_name,
+                    safety_guards=self._safety_guards,
+                    mode="cartesian",
+                )
+            else:
+                self._sessions[mg.id] = PidJoggingSession(
+                    motion_group=mg,
+                    config=self._config,
+                    tcp=self._schema.tcp,
+                    safety_guards=self._safety_guards,
+                )
 
         image_sources = self._schema.image_sources
         if image_sources:
@@ -250,6 +262,7 @@ class PolicyExecutor:
             action = await self._policy.get_actions(
                 robot_states, self._schema, images, self._all_io_values or None,
             )
+            action = self._apply_relative_mode(action, robot_states)
             self._send(action)
             step += 1
             self.status.step = step
@@ -284,6 +297,13 @@ class PolicyExecutor:
                 continue
             session.update_chunk(steps=steps, dt_ms=chunk.dt_ms)
 
+        for group_id, raw_tcp_steps in chunk.tcp.items():
+            session = self._sessions.get(group_id)
+            if session is None:
+                logger.warning("Unknown motion group in TCP chunk: %s", group_id)
+                continue
+            session.update_chunk(steps=raw_tcp_steps, dt_ms=chunk.dt_ms)
+
         if chunk.ios:
             for group_id, ios in chunk.ios.items():
                 session = self._sessions.get(group_id)
@@ -292,6 +312,72 @@ class PolicyExecutor:
                 task = asyncio.create_task(session.write_ios(ios))
                 self._io_tasks.add(task)
                 task.add_done_callback(self._io_tasks.discard)
+
+    def _make_tcp_config(self) -> PidConfig:
+        """Build a PidConfig with velocity limits suitable for Cartesian mode.
+
+        Uses Nova's default TCP velocity limits (mm/s for translation,
+        rad/s for orientation) combined with the user's PID gains.
+        """
+        from nova.types.motion_settings import DEFAULT_TCP_VELOCITY_LIMIT  # noqa: PLC0415
+
+        tcp_vel = DEFAULT_TCP_VELOCITY_LIMIT  # 50 mm/s
+        orient_vel = 1.5  # rad/s
+
+        # If user provided explicit per-axis limits, use those
+        base = self._config or PidConfig()
+        if isinstance(base.velocity_limit, list) and len(base.velocity_limit) >= 6:  # noqa: PLR2004
+            return base
+
+        return PidConfig(
+            velocity_limit=[tcp_vel, tcp_vel, tcp_vel, orient_vel, orient_vel, orient_vel],
+            tolerance=base.tolerance,
+            p_gain=base.p_gain,
+            i_gain=base.i_gain,
+            d_gain=base.d_gain,
+        )
+
+    def _apply_relative_mode(
+        self, chunk: ActionChunk, states: dict[str, Any],
+    ) -> ActionChunk:
+        """Convert relative action targets to absolute.
+
+        For ``mode='relative'``, each step in the chunk is an offset from the
+        robot's state at inference time.
+        """
+        relative_mgs = self._schema.relative_motion_groups()
+        if not relative_mgs:
+            return chunk
+
+        new_joints = dict(chunk.joints)
+        new_tcp = dict(chunk.tcp)
+
+        for mg_id in relative_mgs:
+            state = states.get(mg_id)
+            if state is None:
+                continue
+
+            # Relative joint actions
+            if mg_id in new_joints:
+                current = list(state.joints)
+                new_joints[mg_id] = [
+                    [c + d for c, d in zip(current, step, strict=True)]
+                    for step in new_joints[mg_id]
+                ]
+
+            # Relative TCP actions
+            if mg_id in new_tcp and hasattr(state, "pose") and state.pose is not None:
+                current_tcp = (
+                    list(state.pose.position) + list(state.pose.orientation)
+                )
+                new_tcp[mg_id] = [
+                    [c + d for c, d in zip(current_tcp, step, strict=True)]
+                    for step in new_tcp[mg_id]
+                ]
+
+        return ActionChunk(
+            joints=new_joints, tcp=new_tcp, ios=chunk.ios, dt_ms=chunk.dt_ms,
+        )
 
     # -------------------------------------------------------------------------
     # IO stream management

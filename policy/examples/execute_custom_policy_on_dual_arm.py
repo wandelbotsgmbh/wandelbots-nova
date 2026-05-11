@@ -159,7 +159,7 @@ async def dual_arm_policy(ctx: nova.ProgramContext):
                        mapping=BoolMapping(on=100.0)),
         Observation.io("right_gripper", source=mg2, io="digital_out[0]",
                        mapping=BoolMapping(on=100.0)),
-        Observation.io("left_sensor", source=mg1, io="digital_in[0]", writable=False),
+        Observation.io("left_sensor", source=mg1, io="digital_in[0]", action=False),
         # Computed observations add custom data each step
         Observation.computed(count_steps),
     ]

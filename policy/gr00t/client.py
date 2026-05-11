@@ -17,7 +17,7 @@ import numpy as np
 
 from policy.gr00t.transport import Gr00tZmqTransport, require_dict
 from policy.policy_client import PolicyClient
-from policy.pose import pose_to_tcp
+from policy.pose import TcpFormat, pose_to_tcp
 from policy.types import ActionChunk
 
 logger = logging.getLogger(__name__)
@@ -68,12 +68,14 @@ class Gr00tPolicyClient(PolicyClient):
         api_token: str | None = None,
         dt_ms: float = 33.0,
         model_dof: int = 0,
+        tcp_format: TcpFormat = TcpFormat.ROT6D,
     ) -> None:
         self._transport = Gr00tZmqTransport(
             host=host, port=port, timeout_ms=timeout_ms, api_token=api_token,
         )
         self._dt_ms = dt_ms
         self._model_dof = model_dof
+        self._tcp_format = tcp_format
         self._motion_group_ids: list[str] = []
         self._actual_dof: dict[str, int] = {}
         self._dof_warned: set[str] = set()
@@ -180,7 +182,9 @@ class Gr00tPolicyClient(PolicyClient):
         for tm in schema.tcp_mappings:
             s = states.get(tm.source.id)
             if s is not None and hasattr(s, "pose") and s.pose is not None:
-                state_dict[tm.key] = _to_state_array(pose_to_tcp(s.pose, tm.format))
+                state_dict[tm.key] = _to_state_array(
+                    pose_to_tcp(s.pose, self._tcp_format)
+                )
 
         if io_values:
             for iom in schema.obs_io_mappings:
@@ -215,10 +219,10 @@ class Gr00tPolicyClient(PolicyClient):
         """Convert GR00T action arrays → ActionChunk."""
         joints: dict[str, list[list[float]]] = {}
 
-        for m in schema.joint_mappings:
-            arr = action.get(m.key)
+        for key, mgs in schema.joint_action_keys:
+            arr = action.get(key)
             if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM:
-                for mg in m.sources:
+                for mg in mgs:
                     joint_data = arr[0].astype(np.float32)
                     actual_dof = self._actual_dof.get(mg.id)
                     if actual_dof and joint_data.shape[1] > actual_dof:

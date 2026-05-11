@@ -270,19 +270,6 @@ skip = min(int(elapsed_ms / dt_ms), len(new_steps) - 1)  # keep at least 1 step
 | Inference longer than chunk duration | Skip up to `len-1` (keep last step) |
 | `dt_ms = 0` (single-step) | No interpolation, no skip — target replaced |
 
-### Tracking Accuracy
-
-Measured on dual-arm UR5e replaying a 15 fps dataset:
-
-| Mode | Mean error | Max error |
-|------|-----------|-----------|
-| Single-step (`chunk=1, dt_ms=0`) | ~0.95° | ~2.5° |
-| Chunked (`chunk=16, dt_ms=66`) | ~0.31° | ~0.8° |
-
-67% reduction from feedforward — PID maintains velocity through waypoints instead of
-stop-and-go between inference steps.
-
----
 
 ## PID Tuning
 

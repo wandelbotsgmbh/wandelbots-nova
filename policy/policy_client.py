@@ -84,10 +84,10 @@ class CallbackPolicyClient(PolicyClient):
         if isinstance(result, ActionChunk):
             return result
         if isinstance(result, dict):
-            if "joints" in result:
+            if "joints" in result or "tcp" in result:
                 return ActionChunk(**result)
-            joints, ios = await schema.parse_action(result)
-            if joints:
-                return ActionChunk(joints=joints, ios=ios)
+            joints, tcp_targets, ios = await schema.parse_action(result)
+            if joints or tcp_targets:
+                return ActionChunk(joints=joints, tcp=tcp_targets, ios=ios)
         msg = f"Policy must return ActionChunk or dict, got {type(result).__name__}"
         raise TypeError(msg)

@@ -24,7 +24,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from policy._sdk import get_controller_id
-from policy.pose import TcpFormat, pose_to_tcp
+
+_TCP_SUFFIXES = ("x", "y", "z", "rx", "ry", "rz")
 
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
@@ -83,7 +84,7 @@ class _ObsJoints:
     """Joint positions from one or more motion groups."""
     key: str
     source: MotionGroup | list[MotionGroup]
-    writable: bool = True
+    action: bool = True
     mode: str = "absolute"
 
     @property
@@ -102,11 +103,12 @@ class _ObsJointSignal:
 
 @dataclass
 class _ObsTcp:
-    """TCP pose from a motion group."""
+    """TCP pose from a motion group. Position in mm, orientation as rotation vector (rad)."""
     key: str
     source: MotionGroup
     tcp: str = ""
-    format: TcpFormat = TcpFormat.ROTATION_VECTOR
+    action: bool = False
+    mode: str = "absolute"
 
 
 @dataclass
@@ -116,7 +118,7 @@ class _ObsIO:
     source: MotionGroup
     io: str
     mapping: Mapping = field(default_factory=Mapping)
-    writable: bool = True
+    action: bool = True
 
 
 @dataclass
@@ -154,10 +156,10 @@ class Observation:
     @staticmethod
     def joint_positions(
         key: str, source: MotionGroup | list[MotionGroup], *,
-        writable: bool = True, mode: str = "absolute",
+        action: bool = True, mode: str = "absolute",
     ) -> _ObsJoints:
         """Observe joint positions. Writable by default (infers matching action)."""
-        return _ObsJoints(key=key, source=source, writable=writable, mode=mode)
+        return _ObsJoints(key=key, source=source, action=action, mode=mode)
 
     @staticmethod
     def joint_torques(key: str, source: MotionGroup, *, default: list[float] | None = None) -> _ObsJointSignal:
@@ -172,18 +174,22 @@ class Observation:
     @staticmethod
     def tcp(
         key: str, source: MotionGroup, *, tcp: str = "",
-        format: TcpFormat = TcpFormat.ROTATION_VECTOR,
+        action: bool = False, mode: str = "absolute",
     ) -> _ObsTcp:
-        """Observe TCP pose in the given format."""
-        return _ObsTcp(key=key, source=source, tcp=tcp, format=format)
+        """Observe TCP pose [x, y, z, rx, ry, rz] in mm / rad (Nova native).
+
+        Set action=True to control via TCP PID jogging.
+        """
+        return _ObsTcp(key=key, source=source, tcp=tcp,
+                       action=action, mode=mode)
 
     @staticmethod
     def io(
         key: str, source: MotionGroup, io: str, *,
-        mapping: Mapping | None = None, writable: bool = True,
+        mapping: Mapping | None = None, action: bool = True,
     ) -> _ObsIO:
         """Observe an IO value. Writable by default (policy can write it back)."""
-        return _ObsIO(key=key, source=source, io=io, mapping=mapping or Mapping(), writable=writable)
+        return _ObsIO(key=key, source=source, io=io, mapping=mapping or Mapping(), action=action)
 
     @staticmethod
     def image(key: str, source: object) -> _ObsImage:
@@ -238,6 +244,14 @@ class _ActIO:
     mapping: Mapping = field(default_factory=Mapping)
 
 
+@dataclass
+class _ActTcp:
+    """Explicit TCP pose action."""
+    key: str
+    target: MotionGroup
+    mode: str = "absolute"
+
+
 ComputedActFn = Callable[[dict[str, Any]], Awaitable[None]]
 
 
@@ -247,7 +261,7 @@ class _ActComputed:
     fn: ComputedActFn
 
 
-ActionEntry = _ActJoints | _ActIO | _ActComputed
+ActionEntry = _ActJoints | _ActTcp | _ActIO | _ActComputed
 
 
 class Action:
@@ -257,6 +271,11 @@ class Action:
     def joint_positions(key: str, target: MotionGroup | list[MotionGroup], *, mode: str = "absolute") -> _ActJoints:
         """Joint action with a key different from the observation."""
         return _ActJoints(key=key, target=target, mode=mode)
+
+    @staticmethod
+    def tcp(key: str, target: MotionGroup, *, mode: str = "absolute") -> _ActTcp:
+        """TCP pose action — executor uses Cartesian PID jogging."""
+        return _ActTcp(key=key, target=target, mode=mode)
 
     @staticmethod
     def io(key: str, target: MotionGroup, io: str, *, mapping: Mapping | None = None) -> _ActIO:
@@ -336,7 +355,7 @@ class PolicySchema:
         for a in self._actions:
             if isinstance(a, _ActJoints):
                 yield from a.targets
-            elif isinstance(a, _ActIO):
+            elif isinstance(a, (_ActTcp, _ActIO)):
                 yield a.target
 
     # -- Schema introspection (used by executor, GR00T client) --
@@ -344,6 +363,20 @@ class PolicySchema:
     @property
     def joint_mappings(self) -> list[_ObsJoints]:
         return [o for o in self._observations if isinstance(o, _ObsJoints)]
+
+    @property
+    def joint_action_keys(self) -> list[tuple[str, list[MotionGroup]]]:
+        """Action-side joint keys: explicit Action.joint_positions() + inferred from action=True."""
+        explicit_keys = {a.key for a in self._actions if isinstance(a, _ActJoints)}
+        result: list[tuple[str, list[MotionGroup]]] = [
+            (a.key, a.targets) for a in self._actions if isinstance(a, _ActJoints)
+        ]
+        result.extend(
+            (o.key, o.sources)
+            for o in self._observations
+            if isinstance(o, _ObsJoints) and o.action and o.key not in explicit_keys
+        )
+        return result
 
     @property
     def tcp_mappings(self) -> list[_ObsTcp]:
@@ -367,6 +400,43 @@ class PolicySchema:
             if isinstance(o, _ObsTcp) and o.tcp:
                 return o.tcp
         return ""
+
+    def relative_motion_groups(self) -> set[str]:
+        """Motion group IDs where actions use relative mode."""
+        result: set[str] = set()
+        for o in self._observations:
+            if isinstance(o, (_ObsJoints, _ObsTcp)) and o.mode == "relative":
+                if isinstance(o, _ObsJoints):
+                    result.update(mg.id for mg in o.sources)
+                else:
+                    result.add(o.source.id)
+        for a in self._actions:
+            if isinstance(a, (_ActJoints, _ActTcp)) and a.mode == "relative":
+                if isinstance(a, _ActJoints):
+                    result.update(mg.id for mg in a.targets)
+                else:
+                    result.add(a.target.id)
+        return result
+
+    def tcp_action_groups(self) -> dict[str, str]:
+        """Motion group IDs that use TCP PID jogging → tcp name.
+
+        Returns dict mapping motion group ID to TCP name.
+        """
+        result: dict[str, str] = {}
+        # Explicit Action.tcp()
+        for a in self._actions:
+            if isinstance(a, _ActTcp):
+                result[a.target.id] = ""
+        # Writable Observation.tcp()
+        for o in self._observations:
+            if isinstance(o, _ObsTcp) and o.action and o.source.id not in result:
+                result[o.source.id] = o.tcp
+        # Fill in tcp names from observations
+        for o in self._observations:
+            if isinstance(o, _ObsTcp) and o.source.id in result and o.tcp:
+                result[o.source.id] = o.tcp
+        return result
 
     def io_keys_by_controller(self) -> dict[str, list[str]]:
         """Hardware IO keys grouped by controller ID."""
@@ -412,8 +482,9 @@ class PolicySchema:
                 continue
             s = states.get(o.source.id)
             if s is not None and hasattr(s, "pose") and s.pose is not None:
-                for i, v in enumerate(pose_to_tcp(s.pose, o.format), 1):
-                    obs[f"{o.key}_{i}"] = v
+                values = list(s.pose.position) + list(s.pose.orientation)
+                for suffix, v in zip(_TCP_SUFFIXES, values, strict=True):
+                    obs[f"{o.key}_{suffix}"] = v
 
     def _fill_joint_signals(self, obs: dict[str, Any], states: dict[str, RobotState]) -> None:
         for o in self._observations:
@@ -448,17 +519,34 @@ class PolicySchema:
 
     # -- Parse action --
 
-    async def parse_action(self, action: dict[str, float]) -> tuple[
+    async def parse_action(
+        self,
+        action: dict[str, float],
+    ) -> tuple[
+        dict[str, list[list[float]]],
         dict[str, list[list[float]]],
         dict[str, dict[str, bool | int | float | str]] | None,
     ]:
-        """Parse a flat action dict into per-MG joints and IOs."""
+        """Parse a flat action dict into per-MG joints, TCP targets, and IOs."""
         explicit_keys = {a.key for a in self._actions if hasattr(a, "key")}
-        joints: dict[str, list[list[float]]] = {}
-        ios: dict[str, dict[str, bool | int | float | str]] = {}
+        joints = self._parse_joints(action, explicit_keys)
+        tcp_targets = self._parse_tcp(action, explicit_keys)
+        ios = self._parse_ios(action, explicit_keys)
 
-        # Joint actions: explicit + writable observations
-        for key, sources in self._joint_action_sources(explicit_keys):
+        # Computed side effects
+        for a in self._actions:
+            if isinstance(a, _ActComputed):
+                await a.fn(action)
+
+        return joints, tcp_targets, ios or None
+
+    def _parse_joints(
+        self,
+        action: dict[str, float],
+        explicit_keys: set[str],
+    ) -> dict[str, list[list[float]]]:
+        joints: dict[str, list[list[float]]] = {}
+        for key, sources, _mode in self._joint_action_sources(explicit_keys):
             values = _extract_indexed(action, key)
             if not values:
                 continue
@@ -470,34 +558,54 @@ class PolicySchema:
                     chunk = values[i * per_mg : (i + 1) * per_mg]
                     if chunk:
                         joints[mg.id] = [chunk]
+        return joints
 
-        # IO actions: explicit + writable observations
+    def _parse_ios(
+        self,
+        action: dict[str, float],
+        explicit_keys: set[str],
+    ) -> dict[str, dict[str, bool | int | float | str]]:
+        ios: dict[str, dict[str, bool | int | float | str]] = {}
         for key, mg, hw_key, mapping in self._io_action_sources(explicit_keys):
             if key in action:
                 ios.setdefault(mg.id, {})[hw_key] = mapping.to_hardware(float(action[key]))
+        return ios
 
-        # Computed side effects
-        for a in self._actions:
-            if isinstance(a, _ActComputed):
-                await a.fn(action)
-
-        return joints, ios or None
+    def _parse_tcp(
+        self,
+        action: dict[str, float],
+        explicit_keys: set[str],
+    ) -> dict[str, list[list[float]]]:
+        tcp_targets: dict[str, list[list[float]]] = {}
+        for key, mg in self._tcp_action_sources(explicit_keys):
+            values = _extract_tcp(action, key)
+            if values:
+                tcp_targets[mg.id] = [values]
+        return tcp_targets
 
     def _joint_action_sources(self, explicit_keys: set[str]):  # noqa: ANN202
         for a in self._actions:
             if isinstance(a, _ActJoints):
-                yield a.key, a.targets
+                yield a.key, a.targets, a.mode
         for o in self._observations:
-            if isinstance(o, _ObsJoints) and o.writable and o.key not in explicit_keys:
-                yield o.key, o.sources
+            if isinstance(o, _ObsJoints) and o.action and o.key not in explicit_keys:
+                yield o.key, o.sources, o.mode
 
     def _io_action_sources(self, explicit_keys: set[str]):  # noqa: ANN202
         for a in self._actions:
             if isinstance(a, _ActIO):
                 yield a.key, a.target, a.io, a.mapping
         for o in self._observations:
-            if isinstance(o, _ObsIO) and o.writable and o.key not in explicit_keys:
+            if isinstance(o, _ObsIO) and o.action and o.key not in explicit_keys:
                 yield o.key, o.source, o.io, o.mapping
+
+    def _tcp_action_sources(self, explicit_keys: set[str]):  # noqa: ANN202
+        for a in self._actions:
+            if isinstance(a, _ActTcp):
+                yield a.key, a.target
+        for o in self._observations:
+            if isinstance(o, _ObsTcp) and o.action and o.key not in explicit_keys:
+                yield o.key, o.source
 
 
 def _extract_indexed(d: dict[str, float], prefix: str) -> list[float]:
@@ -508,3 +616,10 @@ def _extract_indexed(d: dict[str, float], prefix: str) -> list[float]:
         values.append(float(d[f"{prefix}_{i}"]))
         i += 1
     return values
+
+
+def _extract_tcp(d: dict[str, float], prefix: str) -> list[float]:
+    """Extract {prefix}_x, {prefix}_y, ..., {prefix}_rz from a dict."""
+    if f"{prefix}_x" not in d:
+        return []
+    return [float(d[f"{prefix}_{s}"]) for s in _TCP_SUFFIXES]

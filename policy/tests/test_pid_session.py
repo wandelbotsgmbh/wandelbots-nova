@@ -175,7 +175,7 @@ async def test_callback_policy_through_schema_to_pid():
         assert action_dict[f"joints_{i}"] == pytest.approx(expected)
 
     # Parse action via schema → ActionChunk-style joints
-    joints, ios = await schema.parse_action(action_dict)
+    joints, _tcp, ios = await schema.parse_action(action_dict)
     assert "0@ur10e" in joints
     assert joints["0@ur10e"] == [expected_targets]
     assert ios is None

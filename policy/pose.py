@@ -25,7 +25,7 @@ class TcpFormat(StrEnum):
     """[x, y, z, r1x, r1y, r1z, r2x, r2y, r2z] — 9 values. GR00T format."""
 
 
-def pose_to_tcp(pose: object, fmt: TcpFormat | str) -> list[float]:
+def pose_to_tcp(pose: object, fmt: TcpFormat | str, *, position_scale: float = 0.001) -> list[float]:
     """Convert a Nova Pose to TCP values in the requested format.
 
     Parameters
@@ -36,6 +36,10 @@ def pose_to_tcp(pose: object, fmt: TcpFormat | str) -> list[float]:
     fmt:
         A ``TcpFormat`` enum value or one of
         ``"rotation_vector"``, ``"quaternion"``, ``"rot6d"``.
+    position_scale:
+        Multiply position values by this factor.
+        Default ``0.001`` converts Nova's mm to meters.
+        Use ``1.0`` to keep mm.
 
     Returns
     -------
@@ -43,14 +47,12 @@ def pose_to_tcp(pose: object, fmt: TcpFormat | str) -> list[float]:
         - ``rotation_vector``: [x, y, z, rx, ry, rz] — 6 values
         - ``quaternion``: [x, y, z, qx, qy, qz, qw] — 7 values
         - ``rot6d``: [x, y, z, r1x, r1y, r1z, r2x, r2y, r2z] — 9 values
-
-    Position is in meters (Nova uses mm internally).
     """
     pos = pose.position  # type: ignore[union-attr]
     ori = pose.orientation  # type: ignore[union-attr]
-    x = float(pos.x) / 1000.0
-    y = float(pos.y) / 1000.0
-    z = float(pos.z) / 1000.0
+    x = float(pos.x) * position_scale
+    y = float(pos.y) * position_scale
+    z = float(pos.z) * position_scale
 
     fmt_str = str(fmt)
 

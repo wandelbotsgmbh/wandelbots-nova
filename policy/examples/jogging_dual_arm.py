@@ -26,8 +26,8 @@ from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import Pose
 
-HOME_LEFT = [1.047, -0.698, 1.745, -3.142, 0.873, 2.094]
-HOME_RIGHT = [-1.047, -2.356, -1.745, 0.0, -0.873, -2.094]
+HOME_LEFT = [0.0, -1.571, 0.0, -1.571, -1.571, 0.0]
+HOME_RIGHT = [0.0, -1.571, 0.0, -1.571, 1.571, 0.0]
 
 
 # ---------------------------------------------------------------------------
@@ -39,7 +39,7 @@ async def demo_single_joint(mg):
     """Oscillate joint 4 for 5 seconds."""
     print("\n=== Single-arm joint jogging ===")
     duration = 5.0  # seconds
-    amplitude = 0.3  # radians
+    amplitude = 0.15  # radians
     frequency = 0.5  # Hz
 
     async with jog_joints(mg) as jogger:
@@ -49,7 +49,7 @@ async def demo_single_joint(mg):
             if t >= duration:
                 break
             target = list(state.joints)
-            target[3] += amplitude * math.sin(2 * math.pi * frequency * t)
+            target[0] += amplitude * math.sin(2 * math.pi * frequency * t)
             jogger.set_target(target)
 
 
@@ -66,7 +66,7 @@ async def demo_single_joint_chunked(mg):
     """
     print("\n=== Single-arm joint jogging (chunked) ===")
     duration = 5.0
-    amplitude = 0.3
+    amplitude = 0.15
     frequency = 0.5
     chunk_size = 8
     dt_ms = 33.0  # 33ms between steps ≈ 30fps
@@ -83,7 +83,7 @@ async def demo_single_joint_chunked(mg):
             chunk = []
             for i in range(chunk_size):
                 step = list(base)
-                step[3] += amplitude * math.sin(2 * math.pi * frequency * (t + i * dt_s))
+                step[0] += amplitude * math.sin(2 * math.pi * frequency * (t + i * dt_s))
                 chunk.append(step)
             jogger.set_target(chunk, dt_ms=dt_ms)
 
@@ -94,10 +94,10 @@ async def demo_single_joint_chunked(mg):
 
 
 async def demo_single_tcp(mg, tcp_name: str):
-    """Trace a 30mm circle in 2.5 seconds."""
+    """Trace a 10mm circle in XZ plane in 2.5 seconds."""
     print("\n=== Single-arm TCP jogging ===")
     duration = 2.5  # seconds for one full circle
-    radius = 30.0  # mm
+    radius = 5.0  # mm
 
     async with jog_tcp(mg, tcp=tcp_name) as jogger:
         t0 = time.monotonic()
@@ -111,8 +111,8 @@ async def demo_single_tcp(mg, tcp_name: str):
             angle = 2 * math.pi * (t / duration)  # 0 → 2π over duration
             jogger.set_target(Pose(
                 start_pose.position[0] + radius * math.cos(angle),
-                start_pose.position[1] + radius * math.sin(angle),
-                start_pose.position[2],
+                start_pose.position[1],
+                start_pose.position[2] + radius * math.sin(angle),
                 *start_pose.orientation,
             ))
 
@@ -126,7 +126,7 @@ async def demo_dual_joint(mg1, mg2):
     """Mirror-symmetric oscillation on two arms for 5 seconds."""
     print("\n=== Dual-arm joint jogging ===")
     duration = 5.0  # seconds
-    amplitude = 0.3  # radians
+    amplitude = 0.15  # radians
     frequency = 0.5  # Hz
 
     async with jog_joints([mg1, mg2]) as jogger:
@@ -138,8 +138,8 @@ async def demo_dual_joint(mg1, mg2):
             wave = amplitude * math.sin(2 * math.pi * frequency * t)
             t1 = list(states[mg1].joints)
             t2 = list(states[mg2].joints)
-            t1[3] += wave
-            t2[3] -= wave  # mirror
+            t1[0] += wave
+            t2[0] -= wave  # mirror
             jogger.set_target({mg1: t1, mg2: t2})
 
 
@@ -149,10 +149,10 @@ async def demo_dual_joint(mg1, mg2):
 
 
 async def demo_dual_tcp(mg1, mg2, tcp1: str, tcp2: str):
-    """Both TCPs trace 30mm circles for 5 seconds — left CW, right CCW."""
+    """Both TCPs trace 10mm circles in XZ plane for 5 seconds."""
     print("\n=== Dual-arm TCP jogging ===")
     duration = 5.0  # seconds
-    radius = 30.0  # mm
+    radius = 5.0  # mm
     frequency = 0.3  # Hz
 
     async with jog_tcp({mg1: tcp1, mg2: tcp2}) as jogger:
@@ -170,14 +170,14 @@ async def demo_dual_tcp(mg1, mg2, tcp1: str, tcp2: str):
             jogger.set_target({
                 mg1: Pose(
                     start1.position[0] + radius * math.cos(angle),
-                    start1.position[1] + radius * math.sin(angle),
-                    start1.position[2],
+                    start1.position[1],
+                    start1.position[2] + radius * math.sin(angle),
                     *start1.orientation,
                 ),
                 mg2: Pose(
                     start2.position[0] + radius * math.cos(-angle),
-                    start2.position[1] + radius * math.sin(-angle),
-                    start2.position[2],
+                    start2.position[1],
+                    start2.position[2] + radius * math.sin(-angle),
                     *start2.orientation,
                 ),
             })

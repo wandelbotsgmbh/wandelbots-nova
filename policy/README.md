@@ -233,6 +233,64 @@ schema = PolicySchema(
 )
 ```
 
+### Relative and absolute modes
+
+Joint positions and TCP observations support `mode="absolute"` (default) and
+`mode="relative"`. The mode controls how the policy's **action output** is
+interpreted:
+
+| Mode | Policy returns | Executor sends to PID |
+|------|----------------|----------------------|
+| `"absolute"` (default) | target positions | as-is |
+| `"relative"` | offsets from current | `current + offset` |
+
+For chunked policies, each step is an offset from the robot’s state **at
+inference time** (not chained from the previous step), so there is no error
+accumulation.
+
+```python
+# Relative joint actions
+schema = PolicySchema(observations=[
+    Observation.joint_positions("arm", source=mg, mode="relative"),
+])
+
+# Relative TCP actions (uses Cartesian PID jogging)
+schema = PolicySchema(observations=[
+    Observation.tcp("eef", source=mg, writable=True, mode="relative"),
+])
+```
+
+Observations are always **absolute**. If your policy expects relative
+observations (e.g. offsets from a home position), use `Observation.computed()`:
+
+```python
+HOME = [0.0, -1.571, 1.571, -1.571, -1.571, 0.0]
+
+async def relative_obs(obs: dict) -> dict:
+    return {f"arm_rel_{i+1}": obs[f"arm_{i+1}"] - h for i, h in enumerate(HOME)}
+
+schema = PolicySchema(observations=[
+    Observation.joint_positions("arm", source=mg, mode="relative"),
+    Observation.computed(relative_obs),
+])
+```
+
+### TCP actions
+
+Policies that output Cartesian targets instead of joint positions are supported.
+Set `writable=True` on `Observation.tcp()` — the executor creates a Cartesian
+PID jogging session for that motion group:
+
+```python
+schema = PolicySchema(observations=[
+    Observation.tcp("eef_pose", source=mg, writable=True),
+])
+```
+
+The policy receives TCP pose values (`eef_pose_1` … `eef_pose_6`) and returns
+target values in the same format. Combine with `mode="relative"` for
+offset-based Cartesian control.
+
 ### Computed observations
 
 Inject data from external sources (OPC UA, PLC, HTTP, databases) at every inference step:

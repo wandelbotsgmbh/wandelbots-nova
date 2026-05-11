@@ -57,8 +57,6 @@ class WebRTCConnection:
         self._frame_time: float = 0.0
         self._frame_lock = threading.Lock()
         self._frame_event = asyncio.Event()
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._loop_thread: threading.Thread | None = None
         self._receive_task: asyncio.Task[None] | None = None
 
     def latest_frame(self) -> NDArray[Any] | None:
@@ -81,23 +79,10 @@ class WebRTCConnection:
         # 1. Start camera stream
         await asyncio.to_thread(self._start_stream, api_url, cfg)
 
-        # 2. Create dedicated event loop for WebRTC
-        self._loop = asyncio.new_event_loop()
-        self._loop_thread = threading.Thread(
-            target=self._loop.run_forever, daemon=True, name=f"camera-{self._name}"
-        )
-        self._loop_thread.start()
+        # 2. Set up WebRTC peer connection in the current event loop
+        await self._setup_webrtc(api_url, cfg)
 
-        # 3. Set up WebRTC peer connection in the background loop
-        future = asyncio.run_coroutine_threadsafe(self._setup_webrtc(api_url, cfg), self._loop)
-        try:
-            future.result(timeout=timeout_s)
-        except Exception as e:
-            await self.disconnect()
-            msg = f"Camera '{self._name}' WebRTC setup failed: {e}"
-            raise RuntimeError(msg) from e
-
-        # 4. Wait for first frame
+        # 3. Wait for first frame
         try:
             await asyncio.wait_for(self._frame_event.wait(), timeout=timeout_s)
         except TimeoutError as e:
@@ -108,27 +93,17 @@ class WebRTCConnection:
         logger.info("Camera '%s' connected (device=%s)", self._name, cfg.device_id)
 
     async def disconnect(self) -> None:
-        """Close peer connection and stop background loop."""
-        # Cancel the frame receiver task first so it doesn't raise MediaStreamError
-        if self._receive_task is not None and self._loop is not None:
-            self._loop.call_soon_threadsafe(self._receive_task.cancel)
-            await asyncio.sleep(0.1)
+        """Close peer connection."""
+        if self._receive_task is not None:
+            self._receive_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._receive_task
             self._receive_task = None
 
-        if self._pc is not None and self._loop is not None:
-            try:
-                future = asyncio.run_coroutine_threadsafe(self._pc.close(), self._loop)
-                future.result(timeout=5.0)
-            except (TimeoutError, OSError):
-                pass
+        if self._pc is not None:
+            with contextlib.suppress(TimeoutError, OSError):
+                await self._pc.close()
             self._pc = None
-
-        if self._loop is not None:
-            self._loop.call_soon_threadsafe(self._loop.stop)
-            if self._loop_thread is not None:
-                self._loop_thread.join(timeout=2.0)
-            self._loop = None
-            self._loop_thread = None
 
         # Stop camera stream (best-effort)
         try:
@@ -201,8 +176,12 @@ class WebRTCConnection:
     async def _setup_webrtc(self, api_url: str, cfg: WebRTCCameraConfig) -> None:
         """Create WebRTC connection and start receiving frames."""
         import requests  # noqa: PLC0415
+        from aiortc import RTCConfiguration  # noqa: PLC0415
 
-        self._pc = RTCPeerConnection()
+        # No STUN/TURN — only host candidates on the local network.
+        self._pc = RTCPeerConnection(
+            configuration=RTCConfiguration(iceServers=[]),
+        )
 
         @self._pc.on("track")
         def on_track(track: object) -> None:
@@ -218,7 +197,14 @@ class WebRTCConnection:
         resp.raise_for_status()
         offer_data = resp.json()
 
-        offer = RTCSessionDescription(sdp=offer_data["sdp"], type=offer_data["type"])
+        # Filter remote SDP to only keep candidates matching the server IP.
+        # Other interfaces (Docker bridge, VPN, IPv6) are unreachable from
+        # Nova instances and cause 30-60s ICE connectivity check timeouts.
+        from urllib.parse import urlparse  # noqa: PLC0415
+
+        server_ip = urlparse(api_url).hostname or ""
+        sdp = _filter_sdp_candidates(offer_data["sdp"], server_ip)
+        offer = RTCSessionDescription(sdp=sdp, type=offer_data["type"])
         await self._pc.setRemoteDescription(offer)
 
         answer = await self._pc.createAnswer()
@@ -254,3 +240,24 @@ class WebRTCConnection:
             pass
         except (OSError, RuntimeError) as e:
             logger.debug("Camera '%s' frame receiver stopped: %s", self._name, e)
+
+
+_CANDIDATE_IP_INDEX = 4
+
+
+def _filter_sdp_candidates(sdp: str, server_ip: str) -> str:
+    """Keep only ICE candidates matching the server's IP.
+
+    Remote ICE candidates (srflx, IPv6, other interfaces) cause long
+    ICE connectivity check timeouts when unreachable.
+    """
+    lines = []
+    for line in sdp.split("\r\n"):
+        if line.startswith("a=candidate:"):
+            parts = line.split()
+            # parts[4] is the candidate IP address
+            if len(parts) > _CANDIDATE_IP_INDEX and parts[_CANDIDATE_IP_INDEX] == server_ip:
+                lines.append(line)
+        else:
+            lines.append(line)
+    return "\r\n".join(lines)

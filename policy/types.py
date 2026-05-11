@@ -20,18 +20,27 @@ ValueType = int | str | bool | float | Pose
 class ActionChunk(pydantic.BaseModel):
     """Action chunk sent to the PID runner.
 
-    Single-step (teleoperation at 30 Hz):
+    Single-step (teleoperation at 30 Hz)::
+
         ActionChunk(joints={"0@ur5e": [[0.1, -1.5, ...]]})
 
-    Multi-step (policy inference, e.g. ACT outputs 16 steps at 33ms):
+    TCP targets::
+
+        ActionChunk(tcp={"0@ur5e": [[x, y, z, rx, ry, rz]]})
+
+    Multi-step (policy inference, e.g. ACT outputs 16 steps at 33ms)::
+
         ActionChunk(
             joints={"0@ur5e": [[...], [...], [...], ...]},
             dt_ms=33.0,
         )
     """
 
-    joints: dict[str, list[list[float]]]
+    joints: dict[str, list[list[float]]] = pydantic.Field(default_factory=dict)
     """Motion group id → sequence of joint targets (radians)."""
+
+    tcp: dict[str, list[list[float]]] = pydantic.Field(default_factory=dict)
+    """Motion group id → sequence of TCP targets [x, y, z, rx, ry, rz]."""
 
     ios: dict[str, dict[str, bool | int | float | str]] | None = None
     """Motion group id → {io_key: value}. Fired once on send()."""

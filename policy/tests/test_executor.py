@@ -134,3 +134,52 @@ async def test_last_observation_populated():
 
     assert executor.last_observation is not None
     assert "0@ur10e" in executor.last_observation
+
+
+def test_apply_relative_mode():
+    """_apply_relative_mode adds current joints to chunk steps."""
+    from policy.executor import PolicyExecutor
+    from policy.schema import Observation, PolicySchema
+    from policy.types import ActionChunk
+
+    mg = _mg()
+    schema = PolicySchema(observations=[
+        Observation.joint_positions("arm", source=mg, mode="relative"),
+    ])
+    executor = PolicyExecutor(schema, lambda obs: obs, timeout_s=1)
+
+    # Simulate current state
+    states = {"0@ur10e": MagicMock(joints=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0))}
+
+    # Chunk with 2 steps of deltas
+    chunk = ActionChunk(
+        joints={"0@ur10e": [[0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+                             [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]]},
+        dt_ms=33.0,
+    )
+    result = executor._apply_relative_mode(chunk, states)
+
+    # Each step should be current + delta
+    assert abs(result.joints["0@ur10e"][0][0] - 1.1) < 1e-9
+    assert abs(result.joints["0@ur10e"][1][0] - 1.2) < 1e-9
+    assert result.dt_ms == 33.0
+
+
+def test_apply_relative_mode_absolute_passthrough():
+    """_apply_relative_mode is a no-op for absolute mode."""
+    from policy.executor import PolicyExecutor
+    from policy.schema import Observation, PolicySchema
+    from policy.types import ActionChunk
+
+    mg = _mg()
+    schema = PolicySchema(observations=[
+        Observation.joint_positions("arm", source=mg, mode="absolute"),
+    ])
+    executor = PolicyExecutor(schema, lambda obs: obs, timeout_s=1)
+
+    chunk = ActionChunk(
+        joints={"0@ur10e": [[0.5, -1.0, 0.0, 0.0, 0.0, 0.0]]},
+        dt_ms=0.0,
+    )
+    result = executor._apply_relative_mode(chunk, {})
+    assert result is chunk  # same object, not copied
