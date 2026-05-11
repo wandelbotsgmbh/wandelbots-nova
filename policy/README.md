@@ -305,21 +305,22 @@ def io_guard(ctx: GuardState) -> bool:
 executor = PolicyExecutor(schema, policy, safety_guards=[workspace_guard, io_guard])
 ```
 
-## PID Jogging (without a policy)
+## PID Jogging
 
-The PID jogging layer can be used standalone — no policy, no schema, no cameras. Useful for
-teleoperation, scripted motions, or testing:
+This package converts position targets into velocity commands via a PID controller running at the robot controller's cycle rate. For chunked policies (ACT, Diffusion, GR00T), targets are linearly interpolated and feedforward velocity is added for smooth tracking. New chunks arriving mid-execution are seamlessly merged via inference-delay compensation.
+
+The PID jogging layer can also be used standalone — no policy, no schema, no cameras:
 
 ```python
 from policy import jog_joints
 
 async with jog_joints(mg) as jogger:
-    jogger.target = [0.0, -1.57, 1.57, -1.57, -1.57, 0.0]
+    jogger.set_target([0.0, -1.57, 1.57, -1.57, -1.57, 0.0])
     async for state in jogger:
         print(state.joints)
 ```
 
-See [`JOGGING.md`](JOGGING.md) for joint and TCP modes, dual-arm control, and PID tuning.\
+See [`JOGGING.md`](JOGGING.md) for joint/TCP modes, dual-arm control, chunking, error handling, and PID tuning.\
 ▶ Example: [`jogging_dual_arm.py`](examples/jogging_dual_arm.py)
 
 ## Deployable Apps

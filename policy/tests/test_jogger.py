@@ -107,7 +107,7 @@ class TestJointJoggerTarget:
 
     def test_single_list(self):
         jogger, (mg,) = self._make("0@ur10e")
-        jogger.target = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        jogger.set_target([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
         assert jogger.target == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
         jogger._sessions[mg].update_chunk.assert_called_once()
 
@@ -115,29 +115,39 @@ class TestJointJoggerTarget:
         jogger, (mg1, mg2) = self._make("0@ur10e", "0@ur10e-2")
         t1 = [1.0] * 6
         t2 = [2.0] * 6
-        jogger.target = {mg1: t1, mg2: t2}
+        jogger.set_target({mg1: t1, mg2: t2})
         assert jogger.target == {mg1: t1, mg2: t2}
 
-    def test_single_rejects_dict_error(self):
+    def test_single_rejects_wrong_type(self):
         jogger, _ = self._make("0@ur10e")
         with pytest.raises(TypeError, match="Expected list"):
-            jogger.target = "not a list"
+            jogger.set_target("not a list")  # type: ignore[arg-type]
 
     def test_multi_rejects_list(self):
         jogger, _ = self._make("0@ur10e", "0@ur10e-2")
         with pytest.raises(TypeError, match="multiple motion groups"):
-            jogger.target = [1.0] * 6
+            jogger.set_target([1.0] * 6)
 
     def test_wrong_dimensions(self):
         jogger, _ = self._make("0@ur10e")
         with pytest.raises(ValueError, match="expects 6"):
-            jogger.target = [1.0, 2.0, 3.0]
+            jogger.set_target([1.0, 2.0, 3.0])
 
-    def test_none_clears_target(self):
-        jogger, _ = self._make("0@ur10e")
-        jogger.target = [1.0] * 6
-        jogger.target = None
-        assert jogger.target is None
+    def test_chunk(self):
+        jogger, (mg,) = self._make("0@ur10e")
+        chunk = [[float(i)] * 6 for i in range(4)]
+        jogger.set_target(chunk, dt_ms=33.0)
+        jogger._sessions[mg].update_chunk.assert_called_with(steps=chunk, dt_ms=33.0)
+        # target property returns the last step
+        assert jogger.target == chunk[-1]
+
+    def test_multi_chunk(self):
+        jogger, (mg1, mg2) = self._make("0@ur10e", "0@ur10e-2")
+        c1 = [[float(i)] * 6 for i in range(4)]
+        c2 = [[float(i + 10)] * 6 for i in range(4)]
+        jogger.set_target({mg1: c1, mg2: c2}, dt_ms=33.0)
+        jogger._sessions[mg1].update_chunk.assert_called_with(steps=c1, dt_ms=33.0)
+        jogger._sessions[mg2].update_chunk.assert_called_with(steps=c2, dt_ms=33.0)
 
 
 # ---------------------------------------------------------------------------
@@ -172,12 +182,7 @@ class TestTcpJoggerTarget:
     def test_rejects_wrong_type(self):
         jogger, _ = self._make("0@ur10e")
         with pytest.raises(TypeError, match="Expected Pose"):
-            jogger.target = "not a pose"
-
-    def test_none_clears(self):
-        jogger, _ = self._make("0@ur10e")
-        jogger.target = None
-        assert jogger.target is None
+            jogger.set_target("not a pose")  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

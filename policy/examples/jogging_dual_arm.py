@@ -1,11 +1,12 @@
 """
 Example: PID jogging with jog_joints() and jog_tcp() on two UR10e robots.
 
-Demonstrates four modes:
+Demonstrates five modes:
 1. Single-arm joint jogging
-2. Single-arm TCP jogging
-3. Dual-arm joint jogging
-4. Dual-arm TCP jogging
+2. Single-arm joint jogging with chunks (smoother tracking)
+3. Single-arm TCP jogging
+4. Dual-arm joint jogging
+5. Dual-arm TCP jogging
 
 Prerequisites:
     NOVA_API=http://<instance-ip>
@@ -49,11 +50,46 @@ async def demo_single_joint(mg):
                 break
             target = list(state.joints)
             target[3] += amplitude * math.sin(2 * math.pi * frequency * t)
-            jogger.target = target
+            jogger.set_target(target)
 
 
 # ---------------------------------------------------------------------------
-# 2) Single-arm TCP jogging
+# 2) Single-arm joint jogging with chunks
+# ---------------------------------------------------------------------------
+
+
+async def demo_single_joint_chunked(mg):
+    """Same oscillation as demo 1, but sending 8-step chunks.
+
+    Chunks enable interpolation and feedforward velocity between waypoints,
+    resulting in smoother motion (see JOGGING.md).
+    """
+    print("\n=== Single-arm joint jogging (chunked) ===")
+    duration = 5.0
+    amplitude = 0.3
+    frequency = 0.5
+    chunk_size = 8
+    dt_ms = 33.0  # 33ms between steps ≈ 30fps
+    dt_s = dt_ms / 1000.0
+
+    async with jog_joints(mg) as jogger:
+        t0 = time.monotonic()
+        async for state in jogger:
+            t = time.monotonic() - t0
+            if t >= duration:
+                break
+            # Build a chunk of future targets
+            base = list(state.joints)
+            chunk = []
+            for i in range(chunk_size):
+                step = list(base)
+                step[3] += amplitude * math.sin(2 * math.pi * frequency * (t + i * dt_s))
+                chunk.append(step)
+            jogger.set_target(chunk, dt_ms=dt_ms)
+
+
+# ---------------------------------------------------------------------------
+# 3) Single-arm TCP jogging
 # ---------------------------------------------------------------------------
 
 
@@ -73,12 +109,12 @@ async def demo_single_tcp(mg, tcp_name: str):
             if start_pose is None:
                 start_pose = state.pose
             angle = 2 * math.pi * (t / duration)  # 0 → 2π over duration
-            jogger.target = Pose(
+            jogger.set_target(Pose(
                 start_pose.position[0] + radius * math.cos(angle),
                 start_pose.position[1] + radius * math.sin(angle),
                 start_pose.position[2],
                 *start_pose.orientation,
-            )
+            ))
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +140,7 @@ async def demo_dual_joint(mg1, mg2):
             t2 = list(states[mg2].joints)
             t1[3] += wave
             t2[3] -= wave  # mirror
-            jogger.target = {mg1: t1, mg2: t2}
+            jogger.set_target({mg1: t1, mg2: t2})
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +167,7 @@ async def demo_dual_tcp(mg1, mg2, tcp1: str, tcp2: str):
                 start1 = states[mg1].pose
                 start2 = states[mg2].pose
             angle = 2 * math.pi * frequency * t
-            jogger.target = {
+            jogger.set_target({
                 mg1: Pose(
                     start1.position[0] + radius * math.cos(angle),
                     start1.position[1] + radius * math.sin(angle),
@@ -144,7 +180,7 @@ async def demo_dual_tcp(mg1, mg2, tcp1: str, tcp2: str):
                     start2.position[2],
                     *start2.orientation,
                 ),
-            }
+            })
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +217,7 @@ async def jogging_dual_arm(ctx: nova.ProgramContext):
 
     try:
         await demo_single_joint(mg1)
+        await demo_single_joint_chunked(mg1)
         await demo_single_tcp(mg1, tcp1)
         await demo_dual_joint(mg1, mg2)
         await demo_dual_tcp(mg1, mg2, tcp1, tcp2)

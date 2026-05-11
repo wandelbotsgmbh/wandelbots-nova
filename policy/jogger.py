@@ -156,31 +156,58 @@ class JointJogger(_BaseJogger):
 
     @property
     def target(self) -> dict[MotionGroup, list[float]] | list[float] | None:
-        """Current target. Set to update the tracking target."""
+        """Current target (read-only). Use :meth:`set_target` to update."""
         if self._target is None:
             return None
         if not self._multi:
             return self._target.get(self._mg_list[0])
         return self._target
 
-    @target.setter
-    def target(self, value: dict[MotionGroup, list[float]] | list[float] | None) -> None:
-        if value is None:
-            self._target = None
-            return
-        if isinstance(value, list):
+    def _push_target(self, mg: MotionGroup, value: list, dt_ms: float) -> list[float]:
+        """Push a single or chunk target to a session. Returns the final target."""
+        session = self._sessions.get(mg)
+        if session is None:
+            return value if not isinstance(value[0], list) else value[-1]
+        if value and isinstance(value[0], list):
+            session.update_chunk(steps=value, dt_ms=dt_ms)
+            return value[-1]
+        self._validate_and_push(mg, value)
+        return value
+
+    def set_target(
+        self,
+        target: (
+            list[float]
+            | list[list[float]]
+            | dict[MotionGroup, list[float] | list[list[float]]]
+        ),
+        *,
+        dt_ms: float = 0.0,
+    ) -> None:
+        """Set the tracking target.
+
+        Args:
+            target: Joint positions to track.
+                - ``list[float]`` — single target (one motion group)
+                - ``list[list[float]]`` — chunk of future targets (one motion group)
+                - ``dict[MotionGroup, ...]`` — per-MG targets or chunks
+            dt_ms: Time between chunk steps in milliseconds.
+                Only used when ``target`` contains chunks (nested lists).
+                Enables interpolation and feedforward velocity.
+        """
+        if isinstance(target, list):
             if self._multi:
-                msg = "For multiple motion groups, pass a dict[MotionGroup, list[float]]"
+                msg = "For multiple motion groups, pass a dict[MotionGroup, ...]"
                 raise TypeError(msg)
             mg = self._mg_list[0]
-            self._validate_and_push(mg, value)
-            self._target = {mg: value}
-        elif isinstance(value, dict):
-            for mg, joints in value.items():
-                self._validate_and_push(mg, joints)
-            self._target = value
+            final = self._push_target(mg, target, dt_ms)
+            self._target = {mg: final}
+        elif isinstance(target, dict):
+            self._target = self._target or {}
+            for mg, mg_value in target.items():
+                self._target[mg] = self._push_target(mg, mg_value, dt_ms)
         else:
-            msg = f"Expected list[float] or dict[MotionGroup, list[float]], got {type(value)}"
+            msg = f"Expected list or dict, got {type(target)}"
             raise TypeError(msg)
 
     async def __aenter__(self) -> JointJogger:
@@ -240,34 +267,36 @@ class TcpJogger(_BaseJogger):
 
     @property
     def target(self) -> dict[MotionGroup, Pose] | Pose | None:
-        """Current target. Set to update the tracking target."""
+        """Current target (read-only). Use :meth:`set_target` to update."""
         if self._target is None:
             return None
         if not self._multi:
             return self._target.get(self._mg_list[0])
         return self._target
 
-    @target.setter
-    def target(self, value: dict[MotionGroup, Pose] | Pose | None) -> None:
-        if value is None:
-            self._target = None
-            return
+    def set_target(self, target: Pose | dict[MotionGroup, Pose]) -> None:
+        """Set the TCP tracking target.
 
+        Args:
+            target: TCP pose to track.
+                - ``Pose`` — single motion group
+                - ``dict[MotionGroup, Pose]`` — per-MG targets
+        """
         from nova.types import Pose  # noqa: PLC0415
 
-        if isinstance(value, Pose):
+        if isinstance(target, Pose):
             if self._multi:
                 msg = "For multiple motion groups, pass a dict[MotionGroup, Pose]"
                 raise TypeError(msg)
             mg = self._mg_list[0]
-            self._validate_and_push(mg, list(value.position) + list(value.orientation))
-            self._target = {mg: value}
-        elif isinstance(value, dict):
-            for mg, pose in value.items():
+            self._validate_and_push(mg, list(target.position) + list(target.orientation))
+            self._target = {mg: target}
+        elif isinstance(target, dict):
+            for mg, pose in target.items():
                 self._validate_and_push(mg, list(pose.position) + list(pose.orientation))
-            self._target = value
+            self._target = target
         else:
-            msg = f"Expected Pose or dict[MotionGroup, Pose], got {type(value)}"
+            msg = f"Expected Pose or dict[MotionGroup, Pose], got {type(target)}"
             raise TypeError(msg)
 
     async def __aenter__(self) -> TcpJogger:
@@ -325,7 +354,7 @@ def jog_joints(
 
         async with jog_joints(mg) as jogger:
             async for state in jogger:
-                jogger.target = [0.1, -1.5, 1.0, -0.5, 0.0, 0.0]
+                jogger.set_target([0.1, -1.5, 1.0, -0.5, 0.0, 0.0])
     """
     if not isinstance(motion_groups, list):
         motion_groups = [motion_groups]
@@ -388,7 +417,7 @@ def jog_tcp(
 
         async with jog_tcp(mg, tcp="Flange") as jogger:
             async for state in jogger:
-                jogger.target = Pose(500, 200, 300, 0, 3.14, 0)
+                jogger.set_target(Pose(500, 200, 300, 0, 3.14, 0))
     """
     if isinstance(motion_groups, dict):
         return TcpJogger(
