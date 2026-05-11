@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from nova.cell.motion_group import MotionGroup
-    from policy.types import PidConfig, SafetyGuard, ValueType
+    from policy.types import JoggingMode, PidConfig, SafetyGuard, ValueType
 
 logger = logging.getLogger(__name__)
 
@@ -42,16 +42,15 @@ class PidJoggingSession:
         config: PidConfig,
         *,
         tcp: str = "",
-        mode: str = "joint",
+        mode: JoggingMode = "joint",
         safety_guards: list[SafetyGuard] | None = None,
-        io_values: dict[str, object] | None = None,
     ) -> None:
         self._motion_group = motion_group
         self._config = config
         self._tcp = tcp
-        self._mode = mode  # "joint" or "cartesian"
+        self._mode: JoggingMode = mode
         self._safety_guards = safety_guards or []
-        self._io_values = io_values
+        self._io_values: dict[str, object] | None = None
         self._pid = VelocityController(
             velocity_limit=config.velocity_limit,
             tolerance=config.tolerance,
@@ -83,6 +82,10 @@ class PidJoggingSession:
         self._running = False
         self._failed = False
         self._failure_reason: str = ""
+
+    def set_io_values_ref(self, values: dict[str, object]) -> None:
+        """Set the shared IO values dict (from IOStreamCache)."""
+        self._io_values = values
 
     @property
     def motion_group(self) -> MotionGroup:
@@ -185,7 +188,7 @@ class PidJoggingSession:
         for task in (self._jogging_task, self._state_task):
             if task is not None:
                 task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, OSError, Exception):
+                with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
                     await task
 
         self._jogging_task = None
@@ -226,7 +229,7 @@ class PidJoggingSession:
             logger.error("State stream error for %s: %s", self.motion_group_id, e)
         finally:
             if stream is not None:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
                     await stream.aclose()
 
     # -------------------------------------------------------------------------
@@ -342,26 +345,8 @@ class PidJoggingSession:
 
         current_robot_state = self._build_robot_state()
 
-        # Run safety guards
         if self._safety_guards and current_robot_state is not None:
-            now = time.monotonic()
-            dt = now - self._prev_tick_time if self._prev_tick_time is not None else 0.01
-            ctx = GuardState(
-                state=current_robot_state,
-                prev_state=self._prev_state,
-                dt=dt,
-                motion_group_id=self.motion_group_id,
-                io_values=self._io_values,
-            )
-            for guard in self._safety_guards:
-                if not guard(ctx):
-                    guard_name = getattr(guard, "__name__", repr(guard))
-                    logger.warning(
-                        "Safety guard '%s' triggered for %s", guard_name, self.motion_group_id
-                    )
-                    self._running = False
-                    raise GuardStopError(self.motion_group_id, guard_name)
-            self._prev_tick_time = now
+            self._check_safety_guards(current_robot_state)
 
         if current_robot_state is not None:
             self._prev_state = current_robot_state
@@ -371,6 +356,27 @@ class PidJoggingSession:
             target,
             feedforward_velocity=self._get_feedforward_velocity(),
         )
+
+    def _check_safety_guards(self, current_robot_state: RobotState) -> None:
+        """Run all safety guards. Raises GuardStopError on failure."""
+        now = time.monotonic()
+        dt = now - self._prev_tick_time if self._prev_tick_time is not None else 0.01
+        ctx = GuardState(
+            state=current_robot_state,
+            prev_state=self._prev_state,
+            dt=dt,
+            motion_group_id=self.motion_group_id,
+            io_values=self._io_values,
+        )
+        for guard in self._safety_guards:
+            if not guard(ctx):
+                guard_name = getattr(guard, "__name__", repr(guard))
+                logger.warning(
+                    "Safety guard '%s' triggered for %s", guard_name, self.motion_group_id
+                )
+                self._running = False
+                raise GuardStopError(self.motion_group_id, guard_name)
+        self._prev_tick_time = now
 
 
 # ---------------------------------------------------------------------------
@@ -400,16 +406,14 @@ class JoggingStateTracker:
 
     def update_from_state(self, state: object) -> None:
         """Extract jogging pause reason from MotionGroupState.execute.details."""
-        execute = getattr(state, "execute", None)
-        details = getattr(execute, "details", None) if execute else None
-        jog_state = getattr(details, "state", None) if details else None
+        jog_state = self._extract_jogging_state(state)
 
         if jog_state is None:
             self._paused_reason = None
             self._paused_detail = ""
             return
 
-        kind = getattr(jog_state, "kind", "RUNNING")
+        kind: str = getattr(jog_state, "kind", "RUNNING")
         if kind == "RUNNING":
             self._paused_reason = None
             self._paused_detail = ""
@@ -421,6 +425,17 @@ class JoggingStateTracker:
                 self._paused_detail = jog_state.description
             else:
                 self._paused_detail = ""
+
+    @staticmethod
+    def _extract_jogging_state(state: object) -> object | None:
+        """Navigate MotionGroupState.execute.details.state safely."""
+        execute = getattr(state, "execute", None)
+        if execute is None:
+            return None
+        details = getattr(execute, "details", None)
+        if details is None:
+            return None
+        return getattr(details, "state", None)
 
     def check(self) -> None:
         """Raise ``MotionError`` after confirmed blocking pause."""

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from policy.types import ActionChunk
 
@@ -16,11 +16,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class PolicyClient:
-    """Base class for policy action sources.
+@runtime_checkable
+class PolicyClient(Protocol):
+    """Protocol for policy action sources.
 
     A policy is a pure function: (robot states, images) → ActionChunk.
-    It never signals "done" — episode termination is an executor concern.
+    It never signals “done” — episode termination is an executor concern.
 
     The executor owns the ``PolicySchema`` and passes it to ``get_actions()``
     on every call.
@@ -28,6 +29,7 @@ class PolicyClient:
 
     async def connect(self, motion_group_ids: list[str]) -> None:
         """Establish connection to the policy service."""
+        ...
 
     async def get_actions(
         self,
@@ -36,27 +38,15 @@ class PolicyClient:
         images: dict[str, NDArray[Any]] | None = None,
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
-        """Receive robot states + camera images, return action chunk.
-
-        Args:
-            states: Dict mapping motion group ID → current RobotState.
-            schema: The executor's PolicySchema for obs/action translation.
-            images: Dict mapping camera name → numpy array (H,W,3) or (T,H,W,3).
-                    None if no cameras configured.
-            io_values: Dict mapping hardware IO key → current value.
-                       None if no IOs configured.
-
-        Returns:
-            ActionChunk with joint targets (and optional IOs) to execute.
-        """
-        msg = "Subclasses must implement get_actions"
-        raise NotImplementedError(msg)
+        """Receive robot states + camera images, return action chunk."""
+        ...
 
     async def close(self) -> None:
         """Close the connection."""
+        ...
 
 
-class CallbackPolicyClient(PolicyClient):
+class CallbackPolicyClient:
     """Policy client that calls a local async function.
 
     The user function receives a flat feature dict and returns either:
@@ -67,6 +57,12 @@ class CallbackPolicyClient(PolicyClient):
 
     def __init__(self, fn: object) -> None:
         self._fn = fn
+
+    async def connect(self, motion_group_ids: list[str]) -> None:
+        """No-op for local callbacks."""
+
+    async def close(self) -> None:
+        pass
 
     async def get_actions(
         self,

@@ -161,7 +161,7 @@ class PolicyExecutor:
     async def _cleanup(self) -> None:
         """Stop all sessions and close policy connection."""
         for session in self._sessions.values():
-            with contextlib.suppress(GuardStopError, MotionError, EmergencyStopError, OSError):
+            with contextlib.suppress(GuardStopError, MotionError, EmergencyStopError, OSError, RuntimeError):
                 await session.stop()
 
         # Wait for pending IO tasks
@@ -417,7 +417,7 @@ class PolicyExecutor:
         for cache in self._io_caches:
             session = self._sessions.get(cache.motion_group.id)
             if session is not None:
-                session._io_values = cache.values
+                session.set_io_values_ref(cache.values)
 
     async def _stop_io_streams(self) -> None:
         """Close all IO streams."""

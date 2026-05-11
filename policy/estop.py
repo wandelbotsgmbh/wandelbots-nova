@@ -11,6 +11,7 @@ from policy._sdk import get_api_gateway, get_cell, get_controller_id
 from policy.types import EmergencyStopError, GuardStopError, MotionError
 
 if TYPE_CHECKING:
+    from nova.cell.motion_group import MotionGroup
     from policy.pidjogging import PidJoggingSession
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ class EstopMonitor:
     when any controller enters a non-operational safety state.
     """
 
-    def __init__(self, motion_groups: list[object]) -> None:
+    def __init__(self, motion_groups: list[MotionGroup]) -> None:
         self._motion_groups = motion_groups
         self._task: asyncio.Task[None] | None = None
         self.error: EmergencyStopError | None = None
@@ -121,5 +122,5 @@ class EstopMonitor:
             pass
         finally:
             if stream is not None:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
                     await stream.aclose()

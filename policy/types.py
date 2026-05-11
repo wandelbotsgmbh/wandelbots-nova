@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import pydantic
 
@@ -16,8 +16,12 @@ if TYPE_CHECKING:
 # Reuse the SDK's IO value type
 ValueType = int | str | bool | float | Pose
 
+# Mode literals used across the package
+ActionMode = Literal["absolute", "relative"]
+JoggingMode = Literal["joint", "cartesian"]
 
-class ActionChunk(pydantic.BaseModel):
+
+class ActionChunk(pydantic.BaseModel, frozen=True):
     """Action chunk sent to the PID runner.
 
     Single-step (teleoperation at 30 Hz)::
@@ -49,7 +53,7 @@ class ActionChunk(pydantic.BaseModel):
     """Time spacing between steps in milliseconds. 0 = single-step."""
 
 
-@dataclass
+@dataclass(slots=True)
 class PidConfig:
     """Configuration for the PID velocity controller."""
 
@@ -66,7 +70,7 @@ class PidConfig:
     state_rate_ms: int = 10
 
 
-@dataclass
+@dataclass(slots=True)
 class GuardState:
     """State passed to the safety guard callback on each jogging tick."""
 

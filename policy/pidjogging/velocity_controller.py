@@ -55,6 +55,7 @@ class VelocityController:
         target: list[float],
         *,
         feedforward_velocity: list[float] | None = None,
+        timestamp: float | None = None,
     ) -> list[float]:
         """Compute joint velocities to move from current toward target.
 
@@ -63,8 +64,9 @@ class VelocityController:
             target: Target joint positions (radians), length N.
             feedforward_velocity: Optional desired velocity at the current target
                 (rad/s per joint). When provided (e.g. from a spline derivative),
-                added directly to the PID output. This allows the controller to
-                maintain velocity through waypoints instead of decelerating to zero.
+                added directly to the PID output.
+            timestamp: Monotonic timestamp in seconds. If None, uses
+                ``time.monotonic()``. Inject for deterministic testing.
 
         Returns:
             Joint velocities (rad/s), length N, clamped to [-velocity_limit, velocity_limit].
@@ -77,7 +79,7 @@ class VelocityController:
             raise ValueError(msg)
 
         n = len(current)
-        now = time.monotonic()
+        now = timestamp if timestamp is not None else time.monotonic()
 
         # If all joints within tolerance, output zero and reset
         if all(abs(c - t) <= self.tolerance for c, t in zip(current, target, strict=True)):

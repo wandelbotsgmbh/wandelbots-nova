@@ -26,9 +26,11 @@ from policy.schema import (
 )
 from policy.types import (
     ActionChunk,
+    ActionMode,
     EmergencyStopError,
     GuardState,
     GuardStopError,
+    JoggingMode,
     MotionError,
     PidConfig,
 )
@@ -36,6 +38,7 @@ from policy.types import (
 __all__ = [
     "Action",
     "ActionChunk",
+    "ActionMode",
     "BoolMapping",
     "CallbackPolicyClient",
     "CameraSource",

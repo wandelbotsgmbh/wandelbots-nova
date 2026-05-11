@@ -83,7 +83,7 @@ class IOStreamCache:
             logger.exception("IO stream for %s crashed", self.motion_group.id)
         finally:
             if stream is not None:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
                     await stream.aclose()
 
 

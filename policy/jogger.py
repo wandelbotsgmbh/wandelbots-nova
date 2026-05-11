@@ -111,7 +111,7 @@ class _BaseJogger:
             await self._estop.stop()
             self._estop = None
         for session in self._sessions.values():
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
                 await session.stop()
         logger.info("%s stopped", self.__class__.__name__)
         return False
