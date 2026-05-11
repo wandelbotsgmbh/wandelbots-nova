@@ -69,24 +69,24 @@ def test_multistep_chunk_advances_with_time():
 
     # Initially at step 0
     target = s._get_active_target()
-    assert target == step_0
+    assert all(abs(t - 0.1) < 0.001 for t in target)
 
-    # Simulate 150ms elapsed → should be at step 1
-    s._step_start_time = time.monotonic() - 0.15
+    # Simulate 150ms elapsed → interpolated halfway between step 1 and step 2
+    s._queue._start_time = time.monotonic() - 0.15
     target = s._get_active_target()
-    assert target == step_1
+    assert all(abs(t - 0.25) < 0.01 for t in target)
 
-    # Simulate 250ms elapsed → should be at step 2 (clamped)
-    s._step_start_time = time.monotonic() - 0.25
+    # Simulate 250ms elapsed → clamped at step 2 (past end)
+    s._queue._start_time = time.monotonic() - 0.25
     target = s._get_active_target()
-    assert target == step_2
+    assert all(abs(t - 0.3) < 0.001 for t in target)
 
 
 def test_single_step_chunk_stays():
     s = _session()
     s.update_chunk([[0.5] * 6], dt_ms=33.0)
-    # Even with time elapsed, single step stays at index 0
-    s._step_start_time = time.monotonic() - 10.0
+    # Even with time elapsed, single step stays
+    s._queue._start_time = time.monotonic() - 10.0
     target = s._get_active_target()
     assert target == [0.5] * 6
 
@@ -128,11 +128,9 @@ def test_guard_receives_io_values():
 def test_update_chunk_resets_index():
     s = _session()
     s.update_chunk([[0.1] * 6, [0.2] * 6], dt_ms=100.0)
-    s._step_index = 1  # Simulate advancement
 
-    # New chunk resets
+    # New chunk resets to first target
     s.update_chunk([[0.9] * 6], dt_ms=0.0)
-    assert s._step_index == 0
     assert s._get_active_target() == [0.9] * 6
 
 

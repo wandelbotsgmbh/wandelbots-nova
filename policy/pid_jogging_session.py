@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from nova import api
 from nova.types import Pose, RobotState
 from policy._sdk import get_api_gateway, get_cell, get_controller_id
+from policy.action_queue import ActionQueue
 from policy.io import IOWriter
 from policy.types import GuardState, GuardStopError, MotionError
 from policy.velocity_controller import VelocityController
@@ -62,12 +63,7 @@ class PidJoggingSession:
         )
         self._io_writer = IOWriter(motion_group)
         self._jog_tracker = JoggingStateTracker(motion_group.id)
-
-        # Step sequence state
-        self._steps: list[list[float]] = []
-        self._step_index: int = 0
-        self._dt_ms: float = 0.0
-        self._step_start_time: float = 0.0
+        self._queue = ActionQueue()
 
         # Current joint state (updated by state stream)
         self._current_joints: list[float] | None = None
@@ -137,10 +133,7 @@ class PidJoggingSession:
 
     def update_chunk(self, steps: list[list[float]], dt_ms: float) -> None:
         """Replace the current step sequence with a new chunk."""
-        self._steps = steps
-        self._step_index = 0
-        self._dt_ms = dt_ms
-        self._step_start_time = time.monotonic()
+        self._queue.update(steps, dt_ms)
 
     async def write_ios(self, ios: dict[str, ValueType]) -> None:
         """Write IO values (delegated to IOWriter for deduplication)."""
@@ -186,7 +179,7 @@ class PidJoggingSession:
     async def stop(self) -> None:
         """Stop the jogging session gracefully."""
         self._running = False
-        self._steps = []
+        self._queue = ActionQueue()
         self._pid.reset()
 
         for task in (self._jogging_task, self._state_task):
@@ -307,16 +300,12 @@ class PidJoggingSession:
     # -------------------------------------------------------------------------
 
     def _get_active_target(self) -> list[float] | None:
-        """Get the currently active target based on step index and timing."""
-        if not self._steps:
-            return None
+        """Get interpolated target from the action queue."""
+        return self._queue.get_target()
 
-        if self._dt_ms > 0.0 and self._step_index < len(self._steps) - 1:
-            elapsed = (time.monotonic() - self._step_start_time) * 1000.0
-            new_index = min(int(elapsed / self._dt_ms), len(self._steps) - 1)
-            self._step_index = new_index
-
-        return self._steps[self._step_index]
+    def _get_feedforward_velocity(self) -> list[float] | None:
+        """Get feedforward velocity from the action queue."""
+        return self._queue.get_feedforward_velocity()
 
     def _make_velocity_request(
         self, velocity: list[float],
@@ -377,7 +366,11 @@ class PidJoggingSession:
         if current_robot_state is not None:
             self._prev_state = current_robot_state
 
-        return self._pid.compute(current, target)
+        return self._pid.compute(
+            current,
+            target,
+            feedforward_velocity=self._get_feedforward_velocity(),
+        )
 
 
 # ---------------------------------------------------------------------------

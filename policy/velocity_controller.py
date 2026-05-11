@@ -49,12 +49,22 @@ class VelocityController:
         self._prev_time = None
         self._integral = None
 
-    def compute(self, current: list[float], target: list[float]) -> list[float]:
+    def compute(
+        self,
+        current: list[float],
+        target: list[float],
+        *,
+        feedforward_velocity: list[float] | None = None,
+    ) -> list[float]:
         """Compute joint velocities to move from current toward target.
 
         Args:
             current: Current joint positions (radians), length N.
             target: Target joint positions (radians), length N.
+            feedforward_velocity: Optional desired velocity at the current target
+                (rad/s per joint). When provided (e.g. from a spline derivative),
+                added directly to the PID output. This allows the controller to
+                maintain velocity through waypoints instead of decelerating to zero.
 
         Returns:
             Joint velocities (rad/s), length N, clamped to [-velocity_limit, velocity_limit].
@@ -74,8 +84,11 @@ class VelocityController:
             self.reset()
             return [0.0] * n
 
-        # Compute feedforward from target velocity estimate
-        ff = self._feedforward(target, now, n)
+        # Feedforward: use provided velocity or fall back to historical estimate
+        if feedforward_velocity is not None:
+            ff = feedforward_velocity
+        else:
+            ff = self._feedforward(target, now, n)
 
         # Detect target change → reset derivative/integral state
         if self._target_changed(target):
@@ -118,7 +131,7 @@ class VelocityController:
         return velocities
 
     def _feedforward(self, target: list[float], now: float, n: int) -> list[float]:
-        """Estimate target velocity for feedforward term."""
+        """Estimate target velocity for feedforward term (historical fallback)."""
         if self._prev_target is None or self._prev_time is None or self.ff_gain == 0.0:
             return [0.0] * n
         dt = now - self._prev_time
