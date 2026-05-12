@@ -57,15 +57,18 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
 class PidConfig:
     """Configuration for PID velocity control (motion via NOVA Jogging API)."""
 
-    velocity_limit: float | list[float] = 1.5
+    velocity_limit: float | list[float] = 2.0
     """Velocity limit in rad/s (joints) or mm/s + rad/s (TCP).
     Scalar applies to all axes; list sets per-axis limits."""
 
     tolerance: float = 0.01
     p_gain: float = 3.0
     i_gain: float = 0.0
-    d_gain: float = 0.1
-    ff_gain: float = 0.0
+    d_gain: float = 0.15
+    ff_gain: float = 1.0
+    lookahead_ms: float = 50.0
+    """Look-ahead time in ms. Targets a future trajectory point to compensate
+    for the command-to-effect delay (~half the round-trip latency)."""
     integral_limit: float = 2.0
     state_rate_ms: int = 10
 

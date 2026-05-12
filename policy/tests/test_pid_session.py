@@ -17,13 +17,14 @@ def _session(
     guards: list | None = None,
     velocity_limit: float = 1.5,
     tolerance: float = 0.01,
+    lookahead_ms: float = 0.0,
 ) -> PidJoggingSession:
     mg = MagicMock()
     mg.id = "0@ur10e"
     mg._controller_id = "ur10e"
     mg._cell = "cell"
     mg._api_client = MagicMock()
-    config = PidConfig(velocity_limit=velocity_limit, tolerance=tolerance)
+    config = PidConfig(velocity_limit=velocity_limit, tolerance=tolerance, lookahead_ms=lookahead_ms)
     session = PidJoggingSession(mg, config, safety_guards=guards)
     session._num_joints = 6
     session._current_joints = [0.0] * 6
@@ -67,16 +68,18 @@ def test_multistep_chunk_advances_with_time():
     step_2 = [0.3] * 6
     s.update_chunk([step_0, step_1, step_2], dt_ms=100.0)
 
-    # Initially at step 0
+    # At t=0: spline starts at step 0 value (0.1)
     target = s._get_active_target()
-    assert all(abs(t - 0.1) < 0.001 for t in target)
+    assert all(abs(t - 0.1) < 0.01 for t in target)
 
-    # Simulate 150ms elapsed → interpolated halfway between step 1 and step 2
+    # Simulate 150ms elapsed -> interpolated between step 1 and step 2
     s._queue._start_time = time.monotonic() - 0.15
     target = s._get_active_target()
-    assert all(abs(t - 0.25) < 0.01 for t in target)
+    assert target is not None
+    # With 0 lookahead: 150ms at 100ms spacing = midway step 1-2 \u2192 0.25
+    assert all(abs(t - 0.25) < 0.02 for t in target)
 
-    # Simulate 250ms elapsed → clamped at step 2 (past end)
+    # Simulate 250ms elapsed -> past end -> clamped at step 2 (0.3)
     s._queue._start_time = time.monotonic() - 0.25
     target = s._get_active_target()
     assert all(abs(t - 0.3) < 0.001 for t in target)
@@ -85,7 +88,7 @@ def test_multistep_chunk_advances_with_time():
 def test_single_step_chunk_stays():
     s = _session()
     s.update_chunk([[0.5] * 6], dt_ms=33.0)
-    # Even with time elapsed, single step stays
+    # Single step -> holds position
     s._queue._start_time = time.monotonic() - 10.0
     target = s._get_active_target()
     assert target == [0.5] * 6

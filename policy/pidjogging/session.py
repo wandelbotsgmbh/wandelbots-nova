@@ -28,6 +28,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_MIN_DT = 0.001  # Minimum time delta to prevent division-by-zero
+
 
 class PidJoggingSession:
     """Manages a PID-controlled jogging session for a single motion group.
@@ -71,6 +73,11 @@ class PidJoggingSession:
         self._current_tcp_pose: Pose | None = None
         self._current_tcp_name: str | None = None
         self._num_joints: int | None = None
+
+        # State prediction: extrapolate stale observations forward
+        self._prev_joints: list[float] | None = None
+        self._prev_joints_time: float | None = None
+        self._measured_velocity: list[float] | None = None
 
         # Safety guard state
         self._prev_state: RobotState | None = None
@@ -208,7 +215,21 @@ class PidJoggingSession:
                 response_rate_msecs=self._config.state_rate_ms
             )
             async for state in stream:
-                self._current_joints = list(state.joint_position)
+                now = time.monotonic()
+                new_joints = list(state.joint_position)
+
+                # Compute measured velocity from consecutive state readings
+                if self._prev_joints is not None and self._prev_joints_time is not None:
+                    dt = now - self._prev_joints_time
+                    if dt > _MIN_DT:
+                        self._measured_velocity = [
+                            (new_joints[j] - self._prev_joints[j]) / dt
+                            for j in range(len(new_joints))
+                        ]
+                self._prev_joints = list(new_joints)
+                self._prev_joints_time = now
+
+                self._current_joints = new_joints
                 self._current_joint_torques = (
                     list(state.joint_torque.root)
                     if getattr(state, "joint_torque", None) is not None
@@ -306,8 +327,8 @@ class PidJoggingSession:
     # -------------------------------------------------------------------------
 
     def _get_active_target(self) -> list[float] | None:
-        """Get interpolated target from the action queue."""
-        return self._queue.get_target()
+        """Get interpolated target from the action queue with lookahead."""
+        return self._queue.get_target(lookahead_ms=self._config.lookahead_ms)
 
     def _get_feedforward_velocity(self) -> list[float] | None:
         """Get feedforward velocity from the action queue."""
@@ -330,7 +351,7 @@ class PidJoggingSession:
             if self._current_tcp_pose is None:
                 return None
             return list(self._current_tcp_pose.position) + list(self._current_tcp_pose.orientation)
-        return self._current_joints
+        return list(self._current_joints) if self._current_joints is not None else None
 
     def _get_zero_velocity(self) -> list[float]:
         """Return zero velocity of the right dimension."""
