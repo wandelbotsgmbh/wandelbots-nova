@@ -55,7 +55,7 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
 
 @dataclass(slots=True)
 class PidConfig:
-    """Configuration for the PID velocity controller."""
+    """Configuration for PID velocity control (motion via NOVA Jogging API)."""
 
     velocity_limit: float | list[float] = 1.5
     """Velocity limit in rad/s (joints) or mm/s + rad/s (TCP).
@@ -68,6 +68,24 @@ class PidConfig:
     ff_gain: float = 0.0
     integral_limit: float = 2.0
     state_rate_ms: int = 10
+
+
+@dataclass(slots=True)
+class TrajectoryConfig:
+    """Configuration for trajectory-based motion (motion via NOVA Trajectory API).
+
+    Each action chunk is planned as a multi-waypoint joint_ptp trajectory
+    with built-in collision avoidance.
+    """
+
+    velocity: float = 500.0
+    """TCP velocity limit in mm/s for trajectory planning."""
+
+
+#: Motion configuration — determines how action chunks are executed.
+#: ``PidConfig`` for real-time PID velocity control,
+#: ``TrajectoryConfig`` for planned trajectories with collision avoidance.
+MotionConfig = PidConfig | TrajectoryConfig
 
 
 @dataclass(slots=True)

@@ -58,7 +58,7 @@ async def test_timeout_returns_result():
 
     executor = PolicyExecutor(s, policy, timeout_s=0.2, inference_hz=100)
 
-    with patch("policy.executor.PidJoggingSession") as mock_session_cls, \
+    with patch("policy.pidjogging.PidJoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
         mock_session_cls.return_value = _fake_session()
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
@@ -82,7 +82,7 @@ async def test_stop_returns_stopped():
         await asyncio.sleep(0.1)
         executor.stop()
 
-    with patch("policy.executor.PidJoggingSession") as mock_session_cls, \
+    with patch("policy.pidjogging.PidJoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
         mock_session_cls.return_value = _fake_session()
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
@@ -105,7 +105,7 @@ async def test_bare_function_accepted_as_policy():
 
     executor = PolicyExecutor(s, my_policy, timeout_s=0.1, inference_hz=50)
 
-    with patch("policy.executor.PidJoggingSession") as mock_session_cls, \
+    with patch("policy.pidjogging.PidJoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
         mock_session_cls.return_value = _fake_session()
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
@@ -126,7 +126,7 @@ async def test_last_observation_populated():
 
     executor = PolicyExecutor(s, policy, timeout_s=0.1, inference_hz=50)
 
-    with patch("policy.executor.PidJoggingSession") as mock_session_cls, \
+    with patch("policy.pidjogging.PidJoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
         mock_session_cls.return_value = _fake_session()
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)

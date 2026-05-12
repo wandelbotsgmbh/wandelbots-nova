@@ -354,10 +354,15 @@ class PidJoggingSession:
         if current_robot_state is not None:
             self._prev_state = current_robot_state
 
+        ff = None
+        if self._config.ff_gain > 0:
+            raw_ff = self._get_feedforward_velocity()
+            if raw_ff is not None:
+                ff = [v * self._config.ff_gain for v in raw_ff]
         return self._pid.compute(
             current,
             target,
-            feedforward_velocity=self._get_feedforward_velocity(),
+            feedforward_velocity=ff,
         )
 
     def _check_safety_guards(self, current_robot_state: RobotState) -> None:

@@ -14,14 +14,22 @@ from typing import TYPE_CHECKING, Any
 from policy._sdk import get_controller_id
 from policy.estop import EstopMonitor, check_estop, check_sessions
 from policy.io import IOStreamCache
-from policy.pidjogging import PidJoggingSession
-from policy.types import ActionChunk, EmergencyStopError, GuardStopError, MotionError, PidConfig
+from policy.types import (
+    ActionChunk,
+    EmergencyStopError,
+    GuardStopError,
+    MotionError,
+    PidConfig,
+    TrajectoryConfig,
+)
 
 if TYPE_CHECKING:
+    from nova.cell.motion_group import MotionGroup
     from policy.cameras import CameraSource
+    from policy.motion_session import MotionSession
     from policy.policy_client import PolicyClient
     from policy.schema import PolicySchema
-    from policy.types import SafetyGuard
+    from policy.types import MotionConfig, SafetyGuard
 
 # Type for bare async policy functions
 _PolicyFn = Callable[[dict[str, Any]], Coroutine[Any, Any, dict[str, float] | ActionChunk]]
@@ -73,11 +81,11 @@ class PolicyExecutor:
         schema: PolicySchema,
         policy: _PolicyFn | PolicyClient,
         *,
-        config: PidConfig | None = None,
         safety_guards: list[SafetyGuard] | None = None,
         timeout_s: float = 0,
         inference_hz: float = 30,
         camera_max_age_s: float = 30.0,
+        motion: MotionConfig | None = None,
     ) -> None:
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
@@ -90,13 +98,13 @@ class PolicyExecutor:
         else:
             self._policy = policy  # type: ignore[assignment]
 
-        self._config = config or PidConfig()
+        self._motion = motion or PidConfig()
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
         self._inference_hz = inference_hz
         self._camera_max_age_s = camera_max_age_s
 
-        self._sessions: dict[str, PidJoggingSession] = {}
+        self._sessions: dict[str, MotionSession] = {}
         self._camera_sources: dict[str, CameraSource] = {}
         self._stop_event = asyncio.Event()
         self._last_obs: dict[str, Any] | None = None
@@ -196,25 +204,12 @@ class PolicyExecutor:
         to run().
         """
         # Create and start sessions
-        tcp_groups = self._schema.tcp_action_groups()
+        if isinstance(self._motion, TrajectoryConfig) and self._schema.tcp_action_groups():
+            msg = "TrajectoryConfig does not support TCP actions — use PidConfig for cartesian control"
+            raise ValueError(msg)
+
         for mg in self._motion_groups:
-            if mg.id in tcp_groups:
-                tcp_name = tcp_groups[mg.id] or self._schema.tcp
-                tcp_config = self._make_tcp_config()
-                self._sessions[mg.id] = PidJoggingSession(
-                    motion_group=mg,
-                    config=tcp_config,
-                    tcp=tcp_name,
-                    safety_guards=self._safety_guards,
-                    mode="cartesian",
-                )
-            else:
-                self._sessions[mg.id] = PidJoggingSession(
-                    motion_group=mg,
-                    config=self._config,
-                    tcp=self._schema.tcp,
-                    safety_guards=self._safety_guards,
-                )
+            self._sessions[mg.id] = self._create_session(mg)
 
         image_sources = self._schema.image_sources
         if image_sources:
@@ -326,7 +321,40 @@ class PolicyExecutor:
                 self._io_tasks.add(task)
                 task.add_done_callback(self._io_tasks.discard)
 
-    def _make_tcp_config(self) -> PidConfig:
+    def _create_session(self, mg: MotionGroup) -> MotionSession:
+        """Create a motion session for a motion group based on the configured mode."""
+        motion = self._motion
+
+        if isinstance(motion, TrajectoryConfig):
+            from policy.trajectory_session import TrajectorySession  # noqa: PLC0415
+
+            return TrajectorySession(
+                motion_group=mg,
+                tcp=self._schema.tcp,
+                velocity_limit=motion.velocity,
+                safety_guards=self._safety_guards,
+            )
+
+        # PID mode
+        from policy.pidjogging import PidJoggingSession  # noqa: PLC0415
+
+        tcp_groups = self._schema.tcp_action_groups()
+        if mg.id in tcp_groups:
+            return PidJoggingSession(
+                motion_group=mg,
+                config=self._make_tcp_config(motion),
+                tcp=tcp_groups[mg.id] or self._schema.tcp,
+                safety_guards=self._safety_guards,
+                mode="cartesian",
+            )
+        return PidJoggingSession(
+            motion_group=mg,
+            config=motion,
+            tcp=self._schema.tcp,
+            safety_guards=self._safety_guards,
+        )
+
+    def _make_tcp_config(self, base: PidConfig) -> PidConfig:
         """Build a PidConfig with velocity limits suitable for Cartesian mode.
 
         Uses Nova's default TCP velocity limits (mm/s for translation,
@@ -338,7 +366,7 @@ class PolicyExecutor:
         orient_vel = 1.5  # rad/s
 
         # If user provided explicit per-axis limits, use those
-        base = self._config or PidConfig()
+        base = base or PidConfig()
         if isinstance(base.velocity_limit, list) and len(base.velocity_limit) >= 6:  # noqa: PLR2004
             return base
 

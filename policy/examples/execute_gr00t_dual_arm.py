@@ -77,30 +77,35 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
 
     cameras = WebRTCCameras(api_url=CAMERA_SERVER, frame_history=1, resize=(224, 224))
 
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("left_joint_positions", source=mg_left),
-        Observation.joint_positions("right_joint_positions", source=mg_right),
-        Observation.image("exterior_image_1", source=cameras.device(CAM_CONTEXT)),
-        Observation.image("exterior_image_2", source=cameras.device(CAM_TARGET)),
-        Observation.image("left_wrist_image", source=cameras.device(CAM_LEFT_WRIST)),
-        Observation.image("right_wrist_image", source=cameras.device(CAM_RIGHT_WRIST)),
-        Observation.constant("language", value="Pick up the box and place it onto the conveyor."),
-    ])
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("left_joint_positions", source=mg_left),
+            Observation.joint_positions("right_joint_positions", source=mg_right),
+            Observation.image("exterior_image_1", source=cameras.device(CAM_CONTEXT)),
+            Observation.image("exterior_image_2", source=cameras.device(CAM_TARGET)),
+            Observation.image("left_wrist_image", source=cameras.device(CAM_LEFT_WRIST)),
+            Observation.image("right_wrist_image", source=cameras.device(CAM_RIGHT_WRIST)),
+            Observation.constant(
+                "language", value="Pick up the box and place it onto the conveyor."
+            ),
+        ]
+    )
 
     client = Gr00tPolicyClient(
-        host=GROOT_HOST, port=GROOT_PORT,
+        host=GROOT_HOST,
+        port=GROOT_PORT,
         timeout_ms=60000,
     )
 
-    pid = PidConfig(p_gain=1.5, d_gain=0.05, velocity_limit=1.0)
-    executor = PolicyExecutor(schema, client, timeout_s=TIMEOUT_S, config=pid)
+    pid = PidConfig(p_gain=1.5, d_gain=0.2, velocity_limit=0.15, ff_gain=0.0)
+    executor = PolicyExecutor(schema, client, timeout_s=TIMEOUT_S, motion=pid)
 
     # Log action chunks for debugging — shows RAW values from GR00T (before relative conversion)
     _orig_get = client.get_actions
 
     async def _logged_get(states, schema, images, io_values):
         result = await _orig_get(states, schema, images, io_values)
-        if hasattr(result, 'joints') and result.joints:
+        if hasattr(result, "joints") and result.joints:
             for mg_id, steps in result.joints.items():
                 n = len(steps)
                 raw0 = [f"{v:+.4f}" for v in steps[0]] if steps else []

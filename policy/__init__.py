@@ -33,6 +33,7 @@ from policy.types import (
     JoggingMode,
     MotionError,
     PidConfig,
+    TrajectoryConfig,
 )
 
 __all__ = [
@@ -57,6 +58,7 @@ __all__ = [
     "PolicyExecutor",
     "PolicySchema",
     "TcpJogger",
+    "TrajectoryConfig",
     "WebRTCCameras",
     "jog_joints",
     "jog_tcp",
