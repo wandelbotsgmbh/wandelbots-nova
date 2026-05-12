@@ -40,8 +40,8 @@ from policy import (
 )
 from policy.types import GuardState
 
-HOME_LEFT = (1.047, -0.698, 1.745, -3.142, 0.873, 2.094)
-HOME_RIGHT = (-1.047, -2.356, -1.745, 0.0, -0.873, -2.094)
+HOME_LEFT = (1.169, -0.733, 1.745, -3.054, 0.873, 2.094)
+HOME_RIGHT = (-1.169, -2.391, -1.868, 0.0, -0.873, -2.094)
 
 CAMERA_SERVER = os.environ.get("CAMERA_SERVER", "http://192.168.1.22:9100")
 
@@ -171,7 +171,7 @@ async def dual_arm_policy(ctx: nova.ProgramContext):
     ]
 
     if CAMERA_SERVER:
-        cameras = WebRTCCameras(api_url=CAMERA_SERVER, width=640, height=480, fps=15)
+        cameras = WebRTCCameras(api_url=CAMERA_SERVER)
         observations.extend([
             Observation.image("flange", source=cameras.device("315122271048")),
             Observation.image("left", source=cameras.device("314522065367")),

@@ -160,9 +160,9 @@ def test_apply_relative_mode():
     )
     result = executor._apply_relative_mode(chunk, states)
 
-    # Each step should be current + delta
+    # Cumulative: step[0] = current + delta[0], step[1] = current + delta[0] + delta[1]
     assert abs(result.joints["0@ur10e"][0][0] - 1.1) < 1e-9
-    assert abs(result.joints["0@ur10e"][1][0] - 1.2) < 1e-9
+    assert abs(result.joints["0@ur10e"][1][0] - 1.3) < 1e-9
     assert result.dt_ms == 33.0
 
 

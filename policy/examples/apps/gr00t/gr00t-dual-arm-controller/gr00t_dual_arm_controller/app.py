@@ -47,16 +47,16 @@ logger = logging.getLogger(__name__)
 BASE_PATH = config("BASE_PATH", default="", cast=str)
 GROOT_HOST = config("GROOT_HOST", default="172.31.11.129", cast=str)
 GROOT_PORT = config("GROOT_PORT", default=30555, cast=int)
-CAMERA_SERVER = config("CAMERA_SERVER", default="http://172.31.11.129:8080", cast=str)
+CAMERA_SERVER = config("CAMERA_SERVER", default="http://172.31.11.129:8011/webrtc-streamer", cast=str)
 
 # Isaac Sim camera device IDs
-CAM_CONTEXT = "World_EnvAssets_rack_env0__3_00_intel_d456_screw_adapter_asm_context_camera"
-CAM_TARGET = "World_EnvAssets_rack_env0_target_cam_stand_d405_prt_01_tn__target_cam_stand_d405prt_ta0_target_camera"
-CAM_LEFT_WRIST = "World_Robot_Robot_0_L__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripperasm_io0_tn__01_00_CAMERA_ASMBLY__INTEL_D405_left_wrist_camera"
-CAM_RIGHT_WRIST = "World_Robot_Robot_0_R__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripperasm_io0_tn__01_00_CAMERA_ASMBLY__INTEL_D405_right_wrist_camera"
+CAM_CONTEXT = "World_EnvAssets_rack_env0__3_00_intel_d456_screw_adapter_asm_tn__03_00_intel_d456_screw_adapterasm_io0_D456_Solid_context_camera_rack_env0"
+CAM_TARGET = "World_EnvAssets_rack_env0_d405_halter_stationaer_2_asm_01_tn__d405_halter_stationaer_2asm_ff0_D405_Solid_target_camera_rack_env0"
+CAM_LEFT_WRIST = "World_Robot_Robot_0_L__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_left_wrist_camera_env0"
+CAM_RIGHT_WRIST = "World_Robot_Robot_0_R__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_right_wrist_camera_env0"
 
-HOME_LEFT = "1.047,-0.698,1.745,-3.142,0.873,2.094"
-HOME_RIGHT = "-1.047,-2.356,-1.745,0.0,-0.873,-2.094"
+HOME_LEFT = "1.169,-0.733,1.745,-3.054,0.873,2.094"
+HOME_RIGHT = "-1.169,-2.391,-1.868,0.0,-0.873,-2.094"
 DEFAULT_CAMERAS = f"exterior_image_1:{CAM_CONTEXT},exterior_image_2:{CAM_TARGET},left_wrist_image:{CAM_LEFT_WRIST},right_wrist_image:{CAM_RIGHT_WRIST}"
 
 
@@ -105,8 +105,7 @@ def _build_schema(
 
     if camera_server and camera_devices:
         cameras = WebRTCCameras(
-            api_url=camera_server, width=camera_size, height=camera_size,
-            fps=camera_fps, frame_history=1,
+            api_url=camera_server, frame_history=1,
         )
         for raw_entry in camera_devices.split(","):
             entry = raw_entry.strip()
@@ -120,8 +119,44 @@ def _build_schema(
 
 
 # ---------------------------------------------------------------------------
-# Nova program (appears in program operator)
+# Nova programs (appear in program operator)
 # ---------------------------------------------------------------------------
+
+
+@nova.program(
+    id="move_to_home",
+    name="Move to Home",
+    description="Move both UR5e arms to their home positions.",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur5e-left",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type="universalrobots-ur5e",
+            ),
+            virtual_controller(
+                name="ur5e-right",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type="universalrobots-ur5e",
+            ),
+        ],
+        cleanup_controllers=False,
+    ),
+)
+async def move_to_home(
+    ctx: nova.ProgramContext,
+    home_joints: str = Field(
+        default=f"{HOME_LEFT};{HOME_RIGHT}",
+        description="Semicolon-separated home joint positions (left;right) in radians",
+    ),
+):
+    """Move both arms to home and stop."""
+    cell = ctx.nova.cell()
+    home_left, home_right = _parse_homes(home_joints)
+    mg_left = (await cell.controller("ur5e-left"))[0]
+    mg_right = (await cell.controller("ur5e-right"))[0]
+    await _move_to_home(mg_left, mg_right, home_left, home_right)
+    logger.info("Both arms at home.")
 
 
 @nova.program(
@@ -158,7 +193,7 @@ async def gr00t_dual_arm_controller(
         description="Semicolon-separated home joint positions (left;right) in radians",
     ),
     camera_server: str = Field(
-        default="http://172.31.11.129:8080",
+        default="http://172.31.11.129:8011/webrtc-streamer",
         description="WebRTC camera server URL",
     ),
     camera_devices: str = Field(
@@ -224,6 +259,7 @@ app = FastAPI(
 )
 
 novax_app.include_programs_router(app)
+novax_app.register_program(move_to_home)
 novax_app.register_program(gr00t_dual_arm_controller)
 
 app.add_middleware(
@@ -265,6 +301,28 @@ async def get_status():
             status.message = _last_error
         return status
     return _executor.status
+
+
+@app.post("/home", response_model=ExecutorStatus)
+async def home(home_joints: str = f"{HOME_LEFT};{HOME_RIGHT}"):
+    """Move both arms to home positions."""
+    global _nova_instance, _last_error
+    _last_error = ""
+    try:
+        n = nova.Nova()
+        await n.open()
+        cell = n.cell()
+        home_left, home_right = _parse_homes(home_joints)
+        mg_left = (await cell.controller("ur5e-left"))[0]
+        mg_right = (await cell.controller("ur5e-right"))[0]
+        await _move_to_home(mg_left, mg_right, home_left, home_right)
+        with contextlib.suppress(Exception):
+            await n.close()
+        return ExecutorStatus(message="Both arms at home.")
+    except Exception as e:
+        _last_error = f"{type(e).__name__}: {e}"
+        logger.exception("Home failed")
+        return ExecutorStatus(message=_last_error)
 
 
 @app.post("/start", response_model=ExecutorStatus)

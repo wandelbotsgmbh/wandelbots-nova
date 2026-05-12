@@ -269,7 +269,7 @@
     fetch("/status").then(r => r.json()).then(d => {
       const port = window.location.port || "9100";
       const ip = d.host_ip || "localhost";
-      document.getElementById("code-snippet").textContent = `cameras = WebRTCCameras(api_url="http://${ip}:${port}", width=640, height=480, fps=15)
+      document.getElementById("code-snippet").textContent = `cameras = WebRTCCameras(api_url="http://${ip}:${port}", width=640, height=480)
 
 schema = PolicySchema(observations=[
     # ... joint observations ...

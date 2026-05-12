@@ -68,6 +68,8 @@ class _RecordingGr00tServer(threading.Thread):
         self.last_observation: dict | None = None
         # Configurable response
         self.action_response: tuple[dict, dict] | None = None
+        # Configurable modality config
+        self._modality_config: dict | None = None
 
     def run(self) -> None:
         while not self._shutdown.is_set():
@@ -92,7 +94,7 @@ class _RecordingGr00tServer(threading.Thread):
                     action = np.repeat(current, 4, axis=1).astype(np.float32)
                     resp = ({first_state_key: action}, {"dt_ms": 33.0})
             elif endpoint == "get_modality_config":
-                resp = {"state": {}, "action": {}}
+                resp = self._modality_config or {"state": {}, "action": {}}
             else:
                 resp = {"error": f"Unknown: {endpoint}"}
 
@@ -612,6 +614,96 @@ async def test_tcp_action_not_in_response() -> None:
         # No eef key in response → empty tcp dict
         assert result.tcp == {}
 
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
+async def test_validate_schema_passes_when_keys_match() -> None:
+    """validate_schema passes when the schema provides all required keys."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server._modality_config = {
+        "state": {"__ModalityConfig_class__": True, "as_json": {
+            "modality_keys": ["arm_joints"],
+        }},
+        "video": {"__ModalityConfig_class__": True, "as_json": {
+            "modality_keys": ["cam_left"],
+        }},
+        "language": {"__ModalityConfig_class__": True, "as_json": {
+            "modality_keys": ["annotation.language.language_instruction"],
+        }},
+    }
+    server.start()
+    try:
+        mg = _mg()
+        cam = MagicMock()
+        schema = PolicySchema(observations=[
+            Observation.joint_positions("arm_joints", source=mg),
+            Observation.image("cam_left", source=cam),
+            Observation.constant("language", value="Pick up the box."),
+        ])
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+        await client.validate_schema(schema)  # should not raise
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
+async def test_validate_schema_fails_on_missing_state_key() -> None:
+    """validate_schema raises ValueError when a state key is missing."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server._modality_config = {
+        "state": {"__ModalityConfig_class__": True, "as_json": {
+            "modality_keys": ["left_arm", "right_arm"],
+        }},
+    }
+    server.start()
+    try:
+        mg = _mg()
+        schema = PolicySchema(observations=[
+            Observation.joint_positions("left_arm", source=mg),
+            # missing "right_arm"
+        ])
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+        with pytest.raises(ValueError, match="right_arm"):
+            await client.validate_schema(schema)
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
+async def test_validate_schema_fails_on_missing_image_key() -> None:
+    """validate_schema raises ValueError when a video key is missing."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server._modality_config = {
+        "state": {"__ModalityConfig_class__": True, "as_json": {
+            "modality_keys": ["arm"],
+        }},
+        "video": {"__ModalityConfig_class__": True, "as_json": {
+            "modality_keys": ["cam_left", "cam_right"],
+        }},
+    }
+    server.start()
+    try:
+        mg = _mg()
+        cam = MagicMock()
+        schema = PolicySchema(observations=[
+            Observation.joint_positions("arm", source=mg),
+            Observation.image("cam_left", source=cam),
+            # missing "cam_right"
+        ])
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+        with pytest.raises(ValueError, match="cam_right"):
+            await client.validate_schema(schema)
         await client.close()
     finally:
         server.close()

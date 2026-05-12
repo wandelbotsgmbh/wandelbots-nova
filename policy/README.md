@@ -115,10 +115,14 @@ The policy returns the same keys with target values. Joints go through PID joggi
 
 ### Cameras
 
+Cameras are provided by a WebRTC streaming server that NOVA manages — for example, the [Isaac Sim WebRTC Streamer](https://github.com/wandelbotsgmbh/wandelbots-isaacsim-webrtc-streamer) or a RealSense camera service running on the NOVA instance.  The policy client never starts or stops hardware streams — NOVA owns the camera lifecycle.  The client only opens a WebRTC session to receive frames.  If `width`, `height`, or `fps` are specified, they are validated against the stream NOVA provides and an exception is raised on mismatch.
+
 ```python
 from policy import Observation, WebRTCCameras
 
-cameras = WebRTCCameras(api_url="http://192.168.1.8:9100", width=640, height=480, fps=15)
+# Point to the camera server running on your NOVA instance.
+# NOVA must already be streaming at the expected resolution/fps.
+cameras = WebRTCCameras(api_url="http://<nova-host>:8011/webrtc-streamer", width=640, height=480, fps=15)
 
 schema = PolicySchema(observations=[
     Observation.joint_positions("arm", source=mg),

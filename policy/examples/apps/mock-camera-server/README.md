@@ -16,7 +16,7 @@ Opens on **http://localhost:9100**. Streams 3 cameras (flange, left, right) at 4
 ```python
 from policy import Observation, PolicySchema, WebRTCCameras
 
-cameras = WebRTCCameras(api_url="http://localhost:9100", width=640, height=480, fps=15)
+cameras = WebRTCCameras(api_url="http://localhost:9100", width=640, height=480)
 
 schema = PolicySchema(observations=[
     # ... joint observations ...

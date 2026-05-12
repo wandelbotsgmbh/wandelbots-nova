@@ -85,6 +85,48 @@ class Gr00tPolicyClient(PolicyClient):
         self._motion_group_ids = list(motion_group_ids)
         await asyncio.to_thread(self._transport.connect)
 
+    async def validate_schema(self, schema: PolicySchema) -> None:
+        """Check that the schema satisfies the GR00T server's expected modalities.
+
+        Queries ``get_modality_config()`` from the server and verifies that all
+        required state, video, and language keys are present in the schema.
+        Raises ``ValueError`` with a clear message listing any missing keys.
+        """
+        config = await self.get_modality_config()
+        errors: list[str] = []
+
+        # Check state keys (joint_positions, etc.)
+        server_state_keys = _extract_modality_keys(config, "state")
+        schema_state_keys = {m.key for m in schema.joint_mappings}
+        schema_state_keys |= {m.key for m in schema.tcp_mappings}
+        missing_state = server_state_keys - schema_state_keys
+        if missing_state:
+            errors.append(f"Missing state observations: {sorted(missing_state)}")
+
+        # Check video keys (camera images)
+        server_video_keys = _extract_modality_keys(config, "video")
+        schema_image_keys = set(schema.image_sources.keys())
+        missing_video = server_video_keys - schema_image_keys
+        if missing_video:
+            errors.append(f"Missing image observations: {sorted(missing_video)}")
+
+        # Check language keys
+        server_lang_keys = _extract_modality_keys(config, "language")
+        if server_lang_keys:
+            has_language = bool(schema.constants.get("language"))
+            if not has_language:
+                errors.append(
+                    "Server expects language instruction but schema has no "
+                    'Observation.constant("language", ...)'
+                )
+
+        if errors:
+            msg = (
+                "Schema does not satisfy GR00T server requirements:\n"
+                + "\n".join(f"  - {e}" for e in errors)
+            )
+            raise ValueError(msg)
+
     async def get_actions(
         self,
         states: dict[str, RobotState],
@@ -263,3 +305,17 @@ def _build_video(obs: dict[str, Any]) -> dict[str, np.ndarray]:
         elif value.ndim == _IMAGE_NDIM_TEMPORAL and value.shape[3] == _IMAGE_CHANNELS:
             video[key] = value[np.newaxis, :, :, :, :]
     return video
+
+
+def _extract_modality_keys(config: dict[str, object], modality: str) -> set[str]:
+    """Extract ``modality_keys`` from a GR00T ``get_modality_config`` response."""
+    entry = config.get(modality)
+    if not isinstance(entry, dict):
+        return set()
+    as_json = entry.get("as_json")
+    if not isinstance(as_json, dict):
+        return set()
+    keys = as_json.get("modality_keys")
+    if not isinstance(keys, list):
+        return set()
+    return {str(k) for k in keys}

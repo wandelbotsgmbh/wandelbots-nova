@@ -25,8 +25,8 @@ from nova.program import ProgramPreconditions
 from nova.types import Pose
 from policy import EmergencyStopError, MotionError, jog_joints, jog_tcp
 
-HOME_LEFT = [0.0, -1.571, 0.0, -1.571, -1.571, 0.0]
-HOME_RIGHT = [0.0, -1.571, 0.0, -1.571, 1.571, 0.0]
+HOME_LEFT = [1.169, -0.733, 1.745, -3.054, 0.873, 2.094]
+HOME_RIGHT = [-1.169, -2.391, -1.868, 0.0, -0.873, -2.094]
 
 
 # ---------------------------------------------------------------------------

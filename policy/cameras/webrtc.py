@@ -2,6 +2,10 @@
 
 Provides ``WebRTCCameras`` factory and ``WebRTCDevice`` — a ``CameraSource``
 implementation that connects to cameras via WebRTC signaling.
+
+The policy never starts or stops hardware streams — it only creates WebRTC
+sessions to receive frames.  If the stream is not running or delivers the
+wrong resolution, an exception is raised.
 """
 
 from __future__ import annotations
@@ -35,7 +39,7 @@ except ImportError:
     pass
 
 
-def require_aiortc() -> None:
+def _require_aiortc() -> None:
     """Raise if aiortc is not installed."""
     if not _aiortc_available:
         msg = "aiortc is required for WebRTC cameras. Install with: pip install aiortc"
@@ -52,20 +56,78 @@ class WebRTCCameraConfig:
     """Configuration for a single WebRTC camera.
 
     Attributes:
-        api_url: Base URL of the camera REST API (e.g. "http://172.31.11.129:8000").
-        device_id: Camera device identifier (e.g. serial number "315122271048").
-        width: Frame width in pixels.
-        height: Frame height in pixels.
-        fps: Desired frames per second.
-        stream_type: Stream type to request ("color" or "depth").
+        api_url: Base URL of the camera signaling API
+            (e.g. ``"http://172.31.11.129:8011/webrtc-streamer"``).
+        device_id: Camera device identifier.
+        width: Expected frame width.  If the stream delivers a different
+            resolution, a ``RuntimeError`` is raised on the first frame.
+            ``None`` = accept any resolution.
+        height: Expected frame height.
+        fps: Expected frames per second.  Validated by measuring the
+            interval between the first frames.  ``None`` = accept any fps.
+        stream_type: Stream type to request (``"color"`` or ``"depth"``).
     """
 
     api_url: str
     device_id: str
-    width: int = 640
-    height: int = 480
-    fps: int = 30
+    width: int | None = None
+    height: int | None = None
+    fps: int | None = None
     stream_type: str = "color"
+
+
+# ---------------------------------------------------------------------------
+# Stream validation
+# ---------------------------------------------------------------------------
+
+_FPS_SAMPLE_FRAMES = 10
+_FPS_TOLERANCE = 0.25  # 25% deviation allowed
+
+
+class _StreamValidator:
+    """Validates resolution on first frame and fps over first N frames."""
+
+    def __init__(self, name: str, config: WebRTCCameraConfig) -> None:
+        self._name = name
+        self._expected_w = config.width
+        self._expected_h = config.height
+        self._expected_fps = config.fps
+        self._resolution_ok = self._expected_w is None and self._expected_h is None
+        self._fps_ok = self._expected_fps is None
+        self._first_frame_time: float | None = None
+        self._frame_count = 0
+
+    def check(self, img: NDArray[Any]) -> str | None:
+        """Check a frame. Returns error message or None."""
+        self._frame_count += 1
+
+        if not self._resolution_ok:
+            h, w = img.shape[0], img.shape[1]
+            if (self._expected_w and w != self._expected_w) or (
+                self._expected_h and h != self._expected_h
+            ):
+                return (
+                    f"Camera '{self._name}' streams {w}x{h} "
+                    f"but policy expects {self._expected_w}x{self._expected_h}. "
+                    f"Configure the camera server to stream at the required resolution."
+                )
+            self._resolution_ok = True
+
+        if not self._fps_ok:
+            if self._first_frame_time is None:
+                self._first_frame_time = time.monotonic()
+            elif self._frame_count >= _FPS_SAMPLE_FRAMES:
+                elapsed = time.monotonic() - self._first_frame_time
+                measured = (self._frame_count - 1) / elapsed if elapsed > 0 else 0
+                if abs(measured - self._expected_fps) > self._expected_fps * _FPS_TOLERANCE:
+                    return (
+                        f"Camera '{self._name}' streams at {measured:.1f} fps "
+                        f"but policy expects {self._expected_fps} fps. "
+                        f"Configure the camera server to stream at the required fps."
+                    )
+                self._fps_ok = True
+
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -74,13 +136,11 @@ class WebRTCCameraConfig:
 
 
 class WebRTCConnection:
-    """Manages a single WebRTC camera connection with background frame reception.
+    """Manages a single WebRTC peer connection with background frame reception.
 
-    Handles the full lifecycle:
-    1. Start camera hardware stream via REST API
-    2. WebRTC offer/answer exchange
-    3. Background frame reception task
-    4. Thread-safe frame access with staleness tracking
+    Only performs WebRTC signaling (offer/answer).  Never calls
+    ``stream/start`` or ``stream/stop`` — the hardware stream is managed
+    externally by the camera server.
     """
 
     def __init__(self, name: str, config: WebRTCCameraConfig) -> None:
@@ -91,6 +151,7 @@ class WebRTCConnection:
         self._frame_time: float = 0.0
         self._frame_lock = threading.Lock()
         self._frame_event = asyncio.Event()
+        self._resolution_error: str | None = None
         self._receive_task: asyncio.Task[None] | None = None
 
     def latest_frame(self) -> NDArray[Any] | None:
@@ -106,17 +167,12 @@ class WebRTCConnection:
             return time.monotonic() - self._frame_time
 
     async def connect(self, timeout_s: float = 30.0) -> None:
-        """Establish WebRTC connection, start stream, wait for first frame."""
+        """Establish WebRTC connection and wait for first frame."""
         cfg = self._config
         api_url = cfg.api_url.rstrip("/")
 
-        # 1. Start camera stream
-        await asyncio.to_thread(self._start_stream, api_url, cfg)
-
-        # 2. Set up WebRTC peer connection
         await self._setup_webrtc(api_url, cfg)
 
-        # 3. Wait for first frame
         try:
             await asyncio.wait_for(self._frame_event.wait(), timeout=timeout_s)
         except TimeoutError as e:
@@ -124,10 +180,14 @@ class WebRTCConnection:
             msg = f"Camera '{self._name}' timed out waiting for first frame"
             raise RuntimeError(msg) from e
 
+        if self._resolution_error:
+            await self.disconnect()
+            raise RuntimeError(self._resolution_error)
+
         logger.info("Camera '%s' connected (device=%s)", self._name, cfg.device_id)
 
     async def disconnect(self) -> None:
-        """Close peer connection."""
+        """Close the WebRTC peer connection."""
         if self._receive_task is not None:
             self._receive_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -139,73 +199,14 @@ class WebRTCConnection:
                 await self._pc.close()
             self._pc = None
 
-        # Stop camera stream (best-effort)
-        try:
-            api_url = self._config.api_url.rstrip("/")
-            requests.post(
-                f"{api_url}/api/devices/{self._config.device_id}/stream/stop", timeout=5
-            )
-        except (OSError, RuntimeError):
-            pass
-
         logger.info("Camera '%s' disconnected", self._name)
 
     # ------------------------------------------------------------------
-    # REST API — camera hardware stream control
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _start_stream(api_url: str, cfg: WebRTCCameraConfig) -> None:
-        """Start the camera hardware stream via REST API."""
-        with contextlib.suppress(OSError, RuntimeError):
-            requests.post(f"{api_url}/api/devices/{cfg.device_id}/stream/stop", timeout=5)
-
-        sensors_url = f"{api_url}/api/devices/{cfg.device_id}/sensors/"
-        resp = requests.get(sensors_url, timeout=10)
-        resp.raise_for_status()
-        sensors = resp.json()
-
-        sensor_id = None
-        for sensor in sensors:
-            for profile in sensor.get("supported_stream_profiles", []):
-                if profile.get("stream_type") == cfg.stream_type:
-                    sensor_id = sensor.get("sensor_id")
-                    break
-            if sensor_id is not None:
-                break
-
-        if sensor_id is None:
-            msg = f"No sensor supports stream_type='{cfg.stream_type}' on device {cfg.device_id}"
-            raise RuntimeError(msg)
-
-        fmt = "rgb8" if cfg.stream_type == "color" else "z16"
-        payload = {
-            "configs": [
-                {
-                    "stream_type": cfg.stream_type,
-                    "format": fmt,
-                    "resolution": {"width": cfg.width, "height": cfg.height},
-                    "framerate": cfg.fps,
-                    "sensor_id": sensor_id,
-                }
-            ]
-        }
-        resp = requests.post(
-            f"{api_url}/api/devices/{cfg.device_id}/stream/start", json=payload, timeout=30
-        )
-        resp.raise_for_status()
-        logger.info(
-            "Camera '%s' stream started (%dx%d@%dfps)",
-            cfg.device_id, cfg.width, cfg.height, cfg.fps,
-        )
-
-    # ------------------------------------------------------------------
-    # WebRTC signaling + frame reception
+    # WebRTC signaling
     # ------------------------------------------------------------------
 
     async def _setup_webrtc(self, api_url: str, cfg: WebRTCCameraConfig) -> None:
-        """Create WebRTC connection and start receiving frames."""
-        # No STUN/TURN — only host candidates on the local network.
+        """WebRTC offer/answer exchange."""
         self._pc = RTCPeerConnection(
             configuration=RTCConfiguration(iceServers=[]),
         )
@@ -242,15 +243,27 @@ class WebRTCConnection:
         )
         resp.raise_for_status()
 
+    # ------------------------------------------------------------------
+    # Frame reception
+    # ------------------------------------------------------------------
+
     async def _receive_frames(self, track: object) -> None:
-        """Continuously receive frames and store the latest one."""
+        """Receive frames, validate resolution and fps."""
+        validator = _StreamValidator(self._name, self._config)
+
         try:
             while True:
                 frame = await track.recv()  # type: ignore[union-attr]
-                img = frame.to_ndarray(format="bgr24")
-                img_rgb = img[:, :, ::-1].copy()
+                img = frame.to_ndarray(format="rgb24")
+
+                error = validator.check(img)
+                if error:
+                    self._resolution_error = error
+                    self._frame_event.set()
+                    return
+
                 with self._frame_lock:
-                    self._frame = img_rgb
+                    self._frame = img
                     self._frame_time = time.monotonic()
                 if not self._frame_event.is_set():
                     self._frame_event.set()
@@ -265,34 +278,47 @@ class WebRTCConnection:
 # ---------------------------------------------------------------------------
 
 
-class WebRTCDevice:
-    """A single WebRTC camera device that implements the CameraSource protocol.
+def _resize_frame(frame: NDArray[Any], width: int, height: int) -> NDArray[Any]:
+    """Resize a single (H, W, 3) frame using INTER_AREA (best for downscaling)."""
+    import cv2  # noqa: PLC0415 — lazy import, cv2 is heavy
 
-    Created by ``WebRTCCameras.device()``. Do not instantiate directly.
+    return cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+
+
+class WebRTCDevice:
+    """A single WebRTC camera device implementing the CameraSource protocol.
+
+    Created by ``WebRTCCameras.device()``.  Do not instantiate directly.
     """
 
-    def __init__(self, config: WebRTCCameraConfig, *, frame_history: int = 1) -> None:
+    def __init__(
+        self,
+        config: WebRTCCameraConfig,
+        *,
+        frame_history: int = 1,
+        resize: tuple[int, int] | None = None,
+    ) -> None:
         self._config = config
         self._frame_history = frame_history
+        self._resize = resize  # (width, height) or None
         self._connection: WebRTCConnection | None = None
         self._buffer: list[NDArray[Any]] = []
 
     async def connect(self, timeout_s: float = 30.0) -> None:
-        """Connect this camera via WebRTC."""
-        require_aiortc()
+        """Connect to the camera stream via WebRTC."""
+        _require_aiortc()
         self._connection = WebRTCConnection(self._config.device_id, self._config)
         await self._connection.connect(timeout_s=timeout_s)
-        logger.info("WebRTCDevice '%s' connected", self._config.device_id)
 
     def read(self, max_age_s: float = 30.0) -> NDArray[Any]:
-        """Read the latest frame (or stacked frames if frame_history > 1).
+        """Read the latest frame.
 
         Returns:
             ``(H, W, 3)`` uint8 RGB if ``frame_history == 1``.
             ``(T, H, W, 3)`` uint8 RGB if ``frame_history > 1``.
 
         Raises:
-            RuntimeError: If no frame available or frame is stale.
+            RuntimeError: If not connected, no frame available, or frame is stale.
         """
         if self._connection is None:
             msg = f"Camera '{self._config.device_id}' not connected"
@@ -308,6 +334,9 @@ class WebRTCDevice:
             msg = f"Camera '{self._config.device_id}' frame stale ({age:.1f}s > {max_age_s:.1f}s)"
             raise RuntimeError(msg)
 
+        if self._resize is not None:
+            frame = _resize_frame(frame, self._resize[0], self._resize[1])
+
         if self._frame_history <= 1:
             return frame
 
@@ -319,7 +348,7 @@ class WebRTCDevice:
         return np.stack(self._buffer, axis=0)
 
     async def disconnect(self) -> None:
-        """Disconnect this camera."""
+        """Disconnect from the camera stream."""
         if self._connection is not None:
             await self._connection.disconnect()
             self._connection = None
@@ -334,20 +363,23 @@ class WebRTCDevice:
 class WebRTCCameras:
     """Factory for WebRTC camera sources.
 
-    Shared camera settings (server URL, resolution, fps) are configured once.
-    Call ``.device(id)`` to create a per-device ``CameraSource``.
+    The camera server controls resolution, fps, and stream lifecycle.
+    This factory only creates WebRTC sessions to receive frames.
+
+    If ``resize`` is set, frames are resized on read using ``cv2.INTER_AREA``
+    (best quality for downscaling).  This adds ~0.3ms per frame.
 
     Usage::
 
-        webrtc = WebRTCCameras(
+        cameras = WebRTCCameras(
             api_url="http://192.168.1.22:9100",
-            width=224, height=224, fps=15,
+            resize=(256, 256),
         )
 
         schema = PolicySchema(
             observations=[
-                Observation.image("cam_left", source=webrtc.device("315122271048")),
-                Observation.image("cam_right", source=webrtc.device("319522063360")),
+                Observation.image("cam_left", source=cameras.device("315122271048")),
+                Observation.image("cam_right", source=cameras.device("319522063360")),
             ],
         )
     """
@@ -356,12 +388,14 @@ class WebRTCCameras:
         self,
         api_url: str,
         *,
-        width: int = 640,
-        height: int = 480,
-        fps: int = 30,
+        resize: tuple[int, int] | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        fps: int | None = None,
         frame_history: int = 1,
     ) -> None:
         self._api_url = api_url
+        self._resize = resize
         self._width = width
         self._height = height
         self._fps = fps
@@ -371,7 +405,7 @@ class WebRTCCameras:
         """Create a camera source for a specific device.
 
         Args:
-            device_id: Camera device identifier (serial number, Isaac Sim path, etc.).
+            device_id: Camera device identifier.
             frame_history: Override the factory default for this device.
         """
         cfg = WebRTCCameraConfig(
@@ -381,7 +415,8 @@ class WebRTCCameras:
             height=self._height,
             fps=self._fps,
         )
-        return WebRTCDevice(cfg, frame_history=frame_history or self._frame_history)
-
-
-# ---------------------------------------------------------------------------
+        return WebRTCDevice(
+            cfg,
+            frame_history=frame_history or self._frame_history,
+            resize=self._resize,
+        )

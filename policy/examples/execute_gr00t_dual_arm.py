@@ -9,6 +9,7 @@ Run:
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 
 import nova
@@ -17,19 +18,26 @@ from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
-from policy import Gr00tPolicyClient, Observation, PolicyExecutor, PolicySchema, WebRTCCameras
+from policy import (
+    Gr00tPolicyClient,
+    Observation,
+    PidConfig,
+    PolicyExecutor,
+    PolicySchema,
+    WebRTCCameras,
+)
 
 GROOT_HOST = "172.31.11.129"
 GROOT_PORT = 30555
-HOME_LEFT = (1.047, -0.698, 1.745, -3.142, 0.873, 2.094)
-HOME_RIGHT = (-1.047, -2.356, -1.745, 0.0, -0.873, -2.094)
-TIMEOUT_S = 120.0
-CAMERA_SERVER = "http://172.31.11.129:8080"
+HOME_LEFT = (1.169, -0.733, 1.745, -3.054, 0.873, 2.094)
+HOME_RIGHT = (-1.169, -2.391, -1.868, 0.0, -0.873, -2.094)
+TIMEOUT_S = 1200.0
+CAMERA_SERVER = "http://172.31.11.129:8011/webrtc-streamer"
 
-CAM_RIGHT_WRIST = "World_Robot_Robot_0_R__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripperasm_io0_tn__01_00_CAMERA_ASMBLY__INTEL_D405_right_wrist_camera"
-CAM_LEFT_WRIST = "World_Robot_Robot_0_L__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripperasm_io0_tn__01_00_CAMERA_ASMBLY__INTEL_D405_left_wrist_camera"
-CAM_CONTEXT = "World_EnvAssets_rack_env0__3_00_intel_d456_screw_adapter_asm_context_camera"
-CAM_TARGET = "World_EnvAssets_rack_env0_target_cam_stand_d405_prt_01_tn__target_cam_stand_d405prt_ta0_target_camera"
+CAM_RIGHT_WRIST = "World_Robot_Robot_0_R__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_right_wrist_camera_env0"
+CAM_LEFT_WRIST = "World_Robot_Robot_0_L__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_left_wrist_camera_env0"
+CAM_CONTEXT = "World_EnvAssets_rack_env0__3_00_intel_d456_screw_adapter_asm_tn__03_00_intel_d456_screw_adapterasm_io0_D456_Solid_context_camera_rack_env0"
+CAM_TARGET = "World_EnvAssets_rack_env0_d405_halter_stationaer_2_asm_01_tn__d405_halter_stationaer_2asm_ff0_D405_Solid_target_camera_rack_env0"
 
 
 @nova.program(
@@ -67,7 +75,7 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
         mg_right.execute(t2, tcp_right, actions=[joint_ptp(HOME_RIGHT, settings=fast)]),
     )
 
-    cameras = WebRTCCameras(api_url=CAMERA_SERVER, width=224, height=224, fps=15, frame_history=1)
+    cameras = WebRTCCameras(api_url=CAMERA_SERVER, frame_history=1, resize=(224, 224))
 
     schema = PolicySchema(observations=[
         Observation.joint_positions("left_joint_positions", source=mg_left),
@@ -84,7 +92,27 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
         timeout_ms=60000,
     )
 
-    executor = PolicyExecutor(schema, client, timeout_s=TIMEOUT_S)
+    pid = PidConfig(p_gain=1.5, d_gain=0.05, velocity_limit=1.0)
+    executor = PolicyExecutor(schema, client, timeout_s=TIMEOUT_S, config=pid)
+
+    # Log action chunks for debugging — shows RAW values from GR00T (before relative conversion)
+    _orig_get = client.get_actions
+
+    async def _logged_get(states, schema, images, io_values):
+        result = await _orig_get(states, schema, images, io_values)
+        if hasattr(result, 'joints') and result.joints:
+            for mg_id, steps in result.joints.items():
+                n = len(steps)
+                raw0 = [f"{v:+.4f}" for v in steps[0]] if steps else []
+                raw_last = [f"{v:+.4f}" for v in steps[-1]] if n > 1 else raw0
+                raw0_deg = [f"{v * 180 / math.pi:+.2f}°" for v in steps[0]] if steps else []
+                print(f"  {mg_id}: {n} steps (raw deltas in rad)")
+                print(f"    step[0] = [{', '.join(raw0)}]  ({', '.join(raw0_deg)})")
+                print(f"    step[15]= [{', '.join(raw_last)}]")
+            print(f"  dt_ms={result.dt_ms}")
+        return result
+
+    client.get_actions = _logged_get  # type: ignore[assignment]
 
     print(f"Running GR00T dual-arm policy for {TIMEOUT_S}s...")
     t0 = time.monotonic()

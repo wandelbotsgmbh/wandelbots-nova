@@ -228,6 +228,7 @@ class PolicyExecutor:
         try:
             await self._start_io_streams()
             await self._policy.connect(self.mg_ids)
+            await self._policy.validate_schema(self._schema)
             self._estop_monitor = EstopMonitor(self._motion_groups)
             await self._estop_monitor.start()
             self.result = await self._execute()
@@ -369,13 +370,15 @@ class PolicyExecutor:
             if state is None:
                 continue
 
-            # Relative joint actions
+            # Relative joint actions: each step is a delta from the previous,
+            # so step[i] target = current + sum(deltas[0..i])
             if mg_id in new_joints:
-                current = list(state.joints)
-                new_joints[mg_id] = [
-                    [c + d for c, d in zip(current, step, strict=True)]
-                    for step in new_joints[mg_id]
-                ]
+                running = list(state.joints)
+                abs_steps = []
+                for step in new_joints[mg_id]:
+                    running = [r + d for r, d in zip(running, step, strict=True)]
+                    abs_steps.append(list(running))
+                new_joints[mg_id] = abs_steps
 
             # Relative TCP actions
             if mg_id in new_tcp and hasattr(state, "pose") and state.pose is not None:

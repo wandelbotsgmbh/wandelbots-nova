@@ -31,6 +31,19 @@ class PolicyClient(Protocol):
         """Establish connection to the policy service."""
         ...
 
+    async def validate_schema(self, schema: PolicySchema) -> None:
+        """Validate that the schema satisfies the policy's requirements.
+
+        Called by the executor after ``connect()`` and before the first
+        inference call.  Implementations should raise ``ValueError`` if the
+        schema is missing keys the policy expects.
+
+        The default implementation is a no-op — override in clients that
+        can introspect the server's expected inputs (e.g. GR00T's
+        ``get_modality_config``).
+        """
+        ...
+
     async def get_actions(
         self,
         states: dict[str, RobotState],
@@ -60,6 +73,9 @@ class CallbackPolicyClient:
 
     async def connect(self, motion_group_ids: list[str]) -> None:
         """No-op for local callbacks."""
+
+    async def validate_schema(self, schema: PolicySchema) -> None:
+        """No-op — bare functions don't declare expected keys."""
 
     async def close(self) -> None:
         pass
