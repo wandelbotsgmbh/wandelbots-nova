@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.1.1 (2026-05-12)
+
+### Chores
+
+- **examples**: Add example for merge trajectories (#419)
+  ([#419](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/419),
+  [`acc6aa4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/acc6aa4d33f73c6aa0bca6837ce488c85d9bba77))
+
+
 ## v5.1.0 (2026-05-06)
 
 ### Features
