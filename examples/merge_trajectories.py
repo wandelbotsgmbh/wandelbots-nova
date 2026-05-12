@@ -32,8 +32,8 @@ from nova.types import Pose
     ),
 )
 async def merge_trajectories(ctx: nova.ProgramContext):
-    nova_client = ctx.nova
-    cell = nova_client.cell()
+    nova = ctx.nova
+    cell = nova.cell()
     controller = await cell.controller("ur5e")
     motion_group = controller[0]
 
@@ -86,7 +86,7 @@ async def merge_trajectories(ctx: nova.ProgramContext):
     )
 
     # Call merge trajectories endpoint
-    response = await nova_client.api.trajectory_planning_api.merge_trajectories(
+    response = await nova.api.trajectory_planning_api.merge_trajectories(
         cell=cell.id, merge_trajectories_request=merge_request
     )
 
@@ -107,9 +107,7 @@ async def merge_trajectories(ctx: nova.ProgramContext):
     )
 
     # Execute the merged trajectory
-    motion_iter = motion_group.stream_execute(merged_trajectory, tcp, actions=[])
-    async for _ in motion_iter:
-        pass
+    await motion_group.execute(merged_trajectory, tcp, actions=[])
 
 
 if __name__ == "__main__":
