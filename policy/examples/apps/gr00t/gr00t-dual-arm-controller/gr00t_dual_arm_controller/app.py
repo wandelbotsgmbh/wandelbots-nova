@@ -32,6 +32,7 @@ from nova.types import MotionSettings
 from policy import (
     Gr00tPolicyClient,
     Observation,
+    PidConfig,
     PolicyExecutor,
     PolicySchema,
     WebRTCCameras,
@@ -55,8 +56,8 @@ CAM_TARGET = "World_EnvAssets_rack_env0_d405_halter_stationaer_2_asm_01_tn__d405
 CAM_LEFT_WRIST = "World_Robot_Robot_0_L__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_left_wrist_camera_env0"
 CAM_RIGHT_WRIST = "World_Robot_Robot_0_R__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_right_wrist_camera_env0"
 
-HOME_LEFT = "1.169,-0.733,1.745,-3.054,0.873,2.094"
-HOME_RIGHT = "-1.169,-2.391,-1.868,0.0,-0.873,-2.094"
+HOME_LEFT = "1.169,-0.733,1.745,-3.054,0.872,2.094"
+HOME_RIGHT = "-1.169,-2.3911,-1.8675,0.0,-0.872,-2.094"
 DEFAULT_CAMERAS = f"exterior_image_1:{CAM_CONTEXT},exterior_image_2:{CAM_TARGET},left_wrist_image:{CAM_LEFT_WRIST},right_wrist_image:{CAM_RIGHT_WRIST}"
 
 
@@ -202,6 +203,12 @@ async def gr00t_dual_arm_controller(
     ),
     camera_size: int = Field(default=224, description="Camera frame width and height"),
     camera_fps: int = Field(default=15, description="Camera frames per second"),
+    p_gain: float = Field(default=3.0, description="PID proportional gain"),
+    i_gain: float = Field(default=0.0, description="PID integral gain"),
+    d_gain: float = Field(default=0.15, description="PID derivative gain"),
+    ff_gain: float = Field(default=0.0, description="Feedforward gain (0=off, 1=full)"),
+    velocity_limit: float = Field(default=2.0, description="Joint velocity limit in rad/s"),
+    lookahead_ms: float = Field(default=0.0, description="Lookahead in ms to compensate network latency"),
 ):
     """Run one GR00T episode: home → connect cameras → run policy until timeout."""
     cell = ctx.nova.cell()
@@ -228,9 +235,15 @@ async def gr00t_dual_arm_controller(
     client = Gr00tPolicyClient(
         host=groot_host, port=groot_port,
         timeout_ms=60000,
+        dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
-    executor = PolicyExecutor(schema, client, timeout_s=timeout_s)
+    pid = PidConfig(
+        p_gain=p_gain, i_gain=i_gain, d_gain=d_gain,
+        ff_gain=ff_gain, velocity_limit=velocity_limit,
+        lookahead_ms=lookahead_ms,
+    )
+    executor = PolicyExecutor(schema, client, timeout_s=timeout_s, motion=pid)
 
     await cycle.start()
     try:
@@ -291,6 +304,13 @@ class StartRequest(BaseModel):
     camera_devices: str = Field(default=DEFAULT_CAMERAS)
     camera_size: int = Field(default=224)
     camera_fps: int = Field(default=15)
+    # PID tuning
+    p_gain: float = Field(default=3.0, description="PID proportional gain")
+    i_gain: float = Field(default=0.0, description="PID integral gain")
+    d_gain: float = Field(default=0.15, description="PID derivative gain")
+    ff_gain: float = Field(default=0.0, description="Feedforward gain (0=off, 1=full)")
+    velocity_limit: float = Field(default=2.0, description="Joint velocity limit in rad/s")
+    lookahead_ms: float = Field(default=0.0, description="Lookahead in ms to compensate network latency")
 
 
 @app.get("/status", response_model=ExecutorStatus)
@@ -362,9 +382,15 @@ async def start(req: StartRequest = StartRequest()):
     client = Gr00tPolicyClient(
         host=req.groot_host, port=req.groot_port,
         timeout_ms=60000,
+        dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
-    _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s)
+    pid = PidConfig(
+        p_gain=req.p_gain, i_gain=req.i_gain, d_gain=req.d_gain,
+        ff_gain=req.ff_gain, velocity_limit=req.velocity_limit,
+        lookahead_ms=req.lookahead_ms,
+    )
+    _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s, motion=pid)
 
     async def run() -> ExecutionResult:
         global _last_error

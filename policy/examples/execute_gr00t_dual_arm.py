@@ -2,14 +2,14 @@
 Example: Run a real GR00T inference server on two UR5e arms.
 
 Run:
-    NOVA_API=http://172.31.13.112 PYTHONPATH=. uv run --with pyzmq --with msgpack \
+    NOVA_API=http://172.31.11.129 PYTHONPATH=. uv run --with pyzmq --with msgpack \
+        --with aiortc --with requests --with python-statemachine \
         python policy/examples/execute_gr00t_dual_arm.py
 """
 
 from __future__ import annotations
 
 import asyncio
-import math
 import time
 
 import nova
@@ -29,9 +29,9 @@ from policy import (
 
 GROOT_HOST = "172.31.11.129"
 GROOT_PORT = 30555
-HOME_LEFT = (1.169, -0.733, 1.745, -3.054, 0.873, 2.094)
-HOME_RIGHT = (-1.169, -2.391, -1.868, 0.0, -0.873, -2.094)
-TIMEOUT_S = 1200.0
+HOME_LEFT = (1.169, -0.733, 1.745, -3.054, 0.872, 2.094)
+HOME_RIGHT = (-1.169, -2.3911, -1.8675, 0.0, -0.872, -2.094)
+TIMEOUT_S = 12000.0
 CAMERA_SERVER = "http://172.31.11.129:8011/webrtc-streamer"
 
 CAM_RIGHT_WRIST = "World_Robot_Robot_0_R__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_right_wrist_camera_env0"
@@ -64,6 +64,7 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
     mg_left = (await cell.controller("ur5e-left"))[0]
     mg_right = (await cell.controller("ur5e-right"))[0]
 
+    # Move to home
     print("Moving to home...")
     fast = MotionSettings(tcp_velocity_limit=500.0)
     tcp_left = (await mg_left.tcp_names())[0]
@@ -75,8 +76,10 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
         mg_right.execute(t2, tcp_right, actions=[joint_ptp(HOME_RIGHT, settings=fast)]),
     )
 
+    # Cameras
     cameras = WebRTCCameras(api_url=CAMERA_SERVER, frame_history=1, resize=(224, 224))
 
+    # Schema
     schema = PolicySchema(
         observations=[
             Observation.joint_positions("left_joint_positions", source=mg_left),
@@ -91,33 +94,24 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
         ]
     )
 
+    # GR00T client — dt_ms must match training data rate (15 Hz = 66.7ms)
     client = Gr00tPolicyClient(
         host=GROOT_HOST,
         port=GROOT_PORT,
-        timeout_ms=60000,
+        dt_ms=66.7,
     )
 
-    pid = PidConfig(p_gain=1.5, d_gain=0.2, velocity_limit=0.15, ff_gain=0.0)
+    # Print server config
+    info = await client.get_server_info()
+    print(
+        f"GR00T server: {len(info['state_keys'])} state keys, "
+        f"{len(info['video_keys'])} cameras, "
+        f"horizon={info['action_horizon']}"
+    )
+
+    # Run
+    pid = PidConfig(p_gain=0.5, d_gain=0.2, velocity_limit=0.15, ff_gain=0.0)
     executor = PolicyExecutor(schema, client, timeout_s=TIMEOUT_S, motion=pid)
-
-    # Log action chunks for debugging — shows RAW values from GR00T (before relative conversion)
-    _orig_get = client.get_actions
-
-    async def _logged_get(states, schema, images, io_values):
-        result = await _orig_get(states, schema, images, io_values)
-        if hasattr(result, "joints") and result.joints:
-            for mg_id, steps in result.joints.items():
-                n = len(steps)
-                raw0 = [f"{v:+.4f}" for v in steps[0]] if steps else []
-                raw_last = [f"{v:+.4f}" for v in steps[-1]] if n > 1 else raw0
-                raw0_deg = [f"{v * 180 / math.pi:+.2f}°" for v in steps[0]] if steps else []
-                print(f"  {mg_id}: {n} steps (raw deltas in rad)")
-                print(f"    step[0] = [{', '.join(raw0)}]  ({', '.join(raw0_deg)})")
-                print(f"    step[15]= [{', '.join(raw_last)}]")
-            print(f"  dt_ms={result.dt_ms}")
-        return result
-
-    client.get_actions = _logged_get  # type: ignore[assignment]
 
     print(f"Running GR00T dual-arm policy for {TIMEOUT_S}s...")
     t0 = time.monotonic()

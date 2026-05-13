@@ -174,6 +174,50 @@ class Gr00tPolicyClient(PolicyClient):
         response = await asyncio.to_thread(self._transport.call, "get_modality_config")
         return require_dict(response, name="GR00T get_modality_config response")
 
+    async def get_server_info(self) -> dict[str, object]:
+        """Fetch a human-readable summary of the server's configuration.
+
+        Returns a dict with:
+            - ``state_keys``: list of expected state observation keys
+            - ``action_keys``: list of action output keys
+            - ``video_keys``: list of expected camera/video keys
+            - ``language_keys``: list of language instruction keys
+            - ``action_horizon``: number of action steps per chunk
+            - ``action_configs``: per-key action type/representation
+        """
+        config = await self.get_modality_config()
+
+        state_keys = sorted(_extract_modality_keys(config, "state"))
+        action_keys = sorted(_extract_modality_keys(config, "action"))
+        video_keys = sorted(_extract_modality_keys(config, "video"))
+        language_keys = sorted(_extract_modality_keys(config, "language"))
+
+        # Extract action horizon from delta_indices
+        action_horizon = 0
+        action_configs: list[dict[str, str]] = []
+        action_section = config.get("action")
+        if isinstance(action_section, dict):
+            as_json = action_section.get("as_json", action_section)
+            if isinstance(as_json, dict):
+                deltas = as_json.get("delta_indices", [])
+                if isinstance(deltas, list):
+                    action_horizon = len(deltas)
+                cfgs = as_json.get("action_configs", [])
+                if isinstance(cfgs, list):
+                    action_configs = [
+                        {k: str(v) for k, v in c.items()}
+                        for c in cfgs if isinstance(c, dict)
+                    ]
+
+        return {
+            "state_keys": state_keys,
+            "action_keys": action_keys,
+            "video_keys": video_keys,
+            "language_keys": language_keys,
+            "action_horizon": action_horizon,
+            "action_configs": action_configs,
+        }
+
     # ------------------------------------------------------------------
     # Observation building — reads raw states via schema mappings
     # ------------------------------------------------------------------

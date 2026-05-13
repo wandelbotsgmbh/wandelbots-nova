@@ -97,7 +97,7 @@ class TrajectorySession:
     def failure_exception(self) -> BaseException | None:
         return self._failure_exception
 
-    def update_chunk(self, steps: list[list[float]], dt_ms: float) -> None:
+    def update_chunk(self, steps: list[list[float]], dt_ms: float, *, observation_time: float | None = None) -> None:  # noqa: ARG002
         """Accept a new action chunk — all steps become trajectory waypoints.
 
         If a trajectory is currently executing, it will be cancelled so

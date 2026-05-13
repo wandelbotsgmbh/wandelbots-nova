@@ -142,9 +142,9 @@ class PidJoggingSession:
     def failure_reason(self) -> str:
         return self._failure_reason
 
-    def update_chunk(self, steps: list[list[float]], dt_ms: float) -> None:
+    def update_chunk(self, steps: list[list[float]], dt_ms: float, *, observation_time: float | None = None) -> None:
         """Replace the current step sequence with a new chunk."""
-        self._queue.update(steps, dt_ms)
+        self._queue.update(steps, dt_ms, observation_time=observation_time)
 
     async def write_ios(self, ios: dict[str, ValueType]) -> None:
         """Write IO values (delegated to IOWriter for deduplication)."""

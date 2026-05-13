@@ -83,10 +83,24 @@ class PolicyExecutor:
         *,
         safety_guards: list[SafetyGuard] | None = None,
         timeout_s: float = 0,
-        inference_hz: float = 30,
+        inference_hz: float = 0,
         camera_max_age_s: float = 30.0,
         motion: MotionConfig | None = None,
     ) -> None:
+        """Create a policy executor.
+
+        Args:
+            schema: Observation/action schema defining robot topology.
+            policy: Async callable or PolicyClient that maps observations to actions.
+            safety_guards: Optional list of guard functions checked each PID tick.
+            timeout_s: Maximum execution duration in seconds. 0 = no timeout.
+            inference_hz: Target inference rate. The executor will not query the
+                policy faster than this rate, but if inference itself is slower
+                (e.g. 3 Hz for GR00T), no additional delay is added. Set to 0
+                to run as fast as the policy allows.
+            camera_max_age_s: Maximum allowed age of a camera frame before raising.
+            motion: PID or trajectory configuration. Defaults to PidConfig().
+        """
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
 
@@ -247,7 +261,7 @@ class PolicyExecutor:
         """
         step = 0
         start_time = time.monotonic()
-        interval = 1.0 / self._inference_hz
+        min_interval = 1.0 / self._inference_hz if self._inference_hz > 0 else 0
         last_obs: dict[str, Any] | None = None
 
         self.status.phase = Phase.EXECUTING
@@ -258,10 +272,12 @@ class PolicyExecutor:
                 return _result("timeout", step, start_time, last_obs)
 
             # Observe
+            tick_start = time.monotonic()
             robot_states = self._observe()
             if not robot_states:
-                await asyncio.sleep(interval)
+                await asyncio.sleep(0.01)  # retry shortly
                 continue
+            observation_time = time.monotonic()
             images = self._read_cameras() if self._camera_sources else None
             self._last_obs = robot_states
             last_obs = robot_states
@@ -271,7 +287,7 @@ class PolicyExecutor:
                 robot_states, self._schema, images, self._all_io_values or None,
             )
             action = self._apply_relative_mode(action, robot_states)
-            self._send(action)
+            self._send(action, observation_time=observation_time)
             step += 1
             self.status.step = step
 
@@ -279,7 +295,16 @@ class PolicyExecutor:
             check_sessions(self._sessions)
             check_estop(self._estop_monitor)
 
-            await asyncio.sleep(interval)
+            # Rate-limit: if inference_hz is set and the cycle was faster
+            # than the target interval, sleep only the remaining time.
+            # If inference already took longer, don't sleep at all.
+            if min_interval > 0:
+                elapsed = time.monotonic() - tick_start
+                remaining = min_interval - elapsed
+                if remaining > 0:
+                    await asyncio.sleep(remaining)
+            else:
+                await asyncio.sleep(0)  # yield to event loop
 
         return _result("stopped", step, start_time, last_obs)
 
@@ -296,21 +321,21 @@ class PolicyExecutor:
                 result[group_id] = state
         return result
 
-    def _send(self, chunk: ActionChunk) -> None:
+    def _send(self, chunk: ActionChunk, *, observation_time: float | None = None) -> None:
         """Send an action chunk to the motion groups."""
         for group_id, steps in chunk.joints.items():
             session = self._sessions.get(group_id)
             if session is None:
                 logger.warning("Unknown motion group in chunk: %s", group_id)
                 continue
-            session.update_chunk(steps=steps, dt_ms=chunk.dt_ms)
+            session.update_chunk(steps=steps, dt_ms=chunk.dt_ms, observation_time=observation_time)
 
         for group_id, raw_tcp_steps in chunk.tcp.items():
             session = self._sessions.get(group_id)
             if session is None:
                 logger.warning("Unknown motion group in TCP chunk: %s", group_id)
                 continue
-            session.update_chunk(steps=raw_tcp_steps, dt_ms=chunk.dt_ms)
+            session.update_chunk(steps=raw_tcp_steps, dt_ms=chunk.dt_ms, observation_time=observation_time)
 
         if chunk.ios:
             for group_id, ios in chunk.ios.items():

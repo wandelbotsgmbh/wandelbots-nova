@@ -40,8 +40,8 @@ from policy import (
 )
 from policy.types import GuardState
 
-HOME_LEFT = (1.169, -0.733, 1.745, -3.054, 0.873, 2.094)
-HOME_RIGHT = (-1.169, -2.391, -1.868, 0.0, -0.873, -2.094)
+HOME_LEFT = (1.169, -0.733, 1.745, -3.054, 0.872, 2.094)
+HOME_RIGHT = (-1.169, -2.3911, -1.8675, 0.0, -0.872, -2.094)
 
 CAMERA_SERVER = os.environ.get("CAMERA_SERVER", "http://192.168.1.22:9100")
 

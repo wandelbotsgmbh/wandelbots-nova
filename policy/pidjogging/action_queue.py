@@ -42,7 +42,7 @@ class ActionQueue:
         """True if the queue has targets to follow."""
         return len(self._steps) > 0
 
-    def update(self, steps: list[list[float]], dt_ms: float) -> None:
+    def update(self, steps: list[list[float]], dt_ms: float, *, observation_time: float | None = None) -> None:
         """Replace the queue with a new action chunk, blending the overlap.
 
         If a previous chunk is still active, the overlapping region (old chunk's
@@ -53,14 +53,23 @@ class ActionQueue:
             steps: List of joint-position waypoints.
             dt_ms: Time spacing between consecutive steps (milliseconds).
                    0 means single-step mode (no interpolation).
+            observation_time: When the observation for this chunk was captured
+                   (monotonic seconds). If provided, the chunk timeline starts
+                   from this time instead of now, so the executor automatically
+                   skips past steps that correspond to the inference delay.
         """
         now = time.monotonic()
+
+        # Align chunk timeline to observation capture, not arrival.
+        # step[0] corresponds to observation_time; by the time the chunk
+        # arrives, we're already observation_delay/dt_ms steps into it.
+        chunk_start = observation_time if observation_time is not None else now
 
         # Compute how many old steps remain (for blending)
         old_remaining = self._get_remaining_steps()
 
         self._dt_ms = dt_ms
-        self._start_time = now
+        self._start_time = chunk_start
         self._index = 0
         self._exhausted = False
 
@@ -68,8 +77,15 @@ class ActionQueue:
             self._steps = list(steps)
             return
 
-        # Blend overlap region
-        overlap = min(len(old_remaining), len(steps))
+        # How many steps into the new chunk corresponds to "now"?
+        skip = int((now - chunk_start) * 1000.0 / dt_ms) if dt_ms > 0 else 0
+        skip = max(0, min(skip, len(steps) - 1))
+
+        # Blend the old chunk's remaining trajectory with the new chunk's
+        # future trajectory, both starting from "now". This avoids blending
+        # the robot's current target with a 300ms-stale position.
+        new_from_now = steps[skip:]
+        overlap = min(len(old_remaining), len(new_from_now))
         n_joints = len(steps[0])
         blended: list[list[float]] = []
 
@@ -78,12 +94,16 @@ class ActionQueue:
             w_new = 1.0 - math.exp(-i / self._blend_temperature) if self._blend_temperature > 0 else 1.0
             w_old = 1.0 - w_new
             blended.append([
-                w_old * old_remaining[i][j] + w_new * steps[i][j]
+                w_old * old_remaining[i][j] + w_new * new_from_now[i][j]
                 for j in range(n_joints)
             ])
 
         # Append non-overlapping tail of new chunk
-        blended.extend(steps[overlap:])
+        blended.extend(new_from_now[overlap:])
+
+        # The blended trajectory starts at "now", so set start_time = now
+        # (not observation_time) since we already skipped the stale prefix.
+        self._start_time = now
         self._steps = blended
 
     def _get_remaining_steps(self) -> list[list[float]]:
