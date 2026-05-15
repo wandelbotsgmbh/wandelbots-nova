@@ -165,7 +165,11 @@ class PolicyRerunLogger:
             if right_panels
             else views[0]
         )
-        rr.send_blueprint(rrb.Blueprint(layout, collapse_panels=True))
+        rr.send_blueprint(rrb.Blueprint(
+            layout,
+            rrb.TimePanel(state="expanded", timeline="policy_time"),
+            collapse_panels=True,
+        ))
 
     # ------------------------------------------------------------------
     # Per-step logging
