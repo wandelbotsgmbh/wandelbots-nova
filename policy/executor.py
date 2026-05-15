@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from policy.cameras import CameraSource
     from policy.motion_session import MotionSession
     from policy.policy_client import PolicyClient
+    from policy.rerun_logger import PolicyRerunLogger
     from policy.schema import PolicySchema
     from policy.types import MotionConfig, SafetyGuard
 
@@ -127,6 +128,7 @@ class PolicyExecutor:
         self._estop_monitor: EstopMonitor | None = None
         self._io_caches: list[IOStreamCache] = []
         self._io_tasks: set[asyncio.Task[None]] = set()
+        self._rerun: PolicyRerunLogger | None = None
 
         self.status = ExecutorStatus()
         self.result: ExecutionResult | None = None
@@ -242,7 +244,9 @@ class PolicyExecutor:
             await self._policy.validate_schema(self._schema)
             self._estop_monitor = EstopMonitor(self._motion_groups)
             await self._estop_monitor.start()
+            await self._init_rerun()
             self.result = await self._execute()
+            self._log_completion()
             self.status.phase = Phase.COMPLETED
         finally:
             if self._estop_monitor is not None:
@@ -284,12 +288,23 @@ class PolicyExecutor:
             self._last_obs = robot_states
             last_obs = robot_states
 
+            # Rerun: log observation
+            if self._rerun is not None:
+                self._rerun.log_observation(robot_states, step)
+                if images:
+                    self._rerun.log_images(images)
+
             # Query policy → send to robot
             action = await self._policy.get_actions(
                 robot_states, self._schema, images, self._all_io_values or None,
             )
             action = self._apply_relative_mode(action, robot_states)
             self._check_guards_pre_send(action, robot_states)
+
+            # Rerun: log action chunk
+            if self._rerun is not None:
+                self._rerun.log_action_chunk(action, step)
+
             self._send(action, observation_time=observation_time)
             step += 1
             self.status.step = step
@@ -549,6 +564,30 @@ class PolicyExecutor:
             key: source.read(max_age_s=self._camera_max_age_s)
             for key, source in self._camera_sources.items()
         }
+
+    # -------------------------------------------------------------------------
+    # Rerun visualization (lazy, zero-cost when viewer not active)
+    # -------------------------------------------------------------------------
+
+    async def _init_rerun(self) -> None:
+        """Initialize Rerun logger if a viewer is active."""
+        from policy.rerun_logger import _is_rerun_active  # noqa: PLC0415
+
+        if not _is_rerun_active():
+            return
+
+        from policy.rerun_logger import PolicyRerunLogger  # noqa: PLC0415
+
+        camera_names = list(self._camera_sources.keys()) if self._camera_sources else []
+        self._rerun = PolicyRerunLogger(self._motion_groups, camera_names=camera_names)
+        await self._rerun.initialize()
+
+    def _log_completion(self) -> None:
+        """Log execution result to Rerun."""
+        if self._rerun is not None and self.result is not None:
+            self._rerun.log_completion(
+                self.result.reason, self.result.steps, self.result.duration_s,
+            )
 
 
 def _result(

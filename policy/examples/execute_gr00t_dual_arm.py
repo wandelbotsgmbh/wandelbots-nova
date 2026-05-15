@@ -13,7 +13,7 @@ import asyncio
 import time
 
 import nova
-from nova import api, run_program
+from nova import api, run_program, viewers
 from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -43,6 +43,7 @@ CAM_TARGET = "World_EnvAssets_rack_env0_d405_halter_stationaer_2_asm_01_tn__d405
 @nova.program(
     id="gr00t_dual_arm",
     name="GR00T Dual-Arm Policy",
+    viewer=viewers.Rerun(),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(

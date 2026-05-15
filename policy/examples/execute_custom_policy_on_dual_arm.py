@@ -22,7 +22,7 @@ import os
 from typing import Any
 
 import nova
-from nova import api, run_program
+from nova import api, run_program, viewers
 from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -43,7 +43,7 @@ from policy.types import GuardState
 HOME_LEFT = (1.169, -0.733, 1.745, -3.054, 0.872, 2.094)
 HOME_RIGHT = (-1.169, -2.3911, -1.8675, 0.0, -0.872, -2.094)
 
-CAMERA_SERVER = os.environ.get("CAMERA_SERVER", "http://192.168.1.22:9100")
+CAMERA_SERVER = os.environ.get("CAMERA_SERVER", "http://172.31.11.129:8011/webrtc-streamer")
 
 
 async def mock_policy(obs: dict[str, Any]) -> dict[str, float]:
@@ -134,6 +134,7 @@ async def move_to_home(mg1, mg2) -> None:
 @nova.program(
     id="dual_arm_policy",
     name="Dual-Arm Policy Execution",
+    viewer=viewers.Rerun(),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -161,6 +162,8 @@ async def dual_arm_policy(ctx: nova.ProgramContext):
     observations = [
         Observation.joint_positions("left_joints", source=mg1),
         Observation.joint_positions("right_joints", source=mg2),
+        Observation.tcp("left_tcp", source=mg1, tcp="gripper"),
+        Observation.tcp("right_tcp", source=mg2, tcp="gripper"),
         Observation.io("left_gripper", source=mg1, io="digital_out[0]",
                        mapping=BoolMapping(on=100.0)),
         Observation.io("right_gripper", source=mg2, io="digital_out[0]",
@@ -173,9 +176,9 @@ async def dual_arm_policy(ctx: nova.ProgramContext):
     if CAMERA_SERVER:
         cameras = WebRTCCameras(api_url=CAMERA_SERVER)
         observations.extend([
-            Observation.image("flange", source=cameras.device("315122271048")),
-            Observation.image("left", source=cameras.device("314522065367")),
-            Observation.image("right", source=cameras.device("319522063360")),
+            Observation.image("cam_1", source=cameras.device("World_Robot_Robot_0_R__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_right_wrist_camera_env0")),
+            Observation.image("cam_2", source=cameras.device("World_Robot_Robot_0_L__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_left_wrist_camera_env0")),
+            Observation.image("cam_3", source=cameras.device("World_EnvAssets_rack_env0__3_00_intel_d456_screw_adapter_asm_tn__03_00_intel_d456_screw_adapterasm_io0_D456_Solid_context_camera_rack_env0")),
         ])
 
     schema = PolicySchema(
