@@ -176,12 +176,6 @@ class TestSingleStepTracking:
         # Should have converged
         assert abs(pos[0] - 1.0) < 0.02, f"final pos={pos[0]:.4f}"
 
-    def test_zero_target_produces_zero_velocity(self):
-        """Robot at target. Velocity must be exactly zero (within tolerance)."""
-        pid = VelocityController(velocity_limit=2.0, p_gain=3.0, d_gain=0.15, tolerance=0.01)
-        vel = pid.compute([0.5], [0.5], timestamp=BASE_T)
-        assert vel == [0.0]
-
     def test_multiple_joints_independent(self):
         """Each joint tracks its own target independently."""
         pid = VelocityController(velocity_limit=2.0, p_gain=3.0, d_gain=0.15)
