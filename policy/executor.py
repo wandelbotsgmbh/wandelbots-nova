@@ -17,6 +17,7 @@ from policy.io import IOStreamCache
 from policy.types import (
     ActionChunk,
     EmergencyStopError,
+    GuardState,
     GuardStopError,
     MotionError,
     PidConfig,
@@ -25,6 +26,7 @@ from policy.types import (
 
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
+    from nova.types import RobotState
     from policy.cameras import CameraSource
     from policy.motion_session import MotionSession
     from policy.policy_client import PolicyClient
@@ -287,6 +289,7 @@ class PolicyExecutor:
                 robot_states, self._schema, images, self._all_io_values or None,
             )
             action = self._apply_relative_mode(action, robot_states)
+            self._check_guards_pre_send(action, robot_states)
             self._send(action, observation_time=observation_time)
             step += 1
             self.status.step = step
@@ -320,6 +323,37 @@ class PolicyExecutor:
             if state is not None:
                 result[group_id] = state
         return result
+
+    def _check_guards_pre_send(self, chunk: ActionChunk, robot_states: dict[str, RobotState]) -> None:
+        """Run safety guards with the intended action before sending.
+
+        This gives guards visibility into what the policy intends to do
+        (target positions + IO writes) so they can reject before execution.
+        """
+        if not self._safety_guards:
+            return
+
+        for group_id in {*chunk.joints, *chunk.tcp}:
+            state = robot_states.get(group_id)
+            if state is None:
+                continue
+
+            target_joints = chunk.joints.get(group_id) or chunk.tcp.get(group_id)
+            target_ios = chunk.ios.get(group_id) if chunk.ios else None
+
+            ctx = GuardState(
+                state=state,
+                prev_state=None,
+                dt=0.0,
+                motion_group_id=group_id,
+                io_values=self._all_io_values,
+                target_joints=target_joints,
+                target_ios=target_ios,
+            )
+            for guard in self._safety_guards:
+                if not guard(ctx):
+                    guard_name = getattr(guard, "__name__", repr(guard))
+                    raise GuardStopError(group_id, guard_name)
 
     def _send(self, chunk: ActionChunk, *, observation_time: float | None = None) -> None:
         """Send an action chunk to the motion groups."""

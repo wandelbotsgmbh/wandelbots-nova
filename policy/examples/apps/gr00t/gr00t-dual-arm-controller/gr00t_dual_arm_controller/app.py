@@ -48,7 +48,9 @@ logger = logging.getLogger(__name__)
 BASE_PATH = config("BASE_PATH", default="", cast=str)
 GROOT_HOST = config("GROOT_HOST", default="172.31.11.129", cast=str)
 GROOT_PORT = config("GROOT_PORT", default=30555, cast=int)
-CAMERA_SERVER = config("CAMERA_SERVER", default="http://172.31.11.129:8011/webrtc-streamer", cast=str)
+CAMERA_SERVER = config(
+    "CAMERA_SERVER", default="http://172.31.11.129:8011/webrtc-streamer", cast=str
+)
 
 # Isaac Sim camera device IDs
 CAM_CONTEXT = "World_EnvAssets_rack_env0__3_00_intel_d456_screw_adapter_asm_tn__03_00_intel_d456_screw_adapterasm_io0_D456_Solid_context_camera_rack_env0"
@@ -105,9 +107,7 @@ def _build_schema(
         observations.append(Observation.constant("language", value=language))
 
     if camera_server and camera_devices:
-        cameras = WebRTCCameras(
-            api_url=camera_server, frame_history=1,
-        )
+        cameras = WebRTCCameras(api_url=camera_server, frame_history=1, resize=(256, 256))
         for raw_entry in camera_devices.split(","):
             entry = raw_entry.strip()
             if ":" in entry:
@@ -188,7 +188,9 @@ async def gr00t_dual_arm_controller(
         default="Pick up the box and place it onto the conveyor.",
         description="Language instruction sent with every observation",
     ),
-    timeout_s: float = Field(default=120.0, description="Execution timeout in seconds (0 = unlimited)"),
+    timeout_s: float = Field(
+        default=120.0, description="Execution timeout in seconds (0 = unlimited)"
+    ),
     home_joints: str = Field(
         default=f"{HOME_LEFT};{HOME_RIGHT}",
         description="Semicolon-separated home joint positions (left;right) in radians",
@@ -208,7 +210,9 @@ async def gr00t_dual_arm_controller(
     d_gain: float = Field(default=0.15, description="PID derivative gain"),
     ff_gain: float = Field(default=0.0, description="Feedforward gain (0=off, 1=full)"),
     velocity_limit: float = Field(default=2.0, description="Joint velocity limit in rad/s"),
-    lookahead_ms: float = Field(default=0.0, description="Lookahead in ms to compensate network latency"),
+    lookahead_ms: float = Field(
+        default=0.0, description="Lookahead in ms to compensate network latency"
+    ),
 ):
     """Run one GR00T episode: home → connect cameras → run policy until timeout."""
     cell = ctx.nova.cell()
@@ -224,7 +228,8 @@ async def gr00t_dual_arm_controller(
     await _move_to_home(mg_left, mg_right, home_left, home_right)
 
     schema = _build_schema(
-        mg_left, mg_right,
+        mg_left,
+        mg_right,
         camera_server=camera_server,
         camera_devices=camera_devices,
         camera_size=camera_size,
@@ -233,14 +238,18 @@ async def gr00t_dual_arm_controller(
     )
 
     client = Gr00tPolicyClient(
-        host=groot_host, port=groot_port,
+        host=groot_host,
+        port=groot_port,
         timeout_ms=60000,
         dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
     pid = PidConfig(
-        p_gain=p_gain, i_gain=i_gain, d_gain=d_gain,
-        ff_gain=ff_gain, velocity_limit=velocity_limit,
+        p_gain=p_gain,
+        i_gain=i_gain,
+        d_gain=d_gain,
+        ff_gain=ff_gain,
+        velocity_limit=velocity_limit,
         lookahead_ms=lookahead_ms,
     )
     executor = PolicyExecutor(schema, client, timeout_s=timeout_s, motion=pid)
@@ -251,7 +260,9 @@ async def gr00t_dual_arm_controller(
         await cycle.finish()
         logger.info(
             "Episode finished: reason=%s steps=%d duration=%.1fs",
-            result.reason, result.steps, result.duration_s,
+            result.reason,
+            result.steps,
+            result.duration_s,
         )
     except Exception as e:
         await cycle.fail(e)
@@ -310,7 +321,9 @@ class StartRequest(BaseModel):
     d_gain: float = Field(default=0.15, description="PID derivative gain")
     ff_gain: float = Field(default=0.0, description="Feedforward gain (0=off, 1=full)")
     velocity_limit: float = Field(default=2.0, description="Joint velocity limit in rad/s")
-    lookahead_ms: float = Field(default=0.0, description="Lookahead in ms to compensate network latency")
+    lookahead_ms: float = Field(
+        default=0.0, description="Lookahead in ms to compensate network latency"
+    )
 
 
 @app.get("/status", response_model=ExecutorStatus)
@@ -371,7 +384,8 @@ async def start(req: StartRequest = StartRequest()):
     mg_right = ctrl_right[0]
 
     schema = _build_schema(
-        mg_left, mg_right,
+        mg_left,
+        mg_right,
         camera_server=req.camera_server,
         camera_devices=req.camera_devices,
         camera_size=req.camera_size,
@@ -380,14 +394,18 @@ async def start(req: StartRequest = StartRequest()):
     )
 
     client = Gr00tPolicyClient(
-        host=req.groot_host, port=req.groot_port,
+        host=req.groot_host,
+        port=req.groot_port,
         timeout_ms=60000,
         dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
     pid = PidConfig(
-        p_gain=req.p_gain, i_gain=req.i_gain, d_gain=req.d_gain,
-        ff_gain=req.ff_gain, velocity_limit=req.velocity_limit,
+        p_gain=req.p_gain,
+        i_gain=req.i_gain,
+        d_gain=req.d_gain,
+        ff_gain=req.ff_gain,
+        velocity_limit=req.velocity_limit,
         lookahead_ms=req.lookahead_ms,
     )
     _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s, motion=pid)

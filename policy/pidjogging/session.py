@@ -390,12 +390,17 @@ class PidJoggingSession:
         """Run all safety guards. Raises GuardStopError on failure."""
         now = time.monotonic()
         dt = now - self._prev_tick_time if self._prev_tick_time is not None else 0.01
+
+        # Get current PID target so guards can see where we're heading
+        active_target = self._get_active_target()
+
         ctx = GuardState(
             state=current_robot_state,
             prev_state=self._prev_state,
             dt=dt,
             motion_group_id=self.motion_group_id,
             io_values=self._io_values,
+            target_joints=[active_target] if active_target else None,
         )
         for guard in self._safety_guards:
             if not guard(ctx):

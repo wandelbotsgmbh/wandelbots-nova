@@ -11,15 +11,14 @@ COPY pyproject.toml ./
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
+ARG CACHEBUST=1
 RUN --mount=from=uv,source=/uv,target=/bin/uv \
-    --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-install-project --no-dev
+    uv sync --no-install-project --no-dev --refresh
 
 COPY static static/
 COPY gr00t_dual_arm_controller gr00t_dual_arm_controller/
 
 RUN --mount=from=uv,source=/uv,target=/bin/uv \
-    --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"

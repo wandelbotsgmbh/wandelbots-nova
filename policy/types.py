@@ -93,14 +93,26 @@ MotionConfig = PidConfig | TrajectoryConfig
 
 @dataclass(slots=True)
 class GuardState:
-    """State passed to the safety guard callback on each jogging tick."""
+    """State passed to safety guard callbacks.
+
+    Guards run at ~100Hz during PID jogging. Return ``False`` to stop immediately.
+    Guards must be fast (microseconds) — no network calls or blocking I/O.
+    Use ``Observation.computed()`` for async data, then read it here.
+    """
 
     state: RobotState
     prev_state: RobotState | None
     dt: float
     motion_group_id: str
     io_values: dict[str, object] | None = None
-    """Latest IO values from the stream cache (if available). Keys are IO names."""
+    """Latest IO values from the stream cache (if available)."""
+
+    target_joints: list[list[float]] | None = None
+    """Intended joint/TCP targets the policy wants to execute.
+    Full chunk at inference time, single interpolated step during PID ticks."""
+
+    target_ios: dict[str, bool | int | float | str] | None = None
+    """Intended IO writes (populated at inference time, before IOs fire)."""
 
 
 SafetyGuard = Callable[[GuardState], bool]

@@ -184,3 +184,90 @@ def test_apply_relative_mode_absolute_passthrough():
     )
     result = executor._apply_relative_mode(chunk, {})
     assert result is chunk  # same object, not copied
+
+
+@pytest.mark.asyncio
+async def test_guard_rejects_action_before_execution():
+    """Guard sees target_joints and target_ios BEFORE send. Rejection prevents motion + IO."""
+    from policy.types import ActionChunk, GuardState, GuardStopError
+
+    s = _schema()
+    sent_chunks: list[ActionChunk] = []
+    io_writes: list[dict] = []
+
+    # Policy returns joints + IO
+    async def policy(obs):
+        return ActionChunk(
+            joints={"0@ur10e": [[9.0, 9.0, 9.0, 9.0, 9.0, 9.0]]},
+            ios={"0@ur10e": {"digital_out[0]": True}},
+        )
+
+    # Guard rejects if any target joint > 5.0
+    def limit_guard(ctx: GuardState) -> bool:
+        if ctx.target_joints:
+            for step in ctx.target_joints:
+                if any(j > 5.0 for j in step):
+                    return False
+        return True
+
+    executor = PolicyExecutor(s, policy, timeout_s=5.0, safety_guards=[limit_guard])
+
+    with patch("policy.pidjogging.PidJoggingSession") as mock_session_cls, \
+         patch("policy.executor.EstopMonitor") as mock_estop:
+        session = _fake_session()
+
+        # Track calls to verify nothing was sent
+        def track_chunk(steps, dt_ms, **kw):
+            sent_chunks.append(steps)
+        session.update_chunk = MagicMock(side_effect=track_chunk)
+
+        async def track_ios(ios):
+            io_writes.append(ios)
+        session.write_ios = AsyncMock(side_effect=track_ios)
+
+        mock_session_cls.return_value = session
+        mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
+
+        with pytest.raises(GuardStopError) as exc_info:
+            await executor.run()
+
+    # Guard triggered
+    assert exc_info.value.guard_name == "limit_guard"
+    # Nothing was sent — guard blocked before execution
+    assert sent_chunks == []
+    assert io_writes == []
+
+
+@pytest.mark.asyncio
+async def test_guard_sees_target_ios_before_firing():
+    """Guard can inspect intended IO writes and reject before they fire."""
+    from policy.types import ActionChunk, GuardState, GuardStopError
+
+    s = _schema()
+
+    async def policy(obs):
+        return ActionChunk(
+            joints={"0@ur10e": [[0.1, 0.1, 0.1, 0.1, 0.1, 0.1]]},
+            ios={"0@ur10e": {"digital_out[7]": True}},  # forbidden output
+        )
+
+    def io_guard(ctx: GuardState) -> bool:
+        if ctx.target_ios and ctx.target_ios.get("digital_out[7]"):
+            return False  # block writes to safety output
+        return True
+
+    executor = PolicyExecutor(s, policy, timeout_s=5.0, safety_guards=[io_guard])
+
+    with patch("policy.pidjogging.PidJoggingSession") as mock_session_cls, \
+         patch("policy.executor.EstopMonitor") as mock_estop:
+        session = _fake_session()
+        session.write_ios = AsyncMock()
+        mock_session_cls.return_value = session
+        mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
+
+        with pytest.raises(GuardStopError) as exc_info:
+            await executor.run()
+
+    assert exc_info.value.guard_name == "io_guard"
+    # IO was never written
+    session.write_ios.assert_not_awaited()

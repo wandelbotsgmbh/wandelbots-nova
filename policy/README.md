@@ -135,17 +135,38 @@ Images arrive as `numpy.ndarray` (H×W×3, uint8, RGB) in the observation dict.
 
 ### Safety Guards
 
-Guards run on every PID tick with access to joint state and streamed IO values:
+Guards see both the current robot state and the **intended action** before it executes.
+Use them to reject dangerous targets, block IO writes, or stop execution when
+an external signal (e.g. a sensor IO) indicates the task is done — policies
+typically don't report "finished", so guards are the natural way to end an episode:
 
 ```python
 from policy import GuardState
 
 def workspace_guard(ctx: GuardState) -> bool:
-    """Return False to immediately stop the robot."""
-    return ctx.state.pose.position[2] > 100  # stop if Z < 100mm
+    """Reject if policy would move joint 2 past 2.8 rad."""
+    if ctx.target_joints:
+        for step in ctx.target_joints:
+            if abs(step[1]) > 2.8:
+                return False
+    return True
 
-executor = PolicyExecutor(schema, policy, safety_guards=[workspace_guard])
+def io_guard(ctx: GuardState) -> bool:
+    """Block writes to safety-critical output."""
+    if ctx.target_ios and ctx.target_ios.get("digital_out[7]"):
+        return False
+    return True
+
+def task_done_guard(ctx: GuardState) -> bool:
+    """Stop when sensor detects object placed."""
+    if ctx.io_values and ctx.io_values.get("digital_in[3]"):
+        return False
+    return True
+
+executor = PolicyExecutor(schema, policy, safety_guards=[workspace_guard, io_guard, task_done_guard])
 ```
+
+Guards must be fast (no network calls). Use `Observation.computed()` for async data.
 
 ### Execution lifecycle
 
