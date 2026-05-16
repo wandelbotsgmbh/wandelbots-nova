@@ -110,8 +110,8 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
         f"horizon={info['action_horizon']}"
     )
 
-    # Run
-    pid = PidConfig(p_gain=0.5, d_gain=0.2, velocity_limit=0.15, ff_gain=0.0)
+    # Run — pure feedforward for small GR00T chunks (P/D terms fight feedforward on tiny deltas)
+    pid = PidConfig(p_gain=0.0, d_gain=0.0, ff_gain=1.0, lookahead_ms=50.0, velocity_limit=2.0)
     executor = PolicyExecutor(schema, client, timeout_s=TIMEOUT_S, motion=pid)
 
     print(f"Running GR00T dual-arm policy for {TIMEOUT_S}s...")
