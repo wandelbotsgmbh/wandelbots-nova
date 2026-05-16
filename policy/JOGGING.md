@@ -3,8 +3,13 @@
 Position-controlled jogging for industrial robots via the NOVA Jogging API. A PID controller
 converts joint/TCP position targets into velocity commands streamed at the controller's cycle rate.
 
-Used both directly (teleoperation, scripted motion) and internally by `PolicyExecutor` for
-learned policy execution.
+Used both directly (teleoperation, scripted motion) and internally by `PolicyExecutor` when
+`motion=PidConfig()` is selected.
+
+> **Note:** For policy execution, consider `ProfileConfig()` instead — it's simpler, requires
+> no tuning, and guarantees zero overshoot. See [README.md](README.md#motion-modes) for comparison.
+> This document describes the PID approach which gives higher tracking on fast overlapping chunks
+> but requires careful gain selection.
 
 ## How It Works
 
@@ -217,18 +222,18 @@ If the chunk runs out and no new chunk has arrived, the queue:
 
 ## PID Tuning
 
-Defaults work for most cases. Pass a `PidConfig` to adjust:
+Defaults work for most cases but require care with tiny action chunks. Pass a `PidConfig` to adjust:
 
 ```python
 from policy import PidConfig, jog_joints
 
 config = PidConfig(
-    p_gain=3.0,           # tracking stiffness
-    d_gain=0.15,          # damping
+    p_gain=1.5,           # tracking stiffness
+    d_gain=0.2,           # damping (opposes all velocity)
     ff_gain=1.0,          # feedforward scale (1.0 = full trajectory velocity)
-    lookahead_ms=50.0,    # phase lag compensation
+    lookahead_ms=0.0,     # phase lag compensation (0 = no overshoot)
     velocity_limit=2.0,   # max joint velocity (rad/s)
-    tolerance=0.01,       # dead zone (rad)
+    tolerance=0.001,      # dead zone (rad)
     state_rate_ms=10,     # state stream rate (ms)
 )
 
@@ -238,11 +243,11 @@ async with jog_joints(mg, config=config) as jogger:
 
 | Parameter | Default | Effect |
 |-----------|---------|--------|
-| `p_gain` | 3.0 | Tracking stiffness. Higher = faster convergence, can overshoot. |
-| `d_gain` | 0.15 | Damping. Reduces oscillation around target. |
-| `ff_gain` | 1.0 | Feedforward scale. 0 = PID only. 1.0 = use full trajectory velocity. |
-| `lookahead_ms` | 50.0 | Phase lag compensation (ms). Set to 0 to disable. |
+| `p_gain` | 1.5 | Tracking stiffness. Higher = faster convergence, risk of overshoot on overlapping chunks. |
+| `d_gain` | 0.2 | Velocity damping. Opposes ALL velocity including feedforward — set lower for tiny chunks. |
+| `ff_gain` | 1.0 | Feedforward scale. 0 = PID only (will stall on tiny chunks). 1.0 = use full trajectory velocity. |
+| `lookahead_ms` | 0.0 | Phase lag compensation (ms). Non-zero causes overshoot on overlapping chunks. |
 | `velocity_limit` | 2.0 rad/s | Clamps output velocity per axis. |
-| `tolerance` | 0.01 rad | Below this error, velocity is zero. Prevents jitter. |
+| `tolerance` | 0.001 rad | Below this error, velocity is zero (if no feedforward). Must be smaller than per-step deltas. |
 | `i_gain` | 0.0 | Integral correction. Rarely needed — targets update continuously. |
-| `state_rate_ms` | 10 | How often robot reports state (ms). Lower = smoother. |
+| `state_rate_ms` | 10 | How often robot reports state (ms). Lower = smoother but more CPU. |
