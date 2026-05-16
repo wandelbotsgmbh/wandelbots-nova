@@ -21,6 +21,7 @@ from policy.types import (
     GuardStopError,
     MotionError,
     PidConfig,
+    ProfileConfig,
     TrajectoryConfig,
 )
 
@@ -419,6 +420,18 @@ class PolicyExecutor:
                 tcp=self._schema.tcp,
                 velocity_limit=motion.velocity,
                 safety_guards=self._safety_guards,
+            )
+
+        if isinstance(motion, ProfileConfig):
+            from policy.profile_session import ProfileSession  # noqa: PLC0415
+
+            tcp_groups = self._schema.tcp_action_groups()
+            return ProfileSession(
+                motion_group=mg,
+                config=motion,
+                tcp=tcp_groups.get(mg.id) or self._schema.tcp,
+                safety_guards=self._safety_guards,
+                mode="cartesian" if mg.id in tcp_groups else "joint",
             )
 
         # PID mode

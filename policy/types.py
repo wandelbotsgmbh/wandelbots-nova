@@ -86,10 +86,39 @@ class TrajectoryConfig:
     """TCP velocity limit in mm/s for trajectory planning."""
 
 
+@dataclass(slots=True)
+class ProfileConfig:
+    """Configuration for precomputed velocity profile motion (via NOVA Jogging API).
+
+    Computes the velocity trajectory for the entire chunk upfront:
+    - Velocity from position differences between steps
+    - Trapezoidal ramp-down envelope so velocity reaches zero at the last step
+    - Single-position targets use a P-controller to reach the target
+
+    Guarantees zero overshoot by construction (velocity is forced to zero
+    at the chunk boundary). Simpler than PID — no gain tuning needed.
+    """
+
+    velocity_limit: float | list[float] = 2.0
+    """Maximum joint velocity in rad/s. Scalar or per-axis list."""
+
+    ramp_steps: int = 3
+    """Number of steps for the trapezoidal ramp-up/ramp-down envelope.
+    Higher = smoother starts/stops, lower = more responsive."""
+
+    p_gain: float = 3.0
+    """P-gain for single-position targets (teleop mode).
+    Only used when chunk has 1 step (dt_ms=0)."""
+
+    state_rate_ms: int = 10
+    """State stream update rate."""
+
+
 #: Motion configuration — determines how action chunks are executed.
 #: ``PidConfig`` for real-time PID velocity control,
+#: ``ProfileConfig`` for precomputed velocity profiles (recommended),
 #: ``TrajectoryConfig`` for planned trajectories with collision avoidance.
-MotionConfig = PidConfig | TrajectoryConfig
+MotionConfig = PidConfig | ProfileConfig | TrajectoryConfig
 
 
 @dataclass(slots=True)
