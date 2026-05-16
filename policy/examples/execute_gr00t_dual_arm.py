@@ -21,9 +21,9 @@ from nova.types import MotionSettings
 from policy import (
     Gr00tPolicyClient,
     Observation,
-    PidConfig,
     PolicyExecutor,
     PolicySchema,
+    ProfileConfig,
     WebRTCCameras,
 )
 
@@ -110,9 +110,8 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
         f"horizon={info['action_horizon']}"
     )
 
-    # Run — feedforward drives motion, P+D prevent overshoot past chunk boundary
-    pid = PidConfig(p_gain=1.0, d_gain=0.2, ff_gain=1.0, lookahead_ms=0.0, velocity_limit=2.0)
-    executor = PolicyExecutor(schema, client, timeout_s=TIMEOUT_S, motion=pid)
+    # Run — ProfileConfig: precomputed velocity profile, zero overshoot
+    executor = PolicyExecutor(schema, client, timeout_s=TIMEOUT_S, motion=ProfileConfig())
 
     print(f"Running GR00T dual-arm policy for {TIMEOUT_S}s...")
     t0 = time.monotonic()
