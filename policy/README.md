@@ -259,6 +259,22 @@ Observation.tcp("eef_pose", source=mg, action=True)
 
 The policy receives named values (`eef_pose_x`, `eef_pose_y`, `eef_pose_z`, `eef_pose_rx`, `eef_pose_ry`, `eef_pose_rz`) in mm and radians, and returns target values in the same format. Combine with `mode="relative"` for offset-based Cartesian control.
 
+### Rerun visualization
+
+Add `viewer=nova.viewers.Rerun()` to the `@nova.program` decorator to get real-time 3D visualization of the execution. The executor automatically logs robot meshes, action chunk TCP paths, TCP trails, camera images, and joint timeseries — zero overhead when no viewer is active.
+
+```python
+from nova import viewers
+
+@nova.program(id="my_policy", viewer=viewers.Rerun())
+async def run(ctx):
+    ...
+    executor = PolicyExecutor(schema, policy, timeout_s=10.0)
+    await executor.run()  # data streams to Rerun viewer automatically
+```
+
+Requires `wandelbots-nova[nova-rerun-bridge]`. Run `uv run download-models` once to fetch robot meshes.
+
 ### Computed observations and actions
 
 For external data sources (OPC UA, PLC, databases) not covered by the built-in types:
