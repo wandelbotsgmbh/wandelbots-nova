@@ -85,105 +85,26 @@ Any async callable that maps `dict → dict` works — call a remote GPU server,
 
 ## Motion Modes
 
-The `motion` parameter on `PolicyExecutor` selects how action chunks are converted to robot motion. Each mode uses the NOVA Jogging API (velocity commands over WebSocket) but differs in how velocities are computed from position targets.
+The `motion` parameter selects how action chunks are converted to robot motion. All modes use the NOVA Jogging API internally. See [`JOGGING.md`](JOGGING.md) for details on each approach.
 
 ```python
 from policy import ProfileConfig, PidConfig, TrajectoryConfig
 
-# Precomputed velocity profile (recommended)
+# Precomputed velocity profile — zero overshoot, no tuning (recommended)
 executor = PolicyExecutor(schema, policy, motion=ProfileConfig())
 
-# PID + feedforward (legacy, more tuning knobs)
+# PID + feedforward — higher tracking but requires tuning, can overshoot
 executor = PolicyExecutor(schema, policy, motion=PidConfig())
 
-# Planned trajectories (non-realtime, collision avoidance)
+# Planned trajectories — collision avoidance but non-realtime
 executor = PolicyExecutor(schema, policy, motion=TrajectoryConfig())
 ```
 
-### ProfileConfig (recommended)
-
-Precomputes the entire velocity trajectory for each chunk upfront. Velocity is derived from position differences between steps, shaped by a trapezoidal ramp envelope that forces velocity to zero at the last step.
-
-**Strengths:**
-- Zero overshoot by construction — velocity ends at zero, robot cannot exceed chunk boundary
-- No gain tuning needed — works out of the box
-- Handles all chunk patterns: fast overlap, slow exhaustion, direction reversals, single-step teleop
-- Simple to reason about: "play this velocity profile, stop at the end"
-
-**Weaknesses:**
-- Lower tracking efficiency than PID on fast overlapping chunks (~42° vs ~61° in 8s on test trajectory) because it doesn't add corrective velocity beyond what the profile specifies
-- The trapezoidal ramp-down at the end means the last 3 steps execute slower than real-time — the robot decelerates early
-- Chunk transitions blend velocity (smooth) but don't correct for position drift accumulated during the previous chunk
-
-**How chunk transitions work:** When a new chunk arrives mid-execution, the first 3 steps of the new profile are linearly blended with the robot's current velocity. This prevents velocity discontinuities (jerk) but doesn't snap the robot back to the new trajectory's position — it just smoothly transitions the velocity.
-
-**Single-position targets (teleop):** Falls back to a P-controller: `velocity = p_gain × (target - current)`. Naturally decelerates as it approaches the target.
-
-```python
-ProfileConfig(
-    velocity_limit=2.0,   # rad/s max per joint
-    ramp_steps=3,         # trapezoidal envelope width (steps)
-    p_gain=3.0,           # for single-position teleop mode
-    state_rate_ms=10,     # state stream update rate
-)
-```
-
-### PidConfig
-
-Classic PID controller with feedforward velocity, temporal ensembling, and lookahead. More tuning parameters but can achieve higher tracking accuracy when properly configured.
-
-**Strengths:**
-- Higher tracking efficiency on fast overlapping chunks (P term adds corrective velocity)
-- Temporal ensembling (exponential blending) at chunk boundaries
-- Lookahead can compensate network latency for faster convergence
-- Well-understood control theory — predictable behavior with proper tuning
-
-**Weaknesses:**
-- Can overshoot the chunk boundary if gains are too high or lookahead is non-zero
-- Requires tuning (p_gain, d_gain, ff_gain, lookahead_ms, tolerance) — wrong values cause oscillation or stalling
-- D-term opposes all velocity including feedforward — on tiny chunks (<0.001 rad/step) this can stall motion
-- Tolerance threshold can cause the controller to output zero when chunk steps are smaller than tolerance
-- Temporal blending operates on positions, which can create targets outside the chunk envelope
-
-**Known edge cases:**
-- `p_gain=0`: robot never returns to target after overshoot (no restoring force)
-- `lookahead_ms>0`: target jumps ahead of chunk boundary during blending → overshoot
-- `tolerance > per-step delta`: controller outputs zero → robot stuck
-- `ff_gain=0 + slow inference`: chunk exhausts within tolerance, zero motion
-
-See [`JOGGING.md`](JOGGING.md) for detailed explanation of interpolation, feedforward, blending, and tuning.
-
-```python
-PidConfig(
-    p_gain=1.5,           # tracking stiffness
-    d_gain=0.2,           # velocity damping
-    ff_gain=1.0,          # feedforward from chunk trajectory
-    lookahead_ms=0.0,     # phase lag compensation (0 = safe)
-    velocity_limit=2.0,   # rad/s max
-    tolerance=0.001,      # dead zone (rad)
-)
-```
-
-### TrajectoryConfig
-
-Plans each action chunk as a multi-waypoint trajectory using NOVA's motion planner. The planner handles interpolation, velocity/acceleration limits, and collision avoidance.
-
-**Strengths:**
-- Built-in collision avoidance (self-collision and environment)
-- Smooth, physically feasible trajectories with proper acceleration profiles
-- No overshoot — planner respects all kinematic limits
-
-**Weaknesses:**
-- Non-realtime: planning takes 100-500ms per chunk (not suitable for 30Hz teleop)
-- Cannot be interrupted mid-execution — current trajectory must complete before next starts
-- No TCP/Cartesian action support
-- Higher latency between policy output and robot motion start
-
-```python
-TrajectoryConfig(
-    velocity=500.0,       # TCP velocity limit in mm/s
-)
-```
+| Mode | Overshoot | Tuning | Realtime | Collision avoidance |
+|------|-----------|--------|----------|--------------------|
+| `ProfileConfig` | Never | None | Yes | No |
+| `PidConfig` | Possible | Required | Yes | No |
+| `TrajectoryConfig` | Never | None | No | Yes |
 
 ## PolicySchema
 

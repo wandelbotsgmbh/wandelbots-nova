@@ -6,10 +6,61 @@ converts joint/TCP position targets into velocity commands streamed at the contr
 Used both directly (teleoperation, scripted motion) and internally by `PolicyExecutor` when
 `motion=PidConfig()` is selected.
 
-> **Note:** For policy execution, consider `ProfileConfig()` instead — it's simpler, requires
-> no tuning, and guarantees zero overshoot. See [README.md](README.md#motion-modes) for comparison.
-> This document describes the PID approach which gives higher tracking on fast overlapping chunks
-> but requires careful gain selection.
+## Motion Modes
+
+Three approaches for converting position targets to velocity commands:
+
+### ProfileConfig
+
+Precomputes the entire velocity trajectory for each chunk upfront. Velocities are derived from position differences between steps and shaped by a trapezoidal envelope that ramps down to zero at the last step. This guarantees the robot never overshoots the chunk boundary.
+
+For single-position targets (teleop), it falls back to a P-controller: `velocity = p_gain × (target - current)`.
+
+When a new chunk arrives mid-execution, the first 3 steps of the new profile are linearly blended with the robot's current velocity to avoid jerk. This doesn't correct position drift — it only smooths the velocity transition.
+
+Tradeoff: cannot track faster than the chunk prescribes. On fast overlapping chunks the PID approach achieves ~40% more displacement because the P-term adds corrective velocity.
+
+```python
+ProfileConfig(
+    velocity_limit=2.0,   # rad/s max per joint
+    ramp_steps=3,         # steps for ramp-up/ramp-down envelope
+    p_gain=3.0,           # for single-position teleop targets
+    state_rate_ms=10,     # state stream update rate
+)
+```
+
+### PidConfig
+
+PID controller with feedforward velocity from chunk trajectory. The ActionQueue interpolates between waypoints, computes feedforward via central differences, and blends overlapping chunks with exponential weights (temporal ensembling).
+
+Gives higher tracking accuracy when properly tuned. But wrong parameters cause overshoot (`lookahead_ms > 0`), oscillation (high `p_gain`), or stalling (high `tolerance` with tiny chunks, or `ff_gain=0`).
+
+The D-term opposes all velocity including feedforward. On very small chunks (<0.001 rad/step), this can reduce motion to near zero. Requires `tolerance` smaller than the per-step delta.
+
+```python
+PidConfig(
+    p_gain=1.5,           # tracking stiffness
+    d_gain=0.2,           # velocity damping
+    ff_gain=1.0,          # feedforward from chunk trajectory
+    lookahead_ms=0.0,     # 0 = safe; >0 risks overshoot
+    velocity_limit=2.0,   # rad/s max
+    tolerance=0.001,      # dead zone (rad)
+)
+```
+
+### TrajectoryConfig
+
+Plans each chunk as a multi-waypoint trajectory via NOVA's motion planner. Gets collision avoidance and proper acceleration profiles, but planning takes 100–500ms per chunk (non-realtime). Cannot be interrupted mid-trajectory.
+
+```python
+TrajectoryConfig(
+    velocity=500.0,       # TCP velocity limit in mm/s
+)
+```
+
+---
+
+The rest of this document covers the PID approach in detail (interpolation, feedforward, blending, tuning).
 
 ## How It Works
 
