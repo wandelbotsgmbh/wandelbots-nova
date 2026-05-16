@@ -62,7 +62,7 @@ class PidConfig:
     Scalar applies to all axes; list sets per-axis limits."""
 
     tolerance: float = 0.001
-    p_gain: float = 1.0
+    p_gain: float = 1.5
     i_gain: float = 0.0
     d_gain: float = 0.2
     ff_gain: float = 1.0
