@@ -62,13 +62,14 @@ class PidConfig:
     Scalar applies to all axes; list sets per-axis limits."""
 
     tolerance: float = 0.01
-    p_gain: float = 3.0
+    p_gain: float = 1.0
     i_gain: float = 0.0
-    d_gain: float = 0.15
+    d_gain: float = 0.2
     ff_gain: float = 1.0
-    lookahead_ms: float = 50.0
+    lookahead_ms: float = 0.0
     """Look-ahead time in ms. Targets a future trajectory point to compensate
-    for the command-to-effect delay (~half the round-trip latency)."""
+    for the command-to-effect delay. Set to 0 for policies with overlapping
+    chunks (e.g. GR00T) to avoid overshoot."""
     integral_limit: float = 2.0
     state_rate_ms: int = 10
 
