@@ -62,18 +62,6 @@ class PidJoggingSession:
             ff_gain=config.ff_gain,
             integral_limit=config.integral_limit,
         )
-        # Separate controller for braking/holding after chunk exhaustion.
-        # Ensures the robot actively decelerates to the last target even if
-        # the user sets p_gain=0 for pure-feedforward tracking.
-        self._brake = VelocityController(
-            velocity_limit=config.velocity_limit,
-            tolerance=config.tolerance,
-            p_gain=max(config.p_gain, 3.0),
-            i_gain=0.0,
-            d_gain=max(config.d_gain, 0.3),
-            ff_gain=0.0,
-            integral_limit=config.integral_limit,
-        )
         self._io_writer = IOWriter(motion_group)
         self._jog_tracker = JoggingStateTracker(motion_group.id)
         self._queue = ActionQueue()
@@ -387,11 +375,10 @@ class PidJoggingSession:
         if current_robot_state is not None:
             self._prev_state = current_robot_state
 
-        # When chunk is exhausted: brake and hold at last target (no feedforward).
-        # Uses dedicated brake controller with guaranteed P+D to actively decelerate
-        # — prevents overshoot past last step.
+        # When chunk is exhausted: command zero velocity to hold position.
+        # The NOVA jogging controller handles deceleration internally.
         if self._queue._exhausted:
-            return self._brake.compute(current, target)
+            return self._get_zero_velocity()
 
         # Active chunk: feedforward drives the motion
         ff = None
