@@ -377,6 +377,18 @@ class PolicyExecutor:
             if session is None:
                 logger.warning("Unknown motion group in chunk: %s", group_id)
                 continue
+            # Log chunk magnitude for debugging
+            if len(steps) > 1 and logger.isEnabledFor(logging.DEBUG):
+                span = sum(
+                    abs(steps[-1][j] - steps[0][j]) for j in range(len(steps[0]))
+                )
+                per_step = span / (len(steps) - 1) if len(steps) > 1 else 0
+                ff_vel = per_step / (chunk.dt_ms / 1000.0) if chunk.dt_ms > 0 else 0
+                logger.debug(
+                    "Chunk %s: %d steps, span=%.5f rad, per_step=%.6f rad, "
+                    "ff_vel=%.4f rad/s, dt_ms=%.1f",
+                    group_id, len(steps), span, per_step, ff_vel, chunk.dt_ms,
+                )
             session.update_chunk(steps=steps, dt_ms=chunk.dt_ms, observation_time=observation_time)
 
         for group_id, raw_tcp_steps in chunk.tcp.items():

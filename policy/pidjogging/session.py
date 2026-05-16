@@ -380,11 +380,23 @@ class PidJoggingSession:
             raw_ff = self._get_feedforward_velocity()
             if raw_ff is not None:
                 ff = [v * self._config.ff_gain for v in raw_ff]
-        return self._pid.compute(
+        vel = self._pid.compute(
             current,
             target,
             feedforward_velocity=ff,
         )
+        # Debug: periodically log velocity magnitude
+        self._tick_count = getattr(self, "_tick_count", 0) + 1
+        if self._tick_count % 500 == 0:
+            max_v = max(abs(v) for v in vel)
+            max_err = max(abs(c - t) for c, t in zip(current, target, strict=True))
+            max_ff_v = max(abs(v) for v in ff) if ff else 0.0
+            exhausted = self._queue._exhausted
+            logger.debug(
+                "[%s tick %d] max_vel=%.5f max_err=%.6f max_ff=%.5f exhausted=%s",
+                self.motion_group_id, self._tick_count, max_v, max_err, max_ff_v, exhausted,
+            )
+        return vel
 
     def _check_safety_guards(self, current_robot_state: RobotState) -> None:
         """Run all safety guards. Raises GuardStopError on failure."""
