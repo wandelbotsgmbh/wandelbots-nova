@@ -127,10 +127,15 @@ class VelocityController:
         velocities: list[float] = []
         for i in range(n):
             error = target[i] - current[i]
+            # D term acts on error derivative (target_vel - current_vel), not raw velocity.
+            # This prevents D from opposing normal feedforward-driven motion.
+            # When ff is active, target is moving → d(error)/dt ≈ 0 during tracking.
+            # When overshooting, current moves faster than target → D opposes.
+            d_term = self.d_gain * deriv[i] if ff[i] == 0.0 else self.d_gain * (deriv[i] - ff[i])
             vel = (
                 self.p_gain * error
                 + self.i_gain * self._integral[i]
-                - self.d_gain * deriv[i]
+                - d_term
                 + ff[i]
             )
             vel = max(-self._limit(i), min(self._limit(i), vel))

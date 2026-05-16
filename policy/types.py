@@ -61,7 +61,7 @@ class PidConfig:
     """Velocity limit in rad/s (joints) or mm/s + rad/s (TCP).
     Scalar applies to all axes; list sets per-axis limits."""
 
-    tolerance: float = 0.01
+    tolerance: float = 0.001
     p_gain: float = 1.0
     i_gain: float = 0.0
     d_gain: float = 0.2
