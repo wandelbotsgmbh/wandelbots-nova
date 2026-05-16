@@ -11,6 +11,7 @@ import time
 
 # Minimum time delta to prevent division-by-zero in derivative calculation.
 _MIN_DT: float = 0.001
+_FF_ZERO_THRESHOLD: float = 1e-6
 
 
 @dataclass
@@ -82,15 +83,20 @@ class VelocityController:
         now = timestamp if timestamp is not None else time.monotonic()
 
         # If all joints within tolerance, output zero and reset
-        if all(abs(c - t) <= self.tolerance for c, t in zip(current, target, strict=True)):
-            self.reset()
-            return [0.0] * n
+        within_tolerance = all(
+            abs(c - t) <= self.tolerance for c, t in zip(current, target, strict=True)
+        )
 
         # Feedforward: use provided velocity or fall back to historical estimate
         if feedforward_velocity is not None:
             ff = feedforward_velocity
         else:
             ff = self._feedforward(target, now, n)
+
+        # If within tolerance AND no feedforward driving motion, output zero
+        if within_tolerance and all(abs(v) < _FF_ZERO_THRESHOLD for v in ff):
+            self.reset()
+            return [0.0] * n
 
         # Detect target change → reset derivative/integral state
         if self._target_changed(target):

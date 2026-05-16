@@ -208,10 +208,10 @@ async def gr00t_dual_arm_controller(
     p_gain: float = Field(default=3.0, description="PID proportional gain"),
     i_gain: float = Field(default=0.0, description="PID integral gain"),
     d_gain: float = Field(default=0.15, description="PID derivative gain"),
-    ff_gain: float = Field(default=0.0, description="Feedforward gain (0=off, 1=full)"),
+    ff_gain: float = Field(default=1.0, description="Feedforward gain (0=off, 1=full)"),
     velocity_limit: float = Field(default=2.0, description="Joint velocity limit in rad/s"),
     lookahead_ms: float = Field(
-        default=0.0, description="Lookahead in ms to compensate network latency"
+        default=50.0, description="Lookahead in ms to compensate network latency"
     ),
 ):
     """Run one GR00T episode: home → connect cameras → run policy until timeout."""
@@ -319,10 +319,10 @@ class StartRequest(BaseModel):
     p_gain: float = Field(default=3.0, description="PID proportional gain")
     i_gain: float = Field(default=0.0, description="PID integral gain")
     d_gain: float = Field(default=0.15, description="PID derivative gain")
-    ff_gain: float = Field(default=0.0, description="Feedforward gain (0=off, 1=full)")
+    ff_gain: float = Field(default=1.0, description="Feedforward gain (0=off, 1=full)")
     velocity_limit: float = Field(default=2.0, description="Joint velocity limit in rad/s")
     lookahead_ms: float = Field(
-        default=0.0, description="Lookahead in ms to compensate network latency"
+        default=50.0, description="Lookahead in ms to compensate network latency"
     )
 
 
