@@ -2,7 +2,7 @@ FROM ghcr.io/astral-sh/uv:0.7.3 AS uv
 
 FROM python:3.12-slim-bookworm
 
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git libxcb1 libgl1 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
