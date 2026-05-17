@@ -199,6 +199,21 @@ class _VelocityProfile:
         self._current_idx = max(self._current_idx, progress)
         frac_idx = self._current_idx
 
+        # If robot hasn't reached step[0] yet, drive toward it
+        if frac_idx < 0.1:  # noqa: PLR2004
+            first_step = self._steps[0]
+            dist_sq = sum((current[j] - first_step[j]) ** 2 for j in range(n))
+            if dist_sq > _SEGMENT_LENGTH_SQ_MIN:
+                vel = []
+                for j in range(n):
+                    error = first_step[j] - current[j]
+                    # Use profile[0] velocity as feedforward + P correction
+                    v = self._profile[0][j] + self._p_gain * error
+                    v = max(-self._limit(j), min(self._limit(j), v))
+                    vel.append(v)
+                self._current_vel = vel
+                return vel
+
         if frac_idx >= max_idx:
             # Reached last step → zero velocity
             self._current_vel = [0.0] * n
