@@ -14,11 +14,51 @@ Three approaches for converting position targets to velocity commands:
 
 Precomputes the entire velocity trajectory for each chunk upfront. Velocities are derived from position differences between steps and shaped by a trapezoidal envelope that ramps down to zero at the last step. This guarantees the robot never overshoots the chunk boundary.
 
-For single-position targets (teleop), it falls back to a P-controller: `velocity = p_gain × (target - current)`.
+**Example:** A chunk of 12 waypoints at `dt_ms=60` (one joint shown):
 
-When a new chunk arrives mid-execution, the first 3 steps of the new profile are linearly blended with the robot's current velocity to avoid jerk. This doesn't correct position drift — it only smooths the velocity transition.
+```
+Positions (rad):  0.10  0.12  0.14  0.16  0.18  0.20  0.22  0.24  0.26  0.28  0.30  0.32
+Step index:         0     1     2     3     4     5     6     7     8     9    10    11
+```
 
-Tradeoff: cannot track faster than the chunk prescribes. On fast overlapping chunks the PID approach achieves ~40% more displacement because the P-term adds corrective velocity.
+Step 1 — Compute raw velocity at each step (central difference, forward/zero at boundaries):
+
+```
+step 0:  forward diff  = (0.12 - 0.10) / 0.060 = 0.333 rad/s
+step 1:  central diff  = (0.14 - 0.10) / 0.120 = 0.333 rad/s
+step 2:  central diff  = (0.16 - 0.12) / 0.120 = 0.333 rad/s
+  ...    (constant ramp → constant velocity)
+step 10: central diff  = (0.32 - 0.28) / 0.120 = 0.333 rad/s
+step 11: forced to 0   = 0.000 rad/s            ← ensures no overshoot
+```
+
+Step 2 — Apply trapezoidal envelope (`ramp_steps=3`):
+
+```
+step:       0      1      2      3      4    ...    9     10     11
+ramp_up:   0.33   0.67   1.00   1.00   1.00  ...  1.00   1.00   1.00
+ramp_down: 1.00   1.00   1.00   1.00   1.00  ...  1.00   0.67   0.33
+envelope:  0.33   0.67   1.00   1.00   1.00  ...  1.00   0.67   0.33
+
+final vel: 0.111  0.222  0.333  0.333  0.333 ...  0.333  0.222  0.000 rad/s
+```
+
+Step 3 — At runtime, interpolate this profile based on elapsed time. The robot accelerates
+over the first 180ms (3 steps), runs at full velocity, then decelerates over the last 180ms
+to reach zero velocity exactly at the last step.
+
+Total chunk duration: 12 × 60ms = 720ms. The robot follows the velocity profile for 720ms
+then outputs zero velocity (holds position) until the next chunk arrives.
+
+For single-position targets (teleop with `dt_ms=0`), it falls back to a P-controller:
+`velocity = p_gain × (target - current)`. This naturally decelerates as it approaches.
+
+When a new chunk arrives mid-execution, the first 3 steps of the new profile are linearly
+blended with the robot's current velocity to avoid jerk.
+
+Tradeoff: cannot track faster than the chunk prescribes. On fast overlapping chunks the PID
+approach achieves ~40% more displacement because the P-term adds corrective velocity beyond
+what the profile specifies.
 
 ```python
 ProfileConfig(

@@ -90,21 +90,15 @@ The `motion` parameter selects how action chunks are converted to robot motion. 
 ```python
 from policy import ProfileConfig, PidConfig, TrajectoryConfig
 
-# Precomputed velocity profile — zero overshoot, no tuning (recommended)
+# Precomputed velocity profile — zero overshoot, no tuning
 executor = PolicyExecutor(schema, policy, motion=ProfileConfig())
 
-# PID + feedforward — higher tracking but requires tuning, can overshoot
+# PID + feedforward — higher tracking on fast overlapping chunks
 executor = PolicyExecutor(schema, policy, motion=PidConfig())
 
-# Planned trajectories — collision avoidance but non-realtime
+# Planned trajectories — collision avoidance, non-realtime
 executor = PolicyExecutor(schema, policy, motion=TrajectoryConfig())
 ```
-
-| Mode | Overshoot | Tuning | Realtime | Collision avoidance |
-|------|-----------|--------|----------|--------------------|
-| `ProfileConfig` | Never | None | Yes | No |
-| `PidConfig` | Possible | Required | Yes | No |
-| `TrajectoryConfig` | Never | None | No | Yes |
 
 ## PolicySchema
 
