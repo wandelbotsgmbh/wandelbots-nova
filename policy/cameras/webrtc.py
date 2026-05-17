@@ -279,10 +279,12 @@ class WebRTCConnection:
 
 
 def _resize_frame(frame: NDArray[Any], width: int, height: int) -> NDArray[Any]:
-    """Resize a single (H, W, 3) frame using INTER_AREA (best for downscaling)."""
-    import cv2  # noqa: PLC0415 — lazy import, cv2 is heavy
+    """Resize a single (H, W, 3) frame using Pillow (no system lib dependencies)."""
+    from PIL import Image  # noqa: PLC0415
 
-    return cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+    img = Image.fromarray(frame)
+    img = img.resize((width, height), Image.LANCZOS)
+    return np.asarray(img)
 
 
 class WebRTCDevice:
