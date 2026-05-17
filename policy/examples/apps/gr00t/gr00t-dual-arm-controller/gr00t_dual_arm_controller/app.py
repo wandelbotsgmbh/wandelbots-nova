@@ -32,7 +32,6 @@ from nova.types import MotionSettings
 from policy import (
     Gr00tPolicyClient,
     Observation,
-    PidConfig,
     PolicyExecutor,
     PolicySchema,
     ProfileConfig,
@@ -206,18 +205,7 @@ async def gr00t_dual_arm_controller(
     ),
     camera_size: int = Field(default=224, description="Camera frame width and height"),
     camera_fps: int = Field(default=15, description="Camera frames per second"),
-    motion_mode: str = Field(
-        default="profile",
-        description="Motion mode: 'profile' (recommended, zero overshoot) or 'pid'",
-    ),
-    p_gain: float = Field(default=1.5, description="PID proportional gain (pid mode only)"),
-    i_gain: float = Field(default=0.0, description="PID integral gain (pid mode only)"),
-    d_gain: float = Field(default=0.2, description="PID derivative gain (pid mode only)"),
-    ff_gain: float = Field(default=1.0, description="Feedforward gain (pid mode only)"),
     velocity_limit: float = Field(default=2.0, description="Joint velocity limit in rad/s"),
-    lookahead_ms: float = Field(
-        default=0.0, description="Lookahead in ms (pid mode only)"
-    ),
 ):
     """Run one GR00T episode: home → connect cameras → run policy until timeout."""
     cell = ctx.nova.cell()
@@ -249,17 +237,7 @@ async def gr00t_dual_arm_controller(
         dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
-    pid = PidConfig(
-        p_gain=p_gain,
-        i_gain=i_gain,
-        d_gain=d_gain,
-        ff_gain=ff_gain,
-        velocity_limit=velocity_limit,
-        lookahead_ms=lookahead_ms,
-    )
-    motion = ProfileConfig(velocity_limit=velocity_limit) if motion_mode == "profile" else pid
-    executor = PolicyExecutor(schema, client, timeout_s=timeout_s, motion=motion)
-
+    executor = PolicyExecutor(schema, client, timeout_s=timeout_s, motion=ProfileConfig(velocity_limit=velocity_limit))
     await cycle.start()
     try:
         result = await executor.run()
@@ -321,20 +299,7 @@ class StartRequest(BaseModel):
     camera_devices: str = Field(default=DEFAULT_CAMERAS)
     camera_size: int = Field(default=224)
     camera_fps: int = Field(default=15)
-    # Motion mode
-    motion_mode: str = Field(
-        default="profile",
-        description="Motion mode: 'profile' (recommended) or 'pid'",
-    )
-    # PID tuning (only used when motion_mode='pid')
-    p_gain: float = Field(default=1.5, description="PID proportional gain")
-    i_gain: float = Field(default=0.0, description="PID integral gain")
-    d_gain: float = Field(default=0.2, description="PID derivative gain")
-    ff_gain: float = Field(default=1.0, description="Feedforward gain (0=off, 1=full)")
     velocity_limit: float = Field(default=2.0, description="Joint velocity limit in rad/s")
-    lookahead_ms: float = Field(
-        default=0.0, description="Lookahead in ms (pid mode only)"
-    )
 
 
 @app.get("/status", response_model=ExecutorStatus)
@@ -411,16 +376,7 @@ async def start(req: StartRequest = StartRequest()):
         dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
-    pid = PidConfig(
-        p_gain=req.p_gain,
-        i_gain=req.i_gain,
-        d_gain=req.d_gain,
-        ff_gain=req.ff_gain,
-        velocity_limit=req.velocity_limit,
-        lookahead_ms=req.lookahead_ms,
-    )
-    motion = ProfileConfig(velocity_limit=req.velocity_limit) if req.motion_mode == "profile" else pid
-    _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s, motion=motion)
+    _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s, motion=ProfileConfig(velocity_limit=req.velocity_limit))
 
     async def run() -> ExecutionResult:
         global _last_error

@@ -116,7 +116,7 @@ class PolicyExecutor:
         else:
             self._policy = policy  # type: ignore[assignment]
 
-        self._motion = motion or PidConfig()
+        self._motion = motion or ProfileConfig()
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
         self._inference_hz = inference_hz
