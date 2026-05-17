@@ -1,18 +1,22 @@
 """ProfileSession — precomputed velocity profile motion via NOVA Jogging API.
 
-Instead of PID control, computes the full velocity trajectory for each chunk
-upfront. Guarantees zero overshoot by forcing velocity to zero at the last step.
+Computes the velocity trajectory for each chunk upfront and advances through
+it based on the robot's actual position, not wall-clock time. This guarantees:
+- Zero overshoot (velocity is zero at the last step, and that step is only
+  reached when the robot physically arrives there)
+- Correct timing under latency (the profile slows down if the robot lags)
 
 Algorithm:
 1. Multi-step chunks: compute velocity at each step from position differences,
-   apply trapezoidal ramp envelope, interpolate at runtime.
+   apply trapezoidal ramp envelope, advance based on robot position at runtime.
 2. Single-step targets: P-controller drives toward the target position.
 3. Chunk transitions: blend current velocity into new profile for smoothness.
-4. Exhaustion: velocity decays to zero (smooth stop).
+4. Exhaustion: velocity is zero (last step reached).
 """
 
 from __future__ import annotations
 
+import math
 import time
 from typing import TYPE_CHECKING
 
@@ -26,10 +30,11 @@ if TYPE_CHECKING:
 
 _VEL_ZERO_THRESHOLD = 0.001
 _VEL_DECAY = 0.8
+_SEGMENT_LENGTH_SQ_MIN = 1e-12
 
 
 class _VelocityProfile:
-    """Computes and interpolates a velocity profile for an action chunk."""
+    """Computes a velocity profile and advances through it based on robot position."""
 
     def __init__(self, n_joints: int, vel_limit: float | list[float], ramp_steps: int, p_gain: float) -> None:
         self._n = n_joints
@@ -37,9 +42,9 @@ class _VelocityProfile:
         self._ramp_steps = ramp_steps
         self._p_gain = p_gain
         self._profile: list[list[float]] | None = None
-        self._target: list[float] | None = None
-        self._dt_s: float = 0.0
-        self._start_time: float = 0.0
+        self._steps: list[list[float]] | None = None  # waypoint positions
+        self._target: list[float] | None = None  # single-position target
+        self._current_idx: float = 0.0  # fractional index into profile
         self._current_vel: list[float] = [0.0] * n_joints
 
     def _limit(self, idx: int) -> float:
@@ -51,44 +56,29 @@ class _VelocityProfile:
         """Precompute velocity profile for this chunk."""
         if not steps:
             self._profile = None
+            self._steps = None
             self._target = None
             return
 
         # Single position: P-controller mode
         if len(steps) == 1 or dt_ms <= 0:
             self._profile = None
+            self._steps = None
             self._target = steps[-1]
             return
 
         # Multi-step: build velocity profile
         self._target = None
-        self._dt_s = dt_ms / 1000.0
-        self._start_time = time.monotonic()
+        self._steps = steps
+        self._current_idx = 0.0
         n_steps = len(steps)
         n = self._n
 
-        # Compute raw velocities from position differences
-        raw_vels: list[list[float]] = []
-        for i in range(n_steps):
-            if i == 0:
-                vel = [(steps[1][j] - steps[0][j]) / self._dt_s for j in range(n)]
-            elif i == n_steps - 1:
-                vel = [0.0] * n  # Zero at end → no overshoot
-            else:
-                vel = [(steps[i + 1][j] - steps[i - 1][j]) / (2 * self._dt_s) for j in range(n)]
-            raw_vels.append(vel)
+        # Compute time step, stretching if velocities exceed limits
+        dt_s = self._compute_dt(steps, dt_ms / 1000.0, n_steps, n)
 
-        # Apply trapezoidal envelope
-        ramp = self._ramp_steps
-        self._profile = []
-        for i in range(n_steps):
-            ramp_up = min(1.0, (i + 1) / ramp) if ramp > 0 else 1.0
-            ramp_down = min(1.0, (n_steps - i) / ramp) if ramp > 0 else 1.0
-            envelope = min(ramp_up, ramp_down)
-            vel = [raw_vels[i][j] * envelope for j in range(n)]
-            # Clamp per-axis
-            vel = [max(-self._limit(j), min(self._limit(j), vel[j])) for j in range(n)]
-            self._profile.append(vel)
+        # Build profile: raw velocities + trapezoidal envelope
+        self._profile = self._build_profile(steps, dt_s, n_steps, n)
 
         # Blend first steps with current velocity for smooth transition
         blend_count = min(3, n_steps)
@@ -97,8 +87,88 @@ class _VelocityProfile:
             for j in range(n):
                 self._profile[i][j] = (1 - alpha) * self._current_vel[j] + alpha * self._profile[i][j]
 
-    def compute(self, current: list[float], now: float) -> list[float]:
-        """Get velocity command for current time."""
+    def _compute_dt(self, steps: list[list[float]], dt_s: float, n_steps: int, n: int) -> float:
+        """Compute dt_s, stretching if any raw velocity exceeds the limit."""
+        max_ratio = 1.0
+        for i in range(n_steps):
+            if i == 0:
+                vel = [(steps[1][j] - steps[0][j]) / dt_s for j in range(n)]
+            elif i == n_steps - 1:
+                continue  # last step is forced zero
+            else:
+                vel = [(steps[i + 1][j] - steps[i - 1][j]) / (2 * dt_s) for j in range(n)]
+            for j in range(n):
+                limit = self._limit(j)
+                if limit > 0:
+                    max_ratio = max(max_ratio, abs(vel[j]) / limit)
+        return dt_s * max_ratio
+
+    def _build_profile(self, steps: list[list[float]], dt_s: float, n_steps: int, n: int) -> list[list[float]]:
+        """Compute raw velocities and apply trapezoidal envelope."""
+        raw_vels: list[list[float]] = []
+        for i in range(n_steps):
+            if i == 0:
+                vel = [(steps[1][j] - steps[0][j]) / dt_s for j in range(n)]
+            elif i == n_steps - 1:
+                vel = [0.0] * n
+            else:
+                vel = [(steps[i + 1][j] - steps[i - 1][j]) / (2 * dt_s) for j in range(n)]
+            raw_vels.append(vel)
+
+        ramp = self._ramp_steps
+        profile: list[list[float]] = []
+        for i in range(n_steps):
+            ramp_up = min(1.0, (i + 1) / ramp) if ramp > 0 else 1.0
+            ramp_down = min(1.0, (n_steps - i) / ramp) if ramp > 0 else 1.0
+            envelope = min(ramp_up, ramp_down)
+            vel = [raw_vels[i][j] * envelope for j in range(n)]
+            profile.append(vel)
+        return profile
+
+    def _find_progress(self, current: list[float]) -> float:
+        """Find how far along the trajectory the robot actually is.
+
+        Searches forward from current_idx to find the step closest to
+        the robot's actual position. Only searches forward to handle
+        direction changes within a chunk correctly.
+        """
+        steps = self._steps
+        if not steps:
+            return 0.0
+
+        n = self._n
+        max_idx = len(steps) - 1
+        search_start = int(self._current_idx)
+
+        best_idx = search_start
+        best_dist = math.inf
+
+        # Search forward from current position (+ look 1 step back for interpolation)
+        start = max(0, search_start - 1)
+        for i in range(start, len(steps)):
+            dist = sum((current[j] - steps[i][j]) ** 2 for j in range(n))
+            if dist < best_dist:
+                best_dist = dist
+                best_idx = i
+            elif i > search_start + 3:
+                # Stop searching once distance starts increasing (past the closest)
+                break
+
+        # Refine: interpolate between best_idx and best_idx+1 for sub-step precision
+        if best_idx < max_idx:
+            a = steps[best_idx]
+            b = steps[best_idx + 1]
+            # Project current position onto the line segment a→b
+            ab_sq = sum((b[j] - a[j]) ** 2 for j in range(n))
+            if ab_sq > _SEGMENT_LENGTH_SQ_MIN:
+                t = sum((current[j] - a[j]) * (b[j] - a[j]) for j in range(n)) / ab_sq
+                t = max(0.0, min(1.0, t))
+                return best_idx + t
+
+        return float(best_idx)
+
+    def compute(self, current: list[float], _now: float) -> list[float]:
+        """Get velocity command based on robot's actual position."""
         n = self._n
 
         # Single-position mode: P-controller
@@ -113,22 +183,28 @@ class _VelocityProfile:
             return vel
 
         # No profile: decay to zero
-        if self._profile is None:
+        if self._profile is None or self._steps is None:
             self._current_vel = [v * _VEL_DECAY for v in self._current_vel]
             if all(abs(v) < _VEL_ZERO_THRESHOLD for v in self._current_vel):
                 self._current_vel = [0.0] * n
             return list(self._current_vel)
 
-        # Profile playback: interpolate
-        elapsed = now - self._start_time
-        frac_idx = elapsed / self._dt_s
+        # Position-based profile playback
         max_idx = len(self._profile) - 1
 
+        # Find where the robot actually is along the trajectory
+        progress = self._find_progress(current)
+
+        # Only advance forward (never go back along the profile)
+        self._current_idx = max(self._current_idx, progress)
+        frac_idx = self._current_idx
+
         if frac_idx >= max_idx:
-            # Profile exhausted
+            # Reached last step → zero velocity
             self._current_vel = [0.0] * n
             return [0.0] * n
 
+        # Interpolate velocity from profile at current progress
         idx = int(frac_idx)
         alpha = frac_idx - idx
         a = self._profile[idx]
