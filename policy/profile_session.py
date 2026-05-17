@@ -52,8 +52,15 @@ class _VelocityProfile:
             return self._vel_limit[idx] if idx < len(self._vel_limit) else 2.0
         return self._vel_limit
 
-    def set_chunk(self, steps: list[list[float]], dt_ms: float) -> None:
-        """Precompute velocity profile for this chunk."""
+    def set_chunk(self, steps: list[list[float]], dt_ms: float, current: list[float] | None = None) -> None:
+        """Precompute velocity profile for this chunk.
+
+        Args:
+            steps: Waypoint positions.
+            dt_ms: Time spacing between steps.
+            current: Robot's current position. Used to find the starting
+                index in the chunk (skip steps the robot has already passed).
+        """
         if not steps:
             self._profile = None
             self._steps = None
@@ -70,9 +77,14 @@ class _VelocityProfile:
         # Multi-step: build velocity profile
         self._target = None
         self._steps = steps
-        self._current_idx = 0.0
         n_steps = len(steps)
         n = self._n
+
+        # Find where the robot currently is in this chunk
+        if current is not None:
+            self._current_idx = self._find_closest_global(current, steps, n)
+        else:
+            self._current_idx = 0.0
 
         # Compute time step, stretching if velocities exceed limits
         dt_s = self._compute_dt(steps, dt_ms / 1000.0, n_steps, n)
@@ -124,6 +136,35 @@ class _VelocityProfile:
             vel = [raw_vels[i][j] * envelope for j in range(n)]
             profile.append(vel)
         return profile
+
+    @staticmethod
+    def _find_closest_global(
+        current: list[float], steps: list[list[float]], n: int,
+    ) -> float:
+        """Find the step closest to current position (global search).
+
+        Used on chunk arrival to determine the starting index. Searches all
+        steps and returns a fractional index with sub-step interpolation.
+        """
+        best_idx = 0
+        best_dist = sum((current[j] - steps[0][j]) ** 2 for j in range(n))
+
+        for i in range(1, len(steps)):
+            dist = sum((current[j] - steps[i][j]) ** 2 for j in range(n))
+            if dist < best_dist:
+                best_dist = dist
+                best_idx = i
+
+        # Sub-step interpolation between best_idx and its neighbor
+        if best_idx < len(steps) - 1:
+            a, b = steps[best_idx], steps[best_idx + 1]
+            ab_sq = sum((b[j] - a[j]) ** 2 for j in range(n))
+            if ab_sq > _SEGMENT_LENGTH_SQ_MIN:
+                t = sum((current[j] - a[j]) * (b[j] - a[j]) for j in range(n)) / ab_sq
+                t = max(0.0, min(1.0, t))
+                return best_idx + t
+
+        return float(best_idx)
 
     def _find_progress(self, current: list[float]) -> float:
         """Find how far along the trajectory the robot actually is.
@@ -279,7 +320,9 @@ class ProfileSession(PidJoggingSession):
 
     def update_chunk(self, steps: list[list[float]], dt_ms: float, *, observation_time: float | None = None) -> None:
         """Update the velocity profile with new chunk steps."""
-        self._velocity_profile.set_chunk(steps, dt_ms)
+        # Pass current robot position so the profile can find the right starting index
+        current = self._get_current_for_pid()
+        self._velocity_profile.set_chunk(steps, dt_ms, current=current)
         # Also update the base class queue (for state tracking / exhaustion detection)
         super().update_chunk(steps, dt_ms, observation_time=observation_time)
 
