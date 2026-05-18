@@ -22,7 +22,6 @@ from nova import api
 from nova.types import Pose, RobotState
 from policy._sdk import get_api_gateway, get_cell, get_controller_id
 from policy.io import IOWriter
-from policy.jogging.action_queue import ActionQueue
 from policy.jogging.velocity_profile import VelocityProfile
 from policy.types import GuardState, GuardStopError, MotionError
 
@@ -61,7 +60,6 @@ class JoggingSession:
         self._io_values: dict[str, object] | None = None
         self._io_writer = IOWriter(motion_group)
         self._jog_tracker = JoggingStateTracker(motion_group.id)
-        self._queue = ActionQueue()
         self._profile = VelocityProfile(
             n_joints=6,  # updated on start when DOF is known
             vel_limit=config.velocity_limit,
@@ -132,17 +130,10 @@ class JoggingSession:
         self,
         steps: list[list[float]],
         dt_ms: float,
-        *,
-        observation_time: float | None = None,
-        current_position: list[float] | None = None,
-        final: bool = True,
+        **_kwargs: object,
     ) -> None:
         """Update with a new action chunk."""
-        current = current_position or self._get_current_position()
-        self._profile.set_chunk(
-            steps, dt_ms, current=current, observation_time=observation_time, final=final,
-        )
-        self._queue.update(steps, dt_ms, observation_time=observation_time, current_position=current)
+        self._profile.set_chunk(steps, dt_ms)
 
     async def write_ios(self, ios: dict[str, ValueType]) -> None:
         """Write IO values (delegated to IOWriter for deduplication)."""
@@ -196,7 +187,6 @@ class JoggingSession:
     async def stop(self) -> None:
         """Stop the jogging session gracefully."""
         self._running = False
-        self._queue = ActionQueue()
 
         for task in (self._jogging_task, self._state_task):
             if task is not None:

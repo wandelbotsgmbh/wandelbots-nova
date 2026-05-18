@@ -85,7 +85,6 @@ class PolicyExecutor:
         *,
         safety_guards: list[SafetyGuard] | None = None,
         timeout_s: float = 0,
-        inference_hz: float = 0,
         camera_max_age_s: float = 30.0,
         motion: MotionConfig | None = None,
     ) -> None:
@@ -96,10 +95,6 @@ class PolicyExecutor:
             policy: Async callable or PolicyClient that maps observations to actions.
             safety_guards: Optional list of guard functions checked each jogging tick.
             timeout_s: Maximum execution duration in seconds. 0 = no timeout.
-            inference_hz: Target inference rate. The executor will not query the
-                policy faster than this rate, but if inference itself is slower
-                (e.g. 3 Hz for GR00T), no additional delay is added. Set to 0
-                to run as fast as the policy allows.
             camera_max_age_s: Maximum allowed age of a camera frame before raising.
             motion: Motion configuration. Defaults to MotionConfig().
         """
@@ -117,7 +112,6 @@ class PolicyExecutor:
         self._motion: MotionConfig = motion or MotionConfig()
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
-        self._inference_hz = inference_hz
         self._camera_max_age_s = camera_max_age_s
 
         self._sessions: dict[str, JoggingSession] = {}
@@ -262,7 +256,6 @@ class PolicyExecutor:
         """
         step = 0
         start_time = time.monotonic()
-        min_interval = 1.0 / self._inference_hz if self._inference_hz > 0 else 0
         last_obs: dict[str, Any] | None = None
 
         self.status.phase = Phase.EXECUTING
@@ -273,12 +266,10 @@ class PolicyExecutor:
                 return _result("timeout", step, start_time, last_obs)
 
             # Observe
-            tick_start = time.monotonic()
             robot_states = self._observe()
             if not robot_states:
                 await asyncio.sleep(0.01)  # retry shortly
                 continue
-            observation_time = time.monotonic()
             images = self._read_cameras() if self._camera_sources else None
             self._last_obs = robot_states
             last_obs = robot_states
@@ -300,12 +291,7 @@ class PolicyExecutor:
             if self._rerun is not None:
                 self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
 
-            # In execute_and_wait mode, the robot is stopped during inference,
-            # so the observation is NOT stale — don't pass observation_time.
-            # In continuous mode, the robot keeps moving during inference,
-            # so observation_time enables the splice (discard stale steps).
-            chunk_obs_time = None if self._execute_and_wait else observation_time
-            self._send(self._trim_chunk(action), observation_time=chunk_obs_time)
+            self._send(self._trim_chunk(action))
             step += 1
             self.status.step = step
 
@@ -313,43 +299,22 @@ class PolicyExecutor:
             check_sessions(self._sessions)
             check_estop(self._estop_monitor)
 
-            if not self._execute_and_wait:
-                # Continuous mode: query inference at inference_hz.
-                # Each new chunk position-matches and replaces the old one.
-                if min_interval > 0:
-                    elapsed = time.monotonic() - tick_start
-                    remaining = min_interval - elapsed
-                    if remaining > 0:
-                        await asyncio.sleep(remaining)
-                else:
-                    await asyncio.sleep(0)
-            else:
-                # Receding horizon: wait until the current chunk is fully
-                # consumed before querying new inference.
-                await self._wait_for_chunk_done(start_time)
-                # Always yield to event loop to allow stop()/cancellation
-                await asyncio.sleep(0)
+            # Wait until the current chunk is fully executed
+            while not all(s.chunk_done for s in self._sessions.values()):
+                if self._stop_event.is_set():
+                    break
+                if self._timeout_s > 0 and (time.monotonic() - start_time) >= self._timeout_s:
+                    break
+                check_sessions(self._sessions)
+                check_estop(self._estop_monitor)
+                await asyncio.sleep(0.01)
+            await asyncio.sleep(0)
 
         return _result("stopped", step, start_time, last_obs)
 
     # -------------------------------------------------------------------------
     # Session operations (inlined from former PolicyRunner)
     # -------------------------------------------------------------------------
-
-    async def _wait_for_chunk_done(self, start_time: float) -> None:
-        """Wait until all sessions have consumed their current chunk.
-
-        Polls at ~100Hz, checking for timeout/stop/errors while waiting.
-        Used in execute_and_wait mode (receding horizon) to gate inference.
-        """
-        while not self._all_chunks_done():
-            if self._stop_event.is_set():
-                return
-            if self._timeout_s > 0 and (time.monotonic() - start_time) >= self._timeout_s:
-                return
-            check_sessions(self._sessions)
-            check_estop(self._estop_monitor)
-            await asyncio.sleep(0.01)
 
     def _observe(self) -> dict[str, Any]:
         """Get current state for all motion groups."""
@@ -391,7 +356,7 @@ class PolicyExecutor:
                     guard_name = getattr(guard, "__name__", repr(guard))
                     raise GuardStopError(group_id, guard_name)
 
-    def _send(self, chunk: ActionChunk, *, observation_time: float | None = None) -> None:
+    def _send(self, chunk: ActionChunk) -> None:
         """Send an action chunk to the motion groups."""
         for group_id, steps in chunk.joints.items():
             session = self._sessions.get(group_id)
@@ -410,24 +375,14 @@ class PolicyExecutor:
                     "ff_vel=%.4f rad/s, dt_ms=%.1f",
                     group_id, len(steps), span, per_step, ff_vel, chunk.dt_ms,
                 )
-            session.update_chunk(
-                steps=steps, dt_ms=chunk.dt_ms,
-                observation_time=observation_time,
-                current_position=self._get_session_position(session),
-                final=self._execute_and_wait,
-            )
+            session.update_chunk(steps=steps, dt_ms=chunk.dt_ms)
 
         for group_id, raw_tcp_steps in chunk.tcp.items():
             session = self._sessions.get(group_id)
             if session is None:
                 logger.warning("Unknown motion group in TCP chunk: %s", group_id)
                 continue
-            session.update_chunk(
-                steps=raw_tcp_steps, dt_ms=chunk.dt_ms,
-                observation_time=observation_time,
-                current_position=self._get_session_position(session),
-                final=self._execute_and_wait,
-            )
+            session.update_chunk(steps=raw_tcp_steps, dt_ms=chunk.dt_ms)
 
         if chunk.ios:
             for group_id, ios in chunk.ios.items():
@@ -457,7 +412,6 @@ class PolicyExecutor:
                 p_gain=config.p_gain,
                 state_rate_ms=config.state_rate_ms,
                 n_action_steps=config.n_action_steps,
-                execute_and_wait=config.execute_and_wait,
             )
 
         return JoggingSession(
@@ -472,23 +426,6 @@ class PolicyExecutor:
     def _n_action_steps(self) -> int:
         """Number of action steps to execute from each chunk (0 = all)."""
         return self._motion.n_action_steps
-
-    @property
-    def _execute_and_wait(self) -> bool:
-        """Whether to wait for chunk completion before next inference."""
-        return self._motion.execute_and_wait
-
-    def _all_chunks_done(self) -> bool:
-        """Check if all motion sessions have consumed their current chunk."""
-        return all(session.chunk_done for session in self._sessions.values())
-
-    @staticmethod
-    def _get_session_position(session: JoggingSession) -> list[float] | None:
-        """Get the robot's current joint positions from a session."""
-        state = session.current_state
-        if state is not None and hasattr(state, "joints"):
-            return list(state.joints)
-        return None
 
     def _trim_chunk(self, chunk: ActionChunk) -> ActionChunk:
         """Trim action chunk to n_action_steps if configured.

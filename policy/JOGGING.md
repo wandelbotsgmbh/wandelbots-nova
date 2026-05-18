@@ -19,17 +19,31 @@ flowchart LR
     NOVA -->|"state stream"| Session
 ```
 
-The NOVA Jogging API accepts **velocity commands** at the controller's cycle rate (~100-500 Hz).
-The `JoggingSession` computes these velocities from the position waypoints in each action chunk
-using a **trapezoidal velocity profile**.
+The NOVA Jogging API accepts **velocity commands** at the controller's cycle rate.
+The `JoggingSession` computes these velocities from position waypoints using a
+trapezoidal velocity profile.
+
+## Execution Loop
+
+```
+1. Observe robot state
+2. Query policy → get action chunk (N positions + dt_ms)
+3. Trim to n_action_steps
+4. Compute velocity profile for the trimmed chunk
+5. Stream velocities until profile is done
+6. Go to 1
+```
+
+The executor always waits for the current chunk to finish before querying
+new inference. This is the receding horizon approach.
 
 ## Velocity Profile
 
-For each multi-step action chunk, velocities are computed upfront:
+For each multi-step chunk, velocities are computed upfront:
 
 1. **Raw velocities** via central differences: `v[i] = (pos[i+1] - pos[i-1]) / (2 × dt)`
-2. **Velocity scaling** — if any joint exceeds `velocity_limit`, stretch `dt` proportionally (preserves trajectory shape)
-3. **Trapezoidal envelope** — `ramp_steps` controls acceleration/deceleration smoothing
+2. **Velocity scaling** — if any joint exceeds `velocity_limit`, stretch `dt` proportionally
+3. **Trapezoidal ramp** — `ramp_steps` smooths acceleration at start and deceleration at end
 
 ```
 velocity
@@ -38,84 +52,33 @@ velocity
     │    ╱              ╲
     │   ╱                ╲
     │──╱──────────────────╲──► step
-    │  ↑                  ↑
     │  ramp_up          ramp_down
 ```
 
-The last step's velocity is always zero — the robot decelerates to a stop.
+Last step velocity is always zero (robot decelerates to a stop).
 
 ## Time-Based Advancement with P-Correction
 
-The profile advances based on **elapsed time** since the chunk was received.
-At each jogging tick (~100 Hz):
+Each jogging tick (~100 Hz):
 
-1. Compute the fractional index: `frac_idx = elapsed / dt_s`
-2. Interpolate the **feedforward velocity** from the profile at `frac_idx`
-3. Interpolate the **expected position** from the steps at `frac_idx`
-4. Add a **P-correction** for tracking error: `v = feedforward + p_gain × (expected - actual)`
+1. Compute elapsed time since chunk started
+2. Interpolate **expected position** from the steps at that time
+3. Interpolate **feedforward velocity** from the profile at that time
+4. Compute: `velocity = feedforward + p_gain × (expected - actual)`
 5. Clamp to `velocity_limit`
 
-This approach:
-- Works correctly for all trajectory shapes (circles, lines, arbitrary curves)
-- Maintains timing fidelity — the robot follows the trajectory at the intended speed
-- Corrects for tracking drift without affecting the trajectory shape
-
-## Trajectory Splice on Chunk Arrival
-
-When a new action chunk arrives, the same algorithm applies regardless of use case:
-
-1. **Discard stale steps** — based on `observation_time`, compute how many steps are "in the past":
-   `past_steps = (now - observation_time) / dt_s`
-2. **Prepend current position** (only if steps were discarded) — creates a smooth transition from where the robot actually IS to where the trajectory continues
-3. **Compute profile** on the resulting trajectory
-4. **Blend initial velocities** — first 3 profile steps blend from the robot's current velocity to the new profile (smooth acceleration)
-
-This unifies both use cases:
-
-| Use case | observation_time | past_steps | Prepend? | Effect |
-|----------|-----------------|------------|----------|--------|
-| Jogger (continuous) | now (default) | 0 | No | Chunk used as-is, time-based execution |
-| Policy (slow inference) | 300ms ago | ~4 | Yes | Skips stale prefix, starts from actual position |
-
-No temporal ensembling between chunks — the fresh prediction from a new observation is always better than the tail of a stale prediction.
-
-## Receding Horizon (`execute_and_wait=True`)
-
-With `n_action_steps=8` on a 16-step chunk:
-
-```
-Policy predicts:  [0 1 2 3 4 5 6 7 | 8 9 10 11 12 13 14 15]
-                  ├── executed ──┤   ├── discarded (uncertain) ──┤
-```
-
-The executor:
-1. Trims the chunk to 8 steps
-2. Sends to the session
-3. Waits until the profile time expires (robot has had time to execute all steps)
-4. Queries fresh inference with new observation
-5. Repeat
-
-This is the standard approach for slow inference (GR00T at ~2Hz, LeRobot).
-
-## Continuous Mode (`execute_and_wait=False`)
-
-Inference runs at `inference_hz`. Each new chunk replaces the old one immediately.
-The profile resets to step 0 on each new chunk — the P-correction ensures
-the robot smoothly transitions from where it is to where the new chunk starts.
-
-Use for fast policies (>10 Hz) where the robot should always be tracking
-the latest prediction.
+When elapsed time exceeds the profile duration, velocity goes to zero
+and the profile reports `done`.
 
 ## Single-Step Targets (Teleop)
 
-When a chunk has 1 step or `dt_ms=0`, the session uses a P-controller:
+When a chunk has 1 step or `dt_ms=0`, a simple P-controller is used:
 
 ```
 velocity = p_gain × (target - current)
 ```
 
-Clamped to `velocity_limit`. Used by the `jog_joints()` / `jog_tcp()` API for
-real-time teleoperation without action chunks.
+Clamped to `velocity_limit`. Used by the `jog_joints()` / `jog_tcp()` API.
 
 ## Configuration
 
@@ -123,11 +86,10 @@ real-time teleoperation without action chunks.
 from policy import MotionConfig
 
 config = MotionConfig(
+    n_action_steps=8,        # receding horizon (0 = execute all)
     velocity_limit=2.0,      # rad/s (or per-axis list)
     ramp_steps=3,            # trapezoidal ramp smoothing
-    p_gain=3.0,              # P-gain for tracking correction + single-step targets
-    n_action_steps=8,        # receding horizon (0 = execute all)
-    execute_and_wait=True,   # wait for chunk done before next inference
+    p_gain=3.0,              # P-correction for tracking
     state_rate_ms=10,        # state stream update rate
 )
 ```
@@ -142,7 +104,7 @@ The session monitors the NOVA jogging state stream for blocking conditions:
 | `PAUSED_NEAR_COLLISION` | Self-collision detected |
 | `PAUSED_NEAR_SINGULARITY` | Kinematic singularity |
 
-After 10 consecutive ticks (~100ms) in a blocking state, a `MotionError` is raised.
+After 10 consecutive ticks in a blocking state, a `MotionError` is raised.
 
 ## Jogging Modes
 
@@ -151,5 +113,5 @@ After 10 consecutive ticks (~100ms) in a blocking state, a `MotionError` is rais
 | `"joint"` | `JointVelocityRequest` | Joint-space policies (default) |
 | `"cartesian"` | `TcpVelocityRequest` | Cartesian-space policies (TCP actions) |
 
-The mode is selected automatically by the executor based on whether the schema
-contains `Observation.tcp(..., action=True)` entries.
+The mode is selected automatically based on whether the schema contains
+`Observation.tcp(..., action=True)` entries.

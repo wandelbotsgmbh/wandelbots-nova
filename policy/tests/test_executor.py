@@ -58,7 +58,7 @@ async def test_timeout_returns_result():
     async def policy(obs):
         return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
 
-    executor = PolicyExecutor(s, policy, motion=MotionConfig(), timeout_s=0.2, inference_hz=100)
+    executor = PolicyExecutor(s, policy, motion=MotionConfig(), timeout_s=0.2)
 
     with patch("policy.executor.JoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
@@ -78,7 +78,7 @@ async def test_stop_returns_stopped():
     async def policy(obs):
         return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
 
-    executor = PolicyExecutor(s, policy, motion=MotionConfig(), timeout_s=0, inference_hz=100)
+    executor = PolicyExecutor(s, policy, motion=MotionConfig(), timeout_s=0)
 
     async def stop_after_delay():
         await asyncio.sleep(0.1)
@@ -105,7 +105,7 @@ async def test_bare_function_accepted_as_policy():
     async def my_policy(obs):
         return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
 
-    executor = PolicyExecutor(s, my_policy, motion=MotionConfig(), timeout_s=0.1, inference_hz=50)
+    executor = PolicyExecutor(s, my_policy, motion=MotionConfig(), timeout_s=0.1)
 
     with patch("policy.executor.JoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
@@ -126,7 +126,7 @@ async def test_last_observation_populated():
     async def policy(obs):
         return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
 
-    executor = PolicyExecutor(s, policy, motion=MotionConfig(), timeout_s=0.1, inference_hz=50)
+    executor = PolicyExecutor(s, policy, motion=MotionConfig(), timeout_s=0.1)
 
     with patch("policy.executor.JoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:

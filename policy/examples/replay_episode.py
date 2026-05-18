@@ -114,7 +114,6 @@ async def replay_episode(ctx: nova.ProgramContext):
         schema,
         replay,
         timeout_s=len(actions) / fps + 5.0,
-        inference_hz=fps,
     )
     print(f"Replaying {len(actions)} steps...")
     result = await executor.run()

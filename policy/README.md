@@ -188,8 +188,7 @@ Action chunks are executed via the NOVA Jogging API using a **trapezoidal veloci
 
 - Velocities computed from position differences between chunk steps
 - Trapezoidal ramp envelope (smooth acceleration/deceleration)
-- Time-based advancement with P-correction to track the intended trajectory
-- ROS2-style desired-state tracking for smooth chunk transitions
+- Time-based advancement with P-correction for tracking
 
 ```python
 from policy import MotionConfig, PolicyExecutor
@@ -198,23 +197,12 @@ executor = PolicyExecutor(schema, policy, motion=MotionConfig(
     n_action_steps=8,       # execute only first 8 of 16 predicted steps
     velocity_limit=2.0,     # rad/s (scalar or per-axis list)
     ramp_steps=3,           # trapezoidal ramp smoothing
-    execute_and_wait=True,  # wait for chunk to finish before next inference
 ))
 ```
 
-### Receding Horizon (`execute_and_wait=True`, default)
-
-Executes `n_action_steps` from the action chunk, waits until the robot
-finishes those steps, then queries new inference with a fresh observation.
-Later steps (higher prediction uncertainty) are discarded.
-This is the standard approach used by GR00T and LeRobot.
-
-### Continuous (`execute_and_wait=False`)
-
-Queries inference at `inference_hz` without waiting. Each new chunk
-replaces the previous one immediately. The P-correction ensures smooth
-transitions between chunks. Use for fast policies (>10 Hz) where
-overlapping predictions should feed through continuously.
+The executor operates as a **receding horizon controller**: execute `n_action_steps`
+from the action chunk, wait until the robot finishes, then query fresh inference
+with a new observation. Later steps (higher prediction uncertainty) are discarded.
 
 See [`JOGGING.md`](JOGGING.md) for the velocity profile algorithm details.
 

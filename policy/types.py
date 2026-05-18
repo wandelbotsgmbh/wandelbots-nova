@@ -59,7 +59,10 @@ class MotionConfig:
 
     Uses a trapezoidal velocity profile: computes velocities from position
     differences between chunk steps, applies a ramp envelope, and advances
-    based on the robot's actual position. Guarantees zero overshoot.
+    by elapsed time with P-correction for tracking.
+
+    This is a temporary client-side implementation. It will be replaced by
+    NOVA's native waypoint jogging API once available.
     """
 
     n_action_steps: int = 0
@@ -68,27 +71,14 @@ class MotionConfig:
     are sent to the controller — later steps have higher prediction
     uncertainty and are discarded (receding horizon)."""
 
-    execute_and_wait: bool = True
-    """Whether to wait for the current chunk to finish before querying
-    new inference (receding horizon).
-
-    When True (default): execute n_action_steps, wait until done, then
-    query fresh inference. Standard approach for GR00T/LeRobot.
-
-    When False: query inference continuously at inference_hz. Each new
-    chunk replaces the old one, starting from the step closest to the
-    robot's current position."""
-
     velocity_limit: float | list[float] = 2.0
     """Maximum joint velocity in rad/s. Scalar or per-axis list."""
 
     ramp_steps: int = 3
-    """Number of steps for the trapezoidal ramp-up/ramp-down envelope.
-    Higher = smoother starts/stops, lower = more responsive."""
+    """Number of steps for the trapezoidal ramp-up/ramp-down envelope."""
 
     p_gain: float = 3.0
-    """P-gain for single-position targets (teleop mode).
-    Only used when chunk has 1 step (dt_ms=0)."""
+    """P-gain for tracking correction and single-step targets."""
 
     state_rate_ms: int = 10
     """State stream update rate."""
