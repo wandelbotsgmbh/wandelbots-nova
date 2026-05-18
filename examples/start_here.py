@@ -53,10 +53,23 @@ async def start(
     controller = await cell.controller("kuka-kr16-r2010")
     cycle = ctx.cycle(extra={"app": "visual-studio-code"})
 
-    normal = MotionSettings(tcp_velocity_limit=100)
-    fast = MotionSettings(tcp_velocity_limit=250)
-
     motion_group = controller[0]
+
+    # Retrieve the robot's maximum velocity and acceleration limits from its description
+    description = await motion_group.get_description()
+    max_tcp_velocity = description.operation_limits.auto_limits.tcp.velocity
+    max_joint_accelerations = tuple(
+        j.acceleration for j in description.operation_limits.auto_limits.joints
+    )
+
+    # Define different motion settings based on the robot's limits
+    aggressiveFast = MotionSettings(tcp_velocity_limit=max_tcp_velocity, joint_acceleration_limits=max_joint_accelerations)
+    softFast = MotionSettings(tcp_velocity_limit=max_tcp_velocity, joint_acceleration_limits=tuple(a * 0.7 for a in max_joint_accelerations))
+    softSlow = MotionSettings(tcp_velocity_limit=250, joint_acceleration_limits=tuple(a * 0.7 for a in max_joint_accelerations))
+
+    # Set soft accelerations and slow velocity as used motion settings
+    motion_settings = softSlow
+
     home_joints = await motion_group.joints()
     tcp_names = await motion_group.tcp_names()
     tcp = tcp_names[0]
@@ -67,22 +80,22 @@ async def start(
 
     # Actions define the sequence of movements and other actions to be executed by the robot
     actions = [
-        joint_ptp(home_joints, settings=normal),  # Move to home position slowly
-        cartesian_ptp(target_pose, settings=fast),  # Move to target pose
+        joint_ptp(home_joints, settings=motion_settings),  # Move to home position slowly
+        cartesian_ptp(target_pose, settings=motion_settings),  # Move to target pose
         cartesian_ptp(
-            target_pose @ [200, 0, 0, 0, 0, 0], settings=fast
+            target_pose @ [200, 0, 0, 0, 0, 0], settings=motion_settings
         ),  # Move 100mm in target pose's local x-axis
         linear(
-            target_pose @ (200, 200, 0, 0, 0, 0), settings=fast
+            target_pose @ (200, 200, 0, 0, 0, 0), settings=motion_settings
         ),  # Move 100mm in local x and y axes
-        joint_ptp(home_joints, settings=normal),
-        cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0)), settings=fast),
+        joint_ptp(home_joints, settings=motion_settings),
+        cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0)), settings=motion_settings),
         circular(
             target_pose @ Pose((0, 200, 0, 0, 0, 0)),
             intermediate=target_pose @ Pose((0, 200, 0, 0, 0, 0)),
-            settings=fast,
+            settings=motion_settings,
         ),
-        joint_ptp(home_joints, settings=normal),
+        joint_ptp(home_joints, settings=motion_settings),
     ]
 
     # Start the cycle
