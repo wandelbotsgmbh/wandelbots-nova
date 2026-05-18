@@ -87,6 +87,11 @@ class JoggingSession:
         self._failure_reason: str = ""
         self._failure_exception: BaseException | None = None
 
+        # Settle delay: after profile reports done, wait this long for
+        # the robot to physically decelerate before reporting chunk_done.
+        self._settle_s: float = 1.0
+        self._chunk_done_time: float = 0.0
+
     def set_io_values_ref(self, values: dict[str, object]) -> None:
         """Set the shared IO values dict (from IOStreamCache)."""
         self._io_values = values
@@ -115,8 +120,14 @@ class JoggingSession:
 
     @property
     def chunk_done(self) -> bool:
-        """True when the velocity profile has been fully traversed."""
-        return self._profile.done
+        """True when the velocity profile has been fully traversed and settled."""
+        if not self._profile.done:
+            return False
+        # Add settle delay: profile commands zero velocity but robot
+        # still decelerates physically. Wait 200ms after profile ends.
+        if self._chunk_done_time == 0.0:
+            self._chunk_done_time = time.monotonic()
+        return (time.monotonic() - self._chunk_done_time) >= self._settle_s
 
     @property
     def failure_reason(self) -> str:
@@ -134,6 +145,7 @@ class JoggingSession:
     ) -> None:
         """Update with a new action chunk."""
         self._profile.set_chunk(steps, dt_ms)
+        self._chunk_done_time = 0.0  # reset settle timer
 
     async def write_ios(self, ios: dict[str, ValueType]) -> None:
         """Write IO values (delegated to IOWriter for deduplication)."""

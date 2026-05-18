@@ -15,6 +15,7 @@ from policy._sdk import get_controller_id
 from policy.estop import EstopMonitor, check_estop, check_sessions
 from policy.io import IOStreamCache
 from policy.jogging.session import JoggingSession
+from policy.jogging.waypoint_session import WaypointJoggingSession, is_waypoint_jogging_available
 from policy.types import (
     ActionChunk,
     EmergencyStopError,
@@ -22,6 +23,7 @@ from policy.types import (
     GuardStopError,
     MotionConfig,
     MotionError,
+    WaypointConfig,
 )
 
 if TYPE_CHECKING:
@@ -86,7 +88,7 @@ class PolicyExecutor:
         safety_guards: list[SafetyGuard] | None = None,
         timeout_s: float = 0,
         camera_max_age_s: float = 30.0,
-        motion: MotionConfig | None = None,
+        motion: MotionConfig | WaypointConfig | None = None,
     ) -> None:
         """Create a policy executor.
 
@@ -96,7 +98,9 @@ class PolicyExecutor:
             safety_guards: Optional list of guard functions checked each jogging tick.
             timeout_s: Maximum execution duration in seconds. 0 = no timeout.
             camera_max_age_s: Maximum allowed age of a camera frame before raising.
-            motion: Motion configuration. Defaults to MotionConfig().
+            motion: Motion configuration. MotionConfig (client-side velocity profile)
+                or WaypointConfig (server-side waypoint jogging, experimental).
+                Defaults to WaypointConfig() if available, else MotionConfig().
         """
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
@@ -109,7 +113,7 @@ class PolicyExecutor:
         else:
             self._policy = policy  # type: ignore[assignment]
 
-        self._motion: MotionConfig = motion or MotionConfig()
+        self._motion: MotionConfig | WaypointConfig = motion or self._default_motion_config()
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
         self._camera_max_age_s = camera_max_age_s
@@ -274,6 +278,9 @@ class PolicyExecutor:
             self._last_obs = robot_states
             last_obs = robot_states
 
+            # Debug: log observation timestamp and joints
+            obs_time = time.monotonic()
+
             # Rerun: log observation
             if self._rerun is not None:
                 self._rerun.log_observation(robot_states, step)
@@ -285,6 +292,11 @@ class PolicyExecutor:
                 robot_states, self._schema, images, self._all_io_values or None,
             )
             action = self._apply_relative_mode(action, robot_states)
+
+            # Debug: log inference result timing
+            send_time = time.monotonic()
+            inference_duration = send_time - obs_time
+            self._log_inference(step, obs_time - start_time, send_time - start_time, inference_duration, robot_states, action)
             self._check_guards_pre_send(action, robot_states)
 
             # Rerun: log full action chunk (includes discarded tail for visualization)
@@ -299,7 +311,7 @@ class PolicyExecutor:
             check_sessions(self._sessions)
             check_estop(self._estop_monitor)
 
-            # Wait until the current chunk is fully executed
+            # Wait until the current chunk is fully executed BEFORE next observation
             while not all(s.chunk_done for s in self._sessions.values()):
                 if self._stop_event.is_set():
                     break
@@ -308,7 +320,6 @@ class PolicyExecutor:
                 check_sessions(self._sessions)
                 check_estop(self._estop_monitor)
                 await asyncio.sleep(0.01)
-            await asyncio.sleep(0)
 
         return _result("stopped", step, start_time, last_obs)
 
@@ -399,11 +410,20 @@ class PolicyExecutor:
         mode = "cartesian" if mg.id in tcp_groups else "joint"
         tcp = tcp_groups.get(mg.id) or self._schema.tcp if mode == "cartesian" else self._schema.tcp
 
-        # For TCP mode, build per-axis velocity limits [mm/s, mm/s, mm/s, rad/s, rad/s, rad/s]
+        # WaypointConfig → use native waypoint jogging
+        if isinstance(self._motion, WaypointConfig):
+            _compat_config = MotionConfig(state_rate_ms=self._motion.state_rate_ms)
+            return WaypointJoggingSession(  # type: ignore[return-value]
+                motion_group=mg,
+                config=_compat_config,
+                tcp=tcp,
+                safety_guards=self._safety_guards,
+                mode=mode,
+            )
+
+        # MotionConfig → client-side velocity profile
         config = self._motion
         if mode == "cartesian" and not isinstance(config.velocity_limit, list):
-            from policy.types import MotionConfig  # noqa: PLC0415
-
             tcp_vel = 50.0  # mm/s
             orient_vel = 1.5  # rad/s
             config = MotionConfig(
@@ -426,6 +446,17 @@ class PolicyExecutor:
     def _n_action_steps(self) -> int:
         """Number of action steps to execute from each chunk (0 = all)."""
         return self._motion.n_action_steps
+
+    @staticmethod
+    def _default_motion_config() -> MotionConfig | WaypointConfig:
+        """Pick the best available motion mode.
+
+        Uses WaypointConfig (native server-side) if the NOVA SDK supports it,
+        otherwise falls back to MotionConfig (client-side velocity profile).
+        """
+        if is_waypoint_jogging_available():
+            return WaypointConfig()
+        return MotionConfig()
 
     def _trim_chunk(self, chunk: ActionChunk) -> ActionChunk:
         """Trim action chunk to n_action_steps if configured.
@@ -585,6 +616,31 @@ class PolicyExecutor:
             self._rerun.log_completion(
                 self.result.reason, self.result.steps, self.result.duration_s,
             )
+
+    def _log_inference(
+        self, step: int, obs_t: float, send_t: float, duration: float,
+        states: dict[str, Any], action: ActionChunk,
+    ) -> None:
+        """Write inference debug info to /tmp/executor_debug.jsonl."""
+        import json as _json  # noqa: PLC0415
+        import pathlib  # noqa: PLC0415
+
+        log_path = pathlib.Path("/tmp/executor_debug.jsonl")  # noqa: S108
+        entry: dict[str, Any] = {
+            "step": step,
+            "obs_t_s": round(obs_t, 4),
+            "send_t_s": round(send_t, 4),
+            "inference_s": round(duration, 4),
+        }
+        for mg_id, state in states.items():
+            if hasattr(state, "joints"):
+                entry[f"obs_{mg_id}"] = [round(j, 5) for j in list(state.joints)[:3]]
+        for mg_id, steps in action.joints.items():
+            entry[f"act_{mg_id}_first"] = [round(v, 5) for v in steps[0][:3]]
+            entry[f"act_{mg_id}_last"] = [round(v, 5) for v in steps[-1][:3]]
+            entry[f"act_{mg_id}_n"] = len(steps)
+        with log_path.open("a") as f:
+            f.write(_json.dumps(entry) + "\n")
 
 
 def _result(

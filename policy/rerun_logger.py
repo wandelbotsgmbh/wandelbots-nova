@@ -34,10 +34,6 @@ _ACTION_TCP_COLOR = (50, 200, 255)  # cyan — TCP action targets
 _CHUNK_COLOR_START = (255, 80, 20)
 _CHUNK_COLOR_END = (255, 240, 60)
 
-# Direction arrow at each waypoint
-_DIRECTION_ARROW_LENGTH = 15.0  # mm
-_DIRECTION_ARROW_COLOR = (255, 160, 40)  # orange
-_DIRECTION_ARROW_WIDTH = 1.5
 
 # Screen-space line widths (UI points, zoom-independent)
 _TRAIL_WIDTH_UI = 2.0
@@ -315,10 +311,6 @@ class PolicyRerunLogger:
                 discarded_steps, dh_robot, executed_positions,
             )
 
-            # Log direction arrows showing travel direction at each waypoint
-            if len(executed_positions) >= _MIN_LINE_STEPS:
-                self._log_direction_arrows(mg_id, executed_positions)
-
     def _log_tcp_chunk(self, chunk: ActionChunk, step: int, n_action_steps: int = 0) -> None:
         import rerun as rr  # noqa: PLC0415
 
@@ -420,52 +412,6 @@ class PolicyRerunLogger:
                 colors=[_CHUNK_TAIL_COLOR],
                 radii=rr.components.Radius.ui_points(_CHUNK_TAIL_WIDTH_UI),
             ))
-
-    @staticmethod
-    def _log_direction_arrows(mg_id: str, positions: list[list[float]]) -> None:
-        """Log arrows showing travel direction at each waypoint.
-
-        Uses central differences for interior points and forward/backward
-        differences at the endpoints. Arrow length is fixed for visibility.
-        """
-        import math  # noqa: PLC0415
-
-        import rerun as rr  # noqa: PLC0415
-
-        if len(positions) < _MIN_LINE_STEPS:
-            return
-
-        origins = []
-        vectors = []
-        n = len(positions)
-
-        for i in range(n):
-            # Compute tangent direction via finite differences
-            if i == 0:
-                dx = [positions[1][j] - positions[0][j] for j in range(3)]
-            elif i == n - 1:
-                dx = [positions[n - 1][j] - positions[n - 2][j] for j in range(3)]
-            else:
-                dx = [(positions[i + 1][j] - positions[i - 1][j]) / 2.0 for j in range(3)]
-
-            # Normalize and scale to fixed arrow length
-            magnitude = math.sqrt(sum(d * d for d in dx))
-            if magnitude < 1e-6:  # noqa: PLR2004
-                continue
-            scale = _DIRECTION_ARROW_LENGTH / magnitude
-            origins.append(positions[i])
-            vectors.append([d * scale for d in dx])
-
-        if origins:
-            rr.log(
-                f"policy/{mg_id}/chunk_direction",
-                rr.Arrows3D(
-                    origins=origins,
-                    vectors=vectors,
-                    colors=[_DIRECTION_ARROW_COLOR],
-                    radii=rr.components.Radius.ui_points(_DIRECTION_ARROW_WIDTH),
-                ),
-            )
 
     def log_images(self, images: dict[str, Any]) -> None:
         """Log camera images to Rerun."""

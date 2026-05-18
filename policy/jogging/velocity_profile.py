@@ -68,12 +68,15 @@ class VelocityProfile:
             self._done = True
             return
 
-        # Single-step: P-controller mode
+        # Single-step: P-controller mode (immediate target, no trajectory)
+        # Done after one control cycle so the executor paces inference
         if len(steps) == 1 or dt_ms <= 0:
             self._profile = None
             self._steps = None
             self._target = steps[-1]
             self._done = False
+            self._start_time = time.monotonic()
+            self._dt_s = 0.033  # ~30Hz inference rate for single-step
             return
 
         # Multi-step: compute trapezoidal profile
@@ -99,6 +102,8 @@ class VelocityProfile:
 
         # Single-position mode: P-controller
         if self._target is not None:
+            if now - self._start_time >= self._dt_s:
+                self._done = True
             vel = []
             for j in range(n):
                 error = self._target[j] - current[j]

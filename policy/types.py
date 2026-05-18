@@ -54,15 +54,46 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
 
 
 @dataclass(slots=True)
+class WaypointConfig:
+    """Configuration for NOVA's native waypoint jogging (experimental).
+
+    Sends timestamped joint waypoints directly to the server, which handles
+    velocity profiling and interpolation internally. This is the preferred
+    mode when the NOVA instance supports it.
+
+    New chunks override previous ones, so the server always tracks the
+    freshest prediction.
+
+    .. note:: Requires NOVA >= 26.3 (development snapshot). Falls back to
+       MotionConfig on older instances. Check availability with
+       ``policy.jogging.waypoint_session.is_waypoint_jogging_available()``.
+
+    .. todo:: Remove the local ``JoggingKindUnknown`` monkey-patch applied to
+       ``wandelbots_api_client`` once the stable SDK release includes the
+       waypoint jogging state in its ``JoggingDetails.state`` discriminator.
+       Tracking: service-manager MR !2345.
+       Install command to revert:
+       ``uv pip install wandelbots-api-client==<released_version> --no-deps --reinstall``
+    """
+
+    n_action_steps: int = 0
+    """Number of steps from each action chunk to send.
+    0 = send all steps (default). The server handles timing internally."""
+
+    state_rate_ms: int = 10
+    """State stream update rate."""
+
+
+@dataclass(slots=True)
 class MotionConfig:
-    """Configuration for robot motion execution via NOVA Jogging API.
+    """Configuration for client-side velocity profile motion.
 
     Uses a trapezoidal velocity profile: computes velocities from position
     differences between chunk steps, applies a ramp envelope, and advances
     by elapsed time with P-correction for tracking.
 
-    This is a temporary client-side implementation. It will be replaced by
-    NOVA's native waypoint jogging API once available.
+    Use WaypointConfig instead when the NOVA instance supports native
+    waypoint jogging (experimental, >= 26.3).
     """
 
     n_action_steps: int = 0
