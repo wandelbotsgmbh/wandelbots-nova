@@ -82,45 +82,6 @@ Any async callable that maps `dict → dict` works — call a remote GPU server,
 ▶ [`execute_custom_policy_on_dual_arm.py`](examples/execute_custom_policy_on_dual_arm.py) — two UR5e robots with cameras, IOs, and safety guards\
 ▶ [`execute_gr00t_dual_arm.py`](examples/execute_gr00t_dual_arm.py) — dual arm with GR00T ZMQ + 4 cameras
 
-## Motion Control
-
-> **Note:** The current client-side velocity profile is a temporary implementation.
-> It will be replaced by NOVA's native waypoint jogging API once available, which
-> moves interpolation and servo control server-side for better tracking.
-
-Action chunks are executed via the NOVA Jogging API using a **trapezoidal velocity profile**:
-- Velocities computed from position differences between chunk steps
-- Trapezoidal ramp envelope (smooth acceleration/deceleration)
-- Time-based advancement with P-correction to track the intended trajectory
-- ROS2-style desired-state tracking for smooth chunk transitions
-
-```python
-from policy import MotionConfig, PolicyExecutor
-
-executor = PolicyExecutor(schema, policy, motion=MotionConfig(
-    n_action_steps=8,       # execute only first 8 of 16 predicted steps
-    velocity_limit=2.0,     # rad/s (scalar or per-axis list)
-    ramp_steps=3,           # trapezoidal ramp smoothing
-    execute_and_wait=True,  # wait for chunk to finish before next inference
-))
-```
-
-### Receding Horizon (`execute_and_wait=True`, default)
-
-Executes `n_action_steps` from the action chunk, waits until the robot
-finishes those steps, then queries new inference with a fresh observation.
-Later steps (higher prediction uncertainty) are discarded.
-This is the standard approach used by GR00T and LeRobot.
-
-### Continuous (`execute_and_wait=False`)
-
-Queries inference at `inference_hz` without waiting. Each new chunk
-replaces the previous one immediately. The P-correction ensures smooth
-transitions between chunks. Use for fast policies (>10 Hz) where
-overlapping predictions should feed through continuously.
-
-See [`JOGGING.md`](JOGGING.md) for the velocity profile algorithm details.
-
 ## PolicySchema
 
 Decouples the policy from hardware topology. The policy sees a flat dictionary of named features — it never knows about motion groups, controllers, or hardware IO keys.
@@ -153,7 +114,7 @@ The policy returns the same keys with target values. Joints go through velocity-
 
 ### Cameras
 
-Cameras are provided by a WebRTC streaming server that NOVA manages — for example, the [Isaac Sim WebRTC Streamer](https://github.com/wandelbotsgmbh/wandelbots-isaacsim-webrtc-streamer) or a RealSense camera service running on the NOVA instance.  The policy client never starts or stops hardware streams — NOVA owns the camera lifecycle.  The client only opens a WebRTC session to receive frames.  If `width`, `height`, or `fps` are specified, they are validated against the stream NOVA provides and an exception is raised on mismatch.
+Cameras are provided by a WebRTC streaming server that NOVA manages — for example, the [Isaac Sim WebRTC Streamer](https://github.com/wandelbotsgmbh/wandelbots-isaacsim-webrtc-streamer) or a RealSense camera service running on the NOVA instance. The policy client never starts or stops hardware streams — NOVA owns the camera lifecycle. The client only opens a WebRTC session to receive frames. If `width`, `height`, or `fps` are specified, they are validated against the stream NOVA provides and an exception is raised on mismatch.
 
 ```python
 from policy import Observation, WebRTCCameras
@@ -217,7 +178,47 @@ Guards must be fast (no network calls). Use `Observation.computed()` for async d
 | Self-collision / joint limit | Raises `MotionError`                        |
 | Connection lost              | Raises `RuntimeError`                       |
 
-## Jogging (without a policy)
+## Motion Control
+
+> **Note:** The current client-side velocity profile is a temporary implementation.
+> It will be replaced by NOVA's native waypoint jogging API once available, which
+> moves interpolation and servo control server-side for better tracking.
+
+Action chunks are executed via the NOVA Jogging API using a **trapezoidal velocity profile**:
+
+- Velocities computed from position differences between chunk steps
+- Trapezoidal ramp envelope (smooth acceleration/deceleration)
+- Time-based advancement with P-correction to track the intended trajectory
+- ROS2-style desired-state tracking for smooth chunk transitions
+
+```python
+from policy import MotionConfig, PolicyExecutor
+
+executor = PolicyExecutor(schema, policy, motion=MotionConfig(
+    n_action_steps=8,       # execute only first 8 of 16 predicted steps
+    velocity_limit=2.0,     # rad/s (scalar or per-axis list)
+    ramp_steps=3,           # trapezoidal ramp smoothing
+    execute_and_wait=True,  # wait for chunk to finish before next inference
+))
+```
+
+### Receding Horizon (`execute_and_wait=True`, default)
+
+Executes `n_action_steps` from the action chunk, waits until the robot
+finishes those steps, then queries new inference with a fresh observation.
+Later steps (higher prediction uncertainty) are discarded.
+This is the standard approach used by GR00T and LeRobot.
+
+### Continuous (`execute_and_wait=False`)
+
+Queries inference at `inference_hz` without waiting. Each new chunk
+replaces the previous one immediately. The P-correction ensures smooth
+transitions between chunks. Use for fast policies (>10 Hz) where
+overlapping predictions should feed through continuously.
+
+See [`JOGGING.md`](JOGGING.md) for the velocity profile algorithm details.
+
+#### Jogging (without a policy)
 
 The jogging layer can be used standalone — no policy, no schema, no cameras:
 
@@ -278,10 +279,10 @@ schema = PolicySchema(
 
 Joint and TCP observations support `mode="relative"`. The mode controls how the policy's action output is interpreted:
 
-| Mode | Policy returns | Executor sends to jogging |
-|------|----------------|----------------------|
-| `"absolute"` (default) | target positions | as-is |
-| `"relative"` | offsets from current | `current + offset` |
+| Mode                   | Policy returns       | Executor sends to jogging |
+| ---------------------- | -------------------- | ------------------------- |
+| `"absolute"` (default) | target positions     | as-is                     |
+| `"relative"`           | offsets from current | `current + offset`        |
 
 ```python
 Observation.joint_positions("arm", source=mg, mode="relative")
