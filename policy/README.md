@@ -2,7 +2,7 @@
 
 > **⚠️ EXPERIMENTAL** — This package is under active development and not ready for production use. Expect breaking changes between releases.
 
-PID-controlled jogging for executing learned policies (imitation learning, reinforcement learning) on industrial robots via [Wandelbots NOVA](https://wandelbots.com).
+Velocity-controlled jogging for executing learned policies (imitation learning, reinforcement learning) on industrial robots via [Wandelbots NOVA](https://wandelbots.com).
 
 Converts joint position targets from a policy into joint velocity commands streamed through the NOVA Jogging API.
 
@@ -18,10 +18,9 @@ flowchart LR
 
     subgraph IPC["IPC (at the robot)"]
         Executor["PolicyExecutor"]
-        PID["PID velocity control"]
+        Jogging["NOVA Jogging API"]
         Safety["Safety guards"]
         Cameras["WebRTC cameras"]
-        Jogging["NOVA Jogging API"]
         Robot["Robot"]
     end
 
@@ -31,7 +30,7 @@ flowchart LR
 
     Policy <-->|"ZMQ / HTTP / custom"| Executor
     WebRTC <-->|"WebRTC"| Cameras
-    Executor --> PID --> Jogging --> Robot
+    Executor --> Jogging --> Robot
     Executor --> Safety
     Cameras --> Executor
 ```
@@ -83,22 +82,44 @@ Any async callable that maps `dict → dict` works — call a remote GPU server,
 ▶ [`execute_custom_policy_on_dual_arm.py`](examples/execute_custom_policy_on_dual_arm.py) — two UR5e robots with cameras, IOs, and safety guards\
 ▶ [`execute_gr00t_dual_arm.py`](examples/execute_gr00t_dual_arm.py) — dual arm with GR00T ZMQ + 4 cameras
 
-## Motion Modes
+## Motion Control
 
-The `motion` parameter selects how action chunks are converted to robot motion. All modes use the NOVA Jogging API internally. See [`JOGGING.md`](JOGGING.md) for details on each approach.
+> **Note:** The current client-side velocity profile is a temporary implementation.
+> It will be replaced by NOVA's native waypoint jogging API once available, which
+> moves interpolation and servo control server-side for better tracking.
+
+Action chunks are executed via the NOVA Jogging API using a **trapezoidal velocity profile**:
+- Velocities computed from position differences between chunk steps
+- Trapezoidal ramp envelope (smooth acceleration/deceleration)
+- Time-based advancement with P-correction to track the intended trajectory
+- ROS2-style desired-state tracking for smooth chunk transitions
 
 ```python
-from policy import ProfileConfig, PidConfig, TrajectoryConfig
+from policy import MotionConfig, PolicyExecutor
 
-# Precomputed velocity profile — zero overshoot, no tuning
-executor = PolicyExecutor(schema, policy, motion=ProfileConfig())
-
-# PID + feedforward — higher tracking on fast overlapping chunks
-executor = PolicyExecutor(schema, policy, motion=PidConfig())
-
-# Planned trajectories — collision avoidance, non-realtime
-executor = PolicyExecutor(schema, policy, motion=TrajectoryConfig())
+executor = PolicyExecutor(schema, policy, motion=MotionConfig(
+    n_action_steps=8,       # execute only first 8 of 16 predicted steps
+    velocity_limit=2.0,     # rad/s (scalar or per-axis list)
+    ramp_steps=3,           # trapezoidal ramp smoothing
+    execute_and_wait=True,  # wait for chunk to finish before next inference
+))
 ```
+
+### Receding Horizon (`execute_and_wait=True`, default)
+
+Executes `n_action_steps` from the action chunk, waits until the robot
+finishes those steps, then queries new inference with a fresh observation.
+Later steps (higher prediction uncertainty) are discarded.
+This is the standard approach used by GR00T and LeRobot.
+
+### Continuous (`execute_and_wait=False`)
+
+Queries inference at `inference_hz` without waiting. Each new chunk
+replaces the previous one immediately. The P-correction ensures smooth
+transitions between chunks. Use for fast policies (>10 Hz) where
+overlapping predictions should feed through continuously.
+
+See [`JOGGING.md`](JOGGING.md) for the velocity profile algorithm details.
 
 ## PolicySchema
 
@@ -128,7 +149,7 @@ This produces observations like:
 }
 ```
 
-The policy returns the same keys with target values. Joints go through PID jogging, IOs get written to hardware with the mapping applied in reverse.
+The policy returns the same keys with target values. Joints go through velocity-controlled jogging, IOs get written to hardware with the mapping applied in reverse.
 
 ### Cameras
 
@@ -196,9 +217,9 @@ Guards must be fast (no network calls). Use `Observation.computed()` for async d
 | Self-collision / joint limit | Raises `MotionError`                        |
 | Connection lost              | Raises `RuntimeError`                       |
 
-## PID Jogging (without a policy)
+## Jogging (without a policy)
 
-The PID jogging layer can be used standalone — no policy, no schema, no cameras:
+The jogging layer can be used standalone — no policy, no schema, no cameras:
 
 ```python
 from policy import jog_joints
@@ -209,7 +230,7 @@ async with jog_joints(mg) as jogger:
         print(state.joints)
 ```
 
-See [`JOGGING.md`](JOGGING.md) for joint/TCP modes, dual-arm control, chunking, error handling, and PID tuning.\
+See [`JOGGING.md`](JOGGING.md) for joint/TCP modes, dual-arm control, chunking, and error handling.\
 ▶ [`jogging_dual_arm.py`](examples/jogging_dual_arm.py)
 
 ## GR00T
@@ -257,7 +278,7 @@ schema = PolicySchema(
 
 Joint and TCP observations support `mode="relative"`. The mode controls how the policy's action output is interpreted:
 
-| Mode | Policy returns | Executor sends to PID |
+| Mode | Policy returns | Executor sends to jogging |
 |------|----------------|----------------------|
 | `"absolute"` (default) | target positions | as-is |
 | `"relative"` | offsets from current | `current + offset` |
@@ -268,13 +289,13 @@ Observation.joint_positions("arm", source=mg, mode="relative")
 
 ### TCP actions
 
-Policies that output Cartesian targets instead of joint positions. Set `action=True` on `Observation.tcp()` — the executor creates a Cartesian PID jogging session for that motion group:
+Policies that output Cartesian targets instead of joint positions. Set `action=True` on `Observation.tcp()` — the executor creates a Cartesian jogging session for that motion group:
 
 ```python
 Observation.tcp("eef_pose", source=mg, action=True)
 ```
 
-The policy receives named values (`eef_pose_x`, `eef_pose_y`, `eef_pose_z`, `eef_pose_rx`, `eef_pose_ry`, `eef_pose_rz`) in mm and radians, and returns target values in the same format. Combine with `mode="relative"` for offset-based Cartesian control.
+The policy receives named values (`eef_pose_x`, `eef_pose_y`, `eef_pose_z`, `eef_pose_rx`, `eef_pose_ry`, `eef_pose_rz`) in mm and radians (NOVA's native TCP format), and returns target values in the same format. The session streams `TcpVelocityRequest` commands computed from the same trapezoidal profile used for joints. Combine with `mode="relative"` for delta-based Cartesian control.
 
 ### Rerun visualization
 

@@ -99,7 +99,7 @@ class TestTcpJogger:
             tcp_orientation_velocity_limit=2.0,
         )
         session = jogger._sessions[mg]
-        limits = session._pid.velocity_limit
+        limits = session._config.velocity_limit
         assert isinstance(limits, list)
         assert limits == [500.0, 500.0, 500.0, 2.0, 2.0, 2.0]
 

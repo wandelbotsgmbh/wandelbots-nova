@@ -31,10 +31,8 @@ from policy.types import (
     GuardState,
     GuardStopError,
     JoggingMode,
+    MotionConfig,
     MotionError,
-    PidConfig,
-    ProfileConfig,
-    TrajectoryConfig,
 )
 
 __all__ = [
@@ -52,15 +50,13 @@ __all__ = [
     "GuardStopError",
     "JointJogger",
     "Mapping",
+    "MotionConfig",
     "MotionError",
     "Observation",
-    "PidConfig",
     "PolicyClient",
     "PolicyExecutor",
     "PolicySchema",
-    "ProfileConfig",
     "TcpJogger",
-    "TrajectoryConfig",
     "WebRTCCameras",
     "jog_joints",
     "jog_tcp",

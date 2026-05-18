@@ -9,7 +9,7 @@ import pytest
 
 from policy.executor import PolicyExecutor
 from policy.schema import Observation, PolicySchema
-from policy.types import PidConfig
+from policy.types import MotionConfig
 
 
 def _mg(mg_id: str = "0@ur10e") -> MagicMock:
@@ -29,11 +29,12 @@ def _schema() -> PolicySchema:
 
 
 def _fake_session() -> MagicMock:
-    """Create a mock PidJoggingSession."""
+    """Create a mock JoggingSession."""
     session = MagicMock()
     session.motion_group = MagicMock()
     session.motion_group_id = "0@ur10e"
     session.has_failed = False
+    session.chunk_done = True
     session.failure_reason = ""
     session._failure_exception = None
     session.start = AsyncMock()
@@ -57,9 +58,9 @@ async def test_timeout_returns_result():
     async def policy(obs):
         return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
 
-    executor = PolicyExecutor(s, policy, motion=PidConfig(), timeout_s=0.2, inference_hz=100)
+    executor = PolicyExecutor(s, policy, motion=MotionConfig(), timeout_s=0.2, inference_hz=100)
 
-    with patch("policy.pidjogging.PidJoggingSession") as mock_session_cls, \
+    with patch("policy.executor.JoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
         mock_session_cls.return_value = _fake_session()
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
@@ -77,13 +78,13 @@ async def test_stop_returns_stopped():
     async def policy(obs):
         return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
 
-    executor = PolicyExecutor(s, policy, motion=PidConfig(), timeout_s=0, inference_hz=100)
+    executor = PolicyExecutor(s, policy, motion=MotionConfig(), timeout_s=0, inference_hz=100)
 
     async def stop_after_delay():
         await asyncio.sleep(0.1)
         executor.stop()
 
-    with patch("policy.pidjogging.PidJoggingSession") as mock_session_cls, \
+    with patch("policy.executor.JoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
         mock_session_cls.return_value = _fake_session()
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
@@ -104,9 +105,9 @@ async def test_bare_function_accepted_as_policy():
     async def my_policy(obs):
         return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
 
-    executor = PolicyExecutor(s, my_policy, motion=PidConfig(), timeout_s=0.1, inference_hz=50)
+    executor = PolicyExecutor(s, my_policy, motion=MotionConfig(), timeout_s=0.1, inference_hz=50)
 
-    with patch("policy.pidjogging.PidJoggingSession") as mock_session_cls, \
+    with patch("policy.executor.JoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
         mock_session_cls.return_value = _fake_session()
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
@@ -125,9 +126,9 @@ async def test_last_observation_populated():
     async def policy(obs):
         return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
 
-    executor = PolicyExecutor(s, policy, motion=PidConfig(), timeout_s=0.1, inference_hz=50)
+    executor = PolicyExecutor(s, policy, motion=MotionConfig(), timeout_s=0.1, inference_hz=50)
 
-    with patch("policy.pidjogging.PidJoggingSession") as mock_session_cls, \
+    with patch("policy.executor.JoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
         mock_session_cls.return_value = _fake_session()
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
@@ -148,7 +149,7 @@ def test_apply_relative_mode():
     schema = PolicySchema(observations=[
         Observation.joint_positions("arm", source=mg, mode="relative"),
     ])
-    executor = PolicyExecutor(schema, lambda obs: obs, motion=PidConfig(), timeout_s=1)
+    executor = PolicyExecutor(schema, lambda obs: obs, motion=MotionConfig(), timeout_s=1)
 
     # Simulate current state
     states = {"0@ur10e": MagicMock(joints=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0))}
@@ -177,7 +178,7 @@ def test_apply_relative_mode_absolute_passthrough():
     schema = PolicySchema(observations=[
         Observation.joint_positions("arm", source=mg, mode="absolute"),
     ])
-    executor = PolicyExecutor(schema, lambda obs: obs, motion=PidConfig(), timeout_s=1)
+    executor = PolicyExecutor(schema, lambda obs: obs, motion=MotionConfig(), timeout_s=1)
 
     chunk = ActionChunk(
         joints={"0@ur10e": [[0.5, -1.0, 0.0, 0.0, 0.0, 0.0]]},
@@ -211,9 +212,9 @@ async def test_guard_rejects_action_before_execution():
                     return False
         return True
 
-    executor = PolicyExecutor(s, policy, motion=PidConfig(), timeout_s=5.0, safety_guards=[limit_guard])
+    executor = PolicyExecutor(s, policy, motion=MotionConfig(), timeout_s=5.0, safety_guards=[limit_guard])
 
-    with patch("policy.pidjogging.PidJoggingSession") as mock_session_cls, \
+    with patch("policy.executor.JoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
         session = _fake_session()
 
@@ -257,9 +258,9 @@ async def test_guard_sees_target_ios_before_firing():
             return False  # block writes to safety output
         return True
 
-    executor = PolicyExecutor(s, policy, motion=PidConfig(), timeout_s=5.0, safety_guards=[io_guard])
+    executor = PolicyExecutor(s, policy, motion=MotionConfig(), timeout_s=5.0, safety_guards=[io_guard])
 
-    with patch("policy.pidjogging.PidJoggingSession") as mock_session_cls, \
+    with patch("policy.executor.JoggingSession") as mock_session_cls, \
          patch("policy.executor.EstopMonitor") as mock_estop:
         session = _fake_session()
         session.write_ios = AsyncMock()

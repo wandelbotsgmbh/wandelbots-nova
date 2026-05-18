@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from policy.pidjogging import JoggingStateTracker
+from policy.jogging import JoggingStateTracker
 from policy.types import MotionError
 
 

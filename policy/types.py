@@ -54,50 +54,30 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
 
 
 @dataclass(slots=True)
-class PidConfig:
-    """Configuration for PID velocity control (motion via NOVA Jogging API)."""
+class MotionConfig:
+    """Configuration for robot motion execution via NOVA Jogging API.
 
-    velocity_limit: float | list[float] = 2.0
-    """Velocity limit in rad/s (joints) or mm/s + rad/s (TCP).
-    Scalar applies to all axes; list sets per-axis limits."""
-
-    tolerance: float = 0.001
-    p_gain: float = 1.5
-    i_gain: float = 0.0
-    d_gain: float = 0.2
-    ff_gain: float = 1.0
-    lookahead_ms: float = 0.0
-    """Look-ahead time in ms. Targets a future trajectory point to compensate
-    for the command-to-effect delay. Set to 0 for policies with overlapping
-    chunks (e.g. GR00T) to avoid overshoot."""
-    integral_limit: float = 2.0
-    state_rate_ms: int = 10
-
-
-@dataclass(slots=True)
-class TrajectoryConfig:
-    """Configuration for trajectory-based motion (motion via NOVA Trajectory API).
-
-    Each action chunk is planned as a multi-waypoint joint_ptp trajectory
-    with built-in collision avoidance.
+    Uses a trapezoidal velocity profile: computes velocities from position
+    differences between chunk steps, applies a ramp envelope, and advances
+    based on the robot's actual position. Guarantees zero overshoot.
     """
 
-    velocity: float = 500.0
-    """TCP velocity limit in mm/s for trajectory planning."""
+    n_action_steps: int = 0
+    """Number of steps from each action chunk to actually execute.
+    0 = execute all steps. When set (e.g. 8), only the first N steps
+    are sent to the controller — later steps have higher prediction
+    uncertainty and are discarded (receding horizon)."""
 
+    execute_and_wait: bool = True
+    """Whether to wait for the current chunk to finish before querying
+    new inference (receding horizon).
 
-@dataclass(slots=True)
-class ProfileConfig:
-    """Configuration for precomputed velocity profile motion (via NOVA Jogging API).
+    When True (default): execute n_action_steps, wait until done, then
+    query fresh inference. Standard approach for GR00T/LeRobot.
 
-    Computes the velocity trajectory for the entire chunk upfront:
-    - Velocity from position differences between steps
-    - Trapezoidal ramp-down envelope so velocity reaches zero at the last step
-    - Single-position targets use a P-controller to reach the target
-
-    Guarantees zero overshoot by construction (velocity is forced to zero
-    at the chunk boundary). Simpler than PID — no gain tuning needed.
-    """
+    When False: query inference continuously at inference_hz. Each new
+    chunk replaces the old one, starting from the step closest to the
+    robot's current position."""
 
     velocity_limit: float | list[float] = 2.0
     """Maximum joint velocity in rad/s. Scalar or per-axis list."""
@@ -114,11 +94,6 @@ class ProfileConfig:
     """State stream update rate."""
 
 
-#: Motion configuration — determines how action chunks are executed.
-#: ``PidConfig`` for real-time PID velocity control,
-#: ``ProfileConfig`` for precomputed velocity profiles (recommended),
-#: ``TrajectoryConfig`` for planned trajectories with collision avoidance.
-MotionConfig = PidConfig | ProfileConfig | TrajectoryConfig
 
 
 @dataclass(slots=True)

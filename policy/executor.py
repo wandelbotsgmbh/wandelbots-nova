@@ -14,26 +14,24 @@ from typing import TYPE_CHECKING, Any
 from policy._sdk import get_controller_id
 from policy.estop import EstopMonitor, check_estop, check_sessions
 from policy.io import IOStreamCache
+from policy.jogging.session import JoggingSession
 from policy.types import (
     ActionChunk,
     EmergencyStopError,
     GuardState,
     GuardStopError,
+    MotionConfig,
     MotionError,
-    PidConfig,
-    ProfileConfig,
-    TrajectoryConfig,
 )
 
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from policy.cameras import CameraSource
-    from policy.motion_session import MotionSession
     from policy.policy_client import PolicyClient
     from policy.rerun_logger import PolicyRerunLogger
     from policy.schema import PolicySchema
-    from policy.types import MotionConfig, SafetyGuard
+    from policy.types import SafetyGuard
 
 # Type for bare async policy functions
 _PolicyFn = Callable[[dict[str, Any]], Coroutine[Any, Any, dict[str, float] | ActionChunk]]
@@ -96,14 +94,14 @@ class PolicyExecutor:
         Args:
             schema: Observation/action schema defining robot topology.
             policy: Async callable or PolicyClient that maps observations to actions.
-            safety_guards: Optional list of guard functions checked each PID tick.
+            safety_guards: Optional list of guard functions checked each jogging tick.
             timeout_s: Maximum execution duration in seconds. 0 = no timeout.
             inference_hz: Target inference rate. The executor will not query the
                 policy faster than this rate, but if inference itself is slower
                 (e.g. 3 Hz for GR00T), no additional delay is added. Set to 0
                 to run as fast as the policy allows.
             camera_max_age_s: Maximum allowed age of a camera frame before raising.
-            motion: PID or trajectory configuration. Defaults to PidConfig().
+            motion: Motion configuration. Defaults to MotionConfig().
         """
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
@@ -116,13 +114,13 @@ class PolicyExecutor:
         else:
             self._policy = policy  # type: ignore[assignment]
 
-        self._motion = motion or ProfileConfig()
+        self._motion: MotionConfig = motion or MotionConfig()
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
         self._inference_hz = inference_hz
         self._camera_max_age_s = camera_max_age_s
 
-        self._sessions: dict[str, MotionSession] = {}
+        self._sessions: dict[str, JoggingSession] = {}
         self._camera_sources: dict[str, CameraSource] = {}
         self._stop_event = asyncio.Event()
         self._last_obs: dict[str, Any] | None = None
@@ -223,10 +221,6 @@ class PolicyExecutor:
         to run().
         """
         # Create and start sessions
-        if isinstance(self._motion, TrajectoryConfig) and self._schema.tcp_action_groups():
-            msg = "TrajectoryConfig does not support TCP actions — use PidConfig for cartesian control"
-            raise ValueError(msg)
-
         for mg in self._motion_groups:
             self._sessions[mg.id] = self._create_session(mg)
 
@@ -302,11 +296,16 @@ class PolicyExecutor:
             action = self._apply_relative_mode(action, robot_states)
             self._check_guards_pre_send(action, robot_states)
 
-            # Rerun: log action chunk
+            # Rerun: log full action chunk (includes discarded tail for visualization)
             if self._rerun is not None:
-                self._rerun.log_action_chunk(action, step)
+                self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
 
-            self._send(action, observation_time=observation_time)
+            # In execute_and_wait mode, the robot is stopped during inference,
+            # so the observation is NOT stale — don't pass observation_time.
+            # In continuous mode, the robot keeps moving during inference,
+            # so observation_time enables the splice (discard stale steps).
+            chunk_obs_time = None if self._execute_and_wait else observation_time
+            self._send(self._trim_chunk(action), observation_time=chunk_obs_time)
             step += 1
             self.status.step = step
 
@@ -314,22 +313,43 @@ class PolicyExecutor:
             check_sessions(self._sessions)
             check_estop(self._estop_monitor)
 
-            # Rate-limit: if inference_hz is set and the cycle was faster
-            # than the target interval, sleep only the remaining time.
-            # If inference already took longer, don't sleep at all.
-            if min_interval > 0:
-                elapsed = time.monotonic() - tick_start
-                remaining = min_interval - elapsed
-                if remaining > 0:
-                    await asyncio.sleep(remaining)
+            if not self._execute_and_wait:
+                # Continuous mode: query inference at inference_hz.
+                # Each new chunk position-matches and replaces the old one.
+                if min_interval > 0:
+                    elapsed = time.monotonic() - tick_start
+                    remaining = min_interval - elapsed
+                    if remaining > 0:
+                        await asyncio.sleep(remaining)
+                else:
+                    await asyncio.sleep(0)
             else:
-                await asyncio.sleep(0)  # yield to event loop
+                # Receding horizon: wait until the current chunk is fully
+                # consumed before querying new inference.
+                await self._wait_for_chunk_done(start_time)
+                # Always yield to event loop to allow stop()/cancellation
+                await asyncio.sleep(0)
 
         return _result("stopped", step, start_time, last_obs)
 
     # -------------------------------------------------------------------------
     # Session operations (inlined from former PolicyRunner)
     # -------------------------------------------------------------------------
+
+    async def _wait_for_chunk_done(self, start_time: float) -> None:
+        """Wait until all sessions have consumed their current chunk.
+
+        Polls at ~100Hz, checking for timeout/stop/errors while waiting.
+        Used in execute_and_wait mode (receding horizon) to gate inference.
+        """
+        while not self._all_chunks_done():
+            if self._stop_event.is_set():
+                return
+            if self._timeout_s > 0 and (time.monotonic() - start_time) >= self._timeout_s:
+                return
+            check_sessions(self._sessions)
+            check_estop(self._estop_monitor)
+            await asyncio.sleep(0.01)
 
     def _observe(self) -> dict[str, Any]:
         """Get current state for all motion groups."""
@@ -390,14 +410,24 @@ class PolicyExecutor:
                     "ff_vel=%.4f rad/s, dt_ms=%.1f",
                     group_id, len(steps), span, per_step, ff_vel, chunk.dt_ms,
                 )
-            session.update_chunk(steps=steps, dt_ms=chunk.dt_ms, observation_time=observation_time)
+            session.update_chunk(
+                steps=steps, dt_ms=chunk.dt_ms,
+                observation_time=observation_time,
+                current_position=self._get_session_position(session),
+                final=self._execute_and_wait,
+            )
 
         for group_id, raw_tcp_steps in chunk.tcp.items():
             session = self._sessions.get(group_id)
             if session is None:
                 logger.warning("Unknown motion group in TCP chunk: %s", group_id)
                 continue
-            session.update_chunk(steps=raw_tcp_steps, dt_ms=chunk.dt_ms, observation_time=observation_time)
+            session.update_chunk(
+                steps=raw_tcp_steps, dt_ms=chunk.dt_ms,
+                observation_time=observation_time,
+                current_position=self._get_session_position(session),
+                final=self._execute_and_wait,
+            )
 
         if chunk.ios:
             for group_id, ios in chunk.ios.items():
@@ -408,73 +438,78 @@ class PolicyExecutor:
                 self._io_tasks.add(task)
                 task.add_done_callback(self._io_tasks.discard)
 
-    def _create_session(self, mg: MotionGroup) -> MotionSession:
-        """Create a motion session for a motion group based on the configured mode."""
-        motion = self._motion
-
-        if isinstance(motion, TrajectoryConfig):
-            from policy.trajectory_session import TrajectorySession  # noqa: PLC0415
-
-            return TrajectorySession(
-                motion_group=mg,
-                tcp=self._schema.tcp,
-                velocity_limit=motion.velocity,
-                safety_guards=self._safety_guards,
-            )
-
-        if isinstance(motion, ProfileConfig):
-            from policy.profile_session import ProfileSession  # noqa: PLC0415
-
-            tcp_groups = self._schema.tcp_action_groups()
-            return ProfileSession(
-                motion_group=mg,
-                config=motion,
-                tcp=tcp_groups.get(mg.id) or self._schema.tcp,
-                safety_guards=self._safety_guards,
-                mode="cartesian" if mg.id in tcp_groups else "joint",
-            )
-
-        # PID mode
-        from policy.pidjogging import PidJoggingSession  # noqa: PLC0415
-
+    def _create_session(self, mg: MotionGroup) -> JoggingSession:
+        """Create a jogging session for a motion group."""
         tcp_groups = self._schema.tcp_action_groups()
-        if mg.id in tcp_groups:
-            return PidJoggingSession(
-                motion_group=mg,
-                config=self._make_tcp_config(motion),
-                tcp=tcp_groups[mg.id] or self._schema.tcp,
-                safety_guards=self._safety_guards,
-                mode="cartesian",
+        mode = "cartesian" if mg.id in tcp_groups else "joint"
+        tcp = tcp_groups.get(mg.id) or self._schema.tcp if mode == "cartesian" else self._schema.tcp
+
+        # For TCP mode, build per-axis velocity limits [mm/s, mm/s, mm/s, rad/s, rad/s, rad/s]
+        config = self._motion
+        if mode == "cartesian" and not isinstance(config.velocity_limit, list):
+            from policy.types import MotionConfig  # noqa: PLC0415
+
+            tcp_vel = 50.0  # mm/s
+            orient_vel = 1.5  # rad/s
+            config = MotionConfig(
+                velocity_limit=[tcp_vel, tcp_vel, tcp_vel, orient_vel, orient_vel, orient_vel],
+                ramp_steps=config.ramp_steps,
+                p_gain=config.p_gain,
+                state_rate_ms=config.state_rate_ms,
+                n_action_steps=config.n_action_steps,
+                execute_and_wait=config.execute_and_wait,
             )
-        return PidJoggingSession(
+
+        return JoggingSession(
             motion_group=mg,
-            config=motion,
-            tcp=self._schema.tcp,
+            config=config,
+            tcp=tcp,
             safety_guards=self._safety_guards,
+            mode=mode,
         )
 
-    def _make_tcp_config(self, base: PidConfig) -> PidConfig:
-        """Build a PidConfig with velocity limits suitable for Cartesian mode.
+    @property
+    def _n_action_steps(self) -> int:
+        """Number of action steps to execute from each chunk (0 = all)."""
+        return self._motion.n_action_steps
 
-        Uses Nova's default TCP velocity limits (mm/s for translation,
-        rad/s for orientation) combined with the user's PID gains.
+    @property
+    def _execute_and_wait(self) -> bool:
+        """Whether to wait for chunk completion before next inference."""
+        return self._motion.execute_and_wait
+
+    def _all_chunks_done(self) -> bool:
+        """Check if all motion sessions have consumed their current chunk."""
+        return all(session.chunk_done for session in self._sessions.values())
+
+    @staticmethod
+    def _get_session_position(session: JoggingSession) -> list[float] | None:
+        """Get the robot's current joint positions from a session."""
+        state = session.current_state
+        if state is not None and hasattr(state, "joints"):
+            return list(state.joints)
+        return None
+
+    def _trim_chunk(self, chunk: ActionChunk) -> ActionChunk:
+        """Trim action chunk to n_action_steps if configured.
+
+        Returns the original chunk unmodified if n_action_steps is 0 (execute all)
+        or if the chunk is already shorter than n_action_steps.
         """
-        from nova.types.motion_settings import DEFAULT_TCP_VELOCITY_LIMIT  # noqa: PLC0415
+        n = self._n_action_steps
+        if n <= 0:
+            return chunk
 
-        tcp_vel = DEFAULT_TCP_VELOCITY_LIMIT  # 50 mm/s
-        orient_vel = 1.5  # rad/s
+        trimmed_joints = {
+            mg_id: steps[:n] for mg_id, steps in chunk.joints.items()
+        } if chunk.joints else {}
 
-        # If user provided explicit per-axis limits, use those
-        base = base or PidConfig()
-        if isinstance(base.velocity_limit, list) and len(base.velocity_limit) >= 6:  # noqa: PLR2004
-            return base
+        trimmed_tcp = {
+            mg_id: steps[:n] for mg_id, steps in chunk.tcp.items()
+        } if chunk.tcp else {}
 
-        return PidConfig(
-            velocity_limit=[tcp_vel, tcp_vel, tcp_vel, orient_vel, orient_vel, orient_vel],
-            tolerance=base.tolerance,
-            p_gain=base.p_gain,
-            i_gain=base.i_gain,
-            d_gain=base.d_gain,
+        return ActionChunk(
+            joints=trimmed_joints, tcp=trimmed_tcp, ios=chunk.ios, dt_ms=chunk.dt_ms,
         )
 
     def _apply_relative_mode(

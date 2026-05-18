@@ -20,10 +20,10 @@ from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
 from policy import (
     Gr00tPolicyClient,
+    MotionConfig,
     Observation,
     PolicyExecutor,
     PolicySchema,
-    ProfileConfig,
     WebRTCCameras,
 )
 
@@ -110,8 +110,14 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
         f"horizon={info['action_horizon']}"
     )
 
-    # Run — ProfileConfig: precomputed velocity profile, zero overshoot
-    executor = PolicyExecutor(schema, client, timeout_s=TIMEOUT_S, motion=ProfileConfig())
+    # Run — MotionConfig: precomputed velocity profile, zero overshoot
+    # n_action_steps=8: only execute first 8 of 16 predicted steps (receding horizon)
+    executor = PolicyExecutor(
+        schema,
+        client,
+        timeout_s=TIMEOUT_S,
+        motion=MotionConfig(n_action_steps=8, execute_and_wait=False),
+    )
 
     print(f"Running GR00T dual-arm policy for {TIMEOUT_S}s...")
     t0 = time.monotonic()

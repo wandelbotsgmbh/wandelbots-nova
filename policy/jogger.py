@@ -1,9 +1,8 @@
 """Position-controlled jogging for one or more motion groups.
 
 Provides ``jog_joints()`` and ``jog_tcp()`` — async context managers that
-open PID-controlled jogging sessions. The user sets target positions in a
-loop; the PID controller continuously streams velocity commands to track
-them.
+open jogging sessions. The user sets target positions in a loop; the session
+continuously streams velocity commands to track them.
 
 Errors are detected automatically and raised through the ``async for`` loop:
 
@@ -21,8 +20,8 @@ import logging
 from typing import TYPE_CHECKING, overload
 
 from policy.estop import EstopMonitor, check_estop, check_sessions
-from policy.pidjogging import PidJoggingSession
-from policy.types import PidConfig
+from policy.jogging import JoggingSession
+from policy.types import MotionConfig
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -47,7 +46,7 @@ class _BaseJogger:
     def __init__(
         self,
         mg_list: list[MotionGroup],
-        sessions: dict[MotionGroup, PidJoggingSession],
+        sessions: dict[MotionGroup, JoggingSession],
     ) -> None:
         self._mg_list = mg_list
         self._multi = len(mg_list) > 1
@@ -71,6 +70,17 @@ class _BaseJogger:
         session = self._sessions.get(mg)
         if session is not None:
             session.update_chunk(steps=[values], dt_ms=0.0)
+
+    def _push_target(self, mg: MotionGroup, value: list, dt_ms: float) -> list[float]:
+        """Push a single or chunk target to a session. Returns the final target."""
+        session = self._sessions.get(mg)
+        if session is None:
+            return value if not isinstance(value[0], list) else value[-1]
+        if value and isinstance(value[0], list):
+            session.update_chunk(steps=value, dt_ms=dt_ms)
+            return value[-1]
+        self._validate_and_push(mg, value)
+        return value
 
     def state(self) -> dict[MotionGroup, RobotState] | RobotState | None:
         """Get current robot state(s).
@@ -133,7 +143,7 @@ class _BaseJogger:
 
 
 class JointJogger(_BaseJogger):
-    """PID-controlled joint position jogger.
+    """joint position jogger.
 
     Do not instantiate directly — use :func:`jog_joints`.
     """
@@ -142,13 +152,13 @@ class JointJogger(_BaseJogger):
         self,
         motion_groups: list[MotionGroup],
         *,
-        config: PidConfig | None = None,
+        config: MotionConfig | None = None,
         safety_guards: list[SafetyGuard] | None = None,
     ) -> None:
-        cfg = config or PidConfig()
-        sessions: dict[MotionGroup, PidJoggingSession] = {}
+        cfg = config or MotionConfig()
+        sessions: dict[MotionGroup, JoggingSession] = {}
         for mg in motion_groups:
-            sessions[mg] = PidJoggingSession(
+            sessions[mg] = JoggingSession(
                 motion_group=mg, config=cfg, safety_guards=safety_guards,
             )
         super().__init__(motion_groups, sessions)
@@ -162,17 +172,6 @@ class JointJogger(_BaseJogger):
         if not self._multi:
             return self._target.get(self._mg_list[0])
         return self._target
-
-    def _push_target(self, mg: MotionGroup, value: list, dt_ms: float) -> list[float]:
-        """Push a single or chunk target to a session. Returns the final target."""
-        session = self._sessions.get(mg)
-        if session is None:
-            return value if not isinstance(value[0], list) else value[-1]
-        if value and isinstance(value[0], list):
-            session.update_chunk(steps=value, dt_ms=dt_ms)
-            return value[-1]
-        self._validate_and_push(mg, value)
-        return value
 
     def set_target(
         self,
@@ -230,31 +229,27 @@ class TcpJogger(_BaseJogger):
         self,
         motion_groups: dict[MotionGroup, str],
         *,
-        config: PidConfig | None = None,
+        config: MotionConfig | None = None,
         tcp_velocity_limit: float = 250.0,
         tcp_orientation_velocity_limit: float = 1.5,
         safety_guards: list[SafetyGuard] | None = None,
     ) -> None:
-        cfg = config or PidConfig()
+        cfg = config or MotionConfig()
         # Build per-axis velocity limits for cartesian mode: [tx, ty, tz, rx, ry, rz]
         tcp_limits = [
             tcp_velocity_limit, tcp_velocity_limit, tcp_velocity_limit,
             tcp_orientation_velocity_limit, tcp_orientation_velocity_limit,
             tcp_orientation_velocity_limit,
         ]
-        tcp_cfg = PidConfig(
+        tcp_cfg = MotionConfig(
             velocity_limit=tcp_limits,
-            tolerance=cfg.tolerance,
+            ramp_steps=cfg.ramp_steps,
             p_gain=cfg.p_gain,
-            i_gain=cfg.i_gain,
-            d_gain=cfg.d_gain,
-            ff_gain=cfg.ff_gain,
-            integral_limit=cfg.integral_limit,
             state_rate_ms=cfg.state_rate_ms,
         )
-        sessions: dict[MotionGroup, PidJoggingSession] = {}
+        sessions: dict[MotionGroup, JoggingSession] = {}
         for mg, tcp in motion_groups.items():
-            sessions[mg] = PidJoggingSession(
+            sessions[mg] = JoggingSession(
                 motion_group=mg, config=tcp_cfg, tcp=tcp, mode="cartesian",
                 safety_guards=safety_guards,
             )
@@ -274,13 +269,21 @@ class TcpJogger(_BaseJogger):
             return self._target.get(self._mg_list[0])
         return self._target
 
-    def set_target(self, target: Pose | dict[MotionGroup, Pose]) -> None:
+    def set_target(
+        self,
+        target: Pose | list[list[float]] | dict[MotionGroup, Pose | list[list[float]]],
+        *,
+        dt_ms: float = 0.0,
+    ) -> None:
         """Set the TCP tracking target.
 
         Args:
-            target: TCP pose to track.
-                - ``Pose`` — single motion group
-                - ``dict[MotionGroup, Pose]`` — per-MG targets
+            target: TCP pose(s) to track.
+                - ``Pose`` — single position target (one motion group)
+                - ``list[list[float]]`` — chunk of future TCP targets [x,y,z,rx,ry,rz]
+                - ``dict[MotionGroup, ...]`` — per-MG targets or chunks
+            dt_ms: Time between chunk steps in milliseconds.
+                Only used when target is a chunk (list of lists).
         """
         from nova.types import Pose  # noqa: PLC0415
 
@@ -291,12 +294,24 @@ class TcpJogger(_BaseJogger):
             mg = self._mg_list[0]
             self._validate_and_push(mg, list(target.position) + list(target.orientation))
             self._target = {mg: target}
+        elif isinstance(target, list):
+            if self._multi:
+                msg = "For multiple motion groups, pass a dict[MotionGroup, ...]"
+                raise TypeError(msg)
+            mg = self._mg_list[0]
+            self._push_target(mg, target, dt_ms)
+            self._target = {mg: target[-1] if target and isinstance(target[0], list) else target}
         elif isinstance(target, dict):
-            for mg, pose in target.items():
-                self._validate_and_push(mg, list(pose.position) + list(pose.orientation))
-            self._target = target
+            self._target = self._target or {}
+            for mg, value in target.items():
+                if isinstance(value, Pose):
+                    self._validate_and_push(mg, list(value.position) + list(value.orientation))
+                    self._target[mg] = value
+                else:
+                    self._push_target(mg, value, dt_ms)
+                    self._target[mg] = value[-1] if value and isinstance(value[0], list) else value
         else:
-            msg = f"Expected Pose or dict[MotionGroup, Pose], got {type(target)}"
+            msg = f"Expected Pose, list, or dict, got {type(target)}"
             raise TypeError(msg)
 
     async def __aenter__(self) -> TcpJogger:
@@ -313,7 +328,7 @@ class TcpJogger(_BaseJogger):
 def jog_joints(
     motion_groups: MotionGroup,
     *,
-    config: PidConfig | None = ...,
+    config: MotionConfig | None = ...,
     safety_guards: list[SafetyGuard] | None = ...,
 ) -> JointJogger: ...
 
@@ -322,7 +337,7 @@ def jog_joints(
 def jog_joints(
     motion_groups: list[MotionGroup],
     *,
-    config: PidConfig | None = ...,
+    config: MotionConfig | None = ...,
     safety_guards: list[SafetyGuard] | None = ...,
 ) -> JointJogger: ...
 
@@ -330,15 +345,15 @@ def jog_joints(
 def jog_joints(
     motion_groups: MotionGroup | list[MotionGroup],
     *,
-    config: PidConfig | None = None,
+    config: MotionConfig | None = None,
     safety_guards: list[SafetyGuard] | None = None,
 ) -> JointJogger:
-    """Create a PID-controlled joint position jogger.
+    """Create a joint position jogger.
 
     Args:
         motion_groups: Single motion group or list for multi-robot control.
-        config: PID controller configuration. Uses training-time defaults if None.
-        safety_guards: Optional callbacks run on every PID tick.
+        config: Motion configuration. Uses training-time defaults if None.
+        safety_guards: Optional callbacks run on every jogging tick.
             Each receives a ``GuardState`` and must return ``True`` to continue.
 
     Returns:
@@ -366,7 +381,7 @@ def jog_tcp(
     motion_groups: MotionGroup,
     *,
     tcp: str,
-    config: PidConfig | None = ...,
+    config: MotionConfig | None = ...,
     tcp_velocity_limit: float = ...,
     tcp_orientation_velocity_limit: float = ...,
     safety_guards: list[SafetyGuard] | None = ...,
@@ -377,7 +392,7 @@ def jog_tcp(
 def jog_tcp(
     motion_groups: dict[MotionGroup, str],
     *,
-    config: PidConfig | None = ...,
+    config: MotionConfig | None = ...,
     tcp_velocity_limit: float = ...,
     tcp_orientation_velocity_limit: float = ...,
     safety_guards: list[SafetyGuard] | None = ...,
@@ -388,7 +403,7 @@ def jog_tcp(
     motion_groups: MotionGroup | dict[MotionGroup, str],
     *,
     tcp: str = "",
-    config: PidConfig | None = None,
+    config: MotionConfig | None = None,
     tcp_velocity_limit: float = 250.0,
     tcp_orientation_velocity_limit: float = 1.5,
     safety_guards: list[SafetyGuard] | None = None,
@@ -399,10 +414,10 @@ def jog_tcp(
         motion_groups: Single motion group (with ``tcp`` kwarg) or
             ``dict[MotionGroup, str]`` mapping each group to its TCP name.
         tcp: TCP name when passing a single motion group.
-        config: PID controller configuration.
+        config: Motion configuration.
         tcp_velocity_limit: TCP translation velocity limit in mm/s.
         tcp_orientation_velocity_limit: TCP rotation velocity limit in rad/s.
-        safety_guards: Optional callbacks run on every PID tick.
+        safety_guards: Optional callbacks run on every jogging tick.
 
     Returns:
         A :class:`TcpJogger` async context manager.

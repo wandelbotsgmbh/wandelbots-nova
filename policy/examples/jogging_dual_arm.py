@@ -1,5 +1,4 @@
-"""
-Example: PID jogging with jog_joints() and jog_tcp() on two UR10e robots.
+"""Example: Jogging with jog_joints() and jog_tcp() on two UR5e robots.
 
 Demonstrates five modes:
 1. Single-arm joint jogging
@@ -93,27 +92,39 @@ async def demo_single_joint_chunked(mg):
 
 
 async def demo_single_tcp(mg, tcp_name: str):
-    """Trace a 10mm circle in XZ plane in 2.5 seconds."""
+    """Trace a 50mm circle in XZ plane using chunked targets."""
     print("\n=== Single-arm TCP jogging ===")
     duration = 2.5  # seconds for one full circle
-    radius = 5.0  # mm
+    radius = 50.0  # mm
+    chunk_hz = 10  # send a new chunk 10x per second
+    chunk_steps = 16  # steps per chunk
+    dt_ms = (1000.0 / chunk_hz) / chunk_steps  # ~6.25ms per step
 
     async with jog_tcp(mg, tcp=tcp_name) as jogger:
         t0 = time.monotonic()
         start_pose = None
-        async for state in jogger:  # yields at ~100Hz
+        last_send = 0.0
+        async for state in jogger:
             t = time.monotonic() - t0
             if t >= duration:
                 break
             if start_pose is None:
                 start_pose = state.pose
-            angle = 2 * math.pi * (t / duration)  # 0 → 2π over duration
-            jogger.set_target(Pose(
-                start_pose.position[0] + radius * math.cos(angle),
-                start_pose.position[1],
-                start_pose.position[2] + radius * math.sin(angle),
-                *start_pose.orientation,
-            ))
+            if t - last_send < 1.0 / chunk_hz:
+                continue
+            last_send = t
+            # Build a chunk of future circle positions
+            chunk = []
+            for i in range(chunk_steps):
+                future_t = t + i * (dt_ms / 1000.0)
+                angle = 2 * math.pi * (future_t / duration)
+                chunk.append([
+                    start_pose.position[0] + radius * math.cos(angle),
+                    start_pose.position[1],
+                    start_pose.position[2] + radius * math.sin(angle),
+                    *start_pose.orientation,
+                ])
+            jogger.set_target(chunk, dt_ms=dt_ms)
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +162,7 @@ async def demo_dual_tcp(mg1, mg2, tcp1: str, tcp2: str):
     """Both TCPs trace 10mm circles in XZ plane for 5 seconds."""
     print("\n=== Dual-arm TCP jogging ===")
     duration = 5.0  # seconds
-    radius = 5.0  # mm
+    radius = 50.0  # mm
     frequency = 0.3  # Hz
 
     async with jog_tcp({mg1: tcp1, mg2: tcp2}) as jogger:
@@ -166,20 +177,22 @@ async def demo_dual_tcp(mg1, mg2, tcp1: str, tcp2: str):
                 start1 = states[mg1].pose
                 start2 = states[mg2].pose
             angle = 2 * math.pi * frequency * t
-            jogger.set_target({
-                mg1: Pose(
-                    start1.position[0] + radius * math.cos(angle),
-                    start1.position[1],
-                    start1.position[2] + radius * math.sin(angle),
-                    *start1.orientation,
-                ),
-                mg2: Pose(
-                    start2.position[0] + radius * math.cos(-angle),
-                    start2.position[1],
-                    start2.position[2] + radius * math.sin(-angle),
-                    *start2.orientation,
-                ),
-            })
+            jogger.set_target(
+                {
+                    mg1: Pose(
+                        start1.position[0] + radius * math.cos(angle),
+                        start1.position[1],
+                        start1.position[2] + radius * math.sin(angle),
+                        *start1.orientation,
+                    ),
+                    mg2: Pose(
+                        start2.position[0] + radius * math.cos(-angle),
+                        start2.position[1],
+                        start2.position[2] + radius * math.sin(-angle),
+                        *start2.orientation,
+                    ),
+                }
+            )
 
 
 # ---------------------------------------------------------------------------

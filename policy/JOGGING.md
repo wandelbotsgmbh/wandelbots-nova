@@ -1,344 +1,155 @@
-# PID Jogging
+# Jogging Internals
 
-Position-controlled jogging for industrial robots via the NOVA Jogging API. A PID controller
-converts joint/TCP position targets into velocity commands streamed at the controller's cycle rate.
+How the `policy` package converts action chunks into robot motion via the NOVA Jogging API.
 
-Used both directly (teleoperation, scripted motion) and internally by `PolicyExecutor` when
-`motion=PidConfig()` is selected.
+> **Temporary implementation.** This client-side velocity profile compensates for
+> the fact that the NOVA Jogging API only accepts velocity commands. Once NOVA
+> exposes a native waypoint jogging API (accepting position waypoints with timing
+> directly), this entire module will be replaced by a thin client that forwards
+> waypoints to the server. The `PolicyExecutor` and `MotionConfig` interfaces
+> will remain stable.
 
-## Motion Modes
-
-Three approaches for converting position targets to velocity commands:
-
-### ProfileConfig
-
-Precomputes the entire velocity trajectory for each chunk upfront. Velocities are derived from position differences between steps and shaped by a trapezoidal envelope that ramps down to zero at the last step. This guarantees the robot never overshoots the chunk boundary.
-
-**Example:** A chunk of 12 waypoints at `dt_ms=60` (one joint shown):
-
-```
-Positions (rad):  0.10  0.12  0.14  0.16  0.18  0.20  0.22  0.24  0.26  0.28  0.30  0.32
-Step index:         0     1     2     3     4     5     6     7     8     9    10    11
-```
-
-Step 1 — Compute raw velocity at each step (central difference, forward/zero at boundaries):
-
-```
-step 0:  forward diff  = (0.12 - 0.10) / 0.060 = 0.333 rad/s
-step 1:  central diff  = (0.14 - 0.10) / 0.120 = 0.333 rad/s
-step 2:  central diff  = (0.16 - 0.12) / 0.120 = 0.333 rad/s
-  ...    (constant ramp → constant velocity)
-step 10: central diff  = (0.32 - 0.28) / 0.120 = 0.333 rad/s
-step 11: forced to 0   = 0.000 rad/s            ← ensures no overshoot
-```
-
-Step 2 — Apply trapezoidal envelope (`ramp_steps=3`):
-
-```
-step:       0      1      2      3      4    ...    9     10     11
-ramp_up:   0.33   0.67   1.00   1.00   1.00  ...  1.00   1.00   1.00
-ramp_down: 1.00   1.00   1.00   1.00   1.00  ...  1.00   0.67   0.33
-envelope:  0.33   0.67   1.00   1.00   1.00  ...  1.00   0.67   0.33
-
-final vel: 0.111  0.222  0.333  0.333  0.333 ...  0.333  0.222  0.000 rad/s
-```
-
-Step 3 — At runtime, interpolate this profile based on elapsed time. The robot accelerates
-over the first 180ms (3 steps), runs at full velocity, then decelerates over the last 180ms
-to reach zero velocity exactly at the last step.
-
-Total chunk duration: 12 × 60ms = 720ms. The robot follows the velocity profile for 720ms
-then outputs zero velocity (holds position) until the next chunk arrives.
-
-For single-position targets (teleop with `dt_ms=0`), it falls back to a P-controller:
-`velocity = p_gain × (target - current)`. This naturally decelerates as it approaches.
-
-When a new chunk arrives mid-execution, the first 3 steps of the new profile are linearly
-blended with the robot's current velocity to avoid jerk.
-
-Tradeoff: cannot track faster than the chunk prescribes. On fast overlapping chunks the PID
-approach achieves ~40% more displacement because the P-term adds corrective velocity beyond
-what the profile specifies.
-
-```python
-ProfileConfig(
-    velocity_limit=2.0,   # rad/s max per joint
-    ramp_steps=3,         # steps for ramp-up/ramp-down envelope
-    p_gain=3.0,           # for single-position teleop targets
-    state_rate_ms=10,     # state stream update rate
-)
-```
-
-### PidConfig
-
-PID controller with feedforward velocity from chunk trajectory. The ActionQueue interpolates between waypoints, computes feedforward via central differences, and blends overlapping chunks with exponential weights (temporal ensembling).
-
-Gives higher tracking accuracy when properly tuned. But wrong parameters cause overshoot (`lookahead_ms > 0`), oscillation (high `p_gain`), or stalling (high `tolerance` with tiny chunks, or `ff_gain=0`).
-
-The D-term opposes all velocity including feedforward. On very small chunks (<0.001 rad/step), this can reduce motion to near zero. Requires `tolerance` smaller than the per-step delta.
-
-```python
-PidConfig(
-    p_gain=1.5,           # tracking stiffness
-    d_gain=0.2,           # velocity damping
-    ff_gain=1.0,          # feedforward from chunk trajectory
-    lookahead_ms=0.0,     # 0 = safe; >0 risks overshoot
-    velocity_limit=2.0,   # rad/s max
-    tolerance=0.001,      # dead zone (rad)
-)
-```
-
-### TrajectoryConfig
-
-Plans each chunk as a multi-waypoint trajectory via NOVA's motion planner. Gets collision avoidance and proper acceleration profiles, but planning takes 100–500ms per chunk (non-realtime). Cannot be interrupted mid-trajectory.
-
-```python
-TrajectoryConfig(
-    velocity=500.0,       # TCP velocity limit in mm/s
-)
-```
-
----
-
-The rest of this document covers the PID approach in detail (interpolation, feedforward, blending, tuning).
-
-## How It Works
-
-The NOVA Jogging API accepts **velocity commands**, not positions. This package bridges the gap:
+## Overview
 
 ```mermaid
 flowchart LR
-    Target["Target positions\n(from user or policy)"] --> AQ["Action Queue\n(interpolation + blending)"]
-    AQ --> PID["PID Controller\n(position → velocity)"]
-    PID --> Jog["Jogging WebSocket\n(velocity commands)"]
-    Jog --> Robot["Robot"]
-    Robot -->|"State Stream WebSocket\n(joint positions)"| PID
+    Policy["Policy"] -->|"action chunk\n(positions + dt_ms)"| Executor
+    Executor -->|"trimmed chunk"| Session["JoggingSession"]
+    Session -->|"velocity commands"| NOVA["NOVA Jogging API"]
+    NOVA -->|"state stream"| Session
 ```
 
-The PID velocity command on every tick is:
+The NOVA Jogging API accepts **velocity commands** at the controller's cycle rate (~100-500 Hz).
+The `JoggingSession` computes these velocities from the position waypoints in each action chunk
+using a **trapezoidal velocity profile**.
+
+## Velocity Profile
+
+For each multi-step action chunk, velocities are computed upfront:
+
+1. **Raw velocities** via central differences: `v[i] = (pos[i+1] - pos[i-1]) / (2 × dt)`
+2. **Velocity scaling** — if any joint exceeds `velocity_limit`, stretch `dt` proportionally (preserves trajectory shape)
+3. **Trapezoidal envelope** — `ramp_steps` controls acceleration/deceleration smoothing
 
 ```
-velocity = feedforward + P × error − D × measured_velocity
+velocity
+    ▲
+    │     ╭────────────╮
+    │    ╱              ╲
+    │   ╱                ╲
+    │──╱──────────────────╲──► step
+    │  ↑                  ↑
+    │  ramp_up          ramp_down
 ```
 
-Where **feedforward** is the velocity the trajectory *wants* at this moment, **P × error** corrects
-for any drift, and **D** damps oscillation. The feedforward does the heavy lifting; P and D just
-clean up the residual.
+The last step's velocity is always zero — the robot decelerates to a stop.
 
-> **Two WebSockets, two rates:**
-> - **State stream** (`state_rate_ms`, default 10ms) — how often joint positions are read. Configurable.
-> - **Jogging socket** — how often velocity commands are sent. Locked to the robot controller's internal cycle rate (typically 4–8ms, varies by brand). Not user-configurable. Per the NOVA API: *"Commands can only be processed in the cycle rate of the controller."*
+## Time-Based Advancement with P-Correction
 
-## Joint Jogging
+The profile advances based on **elapsed time** since the chunk was received.
+At each jogging tick (~100 Hz):
+
+1. Compute the fractional index: `frac_idx = elapsed / dt_s`
+2. Interpolate the **feedforward velocity** from the profile at `frac_idx`
+3. Interpolate the **expected position** from the steps at `frac_idx`
+4. Add a **P-correction** for tracking error: `v = feedforward + p_gain × (expected - actual)`
+5. Clamp to `velocity_limit`
+
+This approach:
+- Works correctly for all trajectory shapes (circles, lines, arbitrary curves)
+- Maintains timing fidelity — the robot follows the trajectory at the intended speed
+- Corrects for tracking drift without affecting the trajectory shape
+
+## Trajectory Splice on Chunk Arrival
+
+When a new action chunk arrives, the same algorithm applies regardless of use case:
+
+1. **Discard stale steps** — based on `observation_time`, compute how many steps are "in the past":
+   `past_steps = (now - observation_time) / dt_s`
+2. **Prepend current position** (only if steps were discarded) — creates a smooth transition from where the robot actually IS to where the trajectory continues
+3. **Compute profile** on the resulting trajectory
+4. **Blend initial velocities** — first 3 profile steps blend from the robot's current velocity to the new profile (smooth acceleration)
+
+This unifies both use cases:
+
+| Use case | observation_time | past_steps | Prepend? | Effect |
+|----------|-----------------|------------|----------|--------|
+| Jogger (continuous) | now (default) | 0 | No | Chunk used as-is, time-based execution |
+| Policy (slow inference) | 300ms ago | ~4 | Yes | Skips stale prefix, starts from actual position |
+
+No temporal ensembling between chunks — the fresh prediction from a new observation is always better than the tail of a stale prediction.
+
+## Receding Horizon (`execute_and_wait=True`)
+
+With `n_action_steps=8` on a 16-step chunk:
+
+```
+Policy predicts:  [0 1 2 3 4 5 6 7 | 8 9 10 11 12 13 14 15]
+                  ├── executed ──┤   ├── discarded (uncertain) ──┤
+```
+
+The executor:
+1. Trims the chunk to 8 steps
+2. Sends to the session
+3. Waits until the profile time expires (robot has had time to execute all steps)
+4. Queries fresh inference with new observation
+5. Repeat
+
+This is the standard approach for slow inference (GR00T at ~2Hz, LeRobot).
+
+## Continuous Mode (`execute_and_wait=False`)
+
+Inference runs at `inference_hz`. Each new chunk replaces the old one immediately.
+The profile resets to step 0 on each new chunk — the P-correction ensures
+the robot smoothly transitions from where it is to where the new chunk starts.
+
+Use for fast policies (>10 Hz) where the robot should always be tracking
+the latest prediction.
+
+## Single-Step Targets (Teleop)
+
+When a chunk has 1 step or `dt_ms=0`, the session uses a P-controller:
+
+```
+velocity = p_gain × (target - current)
+```
+
+Clamped to `velocity_limit`. Used by the `jog_joints()` / `jog_tcp()` API for
+real-time teleoperation without action chunks.
+
+## Configuration
 
 ```python
-from policy import jog_joints
+from policy import MotionConfig
 
-async with jog_joints(mg) as jogger:
-    async for state in jogger:
-        jogger.set_target(compute_joints(state))
-```
-
-`state` is a `RobotState` with `.joints`, `.pose`, and `.tcp`. Pass a `list[float]` of joint positions (radians). Use `break` to stop.
-
-For smoother tracking, pass a chunk of future targets with `dt_ms`:
-
-```python
-async with jog_joints(mg) as jogger:
-    async for state in jogger:
-        future_targets = predict_trajectory(state)  # list[list[float]]
-        jogger.set_target(future_targets, dt_ms=33.0)
-```
-
-See [Action Chunks](#action-chunks-multi-step-targets) below.
-
-## TCP Jogging
-
-```python
-from nova.types import Pose
-from policy import jog_tcp
-
-async with jog_tcp(mg, tcp="Flange") as jogger:
-    async for state in jogger:
-        jogger.set_target(Pose(500, 200, 300, 0, 3.14, 0))
-```
-
-Target is a `Pose` (position in mm, orientation as rotation vector in radians).
-
-## Multiple Motion Groups
-
-Both functions accept a list (joints) or dict (TCP) for multi-robot control:
-
-```python
-async with jog_joints([mg1, mg2]) as jogger:
-    async for states in jogger:            # dict[MotionGroup, RobotState]
-        jogger.set_target({
-            mg1: [0.1, -1.5, 1.0, -0.5, 0.0, 0.0],
-            mg2: [0.0, -1.5, -1.0, -0.5, 0.0, 0.0],
-        })
-```
-
-Chunks work for multiple motion groups too:
-
-```python
-async with jog_joints([mg1, mg2]) as jogger:
-    async for states in jogger:
-        jogger.set_target(
-            {
-                mg1: [[step0], [step1], ..., [step15]],
-                mg2: [[step0], [step1], ..., [step15]],
-            },
-            dt_ms=33.0,
-        )
-```
-
-## Error Handling
-
-Errors are detected automatically and raised through the `async for` loop:
-
-- **`MotionError`** — joint limit or self-collision detected by the controller
-- **`EmergencyStopError`** — e-stop, protective stop, or safety violation
-- **`RuntimeError`** — jogging connection lost
-
-```python
-from policy import EmergencyStopError, MotionError, jog_joints
-
-try:
-    async with jog_joints(mg) as jogger:
-        async for state in jogger:
-            jogger.set_target(compute_joints(state))
-except MotionError as e:
-    print(f"Hit a limit: {e}")
-except EmergencyStopError as e:
-    print(f"E-stop on controller '{e.controller_id}': {e.safety_state}")
-```
-
-▶ Full example: [`examples/jogging_dual_arm.py`](examples/jogging_dual_arm.py)
-
----
-
-## Action Chunks (Multi-Step Targets)
-
-Policies output either **one target** per call (teleoperation) or a **chunk of future targets**
-(learned policies like ACT/Diffusion/GR00T, typically 4–50 steps).
-
-```mermaid
-flowchart LR
-    subgraph Single["Single-step (teleop)"]
-        P1["target"] --> PID1["PID"]
-    end
-
-    subgraph Chunked["Chunked (learned policy)"]
-        P2["16 targets\n@ 33ms"] --> AQ["ActionQueue\n(interpolate + blend)"]
-        AQ -->|"target + feedforward"| PID2["PID"]
-    end
-```
-
-| Mode | `dt_ms` | Behavior |
-|------|---------|----------|
-| Single-step | `0` | Target held constant until next update |
-| Chunked | `> 0` | Targets interpolated; feedforward velocity computed; chunks blended |
-
-The ActionQueue applies three techniques to turn discrete waypoints into smooth, accurate motion:
-
-### 1. Interpolation
-
-Between waypoints, the queue interpolates based on elapsed time so the PID always has a
-smooth target — not a staircase of jumps.
-
-### 2. Feedforward Velocity
-
-The queue computes the trajectory's intended velocity from surrounding waypoints (central
-difference). This tells the PID *how fast the robot should be moving* at each moment, not
-just *where it should be*.
-
-Without feedforward, the PID can only react to error — it sees the target moving away and
-chases it, always lagging behind. With feedforward, the PID commands the right velocity
-*proactively* and only uses the P-term to correct small residual errors.
-
-Think of it like driving: without feedforward you're steering by looking at where the road
-was. With feedforward you're looking at where the road *is going*.
-
-### 3. Temporal Ensembling (Chunk Blending)
-
-When a new chunk arrives while the old one is still executing, naive replacement causes a
-velocity jump — the target snaps to a different position. This is the biggest source of
-tracking error and overshoot.
-
-The ActionQueue blends the overlap region between old and new chunks using exponential
-weights (the same technique used by ACT and Diffusion Policy):
-
-```
-For each overlapping step i:
-    w_new = 1 − exp(−i / temperature)    ← starts at 0, rises toward 1
-    w_old = 1 − w_new                    ← starts at 1, decays toward 0
-    target[i] = w_old × old_step + w_new × new_step
-```
-
-At the boundary (i=0), the old chunk fully dominates — no jump. Over the next few steps,
-the new chunk smoothly takes over. The `temperature` parameter (default 3.0) controls how
-quickly the transition happens.
-
-```
-Step:    0    1    2    3    4    5    6    ...
-w_old:  1.0  0.72 0.51 0.37 0.26 0.19 0.14 ...
-w_new:  0.0  0.28 0.49 0.63 0.74 0.81 0.86 ...
-```
-
-This eliminates the velocity discontinuity at chunk boundaries and reduces overshoot.
-
-### 4. Lookahead
-
-Network latency between your machine and the robot controller adds ~50–150ms of phase lag.
-The target the PID computes a velocity for has already moved on by the time the command
-reaches the robot.
-
-Lookahead compensates by evaluating the trajectory slightly *in the future*:
-
-```
-target = interpolate(time = now + lookahead_ms)
-```
-
-With the default `lookahead_ms=50`, the PID aims for where the trajectory will be 50ms
-from now, not where it is now. This reduces the phase lag from ~140ms to ~10ms.
-
-### When a Chunk Finishes
-
-If the chunk runs out and no new chunk has arrived, the queue:
-- Returns the **last waypoint** as the target (hold position)
-- Returns **zero feedforward** (no velocity — just hold still via P-term)
-- The robot decelerates smoothly and holds position until the next chunk arrives
-
----
-
-## PID Tuning
-
-Defaults work for most cases but require care with tiny action chunks. Pass a `PidConfig` to adjust:
-
-```python
-from policy import PidConfig, jog_joints
-
-config = PidConfig(
-    p_gain=1.5,           # tracking stiffness
-    d_gain=0.2,           # damping (opposes all velocity)
-    ff_gain=1.0,          # feedforward scale (1.0 = full trajectory velocity)
-    lookahead_ms=0.0,     # phase lag compensation (0 = no overshoot)
-    velocity_limit=2.0,   # max joint velocity (rad/s)
-    tolerance=0.001,      # dead zone (rad)
-    state_rate_ms=10,     # state stream rate (ms)
+config = MotionConfig(
+    velocity_limit=2.0,      # rad/s (or per-axis list)
+    ramp_steps=3,            # trapezoidal ramp smoothing
+    p_gain=3.0,              # P-gain for tracking correction + single-step targets
+    n_action_steps=8,        # receding horizon (0 = execute all)
+    execute_and_wait=True,   # wait for chunk done before next inference
+    state_rate_ms=10,        # state stream update rate
 )
-
-async with jog_joints(mg, config=config) as jogger:
-    ...
 ```
 
-| Parameter | Default | Effect |
-|-----------|---------|--------|
-| `p_gain` | 1.5 | Tracking stiffness. Higher = faster convergence, risk of overshoot on overlapping chunks. |
-| `d_gain` | 0.2 | Velocity damping. Opposes ALL velocity including feedforward — set lower for tiny chunks. |
-| `ff_gain` | 1.0 | Feedforward scale. 0 = PID only (will stall on tiny chunks). 1.0 = use full trajectory velocity. |
-| `lookahead_ms` | 0.0 | Phase lag compensation (ms). Non-zero causes overshoot on overlapping chunks. |
-| `velocity_limit` | 2.0 rad/s | Clamps output velocity per axis. |
-| `tolerance` | 0.001 rad | Below this error, velocity is zero (if no feedforward). Must be smaller than per-step deltas. |
-| `i_gain` | 0.0 | Integral correction. Rarely needed — targets update continuously. |
-| `state_rate_ms` | 10 | How often robot reports state (ms). Lower = smoother but more CPU. |
+## Error Detection
+
+The session monitors the NOVA jogging state stream for blocking conditions:
+
+| State | Meaning |
+|-------|---------|
+| `PAUSED_NEAR_JOINT_LIMIT` | Joint reached its limit |
+| `PAUSED_NEAR_COLLISION` | Self-collision detected |
+| `PAUSED_NEAR_SINGULARITY` | Kinematic singularity |
+
+After 10 consecutive ticks (~100ms) in a blocking state, a `MotionError` is raised.
+
+## Jogging Modes
+
+| Mode | Velocity type | Use case |
+|------|--------------|----------|
+| `"joint"` | `JointVelocityRequest` | Joint-space policies (default) |
+| `"cartesian"` | `TcpVelocityRequest` | Cartesian-space policies (TCP actions) |
+
+The mode is selected automatically by the executor based on whether the schema
+contains `Observation.tcp(..., action=True)` entries.

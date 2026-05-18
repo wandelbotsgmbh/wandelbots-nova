@@ -34,7 +34,7 @@ from policy import (
     Observation,
     PolicyExecutor,
     PolicySchema,
-    ProfileConfig,
+    MotionConfig,
     WebRTCCameras,
 )
 from policy.executor import ExecutorStatus
@@ -206,6 +206,7 @@ async def gr00t_dual_arm_controller(
     camera_size: int = Field(default=224, description="Camera frame width and height"),
     camera_fps: int = Field(default=15, description="Camera frames per second"),
     velocity_limit: float = Field(default=2.0, description="Joint velocity limit in rad/s"),
+    n_action_steps: int = Field(default=8, description="Number of action chunk steps to execute (0 = all). Later steps have higher uncertainty and are discarded (receding horizon)."),
 ):
     """Run one GR00T episode: home → connect cameras → run policy until timeout."""
     cell = ctx.nova.cell()
@@ -237,7 +238,7 @@ async def gr00t_dual_arm_controller(
         dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
-    executor = PolicyExecutor(schema, client, timeout_s=timeout_s, motion=ProfileConfig(velocity_limit=velocity_limit))
+    executor = PolicyExecutor(schema, client, timeout_s=timeout_s, motion=MotionConfig(velocity_limit=velocity_limit, n_action_steps=n_action_steps))
     await cycle.start()
     try:
         result = await executor.run()
@@ -300,6 +301,7 @@ class StartRequest(BaseModel):
     camera_size: int = Field(default=224)
     camera_fps: int = Field(default=15)
     velocity_limit: float = Field(default=2.0, description="Joint velocity limit in rad/s")
+    n_action_steps: int = Field(default=8, description="Steps to execute per chunk (0 = all)")
 
 
 @app.get("/status", response_model=ExecutorStatus)
@@ -376,7 +378,7 @@ async def start(req: StartRequest = StartRequest()):
         dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
-    _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s, motion=ProfileConfig(velocity_limit=req.velocity_limit))
+    _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s, motion=MotionConfig(velocity_limit=req.velocity_limit, n_action_steps=req.n_action_steps))
 
     async def run() -> ExecutionResult:
         global _last_error

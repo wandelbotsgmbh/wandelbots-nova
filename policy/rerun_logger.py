@@ -28,8 +28,35 @@ _MIN_LINE_STEPS = 2
 _MIN_TCP_COMPONENTS = 3
 _TEMPORAL_FRAME_NDIM = 4
 _TCP_TRAIL_COLOR = (50, 220, 100)  # green — actual TCP path
-_ACTION_CHUNK_COLOR = (255, 100, 50)  # orange — target action chunk
 _ACTION_TCP_COLOR = (50, 200, 255)  # cyan — TCP action targets
+
+# Action chunk gradient: orange (start) → yellow (end)
+_CHUNK_COLOR_START = (255, 80, 20)
+_CHUNK_COLOR_END = (255, 240, 60)
+
+# Direction arrow at each waypoint
+_DIRECTION_ARROW_LENGTH = 15.0  # mm
+_DIRECTION_ARROW_COLOR = (255, 160, 40)  # orange
+_DIRECTION_ARROW_WIDTH = 1.5
+
+# Screen-space line widths (UI points, zoom-independent)
+_TRAIL_WIDTH_UI = 2.0
+_CHUNK_WIDTH_UI = 3.0
+
+# Discarded chunk tail: dim gray (predicted but not executed)
+_CHUNK_TAIL_COLOR = (100, 100, 100)
+_CHUNK_TAIL_WIDTH_UI = 1.5
+
+
+def _lerp_color(
+    start: tuple[int, int, int], end: tuple[int, int, int], t: float
+) -> tuple[int, int, int]:
+    """Linearly interpolate between two RGB colors. t in [0, 1]."""
+    return (
+        int(start[0] + (end[0] - start[0]) * t),
+        int(start[1] + (end[1] - start[1]) * t),
+        int(start[2] + (end[2] - start[2]) * t),
+    )
 
 
 def _is_rerun_active() -> bool:
@@ -116,6 +143,9 @@ class PolicyRerunLogger:
                 self._tcp_trail[mg.id] = []
 
             self._send_blueprint()
+
+            # Set coordinate convention: NOVA uses right-handed Z-up (standard robotics)
+            rr.log("/", rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
 
             rr.log(
                 "policy/status",
@@ -205,7 +235,7 @@ class PolicyRerunLogger:
             if visualizer is not None:
                 visualizer.log_robot_geometry(joint_position=joints)
 
-            # TCP trail (actual path in green)
+            # TCP trail (actual path in green, screen-space width)
             dh_robot = self._dh_robots.get(mg_id)
             if dh_robot is not None:
                 positions = dh_robot.calculate_joint_positions(joints)
@@ -217,24 +247,40 @@ class PolicyRerunLogger:
                 if len(trail) >= _MIN_LINE_STEPS:
                     rr.log(
                         f"policy/{mg_id}/tcp_trail",
-                        rr.LineStrips3D([trail], colors=[_TCP_TRAIL_COLOR], radii=1.0),
+                        rr.LineStrips3D(
+                            [trail],
+                            colors=[_TCP_TRAIL_COLOR],
+                            radii=rr.components.Radius.ui_points(_TRAIL_WIDTH_UI),
+                        ),
                     )
                 rr.log(
                     f"policy/{mg_id}/tcp",
-                    rr.Points3D([tcp_pos], colors=[_TCP_TRAIL_COLOR], radii=4.0),
+                    rr.Points3D(
+                        [tcp_pos],
+                        colors=[_TCP_TRAIL_COLOR],
+                        radii=rr.components.Radius.ui_points(4.0),
+                    ),
                 )
 
-    def log_action_chunk(self, chunk: ActionChunk, step: int) -> None:
-        """Log action chunk as TCP path line strips (replaced each frame)."""
+    def log_action_chunk(self, chunk: ActionChunk, step: int, *, n_action_steps: int = 0) -> None:
+        """Log action chunk as TCP path line strips (replaced each frame).
+
+        Args:
+            chunk: Full predicted action chunk from the policy.
+            step: Current execution step.
+            n_action_steps: If >0, steps beyond this index are rendered in a
+                dim color to indicate they are predicted but not executed
+                (receding horizon visualization).
+        """
         if not self._initialized:
             return
         try:
-            self._log_joint_chunk(chunk, step)
-            self._log_tcp_chunk(chunk, step)
+            self._log_joint_chunk(chunk, step, n_action_steps)
+            self._log_tcp_chunk(chunk, step, n_action_steps)
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_action_chunk error: %s", e)
 
-    def _log_joint_chunk(self, chunk: ActionChunk, step: int) -> None:
+    def _log_joint_chunk(self, chunk: ActionChunk, step: int, n_action_steps: int = 0) -> None:
         import rerun as rr  # noqa: PLC0415
 
         elapsed = time.monotonic() - self._start_time
@@ -246,22 +292,34 @@ class PolicyRerunLogger:
             if dh_robot is None or not steps:
                 continue
 
-            tcp_positions = [
-                dh_robot.calculate_joint_positions(t)[-1] for t in steps
-            ]
+            # Split into executed and discarded portions
+            split = n_action_steps if 0 < n_action_steps < len(steps) else len(steps)
+            executed_steps = steps[:split]
+            discarded_steps = steps[split:]
 
-            if len(tcp_positions) >= _MIN_LINE_STEPS:
-                rr.log(
-                    f"policy/{mg_id}/action_chunk",
-                    rr.LineStrips3D([tcp_positions], colors=[_ACTION_CHUNK_COLOR], radii=1.5),
-                )
-            elif tcp_positions:
-                rr.log(
-                    f"policy/{mg_id}/action_chunk",
-                    rr.Points3D(tcp_positions, colors=[_ACTION_CHUNK_COLOR], radii=2.0),
-                )
+            # Compute TCP positions for executed steps
+            executed_positions = []
+            for joint_target in executed_steps:
+                positions = dh_robot.calculate_joint_positions(joint_target)
+                executed_positions.append(positions[-1])
 
-    def _log_tcp_chunk(self, chunk: ActionChunk, step: int) -> None:
+            # Log executed portion with orange→yellow gradient
+            self._log_line_strip(
+                f"policy/{mg_id}/action_chunk", executed_positions,
+                gradient=True, width=_CHUNK_WIDTH_UI,
+            )
+
+            # Log discarded tail in dim gray
+            self._log_discarded_tail(
+                f"policy/{mg_id}/action_chunk_tail",
+                discarded_steps, dh_robot, executed_positions,
+            )
+
+            # Log direction arrows showing travel direction at each waypoint
+            if len(executed_positions) >= _MIN_LINE_STEPS:
+                self._log_direction_arrows(mg_id, executed_positions)
+
+    def _log_tcp_chunk(self, chunk: ActionChunk, step: int, n_action_steps: int = 0) -> None:
         import rerun as rr  # noqa: PLC0415
 
         elapsed = time.monotonic() - self._start_time
@@ -271,14 +329,143 @@ class PolicyRerunLogger:
         for mg_id, steps in chunk.tcp.items():
             if not steps:
                 continue
-            tcp_positions = [
-                [s[0], s[1], s[2]] for s in steps if len(s) >= _MIN_TCP_COMPONENTS
+
+            split = n_action_steps if 0 < n_action_steps < len(steps) else len(steps)
+            executed = steps[:split]
+            discarded = steps[split:]
+
+            executed_positions = [
+                [s[0], s[1], s[2]] for s in executed if len(s) >= _MIN_TCP_COMPONENTS
             ]
-            if len(tcp_positions) >= _MIN_LINE_STEPS:
+            if len(executed_positions) >= _MIN_LINE_STEPS:
+                n = len(executed_positions)
+                colors = [
+                    _lerp_color(_CHUNK_COLOR_START, _CHUNK_COLOR_END, i / max(n - 1, 1))
+                    for i in range(n)
+                ]
                 rr.log(
                     f"policy/{mg_id}/action_chunk_tcp",
-                    rr.LineStrips3D([tcp_positions], colors=[_ACTION_TCP_COLOR], radii=1.5),
+                    rr.LineStrips3D(
+                        [executed_positions],
+                        colors=colors,
+                        radii=rr.components.Radius.ui_points(_CHUNK_WIDTH_UI),
+                    ),
                 )
+
+            if discarded:
+                tail_positions = [
+                    [s[0], s[1], s[2]] for s in discarded if len(s) >= _MIN_TCP_COMPONENTS
+                ]
+                if executed_positions:
+                    tail_positions = [executed_positions[-1], *tail_positions]
+                if len(tail_positions) >= _MIN_LINE_STEPS:
+                    rr.log(
+                        f"policy/{mg_id}/action_chunk_tcp_tail",
+                        rr.LineStrips3D(
+                            [tail_positions],
+                            colors=[_CHUNK_TAIL_COLOR],
+                            radii=rr.components.Radius.ui_points(_CHUNK_TAIL_WIDTH_UI),
+                        ),
+                    )
+            else:
+                rr.log(f"policy/{mg_id}/action_chunk_tcp_tail", rr.Clear(recursive=False))
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _log_line_strip(
+        entity_path: str, positions: list[list[float]], *, gradient: bool, width: float,
+    ) -> None:
+        """Log a line strip with gradient or uniform color."""
+        import rerun as rr  # noqa: PLC0415
+
+        if len(positions) >= _MIN_LINE_STEPS:
+            n = len(positions)
+            colors = (
+                [_lerp_color(_CHUNK_COLOR_START, _CHUNK_COLOR_END, i / max(n - 1, 1)) for i in range(n)]
+                if gradient
+                else [_CHUNK_COLOR_START] * n
+            )
+            rr.log(entity_path, rr.LineStrips3D(
+                [positions], colors=colors, radii=rr.components.Radius.ui_points(width),
+            ))
+        elif positions:
+            rr.log(entity_path, rr.Points3D(
+                positions, colors=[_CHUNK_COLOR_START], radii=rr.components.Radius.ui_points(4.0),
+            ))
+
+    def _log_discarded_tail(
+        self, entity_path: str, discarded_steps: list[list[float]],
+        dh_robot: object, bridge_from: list[list[float]],
+    ) -> None:
+        """Log discarded chunk tail in dim gray, connected from last executed point."""
+        import rerun as rr  # noqa: PLC0415
+
+        if not discarded_steps:
+            rr.log(entity_path, rr.Clear(recursive=False))
+            return
+
+        tail_positions = [
+            dh_robot.calculate_joint_positions(jt)[-1]  # type: ignore[attr-defined]
+            for jt in discarded_steps
+        ]
+        # Bridge from last executed point for visual continuity
+        if bridge_from:
+            tail_positions = [bridge_from[-1], *tail_positions]
+        if len(tail_positions) >= _MIN_LINE_STEPS:
+            rr.log(entity_path, rr.LineStrips3D(
+                [tail_positions],
+                colors=[_CHUNK_TAIL_COLOR],
+                radii=rr.components.Radius.ui_points(_CHUNK_TAIL_WIDTH_UI),
+            ))
+
+    @staticmethod
+    def _log_direction_arrows(mg_id: str, positions: list[list[float]]) -> None:
+        """Log arrows showing travel direction at each waypoint.
+
+        Uses central differences for interior points and forward/backward
+        differences at the endpoints. Arrow length is fixed for visibility.
+        """
+        import math  # noqa: PLC0415
+
+        import rerun as rr  # noqa: PLC0415
+
+        if len(positions) < _MIN_LINE_STEPS:
+            return
+
+        origins = []
+        vectors = []
+        n = len(positions)
+
+        for i in range(n):
+            # Compute tangent direction via finite differences
+            if i == 0:
+                dx = [positions[1][j] - positions[0][j] for j in range(3)]
+            elif i == n - 1:
+                dx = [positions[n - 1][j] - positions[n - 2][j] for j in range(3)]
+            else:
+                dx = [(positions[i + 1][j] - positions[i - 1][j]) / 2.0 for j in range(3)]
+
+            # Normalize and scale to fixed arrow length
+            magnitude = math.sqrt(sum(d * d for d in dx))
+            if magnitude < 1e-6:  # noqa: PLR2004
+                continue
+            scale = _DIRECTION_ARROW_LENGTH / magnitude
+            origins.append(positions[i])
+            vectors.append([d * scale for d in dx])
+
+        if origins:
+            rr.log(
+                f"policy/{mg_id}/chunk_direction",
+                rr.Arrows3D(
+                    origins=origins,
+                    vectors=vectors,
+                    colors=[_DIRECTION_ARROW_COLOR],
+                    radii=rr.components.Radius.ui_points(_DIRECTION_ARROW_WIDTH),
+                ),
+            )
 
     def log_images(self, images: dict[str, Any]) -> None:
         """Log camera images to Rerun."""
