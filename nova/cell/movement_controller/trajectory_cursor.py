@@ -1036,6 +1036,18 @@ class TrajectoryCursor:
                             f"Movement error received in trajectory cursor: {response.root.message}"
                         )
                     case api.models.StartMovementResponse() | api.models.PauseMovementResponse():
+                        # No per-command correlation exists on the wire, but
+                        # mis-attribution is harmless here:
+                        #   - the type filter rejects a stale Start ack while
+                        #     the current op is a PAUSE (and vice versa);
+                        #   - `set_commanded()` is idempotent, so the stale
+                        #     ack and the real ack collapse to a single
+                        #     INITIAL→COMMANDED transition on the current op;
+                        #   - the actual RUNNING/COMPLETED lifecycle is driven
+                        #     by the motion-state monitor, not by these acks.
+                        # The server's 1:1 FIFO guarantee (verified by the
+                        # cursor API behavior tests) ensures the current op's
+                        # own ack always arrives.
                         if isinstance(response.root, current_op.expected_response_type):
                             self._operation_handler.set_commanded()
                     case _:
