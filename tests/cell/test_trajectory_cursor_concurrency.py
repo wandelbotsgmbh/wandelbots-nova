@@ -62,6 +62,7 @@ def _make_motion_group_state(
         joint_limit_reached=api.models.MotionGroupStateJointLimitReached(limit_reached=[False] * 6),
         standstill=standstill,
         execute=execute,
+        description_revision=1,
     )
 
 
@@ -71,7 +72,7 @@ def _make_execute(location: float = 0.5) -> api.models.Execute:
         details=api.models.TrajectoryDetails(
             trajectory="traj-1",
             location=api.models.Location(root=location),
-            state=api.models.TrajectoryRunning(),
+            state=api.models.TrajectoryRunning(time_to_end=0),
         ),
     )
 
@@ -79,7 +80,7 @@ def _make_execute(location: float = 0.5) -> api.models.Execute:
 async def _never_ending_state_stream() -> AsyncIterator[api.models.MotionGroupState]:
     """Async iterator that never yields anything – simulates a quiet stream."""
     await asyncio.Future()  # blocks forever
-    yield  # unreachable; makes mypy happy
+    yield _make_motion_group_state(standstill=True)  # unreachable; makes mypy happy
 
 
 async def _state_stream_from(
