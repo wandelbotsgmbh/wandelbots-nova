@@ -30,7 +30,7 @@ dependencies = [
     "exceptiongroup>=1.2.2",
     "nats-py>=2.11.0",
     "blinker>=1.9.0",
-    "python-statemachine>=2.5.0",
+    "python-statemachine==3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -201,4 +201,3 @@ known-first-party = ["nova", "nova_rerun_bridge", "novax"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
