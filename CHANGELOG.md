@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.1.2 (2026-05-19)
+
+### Bug Fixes
+
+- **NDX-729**: Restrict python-statemachine dependency version (#421)
+  ([#421](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/421),
+  [`d128444`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d1284449138937131d28186a17879cd6fecc7f0b))
+
+
 ## v5.1.1 (2026-05-12)
 
 ### Chores
