@@ -1762,7 +1762,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-api-client"
-version = "26.3.0"
+version = "26.3.1rc2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1777,9 +1777,9 @@ dependencies = [
     { name = "urllib3" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e3/fa/6ad4b3ed324680f89ca08770d5e30109ebc53544d441cfcd710f5d0631f2/wandelbots_api_client-26.3.0.tar.gz", hash = "sha256:c151a850eb3fcb61698c35b42213e97cc784091e58146ebd41141ec46094a8b1", size = 607242, upload-time = "2026-04-14T13:13:38.946Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/f6/c5ad105f35bae6d118760660ab6b6a9c2b22add014636dc4c8b910c99b6e/wandelbots_api_client-26.3.1rc2.tar.gz", hash = "sha256:68978ed1a486b2b1bb8afb2ffefe723ac94d3b3d74c4f8816f816d6d5ec58d5e", size = 607994, upload-time = "2026-05-04T07:08:11.409Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6e/c8/067a8a04c808b1b2a63bc2b33f9da000fc0f55a6a7e331b8aa8bb71c5319/wandelbots_api_client-26.3.0-py3-none-any.whl", hash = "sha256:60ba1184e7cb075e0c438e5621f1a989feef11810a6b5d6d08b7e7abb521b72a", size = 1442061, upload-time = "2026-04-14T13:13:36.595Z" },
+    { url = "https://files.pythonhosted.org/packages/59/46/04fb3c22aba8cdac94dfd5accba8458506e40bd9dfa5a73135b03bd45b75/wandelbots_api_client-26.3.1rc2-py3-none-any.whl", hash = "sha256:4253e762f061e39a80cd08e491d2bff42c8215f8865890dbcca3e548defd82bd", size = 1442122, upload-time = "2026-05-04T07:08:14.369Z" },
 ]
 
 [[package]]
