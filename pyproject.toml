@@ -1,6 +1,6 @@
 [project]
 name = "wandelbots-nova"
-version = "5.0.0"
+version = "5.1.2"
 description = "Official Python SDK for the Wandelbots Nova"
 authors = [
     { name = "Wandelbots GmbH" },
@@ -30,22 +30,7 @@ dependencies = [
     "exceptiongroup>=1.2.2",
     "nats-py>=2.11.0",
     "blinker>=1.9.0",
-    "python-statemachine>=2.5.0",
-]
-
-[dependency-groups]
-dev = [
-    "ruff>=0.12.8",
-    "pytest>=8.4.1",
-    "pytest-asyncio>=1.1.0",
-    "mypy>=1.18.2",
-    "pre-commit>=4.3.0",
-    "icecream>=2.1.5",
-    "ipython<10",
-    "freezegun>=1.5.5",
-    "pyinstrument>=5.1.1",
-    "glom>=24.11.0",
-    "pytest-xdist>=3.8.0",
+    "python-statemachine==3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -77,6 +62,23 @@ download-models = "nova_rerun_bridge.helper_scripts.download_models:update_robot
 wandelscript = "wandelscript.cli:app"
 ws = "wandelscript.cli:app"
 
+
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.8",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "mypy>=1.18.2",
+    "pre-commit>=4.3.0",
+    "icecream>=2.1.5",
+    "ipython<10",
+    "freezegun>=1.5.5",
+    "pyinstrument>=5.1.1",
+    "glom>=24.11.0",
+    "pytest-xdist>=3.8.0",
+]
+
 [tool.uv]
 prerelease = "allow"
 
@@ -86,9 +88,6 @@ include = ["nova", "nova_rerun_bridge", "wandelscript", "novax"]
 [tool.hatch.build.targets.wheel]
 include = ["nova", "nova_rerun_bridge", "wandelscript", "novax"]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -111,6 +110,7 @@ markers = """
     integration: mark a test as requiring a running Nova instance
     xdist_group(name): group tests that needs to run sequentially
 """
+
 
 [tool.mypy]
 python_version = "3.11"
@@ -195,5 +195,11 @@ insecure = false
 dist_glob_patterns = ["dist/*"]
 upload_to_vcs_release = true
 
+
 [tool.ruff.lint.isort]
 known-first-party = ["nova", "nova_rerun_bridge", "novax"]
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -1,6 +1,42 @@
 # CHANGELOG
 
 
+## v5.1.2 (2026-05-19)
+
+### Bug Fixes
+
+- **NDX-729**: Restrict python-statemachine dependency version (#421)
+  ([#421](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/421),
+  [`d128444`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d1284449138937131d28186a17879cd6fecc7f0b))
+
+
+## v5.1.1 (2026-05-12)
+
+### Chores
+
+- **examples**: Add example for merge trajectories (#419)
+  ([#419](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/419),
+  [`acc6aa4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/acc6aa4d33f73c6aa0bca6837ce488c85d9bba77))
+
+
+## v5.1.0 (2026-05-06)
+
+### Features
+
+- **NDX-696**: Add jerk limit fields to MotionSettings and fix zero value blending bug (#416)
+  ([#416](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/416),
+  [`ab52952`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ab52952a6b0965435e8e6e145031af094fa38c37))
+
+
+## v5.0.1 (2026-05-06)
+
+### Bug Fixes
+
+- **NDX-698**: Use payload defaults and per-call overrides in planning (#417)
+  ([#417](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/417),
+  [`853f91a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/853f91a5666f38294b3d9e59b9e03155ea33e35b))
+
+
 ## v5.0.0 (2026-04-22)
 
 ### Bug Fixes
