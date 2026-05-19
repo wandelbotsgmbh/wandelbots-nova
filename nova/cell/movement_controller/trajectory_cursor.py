@@ -153,7 +153,6 @@ class Operation:
         expected_response_type: The API response type expected for this operation.
         target_location: Target location for targeted movements (forward_to, backward_to).
         interrupt_requested: Flag indicating if cancellation was requested.
-        op_id: Monotonic operation identifier for matching commands to responses.
     """
 
     future: asyncio.Future[OperationResult]
@@ -161,7 +160,6 @@ class Operation:
     operation_state: OperationState
     start_location: float
     expected_response_type: ExpectedResponseType
-    op_id: int = 0
     target_location: Optional[float] = None
     interrupt_requested: bool = False
 
@@ -179,12 +177,6 @@ class OperationHandler:
 
     def __init__(self):
         self._operation: Optional[Operation] = None
-        self._op_counter: int = 0
-
-    @property
-    def current_op_id(self) -> int:
-        """The operation ID of the current operation, or 0 if none."""
-        return self._operation.op_id if self._operation else 0
 
     def start(
         self,
@@ -211,7 +203,6 @@ class OperationHandler:
         if self._operation and not self._operation.future.done():
             self._operation.future.cancel()
 
-        self._op_counter += 1
         future: asyncio.Future[OperationResult] = asyncio.Future()
         self._operation = Operation(
             future=future,
@@ -219,7 +210,6 @@ class OperationHandler:
             operation_state=OperationState.INITIAL,
             start_location=start_location,
             expected_response_type=expected_response_type,
-            op_id=self._op_counter,
             target_location=target_location,
             interrupt_requested=False,
         )
@@ -603,6 +593,12 @@ class TrajectoryCursor:
 
         Any previously pending intent that hasn't been consumed yet is silently
         overwritten — only the most recent intent matters.
+
+        Thread-safety: must be called from the cursor's event-loop thread. The
+        intent slot + event are read and cleared by ``_request_loop`` without
+        a lock; this is safe only because asyncio is single-threaded and there
+        is no ``await`` between the read and the ``_intent_event.clear()``.
+        Calling this from another thread can lose intents.
         """
         self._pending_intent = intent
         self._intent_event.set()
@@ -656,6 +652,9 @@ class TrajectoryCursor:
         future = self._start_operation(
             OperationType.BACKWARD, expected_response_type=api.models.StartMovementResponse
         )
+
+        if target_location is not None:
+            self._target_location = target_location
 
         self._set_intent(
             Intent(
