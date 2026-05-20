@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.1.3 (2026-05-20)
+
+### Bug Fixes
+
+- **NDX-626**: Harden trajectory cursor concurrency handling (#418)
+  ([#418](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/418),
+  [`8cab9ce`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8cab9ceae721bcf7fcddf2b8da85cd3f15eaa345))
+
+
 ## v5.1.2 (2026-05-19)
 
 ### Bug Fixes
