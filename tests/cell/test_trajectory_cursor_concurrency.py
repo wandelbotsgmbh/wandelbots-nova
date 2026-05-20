@@ -545,8 +545,10 @@ class TestCursorDetachBehaviour:
     """Detach scenarios to document what happens to in-flight operations."""
 
     async def test_detach_signals_stop_and_in_queue(self):
-        """After detach(), the stop event should be set and the in_queue
-        should contain the sentinel so __anext__ terminates cleanly."""
+        """After detach(), the stop event should be set and the intent event
+        should be set so _request_loop wakes and terminates.  The sentinel
+        is *not* enqueued here – it comes from _motion_group_state_monitor's
+        finally block during a real session."""
         cursor = _make_cursor()
         cursor.detach()
 
@@ -555,16 +557,18 @@ class TestCursorDetachBehaviour:
         # Intent event is set (wakes _request_loop so it sees the stop)
         assert cursor._intent_event.is_set()
 
-        # In-queue gets sentinel (terminates __anext__)
-        incoming = cursor._in_queue.get_nowait()
-        assert incoming is _QUEUE_SENTINEL
+        # No sentinel in the queue – that responsibility belongs to the monitor
+        assert cursor._in_queue.empty()
 
         cursor._initialize_task.cancel()
 
     async def test_aiter_raises_stop_async_iteration_after_detach(self):
-        """The __aiter__ protocol must raise StopAsyncIteration after detach()."""
+        """When the sentinel is manually enqueued (as the monitor's finally
+        would do), __anext__ must raise StopAsyncIteration."""
         cursor = _make_cursor()
         cursor.detach()
+        # Simulate what the monitor's finally block does
+        cursor._in_queue.put_nowait(_QUEUE_SENTINEL)
 
         with pytest.raises(StopAsyncIteration):
             await cursor.__anext__()
