@@ -808,7 +808,6 @@ class TrajectoryCursor:
                 op.future.cancel()
         self._stop_event.set()
         self._intent_event.set()  # wake _request_loop so it sees the stop
-        self._in_queue.put_nowait(_QUEUE_SENTINEL)
 
     def _start_operation(
         self,
@@ -906,9 +905,6 @@ class TrajectoryCursor:
         except asyncio.CancelledError:
             logger.debug("TrajectoryCursor cntrl was cancelled during cleanup of internal tasks")
             raise
-
-        # stopping the external response stream iterator to be sure, but this is a smell
-        self._in_queue.put_nowait(_QUEUE_SENTINEL)
 
     async def _request_loop(self) -> ExecuteTrajectoryRequestStream:
         while True:
