@@ -278,9 +278,6 @@ class PolicyExecutor:
             self._last_obs = robot_states
             last_obs = robot_states
 
-            # Debug: log observation timestamp and joints
-            obs_time = time.monotonic()
-
             # Rerun: log observation
             if self._rerun is not None:
                 self._rerun.log_observation(robot_states, step)
@@ -292,11 +289,6 @@ class PolicyExecutor:
                 robot_states, self._schema, images, self._all_io_values or None,
             )
             action = self._apply_relative_mode(action, robot_states)
-
-            # Debug: log inference result timing
-            send_time = time.monotonic()
-            inference_duration = send_time - obs_time
-            self._log_inference(step, obs_time - start_time, send_time - start_time, inference_duration, robot_states, action)
             self._check_guards_pre_send(action, robot_states)
 
             # Rerun: log full action chunk (includes discarded tail for visualization)
@@ -616,32 +608,6 @@ class PolicyExecutor:
             self._rerun.log_completion(
                 self.result.reason, self.result.steps, self.result.duration_s,
             )
-
-    def _log_inference(
-        self, step: int, obs_t: float, send_t: float, duration: float,
-        states: dict[str, Any], action: ActionChunk,
-    ) -> None:
-        """Write inference debug info to /tmp/executor_debug.jsonl."""
-        import json as _json  # noqa: PLC0415
-        import pathlib  # noqa: PLC0415
-
-        log_path = pathlib.Path("/tmp/executor_debug.jsonl")  # noqa: S108
-        entry: dict[str, Any] = {
-            "step": step,
-            "obs_t_s": round(obs_t, 4),
-            "send_t_s": round(send_t, 4),
-            "inference_s": round(duration, 4),
-        }
-        for mg_id, state in states.items():
-            if hasattr(state, "joints"):
-                entry[f"obs_{mg_id}"] = [round(j, 5) for j in list(state.joints)[:3]]
-        for mg_id, steps in action.joints.items():
-            entry[f"act_{mg_id}_first"] = [round(v, 5) for v in steps[0][:3]]
-            entry[f"act_{mg_id}_last"] = [round(v, 5) for v in steps[-1][:3]]
-            entry[f"act_{mg_id}_n"] = len(steps)
-        with log_path.open("a") as f:
-            f.write(_json.dumps(entry) + "\n")
-
 
 def _result(
     reason: str, step: int, start_time: float, last_obs: dict[str, Any] | None = None,

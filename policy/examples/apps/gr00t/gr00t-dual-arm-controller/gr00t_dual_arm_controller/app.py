@@ -260,14 +260,61 @@ async def gr00t_dual_arm_controller(
 
 novax_app = Novax()
 
+
+@contextlib.asynccontextmanager
+async def _app_lifespan(app_instance):
+    """Custom lifespan that registers programs and verifies NATS writes."""
+    from nova.program.store import ProgramStore
+    from novax.config import APP_NAME
+
+    await novax_app._nova.open()
+    logger.info(f"Lifespan: NATS connected={novax_app._nova.nats.is_connected}")
+
+    cell = novax_app._cell
+    store = ProgramStore(cell=cell)
+
+    programs = await novax_app._program_manager.get_programs()
+    logger.info(f"Lifespan: {len(programs)} programs to register")
+
+    for pid, details in programs.items():
+        sp = nova.api.models.Program(
+            program=details.program,
+            name=details.name,
+            description=details.description,
+            app=APP_NAME,
+            preconditions=details.preconditions,
+            input_schema=details.input_schema,
+        )
+        key = f"{APP_NAME}.{pid}"
+        await store.put(key, sp)
+        logger.info(f"Lifespan: PUT {key} done")
+
+    # Verify
+    js = novax_app._nova.nats.jetstream()
+    kv = await js.key_value("nova_cells_cell_programs")
+    try:
+        keys = await kv.keys()
+        logger.info(f"Lifespan: Verified keys in NATS: {keys}")
+    except Exception as e:
+        logger.error(f"Lifespan: Verification failed: {e}")
+
+    yield
+
+    # Don't deregister or close NATS on shutdown - programs should persist
+
+
 app = FastAPI(
     title="GR00T Dual-Arm Controller",
     version="2.0.0",
     root_path=BASE_PATH,
     docs_url="/",
+    lifespan=_app_lifespan,
 )
 
-novax_app.include_programs_router(app)
+# Manually include programs router endpoints without the duplicate lifespan
+from novax.api.programs import router as _programs_router, get_program_manager
+app.dependency_overrides[get_program_manager] = lambda: novax_app.program_manager
+app.include_router(_programs_router)
 novax_app.register_program(move_to_home)
 novax_app.register_program(gr00t_dual_arm_controller)
 

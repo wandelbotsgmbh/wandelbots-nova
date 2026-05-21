@@ -10,6 +10,8 @@ COPY pyproject.toml ./
 
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
+ENV UV_EXTRA_INDEX_URL=https://code.wabo.run/api/v4/projects/889/packages/pypi/simple
+ENV UV_PRERELEASE=allow
 
 ARG CACHEBUST=1
 RUN --mount=from=uv,source=/uv,target=/bin/uv \

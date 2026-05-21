@@ -108,7 +108,6 @@ class WaypointJoggingSession:
         self._last_target: list[float] | None = None
 
         # Debug log file
-        self._debug_file: object | None = None
 
         # Pending waypoints to send (set by update_chunk, consumed by jogging loop)
         self._pending_request: object | None = None
@@ -256,12 +255,6 @@ class WaypointJoggingSession:
         self._jogging_task = asyncio.create_task(
             self._jogging_loop(), name=f"wp-jog-{self.motion_group_id}"
         )
-
-        # Open debug log
-        import pathlib  # noqa: PLC0415
-        log_path = pathlib.Path(f"/tmp/waypoint_debug_{self.motion_group_id.replace('@', '_')}.jsonl")  # noqa: S108
-        self._debug_file = log_path.open("w")
-        self._debug_file.write(f'{{"event":"start","t_ms":0,"joints":{list(self._current_joints)}}}\n')
         logger.info(
             "WaypointJoggingSession started for %s (%d joints)",
             self.motion_group_id,
@@ -277,10 +270,6 @@ class WaypointJoggingSession:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
                     await task
-
-        if self._debug_file is not None:
-            self._debug_file.close()
-            self._debug_file = None
 
         self._jogging_task = None
         self._state_task = None
@@ -468,33 +457,10 @@ class WaypointJoggingSession:
         )
 
     def _log_state(self, joint_position: object) -> None:
-        """Log state stream update to debug file."""
-        if self._debug_file is None:
-            return
-        t_ms = int((time.monotonic() - self._session_start_time) * 1000)
-        joints = list(joint_position) if hasattr(joint_position, '__iter__') else []
-        import json as _json  # noqa: PLC0415
-        self._debug_file.write(
-            _json.dumps({"event": "state", "t_ms": t_ms, "joints": [round(j, 5) for j in joints]}) + "\n"
-        )
+        """Log state stream update (no-op, debug logging removed)."""
 
     def _log_chunk(self, now_ms: int, timestamps: list[int], steps: list[list[float]]) -> None:
-        """Log sent chunk to debug file."""
-        if self._debug_file is None:
-            return
-        import json as _json  # noqa: PLC0415
-        self._debug_file.write(
-            _json.dumps({
-                "event": "chunk",
-                "t_ms": now_ms,
-                "timestamps": timestamps,
-                "n_steps": len(steps),
-                "first": [round(v, 5) for v in steps[0]] if steps else [],
-                "last": [round(v, 5) for v in steps[-1]] if steps else [],
-                "current": [round(v, 5) for v in self._current_joints] if self._current_joints else [],
-            }) + "\n"
-        )
-        self._debug_file.flush()
+        """Log sent chunk (no-op, debug logging removed)."""
 
     def _run_guards(self) -> None:
         """Run safety guards with current state."""
