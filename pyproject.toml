@@ -30,22 +30,7 @@ dependencies = [
     "exceptiongroup>=1.2.2",
     "nats-py>=2.11.0",
     "blinker>=1.9.0",
-    "python-statemachine>=2.5.0",
-]
-
-[dependency-groups]
-dev = [
-    "ruff>=0.12.8",
-    "pytest>=8.4.1",
-    "pytest-asyncio>=1.1.0",
-    "mypy>=1.18.2",
-    "pre-commit>=4.3.0",
-    "icecream>=2.1.5",
-    "ipython<10",
-    "freezegun>=1.5.5",
-    "pyinstrument>=5.1.1",
-    "glom>=24.11.0",
-    "pytest-xdist>=3.8.0",
+    "python-statemachine~=3.1.0",
 ]
 
 [project.optional-dependencies]
@@ -76,6 +61,22 @@ benchmark = [
 download-models = "nova_rerun_bridge.helper_scripts.download_models:update_robot_models"
 wandelscript = "wandelscript.cli:app"
 ws = "wandelscript.cli:app"
+
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.8",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "mypy>=1.18.2",
+    "pre-commit>=4.3.0",
+    "icecream>=2.1.5",
+    "ipython<10",
+    "freezegun>=1.5.5",
+    "pyinstrument>=5.1.1",
+    "glom>=24.11.0",
+    "pytest-xdist>=3.8.0",
+]
 
 [tool.uv]
 prerelease = "allow"
