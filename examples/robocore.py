@@ -12,7 +12,7 @@ from math import pi
 import numpy as np
 
 import nova
-from nova import Controller, api
+from nova import Controller, api, run_program
 from nova.actions import Action, cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
 
@@ -271,4 +271,4 @@ async def main(ctx: nova.ProgramContext):
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_program(main)
