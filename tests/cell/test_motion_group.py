@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from nova import api
+from nova.actions.io import ReadAction
 from nova.actions import cartesian_ptp, collision_free, io_write, linear, wait
 from nova.actions.base import Action
 from nova.cell.motion_group import MotionGroup, split_actions_into_batches
@@ -340,6 +341,25 @@ async def test_plan_and_execute_actions_with_motion_do_not_use_direct_non_motion
     mock_motion_group._execute_direct_non_motion_actions.assert_not_awaited()
     mock_motion_group.plan.assert_awaited_once()
     mock_motion_group.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_supports_direct_non_motion_actions_rejects_unsupported_non_motion_actions(
+    mock_motion_group,
+):
+    actions = [ReadAction(key="digital_in[0]", device_id="test-device")]
+
+    assert mock_motion_group._supports_direct_non_motion_actions(actions) is False
+
+
+@pytest.mark.asyncio
+async def test_execute_direct_non_motion_actions_raises_value_error_for_unsupported_actions(
+    mock_motion_group,
+):
+    actions = [ReadAction(key="digital_in[0]", device_id="test-device")]
+
+    with pytest.raises(ValueError, match="Unsupported non-motion action type: ReadAction"):
+        await mock_motion_group._execute_direct_non_motion_actions(actions)
 
 
 @pytest.mark.asyncio

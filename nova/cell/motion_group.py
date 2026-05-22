@@ -148,7 +148,9 @@ class MotionGroup(AbstractRobot):
         return self._current_motion
 
     def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:
-        return len(actions) > 0 and all(not action.is_motion() for action in actions)
+        return len(actions) > 0 and all(
+            isinstance(action, (WaitAction, WriteAction)) for action in actions
+        )
 
     async def _execute_direct_non_motion_actions(self, actions: list[Action]) -> None:
         for action in actions:
@@ -157,7 +159,7 @@ class MotionGroup(AbstractRobot):
                 continue
 
             if not isinstance(action, WriteAction):
-                raise TypeError(f"Unsupported direct non-motion action: {type(action).__name__}")
+                raise ValueError(f"Unsupported non-motion action type: {type(action).__name__}")
 
             if action.origin == api.models.IOOrigin.BUS_IO:
                 await self._api_client.bus_ios_api.set_bus_io_values(
