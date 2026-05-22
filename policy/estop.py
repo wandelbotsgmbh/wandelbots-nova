@@ -116,6 +116,10 @@ class EstopMonitor:
             raise
         except (OSError, RuntimeError):
             pass
+        except Exception:  # noqa: BLE001, S110
+            # Pydantic ValidationError from unknown state kinds (e.g. KIND_UNKNOWN
+            # on waypoint jogging feature branches). Non-fatal — just stop monitoring.
+            pass
         finally:
             if stream is not None:
                 with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):

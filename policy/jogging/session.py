@@ -242,6 +242,9 @@ class JoggingSession:
             pass
         except (OSError, RuntimeError) as e:
             logger.error("State stream error for %s: %s", self.motion_group_id, e)
+        except Exception:  # noqa: BLE001
+            # Pydantic ValidationError from unknown jogging state kinds on feature branches
+            logger.debug("State stream validation error for %s (non-fatal)", self.motion_group_id)
         finally:
             if stream is not None:
                 with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
