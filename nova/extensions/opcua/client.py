@@ -240,7 +240,9 @@ class OPCUAClient:
 
         node = self._client.get_node(key)
         await sub.subscribe_data_change(
-            nodes=node, queuesize=config.queue_size, sampling_interval=config.sampling_interval
+            nodes=node,
+            queuesize=config.queue_size,
+            sampling_interval=ua.Double(config.sampling_interval),
         )
 
         await data_change_sub

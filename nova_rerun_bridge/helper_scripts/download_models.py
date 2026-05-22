@@ -2,7 +2,7 @@ import tempfile
 from pathlib import Path
 from zipfile import ZipFile
 
-import requests  # type: ignore[import-untyped]
+import requests
 
 """
 This script downloads the pre-processed robot models from the wandelbots-js-react-components repository.

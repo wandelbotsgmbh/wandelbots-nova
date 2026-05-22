@@ -27,6 +27,7 @@ async def test_pause_on_io_in_context_initialization():
         yield api.models.MotionGroupState(
             timestamp=datetime.now(timezone.utc),
             sequence_number=0,
+            description_revision=0,
             motion_group="mg0",
             controller="test-controller",
             joint_position=[0.0] * 6,
@@ -60,6 +61,7 @@ async def test_move_forward_controller_includes_pause_on_io_in_start_request():
         yield api.models.MotionGroupState(
             timestamp=datetime.now(timezone.utc),
             sequence_number=0,
+            description_revision=0,
             motion_group="mg0",
             controller="test-controller",
             joint_position=[0.0] * 6,
@@ -112,7 +114,7 @@ async def test_pause_on_io_parameter_accepted_by_execution_api():
             virtual_controller(
                 name=controller_name,
                 manufacturer=api.models.Manufacturer.KUKA,
-                type=api.models.VirtualControllerTypes.KUKA_KR6_R700_SIXX,
+                type="kuka-kr6_r700_sixx",
                 position=initial_joint_positions,
             )
         )
@@ -165,7 +167,7 @@ async def _test_pause_on_io_stops_motion_early_when_triggered():
             virtual_controller(
                 name=controller_name,
                 manufacturer=api.models.Manufacturer.KUKA,
-                type=api.models.VirtualControllerTypes.KUKA_KR6_R700_SIXX,
+                type="kuka-kr6_r700_sixx",
                 position=initial_joint_positions,
             )
         )

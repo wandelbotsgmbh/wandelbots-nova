@@ -173,7 +173,7 @@ async def build_collision_world(
             virtual_controller(
                 name="ur5",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR5E,
+                type="universalrobots-ur5e",
             )
         ],
         cleanup_controllers=False,
