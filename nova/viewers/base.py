@@ -37,7 +37,7 @@ class Viewer(ABC):
         self,
         actions: Sequence[Action],
         trajectory: models.JointTrajectory,
-        tcp: str,
+        tcp: str | None,
         motion_group: MotionGroup,
     ) -> None:
         """Log successful planning results.
@@ -45,20 +45,24 @@ class Viewer(ABC):
         Args:
             actions: List of actions that were planned
             trajectory: The resulting trajectory
-            tcp: TCP used for planning
+            tcp: TCP used for planning, or None if no TCP was used
             motion_group: The motion group used for planning
         """
         pass
 
     async def log_planning_failure(
-        self, actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
+        self,
+        actions: Sequence[Action],
+        error: Exception,
+        tcp: str | None,
+        motion_group: MotionGroup,
     ) -> None:
         """Log planning failure results.
 
         Args:
             actions: List of actions that failed to plan
             error: The planning error that occurred
-            tcp: TCP used for planning
+            tcp: TCP used for planning, or None if no TCP was used
             motion_group: The motion group used for planning
         """
         pass

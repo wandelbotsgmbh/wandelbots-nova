@@ -38,7 +38,7 @@ async def ur_mg():
             virtual_controller(
                 name=controller_name,
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                type="universalrobots-ur10e",
             )
         )
 

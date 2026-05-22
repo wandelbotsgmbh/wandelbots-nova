@@ -1,6 +1,87 @@
 # CHANGELOG
 
 
+## v5.1.3 (2026-05-20)
+
+### Bug Fixes
+
+- **NDX-626**: Harden trajectory cursor concurrency handling (#418)
+  ([#418](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/418),
+  [`8cab9ce`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8cab9ceae721bcf7fcddf2b8da85cd3f15eaa345))
+
+
+## v5.1.2 (2026-05-19)
+
+### Bug Fixes
+
+- **NDX-729**: Restrict python-statemachine dependency version (#421)
+  ([#421](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/421),
+  [`d128444`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d1284449138937131d28186a17879cd6fecc7f0b))
+
+
+## v5.1.1 (2026-05-12)
+
+### Chores
+
+- **examples**: Add example for merge trajectories (#419)
+  ([#419](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/419),
+  [`acc6aa4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/acc6aa4d33f73c6aa0bca6837ce488c85d9bba77))
+
+
+## v5.1.0 (2026-05-06)
+
+### Features
+
+- **NDX-696**: Add jerk limit fields to MotionSettings and fix zero value blending bug (#416)
+  ([#416](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/416),
+  [`ab52952`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ab52952a6b0965435e8e6e145031af094fa38c37))
+
+
+## v5.0.1 (2026-05-06)
+
+### Bug Fixes
+
+- **NDX-698**: Use payload defaults and per-call overrides in planning (#417)
+  ([#417](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/417),
+  [`853f91a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/853f91a5666f38294b3d9e59b9e03155ea33e35b))
+
+
+## v5.0.0 (2026-04-22)
+
+### Bug Fixes
+
+- Pin NOVA API to version ~26.3 (#415)
+  ([#415](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/415),
+  [`5881677`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5881677d65330656c42cac051d55df2691096744))
+
+
+## v4.13.0 (2026-04-20)
+
+### Features
+
+- **api**: Update wandelbots-api-client to 26.3 (#414)
+  ([#414](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/414),
+  [`8ce1a8e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8ce1a8ea8ac318800672a58ea7f7c1d0aeed308f))
+
+
+## v4.12.1 (2026-04-20)
+
+### Bug Fixes
+
+- **NDX-665**: Check initial state in wait_for_bus_io before listening for changes (#413)
+  ([#413](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/413),
+  [`bb327b0`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bb327b072633a9f6e64ae7c0980260acc041a590))
+
+
+## v4.12.0 (2026-04-14)
+
+### Features
+
+- Make TCP optional for plan/execute to support motion groups without TCP (#412)
+  ([#412](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/412),
+  [`19d284a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/19d284ad6b2345b1f865d7e5287242cba784ae3b))
+
+
 ## v4.11.3 (2026-03-13)
 
 ### Bug Fixes

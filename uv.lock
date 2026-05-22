@@ -1442,11 +1442,11 @@ wheels = [
 
 [[package]]
 name = "python-statemachine"
-version = "3.1.2"
+version = "3.0.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/af/e2/dcc389e9855f65a3e54c859499dd409341d5ba561da74af22ce824bc4964/python_statemachine-3.1.2.tar.gz", hash = "sha256:3a64c4ae91d628eb256580f328c68b16e472f25794d2c478e91f2f1dfb8b0668", size = 710648, upload-time = "2026-05-19T00:13:12.495Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f4/a6/d0626b1efb56d9502fe8686fa5dbf23d444b5985adac974be2aa8780c956/python_statemachine-3.0.0.tar.gz", hash = "sha256:91523f9ead73c1d6fecc975d5c6e0bfe363fbf537c5f0bf309bcd0f94f9441b2", size = 852800, upload-time = "2026-02-24T18:06:04.908Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f2/f5/fe9072bfc9d245138561c09bf05b841bf6d92b4ce93d44dbfa18d96e498e/python_statemachine-3.1.2-py3-none-any.whl", hash = "sha256:89dcdbcbf7b197adade16138c75bee4f32e0c98b7eeb18d30aeb1c830dbbdd62", size = 126113, upload-time = "2026-05-19T00:13:10.854Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/ba/9863be42c209d66623e188223484c1502f25a2412f258f00505c613f6e5d/python_statemachine-3.0.0-py3-none-any.whl", hash = "sha256:f967ee864cfd26375c91f49560e790357613482811efcec8b2020c1f874a5eaf", size = 103801, upload-time = "2026-02-24T18:06:03.31Z" },
 ]
 
 [[package]]
@@ -1799,7 +1799,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "5.1.2"
+version = "5.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
@@ -1888,7 +1888,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11.4,<3" },
     { name = "python-decouple", specifier = "~=3.8" },
     { name = "python-decouple", marker = "extra == 'novax'", specifier = ">=3.8" },
-    { name = "python-statemachine", specifier = "~=3.1.0" },
+    { name = "python-statemachine", specifier = "==3.0.0" },
     { name = "pyyaml", marker = "extra == 'benchmark'", specifier = ">5.3" },
     { name = "requests", marker = "extra == 'benchmark'", specifier = ">=2.32.3" },
     { name = "requests", marker = "extra == 'nova-rerun-bridge'", specifier = ">=2.32.3" },

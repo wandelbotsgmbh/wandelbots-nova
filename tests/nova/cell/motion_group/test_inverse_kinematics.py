@@ -26,7 +26,7 @@ async def ur_mg():
             virtual_controller(
                 name=controller_name,
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
-                type=models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                type="universalrobots-ur10e",
                 position=initial_joint_positions,
             )
         )
