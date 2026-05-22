@@ -3,9 +3,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from nova import api
-from nova.actions.io import ReadAction
 from nova.actions import cartesian_ptp, collision_free, io_write, linear, wait
 from nova.actions.base import Action
+from nova.actions.io import ReadAction
 from nova.cell.motion_group import MotionGroup, split_actions_into_batches
 from nova.core.gateway import ApiGateway
 from nova.exceptions import InconsistentCollisionScenes
