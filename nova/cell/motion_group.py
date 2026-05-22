@@ -148,9 +148,7 @@ class MotionGroup(AbstractRobot):
         return self._current_motion
 
     def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:
-        return len(actions) > 0 and all(
-            isinstance(action, (WriteAction, WaitAction)) for action in actions
-        )
+        return len(actions) > 0 and all(not action.is_motion() for action in actions)
 
     async def _execute_direct_non_motion_actions(self, actions: list[Action]) -> None:
         for action in actions:
