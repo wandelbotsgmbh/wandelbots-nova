@@ -77,6 +77,13 @@ max-nested-blocks = 3
     "TC001", "TC003", "ARG", "RUF003",
     "BLE001", "B008", "B905", "C901",
 ]
+"**/benchmarks/**" = [
+    "S101", "S105", "S110", "PLR2004", "PLR0912", "PLR0915",
+    "PLW0602", "PLW0603", "ANN", "FBT", "T20",
+    "PLC0415", "PERF401", "SIM102", "SIM103", "SIM114",
+    "TC001", "TC003", "ARG", "RUF003",
+    "BLE001", "B008", "B905", "C901",
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["nova", "policy"]

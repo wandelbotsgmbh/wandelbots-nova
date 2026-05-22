@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from nova.types import RobotState
     from policy.cameras import CameraSource
     from policy.policy_client import PolicyClient
-    from policy.rerun_logger import PolicyRerunLogger
+    from policy.rerun import PolicyRerunLogger
     from policy.schema import PolicySchema
     from policy.types import SafetyGuard
 
@@ -89,6 +89,7 @@ class PolicyExecutor:
         timeout_s: float = 0,
         camera_max_age_s: float = 30.0,
         motion: MotionConfig | WaypointConfig | None = None,
+        policy_rate_hz: float = 0,
     ) -> None:
         """Create a policy executor.
 
@@ -101,6 +102,11 @@ class PolicyExecutor:
             motion: Motion configuration. MotionConfig (client-side velocity profile)
                 or WaypointConfig (server-side waypoint jogging, experimental).
                 Defaults to WaypointConfig() if available, else MotionConfig().
+            policy_rate_hz: Fixed rate (Hz) at which the policy is called.
+                When set (>0), the executor calls the policy at this rate and
+                each new chunk replaces the previous one mid-execution.
+                When 0 (default), the executor waits for the current chunk to
+                finish before calling the policy again (sequential mode).
         """
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
@@ -117,6 +123,7 @@ class PolicyExecutor:
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
         self._camera_max_age_s = camera_max_age_s
+        self._policy_rate_hz = policy_rate_hz
 
         self._sessions: dict[str, JoggingSession] = {}
         self._camera_sources: dict[str, CameraSource] = {}
@@ -238,10 +245,14 @@ class PolicyExecutor:
             self._estop_monitor = EstopMonitor(self._motion_groups)
             await self._estop_monitor.start()
             await self._init_rerun()
+            if self._rerun is not None:
+                self._rerun.start_streaming(self._sessions)
             self.result = await self._execute()
             self._log_completion()
             self.status.phase = Phase.COMPLETED
         finally:
+            if self._rerun is not None:
+                await self._rerun.stop_streaming()
             if self._estop_monitor is not None:
                 await self._estop_monitor.stop()
                 self._estop_monitor = None
@@ -253,7 +264,7 @@ class PolicyExecutor:
     # Observe → act loop
     # -------------------------------------------------------------------------
 
-    async def _execute(self) -> ExecutionResult:
+    async def _execute(self) -> ExecutionResult:  # noqa: C901
         """Run the observe-act loop until termination.
 
         Raises GuardStopError, MotionError, EmergencyStopError directly.
@@ -265,9 +276,17 @@ class PolicyExecutor:
         self.status.phase = Phase.EXECUTING
         self.status.message = "Running policy..."
 
+        # Fixed-rate mode: call policy at policy_rate_hz instead of
+        # waiting for chunk_done between iterations.
+        fixed_rate_period = (
+            1.0 / self._policy_rate_hz if self._policy_rate_hz > 0 else 0.0
+        )
+
         while not self._stop_event.is_set():
             if self._timeout_s > 0 and (time.monotonic() - start_time) >= self._timeout_s:
                 return _result("timeout", step, start_time, last_obs)
+
+            tick_start = time.monotonic()
 
             # Observe
             robot_states = self._observe()
@@ -303,15 +322,23 @@ class PolicyExecutor:
             check_sessions(self._sessions)
             check_estop(self._estop_monitor)
 
-            # Wait until the current chunk is fully executed BEFORE next observation
-            while not all(s.chunk_done for s in self._sessions.values()):
-                if self._stop_event.is_set():
-                    break
-                if self._timeout_s > 0 and (time.monotonic() - start_time) >= self._timeout_s:
-                    break
-                check_sessions(self._sessions)
-                check_estop(self._estop_monitor)
-                await asyncio.sleep(0.01)
+            if fixed_rate_period > 0:
+                # Waypoint mode: sleep for the remainder of the period.
+                # Each new chunk replaces the previous one mid-execution.
+                elapsed = time.monotonic() - tick_start
+                sleep_time = fixed_rate_period - elapsed
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+            else:
+                # Velocity-profile mode: wait until chunk is fully executed.
+                while not all(s.chunk_done for s in self._sessions.values()):
+                    if self._stop_event.is_set():
+                        break
+                    if self._timeout_s > 0 and (time.monotonic() - start_time) >= self._timeout_s:
+                        break
+                    check_sessions(self._sessions)
+                    check_estop(self._estop_monitor)
+                    await asyncio.sleep(0.01)
 
         return _result("stopped", step, start_time, last_obs)
 
@@ -378,14 +405,14 @@ class PolicyExecutor:
                     "ff_vel=%.4f rad/s, dt_ms=%.1f",
                     group_id, len(steps), span, per_step, ff_vel, chunk.dt_ms,
                 )
-            session.update_chunk(steps=steps, dt_ms=chunk.dt_ms)
+            session.update_chunk(steps=steps, dt_ms=chunk.dt_ms, start_time_ms=chunk.start_time_ms)
 
         for group_id, raw_tcp_steps in chunk.tcp.items():
             session = self._sessions.get(group_id)
             if session is None:
                 logger.warning("Unknown motion group in TCP chunk: %s", group_id)
                 continue
-            session.update_chunk(steps=raw_tcp_steps, dt_ms=chunk.dt_ms)
+            session.update_chunk(steps=raw_tcp_steps, dt_ms=chunk.dt_ms, start_time_ms=chunk.start_time_ms)
 
         if chunk.ios:
             for group_id, ios in chunk.ios.items():
@@ -405,13 +432,20 @@ class PolicyExecutor:
         # WaypointConfig → use native waypoint jogging
         if isinstance(self._motion, WaypointConfig):
             _compat_config = MotionConfig(state_rate_ms=self._motion.state_rate_ms)
-            return WaypointJoggingSession(  # type: ignore[return-value]
+            session = WaypointJoggingSession(
                 motion_group=mg,
                 config=_compat_config,
                 tcp=tcp,
                 safety_guards=self._safety_guards,
                 mode=mode,
+                server_speed_ratio=self._motion.server_speed_ratio,
             )
+            if self._motion.log_dir:
+                from pathlib import Path  # noqa: PLC0415
+
+                log_path = Path(self._motion.log_dir) / f"jogger_cmds_{mg.id.replace('@', '_')}.jsonl"
+                session.enable_logging(log_path)
+            return session  # type: ignore[return-value]
 
         # MotionConfig → client-side velocity profile
         config = self._motion
@@ -591,12 +625,12 @@ class PolicyExecutor:
 
     async def _init_rerun(self) -> None:
         """Initialize Rerun logger if a viewer is active."""
-        from policy.rerun_logger import _is_rerun_active  # noqa: PLC0415
+        from policy.rerun import _is_rerun_active  # noqa: PLC0415
 
         if not _is_rerun_active():
             return
 
-        from policy.rerun_logger import PolicyRerunLogger  # noqa: PLC0415
+        from policy.rerun import PolicyRerunLogger  # noqa: PLC0415
 
         camera_names = list(self._camera_sources.keys()) if self._camera_sources else []
         self._rerun = PolicyRerunLogger(self._motion_groups, camera_names=camera_names)
