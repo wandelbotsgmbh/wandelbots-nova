@@ -203,7 +203,7 @@ class Rerun(Viewer):
         self,
         actions: Sequence[Action],
         trajectory: api.models.JointTrajectory,
-        tcp: str,
+        tcp: str | None,
         motion_group: MotionGroup,
     ) -> None:
         """Log planning results including actions, trajectory, and collision scenes.
@@ -231,14 +231,15 @@ class Rerun(Viewer):
             )
 
             # Log trajectory with tool asset if configured for this TCP
-            tool_asset = self._resolve_tool_asset(tcp)
-            await self._bridge.log_trajectory(
-                trajectory=downsampled_trajectory,
-                tcp=tcp,
-                motion_group=motion_group,
-                collision_setups=extract_collision_setups_from_actions(actions),
-                tool_asset=tool_asset,
-            )
+            if tcp is not None:
+                tool_asset = self._resolve_tool_asset(tcp)
+                await self._bridge.log_trajectory(
+                    trajectory=downsampled_trajectory,
+                    tcp=tcp,
+                    motion_group=motion_group,
+                    collision_setups=extract_collision_setups_from_actions(actions),
+                    tool_asset=tool_asset,
+                )
 
             # Log collision scenes from actions if configured
             if self.show_collision_scenes:
@@ -254,7 +255,7 @@ class Rerun(Viewer):
         self,
         actions: Sequence[Action],
         trajectory: api.models.JointTrajectory,
-        tcp: str,
+        tcp: str | None,
         motion_group: MotionGroup,
     ) -> None:
         """Log successful planning results to Rerun viewer.
@@ -277,7 +278,11 @@ class Rerun(Viewer):
         )
 
     async def log_planning_failure(
-        self, actions: Sequence[Action], error: Exception, tcp: str, motion_group: MotionGroup
+        self,
+        actions: Sequence[Action],
+        error: Exception,
+        tcp: str | None,
+        motion_group: MotionGroup,
     ) -> None:
         """Log planning failure to Rerun viewer.
 
@@ -312,12 +317,13 @@ class Rerun(Viewer):
                         error.error.joint_trajectory,
                         sample_interval_ms=self.trajectory_sample_interval_ms,
                     )
-                    await self._bridge.log_trajectory(
-                        trajectory=downsampled_trajectory,
-                        tcp=tcp,
-                        motion_group=motion_group,
-                        collision_setups=extract_collision_setups_from_actions(actions),
-                    )
+                    if tcp is not None:
+                        await self._bridge.log_trajectory(
+                            trajectory=downsampled_trajectory,
+                            tcp=tcp,
+                            motion_group=motion_group,
+                            collision_setups=extract_collision_setups_from_actions(actions),
+                        )
 
                 # Log error feedback if available
                 if hasattr(error.error, "error_feedback") and error.error.error_feedback:
@@ -358,13 +364,15 @@ class Rerun(Viewer):
         self._bridge = None
         self._logged_safety_zones.clear()  # Reset safety zone tracking
 
-    def _resolve_tool_asset(self, tcp: str) -> str | None:
+    def _resolve_tool_asset(self, tcp: str | None) -> str | None:
         """Resolve the tool asset file path for a given TCP.
 
         Args:
-            tcp: The TCP ID to resolve tool asset for
+            tcp: The TCP ID to resolve tool asset for, or None
 
         Returns:
             Path to tool asset file if configured, None otherwise
         """
+        if tcp is None:
+            return None
         return self.tcp_tools.get(tcp)

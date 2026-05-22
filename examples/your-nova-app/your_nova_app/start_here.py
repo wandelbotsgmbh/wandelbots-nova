@@ -35,7 +35,7 @@ from nova.types import MotionSettings, Pose
             virtual_controller(
                 name="kuka-kr16-r2010",
                 manufacturer=api.models.Manufacturer.KUKA,
-                type=api.models.VirtualControllerTypes.KUKA_KR16_R2010_2,
+                type="kuka-kr16_r2010_2",
             )
         ],
         cleanup_controllers=False,

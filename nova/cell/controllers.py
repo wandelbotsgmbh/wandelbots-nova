@@ -105,7 +105,7 @@ def yaskawa_controller(name: str, controller_ip: str) -> api.models.RobotControl
 def virtual_controller(
     name: str,
     manufacturer: api.models.Manufacturer,
-    type: api.models.VirtualControllerTypes | None = None,
+    type: str | None = None,
     controller_config_json: str | None = None,
     position: list[float] | str | None = None,
 ) -> api.models.RobotController:
@@ -114,7 +114,7 @@ def virtual_controller(
     Args:
         name (str): The name of the controller.
         manufacturer (api.models.Manufacturer): The manufacturer of the robot.
-        type (api.models.VirtualControllerTypes | None): One of the available virtual controller types for this manufacturer.
+        type (str | None): Robot type string (e.g., "universalrobots-ur10e", "kuka-kr16_r2010_2").
         position: (list[float] | None): Initial joint position of the first motion group from the virtual robot controller.
         controller_config_json (str | None): Complete JSON configuration of the virtual robot controller.
     """
