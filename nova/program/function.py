@@ -17,6 +17,7 @@ from typing import (
     get_args,
     get_origin,
     get_type_hints,
+    overload,
 )
 
 from docstring_parser import Docstring
@@ -383,6 +384,24 @@ def input_and_output_types(
         output = Output
 
     return input_type, output
+
+
+@overload
+def program(
+    _func: Callable[Parameters, Return],
+) -> Program[Parameters, Coroutine[Any, Any, Return]]: ...
+
+
+@overload
+def program(
+    _func: None = None,
+    *,
+    id: str | None = None,
+    name: str | None = None,
+    description: str | None = None,
+    preconditions: ProgramPreconditions | None = None,
+    viewer: Any | None = None,
+) -> Callable[[Callable[Parameters, Return]], Program[Parameters, Coroutine[Any, Any, Return]]]: ...
 
 
 def program(
