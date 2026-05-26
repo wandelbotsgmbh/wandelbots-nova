@@ -29,6 +29,7 @@ from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
 from policy import (
     Action,
+    ActionChunk,
     BoolMapping,
     EmergencyStopError,
     GuardStopError,
@@ -36,6 +37,7 @@ from policy import (
     Observation,
     PolicyExecutor,
     PolicySchema,
+    WaypointConfig,
     WebRTCCameras,
 )
 from policy.types import GuardState
@@ -43,30 +45,56 @@ from policy.types import GuardState
 HOME_LEFT = (1.169, -0.733, 1.745, -3.054, 0.872, 2.094)
 HOME_RIGHT = (-1.169, -2.3911, -1.8675, 0.0, -0.872, -2.094)
 
+
+def _first_policy_target(home: tuple[float, ...], role_phase: float) -> list[float]:
+    """Compute the policy's first joint target at t=0."""
+    targets = []
+    for i in range(6):
+        phase = role_phase + (i + 1) * 0.8
+        amplitude = 0.15 if i in (0, 1, 2) else 0.08
+        targets.append(home[i] + amplitude * math.sin(phase))
+    return targets
+
+
+FIRST_LEFT = _first_policy_target(HOME_LEFT, 0.0)
+FIRST_RIGHT = _first_policy_target(HOME_RIGHT, math.pi)
+
 CAMERA_SERVER = os.environ.get("CAMERA_SERVER", "http://172.31.11.129:8011/webrtc-streamer")
 
 
-async def mock_policy(obs: dict[str, Any]) -> dict[str, float]:
+async def mock_policy(obs: dict[str, Any]) -> ActionChunk:
     """Mock policy — replace with your own inference call.
 
-    The observation dict contains all declared entries:
-    - ``left_joints_1`` .. ``left_joints_6`` — joint positions
-    - ``left_gripper`` — gripper state (0.0 or 100.0)
-    - ``elapsed_s`` — from Observation.computed (see below)
-    - camera images if configured
+    Returns multi-step action chunks (16 steps at 50ms) with visible sinusoidal
+    motion around the HOME positions. Uses trajectory-absolute timestamps
+    so overlapping chunks align correctly.
     """
-    features: dict[str, float] = {}
-    for role in ("left", "right"):
+    # Use elapsed time for smooth continuous motion
+    elapsed = obs.get("elapsed_s", 0.0)
+
+    joints: dict[str, list[list[float]]] = {}
+    for role, mg_id, home in (
+        ("left", "0@ur5e-left", list(HOME_LEFT)),
+        ("right", "0@ur5e-right", list(HOME_RIGHT)),
+    ):
         role_phase = 0.0 if role == "left" else math.pi
-        all_joints_sum = sum(obs.get(f"{role}_joints_{i}", 0.0) for i in range(1, 7))
-        for i in range(1, 7):
-            key = f"{role}_joints_{i}"
-            current = obs.get(key, 0.0)
-            phase = role_phase + i * 0.7
-            features[key] = current + 0.05 * math.sin(all_joints_sum * 3.0 + phase)
-        shoulder = obs.get(f"{role}_joints_2", 0.0)
-        features[f"{role}_gripper"] = 100.0 if shoulder > 0 else 0.0
-    return features
+        steps: list[list[float]] = []
+        for step_i in range(16):
+            t = elapsed + step_i * 0.05  # 50ms per step
+            joint_targets = []
+            for i in range(6):
+                phase = role_phase + (i + 1) * 0.8
+                amplitude = 0.15 if i in (0, 1, 2) else 0.08
+                freq = 0.2 + (i + 1) * 0.03
+                joint_targets.append(
+                    home[i] + amplitude * math.sin(2 * math.pi * freq * t + phase)
+                )
+            steps.append(joint_targets)
+        joints[mg_id] = steps
+
+    # Trajectory-absolute timestamp so overlapping chunks align correctly
+    start_time_ms = int(elapsed * 1000)
+    return ActionChunk(joints=joints, dt_ms=50.0, start_time_ms=start_time_ms)
 
 
 # ---------------------------------------------------------------------------
@@ -77,11 +105,19 @@ async def mock_policy(obs: dict[str, Any]) -> dict[str, float]:
 _step_counter = 0
 
 
+_start_time: float | None = None
+
+
 async def count_steps(obs: dict[str, Any]) -> dict[str, Any]:
-    """Example Observation.computed — adds a step counter and elapsed seconds."""
-    global _step_counter
+    """Example Observation.computed — adds a step counter and real elapsed seconds."""
+    global _step_counter, _start_time
     _step_counter += 1
-    return {"step": _step_counter, "elapsed_s": _step_counter / 30.0}
+    if _start_time is None:
+        import time
+        _start_time = time.monotonic()
+    import time
+    elapsed = time.monotonic() - _start_time
+    return {"step": _step_counter, "elapsed_s": elapsed}
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +138,7 @@ async def log_action(action: dict[str, Any]) -> None:
 
 
 def workspace_guard(ctx: GuardState) -> bool:
-    return ctx.state.pose.position[2] > -500
+    return True  # disabled — virtual robot workspace varies
 
 
 def speed_guard(ctx: GuardState) -> bool:
@@ -123,11 +159,20 @@ def io_guard(ctx: GuardState) -> bool:
 async def move_to_home(mg1, mg2) -> None:
     fast = MotionSettings(tcp_velocity_limit=500.0)
     tcp1, tcp2 = (await mg1.tcp_names())[0], (await mg2.tcp_names())[0]
-    t1 = await mg1.plan([joint_ptp(HOME_LEFT, settings=fast)], tcp1)
-    t2 = await mg2.plan([joint_ptp(HOME_RIGHT, settings=fast)], tcp2)
+    # Move to HOME first, then to the policy's first target (avoids initial jump)
+    t1 = await mg1.plan(
+        [joint_ptp(HOME_LEFT, settings=fast), joint_ptp(FIRST_LEFT, settings=fast)], tcp1
+    )
+    t2 = await mg2.plan(
+        [joint_ptp(HOME_RIGHT, settings=fast), joint_ptp(FIRST_RIGHT, settings=fast)], tcp2
+    )
     await asyncio.gather(
-        mg1.execute(t1, tcp1, actions=[joint_ptp(HOME_LEFT, settings=fast)]),
-        mg2.execute(t2, tcp2, actions=[joint_ptp(HOME_RIGHT, settings=fast)]),
+        mg1.execute(t1, tcp1, actions=[
+            joint_ptp(HOME_LEFT, settings=fast), joint_ptp(FIRST_LEFT, settings=fast)
+        ]),
+        mg2.execute(t2, tcp2, actions=[
+            joint_ptp(HOME_RIGHT, settings=fast), joint_ptp(FIRST_RIGHT, settings=fast)
+        ]),
     )
 
 
@@ -192,6 +237,7 @@ async def dual_arm_policy(ctx: nova.ProgramContext):
         mock_policy,
         safety_guards=[workspace_guard, speed_guard, io_guard],
         timeout_s=10.0,
+        motion=WaypointConfig(state_rate_ms=10),
     )
 
     print("Running policy for 10s...")

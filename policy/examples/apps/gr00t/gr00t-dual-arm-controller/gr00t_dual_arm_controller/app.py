@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from decouple import config
@@ -238,7 +239,7 @@ async def gr00t_dual_arm_controller(
         dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
-    executor = PolicyExecutor(schema, client, timeout_s=timeout_s, motion=WaypointConfig(n_action_steps=n_action_steps))
+    executor = PolicyExecutor(schema, client, timeout_s=timeout_s, policy_rate_hz=20, motion=WaypointConfig(n_action_steps=n_action_steps))
     await cycle.start()
     try:
         result = await executor.run()
@@ -252,6 +253,111 @@ async def gr00t_dual_arm_controller(
     except Exception as e:
         await cycle.fail(e)
         raise
+
+
+# ---------------------------------------------------------------------------
+# Replay episode program
+# ---------------------------------------------------------------------------
+
+REPLAY_DATA_DIR = Path(__file__).parent / "replay_data"
+
+
+@nova.program(
+    id="replay_episode",
+    name="Replay Dataset Episode",
+    description="Replays a recorded parquet episode on two UR5e arms via waypoint jogging.",
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="ur5e-left",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type="universalrobots-ur5e",
+            ),
+            virtual_controller(
+                name="ur5e-right",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type="universalrobots-ur5e",
+            ),
+        ],
+        cleanup_controllers=False,
+    ),
+)
+async def replay_episode(
+    ctx: nova.ProgramContext,
+    episode: int = Field(default=0, description="Episode index to replay"),
+):
+    """Replay a recorded dataset episode on both arms via waypoint jogging."""
+    from typing import Any
+
+    import pyarrow.parquet as pq
+
+    from policy import ActionChunk
+
+    # Load episode (15 fps recording, action = 12 DOF: 6 left + 6 right)
+    dt_ms = 1000.0 / 15.0
+    path = REPLAY_DATA_DIR / f"episode_{episode:06d}.parquet"
+    table = pq.read_table(path, columns=["action", "timestamp"])
+    actions = table.column("action").to_pylist()
+    timestamps_s = table.column("timestamp").to_pylist()
+    duration_s = timestamps_s[-1] - timestamps_s[0]
+    logger.info(f"Loaded episode {episode}: {len(actions)} steps, {duration_s:.1f}s")
+
+    # Connect
+    cell = ctx.nova.cell()
+    mg_left = (await cell.controller("ur5e-left"))[0]
+    mg_right = (await cell.controller("ur5e-right"))[0]
+
+    # Move to start position (first action frame)
+    start_left = tuple(actions[0][:6])
+    start_right = tuple(actions[0][6:])
+    await _move_to_home(mg_left, mg_right, start_left, start_right)
+
+    schema = PolicySchema(observations=[
+        Observation.joint_positions("left_joints", source=mg_left),
+        Observation.joint_positions("right_joints", source=mg_right),
+    ])
+
+    chunk_size = 8
+
+    async def replay_policy(obs: dict[str, Any]) -> ActionChunk:
+        session = executor._sessions.get(mg_left.id)
+        elapsed_ms = session.session_elapsed_ms if session else 0
+        elapsed_s = elapsed_ms / 1000.0
+
+        # Find step from elapsed time
+        step = 0
+        for i, ts in enumerate(timestamps_s):
+            if ts - timestamps_s[0] <= elapsed_s:
+                step = i
+            else:
+                break
+        step = min(step, len(actions) - 1)
+
+        chunk_end = min(step + chunk_size, len(actions))
+        chunk = actions[step:chunk_end] if step < len(actions) else [actions[-1]]
+        start_time_ms = int((timestamps_s[step] - timestamps_s[0]) * 1000)
+
+        return ActionChunk(
+            joints={
+                mg_left.id: [a[:6] for a in chunk],
+                mg_right.id: [a[6:] for a in chunk],
+            },
+            dt_ms=dt_ms,
+            start_time_ms=start_time_ms,
+        )
+
+    executor = PolicyExecutor(
+        schema,
+        replay_policy,
+        timeout_s=duration_s + 5.0,
+        policy_rate_hz=20,
+        motion=WaypointConfig(state_rate_ms=10),
+    )
+    result = await executor.run()
+    logger.info(
+        "Replay finished: reason=%s steps=%d duration=%.1fs",
+        result.reason, result.steps, result.duration_s,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +423,7 @@ app.dependency_overrides[get_program_manager] = lambda: novax_app.program_manage
 app.include_router(_programs_router)
 novax_app.register_program(move_to_home)
 novax_app.register_program(gr00t_dual_arm_controller)
+novax_app.register_program(replay_episode)
 
 app.add_middleware(
     CORSMiddleware,
@@ -425,7 +532,7 @@ async def start(req: StartRequest = StartRequest()):
         dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
-    _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s, motion=WaypointConfig(n_action_steps=req.n_action_steps))
+    _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s, policy_rate_hz=20, motion=WaypointConfig(n_action_steps=req.n_action_steps))
 
     async def run() -> ExecutionResult:
         global _last_error

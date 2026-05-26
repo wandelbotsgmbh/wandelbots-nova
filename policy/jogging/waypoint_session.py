@@ -20,9 +20,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
+from dataclasses import dataclass, field
 import logging
-from pathlib import Path
 import time
 from typing import TYPE_CHECKING
 
@@ -40,6 +39,71 @@ if TYPE_CHECKING:
     from policy.types import JoggingMode, MotionConfig, SafetyGuard, ValueType
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class JoggingTimeClock:
+    """Tracks the server's jogger session clock and computes the speed ratio.
+
+    The server exposes ``jogger_session_timestamp_ms`` in the state stream
+    (field on ``JoggingDetails``). It starts at 0 after ``InitializeJoggingRequest``
+    and increments while waypoints are being executed.
+
+    This class observes that timestamp, compares it to the client's wall-clock
+    elapsed time, and derives the speed ratio (server_time / client_time).
+    The ratio is used to scale outgoing waypoint timestamps so that the
+    robot moves at real-time speed regardless of the server's internal rate.
+    """
+
+    speed_ratio: float = 1.0
+    synced: bool = False
+    _client_start_time: float = field(default=0.0, repr=False)
+
+    def start(self) -> None:
+        """Mark the client-side session start time."""
+        self._client_start_time = time.monotonic()
+
+    @property
+    def client_elapsed_ms(self) -> int:
+        """Client wall-clock elapsed since session start."""
+        if self._client_start_time == 0.0:
+            return 0
+        return int((time.monotonic() - self._client_start_time) * 1000)
+
+    def update(self, timestamp_ms: int) -> None:
+        """Feed a new ``jogger_session_timestamp_ms`` reading from the state stream."""
+        if timestamp_ms <= 0:
+            return
+        if not self.synced:
+            self.synced = True
+            logger.info("Server time sync established (jogger_session_timestamp_ms=%d)", timestamp_ms)
+        # Use raw ratio (server_time / client_time) directly.
+        # Clamp >= 1.0 since the server is never slower than wall-clock.
+        client_ms = self.client_elapsed_ms
+        if client_ms > 0:
+            self.speed_ratio = max(1.0, timestamp_ms / client_ms)
+
+    def scale_timestamp(self, trajectory_time_ms: int) -> int:
+        """Convert a trajectory-time timestamp to server-time."""
+        return int(trajectory_time_ms * self.speed_ratio)
+
+    def scale_dt(self, dt_ms: float) -> float:
+        """Convert a trajectory-time dt to server-time."""
+        return dt_ms * self.speed_ratio
+
+    @staticmethod
+    def extract_from_state(state: object) -> int | None:
+        """Extract jogger_session_timestamp_ms from a MotionGroupState, or None."""
+        execute = getattr(state, "execute", None)
+        if execute is None:
+            return None
+        details = getattr(execute, "details", None)
+        if details is None:
+            return None
+        ts = getattr(details, "jogger_session_timestamp_ms", None)
+        if isinstance(ts, int):
+            return ts
+        return None
 
 
 def is_waypoint_jogging_available() -> bool:
@@ -67,7 +131,6 @@ class WaypointJoggingSession:
         tcp: str = "",
         mode: JoggingMode = "joint",
         safety_guards: list[SafetyGuard] | None = None,
-        server_speed_ratio: float = 1.0,
     ) -> None:
         if not is_waypoint_jogging_available():
             msg = (
@@ -81,7 +144,6 @@ class WaypointJoggingSession:
         self._tcp = tcp
         self._mode: JoggingMode = mode
         self._safety_guards = safety_guards or []
-        self._server_speed_ratio = server_speed_ratio
         self._io_values: dict[str, object] | None = None
         self._io_writer = IOWriter(motion_group)
         self._jog_tracker = JoggingStateTracker(motion_group.id)
@@ -98,24 +160,10 @@ class WaypointJoggingSession:
         self._prev_state: RobotState | None = None
         self._prev_tick_time: float | None = None
 
-        # Chunk state
-        self._session_start_time: float = 0.0
-        self._external_start_time: float = 0.0
-        self._action_time_offset_ms: int | None = None
-        self._chunk_started: bool = False  # True after first chunk is sent
-        self._standstill: bool = True  # Updated by state stream
-
-        # Position stability tracking for chunk_done
-        self._prev_position: list[float] | None = None
-        self._stable_count: int = 0
-        self._stable_threshold = 0.001  # rad — below this = not moving
-        self._stable_required = 5  # consecutive stable readings
-        self._last_target: list[float] | None = None
-
-        # Debug log file for jogger commands
-        self._log_file: Path | None = None
-        self._log_fh: object | None = None
-        self._cmd_seq: int = 0  # command sequence counter
+        # Server time synchronization: auto-computes the speed ratio between
+        # server clock and client wall-clock, then scales outgoing timestamps
+        # so the robot moves at real-time speed.
+        self._clock = JoggingTimeClock()
 
         # Pending waypoints to send (set by update_chunk, consumed by jogging loop).
         # For normal chunks, store raw steps/timing and build the request at
@@ -159,13 +207,20 @@ class WaypointJoggingSession:
     @property
     def session_elapsed_ms(self) -> int:
         """Elapsed milliseconds on the client-side jogger session clock."""
-        if self._session_start_time == 0.0:
-            return 0
-        return int((time.monotonic() - self._session_start_time) * 1000)
+        return self._clock.client_elapsed_ms
+
+    @property
+    def speed_ratio(self) -> float:
+        """Auto-computed ratio: server_time / client_time.
+
+        Converges to the real ratio (~1.09 on UR10e) after a few hundred ms.
+        Returns 1.0 before server time is available.
+        """
+        return self._clock.speed_ratio
 
     @property
     def chunk_done(self) -> bool:
-        """Always True — the executor uses fixed-rate timing for waypoint mode."""
+        """Always True — waypoint mode uses fixed-rate policy calls."""
         return True
 
     @property
@@ -205,10 +260,6 @@ class WaypointJoggingSession:
         if not steps:
             return
 
-        self._chunk_started = True
-        self._standstill = False  # assume robot will move
-        self._stable_count = 0  # reset stability counter
-
         # Single-step target: use a default step time
         effective_dt_ms = dt_ms if dt_ms > 0 else 100.0
 
@@ -245,66 +296,33 @@ class WaypointJoggingSession:
     ) -> object:
         """Build JointWaypointsRequest at stream-yield time.
 
-        The server starts its timer when the jogging session opens. When
-        ``start_time_ms >= 0``, it is already a timestamp on that server-session
-        timeline (milliseconds since jogger start), so no policy-local clock
-        translation is applied here.
+        Scales the policy's real-time timestamps to server-time using the
+        auto-computed speed ratio from ``JoggingTimeClock``.
 
-        If ``server_speed_ratio != 1.0``, both the base timestamp and dt are
-        stretched to compensate for the server consuming waypoints faster
-        than wall clock. The policy sends in "trajectory time"; this method
-        converts to "server time".
+        When ``start_time_ms >= 0`` (trajectory-absolute mode), timestamps are
+        placed at [start_time_ms * ratio, ...] on the server timeline.
+
+        When ``start_time_ms == -1`` (legacy mode), timestamps start from
+        the current client elapsed time scaled to server time.
         """
-        now_ms = int((time.monotonic() - self._session_start_time) * 1000)
+        client_now_ms = self._clock.client_elapsed_ms
 
-        # Scale both base and dt by the server speed ratio
-        ratio = self._server_speed_ratio
-        scaled_dt_ms = effective_dt_ms * ratio
+        # Scale timestamps by auto-computed speed ratio so the server
+        # receives timestamps aligned with its faster internal clock.
+        # The policy sends in "real time"; we convert to "server time".
+        scaled_dt_ms = self._clock.scale_dt(effective_dt_ms)
 
         if start_time_ms >= 0:
-            base_ms = int(start_time_ms * ratio)
+            base_ms = self._clock.scale_timestamp(start_time_ms)
             timestamps = [base_ms + int(i * scaled_dt_ms) for i in range(len(steps))]
         else:
-            base_ms = now_ms
-            timestamps = [base_ms + int((i + 1) * scaled_dt_ms) for i in range(len(steps))]
+            server_now_ms = self._clock.scale_timestamp(client_now_ms)
+            timestamps = [server_now_ms + int((i + 1) * scaled_dt_ms) for i in range(len(steps))]
 
-        self._log_chunk(now_ms, timestamps, steps)
         return api.models.JointWaypointsRequest(
             timestamps=timestamps,
             joint_waypoints=[api.models.Joints(root=step) for step in steps],
         )
-
-    def send_raw_waypoints(
-        self,
-        timestamps: list[int],
-        waypoints: list[list[float]],
-    ) -> None:
-        """Send a pre-built JointWaypointsRequest with explicit timestamps.
-
-        Unlike update_chunk() which computes timestamps from the current clock,
-        this method uses the provided timestamps directly. Useful for replay
-        tests where you want exact control over timing.
-        """
-        self._chunk_started = True
-        self._pending_request = api.models.JointWaypointsRequest(
-            timestamps=timestamps,
-            joint_waypoints=[api.models.Joints(root=wp) for wp in waypoints],
-        )
-        self._log_chunk(
-            int((time.monotonic() - self._session_start_time) * 1000),
-            timestamps,
-            waypoints,
-        )
-
-    def enable_logging(self, path: Path | str) -> None:
-        """Enable file-based logging of all jogger commands.
-
-        Creates a JSONL file recording every request sent to the jogger API,
-        including timestamps, waypoints, hold requests, and state updates.
-        Call before start().
-        """
-        self._log_file = Path(path)
-        self._log_file.parent.mkdir(parents=True, exist_ok=True)
 
     async def start(self) -> None:
         """Start the state stream and jogging loop."""
@@ -315,15 +333,6 @@ class WaypointJoggingSession:
             raise RuntimeError(msg)
 
         self._running = True
-        self._session_start_time = time.monotonic()
-
-        # Open log file if enabled
-        if self._log_file is not None:
-            self._log_fh = self._log_file.open("w")
-            self._write_log("session_start", {
-                "motion_group": self.motion_group_id,
-                "session_start_time": self._session_start_time,
-            })
 
         initial_state = await self._motion_group.get_state()
         self._current_joints = list(initial_state.joints)
@@ -366,19 +375,6 @@ class WaypointJoggingSession:
         self._jogging_task = None
         self._state_task = None
 
-        # Close log file
-        if self._log_fh is not None:
-            self._write_log("session_stop", {
-                "duration_s": time.monotonic() - self._session_start_time,
-                "total_cmds": self._cmd_seq,
-            })
-            self._log_fh.close()  # type: ignore[union-attr]
-            self._log_fh = None
-            logger.info(
-                "Jogger command log saved to %s (%d entries)",
-                self._log_file, self._cmd_seq,
-            )
-
         logger.info("WaypointJoggingSession stopped for %s", self.motion_group_id)
 
     # -------------------------------------------------------------------------
@@ -394,7 +390,6 @@ class WaypointJoggingSession:
             )
             async for state in stream:
                 self._current_joints = list(state.joint_position)
-                self._log_state(state)
                 self._current_joint_torques = (
                     list(state.joint_torque.root)
                     if getattr(state, "joint_torque", None) is not None
@@ -409,11 +404,10 @@ class WaypointJoggingSession:
                     self._current_tcp_pose = Pose(state.tcp_pose)
                 if state.tcp is not None:
                     self._current_tcp_name = state.tcp
-                # Track standstill for chunk_done
-                if hasattr(state, "standstill"):
-                    self._standstill = bool(state.standstill)
-                # Track position stability
-                self._update_stability(list(state.joint_position))
+                # Extract server jogger session timestamp for time synchronization
+                ts_ms = JoggingTimeClock.extract_from_state(state)
+                if ts_ms is not None:
+                    self._clock.update(ts_ms)
                 self._jog_tracker.update_from_state(state)
         except asyncio.CancelledError:
             pass
@@ -448,9 +442,7 @@ class WaypointJoggingSession:
             # Start our timer at the same boundary: immediately before sending
             # InitializeJoggingRequest. Do not reset it on the first response;
             # that would make our client timer late relative to the server.
-            self._session_start_time = time.monotonic()
-            self._external_start_time = time.time()
-            self._action_time_offset_ms = None
+            self._clock.start()
             yield api.models.ExecuteJoggingRequest(
                 api.models.InitializeJoggingRequest(
                     motion_group=self._motion_group.id, tcp=tcp
@@ -462,7 +454,6 @@ class WaypointJoggingSession:
             async for response in response_stream:
                 if not self._running:
                     return
-                self._log_server_response(response)
                 if hasattr(response.root, "kind") and response.root.kind == "MOTION_ERROR":
                     msg = getattr(response.root, "message", "unknown motion error")
                     raise MotionError(self.motion_group_id, msg)
@@ -496,7 +487,6 @@ class WaypointJoggingSession:
                         start_time_ms=start_time_ms,
                     )
 
-                self._log_jogger_cmd("waypoints", request)
                 yield api.models.ExecuteJoggingRequest(request)
 
         try:
@@ -533,148 +523,6 @@ class WaypointJoggingSession:
             return tcp_names[0]
         logger.warning("No TCP found for %s", self.motion_group_id)
         return ""
-
-    def _update_stability(self, joints: list[float]) -> None:
-        """Track whether position has stabilized (not moving)."""
-        if self._prev_position is None:
-            self._prev_position = joints
-            return
-        max_delta = max(
-            abs(joints[j] - self._prev_position[j]) for j in range(len(joints))
-        )
-        self._prev_position = joints
-        if max_delta < self._stable_threshold:
-            self._stable_count += 1
-        else:
-            self._stable_count = 0
-
-    def _position_stable(self) -> bool:
-        """True if position hasn't changed for enough consecutive readings."""
-        return self._stable_count >= self._stable_required
-
-    @staticmethod
-    def _get_last_target_from_request(req: object) -> list[float] | None:
-        """Extract the last waypoint position from a JointWaypointsRequest."""
-        if hasattr(req, "joint_waypoints") and req.joint_waypoints:
-            last_wp = req.joint_waypoints[-1]
-            return list(last_wp.root) if hasattr(last_wp, "root") else None
-        return None
-
-    def _make_hold_request(self, chunk_request: object) -> object:
-        """Create a hold-at-last-target waypoint request.
-
-        Uses the last waypoint from the chunk with a timestamp far enough
-        in the future that it won't interfere with chunk execution.
-        The server interprets this as: after finishing the chunk, hold here.
-        """
-        target = self._get_last_target_from_request(chunk_request)
-        if target is None:
-            return api.models.JointVelocityRequest(velocity=[0.0] * (self._num_joints or 6))
-        # Timestamp far in the future (10s from now)
-        hold_ts = int((time.monotonic() - self._session_start_time) * 1000) + 10000
-        return api.models.JointWaypointsRequest(
-            timestamps=[hold_ts],
-            joint_waypoints=[api.models.Joints(root=target)],
-        )
-
-    def _log_state(self, state: object) -> None:
-        """Log state stream update to file."""
-        if self._log_fh is None:
-            return
-        t_ms = (time.monotonic() - self._session_start_time) * 1000
-        joint_position = getattr(state, "joint_position", None)
-        joints = list(joint_position) if hasattr(joint_position, "__iter__") else []
-
-        jog_state = self._jog_tracker._extract_jogging_state(state)
-        jog_payload = None
-        if jog_state is not None:
-            jog_payload = {
-                "type": type(jog_state).__name__,
-                "kind": getattr(jog_state, "kind", None),
-                "description": getattr(jog_state, "description", None),
-                "joint_indices": getattr(jog_state, "joint_indices", None),
-            }
-
-        self._write_log("state", {
-            "t_ms": round(t_ms, 2),
-            "joints": [round(j, 6) for j in joints],
-            "standstill": getattr(state, "standstill", None),
-            "jogging_state": jog_payload,
-        })
-
-    def _log_chunk(self, now_ms: int, timestamps: list[int], steps: list[list[float]]) -> None:
-        """Log update_chunk call to file."""
-        if self._log_fh is None:
-            return
-        self._write_log("update_chunk", {
-            "now_ms": now_ms,
-            "external_ms": round((time.time() - self._external_start_time) * 1000, 2),
-            "n_steps": len(steps),
-            "timestamps_first": timestamps[0] if timestamps else None,
-            "timestamps_last": timestamps[-1] if timestamps else None,
-            "timestamps": (
-                [*timestamps[:5], "...", *timestamps[-2:]]
-                if len(timestamps) > 7  # noqa: PLR2004
-                else timestamps
-            ),
-            "first_step": [round(v, 6) for v in steps[0]] if steps else [],
-            "last_step": [round(v, 6) for v in steps[-1]] if steps else [],
-            "current_joints": (
-                [round(j, 6) for j in self._current_joints]
-                if self._current_joints else None
-            ),
-            "action_time_offset_ms": self._action_time_offset_ms,
-        })
-
-    def _log_server_response(self, response: object) -> None:
-        """Log compact information from each server response."""
-        if self._log_fh is None:
-            return
-        t_ms = (time.monotonic() - self._session_start_time) * 1000
-        root = getattr(response, "root", response)
-        payload: dict = {
-            "t_ms": round(t_ms, 2),
-            "external_ms": round((time.time() - self._external_start_time) * 1000, 2),
-            "response_type": type(root).__name__,
-            "kind": getattr(root, "kind", None),
-        }
-        for name in ("timestamp", "time", "time_ms", "elapsed_time", "elapsed_time_ms", "sequence"):
-            value = getattr(root, name, None)
-            if value is not None:
-                payload[name] = value
-        self._write_log("server_response", payload)
-
-    def _log_jogger_cmd(self, cmd_type: str, request: object) -> None:
-        """Log an actual command yielded to the jogger API."""
-        if self._log_fh is None:
-            return
-        t_ms = (time.monotonic() - self._session_start_time) * 1000
-        payload: dict = {
-            "t_ms": round(t_ms, 2),
-            "external_ms": round((time.time() - self._external_start_time) * 1000, 2),
-            "type": cmd_type,
-        }
-
-        if hasattr(request, "timestamps") and hasattr(request, "joint_waypoints"):
-            payload["n_waypoints"] = len(request.joint_waypoints)
-            payload["timestamps"] = request.timestamps
-            # Log first and last waypoint for compactness
-            wps = request.joint_waypoints
-            if wps:
-                payload["wp_first"] = [round(v, 6) for v in list(wps[0].root)]
-                payload["wp_last"] = [round(v, 6) for v in list(wps[-1].root)]
-        elif hasattr(request, "velocity"):
-            payload["velocity"] = [round(v, 6) for v in request.velocity]
-
-        self._write_log("jogger_cmd", payload)
-
-    def _write_log(self, event: str, data: dict) -> None:
-        """Write a single log entry as JSON line."""
-        if self._log_fh is None:
-            return
-        self._cmd_seq += 1
-        entry = {"seq": self._cmd_seq, "event": event, **data}
-        self._log_fh.write(json.dumps(entry) + "\n")  # type: ignore[union-attr]
 
     def _run_guards(self) -> None:
         """Run safety guards with current state."""

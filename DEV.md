@@ -49,9 +49,10 @@ kubectl create secret docker-registry pull-secret-wandelbots-azurecr-io \
   -n cell
 ```
 
-### Current versions (as of 2026-05-21)
+### Current versions (as of 2026-05-26)
 
 | Service | Image | Tag |
 |---------|-------|-----|
-| WBR | `wandelbots.azurecr.io/development-nova-services/robotics-rae` | `3.250.1-feat-waypoint-jogging` |
+| WBR | `wandelbots.azurecr.io/development-nova-services/robotics-rae` | `3.251.1-feat-waypoint-jogging` |
 | Service Manager | `wandelbots.azurecr.io/development-nova-services/api-gateway` | `26.4.0-mr2345` |
+| API Client | `wandelbots-api-client` | `26.4.0a2345+b88ffc36` |

@@ -222,29 +222,39 @@ class JoggingSession:
                 response_rate_msecs=self._config.state_rate_ms
             )
             async for state in stream:
-                self._current_joints = list(state.joint_position)
-                self._current_joint_torques = (
-                    list(state.joint_torque.root)
-                    if getattr(state, "joint_torque", None) is not None
-                    else None
-                )
-                self._current_joint_currents = (
-                    list(state.joint_current.root)
-                    if getattr(state, "joint_current", None) is not None
-                    else None
-                )
-                if state.tcp_pose is not None:
-                    self._current_tcp_pose = Pose(state.tcp_pose)
-                if state.tcp is not None:
-                    self._current_tcp_name = state.tcp
-                self._jog_tracker.update_from_state(state)
+                try:
+                    self._current_joints = list(state.joint_position)
+                    self._current_joint_torques = (
+                        list(state.joint_torque.root)
+                        if getattr(state, "joint_torque", None) is not None
+                        else None
+                    )
+                    self._current_joint_currents = (
+                        list(state.joint_current.root)
+                        if getattr(state, "joint_current", None) is not None
+                        else None
+                    )
+                    if state.tcp_pose is not None:
+                        self._current_tcp_pose = Pose(state.tcp_pose)
+                    if state.tcp is not None:
+                        self._current_tcp_name = state.tcp
+                    self._jog_tracker.update_from_state(state)
+                except Exception:  # noqa: BLE001, S112
+                    # Skip individual state messages that fail to parse
+                    continue
         except asyncio.CancelledError:
             pass
         except (OSError, RuntimeError) as e:
             logger.error("State stream error for %s: %s", self.motion_group_id, e)
         except Exception:  # noqa: BLE001
-            # Pydantic ValidationError from unknown jogging state kinds on feature branches
-            logger.debug("State stream validation error for %s (non-fatal)", self.motion_group_id)
+            # Pydantic ValidationError from unknown state kinds (e.g. KIND_UNKNOWN)
+            # on waypoint jogging feature branches. Retry the stream.
+            logger.debug("State stream parse error for %s, restarting", self.motion_group_id)
+            if self._running:
+                self._state_task = asyncio.create_task(
+                    self._stream_state(), name=f"state-{self.motion_group_id}"
+                )
+                return
         finally:
             if stream is not None:
                 with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):

@@ -90,27 +90,17 @@ class WaypointConfig:
     """Number of steps from each action chunk to send.
     0 = send all steps (default). The server handles timing internally."""
 
-    state_rate_ms: int = 10
-    """State stream update rate."""
+    policy_rate_hz: float = 20.0
+    """Rate (Hz) at which the policy is called for overlapping chunks.
 
-    server_speed_ratio: float = 1.0
-    """Compensation for server timer running faster than wall clock.
-
-    The server's internal planner may consume waypoints at a different rate
-    than the timestamps suggest. This ratio scales outgoing dt_ms so the
-    robot moves at the intended real-time speed.
-
-    Example: if measured server speed is 1.09x wall clock, set to 1.09.
-    The session will multiply dt_ms by this value before sending.
-
-    When the state stream exposes the actual controller time in the future,
-    this can be computed automatically and this field becomes unnecessary.
+    Waypoint jogging requires continuous overlapping chunks — the server
+    pauses (PAUSED_BY_USER) if its waypoint buffer empties between chunks.
+    This rate ensures fresh chunks arrive before the previous one finishes.
+    20Hz with 1s lookahead = 95% overlap.
     """
 
-    log_dir: str | None = None
-    """Directory to write jogger command logs. If set, a JSONL file is
-    created per motion group recording all commands sent to the jogging API.
-    Useful for debugging jitter and timing issues."""
+    state_rate_ms: int = 10
+    """State stream update rate."""
 
 
 @dataclass(slots=True)

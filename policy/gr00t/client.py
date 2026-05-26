@@ -77,12 +77,10 @@ class Gr00tPolicyClient(PolicyClient):
         )
         self._dt_ms = dt_ms
         self._tcp_format = tcp_format
-        self._motion_group_ids: list[str] = []
         self._actual_dof: dict[str, int] = {}
 
     async def connect(self, motion_group_ids: list[str]) -> None:
         """Create the ZMQ REQ socket."""
-        self._motion_group_ids = list(motion_group_ids)
         await asyncio.to_thread(self._transport.connect)
 
     async def validate_schema(self, schema: PolicySchema) -> None:
@@ -161,13 +159,6 @@ class Gr00tPolicyClient(PolicyClient):
         except TimeoutError:
             return False
         return True
-
-    async def reset(self) -> dict[str, object]:
-        """Reset remote policy state."""
-        response = await asyncio.to_thread(
-            self._transport.call, "reset", {"options": None},
-        )
-        return require_dict(response, name="GR00T reset response")
 
     async def get_modality_config(self) -> dict[str, object]:
         """Fetch raw modality config metadata from the server."""

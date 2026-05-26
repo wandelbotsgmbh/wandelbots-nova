@@ -57,8 +57,6 @@ CIRCLE_PLANE = os.environ.get("PLANE", "xz")  # xz, xy, or yz
 CHUNK_DT_MS = float(os.environ.get("DT_MS", "60"))  # time between steps in the chunk
 CHUNK_LOOKAHEAD_S = float(os.environ.get("LOOKAHEAD_S", "1.0"))  # each chunk covers this much future
 CHUNK_MODE = os.environ.get("CHUNK_MODE", "overlap")  # overlap or append (non-overlap)
-SERVER_LEAD_MS = int(float(os.environ.get("LEAD_MS", "200")))  # schedule waypoints this far ahead
-SERVER_SPEED_RATIO = float(os.environ.get("SPEED_RATIO", "1.09"))  # measured: server is 1.09x faster
 APPEND_EARLY_MS = int(float(os.environ.get("APPEND_EARLY_MS", "2000")))
 APPEND_CHUNK_GAP_MS = int(float(os.environ.get("APPEND_CHUNK_GAP_MS", "0")))
 
@@ -439,7 +437,7 @@ async def test_circular_waypoint_jogging(ctx: nova.ProgramContext):
     print(
         f"Duration: {CIRCLE_DURATION_S}s active, revolutions: {CIRCLE_REVOLUTIONS}, "
         f"pause_between_circles: {CIRCLE_PAUSE_S}s, wall_duration: {execution_duration_s:.1f}s, "
-        f"chunk_dt: {CHUNK_DT_MS}ms, lookahead: {CHUNK_LOOKAHEAD_S}s, lead: {SERVER_LEAD_MS}ms"
+        f"chunk_dt: {CHUNK_DT_MS}ms, lookahead: {CHUNK_LOOKAHEAD_S}s"
     )
 
     # --- Precompute joint trajectory via IK ---
@@ -495,10 +493,9 @@ async def test_circular_waypoint_jogging(ctx: nova.ProgramContext):
     elif CHUNK_MODE != "overlap":
         raise ValueError(f"Unknown CHUNK_MODE={CHUNK_MODE!r}; expected overlap or append")
 
-    # --- Policy with measured server speed compensation ---
-    # Server timer runs SERVER_SPEED_RATIO x faster than wall clock.
-    # We scale our indexing by this ratio so chunks stay ahead of the server.
+    # --- Policy ---
     # Timestamps use trajectory-absolute time (step_idx * dt).
+    # The server syncs via jogger_session_timestamp_ms from the state stream.
 
     async def circle_policy(obs: dict) -> ActionChunk:
         nonlocal append_cursor, chunks_sent, skipped_policy_calls
@@ -524,7 +521,7 @@ async def test_circular_waypoint_jogging(ctx: nova.ProgramContext):
             start_time_ms = spec["start_time_ms"]
         else:
             # Index at wall-clock rate (no scaling)
-            step_idx = int((session_elapsed_ms + SERVER_LEAD_MS) / CHUNK_DT_MS)
+            step_idx = int(session_elapsed_ms / CHUNK_DT_MS)
             step_idx = max(0, min(step_idx, n_total_steps - 1))
             chunk_end = min(step_idx + n_chunk_steps, len(joint_trajectory))
             # Trajectory-absolute timestamps (session scales dt internally)
@@ -547,7 +544,7 @@ async def test_circular_waypoint_jogging(ctx: nova.ProgramContext):
 
         return ActionChunk(
             joints={mg.id: chunk},
-            dt_ms=CHUNK_DT_MS,  # session applies server_speed_ratio internally
+            dt_ms=CHUNK_DT_MS,
             start_time_ms=start_time_ms,
         )
 
@@ -562,17 +559,12 @@ async def test_circular_waypoint_jogging(ctx: nova.ProgramContext):
     # Use WaypointConfig for native server-side waypoint jogging.
     # policy_rate_hz=20 means the policy is called at 20Hz. Each new chunk
     # replaces the previous one mid-execution (overlapping).
-    log_dir = str(OUTPUT_DIR / "jogger_logs")
     executor = PolicyExecutor(
         schema,
         circle_policy,
         timeout_s=execution_duration_s,
         policy_rate_hz=20,
-        motion=WaypointConfig(
-            state_rate_ms=10,
-            server_speed_ratio=SERVER_SPEED_RATIO,
-            log_dir=log_dir,
-        ),
+        motion=WaypointConfig(state_rate_ms=10),
     )
 
     # --- Execute ---
