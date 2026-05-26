@@ -1942,8 +1942,8 @@ wheels = [
 
 [[package]]
 name = "wandelbots-api-client"
-version = "26.4.0a2345+c90e051a"
-source = { registry = "https://code.wabo.run/api/v4/projects/889/packages/pypi/simple" }
+version = "26.4.0a2345+b88ffc36"
+source = { url = "https://code.wabo.run/api/v4/projects/889/packages/pypi/files/21f7d6efb4a92786937218f21c92388404302dd6768e9db5689334cea07c836b/wandelbots_api_client-26.4.0a2345+b88ffc36-py3-none-any.whl" }
 dependencies = [
     { name = "aiohttp" },
     { name = "aiohttp-retry" },
@@ -1957,9 +1957,24 @@ dependencies = [
     { name = "urllib3" },
     { name = "websockets" },
 ]
-sdist = { url = "https://code.wabo.run/api/v4/projects/889/packages/pypi/files/44d1f571ad0f4033d24116e8aaa3945c734f92548bc39101a145b34e708d7220/wandelbots_api_client-26.4.0a2345+c90e051a.tar.gz", hash = "sha256:44d1f571ad0f4033d24116e8aaa3945c734f92548bc39101a145b34e708d7220" }
 wheels = [
-    { url = "https://code.wabo.run/api/v4/projects/889/packages/pypi/files/d41515a483041bfa18e6927aeb20757eda2ac462677c46753d7320923cf9a41b/wandelbots_api_client-26.4.0a2345+c90e051a-py3-none-any.whl", hash = "sha256:d41515a483041bfa18e6927aeb20757eda2ac462677c46753d7320923cf9a41b" },
+    { url = "https://code.wabo.run/api/v4/projects/889/packages/pypi/files/21f7d6efb4a92786937218f21c92388404302dd6768e9db5689334cea07c836b/wandelbots_api_client-26.4.0a2345+b88ffc36-py3-none-any.whl", hash = "sha256:21f7d6efb4a92786937218f21c92388404302dd6768e9db5689334cea07c836b" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", specifier = ">=3.8.4" },
+    { name = "aiohttp-retry", specifier = ">=2.8.3" },
+    { name = "annotated-types" },
+    { name = "furl" },
+    { name = "pydantic", specifier = ">=2" },
+    { name = "pydantic", extras = ["email"] },
+    { name = "pydantic-core" },
+    { name = "pyhumps" },
+    { name = "python-dateutil", specifier = ">=2.8.2" },
+    { name = "typing-extensions", specifier = ">=4.7.1" },
+    { name = "urllib3", specifier = ">=1.25.3" },
+    { name = "websockets" },
 ]
 
 [[package]]
@@ -2077,7 +2092,7 @@ requires-dist = [
     { name = "trimesh", marker = "extra == 'nova-rerun-bridge'", specifier = ">=4.5.3" },
     { name = "typer", extras = ["all"], marker = "extra == 'wandelscript'", specifier = ">=0.12,<0.20" },
     { name = "uvicorn", marker = "extra == 'novax'", specifier = ">=0.34.0" },
-    { name = "wandelbots-api-client", specifier = "==26.4.0a2345" },
+    { name = "wandelbots-api-client", url = "https://code.wabo.run/api/v4/projects/889/packages/pypi/files/21f7d6efb4a92786937218f21c92388404302dd6768e9db5689334cea07c836b/wandelbots_api_client-26.4.0a2345+b88ffc36-py3-none-any.whl" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
 ]
 provides-extras = ["nova-rerun-bridge", "wandelscript", "novax", "policy", "benchmark"]

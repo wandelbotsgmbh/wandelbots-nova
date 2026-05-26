@@ -123,7 +123,11 @@ class PolicyExecutor:
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
         self._camera_max_age_s = camera_max_age_s
-        self._policy_rate_hz = policy_rate_hz
+        # Use policy_rate_hz from WaypointConfig if not explicitly overridden
+        if policy_rate_hz == 0 and isinstance(self._motion, WaypointConfig):
+            self._policy_rate_hz = self._motion.policy_rate_hz
+        else:
+            self._policy_rate_hz = policy_rate_hz
 
         self._sessions: dict[str, JoggingSession] = {}
         self._camera_sources: dict[str, CameraSource] = {}
@@ -432,20 +436,13 @@ class PolicyExecutor:
         # WaypointConfig → use native waypoint jogging
         if isinstance(self._motion, WaypointConfig):
             _compat_config = MotionConfig(state_rate_ms=self._motion.state_rate_ms)
-            session = WaypointJoggingSession(
+            return WaypointJoggingSession(  # type: ignore[return-value]
                 motion_group=mg,
                 config=_compat_config,
                 tcp=tcp,
                 safety_guards=self._safety_guards,
                 mode=mode,
-                server_speed_ratio=self._motion.server_speed_ratio,
             )
-            if self._motion.log_dir:
-                from pathlib import Path  # noqa: PLC0415
-
-                log_path = Path(self._motion.log_dir) / f"jogger_cmds_{mg.id.replace('@', '_')}.jsonl"
-                session.enable_logging(log_path)
-            return session  # type: ignore[return-value]
 
         # MotionConfig → client-side velocity profile
         config = self._motion

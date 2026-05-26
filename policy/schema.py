@@ -53,9 +53,6 @@ class Mapping:
     def to_hardware(self, policy_value: float) -> bool | int | float | str:
         return policy_value
 
-IdentityMapping = Mapping
-
-
 class BoolMapping(Mapping):
     """Map between hardware bool and policy float.
 

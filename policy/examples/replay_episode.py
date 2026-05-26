@@ -24,12 +24,12 @@ from typing import Any
 import pyarrow.parquet as pq
 
 import nova
-from nova import api, run_program
+from nova import api, run_program, viewers
 from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
-from policy import ActionChunk, Observation, PolicyExecutor, PolicySchema
+from policy import ActionChunk, Observation, PolicyExecutor, PolicySchema, WaypointConfig
 
 DATASET = Path(os.environ.get(
     "DATASET", "/Users/stefanwagner/Downloads/Data_Recordings_old",
@@ -41,7 +41,8 @@ CHUNK_SIZE = 8
 @nova.program(
     id="replay_episode",
     name="Replay Dataset Episode",
-    description="Replays a recorded parquet episode on two UR5e robots via PID jogging.",
+    description="Replays a recorded parquet episode on two UR5e robots via waypoint jogging.",
+    viewer=viewers.Rerun(),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -66,8 +67,11 @@ async def replay_episode(ctx: nova.ProgramContext):
     dt_ms = 1000.0 / fps
 
     path = DATASET / "data" / "chunk-000" / f"episode_{EPISODE:06d}.parquet"
-    actions = pq.read_table(path, columns=["action"]).column("action").to_pylist()
-    print(f"Loaded episode {EPISODE}: {len(actions)} steps at {fps} fps ({dt_ms:.1f}ms/step)")
+    table = pq.read_table(path, columns=["action", "timestamp"])
+    actions = table.column("action").to_pylist()
+    timestamps_s = table.column("timestamp").to_pylist()
+    duration_s = timestamps_s[-1] - timestamps_s[0]
+    print(f"Loaded episode {EPISODE}: {len(actions)} steps, {duration_s:.1f}s duration")
 
     # Connect to controllers
     cell = ctx.nova.cell()
@@ -93,29 +97,45 @@ async def replay_episode(ctx: nova.ProgramContext):
         Observation.joint_positions("right_joints", source=mg_right),
     ])
 
-    # Replay policy: each call returns the next chunk of actions
-    step = 0
-
+    # Replay policy: index into actions based on elapsed time
     async def replay(obs: dict[str, Any]) -> ActionChunk:
-        nonlocal step
+        session = executor._sessions.get(mg_left.id)
+        elapsed_ms = session.session_elapsed_ms if session else 0
+        elapsed_s = elapsed_ms / 1000.0
+
+        # Find which step corresponds to current elapsed time
+        step = 0
+        for i, ts in enumerate(timestamps_s):
+            if ts - timestamps_s[0] <= elapsed_s:
+                step = i
+            else:
+                break
+        step = min(step, len(actions) - 1)
+
         chunk_end = min(step + CHUNK_SIZE, len(actions))
         chunk = actions[step:chunk_end] if step < len(actions) else [actions[-1]]
-        step += 1
+
+        # Use actual recording timestamps for dt between steps
+        start_time_ms = int((timestamps_s[step] - timestamps_s[0]) * 1000)
+
         return ActionChunk(
             joints={
                 mg_left.id: [a[:6] for a in chunk],
                 mg_right.id: [a[6:] for a in chunk],
             },
             dt_ms=dt_ms,
+            start_time_ms=start_time_ms,
         )
 
     # Run
     executor = PolicyExecutor(
         schema,
         replay,
-        timeout_s=len(actions) / fps + 5.0,
+        timeout_s=duration_s + 5.0,
+        policy_rate_hz=20,
+        motion=WaypointConfig(state_rate_ms=10),
     )
-    print(f"Replaying {len(actions)} steps...")
+    print(f"Replaying {len(actions)} steps ({duration_s:.1f}s)...")
     result = await executor.run()
     print(f"Done: {result.steps} steps in {result.duration_s:.1f}s ({result.reason})")
 

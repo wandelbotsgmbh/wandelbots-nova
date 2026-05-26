@@ -15,7 +15,7 @@ requires-python = ">=3.11, <3.13"
 readme = "README.md"
 dependencies = [
     "httpx>=0.28.0,<0.29",
-    "wandelbots_api_client==26.4.0a2345",
+    "wandelbots_api_client @ https://code.wabo.run/api/v4/projects/889/packages/pypi/files/21f7d6efb4a92786937218f21c92388404302dd6768e9db5689334cea07c836b/wandelbots_api_client-26.4.0a2345+b88ffc36-py3-none-any.whl",
     "websockets>=14.1.0,<15",
     "loguru>=0.7.2,<0.8",
     "pydantic>=2.11.4,<3",
@@ -90,6 +90,9 @@ prerelease = "allow"
 [[tool.uv.index]]
 name = "wandelbots"
 url = "https://code.wabo.run/api/v4/projects/889/packages/pypi/simple"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.sdist]
 include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "policy"]
