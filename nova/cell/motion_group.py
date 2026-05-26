@@ -187,8 +187,7 @@ class MotionGroup(AbstractRobot):
             if isinstance(action, WriteAction):
                 if action.origin == api.models.IOOrigin.BUS_IO:
                     await self._api_client.bus_ios_api.set_bus_io_values(
-                        cell=self._cell,
-                        io_value=[api.models.IOValue(action.to_api_model())],
+                        cell=self._cell, io_value=[api.models.IOValue(action.to_api_model())]
                     )
                 else:
                     await self._api_client.controller_ios_api.set_output_values(
@@ -215,7 +214,9 @@ class MotionGroup(AbstractRobot):
                     handler = async_action.get_handler()
                     return await handler(ctx)
 
-                task = asyncio.create_task(execute_async_action(), name=f"async-action-{action.action_id}")
+                task = asyncio.create_task(
+                    execute_async_action(), name=f"async-action-{action.action_id}"
+                )
                 active_tasks[action.action_id] = (action, task)
             elif isinstance(action, AwaitAction):
                 if action.action_id in completed_action_ids:

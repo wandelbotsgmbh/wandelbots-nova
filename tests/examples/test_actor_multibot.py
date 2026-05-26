@@ -9,10 +9,10 @@ from examples.actor_multibot import (
     CellProcess,
     EventRecorder,
     OrchestratorActor,
-    PLCActor,
     ParallelStage,
-    RequestZone,
+    PLCActor,
     ReleaseZone,
+    RequestZone,
     RobotStep,
     RunStage,
     StageCompleted,
@@ -91,9 +91,7 @@ class FakeRobotActor(Actor):
         if stage_name == self._fail_stage:
             await self._orchestrator.send(
                 StageFailed(
-                    robot_id=self.robot_id,
-                    stage_name=stage_name,
-                    reason="simulated failure",
+                    robot_id=self.robot_id, stage_name=stage_name, reason="simulated failure"
                 )
             )
             return
@@ -145,23 +143,21 @@ async def test_plc_actor_grants_zone_fifo():
         tg.create_task(second.run())
 
         await plc.send(
-            RequestZone(zone="handover_zone", robot_id="robot_a", stage_name="shared", reply_to=first)
+            RequestZone(
+                zone="handover_zone", robot_id="robot_a", stage_name="shared", reply_to=first
+            )
         )
         await plc.send(
-            RequestZone(zone="handover_zone", robot_id="robot_b", stage_name="shared", reply_to=second)
+            RequestZone(
+                zone="handover_zone", robot_id="robot_b", stage_name="shared", reply_to=second
+            )
         )
 
         await wait_until(lambda: len(first.grants) == 1)
         assert [grant.zone for grant in first.grants] == ["handover_zone"]
         assert second.grants == []
 
-        await plc.send(
-            ReleaseZone(
-                zone="handover_zone",
-                robot_id="robot_a",
-                stage_name="shared",
-            )
-        )
+        await plc.send(ReleaseZone(zone="handover_zone", robot_id="robot_a", stage_name="shared"))
         await wait_until(lambda: len(second.grants) == 1)
 
         assert [grant.zone for grant in second.grants] == ["handover_zone"]
@@ -176,22 +172,17 @@ async def test_orchestrator_waits_for_all_stage_participants():
     process = CellProcess(
         stages=(
             ParallelStage(
-                name="stage_one",
-                steps=(RobotStep("robot_a", "noop"), RobotStep("robot_b", "noop")),
+                name="stage_one", steps=(RobotStep("robot_a", "noop"), RobotStep("robot_b", "noop"))
             ),
             ParallelStage(
-                name="stage_two",
-                steps=(RobotStep("robot_a", "noop"), RobotStep("robot_b", "noop")),
+                name="stage_two", steps=(RobotStep("robot_a", "noop"), RobotStep("robot_b", "noop"))
             ),
         )
     )
 
     robot_actors: dict[str, Actor] = {}
     orchestrator = OrchestratorActor(
-        process=process,
-        robot_actors=robot_actors,
-        plc=plc,
-        recorder=recorder,
+        process=process, robot_actors=robot_actors, plc=plc, recorder=recorder
     )
     robot_a = FakeRobotActor(
         name="robot_a_actor",
@@ -238,15 +229,16 @@ async def test_failure_triggers_abort_run():
     recorder = EventRecorder()
     plc = PLCActor("plc", recorder)
     process = CellProcess(
-        stages=(ParallelStage(name="stage_one", steps=(RobotStep("robot_a", "noop"), RobotStep("robot_b", "noop"))),)
+        stages=(
+            ParallelStage(
+                name="stage_one", steps=(RobotStep("robot_a", "noop"), RobotStep("robot_b", "noop"))
+            ),
+        )
     )
 
     robot_actors: dict[str, Actor] = {}
     orchestrator = OrchestratorActor(
-        process=process,
-        robot_actors=robot_actors,
-        plc=plc,
-        recorder=recorder,
+        process=process, robot_actors=robot_actors, plc=plc, recorder=recorder
     )
     failing_robot = FakeRobotActor(
         name="robot_a_actor",
