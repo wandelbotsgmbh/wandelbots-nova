@@ -9,7 +9,6 @@ import time
 from typing import Any
 
 from policy.rerun.constants import _MIN_LINE_STEPS, _TCP_TRAIL_COLOR, _TRAIL_WIDTH_UI
-import rerun as rr
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +59,8 @@ class StateStreamer:
 
     async def _loop(self) -> None:
         """Poll session states at ~100Hz and log to Rerun."""
+        import rerun as rr  # noqa: PLC0415
+
         try:
             while self._running:
                 if self._sessions is None:
@@ -83,6 +84,7 @@ class StateStreamer:
 
     def _log_state(self, mg_id: str, joints: list[float]) -> None:
         """Log a single state sample for one motion group."""
+        import rerun as rr  # noqa: PLC0415
         # Update 3D robot mesh position
         visualizer = self._visualizers.get(mg_id)
         if visualizer is not None:

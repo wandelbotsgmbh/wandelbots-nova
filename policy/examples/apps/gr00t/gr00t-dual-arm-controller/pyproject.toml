@@ -5,7 +5,7 @@ description = "Nova app: GR00T dual-arm policy execution with cameras via ZMQ"
 requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
-    "wandelbots-nova[policy] @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@8fcb1b782461956448b5f10a6f947fbfbf560df1",
+    "wandelbots-nova[policy] @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@be6954faa4858211b145b1555950da48abded115",
     "python-decouple~=3.8",
     "pyzmq>=26.0.0,<27",
     "msgpack>=1.1.0,<2",
@@ -16,6 +16,7 @@ dependencies = [
     "uvicorn>=0.34.0",
     "fastapi>=0.115.6",
     "pydot>=3.0.0",
+    "pyarrow>=15.0.0",
 ]
 
 [dependency-groups]
@@ -25,6 +26,14 @@ dev = [
 
 [tool.uv]
 package = false
+prerelease = "allow"
+
+[[tool.uv.index]]
+name = "wandelbots"
+url = "https://code.wabo.run/api/v4/projects/889/packages/pypi/simple"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [build-system]
 requires = ["hatchling"]
