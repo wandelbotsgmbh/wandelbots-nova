@@ -117,14 +117,24 @@ class CartesianPTP(Motion):
     def to_api_model(self) -> api.models.PathCartesianPTP:
         """Serialize the model to the API model
 
+        If target.kinematic_configuration is set, it is passed to
+        PathCartesianPTP.kinematic_configuration to specify the kinematic branch
+        and axis ranges for reaching the target pose.
+
         Examples:
         >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
         PathCartesianPTP(target_pose=Pose(position=Vector3d(root=[1.0, 2.0, 3.0]), orientation=RotationVector(root=[4.0, 5.0, 6.0])), kinematic_configuration=None, path_definition_name='PathCartesianPTP')
+        >>> from nova import api
+        >>> kc = api.models.KinematicConfiguration(kinematic_branch=api.models.KinematicBranch(shoulder_branch='FRONT', elbow_branch='UP', wrist_branch='NO_FLIP'))
+        >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kc), settings=MotionSettings()).to_api_model().kinematic_configuration == kc
+        True
         """
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
         return api.models.PathCartesianPTP(
-            target_pose=self.target.to_api_model(), path_definition_name="PathCartesianPTP"
+            target_pose=self.target.to_api_model(),
+            kinematic_configuration=self.target.kinematic_configuration,
+            path_definition_name="PathCartesianPTP",
         )
 
 
@@ -138,6 +148,8 @@ def cartesian_ptp(
 
     Args:
         target: the target pose or vector. If the target is a vector, the orientation is set to (0, 0, 0).
+            To specify a kinematic configuration, pass it via the Pose:
+            ``Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=KinematicConfiguration(...))``
         settings: the motion settings
 
     Returns: the point-to-point motion
