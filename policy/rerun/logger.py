@@ -10,11 +10,10 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-from policy.rerun.streaming import StateStreamer
-
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
+    from policy.rerun.streaming import StateStreamer
     from policy.types import ActionChunk
 
 logger = logging.getLogger(__name__)
@@ -187,6 +186,8 @@ class PolicyRerunLogger:
         """Start background task logging robot state at ~100Hz between policy calls."""
         if not self._initialized:
             return
+        from policy.rerun.streaming import StateStreamer  # noqa: PLC0415
+
         self._streamer = StateStreamer(
             start_time=self._start_time,
             dh_robots=self._dh_robots,
