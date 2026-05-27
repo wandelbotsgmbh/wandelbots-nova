@@ -39,7 +39,7 @@ def decode(obj):
     [1, 2, 3]
     >>> decode(None)
     >>> decode({"position": [1, 2, 3], "orientation": [4, 5, 6]})
-    Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
+    Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6), kinematic_configuration=None)
     >>> decode({"x": 1, "y": 2, "z": 3})
     Vector3d(x=1, y=2, z=3)
     """
@@ -178,7 +178,7 @@ def loads_store(content: str) -> ElementType:
     Example:
     >>> json_content = '{"a": {"orientation": [1.0, 2.0, 3.0], "position": [4.0, 5.0, 6.0]}, "a_dict": {"a": 4}}'
     >>> loads_store(json_content)
-    {'a': Pose(position=Vector3d(x=4.0, y=5.0, z=6.0), orientation=Vector3d(x=1.0, y=2.0, z=3.0)), 'a_dict': {'a': 4}}
+    {'a': Pose(position=Vector3d(x=4.0, y=5.0, z=6.0), orientation=Vector3d(x=1.0, y=2.0, z=3.0), kinematic_configuration=None), 'a_dict': {'a': 4}}
     >>> json_content = '{"b": {"a": 3}, "c": [1, 2, 3]}'
     >>> loads_store(json_content)
     {'b': {'a': 3}, 'c': [1, 2, 3]}
