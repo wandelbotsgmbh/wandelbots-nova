@@ -268,9 +268,7 @@ class TestEnsureModelAvailable:
 
     @pytest.mark.asyncio
     @patch("nova_rerun_bridge.model_downloader.get_models_dir")
-    async def test_integration_existing_model_not_redownloaded(
-        self, mock_get_models_dir, tmp_path
-    ):
+    async def test_integration_existing_model_not_redownloaded(self, mock_get_models_dir, tmp_path):
         """Integration test: existing model should not be re-downloaded."""
         mock_get_models_dir.return_value = tmp_path
 
