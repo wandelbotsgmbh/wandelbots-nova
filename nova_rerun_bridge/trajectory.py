@@ -11,6 +11,7 @@ from nova.types import Pose
 from nova_rerun_bridge.collision_scene import extract_link_chain_and_tcp
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
+from nova_rerun_bridge.model_downloader import ensure_model_available
 from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 
 
@@ -123,6 +124,8 @@ async def log_motion(
 
     # Get or create visualizer from cache
     if motion_group.id not in _visualizer_cache:
+        await ensure_model_available(motion_group_model, motion_group._api_client)
+
         collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
             collision_setups=collision_setups
         )

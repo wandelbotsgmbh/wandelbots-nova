@@ -11,6 +11,7 @@ from nova.utils.downsample import downsample_stream
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.consts import TIME_REALTIME_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
+from nova_rerun_bridge.model_downloader import ensure_model_available
 from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 
 
@@ -103,6 +104,8 @@ async def stream_motion_group(
         ]
 
     try:
+        await ensure_model_available(motion_group_model, motion_group._api_client)
+
         mounting = motion_group_description.mounting or api.models.Pose(
             position=api.models.Vector3d([0, 0, 0]),
             orientation=api.models.RotationVector([0, 0, 0]),
