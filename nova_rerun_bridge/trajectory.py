@@ -81,7 +81,7 @@ async def log_motion(
     if dh_parameters is None:
         raise ValueError("DH parameters cannot be None")
 
-    tcp_offset = motion_group_setup.tcp_offset or api.models.Pose(
+    tcp_offset = getattr(motion_group_setup, "tcp_offset", None) or api.models.Pose(
         position=api.models.Vector3d([0, 0, 0]),
         orientation=api.models.RotationVector([0, 0, 0]),
     )
@@ -116,21 +116,21 @@ async def _log_motion(
     show_collision_tool: bool = True,
     show_safety_link_chain: bool = True,
 ):
-    """
-    Process a single motion for visualization from already-resolved motion group data.
+    """Process a single motion for visualization from already-resolved motion group data.
 
     Args:
-        trajectory: Joint trajectory to log
-        tcp: TCP to log
-        motion_group: Motion group to log
-        motion_group_setup: Resolved motion group setup
-        motion_group_model: Resolved motion group model
-        motion_group_description: Resolved motion group description
-        collision_setups: Collision setups to log [setup_name: collision_setup]
-        time_offset: Time offset for visualization
-        tool_asset: Optional tool asset file path
-        show_collision_link_chain: Whether to show collision geometry
-        show_safety_link_chain: Whether to show safety geometry
+        trajectory: Joint trajectory to log.
+        tcp: TCP offset pose (flange -> TCP).
+        motion_group_id: Motion group identifier used for entity paths/caching.
+        motion_group_setup: Resolved motion group setup (mounting, model name, etc.).
+        dh_parameters: DH parameters for the motion group's kinematic model.
+        collision_setups: Collision setups to visualize (layer name -> setup).
+        safety_collision_setup: Collision setup providing safety link-chain/tool geometry.
+        time_offset: Time offset for visualization.
+        tool_asset: Optional tool asset file path.
+        show_collision_link_chain: Whether to show collision geometry.
+        show_collision_tool: Whether to show collision tool geometry.
+        show_safety_link_chain: Whether to show safety geometry.
     """
     motion_id = str(uuid.uuid4())
 
@@ -336,16 +336,16 @@ async def log_multi_motion_group_trajectory(
     motion_group_setups: api.models.MotionGroupSetupDictionary,
     collision_setups: api.models.MultiCollisionSetupDictionary | None = None,
 ):
-    """Visualize the result of a multi motion group collision-free search.
+    """Visualize a multi motion group collision-free trajectory.
 
-    Iterates over every motion group contained in the request, resolves the
-    kinematic model (DH parameters) for each motion group and logs the
-    corresponding joint trajectory from the response.
+    Iterates over motion groups in ``motion_group_setups`` and logs each group's
+    joint trajectory (from ``trajectory``) using resolved kinematic data.
 
     Args:
-        nova: Nova client used to resolve the kinematic models.
-        request: The multi search collision-free request.
-        response: The multi search collision-free response.
+        nova: Nova client used to resolve kinematic models.
+        trajectory: Multi motion-group joint trajectory with shared timestamps.
+        motion_group_setups: Motion group setups keyed by motion group id.
+        collision_setups: Optional collision setups used during planning.
     """
 
     joint_positions_by_key = trajectory.joint_positions_by_motion_group_key.root

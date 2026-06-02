@@ -18,7 +18,6 @@ import asyncio
 
 from pydantic import Field
 
-import nova
 from nova import api, run_program
 from nova.actions import joint_ptp
 from nova.cell import virtual_controller
@@ -36,7 +35,7 @@ START_JOINTS = (0.0, -1.0, 1.0, 0.0, 0.5, 0.0)
 TARGET_JOINTS_1 = (1.5708, -1.0, 1.0, 0.0, 0.5, 0.0)   # robot 1 → toward +Y
 TARGET_JOINTS_2 = (-1.5708, -1.0, 1.0, 0.0, 0.5, 0.0)  # robot 2 → toward -Y
 
-ROBOT_SEPARATION_MM = 1000.0
+# ROBOT_SEPARATION_MM defined above
 
 
 async def set_robot_base(motion_group: MotionGroup, x: float, y: float, z: float) -> None:
@@ -148,7 +147,9 @@ async def plan_multi_robot_rrt(ctx,
         multi_search_collision_free_request=request,
     )
 
-    if isinstance(response.response, api.models.PlanCollisionFreeFailedResponse | None):
+    if response.response is None or isinstance(
+        response.response, api.models.PlanCollisionFreeFailedResponse
+    ):
         print(f"ERROR: RRT planning failed — {response.response}")
         return None
 
@@ -250,7 +251,6 @@ async def start(
     print("Both robots reset to start position.")
 
     """Control two robots 1m apart with coordinated, inter-robot collision-free RRT paths."""
-    cell = ctx.cell
     cycle = ctx.cycle(extra={"app": "visual-studio-code"})
 
     # Place robot 1 at world origin and robot 2 exactly 1 m away along Y
