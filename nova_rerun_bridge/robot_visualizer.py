@@ -193,6 +193,29 @@ class RobotVisualizer:
             transforms.append(accumulated.copy())
         return transforms
 
+    def compute_flange_pose(self, joint_positions: list[float]) -> Pose:
+        """Calculate the flange pose for a given joint position.
+
+        Uses forward kinematics to obtain the final (flange) frame transform and
+        converts it into a :class:`Pose` with rotation-vector orientation.
+
+        :param joint_positions: Joint values (in radians) for each joint.
+        :return: The flange pose relative to the robot base.
+        """
+        flange_transform = self.compute_forward_kinematics(joint_positions)[-1]
+        translation = flange_transform[:3, 3]
+        rotation_vector = Rotation.from_matrix(flange_transform[:3, :3]).as_rotvec()
+        return Pose(
+            (
+                float(translation[0]),
+                float(translation[1]),
+                float(translation[2]),
+                float(rotation_vector[0]),
+                float(rotation_vector[1]),
+                float(rotation_vector[2]),
+            )
+        )
+
     def rotation_matrix_to_axis_angle(self, Rm):
         """Derive an axis-angle representation while being resilient to scaling/noise."""
         try:
