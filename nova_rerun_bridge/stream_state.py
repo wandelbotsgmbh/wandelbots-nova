@@ -11,6 +11,7 @@ from nova.utils.downsample import downsample_stream
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.consts import TIME_REALTIME_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
+from nova_rerun_bridge.model_loader import load_model_data
 from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 
 
@@ -103,14 +104,7 @@ async def stream_motion_group(
         ]
 
     try:
-        model_data: bytes | None = None
-        if motion_group_model:
-            try:
-                model_data = await motion_group._api_client.motion_group_models_api.get_motion_group_glb_model(
-                    motion_group_model
-                )
-            except Exception as e:
-                logger.warning(f"Failed to load model {motion_group_model}: {e}")
+        model_data = await load_model_data(motion_group_model, motion_group._api_client)
 
         mounting = motion_group_description.mounting or api.models.Pose(
             position=api.models.Vector3d([0, 0, 0]),

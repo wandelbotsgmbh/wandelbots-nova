@@ -11,6 +11,7 @@ from nova.types import Pose
 from nova_rerun_bridge.collision_scene import extract_link_chain_and_tcp
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
+from nova_rerun_bridge.model_loader import load_model_data
 from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 
 
@@ -123,16 +124,7 @@ async def log_motion(
 
     # Get or create visualizer from cache
     if motion_group.id not in _visualizer_cache:
-        model_data: bytes | None = None
-        if motion_group_model:
-            try:
-                model_data = await motion_group._api_client.motion_group_models_api.get_motion_group_glb_model(
-                    motion_group_model
-                )
-            except Exception as e:
-                import logging
-
-                logging.warning(f"Failed to load model {motion_group_model}: {e}")
+        model_data = await load_model_data(motion_group_model, motion_group._api_client)
 
         collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
             collision_setups=collision_setups
