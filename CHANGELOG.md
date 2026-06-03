@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.1.4 (2026-06-03)
+
+### Chores
+
+- **api**: Update wandelbots-api-client to 26.4.0 (#423)
+  ([#423](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/423),
+  [`fe1d72e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fe1d72e0e2d74e7867caf5d7cf9486bbd3a2131b))
+
+
 ## v5.1.3 (2026-05-20)
 
 ### Bug Fixes

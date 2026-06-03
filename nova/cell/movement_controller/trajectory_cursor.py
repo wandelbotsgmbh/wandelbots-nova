@@ -470,7 +470,7 @@ class TrajectoryCursor:
         """
         self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
-        self.actions = CombinedActions(items=actions) if actions is not None else None  # type: ignore
+        self.actions = CombinedActions(items=actions) if actions is not None else None
 
         if self.actions is not None:
             expected_end_location = len(self.actions)
