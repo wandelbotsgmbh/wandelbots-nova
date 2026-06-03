@@ -6,7 +6,7 @@ import numpy as np
 import rerun as rr
 from scipy.spatial.transform import Rotation as R
 
-from nova import Nova, MotionGroup, api
+from nova import MotionGroup, Nova, api
 from nova.types import Pose
 from nova_rerun_bridge.collision_scene import extract_link_chain_and_tcp
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
