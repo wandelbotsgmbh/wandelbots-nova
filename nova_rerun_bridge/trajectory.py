@@ -131,6 +131,7 @@ async def log_motion(
                 )
             except Exception as e:
                 import logging
+
                 logging.warning(f"Failed to load model {motion_group_model}: {e}")
 
         collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
