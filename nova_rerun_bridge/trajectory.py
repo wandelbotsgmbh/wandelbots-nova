@@ -82,8 +82,7 @@ async def log_motion(
         raise ValueError("DH parameters cannot be None")
 
     tcp_offset = motion_group_setup.tcp_offset or api.models.Pose(
-        position=api.models.Vector3d([0, 0, 0]),
-        orientation=api.models.RotationVector([0, 0, 0]),
+        position=api.models.Vector3d([0, 0, 0]), orientation=api.models.RotationVector([0, 0, 0])
     )
 
     await _log_motion(
@@ -107,7 +106,7 @@ async def _log_motion(
     tcp: api.models.Pose,
     motion_group_id: str,
     motion_group_setup: api.models.MotionGroupSetup,
-    dh_parameters:  list[api.models.DHParameter],
+    dh_parameters: list[api.models.DHParameter],
     collision_setups: dict[str, api.models.CollisionSetup],
     safety_collision_setup: api.models.CollisionSetup,
     time_offset: float = 0,
@@ -135,31 +134,15 @@ async def _log_motion(
     motion_id = str(uuid.uuid4())
 
     if dh_parameters is not None:
-        dh_parameters[0].a = (
-            dh_parameters[0].a or 0
-        )
-        dh_parameters[0].d = (
-            dh_parameters[0].d or 0
-        )
-        dh_parameters[0].alpha = (
-            dh_parameters[0].alpha or 0
-        )
-        dh_parameters[0].theta = (
-            dh_parameters[0].theta or 0
-        )
+        dh_parameters[0].a = dh_parameters[0].a or 0
+        dh_parameters[0].d = dh_parameters[0].d or 0
+        dh_parameters[0].alpha = dh_parameters[0].alpha or 0
+        dh_parameters[0].theta = dh_parameters[0].theta or 0
 
-        dh_parameters[1].a = (
-            dh_parameters[1].a or 0
-        )
-        dh_parameters[1].d = (
-            dh_parameters[1].d or 0
-        )
-        dh_parameters[1].alpha = (
-            dh_parameters[1].alpha or 0
-        )
-        dh_parameters[1].theta = (
-            dh_parameters[1].theta or 0
-        )
+        dh_parameters[1].a = dh_parameters[1].a or 0
+        dh_parameters[1].d = dh_parameters[1].d or 0
+        dh_parameters[1].alpha = dh_parameters[1].alpha or 0
+        dh_parameters[1].theta = dh_parameters[1].theta or 0
 
     if dh_parameters is None:
         raise ValueError("DH parameters cannot be None")
@@ -180,7 +163,7 @@ async def _log_motion(
         )
 
         safety_link_chain, safety_tcp_geometry = extract_link_chain_and_tcp(
-            collision_setups={"safety":safety_collision_setup}
+            collision_setups={"safety": safety_collision_setup}
         )
 
         _visualizer_cache[motion_group_id] = RobotVisualizer(
@@ -243,7 +226,9 @@ async def log_trajectory(
     times_column = get_times_column(trajectory, timer_offset)
 
     # TODO: calculate tcp pose from joint positions
-    tcp_poses = [visualizer.compute_flange_pose(joints.root) @ tcp for joints in trajectory.joint_positions]
+    tcp_poses = [
+        visualizer.compute_flange_pose(joints.root) @ tcp for joints in trajectory.joint_positions
+    ]
     positions = [[p.position.x, p.position.y, p.position.z] for p in tcp_poses]
 
     rr.log(
@@ -410,14 +395,16 @@ async def log_multi_motion_group_trajectory(
                     else {}
                 )
                 collision_motion_group = collision_motion_groups.get(motion_group_id)
-                collision_setups_flattened[f"{setup_name}_{motion_group_id}"] = api.models.CollisionSetup(
-                    link_chain=collision_motion_group.link_chain
-                    if collision_motion_group is not None
-                    else None,
-                    tool=collision_motion_group.tool
-                    if collision_motion_group is not None
-                    else None,
-                    colliders=multi_setup.colliders,
+                collision_setups_flattened[f"{setup_name}_{motion_group_id}"] = (
+                    api.models.CollisionSetup(
+                        link_chain=collision_motion_group.link_chain
+                        if collision_motion_group is not None
+                        else None,
+                        tool=collision_motion_group.tool
+                        if collision_motion_group is not None
+                        else None,
+                        colliders=multi_setup.colliders,
+                    )
                 )
 
         await _log_motion(

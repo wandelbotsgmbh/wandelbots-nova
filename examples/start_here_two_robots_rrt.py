@@ -33,9 +33,8 @@ START_JOINTS = (0.0, -1.0, 1.0, 0.0, 0.5, 0.0)
 # Robot 1 (at Y=0) swings J1 to +π/2 → arm extends toward +Y, into robot 2's space.
 # Robot 2 (at Y=1000mm) swings J1 to -π/2 → arm extends toward -Y, into robot 1's space.
 # Without collision avoidance both TCPs would meet at the midpoint (~Y=500mm).
-TARGET_JOINTS_1 = (1.5708, -1.0, 1.0, 0.0, 0.5, 0.0)   # robot 1 → toward +Y
+TARGET_JOINTS_1 = (1.5708, -1.0, 1.0, 0.0, 0.5, 0.0)  # robot 1 → toward +Y
 TARGET_JOINTS_2 = (-1.5708, -1.0, 1.0, 0.0, 0.5, 0.0)  # robot 2 → toward -Y
-
 
 
 async def set_robot_base(motion_group: MotionGroup, x: float, y: float, z: float) -> None:
@@ -56,9 +55,7 @@ async def set_robot_base(motion_group: MotionGroup, x: float, y: float, z: float
     )
 
 
-def _max_joint_accelerations(
-    description: api.models.MotionGroupDescription,
-) -> tuple[float, ...]:
+def _max_joint_accelerations(description: api.models.MotionGroupDescription) -> tuple[float, ...]:
     """Return the per-joint maximum accelerations from the motion group description."""
     auto_limits = description.operation_limits.auto_limits if description.operation_limits else None
     joints = auto_limits.joints if auto_limits else None
@@ -79,13 +76,8 @@ async def reset_robot(motion_group: MotionGroup, tcp: str, label: str) -> None:
     print(f"[{label}] done.")
 
 
-
-
-async def plan_multi_robot_rrt(ctx, 
-    motion_group_1: MotionGroup,
-    motion_group_2: MotionGroup,
-    tcp_1: str,
-    tcp_2: str,
+async def plan_multi_robot_rrt(
+    ctx, motion_group_1: MotionGroup, motion_group_2: MotionGroup, tcp_1: str, tcp_2: str
 ) -> api.models.MultiJointTrajectory | None:
     """Plan collision-free, time-synchronized paths for both robots simultaneously.
 
@@ -103,48 +95,47 @@ async def plan_multi_robot_rrt(ctx,
     )
 
     request = api.models.MultiSearchCollisionFreeRequest(
-        motion_group_setups_by_motion_group_key=api.models.MotionGroupSetupDictionary({
-            motion_group_1.id: setup_1,
-            motion_group_2.id: setup_2,
-        }),
-        path_definitions_by_motion_group_key=api.models.JointPTPMotionDictionary({
-            motion_group_1.id: api.models.JointPTPMotion(
-                start_joint_position=api.models.DoubleArray(list(START_JOINTS)),
-                target_joint_position=api.models.DoubleArray(list(TARGET_JOINTS_1)),
-            ),
-            motion_group_2.id: api.models.JointPTPMotion(
-                start_joint_position=api.models.DoubleArray(list(START_JOINTS)),
-                target_joint_position=api.models.DoubleArray(list(TARGET_JOINTS_2)),
-            ),
-        }),
+        motion_group_setups_by_motion_group_key=api.models.MotionGroupSetupDictionary(
+            {motion_group_1.id: setup_1, motion_group_2.id: setup_2}
+        ),
+        path_definitions_by_motion_group_key=api.models.JointPTPMotionDictionary(
+            {
+                motion_group_1.id: api.models.JointPTPMotion(
+                    start_joint_position=api.models.DoubleArray(list(START_JOINTS)),
+                    target_joint_position=api.models.DoubleArray(list(TARGET_JOINTS_1)),
+                ),
+                motion_group_2.id: api.models.JointPTPMotion(
+                    start_joint_position=api.models.DoubleArray(list(START_JOINTS)),
+                    target_joint_position=api.models.DoubleArray(list(TARGET_JOINTS_2)),
+                ),
+            }
+        ),
         # Cross-group collision setup: each robot's link chain is checked against
         # the other robot's links, providing robot-robot collision avoidance.
-        collision_setups=api.models.MultiCollisionSetupDictionary({
-            "world": api.models.MultiCollisionSetup(
-                collision_motion_groups_by_motion_group_key=api.models.CollisionMotionGroupDictionary({
-                    motion_group_1.id: api.models.CollisionMotionGroup(
-                        link_chain=link_chain_1,
-                        self_collision_detection=True,
-                    ),
-                    motion_group_2.id: api.models.CollisionMotionGroup(
-                        link_chain=link_chain_2,
-                        self_collision_detection=True,
-                    ),
-                }),
-            ),
-        }),
+        collision_setups=api.models.MultiCollisionSetupDictionary(
+            {
+                "world": api.models.MultiCollisionSetup(
+                    collision_motion_groups_by_motion_group_key=api.models.CollisionMotionGroupDictionary(
+                        {
+                            motion_group_1.id: api.models.CollisionMotionGroup(
+                                link_chain=link_chain_1, self_collision_detection=True
+                            ),
+                            motion_group_2.id: api.models.CollisionMotionGroup(
+                                link_chain=link_chain_2, self_collision_detection=True
+                            ),
+                        }
+                    )
+                )
+            }
+        ),
         algorithm_settings=api.models.RRTConnectAlgorithm(
-            max_iterations=20000,
-            max_step_size=0.1,
-            apply_smoothing=True,
-            apply_blending=True,
+            max_iterations=20000, max_step_size=0.1, apply_smoothing=True, apply_blending=True
         ),
     )
 
     print("Planning collision-free paths for both robots simultaneously (RRT-Connect)...")
     response = await motion_group_1._api_client.trajectory_planning_api.search_collision_free_multi_motion_group(
-        cell=motion_group_1._cell,
-        multi_search_collision_free_request=request,
+        cell=motion_group_1._cell, multi_search_collision_free_request=request
     )
 
     if response.response is None or isinstance(
@@ -153,7 +144,12 @@ async def plan_multi_robot_rrt(ctx,
         print(f"ERROR: RRT planning failed — {response.response}")
         return None
 
-    await log_multi_motion_group_trajectory(ctx.nova, response.response, request.motion_group_setups_by_motion_group_key, request.collision_setups)
+    await log_multi_motion_group_trajectory(
+        ctx.nova,
+        response.response,
+        request.motion_group_setups_by_motion_group_key,
+        request.collision_setups,
+    )
 
     return response.response
 
@@ -169,25 +165,23 @@ async def execute_robot_from_multi_trajectory(
     """Execute the pre-planned multi-robot trajectory."""
     description = await motion_group.get_description()
     max_joint_accelerations = _max_joint_accelerations(description)
-    fast = MotionSettings(
-        tcp_velocity_limit=250,
-        joint_acceleration_limits=max_joint_accelerations,
-    )
+    fast = MotionSettings(tcp_velocity_limit=250, joint_acceleration_limits=max_joint_accelerations)
 
     # Extract this robot's joint positions from the shared multi-trajectory
-    joint_positions = multi_trajectory.joint_positions_by_motion_group_key.root[motion_group.id].root
+    joint_positions = multi_trajectory.joint_positions_by_motion_group_key.root[
+        motion_group.id
+    ].root
     single_trajectory = api.models.JointTrajectory(
         joint_positions=joint_positions,
         times=multi_trajectory.times,
         locations=multi_trajectory.locations,
     )
     # Actions represent the motion endpoints — used by Nova for viewer/movement controller
-    rrt_actions = [
-        joint_ptp(START_JOINTS, settings=fast),
-        joint_ptp(target_joints, settings=fast),
-    ]
+    rrt_actions = [joint_ptp(START_JOINTS, settings=fast), joint_ptp(target_joints, settings=fast)]
 
-    print(f"[{label}] executing {count} RRT cycle(s) — trajectory: {multi_trajectory.times[-1]:.2f}s")
+    print(
+        f"[{label}] executing {count} RRT cycle(s) — trajectory: {multi_trajectory.times[-1]:.2f}s"
+    )
     for i in range(count):
         print(f"[{label}] movement {i + 1}/{count}")
         await motion_group.execute(single_trajectory, tcp, actions=rrt_actions)
@@ -221,7 +215,7 @@ async def start(
         default=1, ge=1, le=10, description="The number of times to repeat the movement"
     ),
 ):
-    
+
     print("Move both robots to the safe neutral start position.")
     cell = ctx.cell
 
@@ -238,8 +232,7 @@ async def start(
     await asyncio.sleep(5)
 
     tcp_names_1, tcp_names_2 = await asyncio.gather(
-        motion_group_1.tcp_names(),
-        motion_group_2.tcp_names(),
+        motion_group_1.tcp_names(), motion_group_2.tcp_names()
     )
     tcp_1, tcp_2 = tcp_names_1[0], tcp_names_2[0]
 
@@ -254,7 +247,7 @@ async def start(
     cycle = ctx.cycle(extra={"app": "visual-studio-code"})
 
     # Plan collision-free, time-synchronized paths for both robots at once
-    multi_trajectory = await plan_multi_robot_rrt(ctx,motion_group_1, motion_group_2, tcp_1, tcp_2)
+    multi_trajectory = await plan_multi_robot_rrt(ctx, motion_group_1, motion_group_2, tcp_1, tcp_2)
     if multi_trajectory is None:
         print("Aborting: RRT planning failed.")
         return
