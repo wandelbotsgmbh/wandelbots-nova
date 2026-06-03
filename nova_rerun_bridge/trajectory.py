@@ -76,12 +76,12 @@ async def log_motion(
     safety_collision_setup = await motion_group.get_safety_collision_setup(tcp)
 
     motion_group_description = await motion_group.get_description()
-    
+
     dh_parameters = motion_group_description.dh_parameters
     if dh_parameters is None:
         raise ValueError("DH parameters cannot be None")
 
-    tcp_offset = getattr(motion_group_setup, "tcp_offset", None) or api.models.Pose(
+    tcp_offset = motion_group_setup.tcp_offset or api.models.Pose(
         position=api.models.Vector3d([0, 0, 0]),
         orientation=api.models.RotationVector([0, 0, 0]),
     )

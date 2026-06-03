@@ -18,14 +18,15 @@ import asyncio
 
 from pydantic import Field
 
+import nova
 from nova import api, run_program
 from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.cell.motion_group import MotionGroup
 from nova.types import MotionSettings
 from nova_rerun_bridge.trajectory import log_multi_motion_group_trajectory
-ROBOT_SEPARATION_MM = 1000.0
 
+ROBOT_SEPARATION_MM = 1000.0
 # Safe neutral start: both arms point in +X, away from each other.
 START_JOINTS = (0.0, -1.0, 1.0, 0.0, 0.5, 0.0)
 
@@ -35,7 +36,6 @@ START_JOINTS = (0.0, -1.0, 1.0, 0.0, 0.5, 0.0)
 TARGET_JOINTS_1 = (1.5708, -1.0, 1.0, 0.0, 0.5, 0.0)   # robot 1 → toward +Y
 TARGET_JOINTS_2 = (-1.5708, -1.0, 1.0, 0.0, 0.5, 0.0)  # robot 2 → toward -Y
 
-# ROBOT_SEPARATION_MM defined above
 
 
 async def set_robot_base(motion_group: MotionGroup, x: float, y: float, z: float) -> None:
@@ -222,7 +222,7 @@ async def start(
     ),
 ):
     
-    """Move both robots to the safe neutral start position."""
+    print("Move both robots to the safe neutral start position.")
     cell = ctx.cell
 
     controller_1 = await cell.controller("kuka-robot-1")
@@ -250,23 +250,8 @@ async def start(
 
     print("Both robots reset to start position.")
 
-    """Control two robots 1m apart with coordinated, inter-robot collision-free RRT paths."""
+    print("Control two robots 1m apart with coordinated, inter-robot collision-free RRT paths.")
     cycle = ctx.cycle(extra={"app": "visual-studio-code"})
-
-    # Place robot 1 at world origin and robot 2 exactly 1 m away along Y
-    print("Positioning robots 1m apart...")
-    await asyncio.gather(
-        set_robot_base(motion_group_1, x=0, y=0, z=0),
-        set_robot_base(motion_group_2, x=0, y=ROBOT_SEPARATION_MM, z=0),
-    )
-    # Give both virtual controllers time to restart with the new mounting
-    await asyncio.sleep(5)
-
-    tcp_names_1, tcp_names_2 = await asyncio.gather(
-        motion_group_1.tcp_names(),
-        motion_group_2.tcp_names(),
-    )
-    tcp_1, tcp_2 = tcp_names_1[0], tcp_names_2[0]
 
     # Plan collision-free, time-synchronized paths for both robots at once
     multi_trajectory = await plan_multi_robot_rrt(ctx,motion_group_1, motion_group_2, tcp_1, tcp_2)
