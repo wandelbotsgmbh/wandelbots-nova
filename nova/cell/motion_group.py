@@ -662,7 +662,7 @@ class MotionGroup(AbstractRobot):
         if first_collision_setup is not None:
             motion_group_setup.collision_setups.root["collision-check"] = first_collision_setup
 
-        motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
+        motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()
 
         # Plan the trajectory
         plan_trajectory_response = await self._api_client.trajectory_planning_api.plan_trajectory(
@@ -912,7 +912,7 @@ class MotionGroup(AbstractRobot):
 
         controller = movement_controller(
             MovementControllerContext(
-                combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
+                combined_actions=CombinedActions(items=tuple(actions)),
                 motion_id=trajectory_id,
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
