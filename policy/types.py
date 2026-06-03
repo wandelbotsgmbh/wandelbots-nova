@@ -65,25 +65,13 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
 
 @dataclass(slots=True)
 class WaypointConfig:
-    """Configuration for NOVA's native waypoint jogging (experimental).
+    """Configuration for NOVA waypoint jogging.
 
-    Sends timestamped joint waypoints directly to the server, which handles
-    velocity profiling and interpolation internally. This is the preferred
-    mode when the NOVA instance supports it.
+    Sends timestamped joint or TCP pose waypoints directly to the server,
+    which handles velocity profiling, interpolation, and IK internally.
 
     New chunks override previous ones, so the server always tracks the
     freshest prediction.
-
-    .. note:: Requires NOVA >= 26.3 (development snapshot). Falls back to
-       MotionConfig on older instances. Check availability with
-       ``policy.jogging.waypoint_session.is_waypoint_jogging_available()``.
-
-    .. todo:: Remove the local ``JoggingKindUnknown`` monkey-patch applied to
-       ``wandelbots_api_client`` once the stable SDK release includes the
-       waypoint jogging state in its ``JoggingDetails.state`` discriminator.
-       Tracking: service-manager MR !2345.
-       Install command to revert:
-       ``uv pip install wandelbots-api-client==<released_version> --no-deps --reinstall``
     """
 
     n_action_steps: int = 0
@@ -97,38 +85,32 @@ class WaypointConfig:
     pauses (PAUSED_BY_USER) if its waypoint buffer empties between chunks.
     This rate ensures fresh chunks arrive before the previous one finishes.
     20Hz with 1s lookahead = 95% overlap.
+
+    Ignored when ``wait_for_chunk=True``.
     """
 
     state_rate_ms: int = 10
     """State stream update rate."""
 
+    wait_for_chunk: bool = False
+    """Wait for the action chunk to finish before calling the policy again.
+
+    When False (default), the executor calls the policy at ``policy_rate_hz``
+    and each new chunk replaces the previous one mid-execution. This is for
+    policies that support Real-Time Chunking (RTC).
+
+    When True, the executor waits for the full chunk to finish executing
+    (n_steps * dt_ms) before the next observation + inference. Use this for
+    policies that do not support RTC.
+    """
+
 
 @dataclass(slots=True)
 class MotionConfig:
-    """Configuration for client-side velocity profile motion.
+    """Internal configuration passed to jogging sessions.
 
-    Uses a trapezoidal velocity profile: computes velocities from position
-    differences between chunk steps, applies a ramp envelope, and advances
-    by elapsed time with P-correction for tracking.
-
-    Use WaypointConfig instead when the NOVA instance supports native
-    waypoint jogging (experimental, >= 26.3).
+    Not part of the public API. Use ``WaypointConfig`` instead.
     """
-
-    n_action_steps: int = 0
-    """Number of steps from each action chunk to actually execute.
-    0 = execute all steps. When set (e.g. 8), only the first N steps
-    are sent to the controller — later steps have higher prediction
-    uncertainty and are discarded (receding horizon)."""
-
-    velocity_limit: float | list[float] = 2.0
-    """Maximum joint velocity in rad/s. Scalar or per-axis list."""
-
-    ramp_steps: int = 3
-    """Number of steps for the trapezoidal ramp-up/ramp-down envelope."""
-
-    p_gain: float = 3.0
-    """P-gain for tracking correction and single-step targets."""
 
     state_rate_ms: int = 10
     """State stream update rate."""

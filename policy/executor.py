@@ -14,8 +14,7 @@ from typing import TYPE_CHECKING, Any
 from policy._sdk import get_controller_id
 from policy.estop import EstopMonitor, check_estop, check_sessions
 from policy.io import IOStreamCache
-from policy.jogging.session import JoggingSession
-from policy.jogging.waypoint_session import WaypointJoggingSession, is_waypoint_jogging_available
+from policy.jogging.waypoint_session import WaypointJoggingSession
 from policy.types import (
     ActionChunk,
     EmergencyStopError,
@@ -88,7 +87,7 @@ class PolicyExecutor:
         safety_guards: list[SafetyGuard] | None = None,
         timeout_s: float = 0,
         camera_max_age_s: float = 30.0,
-        motion: MotionConfig | WaypointConfig | None = None,
+        motion: WaypointConfig | None = None,
         policy_rate_hz: float = 0,
     ) -> None:
         """Create a policy executor.
@@ -99,14 +98,11 @@ class PolicyExecutor:
             safety_guards: Optional list of guard functions checked each jogging tick.
             timeout_s: Maximum execution duration in seconds. 0 = no timeout.
             camera_max_age_s: Maximum allowed age of a camera frame before raising.
-            motion: Motion configuration. MotionConfig (client-side velocity profile)
-                or WaypointConfig (server-side waypoint jogging, experimental).
-                Defaults to WaypointConfig() if available, else MotionConfig().
+            motion: Waypoint jogging configuration. Defaults to WaypointConfig().
             policy_rate_hz: Fixed rate (Hz) at which the policy is called.
                 When set (>0), the executor calls the policy at this rate and
                 each new chunk replaces the previous one mid-execution.
-                When 0 (default), the executor waits for the current chunk to
-                finish before calling the policy again (sequential mode).
+                When 0 (default), uses policy_rate_hz from the WaypointConfig.
         """
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
@@ -119,17 +115,14 @@ class PolicyExecutor:
         else:
             self._policy = policy  # type: ignore[assignment]
 
-        self._motion: MotionConfig | WaypointConfig = motion or self._default_motion_config()
+        self._motion: WaypointConfig = motion or WaypointConfig()
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
         self._camera_max_age_s = camera_max_age_s
         # Use policy_rate_hz from WaypointConfig if not explicitly overridden
-        if policy_rate_hz == 0 and isinstance(self._motion, WaypointConfig):
-            self._policy_rate_hz = self._motion.policy_rate_hz
-        else:
-            self._policy_rate_hz = policy_rate_hz
+        self._policy_rate_hz = policy_rate_hz if policy_rate_hz > 0 else self._motion.policy_rate_hz
 
-        self._sessions: dict[str, JoggingSession] = {}
+        self._sessions: dict[str, WaypointJoggingSession] = {}
         self._camera_sources: dict[str, CameraSource] = {}
         self._stop_event = asyncio.Event()
         self._last_obs: dict[str, Any] | None = None
@@ -251,6 +244,9 @@ class PolicyExecutor:
             await self._init_rerun()
             if self._rerun is not None:
                 self._rerun.start_streaming(self._sessions)
+            # Wait for sessions to be ready (server acknowledged init)
+            for session in self._sessions.values():
+                await session.wait_ready()
             self.result = await self._execute()
             self._log_completion()
             self.status.phase = Phase.COMPLETED
@@ -268,7 +264,7 @@ class PolicyExecutor:
     # Observe → act loop
     # -------------------------------------------------------------------------
 
-    async def _execute(self) -> ExecutionResult:  # noqa: C901
+    async def _execute(self) -> ExecutionResult:
         """Run the observe-act loop until termination.
 
         Raises GuardStopError, MotionError, EmergencyStopError directly.
@@ -280,11 +276,9 @@ class PolicyExecutor:
         self.status.phase = Phase.EXECUTING
         self.status.message = "Running policy..."
 
-        # Fixed-rate mode: call policy at policy_rate_hz instead of
-        # waiting for chunk_done between iterations.
-        fixed_rate_period = (
-            1.0 / self._policy_rate_hz if self._policy_rate_hz > 0 else 0.0
-        )
+        # Determine timing mode
+        wait_for_chunk = self._motion.wait_for_chunk
+        fixed_rate_period = 1.0 / self._policy_rate_hz
 
         while not self._stop_event.is_set():
             if self._timeout_s > 0 and (time.monotonic() - start_time) >= self._timeout_s:
@@ -318,7 +312,8 @@ class PolicyExecutor:
             if self._rerun is not None:
                 self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
 
-            self._send(self._trim_chunk(action))
+            trimmed = self._trim_chunk(action)
+            self._send(trimmed)
             step += 1
             self.status.step = step
 
@@ -326,25 +321,46 @@ class PolicyExecutor:
             check_sessions(self._sessions)
             check_estop(self._estop_monitor)
 
-            if fixed_rate_period > 0:
-                # Waypoint mode: sleep for the remainder of the period.
+            if wait_for_chunk:
+                # Wait for the full chunk duration before next inference.
+                # chunk_duration = n_steps * dt_ms
+                chunk_duration_s = self._chunk_duration_s(trimmed)
+                if chunk_duration_s > 0:
+                    await self._sleep_interruptible(chunk_duration_s, start_time)
+            else:
+                # Fixed-rate: sleep for the remainder of the period.
                 # Each new chunk replaces the previous one mid-execution.
                 elapsed = time.monotonic() - tick_start
                 sleep_time = fixed_rate_period - elapsed
                 if sleep_time > 0:
                     await asyncio.sleep(sleep_time)
-            else:
-                # Velocity-profile mode: wait until chunk is fully executed.
-                while not all(s.chunk_done for s in self._sessions.values()):
-                    if self._stop_event.is_set():
-                        break
-                    if self._timeout_s > 0 and (time.monotonic() - start_time) >= self._timeout_s:
-                        break
-                    check_sessions(self._sessions)
-                    check_estop(self._estop_monitor)
-                    await asyncio.sleep(0.01)
 
         return _result("stopped", step, start_time, last_obs)
+
+    def _chunk_duration_s(self, chunk: ActionChunk) -> float:
+        """Compute how long a chunk takes to execute (seconds)."""
+        if chunk.dt_ms <= 0:
+            return 0.0
+        # Find the longest step sequence in the chunk
+        n_steps = 0
+        for steps in chunk.joints.values():
+            n_steps = max(n_steps, len(steps))
+        for steps in chunk.tcp.values():
+            n_steps = max(n_steps, len(steps))
+        return n_steps * chunk.dt_ms / 1000.0
+
+    async def _sleep_interruptible(self, duration_s: float, exec_start: float) -> None:
+        """Sleep for duration_s but wake early on stop or timeout."""
+        end = time.monotonic() + duration_s
+        while time.monotonic() < end:
+            if self._stop_event.is_set():
+                return
+            if self._timeout_s > 0 and (time.monotonic() - exec_start) >= self._timeout_s:
+                return
+            check_sessions(self._sessions)
+            check_estop(self._estop_monitor)
+            remaining = end - time.monotonic()
+            await asyncio.sleep(min(0.05, max(0, remaining)))
 
     # -------------------------------------------------------------------------
     # Session operations (inlined from former PolicyRunner)
@@ -427,39 +443,15 @@ class PolicyExecutor:
                 self._io_tasks.add(task)
                 task.add_done_callback(self._io_tasks.discard)
 
-    def _create_session(self, mg: MotionGroup) -> JoggingSession:
-        """Create a jogging session for a motion group."""
+    def _create_session(self, mg: MotionGroup) -> WaypointJoggingSession:
+        """Create a waypoint jogging session for a motion group."""
         tcp_groups = self._schema.tcp_action_groups()
         mode = "cartesian" if mg.id in tcp_groups else "joint"
         tcp = tcp_groups.get(mg.id) or self._schema.tcp if mode == "cartesian" else self._schema.tcp
 
-        # WaypointConfig → use native waypoint jogging
-        if isinstance(self._motion, WaypointConfig):
-            _compat_config = MotionConfig(state_rate_ms=self._motion.state_rate_ms)
-            return WaypointJoggingSession(  # type: ignore[return-value]
-                motion_group=mg,
-                config=_compat_config,
-                tcp=tcp,
-                safety_guards=self._safety_guards,
-                mode=mode,
-            )
-
-        # MotionConfig → client-side velocity profile
-        config = self._motion
-        if mode == "cartesian" and not isinstance(config.velocity_limit, list):
-            tcp_vel = 50.0  # mm/s
-            orient_vel = 1.5  # rad/s
-            config = MotionConfig(
-                velocity_limit=[tcp_vel, tcp_vel, tcp_vel, orient_vel, orient_vel, orient_vel],
-                ramp_steps=config.ramp_steps,
-                p_gain=config.p_gain,
-                state_rate_ms=config.state_rate_ms,
-                n_action_steps=config.n_action_steps,
-            )
-
-        return JoggingSession(
+        return WaypointJoggingSession(
             motion_group=mg,
-            config=config,
+            config=MotionConfig(state_rate_ms=self._motion.state_rate_ms),
             tcp=tcp,
             safety_guards=self._safety_guards,
             mode=mode,
@@ -469,17 +461,6 @@ class PolicyExecutor:
     def _n_action_steps(self) -> int:
         """Number of action steps to execute from each chunk (0 = all)."""
         return self._motion.n_action_steps
-
-    @staticmethod
-    def _default_motion_config() -> MotionConfig | WaypointConfig:
-        """Pick the best available motion mode.
-
-        Uses WaypointConfig (native server-side) if the NOVA SDK supports it,
-        otherwise falls back to MotionConfig (client-side velocity profile).
-        """
-        if is_waypoint_jogging_available():
-            return WaypointConfig()
-        return MotionConfig()
 
     def _trim_chunk(self, chunk: ActionChunk) -> ActionChunk:
         """Trim action chunk to n_action_steps if configured.

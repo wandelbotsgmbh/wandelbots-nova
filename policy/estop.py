@@ -12,7 +12,7 @@ from policy.types import EmergencyStopError
 
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
-    from policy.jogging.session import JoggingSession
+    from policy.jogging.waypoint_session import WaypointJoggingSession
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ _OPERATIONAL_SAFETY_STATES = frozenset({"SAFETY_STATE_NORMAL", "SAFETY_STATE_RED
 # ---------------------------------------------------------------------------
 
 
-def check_sessions(sessions: dict[object, JoggingSession]) -> None:
+def check_sessions(sessions: dict[object, WaypointJoggingSession]) -> None:
     """Check all sessions for failures. Re-raises the original exception.
 
     Raises:

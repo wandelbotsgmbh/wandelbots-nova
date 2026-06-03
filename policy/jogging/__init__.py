@@ -1,12 +1,9 @@
-"""Jogging session — velocity-streamed motion control via NOVA Jogging API.
+"""Jogging sessions — waypoint-based motion control via NOVA Jogging API."""
 
-Temporary client-side implementation. Will be replaced by NOVA's native
-waypoint jogging API once available.
-"""
-
-from policy.jogging.session import JoggingSession, JoggingStateTracker
+from policy.jogging.session import JoggingStateTracker
+from policy.jogging.waypoint_session import WaypointJoggingSession
 
 __all__ = [
-    "JoggingSession",
     "JoggingStateTracker",
+    "WaypointJoggingSession",
 ]

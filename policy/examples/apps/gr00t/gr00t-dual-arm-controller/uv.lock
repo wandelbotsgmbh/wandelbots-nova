@@ -730,7 +730,7 @@ requires-dist = [
     { name = "pyzmq", specifier = ">=26.0.0,<27" },
     { name = "requests", specifier = ">=2.31.0,<3" },
     { name = "uvicorn", specifier = ">=0.34.0" },
-    { name = "wandelbots-nova", extras = ["policy"], git = "https://github.com/wandelbotsgmbh/wandelbots-nova.git?rev=be6954faa4858211b145b1555950da48abded115" },
+    { name = "wandelbots-nova", extras = ["policy"], git = "https://github.com/wandelbotsgmbh/wandelbots-nova.git?rev=8fc815efd4d7df12002623554f3c49324ecb4be7" },
 ]
 
 [package.metadata.requires-dev]
@@ -1699,7 +1699,7 @@ requires-dist = [
 [[package]]
 name = "wandelbots-nova"
 version = "5.1.0"
-source = { git = "https://github.com/wandelbotsgmbh/wandelbots-nova.git?rev=be6954faa4858211b145b1555950da48abded115#be6954faa4858211b145b1555950da48abded115" }
+source = { git = "https://github.com/wandelbotsgmbh/wandelbots-nova.git?rev=8fc815efd4d7df12002623554f3c49324ecb4be7#8fc815efd4d7df12002623554f3c49324ecb4be7" }
 dependencies = [
     { name = "aiostream" },
     { name = "anyio" },

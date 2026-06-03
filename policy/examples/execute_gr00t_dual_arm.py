@@ -109,7 +109,7 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
         schema,
         client,
         timeout_s=TIMEOUT_S,
-        motion=WaypointConfig(n_action_steps=8),
+        motion=WaypointConfig(n_action_steps=8, wait_for_chunk=True),
     )
 
     print(f"Running GR00T dual-arm policy for {TIMEOUT_S}s...")

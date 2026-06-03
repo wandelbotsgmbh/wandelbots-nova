@@ -31,7 +31,6 @@ from policy.types import (
     GuardState,
     GuardStopError,
     JoggingMode,
-    MotionConfig,
     MotionError,
     WaypointConfig,
 )
@@ -51,7 +50,6 @@ __all__ = [
     "GuardStopError",
     "JointJogger",
     "Mapping",
-    "MotionConfig",
     "MotionError",
     "Observation",
     "PolicyClient",

@@ -1,0 +1,15 @@
+{
+ "id": "gripper",
+ "name": "gripper",
+ "orientation": [
+  0,
+  0,
+  1.5708
+ ],
+ "orientation_type": "ROTATION_VECTOR",
+ "position": [
+  0,
+  -60.05,
+  1.7
+ ]
+}

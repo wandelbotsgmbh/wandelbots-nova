@@ -1,0 +1,17 @@
+{
+ "coordinate_system": "",
+ "name": "",
+ "orientation": [
+  0.6532815048,
+  -0.6532815048,
+  0.2705931676,
+  0.2705931676
+ ],
+ "orientation_type": "QUATERNION",
+ "position": [
+  0,
+  -245,
+  0
+ ],
+ "reference_coordinate_system": ""
+}

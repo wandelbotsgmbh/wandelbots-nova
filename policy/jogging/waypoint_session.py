@@ -1,19 +1,8 @@
 """Waypoint jogging session — sends timestamped position waypoints directly.
 
-Uses NOVA's native JointWaypointsRequest to stream action chunks.
-The server handles velocity profiling, interpolation, and limits internally.
-
-This is the preferred motion mode when the NOVA instance supports it.
-Falls back to the client-side velocity profile (JoggingSession) on older
-instances that don't have the waypoint jogging API.
-
-.. note:: This API is experimental and not yet published in stable NOVA releases.
-   Import this module conditionally and handle ImportError/AttributeError.
-
-.. todo:: Remove the ``KIND_UNKNOWN`` monkey-patch in
-   ``.venv/.../wandelbots_api_client/v2_pydantic/models/models.py`` once the
-   stable ``wandelbots_api_client`` release includes the updated
-   ``JoggingDetails.state`` discriminator (tracking: service-manager MR !2345).
+Uses NOVA's JointWaypointsRequest and PoseWaypointsRequest to stream action
+chunks. The server handles velocity profiling, interpolation, and limits
+internally.
 """
 
 from __future__ import annotations
@@ -114,13 +103,19 @@ def is_waypoint_jogging_available() -> bool:
     return hasattr(api.models, "JointWaypointsRequest")
 
 
+def is_pose_waypoint_jogging_available() -> bool:
+    """Check if the NOVA SDK has the PoseWaypointsRequest model.
+
+    Returns False on older SDK versions that don't support Cartesian waypoint jogging.
+    """
+    return hasattr(api.models, "PoseWaypointsRequest")
+
+
 class WaypointJoggingSession:
     """Sends action chunks as timestamped waypoints via the NOVA Jogging API.
 
-    Instead of computing velocities client-side, this sends raw position
-    waypoints with timing info. The server computes the motion profile.
-
-    Has the same interface as JoggingSession so the executor can use either.
+    Sends raw position waypoints (joint or TCP) with timing info.
+    The server computes the motion profile and handles IK (for TCP mode).
     """
 
     def __init__(
@@ -136,6 +131,14 @@ class WaypointJoggingSession:
             msg = (
                 "JointWaypointsRequest not available in this NOVA SDK version. "
                 "Use MotionConfig (velocity profile) instead, or upgrade NOVA."
+            )
+            raise RuntimeError(msg)
+
+        if mode == "cartesian" and not is_pose_waypoint_jogging_available():
+            msg = (
+                "PoseWaypointsRequest not available in this NOVA SDK version. "
+                "Cartesian waypoint jogging requires NOVA >= 26.5. "
+                "Use joint mode or upgrade NOVA."
             )
             raise RuntimeError(msg)
 
@@ -174,6 +177,7 @@ class WaypointJoggingSession:
         self._jogging_task: asyncio.Task[None] | None = None
         self._state_task: asyncio.Task[None] | None = None
         self._running = False
+        self._ready = asyncio.Event()
         self._failed = False
         self._failure_reason: str = ""
         self._failure_exception: BaseException | None = None
@@ -199,6 +203,15 @@ class WaypointJoggingSession:
     @property
     def is_running(self) -> bool:
         return self._running
+
+    @property
+    def is_ready(self) -> bool:
+        """True when the server has acknowledged the session and is ready for waypoints."""
+        return self._ready.is_set()
+
+    async def wait_ready(self) -> None:
+        """Wait until the jogging session is fully initialized and ready for waypoints."""
+        await self._ready.wait()
 
     @property
     def has_failed(self) -> bool:
@@ -241,11 +254,12 @@ class WaypointJoggingSession:
     ) -> None:
         """Queue a new action chunk as waypoints.
 
-        Builds a JointWaypointsRequest with timestamps computed from dt_ms.
+        Builds a JointWaypointsRequest or PoseWaypointsRequest (based on mode)
+        with timestamps computed from dt_ms.
         The request is sent on the next jogging loop iteration.
 
         Args:
-            steps: Joint waypoints to send.
+            steps: Joint waypoints [rad] or TCP poses [x,y,z,rx,ry,rz] (mm/rad).
             dt_ms: Time between consecutive waypoints (ms). 0 = single-step.
             start_time_ms: Absolute timestamp (ms from session start) for the
                 first waypoint. When >=0, timestamps are trajectory-absolute:
@@ -268,8 +282,8 @@ class WaypointJoggingSession:
         # internal await/scheduling delay between policy and stream send.
         self._pending_request = ("chunk", steps, effective_dt_ms, start_time_ms)
 
-        # Debug: log current robot position vs chunk first step
-        if self._current_joints is not None and len(steps) > 0:
+        # Debug: log current robot position vs chunk first step (joint mode only)
+        if self._mode == "joint" and self._current_joints is not None and len(steps) > 0:
             delta = [abs(steps[0][j] - self._current_joints[j]) for j in range(min(3, len(steps[0])))]
             max_delta = max(delta) * 57.3
             if max_delta > 1.0:  # only log if > 1 degree
@@ -294,7 +308,7 @@ class WaypointJoggingSession:
         effective_dt_ms: float,
         start_time_ms: int,
     ) -> object:
-        """Build JointWaypointsRequest at stream-yield time.
+        """Build JointWaypointsRequest or PoseWaypointsRequest at stream-yield time.
 
         Scales the policy's real-time timestamps to server-time using the
         auto-computed speed ratio from ``JoggingTimeClock``.
@@ -304,6 +318,10 @@ class WaypointJoggingSession:
 
         When ``start_time_ms == -1`` (legacy mode), timestamps start from
         the current client elapsed time scaled to server time.
+
+        In cartesian mode (``self._mode == 'cartesian'``), steps are
+        [x, y, z, rx, ry, rz] and are sent as PoseWaypointsRequest.
+        In joint mode, steps are joint radians sent as JointWaypointsRequest.
         """
         client_now_ms = self._clock.client_elapsed_ms
 
@@ -319,9 +337,45 @@ class WaypointJoggingSession:
             server_now_ms = self._clock.scale_timestamp(client_now_ms)
             timestamps = [server_now_ms + int((i + 1) * scaled_dt_ms) for i in range(len(steps))]
 
+        if self._mode == "cartesian":
+            return self._build_pose_request(timestamps, steps)
+        return self._build_joint_request(timestamps, steps)
+
+    @staticmethod
+    def _build_joint_request(
+        timestamps: list[int], steps: list[list[float]],
+    ) -> object:
+        """Build a JointWaypointsRequest from timestamps and joint steps."""
         return api.models.JointWaypointsRequest(
             timestamps=timestamps,
             joint_waypoints=[api.models.Joints(root=step) for step in steps],
+        )
+
+    @staticmethod
+    def _build_pose_request(
+        timestamps: list[int], steps: list[list[float]],
+    ) -> object:
+        """Build a PoseWaypointsRequest from timestamps and TCP pose steps.
+
+        Each step is [x, y, z, rx, ry, rz] where position is in mm and
+        orientation is a rotation vector in radians.
+        """
+        from wandelbots_api_client.v2_pydantic.models.models import (  # noqa: PLC0415
+            Pose as ApiPose,
+            RotationVector,
+            Vector3d,
+        )
+
+        pose_waypoints = []
+        for step in steps:
+            # step = [x, y, z, rx, ry, rz]
+            pos = Vector3d(root=list(step[:3]))
+            orient = RotationVector(root=list(step[3:6]))
+            pose_waypoints.append(ApiPose(position=pos, orientation=orient))
+
+        return api.models.PoseWaypointsRequest(
+            timestamps=timestamps,
+            pose_waypoints=pose_waypoints,
         )
 
     async def start(self) -> None:
@@ -438,11 +492,8 @@ class WaypointJoggingSession:
             response_stream: AsyncGenerator[api.models.ExecuteJoggingResponse, None],
         ) -> AsyncGenerator[api.models.ExecuteJoggingRequest, None]:
             # 1. Initialize the jogging session.
-            # The server starts its internal timer when the jogger is opened.
-            # Start our timer at the same boundary: immediately before sending
-            # InitializeJoggingRequest. Do not reset it on the first response;
-            # that would make our client timer late relative to the server.
-            self._clock.start()
+            # The server starts its internal timer when the first waypoint
+            # request arrives (not on InitializeJoggingRequest).
             yield api.models.ExecuteJoggingRequest(
                 api.models.InitializeJoggingRequest(
                     motion_group=self._motion_group.id, tcp=tcp
@@ -451,9 +502,17 @@ class WaypointJoggingSession:
 
             # 2. Main loop: for each server response, either send a new
             #    chunk (if ready) or sleep until one is ready.
+            first_chunk = True
             async for response in response_stream:
                 if not self._running:
                     return
+
+                # Signal that the session is ready on first server response.
+                # This means InitializeJoggingRequest was acknowledged and
+                # the server is ready to accept waypoints.
+                if not self._ready.is_set():
+                    self._ready.set()
+
                 if hasattr(response.root, "kind") and response.root.kind == "MOTION_ERROR":
                     msg = getattr(response.root, "message", "unknown motion error")
                     raise MotionError(self.motion_group_id, msg)
@@ -480,6 +539,11 @@ class WaypointJoggingSession:
                 # now so timestamps are aligned to the server session timer at
                 # the last possible moment.
                 if isinstance(request, tuple) and request and request[0] == "chunk":
+                    # Start the clock on the first chunk — this is when the
+                    # server's internal timer begins (first waypoint message).
+                    if first_chunk:
+                        self._clock.start()
+                        first_chunk = False
                     _, steps, effective_dt_ms, start_time_ms = request
                     request = self._make_waypoints_request(
                         steps=steps,

@@ -1,0 +1,9 @@
+{
+  "configuration": {
+    "initial_joint_position": "[0,-1.571,-1.571,-1.571,1.571,-1.571,0]",
+    "kind": "VirtualController",
+    "manufacturer": "universalrobots",
+    "type": "universalrobots-ur5e"
+  },
+  "name": "ur5e-left"
+}

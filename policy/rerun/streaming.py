@@ -85,6 +85,7 @@ class StateStreamer:
     def _log_state(self, mg_id: str, joints: list[float]) -> None:
         """Log a single state sample for one motion group."""
         import rerun as rr  # noqa: PLC0415
+
         # Update 3D robot mesh position
         visualizer = self._visualizers.get(mg_id)
         if visualizer is not None:

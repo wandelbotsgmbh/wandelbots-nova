@@ -2,7 +2,7 @@
 
 Provides ``jog_joints()`` and ``jog_tcp()`` — async context managers that
 open jogging sessions. The user sets target positions in a loop; the session
-continuously streams velocity commands to track them.
+streams timestamped waypoints to the NOVA jogging API.
 
 Errors are detected automatically and raised through the ``async for`` loop:
 
@@ -20,14 +20,15 @@ import logging
 from typing import TYPE_CHECKING, overload
 
 from policy.estop import EstopMonitor, check_estop, check_sessions
-from policy.jogging import JoggingSession
-from policy.types import MotionConfig
+from policy.jogging.waypoint_session import WaypointJoggingSession
+from policy.types import MotionConfig, WaypointConfig
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import Pose, RobotState
+    from policy.rerun import PolicyRerunLogger
     from policy.types import SafetyGuard
 
 logger = logging.getLogger(__name__)
@@ -46,12 +47,20 @@ class _BaseJogger:
     def __init__(
         self,
         mg_list: list[MotionGroup],
-        sessions: dict[MotionGroup, JoggingSession],
+        sessions: dict[MotionGroup, WaypointJoggingSession],
+        *,
+        start_joint_position: dict[MotionGroup, list[float]] | None = None,
     ) -> None:
         self._mg_list = mg_list
         self._multi = len(mg_list) > 1
         self._sessions = sessions
+        self._start_joint_position = start_joint_position
         self._estop: EstopMonitor | None = None
+        self._rerun: PolicyRerunLogger | None = None
+
+    def _sessions_by_id(self) -> dict[str, WaypointJoggingSession]:
+        """Sessions keyed by motion group ID (for Rerun streaming)."""
+        return {mg.id: session for mg, session in self._sessions.items()}
 
     def _expected_dims(self, mg: MotionGroup) -> int | None:
         """Expected target dimension for a motion group. Override in subclass."""
@@ -69,7 +78,9 @@ class _BaseJogger:
             raise ValueError(msg)
         session = self._sessions.get(mg)
         if session is not None:
+            # Single-step: use legacy timestamps (places target in the future)
             session.update_chunk(steps=[values], dt_ms=0.0)
+        self._log_target(mg.id, [values], 0.0)
 
     def _push_target(self, mg: MotionGroup, value: list, dt_ms: float) -> list[float]:
         """Push a single or chunk target to a session. Returns the final target."""
@@ -77,10 +88,30 @@ class _BaseJogger:
         if session is None:
             return value if not isinstance(value[0], list) else value[-1]
         if value and isinstance(value[0], list):
-            session.update_chunk(steps=value, dt_ms=dt_ms)
+            # Chunked: use trajectory-absolute timestamps for smooth overlapping
+            session.update_chunk(
+                steps=value, dt_ms=dt_ms,
+                start_time_ms=session.session_elapsed_ms,
+            )
+            self._log_target(mg.id, value, dt_ms)
             return value[-1]
         self._validate_and_push(mg, value)
         return value
+
+    def _log_target(self, mg_id: str, steps: list[list[float]], dt_ms: float) -> None:
+        """Log jogging target to Rerun as an action chunk visualization."""
+        if self._rerun is None:
+            return
+        from policy.types import ActionChunk  # noqa: PLC0415
+
+        # Determine if this is joint or TCP based on session mode
+        session_by_id = self._sessions_by_id()
+        session = session_by_id.get(mg_id)
+        if session is not None and session._mode == "cartesian":
+            chunk = ActionChunk(tcp={mg_id: steps}, dt_ms=dt_ms)
+        else:
+            chunk = ActionChunk(joints={mg_id: steps}, dt_ms=dt_ms)
+        self._rerun.log_action_chunk(chunk, step=0)
 
     def state(self) -> dict[MotionGroup, RobotState] | RobotState | None:
         """Get current robot state(s).
@@ -98,10 +129,20 @@ class _BaseJogger:
         return result if result else None
 
     async def __aenter__(self) -> _BaseJogger:
+        # PTP to start_joint_position positions before starting jogging
+        if self._start_joint_position:
+            await self._move_to_start_joint_position()
+
         for session in self._sessions.values():
             await session.start()
         self._estop = EstopMonitor(self._mg_list)
         await self._estop.start()
+        await self._init_rerun()
+        # Wait for all sessions to be fully initialized (server acknowledged)
+        # before returning control to user code. This ensures the robot is
+        # ready to execute waypoints the moment user code starts its timer.
+        for session in self._sessions.values():
+            await session.wait_ready()
         kind = self.__class__.__name__
         logger.info(
             "%s started (%d motion group%s)",
@@ -117,6 +158,9 @@ class _BaseJogger:
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> bool:
+        if self._rerun is not None:
+            await self._rerun.stop_streaming()
+            self._rerun = None
         if self._estop is not None:
             await self._estop.stop()
             self._estop = None
@@ -125,6 +169,37 @@ class _BaseJogger:
                 await session.stop()
         logger.info("%s stopped", self.__class__.__name__)
         return False
+
+    async def _init_rerun(self) -> None:
+        """Initialize Rerun logger if a viewer is active."""
+        from policy.rerun import _is_rerun_active  # noqa: PLC0415
+
+        if not _is_rerun_active():
+            return
+
+        from policy.rerun import PolicyRerunLogger  # noqa: PLC0415
+
+        self._rerun = PolicyRerunLogger(self._mg_list)
+        await self._rerun.initialize()
+        if self._rerun is not None:
+            self._rerun.start_streaming(self._sessions_by_id())
+
+    async def _move_to_start_joint_position(self) -> None:
+        """PTP move all motion groups to their start_joint_position positions."""
+        import asyncio as _asyncio  # noqa: PLC0415
+
+        from nova.actions import jnt  # noqa: PLC0415
+
+        async def _ptp(mg: MotionGroup, joints: list[float]) -> None:
+            tcp = await mg.active_tcp_name() or (await mg.tcp_names())[0]
+            traj = await mg.plan([jnt(joints)], tcp)
+            await mg.execute(traj, tcp, actions=[jnt(joints)])
+
+        tasks = [
+            _ptp(mg, joints)
+            for mg, joints in self._start_joint_position.items()  # type: ignore[union-attr]
+        ]
+        await _asyncio.gather(*tasks)
 
     async def __aiter__(self) -> AsyncIterator[dict[MotionGroup, RobotState] | RobotState]:
         """Yield current state at ~100Hz. Raises on errors. Use ``break`` to stop."""
@@ -152,16 +227,27 @@ class JointJogger(_BaseJogger):
         self,
         motion_groups: list[MotionGroup],
         *,
-        config: MotionConfig | None = None,
+        config: WaypointConfig | None = None,
         safety_guards: list[SafetyGuard] | None = None,
+        start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
     ) -> None:
-        cfg = config or MotionConfig()
-        sessions: dict[MotionGroup, JoggingSession] = {}
+        cfg = config or WaypointConfig()
+        sessions: dict[MotionGroup, WaypointJoggingSession] = {}
         for mg in motion_groups:
-            sessions[mg] = JoggingSession(
-                motion_group=mg, config=cfg, safety_guards=safety_guards,
+            sessions[mg] = WaypointJoggingSession(
+                motion_group=mg,
+                config=MotionConfig(state_rate_ms=cfg.state_rate_ms),
+                mode="joint",
+                safety_guards=safety_guards,
             )
-        super().__init__(motion_groups, sessions)
+        # Normalize start_joint_position to dict[MotionGroup, list[float]]
+        home_dict: dict[MotionGroup, list[float]] | None = None
+        if start_joint_position is not None:
+            if isinstance(start_joint_position, dict):
+                home_dict = start_joint_position
+            else:
+                home_dict = {motion_groups[0]: start_joint_position}
+        super().__init__(motion_groups, sessions, start_joint_position=home_dict)
         self._target: dict[MotionGroup, list[float]] | None = None
 
     @property
@@ -220,7 +306,7 @@ class JointJogger(_BaseJogger):
 
 
 class TcpJogger(_BaseJogger):
-    """PID-controlled TCP pose jogger.
+    """TCP pose jogger via server-side waypoint jogging.
 
     Do not instantiate directly — use :func:`jog_tcp`.
     """
@@ -229,32 +315,29 @@ class TcpJogger(_BaseJogger):
         self,
         motion_groups: dict[MotionGroup, str],
         *,
-        config: MotionConfig | None = None,
-        tcp_velocity_limit: float = 250.0,
-        tcp_orientation_velocity_limit: float = 1.5,
+        config: WaypointConfig | None = None,
         safety_guards: list[SafetyGuard] | None = None,
+        start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
     ) -> None:
-        cfg = config or MotionConfig()
-        # Build per-axis velocity limits for cartesian mode: [tx, ty, tz, rx, ry, rz]
-        tcp_limits = [
-            tcp_velocity_limit, tcp_velocity_limit, tcp_velocity_limit,
-            tcp_orientation_velocity_limit, tcp_orientation_velocity_limit,
-            tcp_orientation_velocity_limit,
-        ]
-        tcp_cfg = MotionConfig(
-            velocity_limit=tcp_limits,
-            ramp_steps=cfg.ramp_steps,
-            p_gain=cfg.p_gain,
-            state_rate_ms=cfg.state_rate_ms,
-        )
-        sessions: dict[MotionGroup, JoggingSession] = {}
+        cfg = config or WaypointConfig()
+        sessions: dict[MotionGroup, WaypointJoggingSession] = {}
         for mg, tcp in motion_groups.items():
-            sessions[mg] = JoggingSession(
-                motion_group=mg, config=tcp_cfg, tcp=tcp, mode="cartesian",
+            sessions[mg] = WaypointJoggingSession(
+                motion_group=mg,
+                config=MotionConfig(state_rate_ms=cfg.state_rate_ms),
+                tcp=tcp,
+                mode="cartesian",
                 safety_guards=safety_guards,
             )
         mg_list = list(motion_groups.keys())
-        super().__init__(mg_list, sessions)
+        # Normalize start_joint_position to dict[MotionGroup, list[float]]
+        home_dict: dict[MotionGroup, list[float]] | None = None
+        if start_joint_position is not None:
+            if isinstance(start_joint_position, dict):
+                home_dict = start_joint_position
+            else:
+                home_dict = {mg_list[0]: start_joint_position}
+        super().__init__(mg_list, sessions, start_joint_position=home_dict)
         self._target: dict[MotionGroup, Pose] | None = None
 
     def _expected_dims(self, mg: MotionGroup) -> int | None:  # noqa: ARG002
@@ -328,8 +411,9 @@ class TcpJogger(_BaseJogger):
 def jog_joints(
     motion_groups: MotionGroup,
     *,
-    config: MotionConfig | None = ...,
+    config: WaypointConfig | None = ...,
     safety_guards: list[SafetyGuard] | None = ...,
+    start_joint_position: list[float] | None = ...,
 ) -> JointJogger: ...
 
 
@@ -337,24 +421,29 @@ def jog_joints(
 def jog_joints(
     motion_groups: list[MotionGroup],
     *,
-    config: MotionConfig | None = ...,
+    config: WaypointConfig | None = ...,
     safety_guards: list[SafetyGuard] | None = ...,
+    start_joint_position: dict[MotionGroup, list[float]] | None = ...,
 ) -> JointJogger: ...
 
 
 def jog_joints(
     motion_groups: MotionGroup | list[MotionGroup],
     *,
-    config: MotionConfig | None = None,
+    config: WaypointConfig | None = None,
     safety_guards: list[SafetyGuard] | None = None,
+    start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
 ) -> JointJogger:
-    """Create a joint position jogger.
+    """Create a joint position jogger using server-side waypoint jogging.
 
     Args:
         motion_groups: Single motion group or list for multi-robot control.
-        config: Motion configuration. Uses training-time defaults if None.
+        config: Waypoint jogging configuration.
         safety_guards: Optional callbacks run on every jogging tick.
             Each receives a ``GuardState`` and must return ``True`` to continue.
+        start_joint_position: Joint positions to PTP-move to before starting jogging.
+            Single list for one robot, or dict mapping each motion group
+            to its start_joint_position joints for multi-robot.
 
     Returns:
         A :class:`JointJogger` async context manager.
@@ -367,13 +456,13 @@ def jog_joints(
 
     Example::
 
-        async with jog_joints(mg) as jogger:
+        async with jog_joints(mg, start_joint_position=[0, -1.57, 1.57, -1.57, -1.57, 0]) as jogger:
             async for state in jogger:
                 jogger.set_target([0.1, -1.5, 1.0, -0.5, 0.0, 0.0])
     """
     if not isinstance(motion_groups, list):
         motion_groups = [motion_groups]
-    return JointJogger(motion_groups, config=config, safety_guards=safety_guards)
+    return JointJogger(motion_groups, config=config, safety_guards=safety_guards, start_joint_position=start_joint_position)
 
 
 @overload
@@ -381,10 +470,9 @@ def jog_tcp(
     motion_groups: MotionGroup,
     *,
     tcp: str,
-    config: MotionConfig | None = ...,
-    tcp_velocity_limit: float = ...,
-    tcp_orientation_velocity_limit: float = ...,
+    config: WaypointConfig | None = ...,
     safety_guards: list[SafetyGuard] | None = ...,
+    start_joint_position: list[float] | None = ...,
 ) -> TcpJogger: ...
 
 
@@ -392,10 +480,9 @@ def jog_tcp(
 def jog_tcp(
     motion_groups: dict[MotionGroup, str],
     *,
-    config: MotionConfig | None = ...,
-    tcp_velocity_limit: float = ...,
-    tcp_orientation_velocity_limit: float = ...,
+    config: WaypointConfig | None = ...,
     safety_guards: list[SafetyGuard] | None = ...,
+    start_joint_position: dict[MotionGroup, list[float]] | None = ...,
 ) -> TcpJogger: ...
 
 
@@ -403,21 +490,21 @@ def jog_tcp(
     motion_groups: MotionGroup | dict[MotionGroup, str],
     *,
     tcp: str = "",
-    config: MotionConfig | None = None,
-    tcp_velocity_limit: float = 250.0,
-    tcp_orientation_velocity_limit: float = 1.5,
+    config: WaypointConfig | None = None,
     safety_guards: list[SafetyGuard] | None = None,
+    start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
 ) -> TcpJogger:
-    """Create a PID-controlled TCP pose jogger.
+    """Create a TCP pose jogger using server-side waypoint jogging.
 
     Args:
         motion_groups: Single motion group (with ``tcp`` kwarg) or
             ``dict[MotionGroup, str]`` mapping each group to its TCP name.
         tcp: TCP name when passing a single motion group.
-        config: Motion configuration.
-        tcp_velocity_limit: TCP translation velocity limit in mm/s.
-        tcp_orientation_velocity_limit: TCP rotation velocity limit in rad/s.
+        config: Waypoint jogging configuration.
         safety_guards: Optional callbacks run on every jogging tick.
+        start_joint_position: Joint positions to PTP-move to before starting jogging.
+            Single list for one robot, or dict mapping each motion group
+            to its start joints for multi-robot.
 
     Returns:
         A :class:`TcpJogger` async context manager.
@@ -430,20 +517,18 @@ def jog_tcp(
 
     Example::
 
-        async with jog_tcp(mg, tcp="Flange") as jogger:
+        async with jog_tcp(mg, tcp="Flange", start_joint_position=[1.17, -0.73, 1.75, -3.05, 0.87, 2.09]) as jogger:
             async for state in jogger:
                 jogger.set_target(Pose(500, 200, 300, 0, 3.14, 0))
     """
     if isinstance(motion_groups, dict):
         return TcpJogger(
             motion_groups, config=config,
-            tcp_velocity_limit=tcp_velocity_limit,
-            tcp_orientation_velocity_limit=tcp_orientation_velocity_limit,
             safety_guards=safety_guards,
+            start_joint_position=start_joint_position,
         )
     return TcpJogger(
         {motion_groups: tcp}, config=config,
-        tcp_velocity_limit=tcp_velocity_limit,
-        tcp_orientation_velocity_limit=tcp_orientation_velocity_limit,
         safety_guards=safety_guards,
+        start_joint_position=start_joint_position,
     )

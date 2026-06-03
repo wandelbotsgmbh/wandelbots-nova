@@ -5,7 +5,7 @@ description = "Nova app: GR00T dual-arm policy execution with cameras via ZMQ"
 requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
-    "wandelbots-nova[policy] @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@be6954faa4858211b145b1555950da48abded115",
+    "wandelbots-nova[policy] @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@8fc815efd4d7df12002623554f3c49324ecb4be7",
     "python-decouple~=3.8",
     "pyzmq>=26.0.0,<27",
     "msgpack>=1.1.0,<2",

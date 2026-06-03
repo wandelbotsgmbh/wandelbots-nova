@@ -1,4 +1,0 @@
-name: mock-camera-server
-type: app
-port: 8000
-appIcon: app_icon.png

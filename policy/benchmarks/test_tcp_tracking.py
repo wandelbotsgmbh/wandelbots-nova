@@ -82,7 +82,7 @@ async def run_tcp_test(
 
     result = TcpResult(name=name)
 
-    async with jog_tcp(mg, tcp=tcp_name, tcp_velocity_limit=500.0) as jogger:
+    async with jog_tcp(mg, tcp=tcp_name) as jogger:
         t0 = time.monotonic()
         home_pose = None
         async for state in jogger:

@@ -2,9 +2,9 @@
 
 > **⚠️ EXPERIMENTAL** — This package is under active development and not ready for production use. Expect breaking changes between releases.
 
-Velocity-controlled jogging for executing learned policies (imitation learning, reinforcement learning) on industrial robots via [Wandelbots NOVA](https://wandelbots.com).
+Waypoint jogging for executing learned policies (imitation learning, reinforcement learning) on industrial robots via [Wandelbots NOVA](https://wandelbots.com).
 
-Converts joint position targets from a policy into joint velocity commands streamed through the NOVA Jogging API.
+Streams timestamped joint or TCP pose waypoints through the NOVA Jogging API. The server handles velocity profiling, interpolation, and limits internally.
 
 ## Architecture
 
@@ -18,7 +18,7 @@ flowchart LR
 
     subgraph IPC["IPC (at the robot)"]
         Executor["PolicyExecutor"]
-        Jogging["NOVA Jogging API"]
+        Jogging["NOVA Jogging API\n(waypoint mode)"]
         Safety["Safety guards"]
         Cameras["WebRTC cameras"]
         Robot["Robot"]
@@ -41,7 +41,7 @@ The executor decides **when** to start, **when** to stop, and handles all safety
 ## Install
 
 ```bash
-pip install wandelbots-nova[policy]
+uv add wandelbots-nova
 ```
 
 ## Quick Start
@@ -110,11 +110,11 @@ This produces observations like:
 }
 ```
 
-The policy returns the same keys with target values. Joints go through velocity-controlled jogging, IOs get written to hardware with the mapping applied in reverse.
+The policy returns the same keys with target values. Joints are sent as `JointWaypointsRequest`, TCP targets as `PoseWaypointsRequest`, and IOs get written to hardware with the mapping applied in reverse.
 
 ### Cameras
 
-Cameras are provided by a WebRTC streaming server that NOVA manages — for example, the [Isaac Sim WebRTC Streamer](https://github.com/wandelbotsgmbh/wandelbots-isaacsim-webrtc-streamer) or a RealSense camera service running on the NOVA instance. The policy client never starts or stops hardware streams — NOVA owns the camera lifecycle. The client only opens a WebRTC session to receive frames. If `width`, `height`, or `fps` are specified, they are validated against the stream NOVA provides and an exception is raised on mismatch.
+Cameras are managed by the **Camera App** on the NOVA instance — the user starts and stops camera streams via the Camera App UI. The policy client only opens a WebRTC session to receive frames from an already-running stream. If `width`, `height`, or `fps` are specified, they are validated against the stream the Camera App provides and an exception is raised on mismatch.
 
 ```python
 from policy import Observation, WebRTCCameras
@@ -180,43 +180,56 @@ Guards must be fast (no network calls). Use `Observation.computed()` for async d
 
 ## Motion Control
 
-> **Note:** The current client-side velocity profile is a temporary implementation.
-> It will be replaced by NOVA's native waypoint jogging API once available, which
-> moves interpolation and servo control server-side for better tracking.
-
-Action chunks are executed via the NOVA Jogging API using a **trapezoidal velocity profile**:
-
-- Velocities computed from position differences between chunk steps
-- Trapezoidal ramp envelope (smooth acceleration/deceleration)
-- Time-based advancement with P-correction for tracking
+Action chunks are sent to the NOVA Jogging API as **timestamped waypoints**. The server handles velocity profiling, interpolation, and servo control internally.
 
 ```python
-from policy import MotionConfig, PolicyExecutor
+from policy import WaypointConfig, PolicyExecutor
 
-executor = PolicyExecutor(schema, policy, motion=MotionConfig(
-    n_action_steps=8,       # execute only first 8 of 16 predicted steps
-    velocity_limit=2.0,     # rad/s (scalar or per-axis list)
-    ramp_steps=3,           # trapezoidal ramp smoothing
+executor = PolicyExecutor(schema, policy, motion=WaypointConfig(
+    n_action_steps=8,       # send only first 8 of 16 predicted steps
+    policy_rate_hz=20.0,    # call policy at 20Hz (overlapping chunks)
 ))
 ```
 
-The executor operates as a **receding horizon controller**: execute `n_action_steps`
-from the action chunk, wait until the robot finishes, then query fresh inference
-with a new observation. Later steps (higher prediction uncertainty) are discarded.
+The executor operates as a **receding horizon controller**: at each tick it queries the policy for a new chunk and sends it to the server. Each chunk overlaps with the previous one — the server replaces waypoints older than the new chunk's first timestamp. This provides smooth, continuous motion even with variable inference latency.
 
-See [`JOGGING.md`](JOGGING.md) for the velocity profile algorithm details.
+Two request types are supported:
+
+| Schema action type | Request sent | Coordinate system |
+|---|---|---|
+| Joint positions (default) | `JointWaypointsRequest` | Joint radians |
+| TCP poses (`action=True`) | `PoseWaypointsRequest` | Robot base frame (mm + rotation vector) |
+
+The server synchronizes its internal clock with the client via `jogger_session_timestamp_ms` in the state stream, ensuring timestamps remain aligned regardless of network latency.
+
+See [`JOGGING.md`](JOGGING.md) for protocol details.
 
 #### Jogging (without a policy)
 
 The jogging layer can be used standalone — no policy, no schema, no cameras:
 
 ```python
-from policy import jog_joints
+from policy import jog_joints, jog_tcp
+from nova.types import Pose
 
+# Joint jogging — sends JointWaypointsRequest
 async with jog_joints(mg) as jogger:
-    jogger.set_target([0.0, -1.57, 1.57, -1.57, -1.57, 0.0])
     async for state in jogger:
-        print(state.joints)
+        jogger.set_target([0.0, -1.57, 1.57, -1.57, -1.57, 0.0])
+
+# TCP jogging — sends PoseWaypointsRequest
+async with jog_tcp(mg, tcp="Flange") as jogger:
+    async for state in jogger:
+        jogger.set_target(Pose(500, 200, 300, 0, 3.14, 0))
+```
+
+Both modes support chunked targets for smoother motion:
+
+```python
+async with jog_joints(mg) as jogger:
+    async for state in jogger:
+        chunk = [compute_target(t + i * 0.033) for i in range(8)]
+        jogger.set_target(chunk, dt_ms=33.0)
 ```
 
 See [`JOGGING.md`](JOGGING.md) for joint/TCP modes, dual-arm control, chunking, and error handling.\
@@ -278,13 +291,13 @@ Observation.joint_positions("arm", source=mg, mode="relative")
 
 ### TCP actions
 
-Policies that output Cartesian targets instead of joint positions. Set `action=True` on `Observation.tcp()` — the executor creates a Cartesian jogging session for that motion group:
+Policies that output Cartesian targets instead of joint positions. Set `action=True` on `Observation.tcp()` — the executor sends `PoseWaypointsRequest` for that motion group, and the server handles inverse kinematics internally:
 
 ```python
-Observation.tcp("eef_pose", source=mg, action=True)
+Observation.tcp("eef_pose", source=mg, tcp="Flange", action=True)
 ```
 
-The policy receives named values (`eef_pose_x`, `eef_pose_y`, `eef_pose_z`, `eef_pose_rx`, `eef_pose_ry`, `eef_pose_rz`) in mm and radians (NOVA's native TCP format), and returns target values in the same format. The session streams `TcpVelocityRequest` commands computed from the same trapezoidal profile used for joints. Combine with `mode="relative"` for delta-based Cartesian control.
+The policy receives named values (`eef_pose_x`, `eef_pose_y`, `eef_pose_z`, `eef_pose_rx`, `eef_pose_ry`, `eef_pose_rz`) in mm and radians (NOVA's native TCP format), and returns target values in the same format. Combine with `mode="relative"` for delta-based Cartesian control.
 
 ### Rerun visualization
 
