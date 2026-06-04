@@ -110,7 +110,6 @@ async def kinematic_configuration(ctx: nova.ProgramContext):
     try:
         action = cartesian_ptp(target, settings=fast)
         await motion_group.plan([action], tcp, motion_group_setup=setup)
-        print("  Succeeded — in this setup the target is reachable in the current branch")
     except PlanTrajectoryFailed:
         print("  PlanTrajectoryFailed — target not reachable in current branch")
 
