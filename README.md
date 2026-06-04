@@ -142,6 +142,8 @@ Curated examples in this repository showcase typical SDK workflows:
 
 8. **Merge trajectories with blending**: [merge_trajectories.py](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/merge_trajectories.py)
 
+9. **Kinematic configuration**: [kinematic_configuration.py](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/kinematic_configuration.py)
+
 ## Wandelscript (deprecated)
 
 > [!WARNING]
