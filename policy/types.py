@@ -62,6 +62,18 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     When -1 (default), timestamps are relative to the current time (legacy).
     Use start_time_ms >= 0 for overlapping waypoint jogging."""
 
+    frozen_steps: int = 0
+    """RTC seam backdate, in steps, for connecting overlapping chunks.
+
+    The executor backdates the chunk anchor by ``frozen_steps * dt_ms`` so the
+    step matching the robot's current position lands at "now": the reused head
+    sits in the immediate past (matching what's already executing) and the fresh
+    prediction extends into the future. The client computes this as
+    ``executed_steps - (action_horizon - overlap_steps)`` — the index in the new
+    chunk that corresponds to where the robot currently is. (This equals the RTC
+    frozen-step count only when overlap is unclamped, hence the field name.)
+    0 = no RTC / no backdate."""
+
 
 @dataclass(slots=True)
 class WaypointConfig:
@@ -74,35 +86,8 @@ class WaypointConfig:
     freshest prediction.
     """
 
-    n_action_steps: int = 0
-    """Number of steps from each action chunk to send.
-    0 = send all steps (default). The server handles timing internally."""
-
-    policy_rate_hz: float = 20.0
-    """Rate (Hz) at which the policy is called for overlapping chunks.
-
-    Waypoint jogging requires continuous overlapping chunks — the server
-    pauses (PAUSED_BY_USER) if its waypoint buffer empties between chunks.
-    This rate ensures fresh chunks arrive before the previous one finishes.
-    20Hz with 1s lookahead = 95% overlap.
-
-    Ignored when ``wait_for_chunk=True``.
-    """
-
     state_rate_ms: int = 10
     """State stream update rate."""
-
-    wait_for_chunk: bool = False
-    """Wait for the action chunk to finish before calling the policy again.
-
-    When False (default), the executor calls the policy at ``policy_rate_hz``
-    and each new chunk replaces the previous one mid-execution. This is for
-    policies that support Real-Time Chunking (RTC).
-
-    When True, the executor waits for the full chunk to finish executing
-    (n_steps * dt_ms) before the next observation + inference. Use this for
-    policies that do not support RTC.
-    """
 
 
 @dataclass(slots=True)

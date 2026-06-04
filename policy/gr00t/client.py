@@ -16,6 +16,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from policy.gr00t.eef import TcpFormat, pose_to_eef
+from policy.gr00t.rtc import (  # noqa: TC001
+    RTCConfig,
+    RTCState,
+    compute_rtc_options,
+    detect_action_horizon,
+)
 from policy.gr00t.transport import Gr00tZmqTransport, require_dict
 from policy.policy_client import PolicyClient
 from policy.types import ActionChunk
@@ -71,6 +77,7 @@ class Gr00tPolicyClient(PolicyClient):
         api_token: str | None = None,
         dt_ms: float = 33.0,
         tcp_format: TcpFormat = TcpFormat.ROT6D,
+        rtc: RTCConfig | None = None,
     ) -> None:
         self._transport = Gr00tZmqTransport(
             host=host, port=port, timeout_ms=timeout_ms, api_token=api_token,
@@ -78,6 +85,14 @@ class Gr00tPolicyClient(PolicyClient):
         self._dt_ms = dt_ms
         self._tcp_format = tcp_format
         self._actual_dof: dict[str, int] = {}
+
+        # RTC (Real-Time Chunking) — client-side state
+        self._rtc_config: RTCConfig | None = rtc
+        self._rtc_state = RTCState(
+            latency_queue=__import__("collections").deque(
+                maxlen=rtc.latency_queue_size if rtc else 10
+            )
+        )
 
     async def connect(self, motion_group_ids: list[str]) -> None:
         """Create the ZMQ REQ socket."""
@@ -125,6 +140,21 @@ class Gr00tPolicyClient(PolicyClient):
             )
             raise ValueError(msg)
 
+    @property
+    def rtc(self) -> RTCConfig | None:
+        """RTC configuration. Set to None to disable, RTCConfig to enable."""
+        return self._rtc_config
+
+    @rtc.setter
+    def rtc(self, value: RTCConfig | None) -> None:
+        self._rtc_config = value
+        if value is None:
+            self._rtc_state.reset()
+
+    def reset_rtc(self) -> None:
+        """Clear RTC state (call on episode/task boundaries)."""
+        self._rtc_state.reset()
+
     async def get_actions(
         self,
         states: dict[str, RobotState],
@@ -133,20 +163,66 @@ class Gr00tPolicyClient(PolicyClient):
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
         """Build GR00T observation from raw states + images, send, decode response."""
+        import time as _time  # noqa: PLC0415
+
         groot_obs = self._build_groot_obs(states, schema, images, io_values)
 
+        # RTC: compute options (overlap/frozen steps) based on latency
+        # Server stores the previous action internally — we just send timing params
+        options: dict[str, object] | None = None
+        if self._rtc_config is not None and self._rtc_state.action_horizon is not None:
+            latency_estimate = (
+                sum(self._rtc_state.latency_queue) / len(self._rtc_state.latency_queue)
+                if self._rtc_state.latency_queue
+                else 0.0
+            )
+            options = compute_rtc_options(
+                self._rtc_config, self._rtc_state, latency_estimate, self._dt_ms
+            )
+
+        t0 = _time.monotonic()
         response = await asyncio.to_thread(
             self._transport.call,
             "get_action",
-            {"observation": groot_obs, "options": None},
+            {"observation": groot_obs, "options": options},
         )
+
+        inference_latency = _time.monotonic() - t0
         if not isinstance(response, (list, tuple)) or len(response) != _RESPONSE_PAIR_SIZE:
             msg = "GR00T get_action response must be a 2-tuple of (action, info)"
             raise TypeError(msg)
 
         action_raw = require_dict(response[0], name="GR00T action")
         info_raw = require_dict(response[1], name="GR00T info")
-        return self._decode_action(schema, action_raw, info_raw)
+
+        # RTC: update timing state (server stores action internally)
+        if self._rtc_config is not None:
+            import time as _time2  # noqa: PLC0415
+
+            if self._rtc_state.action_horizon is None:
+                self._rtc_state.action_horizon = detect_action_horizon(action_raw)
+            self._rtc_state.latency_queue.append(inference_latency)
+            self._rtc_state.last_inference_time = _time2.monotonic()
+
+        chunk = self._decode_action(schema, action_raw, info_raw)
+        # Attach the RTC seam backdate (in steps) so the executor can place this
+        # chunk so its head aligns with the robot's current position. The robot
+        # is `executed` steps into the previous chunk; the new chunk reuses
+        # prev[H-overlap:] as its head, so the robot corresponds to new step
+        # (executed - (H - overlap)). Backdating the anchor by that many steps
+        # puts that step at "now", connecting consecutive chunks. NOTE: this is
+        # NOT simply `frozen` — that identity only holds when overlap is not
+        # clamped; the client clamps overlap to max_overlap_factor*H.
+        if options is not None and self._rtc_state.action_horizon is not None:
+            backdate = (
+                self._rtc_state.last_executed_steps
+                - self._rtc_state.action_horizon
+                + self._rtc_state.last_overlap_steps
+            )
+            backdate = max(0, backdate)
+            if backdate:
+                chunk = chunk.model_copy(update={"frozen_steps": backdate})
+        return chunk
 
     async def close(self) -> None:
         """Close the socket and terminate the ZMQ context."""

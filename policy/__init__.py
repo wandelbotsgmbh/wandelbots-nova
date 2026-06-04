@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from policy.cameras import CameraSource, WebRTCCameras
 from policy.executor import ExecutionResult, ExecutorStatus, PolicyExecutor
-from policy.gr00t import Gr00tPolicyClient
+from policy.gr00t import Gr00tPolicyClient, RTCConfig
 from policy.jogger import JointJogger, TcpJogger, jog_joints, jog_tcp
 from policy.policy_client import CallbackPolicyClient, PolicyClient
 from policy.schema import (
@@ -55,6 +55,7 @@ __all__ = [
     "PolicyClient",
     "PolicyExecutor",
     "PolicySchema",
+    "RTCConfig",
     "TcpJogger",
     "WaypointConfig",
     "WebRTCCameras",

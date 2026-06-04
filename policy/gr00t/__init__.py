@@ -10,6 +10,7 @@ plus the ``Gr00tMsgSerializer`` and ``Gr00tZmqTransport`` internals.
 """
 
 from policy.gr00t.client import Gr00tPolicyClient
+from policy.gr00t.rtc import RTCConfig
 from policy.gr00t.transport import Gr00tMsgSerializer, Gr00tZmqTransport
 
 GROOT_PROTOCOL_VERSION = "1.7"
@@ -20,4 +21,5 @@ __all__ = [
     "Gr00tMsgSerializer",
     "Gr00tPolicyClient",
     "Gr00tZmqTransport",
+    "RTCConfig",
 ]

@@ -18,23 +18,23 @@ handles velocity profiling, interpolation, limits, and servo control internally.
 
 ## Execution Loop (PolicyExecutor)
 
-### RTC mode (default: `wait_for_chunk=False`)
-
-```
-1. Observe robot state
-2. Query policy → get action chunk
-3. Send waypoints to server (overrides previous chunk)
-4. Sleep until next tick (policy_rate_hz)
-5. Go to 1
-```
-
-### Sequential mode (`wait_for_chunk=True`)
+### Sequential mode (`policy_rate_hz=-1`, default)
 
 ```
 1. Observe robot state
 2. Query policy → get action chunk
 3. Send waypoints to server
 4. Wait for chunk to finish (n_steps * dt_ms)
+5. Go to 1
+```
+
+### RTC mode (`policy_rate_hz=20`)
+
+```
+1. Observe robot state
+2. Query policy → get action chunk
+3. Send waypoints to server (overrides previous chunk)
+4. Sleep until next tick (1/policy_rate_hz)
 5. Go to 1
 ```
 
@@ -161,41 +161,47 @@ After consecutive ticks in a blocking state, a `MotionError` is raised.
 ## Configuration
 
 ```python
-from policy import WaypointConfig
+from policy import PolicyExecutor, WaypointConfig
 
+# WaypointConfig: how waypoints are sent to the robot
 config = WaypointConfig(
     n_action_steps=8,       # send only first N steps per chunk (0 = all)
-    policy_rate_hz=20.0,    # Hz - how often the policy is called (RTC mode)
     state_rate_ms=10,       # state stream update rate
-    wait_for_chunk=False,   # True = wait for chunk completion before next inference
+)
+
+# PolicyExecutor: controls timing
+executor = PolicyExecutor(
+    schema, policy,
+    motion=config,
+    policy_rate_hz=-1,      # -1 = wait, 0 = ASAP, >0 = fixed Hz
 )
 ```
 
-### RTC vs Sequential
+### policy_rate_hz
 
-| | `wait_for_chunk=False` (default) | `wait_for_chunk=True` |
+| Value | Behavior | Use case |
 |---|---|---|
-| **For** | Policies with Real-Time Chunking (RTC) | Policies without RTC |
-| **Behavior** | Policy called at `policy_rate_hz`; new chunks override previous | Policy called only after previous chunk finishes |
-| **Overlap** | Yes - smooth continuous motion | No - chunks execute back-to-back |
+| `-1` (default) | Wait for chunk to finish, then replan | Policies without RTC |
+| `0` | Call as fast as possible (no sleep) | Benchmarking / max throughput |
+| `>0` (e.g. `20`) | Fixed-rate overlapping calls | RTC-capable policies (e.g. GR00T) |
 
 ```python
-# RTC-capable policy
+# Sequential (non-RTC policy, e.g. GR00T without RTC)
 executor = PolicyExecutor(
     schema, policy,
-    motion=WaypointConfig(n_action_steps=8, policy_rate_hz=15.0),
+    motion=WaypointConfig(n_action_steps=8),
 )
 
-# Non-RTC policy
+# RTC-capable policy (overlapping chunks at 20 Hz)
 executor = PolicyExecutor(
     schema, policy,
-    motion=WaypointConfig(n_action_steps=8, wait_for_chunk=True),
+    policy_rate_hz=20,
+    motion=WaypointConfig(n_action_steps=8),
 )
 ```
 
-The `policy_rate_hz` determines how often the executor calls the policy.
 Higher rates give smoother overlapping but require faster inference.
-The server requires continuous waypoint updates - if the buffer empties
+The server requires continuous waypoint updates — if the buffer empties
 (no new chunk arrives before the previous one finishes), the robot pauses.
 With 20 Hz and 1s lookahead chunks, there is ~95% overlap between
 consecutive chunks, providing ample buffer.

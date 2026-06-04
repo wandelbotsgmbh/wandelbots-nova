@@ -37,7 +37,6 @@ from policy import (
     Observation,
     PolicyExecutor,
     PolicySchema,
-    WaypointConfig,
     WebRTCCameras,
 )
 from policy.types import GuardState
@@ -237,7 +236,8 @@ async def dual_arm_policy(ctx: nova.ProgramContext):
         mock_policy,
         safety_guards=[workspace_guard, speed_guard, io_guard],
         timeout_s=10.0,
-        motion=WaypointConfig(state_rate_ms=10),
+        policy_rate_hz=20,
+        n_action_steps=8,
     )
 
     print("Running policy for 10s...")

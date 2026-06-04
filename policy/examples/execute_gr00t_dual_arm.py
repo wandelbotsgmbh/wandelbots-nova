@@ -22,7 +22,7 @@ from policy import (
     Observation,
     PolicyExecutor,
     PolicySchema,
-    WaypointConfig,
+    RTCConfig,
     WebRTCCameras,
 )
 
@@ -94,8 +94,24 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
         ]
     )
 
-    # GR00T client
-    client = Gr00tPolicyClient(host=GROOT_HOST, port=GROOT_PORT, dt_ms=66.7)
+    # Toggle RTC here. RTC (True) connects overlapping chunks via server-side
+    # inpainting + a seam backdate; off (False) just runs plain chunks.
+    USE_RTC = False
+
+    # dt_ms is deliberately larger than the model's native 66.7 ms step. With a
+    # 16-step horizon and ~800 ms inference latency (network + 4-image transport
+    # dominate, NOT diffusion), a 66.7 ms step makes each chunk only ~1.07 s long
+    # — shorter than 2x the latency — so the robot finishes the chunk before the
+    # next prediction arrives and snaps back to the stale chunk. The connection
+    # requirement is horizon*dt > 2*latency; at 130 ms that's 2.08 s > ~1.6 s, so
+    # the frozen head + future window keep the robot moving smoothly. Lower this
+    # toward 66.7 ms when the client runs co-located with the server (low latency).
+    client = Gr00tPolicyClient(
+        host=GROOT_HOST,
+        port=GROOT_PORT,
+        dt_ms=130.0,
+        rtc=RTCConfig() if USE_RTC else None,
+    )
 
     info = await client.get_server_info()
     print(
@@ -104,12 +120,19 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
         f"horizon={info['action_horizon']}"
     )
 
-    # Run
+    # Run overlapping chunks ASAP (inference-bound). n_action_steps=16 sends the
+    # full horizon so the future window after the RTC frozen-head backdate is as
+    # large as possible. policy_rate_hz=0 = infer as fast as latency allows.
+    # Wait-for-chunk timing: send a chunk, let the robot execute it to
+    # completion (sleep the full chunk duration), THEN observe + infer the next
+    # one. This is the simple sequential (non-overlapping) mode. Use
+    # policy_rate_hz=0 (ASAP) only with RTC, where overlapping chunks connect.
     executor = PolicyExecutor(
         schema,
         client,
         timeout_s=TIMEOUT_S,
-        motion=WaypointConfig(n_action_steps=8, wait_for_chunk=True),
+        policy_rate_hz=-1,
+        n_action_steps=8,
     )
 
     print(f"Running GR00T dual-arm policy for {TIMEOUT_S}s...")

@@ -239,7 +239,7 @@ async def gr00t_dual_arm_controller(
         dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
-    executor = PolicyExecutor(schema, client, timeout_s=timeout_s, policy_rate_hz=20, motion=WaypointConfig(n_action_steps=n_action_steps))
+    executor = PolicyExecutor(schema, client, timeout_s=timeout_s, policy_rate_hz=20, n_action_steps=n_action_steps)
     await cycle.start()
     try:
         result = await executor.run()
@@ -532,7 +532,7 @@ async def start(req: StartRequest = StartRequest()):
         dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
-    _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s, policy_rate_hz=20, motion=WaypointConfig(n_action_steps=req.n_action_steps))
+    _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s, policy_rate_hz=20, n_action_steps=req.n_action_steps)
 
     async def run() -> ExecutionResult:
         global _last_error

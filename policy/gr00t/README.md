@@ -8,7 +8,8 @@ Implements the same REQ/REP msgpack protocol as `gr00t.policy.server_client.Poli
 
 ```python
 from policy import (
-    BoolMapping, Gr00tPolicyClient, Observation, PolicyExecutor, PolicySchema, TcpFormat,
+    BoolMapping, Gr00tPolicyClient, Observation, PolicyExecutor, PolicySchema,
+    RTCConfig, TcpFormat, WaypointConfig,
 )
 
 schema = PolicySchema(observations=[
@@ -21,13 +22,69 @@ schema = PolicySchema(observations=[
     Observation.constant("language", value="Pick up the box."),
 ])
 
-client = Gr00tPolicyClient(host="gpu-server", port=5555)
+client = Gr00tPolicyClient(host="gpu-server", port=5555, dt_ms=66.7, rtc=RTCConfig())
 
-executor = PolicyExecutor(schema, client, timeout_s=30.0)
+executor = PolicyExecutor(schema, client, policy_rate_hz=20, motion=WaypointConfig(n_action_steps=8))
 result = await executor.run()
 ```
 
 The client uses `PolicySchema` observations to build GR00T-compatible numpy array observations and decode the returned action arrays.
+
+## Real-Time Chunking (RTC)
+
+RTC reuses the tail of the previous action prediction as a warm start for the
+diffusion denoising process, producing smoother overlapping action chunks.
+See [`RTC.md`](./RTC.md) for the full investigation and design.
+
+### Server-side patch (required)
+
+The GR00T inference server must forward `options` to the model. Apply this
+one-line patch to `gr00t/policy/gr00t_policy.py` in the server's Isaac-GR00T
+checkout:
+
+```diff
+-            model_pred = self.model.get_action(**collated_inputs)
++            model_pred = self.model.get_action(**collated_inputs, options=options)
+```
+
+Alternatively, inject it at container startup via sed (no rebuild needed):
+
+```yaml
+# In the deployment args, before the server starts:
+sed -i 's/model_pred = self.model.get_action(\*\*collated_inputs)/model_pred = self.model.get_action(**collated_inputs, options=options)/' /workspace/gr00t/policy/gr00t_policy.py
+```
+
+### Client-side usage
+
+```python
+from policy import Gr00tPolicyClient, RTCConfig, PolicyExecutor, WaypointConfig
+
+# Enable RTC
+client = Gr00tPolicyClient(
+    host="gpu-server", port=30555, dt_ms=66.7,
+    rtc=RTCConfig(),  # pass RTCConfig to enable, None (default) to disable
+)
+
+# Must use policy_rate_hz > 0 for overlapping chunks
+executor = PolicyExecutor(schema, client, policy_rate_hz=20, motion=WaypointConfig(n_action_steps=8))
+```
+
+RTC can be toggled at runtime:
+
+```python
+client.rtc = None        # disable — next calls use pure diffusion from noise
+client.rtc = RTCConfig() # re-enable
+client.reset_rtc()       # clear stored action (call on episode/task boundaries)
+```
+
+### RTCConfig parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `denoising_steps` | `8` | Diffusion denoising iterations |
+| `max_overlap_factor` | `0.75` | Max fraction of action horizon to overlap |
+| `ramp_rate` | `3.0` | Exponential blending ramp speed |
+| `systematic_latency_offset` | `0.02` | Fixed latency added to measured inference time (s) |
 
 ## Wire Protocol
 

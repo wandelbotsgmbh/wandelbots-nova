@@ -88,7 +88,8 @@ class PolicyExecutor:
         timeout_s: float = 0,
         camera_max_age_s: float = 30.0,
         motion: WaypointConfig | None = None,
-        policy_rate_hz: float = 0,
+        policy_rate_hz: float = -1,
+        n_action_steps: int = 0,
     ) -> None:
         """Create a policy executor.
 
@@ -99,10 +100,21 @@ class PolicyExecutor:
             timeout_s: Maximum execution duration in seconds. 0 = no timeout.
             camera_max_age_s: Maximum allowed age of a camera frame before raising.
             motion: Waypoint jogging configuration. Defaults to WaypointConfig().
-            policy_rate_hz: Fixed rate (Hz) at which the policy is called.
-                When set (>0), the executor calls the policy at this rate and
-                each new chunk replaces the previous one mid-execution.
-                When 0 (default), uses policy_rate_hz from the WaypointConfig.
+            policy_rate_hz: Controls timing between policy calls.
+                -1 (default): Wait for each chunk to finish executing before
+                    calling the policy again. Use for sequential policies that
+                    do not support RTC.
+                0: Call the policy as fast as possible (no sleep between calls).
+                    Each new chunk immediately replaces the previous one.
+                >0: Call the policy at this fixed rate (Hz). Each new chunk
+                    replaces the previous one mid-execution. Use for RTC
+                    policies (e.g. 20 Hz with GR00T RTC enabled).
+            n_action_steps: Number of steps from each action chunk to execute.
+                0 (default): Execute all steps returned by the policy.
+                >0: Trim to first N steps (receding horizon). Later steps
+                have higher prediction uncertainty and are discarded.
+                The policy still predicts the full action_horizon (e.g. 16)
+                which is used internally for RTC warm-starting.
         """
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
@@ -119,8 +131,8 @@ class PolicyExecutor:
         self._safety_guards = safety_guards or []
         self._timeout_s = timeout_s
         self._camera_max_age_s = camera_max_age_s
-        # Use policy_rate_hz from WaypointConfig if not explicitly overridden
-        self._policy_rate_hz = policy_rate_hz if policy_rate_hz > 0 else self._motion.policy_rate_hz
+        self._policy_rate_hz = policy_rate_hz
+        self._n_action_steps_cfg = n_action_steps
 
         self._sessions: dict[str, WaypointJoggingSession] = {}
         self._camera_sources: dict[str, CameraSource] = {}
@@ -277,8 +289,8 @@ class PolicyExecutor:
         self.status.message = "Running policy..."
 
         # Determine timing mode
-        wait_for_chunk = self._motion.wait_for_chunk
-        fixed_rate_period = 1.0 / self._policy_rate_hz
+        # -1 = wait for chunk, 0 = as fast as possible, >0 = fixed rate
+        fixed_rate_period = 1.0 / self._policy_rate_hz if self._policy_rate_hz > 0 else 0.0
 
         while not self._stop_event.is_set():
             if self._timeout_s > 0 and (time.monotonic() - start_time) >= self._timeout_s:
@@ -321,19 +333,19 @@ class PolicyExecutor:
             check_sessions(self._sessions)
             check_estop(self._estop_monitor)
 
-            if wait_for_chunk:
+            if self._policy_rate_hz < 0:
                 # Wait for the full chunk duration before next inference.
-                # chunk_duration = n_steps * dt_ms
                 chunk_duration_s = self._chunk_duration_s(trimmed)
                 if chunk_duration_s > 0:
                     await self._sleep_interruptible(chunk_duration_s, start_time)
-            else:
+            elif self._policy_rate_hz > 0:
                 # Fixed-rate: sleep for the remainder of the period.
                 # Each new chunk replaces the previous one mid-execution.
                 elapsed = time.monotonic() - tick_start
                 sleep_time = fixed_rate_period - elapsed
                 if sleep_time > 0:
                     await asyncio.sleep(sleep_time)
+            # else: policy_rate_hz == 0 → no sleep, call as fast as possible
 
         return _result("stopped", step, start_time, last_obs)
 
@@ -407,12 +419,39 @@ class PolicyExecutor:
                     raise GuardStopError(group_id, guard_name)
 
     def _send(self, chunk: ActionChunk) -> None:
-        """Send an action chunk to the motion groups."""
+        """Send an action chunk to the motion groups.
+
+        Two placement modes:
+
+        * Wait-for-chunk (``policy_rate_hz < 0``) — sequential, non-overlapping.
+          Each chunk is executed to completion before the next inference, so
+          there is no shared timeline to coordinate. The chunk uses relative
+          (legacy) placement (``start_time_ms = -1``): it simply starts from the
+          robot's current position "now". This avoids absolute-timeline drift.
+
+        * Overlapping (``policy_rate_hz >= 0``, typically with RTC) — absolute
+          timestamps anchored at send time, backdated by
+          ``chunk.frozen_steps * dt_ms`` so the step matching the robot's current
+          position lands at "now" and consecutive chunks connect. For this to
+          keep the robot moving, ``(horizon - frozen_steps) * dt_ms`` must exceed
+          the inference latency (increase dt_ms or cut latency otherwise).
+        """
+        sequential = self._policy_rate_hz < 0
+        backdate_ms = int(chunk.frozen_steps * chunk.dt_ms) if chunk.dt_ms > 0 else 0
         for group_id, steps in chunk.joints.items():
             session = self._sessions.get(group_id)
             if session is None:
                 logger.warning("Unknown motion group in chunk: %s", group_id)
                 continue
+            # Honor an explicit chunk.start_time_ms (>=0) if the policy set one.
+            if chunk.start_time_ms >= 0:
+                start_time_ms = chunk.start_time_ms
+            elif sequential:
+                # Relative/legacy placement: start from current position now.
+                start_time_ms = -1
+            else:
+                # Absolute placement at send time, backdated by the frozen head.
+                start_time_ms = max(0, session.session_elapsed_ms - backdate_ms)
             # Log chunk magnitude for debugging
             if len(steps) > 1 and logger.isEnabledFor(logging.DEBUG):
                 span = sum(
@@ -422,17 +461,22 @@ class PolicyExecutor:
                 ff_vel = per_step / (chunk.dt_ms / 1000.0) if chunk.dt_ms > 0 else 0
                 logger.debug(
                     "Chunk %s: %d steps, span=%.5f rad, per_step=%.6f rad, "
-                    "ff_vel=%.4f rad/s, dt_ms=%.1f",
-                    group_id, len(steps), span, per_step, ff_vel, chunk.dt_ms,
+                    "ff_vel=%.4f rad/s, dt_ms=%.1f, start_time_ms=%d",
+                    group_id, len(steps), span, per_step, ff_vel, chunk.dt_ms, start_time_ms,
                 )
-            session.update_chunk(steps=steps, dt_ms=chunk.dt_ms, start_time_ms=chunk.start_time_ms)
+            session.update_chunk(steps=steps, dt_ms=chunk.dt_ms, start_time_ms=start_time_ms)
 
         for group_id, raw_tcp_steps in chunk.tcp.items():
             session = self._sessions.get(group_id)
             if session is None:
                 logger.warning("Unknown motion group in TCP chunk: %s", group_id)
                 continue
-            session.update_chunk(steps=raw_tcp_steps, dt_ms=chunk.dt_ms, start_time_ms=chunk.start_time_ms)
+            start_time_ms = (
+                chunk.start_time_ms
+                if chunk.start_time_ms >= 0
+                else max(0, session.session_elapsed_ms - backdate_ms)
+            )
+            session.update_chunk(steps=raw_tcp_steps, dt_ms=chunk.dt_ms, start_time_ms=start_time_ms)
 
         if chunk.ios:
             for group_id, ios in chunk.ios.items():
@@ -460,17 +504,30 @@ class PolicyExecutor:
     @property
     def _n_action_steps(self) -> int:
         """Number of action steps to execute from each chunk (0 = all)."""
-        return self._motion.n_action_steps
+        return self._n_action_steps_cfg
 
     def _trim_chunk(self, chunk: ActionChunk) -> ActionChunk:
         """Trim action chunk to n_action_steps if configured.
 
         Returns the original chunk unmodified if n_action_steps is 0 (execute all)
         or if the chunk is already shorter than n_action_steps.
+        Warns if the policy returned fewer steps than requested.
         """
         n = self._n_action_steps
         if n <= 0:
             return chunk
+
+        # Check if policy returned fewer steps than requested
+        actual_steps = max(
+            (len(steps) for steps in chunk.joints.values()),
+            default=max((len(steps) for steps in chunk.tcp.values()), default=0),
+        )
+        if actual_steps > 0 and actual_steps < n:
+            logger.warning(
+                "Policy returned %d steps but n_action_steps=%d. "
+                "Check that n_action_steps <= policy action_horizon.",
+                actual_steps, n,
+            )
 
         trimmed_joints = {
             mg_id: steps[:n] for mg_id, steps in chunk.joints.items()
