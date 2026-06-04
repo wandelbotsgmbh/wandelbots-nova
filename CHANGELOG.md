@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.2.0 (2026-06-04)
+
+### Features
+
+- Add on-demand robot model downloading from NOVA API (#422)
+  ([#422](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/422),
+  [`38c2279`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/38c227916ffc0194d2d4dd5379ca6835af0091e3))
+
+
 ## v5.1.4 (2026-06-03)
 
 ### Chores
