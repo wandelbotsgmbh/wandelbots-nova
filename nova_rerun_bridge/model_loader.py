@@ -19,7 +19,8 @@ async def load_model_data(model_name: str, api_gateway: ApiGateway) -> bytes | N
         return None
 
     try:
-        return await api_gateway.motion_group_models_api.get_motion_group_glb_model(model_name)
+        data = await api_gateway.motion_group_models_api.get_motion_group_glb_model(model_name)
+        return bytes(data)
     except Exception as e:
         logger.warning(f"Failed to load model {model_name}: {e}")
         return None
