@@ -80,6 +80,12 @@ class Pose(pydantic.BaseModel, Sized):
         >>> kc = api.models.KinematicConfiguration(kinematic_branch=api.models.KinematicBranch(shoulder_branch='FRONT', elbow_branch='UP', wrist_branch='NO_FLIP'))
         >>> Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kc).kinematic_configuration == kc
         True
+        >>> lr = api.models.LimitRange(lower_limit=-3.14, upper_limit=3.14)
+        >>> ar = [api.models.AxisRange(axis=0, range=lr), api.models.AxisRange(axis=5, range=lr)]
+        >>> kb = api.models.KinematicBranch(shoulder_branch='FRONT', elbow_branch='UP', wrist_branch='NO_FLIP')
+        >>> kc2 = api.models.KinematicConfiguration(kinematic_branch=kb, axis_ranges=ar)
+        >>> Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kc2).kinematic_configuration == kc2
+        True
         """
         # >>> Pose(api.models.TcpOffset(name='Flange', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.Vector3d([4, 5, 6]))))
         # Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
