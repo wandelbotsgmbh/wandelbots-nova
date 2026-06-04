@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.3.0 (2026-06-04)
+
+### Features
+
+- Add support of cartesian PTP with configured pose (#425)
+  ([#425](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/425),
+  [`75e362b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/75e362be934d62b6387b7c59db19096f13599d94))
+
+
 ## v5.2.0 (2026-06-04)
 
 ### Features
