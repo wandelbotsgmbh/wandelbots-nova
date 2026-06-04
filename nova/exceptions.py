@@ -62,6 +62,18 @@ class ErrorDuringMovement(Exception):
         return self._message
 
 
+class MovementStalled(ErrorDuringMovement):
+    """Raised when a trajectory neither reports completion nor an error, yet the
+    robot has been at standstill away from the target for longer than the
+    configured ``stall_timeout_s``.
+
+    Subclasses :class:`ErrorDuringMovement` so existing handlers still catch it.
+    This replaces the previous failure mode where ``execute()`` blocked forever
+    because the controller's terminal ``TrajectoryEnded`` @ standstill event was
+    never observed on the state stream.
+    """
+
+
 class LoadPlanFailed(Exception):
     def __init__(self, error: api.models.AddTrajectoryError):
         self._error = error
