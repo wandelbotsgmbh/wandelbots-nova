@@ -1,14 +1,11 @@
 """Load robot models directly from the NOVA API."""
 
-from typing import TYPE_CHECKING
-
 from loguru import logger
 
-if TYPE_CHECKING:
-    from nova.core.gateway import ApiGateway
+from nova.core.gateway import ApiGateway
 
 
-async def load_model_data(model_name: str, api_gateway: "ApiGateway") -> bytes | None:
+async def load_model_data(model_name: str, api_gateway: ApiGateway) -> bytes | None:
     """Load a robot model's GLB data directly from the NOVA API.
 
     Args:
