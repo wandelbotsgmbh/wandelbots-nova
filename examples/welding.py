@@ -238,9 +238,7 @@ async def test(ctx: nova.ProgramContext):
 
     # Add mesh to collision world
     mesh_collider = await add_mesh_to_collision_world(
-        collision_api=ctx.nova.api.store_collision_components_api,
-        cell_name=cell.id,
-        scene=scene,
+        collision_api=ctx.nova.api.store_collision_components_api, cell_name=cell.id, scene=scene
     )
 
     # Build collision world with welding part included
