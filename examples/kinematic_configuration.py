@@ -25,7 +25,7 @@ Prerequisites:
 """
 
 import asyncio
-import math
+from math import degrees, pi
 
 import nova
 from nova import api, run_program
@@ -60,24 +60,24 @@ async def kinematic_configuration(ctx: nova.ProgramContext):
     tcp = tcp_names[0]
 
     # Init position: FRONT/UP/NO_FLIP branch (simple joint values)
-    init_joints = (math.pi, -math.pi / 2, math.pi / 2, -math.pi / 2, math.pi / 2, -math.pi / 2)
-    fast = MotionSettings(tcp_velocity_limit=2000)
+    init_joints = (pi, -pi / 2, pi / 2, -pi / 2, pi / 2, -pi / 2)
+    fast = MotionSettings(tcp_velocity_limit=250)
     setup = await motion_group.get_setup(tcp)
 
     # Target pose: not reachable in FRONT/UP/NO_FLIP, requires a wrist FLIP
-    target = Pose((1300, 0, 100, -3.14, 0, 0))
+    target = Pose((1300, 0, 100, -pi, 0, 0))
 
-    async def go_init():
+    async def move_to_init():
         action = joint_ptp(init_joints, settings=fast)
         traj = await motion_group.plan([action], tcp, motion_group_setup=setup)
         await motion_group.execute(traj, tcp, actions=[action])
 
     # --- Demo ---
 
-    await go_init()
+    await move_to_init()
 
     # Document starting configuration
-    init_deg = [round(math.degrees(j), 1) for j in init_joints]
+    init_deg = [round(degrees(j), 1) for j in init_joints]
     print("Init: FRONT/UP/NO_FLIP")
     print(f"  Joints: {init_deg}")
 
@@ -96,13 +96,13 @@ async def kinematic_configuration(ctx: nova.ProgramContext):
     )
     action = cartesian_ptp(configured_pose, settings=fast)
     traj = await motion_group.plan([action], tcp, motion_group_setup=setup)
-    joints_deg = [round(math.degrees(j), 1) for j in traj.joint_positions[-1]]
+    joints_deg = [round(degrees(j), 1) for j in traj.joint_positions[-1]]
     print(f"  Before (UP):   {init_deg}")
     print(f"  After (DOWN):  {joints_deg}")
     print("  -> J1, J5, J6 unchanged — only elbow flipped")
     await motion_group.execute(traj, tcp, actions=[action])
     await asyncio.sleep(3)
-    await go_init()
+    await move_to_init()
     await asyncio.sleep(3)
 
     # Step 2: Plan to target WITHOUT config — planner stays in current branch, fails.
@@ -110,7 +110,7 @@ async def kinematic_configuration(ctx: nova.ProgramContext):
     try:
         action = cartesian_ptp(target, settings=fast)
         await motion_group.plan([action], tcp, motion_group_setup=setup)
-        print("  Unexpectedly succeeded")
+        print("  Succeeded — in this setup the target is reachable in the current branch")
     except PlanTrajectoryFailed:
         print("  PlanTrajectoryFailed — target not reachable in current branch")
 
@@ -126,11 +126,11 @@ async def kinematic_configuration(ctx: nova.ProgramContext):
     )
     action = cartesian_ptp(configured_target, settings=fast)
     traj = await motion_group.plan([action], tcp, motion_group_setup=setup)
-    joints_deg = [round(math.degrees(j), 1) for j in traj.joint_positions[-1]]
+    joints_deg = [round(degrees(j), 1) for j in traj.joint_positions[-1]]
     print(f"  Success! Joints: {joints_deg}")
     await motion_group.execute(traj, tcp, actions=[action])
     await asyncio.sleep(3)
-    await go_init()
+    await move_to_init()
 
     print("\nWithout explicit config, the planner cannot switch branches.")
     print("With kinematic configuration, you control which IK solution is used.")

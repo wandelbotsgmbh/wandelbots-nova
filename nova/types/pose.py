@@ -77,9 +77,14 @@ class Pose(pydantic.BaseModel, Sized):
         Pose(position=Vector3d(x=0.0, y=0.0, z=0.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None)
         >>> Pose(None)
         Pose(position=Vector3d(x=0.0, y=0.0, z=0.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
+        >>> kc = api.models.KinematicConfiguration(kinematic_branch=api.models.KinematicBranch(shoulder_branch='FRONT', elbow_branch='UP', wrist_branch='NO_FLIP'))
+        >>> Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kc).kinematic_configuration == kc
+        True
         """
         # >>> Pose(api.models.TcpOffset(name='Flange', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.Vector3d([4, 5, 6]))))
         # Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
+        # Preserve kinematic_configuration from kwargs when positional args are parsed by _parse_args.
+        # _parse_args only returns position/orientation, so we inject it back before validation.
         kinematic_configuration = kwargs.pop("kinematic_configuration", None)
         if args:
             values = _parse_args(*args)
