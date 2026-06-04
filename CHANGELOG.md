@@ -1,6 +1,51 @@
 # CHANGELOG
 
 
+## v5.2.0 (2026-06-04)
+
+### Features
+
+- Add on-demand robot model downloading from NOVA API (#422)
+  ([#422](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/422),
+  [`38c2279`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/38c227916ffc0194d2d4dd5379ca6835af0091e3))
+
+
+## v5.1.4 (2026-06-03)
+
+### Chores
+
+- **api**: Update wandelbots-api-client to 26.4.0 (#423)
+  ([#423](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/423),
+  [`fe1d72e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fe1d72e0e2d74e7867caf5d7cf9486bbd3a2131b))
+
+
+## v5.1.3 (2026-05-20)
+
+### Bug Fixes
+
+- **NDX-626**: Harden trajectory cursor concurrency handling (#418)
+  ([#418](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/418),
+  [`8cab9ce`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8cab9ceae721bcf7fcddf2b8da85cd3f15eaa345))
+
+
+## v5.1.2 (2026-05-19)
+
+### Bug Fixes
+
+- **NDX-729**: Restrict python-statemachine dependency version (#421)
+  ([#421](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/421),
+  [`d128444`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d1284449138937131d28186a17879cd6fecc7f0b))
+
+
+## v5.1.1 (2026-05-12)
+
+### Chores
+
+- **examples**: Add example for merge trajectories (#419)
+  ([#419](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/419),
+  [`acc6aa4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/acc6aa4d33f73c6aa0bca6837ce488c85d9bba77))
+
+
 ## v5.1.0 (2026-05-06)
 
 ### Features

@@ -2725,7 +2725,7 @@ requires-dist = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "5.1.0"
+version = "5.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
@@ -2825,7 +2825,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11.4,<3" },
     { name = "python-decouple", specifier = "~=3.8" },
     { name = "python-decouple", marker = "extra == 'novax'", specifier = ">=3.8" },
-    { name = "python-statemachine", specifier = ">=2.5.0" },
+    { name = "python-statemachine", specifier = "==3.0.0" },
     { name = "pyyaml", marker = "extra == 'benchmark'", specifier = ">5.3" },
     { name = "pyzmq", marker = "extra == 'policy'", specifier = ">=26.0.0,<27" },
     { name = "requests", marker = "extra == 'benchmark'", specifier = ">=2.32.3" },

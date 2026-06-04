@@ -1,7 +1,6 @@
 import asyncio
 import os
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -18,7 +17,6 @@ from nova_rerun_bridge.blueprint import send_blueprint
 from nova_rerun_bridge.collision_scene import log_collision_setups
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.helper_scripts.code_server_helpers import get_rerun_address
-from nova_rerun_bridge.helper_scripts.download_models import get_project_root
 from nova_rerun_bridge.safety_zones import log_safety_zones
 from nova_rerun_bridge.stream_state import stream_motion_group
 from nova_rerun_bridge.trajectory import TimingMode, log_motion
@@ -29,6 +27,9 @@ class NovaRerunBridge:
 
     This class provides functionality to visualize Nova data in Rerun.
     It handles trajectoy, collision scenes, blueprints and proper cleanup of resources.
+
+    Robot models are downloaded on-demand when needed during trajectory visualization
+    or state streaming via the NOVA API.
 
     Args:
         nova (Nova): Instance of Nova client
@@ -44,7 +45,6 @@ class NovaRerunBridge:
         show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
     ) -> None:
-        self._ensure_models_exist()
         # Store the Nova instance for API calls
         self.nova = nova
         self._streaming_tasks: dict[MotionGroup, asyncio.Task] = {}
@@ -77,12 +77,6 @@ class NovaRerunBridge:
             # Rerun is a best-effort visualization backend. Never fail Nova execution if
             # the viewer cannot be spawned/connected.
             logger.warning(f"Rerun initialization failed; continuing without Rerun viewer: {e}")
-
-    def _ensure_models_exist(self):
-        """Ensure robot models are downloaded"""
-        models_dir = Path(get_project_root()) / "models"
-        if not models_dir.exists() or not list(models_dir.glob("*.glb")):
-            print("Models not found, run update_robot_models() or uv run download-models")
 
     async def setup_blueprint(self) -> None:
         """Configure and send blueprint configuration to Rerun.
