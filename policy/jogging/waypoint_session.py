@@ -65,7 +65,9 @@ class JoggingTimeClock:
             return
         if not self.synced:
             self.synced = True
-            logger.info("Server time sync established (jogger_session_timestamp_ms=%d)", timestamp_ms)
+            logger.info(
+                "Server time sync established (jogger_session_timestamp_ms=%d)", timestamp_ms
+            )
         # Use raw ratio (server_time / client_time) directly.
         # Clamp >= 1.0 since the server is never slower than wall-clock.
         client_ms = self.client_elapsed_ms
@@ -284,15 +286,22 @@ class WaypointJoggingSession:
 
         # Debug: log current robot position vs chunk first step (joint mode only)
         if self._mode == "joint" and self._current_joints is not None and len(steps) > 0:
-            delta = [abs(steps[0][j] - self._current_joints[j]) for j in range(min(3, len(steps[0])))]
+            delta = [
+                abs(steps[0][j] - self._current_joints[j]) for j in range(min(3, len(steps[0])))
+            ]
             max_delta = max(delta) * 57.3
             if max_delta > 1.0:  # only log if > 1 degree
                 logger.warning(
                     "%s: chunk first step is %.1f deg from current position! "
                     "current=[%.4f,%.4f,%.4f] chunk_first=[%.4f,%.4f,%.4f]",
-                    self.motion_group_id, max_delta,
-                    self._current_joints[0], self._current_joints[1], self._current_joints[2],
-                    steps[0][0], steps[0][1], steps[0][2],
+                    self.motion_group_id,
+                    max_delta,
+                    self._current_joints[0],
+                    self._current_joints[1],
+                    self._current_joints[2],
+                    steps[0][0],
+                    steps[0][1],
+                    steps[0][2],
                 )
 
         # Request is built later at yield time.
@@ -343,17 +352,25 @@ class WaypointJoggingSession:
 
     @staticmethod
     def _build_joint_request(
-        timestamps: list[int], steps: list[list[float]],
+        timestamps: list[int],
+        steps: list[list[float]],
     ) -> object:
-        """Build a JointWaypointsRequest from timestamps and joint steps."""
+        """Build a JointWaypointsRequest from timestamps and joint steps.
+
+        The request uses the array-of-structs layout: a single ``waypoints``
+        list where each ``JointWaypoint`` bundles its timestamp with its joints.
+        """
         return api.models.JointWaypointsRequest(
-            timestamps=timestamps,
-            joint_waypoints=[api.models.Joints(root=step) for step in steps],
+            waypoints=[
+                api.models.JointWaypoint(timestamp=ts, joints=api.models.Joints(root=step))
+                for ts, step in zip(timestamps, steps, strict=True)
+            ],
         )
 
     @staticmethod
     def _build_pose_request(
-        timestamps: list[int], steps: list[list[float]],
+        timestamps: list[int],
+        steps: list[list[float]],
     ) -> object:
         """Build a PoseWaypointsRequest from timestamps and TCP pose steps.
 
@@ -366,24 +383,23 @@ class WaypointJoggingSession:
             Vector3d,
         )
 
-        pose_waypoints = []
-        for step in steps:
+        waypoints = []
+        for ts, step in zip(timestamps, steps, strict=True):
             # step = [x, y, z, rx, ry, rz]
             pos = Vector3d(root=list(step[:3]))
             orient = RotationVector(root=list(step[3:6]))
-            pose_waypoints.append(ApiPose(position=pos, orientation=orient))
+            waypoints.append(
+                api.models.PoseWaypoint(
+                    timestamp=ts, pose=ApiPose(position=pos, orientation=orient)
+                )
+            )
 
-        return api.models.PoseWaypointsRequest(
-            timestamps=timestamps,
-            pose_waypoints=pose_waypoints,
-        )
+        return api.models.PoseWaypointsRequest(waypoints=waypoints)
 
     async def start(self) -> None:
         """Start the state stream and jogging loop."""
         if self._running:
-            msg = (
-                f"WaypointJoggingSession for {self.motion_group_id} is already running."
-            )
+            msg = f"WaypointJoggingSession for {self.motion_group_id} is already running."
             raise RuntimeError(msg)
 
         self._running = True
@@ -439,9 +455,7 @@ class WaypointJoggingSession:
         """Continuously read state for guards and observation building."""
         stream = None
         try:
-            stream = self._motion_group.stream_state(
-                response_rate_msecs=self._config.state_rate_ms
-            )
+            stream = self._motion_group.stream_state(response_rate_msecs=self._config.state_rate_ms)
             async for state in stream:
                 self._current_joints = list(state.joint_position)
                 self._current_joint_torques = (
@@ -495,9 +509,7 @@ class WaypointJoggingSession:
             # The server starts its internal timer when the first waypoint
             # request arrives (not on InitializeJoggingRequest).
             yield api.models.ExecuteJoggingRequest(
-                api.models.InitializeJoggingRequest(
-                    motion_group=self._motion_group.id, tcp=tcp
-                )
+                api.models.InitializeJoggingRequest(motion_group=self._motion_group.id, tcp=tcp)
             )
 
             # 2. Main loop: for each server response, either send a new

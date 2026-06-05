@@ -15,7 +15,7 @@ requires-python = ">=3.11"
 readme = "README.md"
 dependencies = [
     "httpx>=0.28.0,<0.29",
-    "wandelbots_api_client @ https://code.wabo.run/api/v4/projects/889/packages/pypi/files/39dc11b480281f6350a7b5ed3755714dd8842dc5700d65445937d49d9d25ac6c/wandelbots_api_client-26.5.0a2345+286e64f5-py3-none-any.whl",
+    "wandelbots_api_client @ https://code.wabo.run/api/v4/projects/889/packages/pypi/files/b7b40f4ddcc12ee75235104e35cbf6eb3db9cff7bd5e41ac1c29efca5d0024f8/wandelbots_api_client-26.5.0a2345+731ad2f5-py3-none-any.whl",
     "websockets>=14.1.0,<15",
     "loguru>=0.7.2,<0.8",
     "pydantic>=2.11.4,<3",
