@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from policy.jogging import JointJogger
-from policy.types import EmergencyStopError, GuardStopError, MotionError
+from policy.types import EmergencyStopError, MotionError
 
 
 def _mock_mg(mg_id: str = "0@ur10e", num_joints: int = 6) -> MagicMock:
@@ -27,6 +27,7 @@ def _mock_session(mg_id: str = "0@ur10e", num_joints: int = 6) -> MagicMock:
     session.has_failed = False
     session.failure_reason = ""
     session.failure_exception = None
+    session.stop_condition_triggered = None
     session.current_state = MagicMock()
     session.current_state.joints = tuple([0.0] * num_joints)
     session.session_elapsed_ms = 0
@@ -107,14 +108,16 @@ class TestErrorPropagation:
                 break
 
     @pytest.mark.asyncio
-    async def test_guard_stop(self):
+    async def test_stop_condition(self):
+        """A fired stop condition ends the loop normally and is reported (no raise)."""
         jogger, (mg,) = TestJointJoggerTarget()._make("0@ur10e")
-        jogger._sessions[mg].has_failed = True
-        jogger._sessions[mg].has_failed = True
-        jogger._sessions[mg].failure_exception = GuardStopError("0@ur10e", "workspace_guard")
-        with pytest.raises(GuardStopError):
-            async for _ in jogger:
-                break
+        jogger._sessions[mg].stop_condition_triggered = "workspace_stop"
+        iterations = 0
+        async for _ in jogger:
+            iterations += 1
+            break
+        assert iterations == 0  # loop ended before yielding
+        assert jogger.stop_condition_triggered == "workspace_stop"
 
     @pytest.mark.asyncio
     async def test_connection_error(self):

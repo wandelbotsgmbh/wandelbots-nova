@@ -91,11 +91,11 @@ class WaypointConfig:
 
 
 @dataclass(slots=True)
-class GuardState:
-    """State passed to safety guard callbacks.
+class StopContext:
+    """State passed to stop-condition callbacks.
 
-    Guards run on every jogging tick. Return ``False`` to stop immediately.
-    Guards must be fast (microseconds) — no network calls or blocking I/O.
+    Stop conditions run on every jogging tick. Return ``True`` to stop the
+    policy. They must be fast (microseconds) — no network calls or blocking I/O.
     Use ``Observation.computed()`` for async data, then read it here.
     """
 
@@ -114,22 +114,8 @@ class GuardState:
     """Intended IO writes (populated at inference time, before IOs fire)."""
 
 
-SafetyGuard = Callable[[GuardState], bool]
-
-
-class GuardStopError(Exception):
-    """Raised when a user-defined safety guard triggers a stop.
-
-    This is specific to the policy executor's safety guard system.
-    Not related to Nova SDK's ``RobotMotionError`` which covers trajectory planning.
-    """
-
-    def __init__(self, motion_group_id: str, guard_name: str) -> None:
-        self.motion_group_id = motion_group_id
-        self.guard_name = guard_name
-        super().__init__(
-            f"Safety guard '{guard_name}' triggered stop for motion group '{motion_group_id}'"
-        )
+StopCondition = Callable[[StopContext], bool]
+"""A fast, synchronous check run on every tick. Return ``True`` to stop the policy."""
 
 
 class EmergencyStopError(Exception):

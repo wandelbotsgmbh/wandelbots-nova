@@ -4,12 +4,14 @@ Provides ``jog_joints()`` and ``jog_tcp()`` — async context managers that
 open jogging sessions. The user sets target positions in a loop; the session
 streams timestamped waypoints to the NOVA jogging API.
 
-Errors are detected automatically and raised through the ``async for`` loop:
+Faults are detected automatically and raised through the ``async for`` loop:
 
 - ``MotionError`` — joint limit or self-collision
 - ``EmergencyStopError`` — e-stop, protective stop, safety violation
-- ``GuardStopError`` — safety guard triggered
 - ``RuntimeError`` — jogging connection lost
+
+A triggered stop condition is not a fault: it ends the loop normally and the
+triggering condition's name is available on ``jogger.stop_condition_triggered``.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ import contextlib
 import logging
 from typing import TYPE_CHECKING, overload
 
-from policy.estop import EstopMonitor, check_estop, check_sessions
+from policy.estop import EstopMonitor, check_estop, check_sessions, triggered_stop_condition
 from policy.jogging.waypoint_session import WaypointJoggingSession
 from policy.types import WaypointConfig
 
@@ -29,7 +31,7 @@ if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
     from nova.types import Pose, RobotState
     from policy.rerun import PolicyRerunLogger
-    from policy.types import SafetyGuard
+    from policy.types import StopCondition
 
 logger = logging.getLogger(__name__)
 
@@ -199,11 +201,24 @@ class _BaseJogger:
         ]
         await _asyncio.gather(*tasks)
 
+    @property
+    def stop_condition_triggered(self) -> str | None:
+        """Name of the stop condition that ended jogging, or ``None``.
+
+        A fired stop condition ends the ``async for`` loop normally (no
+        exception); read this afterwards to learn which one fired.
+        """
+        return triggered_stop_condition(self._sessions)
+
     async def __aiter__(self) -> AsyncIterator[dict[MotionGroup, RobotState] | RobotState]:
-        """Yield current state at ~100Hz. Raises on errors. Use ``break`` to stop."""
+        """Yield current state at ~100Hz. Raises on faults; a stop condition ends
+        the loop normally (see :attr:`stop_condition_triggered`). Use ``break`` to stop.
+        """
         while True:
             check_sessions(self._sessions)
             check_estop(self._estop)
+            if triggered_stop_condition(self._sessions) is not None:
+                return
             s = self.state()
             if s is not None:
                 yield s
@@ -226,7 +241,7 @@ class JointJogger(_BaseJogger):
         motion_groups: list[MotionGroup],
         *,
         config: WaypointConfig | None = None,
-        safety_guards: list[SafetyGuard] | None = None,
+        stop_conditions: list[StopCondition] | None = None,
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
     ) -> None:
         cfg = config or WaypointConfig()
@@ -236,7 +251,7 @@ class JointJogger(_BaseJogger):
                 motion_group=mg,
                 config=cfg,
                 mode="joint",
-                safety_guards=safety_guards,
+                stop_conditions=stop_conditions,
             )
         # Normalize start_joint_position to dict[MotionGroup, list[float]]
         home_dict: dict[MotionGroup, list[float]] | None = None
@@ -312,7 +327,7 @@ class TcpJogger(_BaseJogger):
         motion_groups: dict[MotionGroup, str],
         *,
         config: WaypointConfig | None = None,
-        safety_guards: list[SafetyGuard] | None = None,
+        stop_conditions: list[StopCondition] | None = None,
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
     ) -> None:
         cfg = config or WaypointConfig()
@@ -323,7 +338,7 @@ class TcpJogger(_BaseJogger):
                 config=cfg,
                 tcp=tcp,
                 mode="cartesian",
-                safety_guards=safety_guards,
+                stop_conditions=stop_conditions,
             )
         mg_list = list(motion_groups.keys())
         # Normalize start_joint_position to dict[MotionGroup, list[float]]
@@ -408,7 +423,7 @@ def jog_joints(
     motion_groups: MotionGroup,
     *,
     config: WaypointConfig | None = ...,
-    safety_guards: list[SafetyGuard] | None = ...,
+    stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
 ) -> JointJogger: ...
 
@@ -418,7 +433,7 @@ def jog_joints(
     motion_groups: list[MotionGroup],
     *,
     config: WaypointConfig | None = ...,
-    safety_guards: list[SafetyGuard] | None = ...,
+    stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
 ) -> JointJogger: ...
 
@@ -427,7 +442,7 @@ def jog_joints(
     motion_groups: MotionGroup | list[MotionGroup],
     *,
     config: WaypointConfig | None = None,
-    safety_guards: list[SafetyGuard] | None = None,
+    stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
 ) -> JointJogger:
     """Create a joint position jogger using server-side waypoint jogging.
@@ -435,8 +450,8 @@ def jog_joints(
     Args:
         motion_groups: Single motion group or list for multi-robot control.
         config: Waypoint jogging configuration.
-        safety_guards: Optional callbacks run on every jogging tick.
-            Each receives a ``GuardState`` and must return ``True`` to continue.
+        stop_conditions: Optional callbacks run on every jogging tick.
+            Each receives a ``StopContext`` and returns ``True`` to stop the loop.
         start_joint_position: Joint positions to PTP-move to before starting jogging.
             Single list for one robot, or dict mapping each motion group
             to its start_joint_position joints for multi-robot.
@@ -447,7 +462,6 @@ def jog_joints(
     Raises:
         MotionError: Joint limit or self-collision detected.
         EmergencyStopError: E-stop or protective stop.
-        GuardStopError: A safety guard triggered.
         RuntimeError: Jogging connection lost.
 
     Example::
@@ -461,7 +475,7 @@ def jog_joints(
     return JointJogger(
         motion_groups,
         config=config,
-        safety_guards=safety_guards,
+        stop_conditions=stop_conditions,
         start_joint_position=start_joint_position,
     )
 
@@ -472,7 +486,7 @@ def jog_tcp(
     *,
     tcp: str,
     config: WaypointConfig | None = ...,
-    safety_guards: list[SafetyGuard] | None = ...,
+    stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
 ) -> TcpJogger: ...
 
@@ -482,7 +496,7 @@ def jog_tcp(
     motion_groups: dict[MotionGroup, str],
     *,
     config: WaypointConfig | None = ...,
-    safety_guards: list[SafetyGuard] | None = ...,
+    stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
 ) -> TcpJogger: ...
 
@@ -492,7 +506,7 @@ def jog_tcp(
     *,
     tcp: str = "",
     config: WaypointConfig | None = None,
-    safety_guards: list[SafetyGuard] | None = None,
+    stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
 ) -> TcpJogger:
     """Create a TCP pose jogger using server-side waypoint jogging.
@@ -502,7 +516,8 @@ def jog_tcp(
             ``dict[MotionGroup, str]`` mapping each group to its TCP name.
         tcp: TCP name when passing a single motion group.
         config: Waypoint jogging configuration.
-        safety_guards: Optional callbacks run on every jogging tick.
+        stop_conditions: Optional callbacks run on every jogging tick.
+            Each receives a ``StopContext`` and returns ``True`` to stop the loop.
         start_joint_position: Joint positions to PTP-move to before starting jogging.
             Single list for one robot, or dict mapping each motion group
             to its start joints for multi-robot.
@@ -513,7 +528,6 @@ def jog_tcp(
     Raises:
         MotionError: Joint limit or self-collision detected.
         EmergencyStopError: E-stop or protective stop.
-        GuardStopError: A safety guard triggered.
         RuntimeError: Jogging connection lost.
 
     Example::
@@ -526,12 +540,12 @@ def jog_tcp(
         return TcpJogger(
             motion_groups,
             config=config,
-            safety_guards=safety_guards,
+            stop_conditions=stop_conditions,
             start_joint_position=start_joint_position,
         )
     return TcpJogger(
         {motion_groups: tcp},
         config=config,
-        safety_guards=safety_guards,
+        stop_conditions=stop_conditions,
         start_joint_position=start_joint_position,
     )

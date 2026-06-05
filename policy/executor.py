@@ -18,15 +18,14 @@ from policy.chunking import (
     placement_start_ms,
     trim_chunk,
 )
-from policy.estop import EstopMonitor, check_estop, check_sessions
+from policy.estop import EstopMonitor, check_estop, check_sessions, triggered_stop_condition
 from policy.io import IOStreamManager
 from policy.jogging.waypoint_session import WaypointJoggingSession
 from policy.types import (
     ActionChunk,
     EmergencyStopError,
-    GuardState,
-    GuardStopError,
     MotionError,
+    StopContext,
     WaypointConfig,
 )
 
@@ -36,7 +35,7 @@ if TYPE_CHECKING:
     from policy.policy_client import PolicyClient
     from policy.rerun import PolicyRerunLogger
     from policy.schema import PolicySchema
-    from policy.types import SafetyGuard
+    from policy.types import StopCondition
 
 # Type for bare async policy functions
 _PolicyFn = Callable[[dict[str, Any]], Coroutine[Any, Any, dict[str, float] | ActionChunk]]
@@ -68,7 +67,7 @@ class ExecutionResult:
     """Result of a policy execution run."""
 
     reason: str
-    """Why execution ended: 'timeout' | 'stopped'"""
+    """Why execution ended: 'timeout' | 'stopped' | 'stop condition: <name>'"""
 
     steps: int = 0
     duration_s: float = 0.0
@@ -88,7 +87,7 @@ class PolicyExecutor:
         schema: PolicySchema,
         policy: _PolicyFn | PolicyClient,
         *,
-        safety_guards: list[SafetyGuard] | None = None,
+        stop_conditions: list[StopCondition] | None = None,
         timeout_s: float = 0,
         camera_max_age_s: float = 30.0,
         motion: WaypointConfig | None = None,
@@ -100,7 +99,8 @@ class PolicyExecutor:
         Args:
             schema: Observation/action schema defining robot topology.
             policy: Async callable or PolicyClient that maps observations to actions.
-            safety_guards: Optional list of guard functions checked each jogging tick.
+            stop_conditions: Optional checks run each tick; one returning ``True``
+                stops the run normally (its name appears in ``result.reason``).
             timeout_s: Maximum execution duration in seconds. 0 = no timeout.
             camera_max_age_s: Maximum allowed age of a camera frame before raising.
             motion: Waypoint jogging configuration. Defaults to WaypointConfig().
@@ -132,7 +132,7 @@ class PolicyExecutor:
             self._policy = policy
 
         self._motion: WaypointConfig = motion or WaypointConfig()
-        self._safety_guards = safety_guards or []
+        self._stop_conditions = stop_conditions or []
         self._timeout_s = timeout_s
         self._policy_rate_hz = policy_rate_hz
         self._n_action_steps_cfg = n_action_steps
@@ -187,10 +187,10 @@ class PolicyExecutor:
         :meth:`_run_episode`.
 
         Returns:
-            ExecutionResult on normal termination (timeout, stopped).
+            ExecutionResult on normal termination (timeout, stopped, or a
+            triggered stop condition — its name is in ``result.reason``).
 
         Raises:
-            GuardStopError: A safety guard triggered.
             MotionError: Joint limit or self-collision detected.
             EmergencyStopError: E-stop or protective stop.
             RuntimeError: Connection lost or other error.
@@ -200,7 +200,7 @@ class PolicyExecutor:
         self.status = ExecutorStatus(phase=Phase.CONNECTING, message="Connecting...")
         try:
             await self._run_episode()
-        except (GuardStopError, MotionError, EmergencyStopError):
+        except (MotionError, EmergencyStopError):
             self.status = ExecutorStatus(
                 phase=Phase.ERROR,
                 step=self.status.step,
@@ -231,9 +231,7 @@ class PolicyExecutor:
         connection. Also performs the final status reset and result logging.
         """
         for session in self._sessions.values():
-            with contextlib.suppress(
-                GuardStopError, MotionError, EmergencyStopError, OSError, RuntimeError
-            ):
+            with contextlib.suppress(MotionError, EmergencyStopError, OSError, RuntimeError):
                 await session.stop()
 
         # Wait for pending IO tasks
@@ -269,7 +267,7 @@ class PolicyExecutor:
         and the policy connection are released by :meth:`_cleanup`, which
         ``run`` guarantees runs even if this method throws during setup.
 
-        Exceptions (GuardStopError, MotionError, EmergencyStopError) propagate
+        Exceptions (MotionError, EmergencyStopError) propagate
         to :meth:`run`.
         """
         # Create and start sessions
@@ -320,7 +318,7 @@ class PolicyExecutor:
     async def _execute(self) -> ExecutionResult:
         """Run the observe-act loop until termination.
 
-        Raises GuardStopError, MotionError, EmergencyStopError directly.
+        Raises MotionError, EmergencyStopError directly.
         """
         step = 0
         start_time = time.monotonic()
@@ -367,7 +365,9 @@ class PolicyExecutor:
                 self._all_io_values or None,
             )
             action = self._apply_relative_mode(action, robot_states)
-            self._check_guards_pre_send(action, robot_states)
+            stopped_by = self._check_stop_conditions_pre_send(action, robot_states)
+            if stopped_by is not None:
+                return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
 
             # Rerun: log full action chunk (includes discarded tail for visualization)
             if self._rerun is not None:
@@ -381,6 +381,11 @@ class PolicyExecutor:
             # Check failures — raises directly on error
             check_sessions(self._sessions)
             check_estop(self._estop_monitor)
+
+            # A stop condition firing on a session tick ends the run normally.
+            stopped_by = triggered_stop_condition(self._sessions)
+            if stopped_by is not None:
+                return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
 
             await self._wait_after_send(trimmed, tick_start, start_time, fixed_rate_period)
 
@@ -434,16 +439,17 @@ class PolicyExecutor:
                 result[group_id] = state
         return result
 
-    def _check_guards_pre_send(
+    def _check_stop_conditions_pre_send(
         self, chunk: ActionChunk, robot_states: dict[str, RobotState]
-    ) -> None:
-        """Run safety guards with the intended action before sending.
+    ) -> str | None:
+        """Evaluate stop conditions against the intended action before sending.
 
-        This gives guards visibility into what the policy intends to do
-        (target positions + IO writes) so they can reject before execution.
+        Gives conditions visibility into what the policy intends to do (target
+        positions + IO writes) so they can stop before execution. Returns the
+        name of the first condition that fired (``True``), or ``None``.
         """
-        if not self._safety_guards:
-            return
+        if not self._stop_conditions:
+            return None
 
         for group_id in {*chunk.joints, *chunk.tcp}:
             state = robot_states.get(group_id)
@@ -453,7 +459,7 @@ class PolicyExecutor:
             target_joints = chunk.joints.get(group_id) or chunk.tcp.get(group_id)
             target_ios = chunk.ios.get(group_id) if chunk.ios else None
 
-            ctx = GuardState(
+            ctx = StopContext(
                 state=state,
                 prev_state=None,
                 dt=0.0,
@@ -462,10 +468,10 @@ class PolicyExecutor:
                 target_joints=target_joints,
                 target_ios=target_ios,
             )
-            for guard in self._safety_guards:
-                if not guard(ctx):
-                    guard_name = getattr(guard, "__name__", repr(guard))
-                    raise GuardStopError(group_id, guard_name)
+            for condition in self._stop_conditions:
+                if condition(ctx):
+                    return getattr(condition, "__name__", repr(condition))
+        return None
 
     def _send(self, chunk: ActionChunk) -> None:
         """Send an action chunk to the motion groups.
@@ -524,7 +530,7 @@ class PolicyExecutor:
             motion_group=mg,
             config=self._motion,
             tcp=tcp,
-            safety_guards=self._safety_guards,
+            stop_conditions=self._stop_conditions,
             mode=mode,
         )
 

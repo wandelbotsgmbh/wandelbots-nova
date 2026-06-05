@@ -20,13 +20,13 @@ from policy.io import IOWriter
 from policy.jogging.clock import JoggingTimeClock
 from policy.jogging.session import JoggingStateTracker
 from policy.jogging.waypoints import PendingChunk, make_waypoints_request
-from policy.types import GuardState, GuardStopError, MotionError
+from policy.types import MotionError, StopContext
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from nova.cell.motion_group import MotionGroup
-    from policy.types import JoggingMode, SafetyGuard, ValueType, WaypointConfig
+    from policy.types import JoggingMode, StopCondition, ValueType, WaypointConfig
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +45,13 @@ class WaypointJoggingSession:
         *,
         tcp: str = "",
         mode: JoggingMode = "joint",
-        safety_guards: list[SafetyGuard] | None = None,
+        stop_conditions: list[StopCondition] | None = None,
     ) -> None:
         self._motion_group = motion_group
         self._config = config
         self._tcp = tcp
         self._mode: JoggingMode = mode
-        self._safety_guards = safety_guards or []
+        self._stop_conditions = stop_conditions or []
         self._io_values: dict[str, object] | None = None
         self._io_writer = IOWriter(motion_group)
         self._jog_tracker = JoggingStateTracker(motion_group.id)
@@ -64,9 +64,11 @@ class WaypointJoggingSession:
         self._current_tcp_name: str | None = None
         self._num_joints: int | None = None
 
-        # Safety guard state
+        # Stop-condition state
         self._prev_state: RobotState | None = None
         self._prev_tick_time: float | None = None
+        self._stop_condition: str | None = None
+        """Name of the stop condition that fired (normal stop, not a failure)."""
 
         # Server time synchronization: auto-computes the speed ratio between
         # server clock and client wall-clock, then scales outgoing timestamps
@@ -122,6 +124,15 @@ class WaypointJoggingSession:
     @property
     def has_failed(self) -> bool:
         return self._failed
+
+    @property
+    def stop_condition_triggered(self) -> str | None:
+        """Name of the stop condition that ended the session, or ``None``.
+
+        Set when a stop condition returns ``True``. This is a *normal* stop,
+        not a failure — ``has_failed`` stays ``False``.
+        """
+        return self._stop_condition
 
     @property
     def session_elapsed_ms(self) -> int:
@@ -344,7 +355,7 @@ class WaypointJoggingSession:
                     msg = getattr(response.root, "message", "unknown motion error")
                     raise MotionError(self.motion_group_id, msg)
 
-                self._run_guards()
+                self._check_stop_conditions()
                 self._jog_tracker.check()
 
                 # Wait until a new chunk is available (sleep, don't send junk)
@@ -388,7 +399,7 @@ class WaypointJoggingSession:
             )
         except asyncio.CancelledError:
             pass
-        except (GuardStopError, MotionError) as e:
+        except MotionError as e:
             self._failed = True
             self._failure_reason = str(e)
             self._failure_exception = e
@@ -415,9 +426,14 @@ class WaypointJoggingSession:
         logger.warning("No TCP found for %s", self.motion_group_id)
         return ""
 
-    def _run_guards(self) -> None:
-        """Run safety guards with current state."""
-        if not self._safety_guards:
+    def _check_stop_conditions(self) -> None:
+        """Evaluate stop conditions with the current state.
+
+        A condition returning ``True`` ends the session normally: it records the
+        condition's name and stops the loop. This is *not* a failure — the
+        executor turns the recorded name into an ``ExecutionResult`` reason.
+        """
+        if not self._stop_conditions:
             return
 
         current_state = self._build_robot_state()
@@ -427,18 +443,23 @@ class WaypointJoggingSession:
         now = time.monotonic()
         dt = now - self._prev_tick_time if self._prev_tick_time is not None else 0.01
 
-        ctx = GuardState(
+        ctx = StopContext(
             state=current_state,
             prev_state=self._prev_state,
             dt=dt,
             motion_group_id=self.motion_group_id,
             io_values=self._io_values,
         )
-        for guard in self._safety_guards:
-            if not guard(ctx):
-                guard_name = getattr(guard, "__name__", repr(guard))
+        for condition in self._stop_conditions:
+            if condition(ctx):
+                self._stop_condition = getattr(condition, "__name__", repr(condition))
                 self._running = False
-                raise GuardStopError(self.motion_group_id, guard_name)
+                logger.info(
+                    "Stop condition '%s' triggered for %s",
+                    self._stop_condition,
+                    self.motion_group_id,
+                )
+                return
 
         self._prev_state = current_state
         self._prev_tick_time = now

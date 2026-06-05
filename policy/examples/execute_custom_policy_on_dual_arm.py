@@ -32,14 +32,13 @@ from policy import (
     ActionChunk,
     BoolMapping,
     EmergencyStopError,
-    GuardStopError,
     MotionError,
     Observation,
     PolicyExecutor,
     PolicySchema,
     WebRTCCameras,
 )
-from policy.types import GuardState
+from policy.types import StopContext
 
 HOME_LEFT = (1.169, -0.733, 1.745, -3.054, 0.872, 2.094)
 HOME_RIGHT = (-1.169, -2.3911, -1.8675, 0.0, -0.872, -2.094)
@@ -85,9 +84,7 @@ async def mock_policy(obs: dict[str, Any]) -> ActionChunk:
                 phase = role_phase + (i + 1) * 0.8
                 amplitude = 0.15 if i in (0, 1, 2) else 0.08
                 freq = 0.2 + (i + 1) * 0.03
-                joint_targets.append(
-                    home[i] + amplitude * math.sin(2 * math.pi * freq * t + phase)
-                )
+                joint_targets.append(home[i] + amplitude * math.sin(2 * math.pi * freq * t + phase))
             steps.append(joint_targets)
         joints[mg_id] = steps
 
@@ -113,8 +110,10 @@ async def count_steps(obs: dict[str, Any]) -> dict[str, Any]:
     _step_counter += 1
     if _start_time is None:
         import time
+
         _start_time = time.monotonic()
     import time
+
     elapsed = time.monotonic() - _start_time
     return {"step": _step_counter, "elapsed_s": elapsed}
 
@@ -136,23 +135,21 @@ async def log_action(action: dict[str, Any]) -> None:
         print(f"  [action logger] step={_action_count}")
 
 
-def workspace_guard(ctx: GuardState) -> bool:
-    return True  # disabled — virtual robot workspace varies
-
-
-def speed_guard(ctx: GuardState) -> bool:
+def stop_on_speed(ctx: StopContext) -> bool:
+    """Stop if the TCP moves faster than 5 m/s (runaway guard)."""
     if ctx.prev_state is None or ctx.dt < 0.005:
-        return True
+        return False
     p0 = ctx.prev_state.pose.position
     p1 = ctx.state.pose.position
     dist = sum((a - b) ** 2 for a, b in zip(p1, p0, strict=False)) ** 0.5
-    return dist / ctx.dt < 5000.0
+    return dist / ctx.dt > 5000.0
 
 
-def io_guard(ctx: GuardState) -> bool:
+def stop_on_io(ctx: StopContext) -> bool:
+    """Stop when the operator/PLC raises digital_in[0]."""
     if ctx.io_values is None:
-        return True
-    return ctx.io_values.get("digital_in[0]") is not True
+        return False
+    return ctx.io_values.get("digital_in[0]") is True
 
 
 async def move_to_home(mg1, mg2) -> None:
@@ -166,12 +163,16 @@ async def move_to_home(mg1, mg2) -> None:
         [joint_ptp(HOME_RIGHT, settings=fast), joint_ptp(FIRST_RIGHT, settings=fast)], tcp2
     )
     await asyncio.gather(
-        mg1.execute(t1, tcp1, actions=[
-            joint_ptp(HOME_LEFT, settings=fast), joint_ptp(FIRST_LEFT, settings=fast)
-        ]),
-        mg2.execute(t2, tcp2, actions=[
-            joint_ptp(HOME_RIGHT, settings=fast), joint_ptp(FIRST_RIGHT, settings=fast)
-        ]),
+        mg1.execute(
+            t1,
+            tcp1,
+            actions=[joint_ptp(HOME_LEFT, settings=fast), joint_ptp(FIRST_LEFT, settings=fast)],
+        ),
+        mg2.execute(
+            t2,
+            tcp2,
+            actions=[joint_ptp(HOME_RIGHT, settings=fast), joint_ptp(FIRST_RIGHT, settings=fast)],
+        ),
     )
 
 
@@ -208,10 +209,12 @@ async def dual_arm_policy(ctx: nova.ProgramContext):
         Observation.joint_positions("right_joints", source=mg2),
         Observation.tcp("left_tcp", source=mg1, tcp="gripper"),
         Observation.tcp("right_tcp", source=mg2, tcp="gripper"),
-        Observation.io("left_gripper", source=mg1, io="digital_out[0]",
-                       mapping=BoolMapping(on=100.0)),
-        Observation.io("right_gripper", source=mg2, io="digital_out[0]",
-                       mapping=BoolMapping(on=100.0)),
+        Observation.io(
+            "left_gripper", source=mg1, io="digital_out[0]", mapping=BoolMapping(on=100.0)
+        ),
+        Observation.io(
+            "right_gripper", source=mg2, io="digital_out[0]", mapping=BoolMapping(on=100.0)
+        ),
         Observation.io("left_sensor", source=mg1, io="digital_in[0]", action=False),
         # Computed observations add custom data each step
         Observation.computed(count_steps),
@@ -219,11 +222,28 @@ async def dual_arm_policy(ctx: nova.ProgramContext):
 
     if CAMERA_SERVER:
         cameras = WebRTCCameras(api_url=CAMERA_SERVER)
-        observations.extend([
-            Observation.image("cam_1", source=cameras.device("World_Robot_Robot_0_R__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_right_wrist_camera_env0")),
-            Observation.image("cam_2", source=cameras.device("World_Robot_Robot_0_L__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_left_wrist_camera_env0")),
-            Observation.image("cam_3", source=cameras.device("World_EnvAssets_rack_env0__3_00_intel_d456_screw_adapter_asm_tn__03_00_intel_d456_screw_adapterasm_io0_D456_Solid_context_camera_rack_env0")),
-        ])
+        observations.extend(
+            [
+                Observation.image(
+                    "cam_1",
+                    source=cameras.device(
+                        "World_Robot_Robot_0_R__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_right_wrist_camera_env0"
+                    ),
+                ),
+                Observation.image(
+                    "cam_2",
+                    source=cameras.device(
+                        "World_Robot_Robot_0_L__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_left_wrist_camera_env0"
+                    ),
+                ),
+                Observation.image(
+                    "cam_3",
+                    source=cameras.device(
+                        "World_EnvAssets_rack_env0__3_00_intel_d456_screw_adapter_asm_tn__03_00_intel_d456_screw_adapterasm_io0_D456_Solid_context_camera_rack_env0"
+                    ),
+                ),
+            ]
+        )
 
     schema = PolicySchema(
         observations=observations,
@@ -234,7 +254,7 @@ async def dual_arm_policy(ctx: nova.ProgramContext):
     executor = PolicyExecutor(
         schema,
         mock_policy,
-        safety_guards=[workspace_guard, speed_guard, io_guard],
+        stop_conditions=[stop_on_speed, stop_on_io],
         timeout_s=10.0,
         policy_rate_hz=20,
         n_action_steps=8,
@@ -243,9 +263,9 @@ async def dual_arm_policy(ctx: nova.ProgramContext):
     print("Running policy for 10s...")
     try:
         result = await executor.run()
-        print(f"Done: reason={result.reason} steps={result.steps} duration={result.duration_s:.1f}s")
-    except GuardStopError as e:
-        print(f"Safety guard triggered: {e.guard_name}")
+        print(
+            f"Done: reason={result.reason} steps={result.steps} duration={result.duration_s:.1f}s"
+        )
     except MotionError as e:
         print(f"Motion error: {e}")
     except EmergencyStopError as e:

@@ -2,9 +2,7 @@
 
 > **⚠️ EXPERIMENTAL** — This package is under active development and not ready for production use. Expect breaking changes between releases.
 
-Waypoint jogging for executing learned policies (imitation learning, reinforcement learning) on industrial robots via [Wandelbots NOVA](https://wandelbots.com).
-
-Streams timestamped joint or TCP pose waypoints through the NOVA Jogging API. The server handles velocity profiling, interpolation, and limits internally.
+Execute learned policies (imitation learning, reinforcement learning) on industrial robots via [Wandelbots NOVA](https://wandelbots.com).
 
 ## Architecture
 
@@ -18,8 +16,7 @@ flowchart LR
 
     subgraph IPC["IPC (at the robot)"]
         Executor["PolicyExecutor"]
-        Jogging["NOVA Jogging API\n(waypoint mode)"]
-        Safety["Safety guards"]
+        Motion["NOVA Motion API"]
         Cameras["WebRTC cameras"]
         Robot["Robot"]
     end
@@ -30,29 +27,18 @@ flowchart LR
 
     Policy <-->|"ZMQ / HTTP / custom"| Executor
     WebRTC <-->|"WebRTC"| Cameras
-    Executor --> Jogging --> Robot
-    Executor --> Safety
+    Executor --> Motion --> Robot
     Cameras --> Executor
 ```
 
 The policy is a **stateless pure function**: `obs → actions`. It never controls lifecycle.
-The executor decides **when** to start, **when** to stop, and handles all safety.
+The executor decides **when** to start and **when** to stop, and runs the software guards.
 
 ## Install
 
 ```bash
 uv add wandelbots-nova
 ```
-
-For Rerun visualization (3D robot meshes, TCP trails, camera images, joint
-timeseries), install the optional `nova-rerun-bridge` extra:
-
-```bash
-uv add wandelbots-nova --extra nova-rerun-bridge
-```
-
-Then run `uv run download-models` once to fetch the robot meshes. See
-[Rerun visualization](#rerun-visualization) below.
 
 ## Quick Start
 
@@ -124,14 +110,14 @@ The policy returns the same keys with target values. Joints are sent as `JointWa
 
 ### Cameras
 
-Cameras are managed by the **Camera App** on the NOVA instance — the user starts and stops camera streams via the Camera App UI. The policy client only opens a WebRTC session to receive frames from an already-running stream. If `width`, `height`, or `fps` are specified, they are validated against the stream the Camera App provides and an exception is raised on mismatch.
+Cameras are managed by the **Camera App** on the NOVA instance — the user starts and stops camera streams via the Camera App UI. The policy client only opens a WebRTC session to receive frames from an already-running stream. Pass `resize=(width, height)` to scale every frame to the size your policy expects on read.
 
 ```python
 from policy import Observation, WebRTCCameras
 
 # Point to the camera server running on your NOVA instance.
-# NOVA must already be streaming at the expected resolution/fps.
-cameras = WebRTCCameras(api_url="http://<nova-host>:8011/webrtc-streamer", width=640, height=480, fps=15)
+# Frames are resized to the policy's expected input size on read.
+cameras = WebRTCCameras(api_url="http://<nova-host>:8011/webrtc-streamer", resize=(224, 224))
 
 schema = PolicySchema(observations=[
     Observation.joint_positions("arm", source=mg),
@@ -142,63 +128,53 @@ schema = PolicySchema(observations=[
 
 Images arrive as `numpy.ndarray` (H×W×3, uint8, RGB) in the observation dict.
 
-### Safety Guards
+### Stop conditions
 
-Guards see both the current robot state and the **intended action** before it executes.
-Use them to reject dangerous targets, block IO writes, or stop execution when
-an external signal (e.g. a sensor IO) indicates the task is done — policies
-typically don't report "finished", so guards are the natural way to end an episode:
+Policies run open-ended — they don't signal "finished". A stop condition is a fast,
+synchronous check that runs on every tick; returning `True` ends the run normally
+(its name appears in `result.reason`). The typical use in an industrial cell is an
+IO stop signal — end the episode when an operator button or PLC sets an input:
 
 ```python
-from policy import GuardState
+from policy import StopContext
 
-def workspace_guard(ctx: GuardState) -> bool:
-    """Reject if policy would move joint 2 past 2.8 rad."""
-    if ctx.target_joints:
-        for step in ctx.target_joints:
-            if abs(step[1]) > 2.8:
-                return False
-    return True
+def stop_on_io(ctx: StopContext) -> bool:
+    """Stop the policy when digital_in[3] goes high."""
+    return bool(ctx.io_values and ctx.io_values.get("digital_in[3]"))
 
-def io_guard(ctx: GuardState) -> bool:
-    """Block writes to safety-critical output."""
-    if ctx.target_ios and ctx.target_ios.get("digital_out[7]"):
-        return False
-    return True
-
-def task_done_guard(ctx: GuardState) -> bool:
-    """Stop when sensor detects object placed."""
-    if ctx.io_values and ctx.io_values.get("digital_in[3]"):
-        return False
-    return True
-
-executor = PolicyExecutor(schema, policy, safety_guards=[workspace_guard, io_guard, task_done_guard])
+executor = PolicyExecutor(schema, policy, stop_conditions=[stop_on_io])
+result = await executor.run()
+# result.reason == "stop condition: stop_on_io"
 ```
 
-Guards must be fast (no network calls). Use `Observation.computed()` for async data.
+Stop conditions must be fast (no network calls). Use `Observation.computed()` for async data.
+
+> These are **software** stop conditions running in the executor loop — not a safety system. The robot can still move fast and a stop condition has no notion of its braking distance. For production, rely on the safety zones and protective stops configured on the robot controller.
 
 ### Execution lifecycle
 
-| Trigger                      | Behavior                                    |
-| ---------------------------- | ------------------------------------------- |
-| `timeout_s` expires          | Returns `ExecutionResult(reason="timeout")` |
-| `executor.stop()` called     | Returns `ExecutionResult(reason="stopped")` |
-| Safety guard returns `False` | Raises `GuardStopError`                     |
-| E-stop / protective stop     | Raises `EmergencyStopError`                 |
-| Self-collision / joint limit | Raises `MotionError`                        |
-| Connection lost              | Raises `RuntimeError`                       |
+| Trigger                      | Behavior                                          |
+| ---------------------------- | ------------------------------------------------- |
+| `timeout_s` expires          | Returns `ExecutionResult(reason="timeout")`       |
+| `executor.stop()` called     | Returns `ExecutionResult(reason="stopped")`       |
+| Stop condition returns `True`| Returns `ExecutionResult(reason="stop condition: <name>")` |
+| E-stop / protective stop     | Raises `EmergencyStopError`                       |
+| Self-collision / joint limit | Raises `MotionError`                              |
+| Connection lost              | Raises `RuntimeError`                             |
 
 ## Motion Control
 
 Action chunks are sent to the NOVA Jogging API as **timestamped waypoints**. The server handles velocity profiling, interpolation, and servo control internally.
 
 ```python
-from policy import WaypointConfig, PolicyExecutor
+from policy import PolicyExecutor
 
-executor = PolicyExecutor(schema, policy, motion=WaypointConfig(
-    n_action_steps=8,       # send only first 8 of 16 predicted steps
-    policy_rate_hz=20.0,    # call policy at 20Hz (overlapping chunks)
-))
+executor = PolicyExecutor(
+    schema,
+    policy,
+    n_action_steps=8,       # send only the first 8 of 16 predicted steps
+    policy_rate_hz=20.0,    # query the policy at 20 Hz (overlapping chunks)
+)
 ```
 
 The executor operates as a **receding horizon controller**: at each tick it queries the policy for a new chunk and sends it to the server. Each chunk overlaps with the previous one — the server replaces waypoints older than the new chunk's first timestamp. This provides smooth, continuous motion even with variable inference latency.

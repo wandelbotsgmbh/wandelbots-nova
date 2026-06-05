@@ -38,6 +38,7 @@ def _fake_session() -> MagicMock:
     session.has_failed = False
     session.failure_reason = ""
     session.failure_exception = None
+    session.stop_condition_triggered = None
     session.session_elapsed_ms = 0
     session.start = AsyncMock()
     session.stop = AsyncMock()
@@ -204,9 +205,9 @@ def test_apply_relative_mode_absolute_passthrough():
 
 
 @pytest.mark.asyncio
-async def test_guard_rejects_action_before_execution():
-    """Guard sees target_joints and target_ios BEFORE send. Rejection prevents motion + IO."""
-    from policy.types import ActionChunk, GuardState, GuardStopError
+async def test_stop_condition_halts_before_execution():
+    """A stop condition sees target_joints/target_ios BEFORE send and ends the run normally."""
+    from policy.types import ActionChunk, StopContext
 
     s = _schema()
     sent_chunks: list[ActionChunk] = []
@@ -219,16 +220,16 @@ async def test_guard_rejects_action_before_execution():
             ios={"0@ur10e": {"digital_out[0]": True}},
         )
 
-    # Guard rejects if any target joint > 5.0
-    def limit_guard(ctx: GuardState) -> bool:
+    # Stop if any target joint exceeds 5.0
+    def limit_guard(ctx: StopContext) -> bool:
         if ctx.target_joints:
             for step in ctx.target_joints:
                 if any(j > 5.0 for j in step):
-                    return False
-        return True
+                    return True
+        return False
 
     executor = PolicyExecutor(
-        s, policy, motion=WaypointConfig(), timeout_s=5.0, safety_guards=[limit_guard]
+        s, policy, motion=WaypointConfig(), timeout_s=5.0, stop_conditions=[limit_guard]
     )
 
     with (
@@ -251,20 +252,19 @@ async def test_guard_rejects_action_before_execution():
         mock_session_cls.return_value = session
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
 
-        with pytest.raises(GuardStopError) as exc_info:
-            await executor.run()
+        result = await executor.run()
 
-    # Guard triggered
-    assert exc_info.value.guard_name == "limit_guard"
-    # Nothing was sent — guard blocked before execution
+    # Stop condition triggered → normal stop naming the condition
+    assert result.reason == "stop condition: limit_guard"
+    # Nothing was sent — the condition stopped before execution
     assert sent_chunks == []
     assert io_writes == []
 
 
 @pytest.mark.asyncio
-async def test_guard_sees_target_ios_before_firing():
-    """Guard can inspect intended IO writes and reject before they fire."""
-    from policy.types import ActionChunk, GuardState, GuardStopError
+async def test_stop_condition_sees_target_ios():
+    """A stop condition can inspect intended IO writes and stop before they fire."""
+    from policy.types import ActionChunk, StopContext
 
     s = _schema()
 
@@ -274,13 +274,13 @@ async def test_guard_sees_target_ios_before_firing():
             ios={"0@ur10e": {"digital_out[7]": True}},  # forbidden output
         )
 
-    def io_guard(ctx: GuardState) -> bool:
+    def io_guard(ctx: StopContext) -> bool:
         if ctx.target_ios and ctx.target_ios.get("digital_out[7]"):
-            return False  # block writes to safety output
-        return True
+            return True  # stop on forbidden output
+        return False
 
     executor = PolicyExecutor(
-        s, policy, motion=WaypointConfig(), timeout_s=5.0, safety_guards=[io_guard]
+        s, policy, motion=WaypointConfig(), timeout_s=5.0, stop_conditions=[io_guard]
     )
 
     with (
@@ -292,10 +292,9 @@ async def test_guard_sees_target_ios_before_firing():
         mock_session_cls.return_value = session
         mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
 
-        with pytest.raises(GuardStopError) as exc_info:
-            await executor.run()
+        result = await executor.run()
 
-    assert exc_info.value.guard_name == "io_guard"
+    assert result.reason == "stop condition: io_guard"
     # IO was never written
     session.write_ios.assert_not_awaited()
 

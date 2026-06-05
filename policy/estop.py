@@ -14,6 +14,9 @@ from policy._sdk import get_api_gateway, get_cell, get_controller_id
 from policy.types import EmergencyStopError
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from typing import Any
+
     from nova.cell.motion_group import MotionGroup
     from policy.jogging.waypoint_session import WaypointJoggingSession
 
@@ -35,11 +38,13 @@ _OPERATIONAL_SAFETY_STATES = frozenset(
 # ---------------------------------------------------------------------------
 
 
-def check_sessions(sessions: dict[object, WaypointJoggingSession]) -> None:
+def check_sessions(sessions: Mapping[Any, WaypointJoggingSession]) -> None:
     """Check all sessions for failures. Re-raises the original exception.
 
+    Stop conditions are *not* failures — they end the run normally; see
+    :func:`triggered_stop_condition`.
+
     Raises:
-        GuardStopError: A safety guard triggered.
         MotionError: Joint limit, self-collision, or singularity.
         RuntimeError: Jogging connection lost or unknown failure.
     """
@@ -50,6 +55,19 @@ def check_sessions(sessions: dict[object, WaypointJoggingSession]) -> None:
         if exc is not None:
             raise exc
         raise RuntimeError(session.failure_reason or "unknown session failure")
+
+
+def triggered_stop_condition(sessions: Mapping[Any, WaypointJoggingSession]) -> str | None:
+    """Return the name of the first stop condition that fired, else ``None``.
+
+    A fired stop condition ends the run normally (no exception); the caller
+    turns this into ``ExecutionResult`` with the name in its reason.
+    """
+    for session in sessions.values():
+        name = session.stop_condition_triggered
+        if name is not None:
+            return name
+    return None
 
 
 def check_estop(monitor: EstopMonitor | None) -> None:
