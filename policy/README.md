@@ -44,6 +44,16 @@ The executor decides **when** to start, **when** to stop, and handles all safety
 uv add wandelbots-nova
 ```
 
+For Rerun visualization (3D robot meshes, TCP trails, camera images, joint
+timeseries), install the optional `nova-rerun-bridge` extra:
+
+```bash
+uv add wandelbots-nova --extra nova-rerun-bridge
+```
+
+Then run `uv run download-models` once to fetch the robot meshes. See
+[Rerun visualization](#rerun-visualization) below.
+
 ## Quick Start
 
 A policy is just an async function: observations in, actions out.

@@ -43,6 +43,7 @@ class PolicyRerunLogger:
         """Fetch DH parameters, create robot visualizers, and send blueprint."""
         try:
             from nova_rerun_bridge.dh_robot import DHRobot  # noqa: PLC0415
+            from nova_rerun_bridge.model_loader import load_model_data  # noqa: PLC0415
             from nova_rerun_bridge.robot_visualizer import RobotVisualizer  # noqa: PLC0415
 
             import rerun as rr  # noqa: PLC0415
@@ -59,6 +60,7 @@ class PolicyRerunLogger:
             for mg in self._motion_groups:
                 description = await mg.get_description()
                 model = await mg.get_model()
+                model_data = await load_model_data(model, mg._api_client)
                 mounting = description.mounting or api.models.Pose(
                     position=api.models.Vector3d([0, 0, 0]),
                     orientation=api.models.RotationVector([0, 0, 0]),
@@ -92,7 +94,7 @@ class PolicyRerunLogger:
                     static_transform=False,
                     base_entity_path=mg.id,
                     albedo_factor=[0, 255, 100],
-                    motion_group_model=model,
+                    model_data=model_data,
                 )
                 self._tcp_trail[mg.id] = []
 
