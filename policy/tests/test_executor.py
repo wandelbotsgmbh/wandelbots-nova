@@ -358,3 +358,109 @@ def test_rtc_enabled_with_overlapping_mode_accepted():
 
     # Should not raise.
     PolicyExecutor(s, policy, motion=WaypointConfig(), policy_rate_hz=20)
+
+
+# ---------------------------------------------------------------------------
+# Integration tests — drive a real PolicyExecutor against a live NOVA instance.
+#
+# These self-provision a virtual UR controller (so they don't depend on any
+# particular robot existing) and run the full pipeline end to end:
+# schema -> executor -> waypoint jogging session -> NOVA motion API -> state
+# stream. They require NOVA_API / NOVA_ACCESS_TOKEN and are skipped unless run
+# with `-m integration`.
+# ---------------------------------------------------------------------------
+
+
+async def _ensure_ur10e(nova_instance, name: str):
+    """Create (or reuse) a virtual UR10e and return its controller."""
+    from nova import api
+    from nova.cell import virtual_controller
+
+    cell = nova_instance.cell()
+    return await cell.ensure_controller(
+        virtual_controller(
+            name=name,
+            manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+            type="universalrobots-ur10e",
+        )
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_executor_runs_policy_against_real_robot():
+    """End to end: a hold-position policy runs on a real robot until timeout.
+
+    Proves the whole executor pipeline works against a live instance — the
+    schema resolves the motion group, the jogging session streams waypoints to
+    the NOVA motion API, the robot moves, and state streams back. The policy
+    holds the start pose with a tiny sinusoid so there is genuine motion.
+    """
+    import math
+
+    from nova import Nova
+    from policy.types import ActionChunk
+
+    async with Nova() as nova_instance:
+        controller = await _ensure_ur10e(nova_instance, "ur10e-policy-exec")
+        async with controller[0] as mg:
+            home = list(await mg.joints())
+
+            async def hold_with_wiggle(obs):
+                # 8-step chunk at 50 ms: small sine on joint 0 around home.
+                elapsed = obs.get("elapsed_s", 0.0)
+                steps = []
+                for i in range(8):
+                    t = elapsed + i * 0.05
+                    target = list(home)
+                    target[0] = home[0] + 0.05 * math.sin(2 * math.pi * 0.3 * t)
+                    steps.append(target)
+                return ActionChunk(joints={mg.id: steps}, dt_ms=50.0)
+
+            schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
+            executor = PolicyExecutor(schema, hold_with_wiggle, timeout_s=2.0)
+
+            result = await executor.run()
+
+    assert result.reason == "timeout"
+    assert result.steps > 0
+    assert result.last_state is not None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_stop_condition_ends_real_run_normally():
+    """A stop condition fired during a live run ends the run normally.
+
+    Against a real instance, the condition is evaluated every loop iteration;
+    after a few ticks it returns True and the run ends with the condition's
+    name in result.reason (no exception, no failure).
+    """
+    from nova import Nova
+    from policy.types import ActionChunk, StopContext
+
+    async with Nova() as nova_instance:
+        controller = await _ensure_ur10e(nova_instance, "ur10e-policy-stop")
+        async with controller[0] as mg:
+            home = list(await mg.joints())
+
+            async def hold(obs):
+                return ActionChunk(joints={mg.id: [list(home)]})
+
+            ticks = {"n": 0}
+
+            def stop_after_a_few_ticks(ctx: StopContext) -> bool:
+                ticks["n"] += 1
+                return ticks["n"] >= 5
+
+            schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
+            executor = PolicyExecutor(
+                schema,
+                hold,
+                stop_conditions=[stop_after_a_few_ticks],
+                timeout_s=10.0,
+            )
+
+            result = await executor.run()
+
+    assert result.reason == "stop condition: stop_after_a_few_ticks"
