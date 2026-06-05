@@ -299,6 +299,45 @@ async def test_stop_condition_sees_target_ios():
     session.write_ios.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_stop_condition_triggered_on_session_tick_ends_run_normally():
+    """A condition that fires on a session tick (after a chunk was sent) ends
+    the run normally, naming the condition in result.reason.
+
+    Unlike the pre-send checks above, this covers the path where a stop
+    condition is evaluated against live robot state *inside* the jogging
+    session and reported back via session.stop_condition_triggered.
+    """
+    s = _schema()
+
+    async def policy(obs):
+        return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
+
+    executor = PolicyExecutor(s, policy, motion=WaypointConfig(), timeout_s=5.0)
+
+    with (
+        patch("policy.executor.WaypointJoggingSession") as mock_session_cls,
+        patch("policy.executor.EstopMonitor") as mock_estop,
+    ):
+        session = _fake_session()
+        session.stop_condition_triggered = None
+
+        # The condition fires once the first chunk reaches the session.
+        def fire_after_send(*args, **kwargs):
+            session.stop_condition_triggered = "operator_stop"
+
+        session.update_chunk = MagicMock(side_effect=fire_after_send)
+
+        mock_session_cls.return_value = session
+        mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
+
+        result = await executor.run()
+
+    assert result.reason == "stop condition: operator_stop"
+    # The chunk was sent before the condition fired — this is a tick-time stop.
+    session.update_chunk.assert_called()
+
+
 def test_rtc_enabled_with_wait_for_chunk_mode_rejected():
     """RTC + policy_rate_hz<0 silently drops the seam backdate — reject it."""
     s = _schema()
