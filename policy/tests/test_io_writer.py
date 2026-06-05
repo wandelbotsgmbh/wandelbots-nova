@@ -85,33 +85,31 @@ async def test_value_type_dispatch_matches_core():
 
 
 @pytest.mark.asyncio
-async def test_atomic_multi_key_write():
-    """Concurrent writes should not interleave keys.
+async def test_concurrent_writes_are_serialized_not_interleaved():
+    """The per-instance lock serializes writes so they never overlap.
 
-    Two write() calls with overlapping keys should each write all their
-    keys atomically (the lock covers the whole call, not per-key).
+    IOAccess writes one key per API call, so without the lock two concurrent
+    write() calls could interleave and leave the outputs in a mixed state.
+    Here we assert the real guarantee directly: at most one write() is ever in
+    flight at the API at a time.
     """
     mg = _mock_mg({"key_a": _BOOL, "key_b": _BOOL})
-    call_log = []
+    in_flight = 0
+    max_in_flight = 0
 
-    async def record_call(**kwargs):
-        # Record the IO values written in this call
-        io_values = kwargs.get("io_value", [])
-        call_log.append([v.io for v in io_values])
-        await asyncio.sleep(0.01)  # Simulate API latency
+    async def record_call(**_kwargs):
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        await asyncio.sleep(0.01)  # hold the API "open" to expose any overlap
+        in_flight -= 1
 
     mg._api_client.controller_ios_api.set_output_values = AsyncMock(side_effect=record_call)
     writer = IOWriter(mg)
 
-    # Launch two concurrent writes
     await asyncio.gather(
         writer.write({"key_a": True, "key_b": False}),
         writer.write({"key_a": False, "key_b": True}),
     )
 
-    # Both keys should eventually be written
-    all_keys = set()
-    for call in call_log:
-        all_keys.update(call)
-    assert "key_a" in all_keys
-    assert "key_b" in all_keys
+    assert max_in_flight == 1  # writes were serialized, never overlapping

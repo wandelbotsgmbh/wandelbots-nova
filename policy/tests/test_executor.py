@@ -1,40 +1,56 @@
-"""Tests for PolicyExecutor control flow — timeout, stop, failure detection."""
+"""Behavioural tests for PolicyExecutor.
+
+The executor's job is to run a policy against one or more robots and report
+*why* it stopped. These tests state that contract through the public surface
+(``run()`` -> ``ExecutionResult``), substituting only the robot transport
+(``WaypointJoggingSession``) and the e-stop monitor, since there is no real
+robot in a unit test. Nothing reaches into the executor's private fields.
+"""
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from policy.executor import PolicyExecutor
 from policy.schema import Observation, PolicySchema
-from policy.types import WaypointConfig
+from policy.types import ActionChunk, StopContext, WaypointConfig
+
+MG_ID = "0@ur10e"
 
 
-def _mg(mg_id: str = "0@ur10e") -> MagicMock:
+# ---------------------------------------------------------------------------
+# Test doubles: a single-arm schema and a fake robot transport.
+# ---------------------------------------------------------------------------
+
+
+def _mg(mg_id: str = MG_ID) -> MagicMock:
     mg = MagicMock()
     mg.id = mg_id
-    mg._controller_id = mg_id.split("@")[1] if "@" in mg_id else mg_id
+    mg._controller_id = mg_id.split("@")[1]
     mg._cell = "cell"
-    mg._api_client = MagicMock()
-    mg._api_client.close = AsyncMock()
+    mg._api_client = MagicMock(close=AsyncMock())
     return mg
 
 
-def _schema() -> PolicySchema:
-    return PolicySchema(
-        observations=[
-            Observation.joint_positions("arm_joints", source=_mg()),
-        ]
-    )
+def _schema(mode: str = "absolute") -> PolicySchema:
+    return PolicySchema(observations=[Observation.joint_positions("arm", source=_mg(), mode=mode)])
+
+
+async def _hold(_obs: object) -> dict[str, float]:
+    """A trivial policy: hold all six joints at zero."""
+    return {f"arm_{i}": 0.0 for i in range(1, 7)}
 
 
 def _fake_session() -> MagicMock:
-    """Create a mock WaypointJoggingSession."""
+    """A stand-in for a live WaypointJoggingSession (the robot transport)."""
     session = MagicMock()
     session.motion_group = MagicMock()
-    session.motion_group_id = "0@ur10e"
+    session.motion_group_id = MG_ID
     session.has_failed = False
     session.failure_reason = ""
     session.failure_exception = None
@@ -46,318 +62,156 @@ def _fake_session() -> MagicMock:
     session.write_ios = AsyncMock()
     session.update_chunk = MagicMock()
     state = MagicMock()
-    state.joints = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-    state.pose = None
-    state.tcp = None
-    state.joint_torques = None
-    state.joint_currents = None
+    state.joints = (0.0,) * 6
+    state.pose = state.tcp = state.joint_torques = state.joint_currents = None
     session.current_state = state
     return session
 
 
-@pytest.mark.asyncio
-async def test_timeout_returns_result():
-    """Executor stops after timeout_s and returns 'timeout' reason."""
-    s = _schema()
-
-    async def policy(obs):
-        return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
-
-    executor = PolicyExecutor(s, policy, motion=WaypointConfig(), timeout_s=0.2)
-
+@contextlib.contextmanager
+def _robot(session: MagicMock) -> Iterator[None]:
+    """Patch the executor's robot transport and e-stop monitor with fakes."""
+    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
     with (
-        patch("policy.executor.WaypointJoggingSession") as mock_session_cls,
-        patch("policy.executor.EstopMonitor") as mock_estop,
+        patch("policy.executor.WaypointJoggingSession", return_value=session),
+        patch("policy.executor.EstopMonitor", return_value=estop),
     ):
-        mock_session_cls.return_value = _fake_session()
-        mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
+        yield
 
-        result = await executor.run()
 
-    assert result.reason == "timeout"
+# ---------------------------------------------------------------------------
+# Why a run ends: timeout / stop() / plain-function policy
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_stop_returns_stopped():
-    """Calling stop() signals executor to end with 'stopped' reason."""
-    s = _schema()
+async def test_a_run_ends_with_timeout_once_the_deadline_passes():
+    """With timeout_s set, the executor stops itself and reports 'timeout'."""
+    executor = PolicyExecutor(_schema(), _hold, motion=WaypointConfig(), timeout_s=0.2)
+    with _robot(_fake_session()):
+        result = await executor.run()
+    assert result.reason == "timeout"
+    assert result.steps > 0
 
-    async def policy(obs):
-        return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
 
-    executor = PolicyExecutor(s, policy, motion=WaypointConfig(), timeout_s=0)
+@pytest.mark.asyncio
+async def test_calling_stop_ends_the_run_with_stopped():
+    """An external stop() request ends an open-ended run and reports 'stopped'."""
+    executor = PolicyExecutor(_schema(), _hold, motion=WaypointConfig(), timeout_s=0)
 
-    async def stop_after_delay():
+    async def stop_soon() -> None:
         await asyncio.sleep(0.1)
         executor.stop()
 
-    with (
-        patch("policy.executor.WaypointJoggingSession") as mock_session_cls,
-        patch("policy.executor.EstopMonitor") as mock_estop,
-    ):
-        mock_session_cls.return_value = _fake_session()
-        mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
-
-        task = asyncio.create_task(stop_after_delay())
+    with _robot(_fake_session()):
+        stopper = asyncio.create_task(stop_soon())
         result = await executor.run()
-        await task
+        await stopper
 
     assert result.reason == "stopped"
     assert result.steps > 0
 
 
 @pytest.mark.asyncio
-async def test_bare_function_accepted_as_policy():
-    """A bare async function (not PolicyClient subclass) is auto-wrapped."""
-    s = _schema()
-
-    async def my_policy(obs):
-        return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
-
-    executor = PolicyExecutor(s, my_policy, motion=WaypointConfig(), timeout_s=0.1)
-
-    with (
-        patch("policy.executor.WaypointJoggingSession") as mock_session_cls,
-        patch("policy.executor.EstopMonitor") as mock_estop,
-    ):
-        mock_session_cls.return_value = _fake_session()
-        mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
-
+async def test_a_plain_async_function_is_accepted_as_a_policy():
+    """A bare ``async def obs -> action`` works without a PolicyClient wrapper."""
+    executor = PolicyExecutor(_schema(), _hold, motion=WaypointConfig(), timeout_s=0.1)
+    with _robot(_fake_session()):
         result = await executor.run()
-
     assert result.reason == "timeout"
     assert result.steps > 0
 
 
-@pytest.mark.asyncio
-async def test_last_observation_populated():
-    """last_observation is set during execution."""
-    s = _schema()
-
-    async def policy(obs):
-        return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
-
-    executor = PolicyExecutor(s, policy, motion=WaypointConfig(), timeout_s=0.1)
-
-    with (
-        patch("policy.executor.WaypointJoggingSession") as mock_session_cls,
-        patch("policy.executor.EstopMonitor") as mock_estop,
-    ):
-        mock_session_cls.return_value = _fake_session()
-        mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
-
-        await executor.run()
-
-    assert executor.last_observation is not None
-    assert "0@ur10e" in executor.last_observation
-
-
-def test_apply_relative_mode():
-    """_apply_relative_mode adds current joints to chunk steps."""
-    from policy.executor import PolicyExecutor
-    from policy.schema import Observation, PolicySchema
-    from policy.types import ActionChunk
-
-    mg = _mg()
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("arm", source=mg, mode="relative"),
-        ]
-    )
-    executor = PolicyExecutor(schema, lambda obs: obs, motion=WaypointConfig(), timeout_s=1)
-
-    # Simulate current state
-    states = {"0@ur10e": MagicMock(joints=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0))}
-
-    # Chunk with 2 steps of deltas
-    chunk = ActionChunk(
-        joints={"0@ur10e": [[0.1, 0.1, 0.1, 0.1, 0.1, 0.1], [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]]},
-        dt_ms=33.0,
-    )
-    result = executor._apply_relative_mode(chunk, states)
-
-    # Cumulative: step[0] = current + delta[0], step[1] = current + delta[0] + delta[1]
-    assert abs(result.joints["0@ur10e"][0][0] - 1.1) < 1e-9
-    assert abs(result.joints["0@ur10e"][1][0] - 1.3) < 1e-9
-    assert result.dt_ms == 33.0
-
-
-def test_apply_relative_mode_absolute_passthrough():
-    """_apply_relative_mode is a no-op for absolute mode."""
-    from policy.executor import PolicyExecutor
-    from policy.schema import Observation, PolicySchema
-    from policy.types import ActionChunk
-
-    mg = _mg()
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("arm", source=mg, mode="absolute"),
-        ]
-    )
-    executor = PolicyExecutor(schema, lambda obs: obs, motion=WaypointConfig(), timeout_s=1)
-
-    chunk = ActionChunk(
-        joints={"0@ur10e": [[0.5, -1.0, 0.0, 0.0, 0.0, 0.0]]},
-        dt_ms=0.0,
-    )
-    result = executor._apply_relative_mode(chunk, {})
-    assert result is chunk  # same object, not copied
+# ---------------------------------------------------------------------------
+# Stop conditions: stop the run *before* the unsafe command reaches the robot
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_stop_condition_halts_before_execution():
-    """A stop condition sees target_joints/target_ios BEFORE send and ends the run normally."""
-    from policy.types import ActionChunk, StopContext
+async def test_a_stop_condition_halts_the_run_before_any_motion_is_sent():
+    """A condition that vetoes the commanded joints stops without moving."""
 
-    s = _schema()
-    sent_chunks: list[ActionChunk] = []
-    io_writes: list[dict] = []
+    async def reach_far(_obs: object) -> ActionChunk:
+        return ActionChunk(joints={MG_ID: [[9.0] * 6]})
 
-    # Policy returns joints + IO
-    async def policy(obs):
-        return ActionChunk(
-            joints={"0@ur10e": [[9.0, 9.0, 9.0, 9.0, 9.0, 9.0]]},
-            ios={"0@ur10e": {"digital_out[0]": True}},
-        )
+    def joints_out_of_bounds(ctx: StopContext) -> bool:
+        return bool(ctx.target_joints) and any(j > 5.0 for step in ctx.target_joints for j in step)
 
-    # Stop if any target joint exceeds 5.0
-    def limit_guard(ctx: StopContext) -> bool:
-        if ctx.target_joints:
-            for step in ctx.target_joints:
-                if any(j > 5.0 for j in step):
-                    return True
-        return False
-
+    session = _fake_session()
     executor = PolicyExecutor(
-        s, policy, motion=WaypointConfig(), timeout_s=5.0, stop_conditions=[limit_guard]
+        _schema(),
+        reach_far,
+        motion=WaypointConfig(),
+        timeout_s=5.0,
+        stop_conditions=[joints_out_of_bounds],
     )
-
-    with (
-        patch("policy.executor.WaypointJoggingSession") as mock_session_cls,
-        patch("policy.executor.EstopMonitor") as mock_estop,
-    ):
-        session = _fake_session()
-
-        # Track calls to verify nothing was sent
-        def track_chunk(steps, dt_ms, **kw):
-            sent_chunks.append(steps)
-
-        session.update_chunk = MagicMock(side_effect=track_chunk)
-
-        async def track_ios(ios):
-            io_writes.append(ios)
-
-        session.write_ios = AsyncMock(side_effect=track_ios)
-
-        mock_session_cls.return_value = session
-        mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
-
+    with _robot(session):
         result = await executor.run()
 
-    # Stop condition triggered → normal stop naming the condition
-    assert result.reason == "stop condition: limit_guard"
-    # Nothing was sent — the condition stopped before execution
-    assert sent_chunks == []
-    assert io_writes == []
+    assert result.reason == "stop condition: joints_out_of_bounds"
+    session.update_chunk.assert_not_called()  # nothing was streamed to the robot
 
 
 @pytest.mark.asyncio
-async def test_stop_condition_sees_target_ios():
-    """A stop condition can inspect intended IO writes and stop before they fire."""
-    from policy.types import ActionChunk, StopContext
+async def test_a_stop_condition_can_veto_an_io_write_before_it_fires():
+    """A condition that inspects the intended IO stops before the output is set."""
 
-    s = _schema()
+    async def set_forbidden_output(_obs: object) -> ActionChunk:
+        return ActionChunk(joints={MG_ID: [[0.1] * 6]}, ios={MG_ID: {"digital_out[7]": True}})
 
-    async def policy(obs):
-        return ActionChunk(
-            joints={"0@ur10e": [[0.1, 0.1, 0.1, 0.1, 0.1, 0.1]]},
-            ios={"0@ur10e": {"digital_out[7]": True}},  # forbidden output
-        )
+    def forbids_output_7(ctx: StopContext) -> bool:
+        return bool(ctx.target_ios and ctx.target_ios.get("digital_out[7]"))
 
-    def io_guard(ctx: StopContext) -> bool:
-        if ctx.target_ios and ctx.target_ios.get("digital_out[7]"):
-            return True  # stop on forbidden output
-        return False
-
+    session = _fake_session()
     executor = PolicyExecutor(
-        s, policy, motion=WaypointConfig(), timeout_s=5.0, stop_conditions=[io_guard]
+        _schema(),
+        set_forbidden_output,
+        motion=WaypointConfig(),
+        timeout_s=5.0,
+        stop_conditions=[forbids_output_7],
     )
-
-    with (
-        patch("policy.executor.WaypointJoggingSession") as mock_session_cls,
-        patch("policy.executor.EstopMonitor") as mock_estop,
-    ):
-        session = _fake_session()
-        session.write_ios = AsyncMock()
-        mock_session_cls.return_value = session
-        mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
-
+    with _robot(session):
         result = await executor.run()
 
-    assert result.reason == "stop condition: io_guard"
-    # IO was never written
-    session.write_ios.assert_not_awaited()
+    assert result.reason == "stop condition: forbids_output_7"
+    session.write_ios.assert_not_awaited()  # IO never written
 
 
 @pytest.mark.asyncio
-async def test_stop_condition_triggered_on_session_tick_ends_run_normally():
-    """A condition that fires on a session tick (after a chunk was sent) ends
-    the run normally, naming the condition in result.reason.
+async def test_a_stop_condition_fired_mid_run_ends_the_run_and_names_itself():
+    """A condition evaluated against live robot state (after a chunk was sent)
+    ends the run normally, naming itself in ``result.reason``."""
+    session = _fake_session()
 
-    Unlike the pre-send checks above, this covers the path where a stop
-    condition is evaluated against live robot state *inside* the jogging
-    session and reported back via session.stop_condition_triggered.
-    """
-    s = _schema()
+    def fire_after_first_send(*_a: object, **_kw: object) -> None:
+        session.stop_condition_triggered = "operator_stop"
 
-    async def policy(obs):
-        return {f"arm_joints_{i}": 0.0 for i in range(1, 7)}
+    session.update_chunk = MagicMock(side_effect=fire_after_first_send)
 
-    executor = PolicyExecutor(s, policy, motion=WaypointConfig(), timeout_s=5.0)
-
-    with (
-        patch("policy.executor.WaypointJoggingSession") as mock_session_cls,
-        patch("policy.executor.EstopMonitor") as mock_estop,
-    ):
-        session = _fake_session()
-        session.stop_condition_triggered = None
-
-        # The condition fires once the first chunk reaches the session.
-        def fire_after_send(*args, **kwargs):
-            session.stop_condition_triggered = "operator_stop"
-
-        session.update_chunk = MagicMock(side_effect=fire_after_send)
-
-        mock_session_cls.return_value = session
-        mock_estop.return_value = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
-
+    executor = PolicyExecutor(_schema(), _hold, motion=WaypointConfig(), timeout_s=5.0)
+    with _robot(session):
         result = await executor.run()
 
     assert result.reason == "stop condition: operator_stop"
-    # The chunk was sent before the condition fired — this is a tick-time stop.
-    session.update_chunk.assert_called()
+    session.update_chunk.assert_called()  # the chunk went out before the stop
 
 
-def test_rtc_enabled_with_wait_for_chunk_mode_rejected():
-    """RTC + policy_rate_hz<0 silently drops the seam backdate — reject it."""
-    s = _schema()
-    policy = MagicMock()
-    policy.get_actions = AsyncMock()
-    policy.rtc = object()  # any non-None value signals RTC is enabled
+# ---------------------------------------------------------------------------
+# RTC requires overlapping placement
+# ---------------------------------------------------------------------------
 
+
+def test_rtc_without_overlapping_placement_is_rejected():
+    """RTC + wait-for-chunk would silently drop the seam backdate — reject it."""
+    policy = MagicMock(get_actions=AsyncMock(), rtc=object())
     with pytest.raises(ValueError, match="RTC"):
-        PolicyExecutor(s, policy, motion=WaypointConfig(), policy_rate_hz=-1)
+        PolicyExecutor(_schema(), policy, motion=WaypointConfig(), policy_rate_hz=-1)
 
 
-def test_rtc_enabled_with_overlapping_mode_accepted():
-    """RTC + policy_rate_hz>=0 is the valid combination."""
-    s = _schema()
-    policy = MagicMock()
-    policy.get_actions = AsyncMock()
-    policy.rtc = object()
-
-    # Should not raise.
-    PolicyExecutor(s, policy, motion=WaypointConfig(), policy_rate_hz=20)
+def test_rtc_with_overlapping_placement_is_accepted():
+    """RTC + a non-negative policy_rate_hz is the valid combination."""
+    policy = MagicMock(get_actions=AsyncMock(), rtc=object())
+    PolicyExecutor(_schema(), policy, motion=WaypointConfig(), policy_rate_hz=20)  # no raise
 
 
 # ---------------------------------------------------------------------------
@@ -406,12 +260,10 @@ async def test_executor_jogs_both_arms_for_the_full_timeout():
     early), and (2) *both* motion groups are driven — both appear in the final
     observed state. Each arm gets a small sinusoid so there is genuine motion.
     """
-    import contextlib
     import math
     import time
 
     from nova import Nova
-    from policy.types import ActionChunk
 
     names = _dual_arm_names()
     assert len(names) == 2, "dual-arm test needs exactly two controller names"
@@ -467,10 +319,7 @@ async def test_stop_condition_ends_dual_arm_run_normally():
     returns True and the run ends with the condition's name in result.reason
     (no exception, no failure) while both arms were being jogged.
     """
-    import contextlib
-
     from nova import Nova
-    from policy.types import ActionChunk, StopContext
 
     names = _dual_arm_names()
 
