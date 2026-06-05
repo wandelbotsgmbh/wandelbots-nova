@@ -363,19 +363,24 @@ def test_rtc_enabled_with_overlapping_mode_accepted():
 # ---------------------------------------------------------------------------
 # Integration tests — drive a real PolicyExecutor against a live NOVA instance.
 #
-# These self-provision a virtual UR controller (so they don't depend on any
-# particular robot existing) and run the full pipeline end to end:
-# schema -> executor -> waypoint jogging session -> NOVA motion API -> state
-# stream. They require NOVA_API / NOVA_ACCESS_TOKEN and are skipped unless run
-# with `-m integration`.
+# These reuse an existing controller named NOVA_TEST_CONTROLLER (default
+# "ur10e") when present — e.g. the real UR10e on a robot cell — and otherwise
+# provision a virtual UR10e, so the same test runs both on a physical-cell
+# instance and on a freshly provisioned CI instance. They run the full pipeline
+# end to end: schema -> executor -> waypoint jogging session -> NOVA motion API
+# -> state stream. They require NOVA_API / NOVA_ACCESS_TOKEN and are skipped
+# unless run with `-m integration`.
 # ---------------------------------------------------------------------------
 
 
-async def _ensure_ur10e(nova_instance, name: str):
-    """Create (or reuse) a virtual UR10e and return its controller."""
+async def _ensure_ur10e(nova_instance):
+    """Reuse the configured UR10e controller, or provision a virtual one."""
+    import os
+
     from nova import api
     from nova.cell import virtual_controller
 
+    name = os.environ.get("NOVA_TEST_CONTROLLER", "ur10e")
     cell = nova_instance.cell()
     return await cell.ensure_controller(
         virtual_controller(
@@ -402,7 +407,7 @@ async def test_executor_runs_policy_against_real_robot():
     from policy.types import ActionChunk
 
     async with Nova() as nova_instance:
-        controller = await _ensure_ur10e(nova_instance, "ur10e-policy-exec")
+        controller = await _ensure_ur10e(nova_instance)
         async with controller[0] as mg:
             home = list(await mg.joints())
 
@@ -440,7 +445,7 @@ async def test_stop_condition_ends_real_run_normally():
     from policy.types import ActionChunk, StopContext
 
     async with Nova() as nova_instance:
-        controller = await _ensure_ur10e(nova_instance, "ur10e-policy-stop")
+        controller = await _ensure_ur10e(nova_instance)
         async with controller[0] as mg:
             home = list(await mg.joints())
 
