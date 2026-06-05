@@ -2,21 +2,24 @@
 Replay a recorded dataset episode on two robots.
 
 Reads a LeRobot-format parquet file and replays each action as joint targets
-through PID jogging. The simplest possible replay — no error tracking, no
+through waypoint jogging. The simplest possible replay — no error tracking, no
 multi-episode loop, just load → home → play.
+
+A trimmed sample episode (``action`` + ``timestamp`` columns only) sits next to
+this script; override with the ``DATASET`` env var to point at a full LeRobot
+dataset directory.
 
 Prerequisites:
     NOVA_API=http://<instance-ip>
     pip install pyarrow
 
 Usage:
-    NOVA_API=http://172.31.12.76 PYTHONPATH=. python policy/examples/replay_episode.py
+    NOVA_API=http://172.31.12.76 PYTHONPATH=. python policy/examples/replay/replay_episode.py
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 from pathlib import Path
 from typing import Any
@@ -31,9 +34,8 @@ from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
 from policy import ActionChunk, Observation, PolicyExecutor, PolicySchema, WaypointConfig
 
-DATASET = Path(os.environ.get(
-    "DATASET", "/Users/stefanwagner/Downloads/Data_Recordings_old",
-))
+# Recording rate of the bundled sample (LeRobot info.json "fps").
+FPS = 15.0
 EPISODE = int(os.environ.get("EPISODE", "0"))
 CHUNK_SIZE = 8
 
@@ -60,13 +62,15 @@ CHUNK_SIZE = 8
     ),
 )
 async def replay_episode(ctx: nova.ProgramContext):
-    # Load episode actions and metadata
-    with (DATASET / "meta" / "info.json").open() as f:
-        meta = json.load(f)
-    fps = meta["fps"]
-    dt_ms = 1000.0 / fps
+    # Load episode actions. The bundled sample is trimmed to action+timestamp;
+    # a single episode parquet sits next to this script (no chunk dirs).
+    dataset = os.environ.get("DATASET")
+    if dataset:
+        path = Path(dataset) / "data" / "chunk-000" / f"episode_{EPISODE:06d}.parquet"
+    else:
+        path = Path(__file__).parent / f"episode_{EPISODE:06d}.parquet"
+    dt_ms = 1000.0 / FPS
 
-    path = DATASET / "data" / "chunk-000" / f"episode_{EPISODE:06d}.parquet"
     table = pq.read_table(path, columns=["action", "timestamp"])
     actions = table.column("action").to_pylist()
     timestamps_s = table.column("timestamp").to_pylist()

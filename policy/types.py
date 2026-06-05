@@ -22,7 +22,7 @@ JoggingMode = Literal["joint", "cartesian"]
 
 
 class ActionChunk(pydantic.BaseModel, frozen=True):
-    """Action chunk sent to the PID runner.
+    """Action chunk streamed to a waypoint jogging session.
 
     Single-step (teleoperation at 30 Hz)::
 
@@ -62,11 +62,11 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     When -1 (default), timestamps are relative to the current time (legacy).
     Use start_time_ms >= 0 for overlapping waypoint jogging."""
 
-    frozen_steps: int = 0
+    seam_backdate_steps: int = 0
     """RTC seam backdate, in steps, for connecting overlapping chunks.
 
-    The executor backdates the chunk anchor by ``frozen_steps * dt_ms`` so the
-    step matching the robot's current position lands at "now": the reused head
+    The executor backdates the chunk anchor by ``seam_backdate_steps * dt_ms`` so
+    the step matching the robot's current position lands at "now": the reused head
     sits in the immediate past (matching what's already executing) and the fresh
     prediction extends into the future. The client computes this as
     ``executed_steps - (action_horizon - overlap_steps)`` — the index in the new
@@ -91,23 +91,10 @@ class WaypointConfig:
 
 
 @dataclass(slots=True)
-class MotionConfig:
-    """Internal configuration passed to jogging sessions.
-
-    Not part of the public API. Use ``WaypointConfig`` instead.
-    """
-
-    state_rate_ms: int = 10
-    """State stream update rate."""
-
-
-
-
-@dataclass(slots=True)
 class GuardState:
     """State passed to safety guard callbacks.
 
-    Guards run at ~100Hz during PID jogging. Return ``False`` to stop immediately.
+    Guards run on every jogging tick. Return ``False`` to stop immediately.
     Guards must be fast (microseconds) — no network calls or blocking I/O.
     Use ``Observation.computed()`` for async data, then read it here.
     """
@@ -121,7 +108,7 @@ class GuardState:
 
     target_joints: list[list[float]] | None = None
     """Intended joint/TCP targets the policy wants to execute.
-    Full chunk at inference time, single interpolated step during PID ticks."""
+    Full chunk at inference time, single interpolated step during jogging ticks."""
 
     target_ios: dict[str, bool | int | float | str] | None = None
     """Intended IO writes (populated at inference time, before IOs fire)."""
@@ -165,8 +152,8 @@ class EmergencyStopError(Exception):
 class MotionError(Exception):
     """Raised when jogging detects a motion-blocking condition.
 
-    This happens when the PID jogging session detects that the robot is paused
-    (joint limit, self-collision, singularity). Distinct from Nova SDK's
+    This happens when the waypoint jogging session detects that the robot is
+    paused (joint limit, self-collision, singularity). Distinct from Nova SDK's
     ``RobotMotionError`` which covers trajectory planning/execution failures.
     """
 

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from policy.jogger import JointJogger, jog_tcp
+from policy.jogging import JointJogger
 from policy.types import EmergencyStopError, GuardStopError, MotionError
 
 
@@ -22,12 +22,14 @@ def _mock_mg(mg_id: str = "0@ur10e", num_joints: int = 6) -> MagicMock:
 def _mock_session(mg_id: str = "0@ur10e", num_joints: int = 6) -> MagicMock:
     session = MagicMock()
     session.motion_group_id = mg_id
-    session._num_joints = num_joints
+    session.num_joints = num_joints
+    session.mode = "joint"
     session.has_failed = False
     session.failure_reason = ""
-    session._failure_exception = None
+    session.failure_exception = None
     session.current_state = MagicMock()
     session.current_state.joints = tuple([0.0] * num_joints)
+    session.session_elapsed_ms = 0
     session.start = AsyncMock()
     session.stop = AsyncMock()
     session.update_chunk = MagicMock()
@@ -47,6 +49,7 @@ class TestJointJoggerTarget:
         jogger._multi = len(mgs) > 1
         jogger._sessions = {mg: _mock_session(mg.id, num_joints) for mg in mgs}
         jogger._estop = None
+        jogger._rerun = None
         jogger._target = None
         return jogger, mgs
 
@@ -73,7 +76,9 @@ class TestJointJoggerTarget:
         jogger, (mg,) = self._make("0@ur10e")
         chunk = [[float(i)] * 6 for i in range(4)]
         jogger.set_target(chunk, dt_ms=33.0)
-        jogger._sessions[mg].update_chunk.assert_called_with(steps=chunk, dt_ms=33.0)
+        jogger._sessions[mg].update_chunk.assert_called_with(
+            steps=chunk, dt_ms=33.0, start_time_ms=0
+        )
         assert jogger.target == chunk[-1]
 
     def test_multi_chunk(self):
@@ -81,27 +86,8 @@ class TestJointJoggerTarget:
         c1 = [[float(i)] * 6 for i in range(4)]
         c2 = [[float(i + 10)] * 6 for i in range(4)]
         jogger.set_target({mg1: c1, mg2: c2}, dt_ms=33.0)
-        jogger._sessions[mg1].update_chunk.assert_called_with(steps=c1, dt_ms=33.0)
-        jogger._sessions[mg2].update_chunk.assert_called_with(steps=c2, dt_ms=33.0)
-
-
-# ---------------------------------------------------------------------------
-# TCP jogger velocity limits
-# ---------------------------------------------------------------------------
-
-
-class TestTcpJogger:
-    def test_velocity_limits_set_per_axis(self):
-        mg = _mock_mg()
-        jogger = jog_tcp(
-            mg, tcp="Flange",
-            tcp_velocity_limit=500.0,
-            tcp_orientation_velocity_limit=2.0,
-        )
-        session = jogger._sessions[mg]
-        limits = session._config.velocity_limit
-        assert isinstance(limits, list)
-        assert limits == [500.0, 500.0, 500.0, 2.0, 2.0, 2.0]
+        jogger._sessions[mg1].update_chunk.assert_called_with(steps=c1, dt_ms=33.0, start_time_ms=0)
+        jogger._sessions[mg2].update_chunk.assert_called_with(steps=c2, dt_ms=33.0, start_time_ms=0)
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +100,8 @@ class TestErrorPropagation:
     async def test_motion_error(self):
         jogger, (mg,) = TestJointJoggerTarget()._make("0@ur10e")
         jogger._sessions[mg].has_failed = True
-        jogger._sessions[mg]._failure_exception = MotionError("0@ur10e", "joint_limit")
+        jogger._sessions[mg].has_failed = True
+        jogger._sessions[mg].failure_exception = MotionError("0@ur10e", "joint_limit")
         with pytest.raises(MotionError):
             async for _ in jogger:
                 break
@@ -123,7 +110,8 @@ class TestErrorPropagation:
     async def test_guard_stop(self):
         jogger, (mg,) = TestJointJoggerTarget()._make("0@ur10e")
         jogger._sessions[mg].has_failed = True
-        jogger._sessions[mg]._failure_exception = GuardStopError("0@ur10e", "workspace_guard")
+        jogger._sessions[mg].has_failed = True
+        jogger._sessions[mg].failure_exception = GuardStopError("0@ur10e", "workspace_guard")
         with pytest.raises(GuardStopError):
             async for _ in jogger:
                 break
@@ -132,7 +120,8 @@ class TestErrorPropagation:
     async def test_connection_error(self):
         jogger, (mg,) = TestJointJoggerTarget()._make("0@ur10e")
         jogger._sessions[mg].has_failed = True
-        jogger._sessions[mg]._failure_exception = RuntimeError("connection reset")
+        jogger._sessions[mg].has_failed = True
+        jogger._sessions[mg].failure_exception = RuntimeError("connection reset")
         with pytest.raises(RuntimeError, match="connection reset"):
             async for _ in jogger:
                 break

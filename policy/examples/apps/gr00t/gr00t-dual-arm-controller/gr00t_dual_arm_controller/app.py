@@ -96,7 +96,6 @@ def _build_schema(
     camera_server: str = "",
     camera_devices: str = "",
     camera_size: int = 224,
-    camera_fps: int = 15,
     language: str = "",
 ) -> PolicySchema:
     observations = [
@@ -108,7 +107,9 @@ def _build_schema(
         observations.append(Observation.constant("language", value=language))
 
     if camera_server and camera_devices:
-        cameras = WebRTCCameras(api_url=camera_server, frame_history=1, resize=(256, 256))
+        cameras = WebRTCCameras(
+            api_url=camera_server, frame_history=1, resize=(camera_size, camera_size)
+        )
         for raw_entry in camera_devices.split(","):
             entry = raw_entry.strip()
             if ":" in entry:
@@ -205,9 +206,11 @@ async def gr00t_dual_arm_controller(
         description="Comma-separated camera entries as groot_key:device_id",
     ),
     camera_size: int = Field(default=224, description="Camera frame width and height"),
-    camera_fps: int = Field(default=15, description="Camera frames per second"),
     velocity_limit: float = Field(default=2.0, description="Joint velocity limit in rad/s"),
-    n_action_steps: int = Field(default=8, description="Number of action chunk steps to execute (0 = all). Later steps have higher uncertainty and are discarded (receding horizon)."),
+    n_action_steps: int = Field(
+        default=8,
+        description="Number of action chunk steps to execute (0 = all). Later steps have higher uncertainty and are discarded (receding horizon).",
+    ),
 ):
     """Run one GR00T episode: home → connect cameras → run policy until timeout."""
     cell = ctx.nova.cell()
@@ -228,7 +231,6 @@ async def gr00t_dual_arm_controller(
         camera_server=camera_server,
         camera_devices=camera_devices,
         camera_size=camera_size,
-        camera_fps=camera_fps,
         language=language,
     )
 
@@ -239,7 +241,9 @@ async def gr00t_dual_arm_controller(
         dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
-    executor = PolicyExecutor(schema, client, timeout_s=timeout_s, policy_rate_hz=20, n_action_steps=n_action_steps)
+    executor = PolicyExecutor(
+        schema, client, timeout_s=timeout_s, policy_rate_hz=20, n_action_steps=n_action_steps
+    )
     await cycle.start()
     try:
         result = await executor.run()
@@ -312,10 +316,12 @@ async def replay_episode(
     start_right = tuple(actions[0][6:])
     await _move_to_home(mg_left, mg_right, start_left, start_right)
 
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("left_joints", source=mg_left),
-        Observation.joint_positions("right_joints", source=mg_right),
-    ])
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("left_joints", source=mg_left),
+            Observation.joint_positions("right_joints", source=mg_right),
+        ]
+    )
 
     chunk_size = 8
 
@@ -356,7 +362,9 @@ async def replay_episode(
     result = await executor.run()
     logger.info(
         "Replay finished: reason=%s steps=%d duration=%.1fs",
-        result.reason, result.steps, result.duration_s,
+        result.reason,
+        result.steps,
+        result.duration_s,
     )
 
 
@@ -419,6 +427,7 @@ app = FastAPI(
 
 # Manually include programs router endpoints without the duplicate lifespan
 from novax.api.programs import router as _programs_router, get_program_manager
+
 app.dependency_overrides[get_program_manager] = lambda: novax_app.program_manager
 app.include_router(_programs_router)
 novax_app.register_program(move_to_home)
@@ -453,7 +462,6 @@ class StartRequest(BaseModel):
     camera_server: str = Field(default=CAMERA_SERVER)
     camera_devices: str = Field(default=DEFAULT_CAMERAS)
     camera_size: int = Field(default=224)
-    camera_fps: int = Field(default=15)
     velocity_limit: float = Field(default=2.0, description="Joint velocity limit in rad/s")
     n_action_steps: int = Field(default=8, description="Steps to execute per chunk (0 = all)")
 
@@ -496,8 +504,8 @@ async def start(req: StartRequest = StartRequest()):
     global _executor, _nova_instance, _run_task, _last_error
     _last_error = ""
 
-    if _executor is not None and _executor.phase != "IDLE":
-        return _executor.status
+    if _run_task is not None and not _run_task.done():
+        return _executor.status if _executor is not None else ExecutorStatus()
 
     try:
         _nova_instance = nova.Nova()
@@ -521,7 +529,6 @@ async def start(req: StartRequest = StartRequest()):
         camera_server=req.camera_server,
         camera_devices=req.camera_devices,
         camera_size=req.camera_size,
-        camera_fps=req.camera_fps,
         language=req.language,
     )
 
@@ -532,7 +539,13 @@ async def start(req: StartRequest = StartRequest()):
         dt_ms=66.7,  # match training data rate (15 Hz)
     )
 
-    _executor = PolicyExecutor(schema, client, timeout_s=req.timeout_s, policy_rate_hz=20, n_action_steps=req.n_action_steps)
+    _executor = PolicyExecutor(
+        schema,
+        client,
+        timeout_s=req.timeout_s,
+        policy_rate_hz=20,
+        n_action_steps=req.n_action_steps,
+    )
 
     async def run() -> ExecutionResult:
         global _last_error

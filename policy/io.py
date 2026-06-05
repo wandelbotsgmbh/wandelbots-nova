@@ -1,7 +1,8 @@
 """IO streaming and writing for policy execution.
 
-Provides two classes:
+Provides:
 - ``IOStreamCache``: background WebSocket that caches latest IO values
+- ``IOStreamManager``: owns the per-controller stream caches for one episode
 - ``IOWriter``: deduplicated IO writes with serialized access
 """
 
@@ -12,10 +13,12 @@ import contextlib
 import logging
 from typing import TYPE_CHECKING
 
-from nova import api
+from nova.cell.io import IOAccess
 from policy._sdk import get_api_gateway, get_cell, get_controller_id
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from nova.cell.motion_group import MotionGroup
     from policy.types import ValueType
 
@@ -87,39 +90,89 @@ class IOStreamCache:
                     await stream.aclose()
 
 
+class IOStreamManager:
+    """Owns the per-controller IO stream caches for one execution episode.
+
+    Deduplicates by controller (one stream per controller, even with multiple
+    motion groups), exposes a merged latest-value view, and wires each cache
+    into its session so guards can read live IO.
+    """
+
+    def __init__(
+        self, motion_groups: list[MotionGroup], io_by_controller: Mapping[str, list[str]]
+    ) -> None:
+        self._motion_groups = motion_groups
+        self._io_by_controller = io_by_controller
+        self._caches: list[IOStreamCache] = []
+
+    async def start(self) -> None:
+        """Open one IO stream per controller that has configured IO keys."""
+        started_controllers: set[str] = set()
+        for mg in self._motion_groups:
+            controller_id = get_controller_id(mg)
+            if controller_id in started_controllers:
+                continue
+            io_keys = self._io_by_controller.get(controller_id)
+            if not io_keys:
+                continue
+            started_controllers.add(controller_id)
+            cache = IOStreamCache(mg, io_keys)
+            self._caches.append(cache)
+            await cache.start()
+
+    def wire_to_sessions(self, sessions: Mapping[str, object]) -> None:
+        """Give each session a live reference to its controller's IO values."""
+        for cache in self._caches:
+            session = sessions.get(cache.motion_group.id)
+            if session is not None:
+                session.set_io_values_ref(cache.values)  # type: ignore[attr-defined]
+
+    async def stop(self) -> None:
+        """Close all IO streams."""
+        for cache in self._caches:
+            await cache.stop()
+        self._caches.clear()
+
+    @property
+    def all_values(self) -> dict[str, object]:
+        """Merged IO values across all caches."""
+        merged: dict[str, object] = {}
+        for cache in self._caches:
+            merged.update(cache.values)
+        return merged
+
+
 class IOWriter:
     """Writes IO values with deduplication and serialized access.
 
     Only writes values that have actually changed, and serializes writes
-    per instance to avoid 429 rate-limit errors from the NOVA API.
+    per instance to avoid 429 rate-limit errors from the NOVA API. The
+    value→model dispatch and write are delegated to nova's ``IOAccess``.
+
+    TODO(core): ``IOAccess.write`` performs a per-controller
+    ``list_io_descriptions`` validation roundtrip (cached after the first
+    call). For a real-time policy loop a roundtrip-free write path in core
+    would be preferable — tracked as a follow-up task; switch to it once
+    available.
     """
 
     def __init__(self, motion_group: MotionGroup) -> None:
-        self._motion_group = motion_group
+        self._io = IOAccess(
+            get_api_gateway(motion_group),
+            get_cell(motion_group),
+            get_controller_id(motion_group),
+        )
         self._last_written: dict[str, ValueType] = {}
         self._lock = asyncio.Lock()
 
     async def write(self, ios: dict[str, ValueType]) -> None:
         """Write IO values, skipping unchanged ones."""
-        api_client = get_api_gateway(self._motion_group)
-        cell = get_cell(self._motion_group)
-        controller_id = get_controller_id(self._motion_group)
-
         async with self._lock:
             for key, value in ios.items():
                 if self._last_written.get(key) == value:
                     continue
                 try:
-                    if isinstance(value, bool):
-                        io_value = api.models.IOBooleanValue(io=key, value=value)
-                    elif isinstance(value, (int, float)):
-                        io_value = api.models.IOFloatValue(io=key, value=float(value))
-                    else:
-                        io_value = api.models.IOStringValue(io=key, value=str(value))
-
-                    await api_client.controller_ios_api.set_output_values(
-                        cell=cell, controller=controller_id, io_value=[io_value]
-                    )
+                    await self._io.write(key, value)
                     self._last_written[key] = value
-                except (OSError, RuntimeError, ValueError, KeyError) as e:
+                except (OSError, RuntimeError, TypeError, ValueError, KeyError) as e:
                     logger.warning("Failed to write IO %s=%s: %s", key, value, e)

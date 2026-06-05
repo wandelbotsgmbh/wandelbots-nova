@@ -1,4 +1,4 @@
-"""policy — real-time PID-controlled jogging from action chunks.
+"""policy — real-time robot control from action chunks via waypoint jogging.
 
 .. warning::
     **EXPERIMENTAL** — This package is under active development and not ready
@@ -6,16 +6,16 @@
     Do not depend on it for stable deployments.
 
 This package enables AI policies to stream joint position targets (+ optional IO commands)
-to one or more motion groups. A PID velocity controller converts position errors into
-velocity commands sent via the NOVA Jogging API.
+to one or more motion groups. Timestamped waypoints are sent via the NOVA Jogging API;
+the server handles velocity profiling, interpolation, and IK internally.
 """
 
 from __future__ import annotations
 
 from policy.cameras import CameraSource, WebRTCCameras
-from policy.executor import ExecutionResult, ExecutorStatus, PolicyExecutor
+from policy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
 from policy.gr00t import Gr00tPolicyClient, RTCConfig
-from policy.jogger import JointJogger, TcpJogger, jog_joints, jog_tcp
+from policy.jogging import JointJogger, TcpJogger, jog_joints, jog_tcp
 from policy.policy_client import CallbackPolicyClient, PolicyClient
 from policy.schema import (
     Action,
@@ -52,6 +52,7 @@ __all__ = [
     "Mapping",
     "MotionError",
     "Observation",
+    "Phase",
     "PolicyClient",
     "PolicyExecutor",
     "PolicySchema",

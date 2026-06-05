@@ -179,7 +179,7 @@ class Observation:
     ) -> _ObsTcp:
         """Observe TCP pose [x, y, z, rx, ry, rz] in mm / rad (Nova native).
 
-        Set action=True to control via TCP PID jogging.
+        Set action=True to control via TCP waypoint jogging.
         """
         return _ObsTcp(key=key, source=source, tcp=tcp,
                        action=action, mode=mode)
@@ -275,7 +275,7 @@ class Action:
 
     @staticmethod
     def tcp(key: str, target: MotionGroup, *, mode: ActionMode = "absolute") -> _ActTcp:
-        """TCP pose action — executor uses Cartesian PID jogging."""
+        """TCP pose action — executor uses Cartesian waypoint jogging."""
         return _ActTcp(key=key, target=target, mode=mode)
 
     @staticmethod
@@ -448,7 +448,7 @@ class PolicySchema:
         return result
 
     def tcp_action_groups(self) -> dict[str, str]:
-        """Motion group IDs that use TCP PID jogging → tcp name.
+        """Motion group IDs that use TCP waypoint jogging → tcp name.
 
         Returns dict mapping motion group ID to TCP name.
         """

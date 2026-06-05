@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from dataclasses import dataclass, field
 import logging
 import time
 from typing import TYPE_CHECKING
@@ -18,99 +17,18 @@ from nova import api
 from nova.types import Pose, RobotState
 from policy._sdk import get_api_gateway, get_cell, get_controller_id
 from policy.io import IOWriter
+from policy.jogging.clock import JoggingTimeClock
 from policy.jogging.session import JoggingStateTracker
+from policy.jogging.waypoints import PendingChunk, make_waypoints_request
 from policy.types import GuardState, GuardStopError, MotionError
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from nova.cell.motion_group import MotionGroup
-    from policy.types import JoggingMode, MotionConfig, SafetyGuard, ValueType
+    from policy.types import JoggingMode, SafetyGuard, ValueType, WaypointConfig
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class JoggingTimeClock:
-    """Tracks the server's jogger session clock and computes the speed ratio.
-
-    The server exposes ``jogger_session_timestamp_ms`` in the state stream
-    (field on ``JoggingDetails``). It starts at 0 after ``InitializeJoggingRequest``
-    and increments while waypoints are being executed.
-
-    This class observes that timestamp, compares it to the client's wall-clock
-    elapsed time, and derives the speed ratio (server_time / client_time).
-    The ratio is used to scale outgoing waypoint timestamps so that the
-    robot moves at real-time speed regardless of the server's internal rate.
-    """
-
-    speed_ratio: float = 1.0
-    synced: bool = False
-    _client_start_time: float = field(default=0.0, repr=False)
-
-    def start(self) -> None:
-        """Mark the client-side session start time."""
-        self._client_start_time = time.monotonic()
-
-    @property
-    def client_elapsed_ms(self) -> int:
-        """Client wall-clock elapsed since session start."""
-        if self._client_start_time == 0.0:
-            return 0
-        return int((time.monotonic() - self._client_start_time) * 1000)
-
-    def update(self, timestamp_ms: int) -> None:
-        """Feed a new ``jogger_session_timestamp_ms`` reading from the state stream."""
-        if timestamp_ms <= 0:
-            return
-        if not self.synced:
-            self.synced = True
-            logger.info(
-                "Server time sync established (jogger_session_timestamp_ms=%d)", timestamp_ms
-            )
-        # Use raw ratio (server_time / client_time) directly.
-        # Clamp >= 1.0 since the server is never slower than wall-clock.
-        client_ms = self.client_elapsed_ms
-        if client_ms > 0:
-            self.speed_ratio = max(1.0, timestamp_ms / client_ms)
-
-    def scale_timestamp(self, trajectory_time_ms: int) -> int:
-        """Convert a trajectory-time timestamp to server-time."""
-        return int(trajectory_time_ms * self.speed_ratio)
-
-    def scale_dt(self, dt_ms: float) -> float:
-        """Convert a trajectory-time dt to server-time."""
-        return dt_ms * self.speed_ratio
-
-    @staticmethod
-    def extract_from_state(state: object) -> int | None:
-        """Extract jogger_session_timestamp_ms from a MotionGroupState, or None."""
-        execute = getattr(state, "execute", None)
-        if execute is None:
-            return None
-        details = getattr(execute, "details", None)
-        if details is None:
-            return None
-        ts = getattr(details, "jogger_session_timestamp_ms", None)
-        if isinstance(ts, int):
-            return ts
-        return None
-
-
-def is_waypoint_jogging_available() -> bool:
-    """Check if the NOVA SDK has the JointWaypointsRequest model.
-
-    Returns False on older SDK versions that don't support waypoint jogging.
-    """
-    return hasattr(api.models, "JointWaypointsRequest")
-
-
-def is_pose_waypoint_jogging_available() -> bool:
-    """Check if the NOVA SDK has the PoseWaypointsRequest model.
-
-    Returns False on older SDK versions that don't support Cartesian waypoint jogging.
-    """
-    return hasattr(api.models, "PoseWaypointsRequest")
 
 
 class WaypointJoggingSession:
@@ -123,27 +41,12 @@ class WaypointJoggingSession:
     def __init__(
         self,
         motion_group: MotionGroup,
-        config: MotionConfig,
+        config: WaypointConfig,
         *,
         tcp: str = "",
         mode: JoggingMode = "joint",
         safety_guards: list[SafetyGuard] | None = None,
     ) -> None:
-        if not is_waypoint_jogging_available():
-            msg = (
-                "JointWaypointsRequest not available in this NOVA SDK version. "
-                "Use MotionConfig (velocity profile) instead, or upgrade NOVA."
-            )
-            raise RuntimeError(msg)
-
-        if mode == "cartesian" and not is_pose_waypoint_jogging_available():
-            msg = (
-                "PoseWaypointsRequest not available in this NOVA SDK version. "
-                "Cartesian waypoint jogging requires NOVA >= 26.5. "
-                "Use joint mode or upgrade NOVA."
-            )
-            raise RuntimeError(msg)
-
         self._motion_group = motion_group
         self._config = config
         self._tcp = tcp
@@ -173,7 +76,7 @@ class WaypointJoggingSession:
         # Pending waypoints to send (set by update_chunk, consumed by jogging loop).
         # For normal chunks, store raw steps/timing and build the request at
         # yield-time so timestamps are computed as late as possible.
-        self._pending_request: object | None = None
+        self._pending_request: PendingChunk | None = None
 
         # Task management
         self._jogging_task: asyncio.Task[None] | None = None
@@ -197,19 +100,20 @@ class WaypointJoggingSession:
         return self._motion_group.id
 
     @property
+    def num_joints(self) -> int | None:
+        """Number of joints, known after :meth:`start`. None before."""
+        return self._num_joints
+
+    @property
+    def mode(self) -> JoggingMode:
+        """Jogging mode: 'joint' or 'cartesian'."""
+        return self._mode
+
+    @property
     def current_state(self) -> RobotState | None:
         if self._current_joints is None or self._current_tcp_pose is None:
             return None
         return self._build_robot_state()
-
-    @property
-    def is_running(self) -> bool:
-        return self._running
-
-    @property
-    def is_ready(self) -> bool:
-        """True when the server has acknowledged the session and is ready for waypoints."""
-        return self._ready.is_set()
 
     async def wait_ready(self) -> None:
         """Wait until the jogging session is fully initialized and ready for waypoints."""
@@ -232,11 +136,6 @@ class WaypointJoggingSession:
         Returns 1.0 before server time is available.
         """
         return self._clock.speed_ratio
-
-    @property
-    def chunk_done(self) -> bool:
-        """Always True — waypoint mode uses fixed-rate policy calls."""
-        return True
 
     @property
     def failure_reason(self) -> str:
@@ -282,7 +181,9 @@ class WaypointJoggingSession:
         # Store raw chunk data. Timestamps are computed in _jogging_loop
         # immediately before yielding to the server, avoiding drift from any
         # internal await/scheduling delay between policy and stream send.
-        self._pending_request = ("chunk", steps, effective_dt_ms, start_time_ms)
+        self._pending_request = PendingChunk(
+            steps=steps, dt_ms=effective_dt_ms, start_time_ms=start_time_ms
+        )
 
         # Debug: log current robot position vs chunk first step (joint mode only)
         if self._mode == "joint" and self._current_joints is not None and len(steps) > 0:
@@ -309,92 +210,6 @@ class WaypointJoggingSession:
     async def write_ios(self, ios: dict[str, ValueType]) -> None:
         """Write IO values (delegated to IOWriter for deduplication)."""
         await self._io_writer.write(ios)
-
-    def _make_waypoints_request(
-        self,
-        *,
-        steps: list[list[float]],
-        effective_dt_ms: float,
-        start_time_ms: int,
-    ) -> object:
-        """Build JointWaypointsRequest or PoseWaypointsRequest at stream-yield time.
-
-        Scales the policy's real-time timestamps to server-time using the
-        auto-computed speed ratio from ``JoggingTimeClock``.
-
-        When ``start_time_ms >= 0`` (trajectory-absolute mode), timestamps are
-        placed at [start_time_ms * ratio, ...] on the server timeline.
-
-        When ``start_time_ms == -1`` (legacy mode), timestamps start from
-        the current client elapsed time scaled to server time.
-
-        In cartesian mode (``self._mode == 'cartesian'``), steps are
-        [x, y, z, rx, ry, rz] and are sent as PoseWaypointsRequest.
-        In joint mode, steps are joint radians sent as JointWaypointsRequest.
-        """
-        client_now_ms = self._clock.client_elapsed_ms
-
-        # Scale timestamps by auto-computed speed ratio so the server
-        # receives timestamps aligned with its faster internal clock.
-        # The policy sends in "real time"; we convert to "server time".
-        scaled_dt_ms = self._clock.scale_dt(effective_dt_ms)
-
-        if start_time_ms >= 0:
-            base_ms = self._clock.scale_timestamp(start_time_ms)
-            timestamps = [base_ms + int(i * scaled_dt_ms) for i in range(len(steps))]
-        else:
-            server_now_ms = self._clock.scale_timestamp(client_now_ms)
-            timestamps = [server_now_ms + int((i + 1) * scaled_dt_ms) for i in range(len(steps))]
-
-        if self._mode == "cartesian":
-            return self._build_pose_request(timestamps, steps)
-        return self._build_joint_request(timestamps, steps)
-
-    @staticmethod
-    def _build_joint_request(
-        timestamps: list[int],
-        steps: list[list[float]],
-    ) -> object:
-        """Build a JointWaypointsRequest from timestamps and joint steps.
-
-        The request uses the array-of-structs layout: a single ``waypoints``
-        list where each ``JointWaypoint`` bundles its timestamp with its joints.
-        """
-        return api.models.JointWaypointsRequest(
-            waypoints=[
-                api.models.JointWaypoint(timestamp=ts, joints=api.models.Joints(root=step))
-                for ts, step in zip(timestamps, steps, strict=True)
-            ],
-        )
-
-    @staticmethod
-    def _build_pose_request(
-        timestamps: list[int],
-        steps: list[list[float]],
-    ) -> object:
-        """Build a PoseWaypointsRequest from timestamps and TCP pose steps.
-
-        Each step is [x, y, z, rx, ry, rz] where position is in mm and
-        orientation is a rotation vector in radians.
-        """
-        from wandelbots_api_client.v2_pydantic.models.models import (  # noqa: PLC0415
-            Pose as ApiPose,
-            RotationVector,
-            Vector3d,
-        )
-
-        waypoints = []
-        for ts, step in zip(timestamps, steps, strict=True):
-            # step = [x, y, z, rx, ry, rz]
-            pos = Vector3d(root=list(step[:3]))
-            orient = RotationVector(root=list(step[3:6]))
-            waypoints.append(
-                api.models.PoseWaypoint(
-                    timestamp=ts, pose=ApiPose(position=pos, orientation=orient)
-                )
-            )
-
-        return api.models.PoseWaypointsRequest(waypoints=waypoints)
 
     async def start(self) -> None:
         """Start the state stream and jogging loop."""
@@ -544,24 +359,24 @@ class WaypointJoggingSession:
                 # the next _pending_request. Clearing after yield would delete
                 # that fresh chunk and create gaps that let the server exhaust
                 # its current action chunk.
-                request = self._pending_request
+                pending = self._pending_request
                 self._pending_request = None
 
-                # If this is a raw action chunk, build the JointWaypointsRequest
-                # now so timestamps are aligned to the server session timer at
-                # the last possible moment.
-                if isinstance(request, tuple) and request and request[0] == "chunk":
-                    # Start the clock on the first chunk — this is when the
-                    # server's internal timer begins (first waypoint message).
-                    if first_chunk:
-                        self._clock.start()
-                        first_chunk = False
-                    _, steps, effective_dt_ms, start_time_ms = request
-                    request = self._make_waypoints_request(
-                        steps=steps,
-                        effective_dt_ms=effective_dt_ms,
-                        start_time_ms=start_time_ms,
-                    )
+                # Start the clock on the first chunk — this is when the
+                # server's internal timer begins (first waypoint message).
+                if first_chunk:
+                    self._clock.start()
+                    first_chunk = False
+
+                # Build the request now so timestamps are aligned to the server
+                # session timer at the last possible moment.
+                request = make_waypoints_request(
+                    self._clock,
+                    self._mode,
+                    steps=pending.steps,
+                    effective_dt_ms=pending.dt_ms,
+                    start_time_ms=pending.start_time_ms,
+                )
 
                 yield api.models.ExecuteJoggingRequest(request)
 

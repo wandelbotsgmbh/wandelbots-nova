@@ -7,6 +7,9 @@ import contextlib
 import logging
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
+from nova import api
 from policy._sdk import get_api_gateway, get_cell, get_controller_id
 from policy.types import EmergencyStopError
 
@@ -16,7 +19,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_OPERATIONAL_SAFETY_STATES = frozenset({"SAFETY_STATE_NORMAL", "SAFETY_STATE_REDUCED"})
+# Safety states in which the robot is still operational. Anything else (e-stop,
+# protective stop, fault, violation, ...) is treated as a safety stop. Mirrors
+# nova's ProgramRunner estop check (single source of truth: SafetyStateType).
+_OPERATIONAL_SAFETY_STATES = frozenset(
+    {
+        api.models.SafetyStateType.SAFETY_STATE_NORMAL,
+        api.models.SafetyStateType.SAFETY_STATE_REDUCED,
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -35,7 +46,7 @@ def check_sessions(sessions: dict[object, WaypointJoggingSession]) -> None:
     for session in sessions.values():
         if not session.has_failed:
             continue
-        exc = session._failure_exception
+        exc = session.failure_exception
         if exc is not None:
             raise exc
         raise RuntimeError(session.failure_reason or "unknown session failure")
@@ -85,10 +96,12 @@ class EstopMonitor:
             ctrl_id = get_controller_id(mg)
             if ctrl_id not in seen:
                 seen.add(ctrl_id)
-                tasks.append(asyncio.create_task(
-                    self._watch(ctrl_id, get_api_gateway(mg)),
-                    name=f"estop-watch-{ctrl_id}",
-                ))
+                tasks.append(
+                    asyncio.create_task(
+                        self._watch(ctrl_id, get_api_gateway(mg)),
+                        name=f"estop-watch-{ctrl_id}",
+                    )
+                )
         try:
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
@@ -101,25 +114,32 @@ class EstopMonitor:
         stream = None
         try:
             stream = api_client.controller_api.stream_robot_controller_state(
-                cell=cell, controller=controller_id, response_rate=100,
+                cell=cell,
+                controller=controller_id,
+                response_rate=100,
             )
             async for state in stream:
-                safety_raw = getattr(state, "safety_state", None)
-                if safety_raw is None:
+                safety = getattr(state, "safety_state", None)
+                if safety is None:
                     continue
-                safety = safety_raw.name if hasattr(safety_raw, "name") else str(safety_raw)
                 if safety not in _OPERATIONAL_SAFETY_STATES:
-                    logger.error("E-stop detected on %s: %s", controller_id, safety)
-                    self.error = EmergencyStopError(controller_id, safety)
+                    label = getattr(safety, "value", str(safety))
+                    logger.error("E-stop detected on %s: %s", controller_id, label)
+                    self.error = EmergencyStopError(controller_id, label)
                     return
         except asyncio.CancelledError:
             raise
-        except (OSError, RuntimeError):
-            pass
-        except Exception:  # noqa: BLE001, S110
-            # Pydantic ValidationError from unknown state kinds (e.g. KIND_UNKNOWN
-            # on waypoint jogging feature branches). Non-fatal — just stop monitoring.
-            pass
+        except (OSError, RuntimeError) as e:
+            logger.warning("E-stop monitor for %s stopped: %s", controller_id, e)
+        except ValidationError as e:
+            # Unknown/unparseable state kinds (e.g. KIND_UNKNOWN on waypoint
+            # jogging feature branches). Non-fatal, but make it visible: the
+            # monitor stops watching this controller after this point.
+            logger.warning(
+                "E-stop monitor for %s stopped (unparseable controller state): %s",
+                controller_id,
+                e,
+            )
         finally:
             if stream is not None:
                 with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):

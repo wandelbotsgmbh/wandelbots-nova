@@ -119,10 +119,12 @@ def compute_rtc_options(
 
     # Overlap steps: how much of the previous action to reuse
     max_rtc_steps = int(state.action_horizon * config.max_overlap_factor)
-    overlap_steps = int(max(
-        min(state.action_horizon - executed_steps + frozen_steps, max_rtc_steps),
-        frozen_steps,
-    ))
+    overlap_steps = int(
+        max(
+            min(state.action_horizon - executed_steps + frozen_steps, max_rtc_steps),
+            frozen_steps,
+        )
+    )
 
     # Clamp to valid range
     overlap_steps = max(0, min(overlap_steps, state.action_horizon))
@@ -148,12 +150,14 @@ def compute_rtc_options(
 def detect_action_horizon(action: dict[str, object]) -> int | None:
     """Detect the action horizon from a server response.
 
-    Looks for the first numpy array in the action dict and returns
-    its first dimension (the temporal/horizon axis).
+    GR00T action arrays are ``(batch=1, time=T, dof)``; the horizon is the
+    temporal axis ``T``, which is the second-to-last dimension. Using
+    ``shape[-2]`` also handles an un-batched ``(T, dof)`` array. Returns the
+    first such array's horizon, or ``None`` if no >=2-D array is present.
     """
     import numpy as np  # noqa: PLC0415
 
     for value in action.values():
         if isinstance(value, np.ndarray) and value.ndim >= 2:  # noqa: PLR2004
-            return int(value.shape[0])
+            return int(value.shape[-2])
     return None

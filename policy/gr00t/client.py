@@ -80,7 +80,10 @@ class Gr00tPolicyClient(PolicyClient):
         rtc: RTCConfig | None = None,
     ) -> None:
         self._transport = Gr00tZmqTransport(
-            host=host, port=port, timeout_ms=timeout_ms, api_token=api_token,
+            host=host,
+            port=port,
+            timeout_ms=timeout_ms,
+            api_token=api_token,
         )
         self._dt_ms = dt_ms
         self._tcp_format = tcp_format
@@ -94,8 +97,13 @@ class Gr00tPolicyClient(PolicyClient):
             )
         )
 
-    async def connect(self, motion_group_ids: list[str]) -> None:
-        """Create the ZMQ REQ socket."""
+    async def connect(self, motion_group_ids: list[str]) -> None:  # noqa: ARG002
+        """Create the ZMQ REQ socket.
+
+        Called once per episode by the executor.  Resets RTC state so frozen
+        actions from a previous episode never bleed into the next one.
+        """
+        self.reset_rtc()
         await asyncio.to_thread(self._transport.connect)
 
     async def validate_schema(self, schema: PolicySchema) -> None:
@@ -134,9 +142,8 @@ class Gr00tPolicyClient(PolicyClient):
                 )
 
         if errors:
-            msg = (
-                "Schema does not satisfy GR00T server requirements:\n"
-                + "\n".join(f"  - {e}" for e in errors)
+            msg = "Schema does not satisfy GR00T server requirements:\n" + "\n".join(
+                f"  - {e}" for e in errors
             )
             raise ValueError(msg)
 
@@ -221,7 +228,7 @@ class Gr00tPolicyClient(PolicyClient):
             )
             backdate = max(0, backdate)
             if backdate:
-                chunk = chunk.model_copy(update={"frozen_steps": backdate})
+                chunk = chunk.model_copy(update={"seam_backdate_steps": backdate})
         return chunk
 
     async def close(self) -> None:
@@ -272,8 +279,7 @@ class Gr00tPolicyClient(PolicyClient):
                 cfgs = as_json.get("action_configs", [])
                 if isinstance(cfgs, list):
                     action_configs = [
-                        {k: str(v) for k, v in c.items()}
-                        for c in cfgs if isinstance(c, dict)
+                        {k: str(v) for k, v in c.items()} for c in cfgs if isinstance(c, dict)
                     ]
 
         return {
@@ -337,9 +343,7 @@ class Gr00tPolicyClient(PolicyClient):
         for tm in schema.tcp_mappings:
             s = states.get(tm.source.id)
             if s is not None and hasattr(s, "pose") and s.pose is not None:
-                state_dict[tm.key] = _to_state_array(
-                    pose_to_eef(s.pose, self._tcp_format)
-                )
+                state_dict[tm.key] = _to_state_array(pose_to_eef(s.pose, self._tcp_format))
 
         if io_values:
             for iom in schema.obs_io_mappings:

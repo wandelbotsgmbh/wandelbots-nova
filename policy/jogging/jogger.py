@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, overload
 
 from policy.estop import EstopMonitor, check_estop, check_sessions
 from policy.jogging.waypoint_session import WaypointJoggingSession
-from policy.types import MotionConfig, WaypointConfig
+from policy.types import WaypointConfig
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -65,16 +65,13 @@ class _BaseJogger:
     def _expected_dims(self, mg: MotionGroup) -> int | None:
         """Expected target dimension for a motion group. Override in subclass."""
         session = self._sessions.get(mg)
-        return session._num_joints if session else None
+        return session.num_joints if session else None
 
     def _validate_and_push(self, mg: MotionGroup, values: list[float]) -> None:
         """Validate target dimensions and push to session."""
         expected = self._expected_dims(mg)
         if expected is not None and len(values) != expected:
-            msg = (
-                f"Target has {len(values)} values but motion group "
-                f"'{mg.id}' expects {expected}"
-            )
+            msg = f"Target has {len(values)} values but motion group '{mg.id}' expects {expected}"
             raise ValueError(msg)
         session = self._sessions.get(mg)
         if session is not None:
@@ -90,7 +87,8 @@ class _BaseJogger:
         if value and isinstance(value[0], list):
             # Chunked: use trajectory-absolute timestamps for smooth overlapping
             session.update_chunk(
-                steps=value, dt_ms=dt_ms,
+                steps=value,
+                dt_ms=dt_ms,
                 start_time_ms=session.session_elapsed_ms,
             )
             self._log_target(mg.id, value, dt_ms)
@@ -107,7 +105,7 @@ class _BaseJogger:
         # Determine if this is joint or TCP based on session mode
         session_by_id = self._sessions_by_id()
         session = session_by_id.get(mg_id)
-        if session is not None and session._mode == "cartesian":
+        if session is not None and session.mode == "cartesian":
             chunk = ActionChunk(tcp={mg_id: steps}, dt_ms=dt_ms)
         else:
             chunk = ActionChunk(joints={mg_id: steps}, dt_ms=dt_ms)
@@ -236,7 +234,7 @@ class JointJogger(_BaseJogger):
         for mg in motion_groups:
             sessions[mg] = WaypointJoggingSession(
                 motion_group=mg,
-                config=MotionConfig(state_rate_ms=cfg.state_rate_ms),
+                config=cfg,
                 mode="joint",
                 safety_guards=safety_guards,
             )
@@ -262,9 +260,7 @@ class JointJogger(_BaseJogger):
     def set_target(
         self,
         target: (
-            list[float]
-            | list[list[float]]
-            | dict[MotionGroup, list[float] | list[list[float]]]
+            list[float] | list[list[float]] | dict[MotionGroup, list[float] | list[list[float]]]
         ),
         *,
         dt_ms: float = 0.0,
@@ -324,7 +320,7 @@ class TcpJogger(_BaseJogger):
         for mg, tcp in motion_groups.items():
             sessions[mg] = WaypointJoggingSession(
                 motion_group=mg,
-                config=MotionConfig(state_rate_ms=cfg.state_rate_ms),
+                config=cfg,
                 tcp=tcp,
                 mode="cartesian",
                 safety_guards=safety_guards,
@@ -462,7 +458,12 @@ def jog_joints(
     """
     if not isinstance(motion_groups, list):
         motion_groups = [motion_groups]
-    return JointJogger(motion_groups, config=config, safety_guards=safety_guards, start_joint_position=start_joint_position)
+    return JointJogger(
+        motion_groups,
+        config=config,
+        safety_guards=safety_guards,
+        start_joint_position=start_joint_position,
+    )
 
 
 @overload
@@ -523,12 +524,14 @@ def jog_tcp(
     """
     if isinstance(motion_groups, dict):
         return TcpJogger(
-            motion_groups, config=config,
+            motion_groups,
+            config=config,
             safety_guards=safety_guards,
             start_joint_position=start_joint_position,
         )
     return TcpJogger(
-        {motion_groups: tcp}, config=config,
+        {motion_groups: tcp},
+        config=config,
         safety_guards=safety_guards,
         start_joint_position=start_joint_position,
     )
