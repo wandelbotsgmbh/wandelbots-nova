@@ -53,14 +53,24 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     """Time spacing between steps in milliseconds. 0 = single-step."""
 
     start_time_ms: int = -1
-    """Absolute timestamp (ms from session start) for the first waypoint.
+    """Where this chunk's first waypoint sits on the server's session timeline.
 
-    When >=0, the waypoint session uses trajectory-absolute timestamps:
-    [start_time_ms + dt, start_time_ms + 2*dt, ...]. This keeps timestamps
-    consistent across overlapping chunks and avoids replanning jitter.
+    Two placement models, selected by this one field:
 
-    When -1 (default), timestamps are relative to the current time (legacy).
-    Use start_time_ms >= 0 for overlapping waypoint jogging."""
+    * **Absolute** (``>= 0``): timestamps are pinned to the server timeline as
+      ``[start_time_ms + dt, start_time_ms + 2*dt, ...]``. The *caller* decides
+      the anchor. Required for overlapping chunks (RTC), where a specific
+      interior step must land at "now" so consecutive chunks align and the
+      server can replace waypoints older than the new anchor. Also used when the
+      caller already knows the absolute time (standalone jogging, replay).
+    * **Relative** (``-1``, default): the session ignores any caller anchor and
+      places waypoints at ``[now + dt, now + 2*dt, ...]`` using the server clock
+      read at *send time*. Correct for sequential, non-overlapping jogging: there
+      is no timeline to align to, and computing "now" at the last instant avoids
+      both queue staleness and the slow drift you'd get from re-using an absolute
+      anchor across many chunks with an estimated speed ratio.
+
+    Rule of thumb: overlapping/RTC ⇒ absolute; plain sequential ⇒ relative."""
 
     seam_backdate_steps: int = 0
     """RTC seam backdate, in steps, for connecting overlapping chunks.

@@ -6,9 +6,9 @@ timestamp into a NOVA JointWaypointsRequest or PoseWaypointsRequest, scaling
 every timestamp by the clock's speed ratio.
 
 The two timing modes have a deliberate off-by-one that matters on the robot:
-  * trajectory-absolute (start_time_ms >= 0): timestamps are
+  * absolute (start_time_ms >= 0): timestamps are
     [base, base + dt, base + 2*dt, ...] starting *at* base;
-  * legacy (start_time_ms == -1): timestamps are
+  * relative (start_time_ms == -1): timestamps are
     [now + dt, now + 2*dt, ...] starting one dt *after* now.
 """
 
@@ -59,12 +59,12 @@ def test_absolute_mode_scales_both_the_base_and_the_step_spacing():
 
 
 # ---------------------------------------------------------------------------
-# Legacy mode (start_time_ms == -1): the off-by-one
+# Relative mode (start_time_ms == -1): the off-by-one
 # ---------------------------------------------------------------------------
 
 
-def test_legacy_mode_starts_one_dt_after_now_not_at_now():
-    """A fresh (unstarted) clock has elapsed 0; legacy timestamps are [dt, 2dt, ...]."""
+def test_relative_mode_starts_one_dt_after_now_not_at_now():
+    """A fresh (unstarted) clock has elapsed 0; relative timestamps are [dt, 2dt, ...]."""
     clock = JoggingTimeClock(speed_ratio=1.0)  # never started -> client_elapsed_ms == 0
     steps = [[0.0] * 6, [0.0] * 6, [0.0] * 6]
     req = make_waypoints_request(

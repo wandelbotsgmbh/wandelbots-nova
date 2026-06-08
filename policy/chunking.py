@@ -129,11 +129,13 @@ def placement_start_ms(
 
     * An explicit ``chunk.start_time_ms`` (>=0) set by the policy always wins.
     * Wait-for-chunk (``policy_rate_hz < 0``) — sequential, non-overlapping:
-      relative/legacy placement (``-1``), i.e. start from the robot's current
-      position "now". Avoids absolute-timeline drift.
+      relative placement (``-1``), i.e. start from the robot's current position
+      "now". There is no shared timeline to align to, so this avoids the slow
+      drift you'd get from re-using an absolute anchor across many chunks.
     * Overlapping (``policy_rate_hz >= 0``, typically RTC) — absolute
       timestamps anchored at send time, backdated by ``backdate_ms`` so the
-      step matching the robot's current position lands at "now".
+      step matching the robot's current position lands at "now". Relative
+      placement cannot express this, hence the two models exist.
     """
     if chunk.start_time_ms >= 0:
         return chunk.start_time_ms

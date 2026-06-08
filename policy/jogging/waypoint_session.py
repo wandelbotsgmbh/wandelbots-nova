@@ -173,15 +173,17 @@ class WaypointJoggingSession:
         Args:
             steps: Joint waypoints [rad] or TCP poses [x,y,z,rx,ry,rz] (mm/rad).
             dt_ms: Time between consecutive waypoints (ms). 0 = single-step.
-            start_time_ms: Absolute timestamp (ms from session start) for the
-                first waypoint. When >=0, timestamps are trajectory-absolute:
+            start_time_ms: Anchor for the first waypoint on the server timeline.
+                When >=0 (absolute), timestamps are
                 [start_time_ms + dt, start_time_ms + 2*dt, ...].
-                When -1 (default), uses current session time + dt (legacy).
+                When -1 (relative, default), the session ignores the anchor and
+                uses the server clock at send time: [now + dt, now + 2*dt, ...].
 
-        Using trajectory-absolute timestamps (start_time_ms >= 0) is recommended
-        for overlapping chunks: timestamps will be "in the past" by the time
-        the server receives them, which lets the server interpolate smoothly
-        from the current time forward without replanning jitter.
+        Absolute placement (start_time_ms >= 0) is required for overlapping
+        chunks: by anchoring on the shared timeline, a waypoint is typically "in
+        the past" by the time the server receives it, which lets the server
+        interpolate smoothly from the current time forward without replanning
+        jitter. Relative placement is for plain sequential jogging.
         """
         if not steps:
             return

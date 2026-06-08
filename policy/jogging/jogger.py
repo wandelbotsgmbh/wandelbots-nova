@@ -77,7 +77,8 @@ class _BaseJogger:
             raise ValueError(msg)
         session = self._sessions.get(mg)
         if session is not None:
-            # Single-step: use legacy timestamps (places target in the future)
+            # Single-step: use relative placement (server places the target one
+            # step in the future, from its current position).
             session.update_chunk(steps=[values], dt_ms=0.0)
         self._log_target(mg.id, [values], 0.0)
 
@@ -87,7 +88,7 @@ class _BaseJogger:
         if session is None:
             return value if not isinstance(value[0], list) else value[-1]
         if value and isinstance(value[0], list):
-            # Chunked: use trajectory-absolute timestamps for smooth overlapping
+            # Chunked: use absolute placement for smooth overlapping
             session.update_chunk(
                 steps=value,
                 dt_ms=dt_ms,

@@ -44,11 +44,12 @@ def make_waypoints_request(
     Scales the policy's real-time timestamps to server-time using the
     auto-computed speed ratio from ``clock``.
 
-    When ``start_time_ms >= 0`` (trajectory-absolute mode), timestamps are
+    When ``start_time_ms >= 0`` (absolute placement), timestamps are
     placed at [start_time_ms * ratio, ...] on the server timeline.
 
-    When ``start_time_ms == -1`` (legacy mode), timestamps start from
-    the current client elapsed time scaled to server time.
+    When ``start_time_ms == -1`` (relative placement), timestamps start from
+    the current client elapsed time scaled to server time, computed here at
+    send time so the anchor cannot go stale while the chunk waits in the queue.
 
     In cartesian mode, steps are [x, y, z, rx, ry, rz] and are sent as a
     PoseWaypointsRequest. In joint mode, steps are joint radians sent as a
