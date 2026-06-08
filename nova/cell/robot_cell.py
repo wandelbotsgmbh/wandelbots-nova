@@ -218,6 +218,14 @@ class AbstractRobot(Device):
     def id(self):
         return self._id
 
+    def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:
+        return False
+
+    async def _execute_direct_non_motion_actions(self, actions: list[Action]) -> None:
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support direct execution of non-motion action lists"
+        )
+
     @abstractmethod
     async def _plan(
         self,
@@ -447,8 +455,14 @@ class AbstractRobot(Device):
             payload_override (str | api.models.Payload | None): Override for the dynamics payload
                 used by the planner. See :meth:`plan` for resolution rules and caveats.
         """
+        actions_list = _normalize_actions(actions)
+
+        if self._supports_direct_non_motion_actions(actions_list):
+            await self._execute_direct_non_motion_actions(actions_list)
+            return
+
         joint_trajectory = await self.plan(
-            actions,
+            actions_list,
             tcp,
             start_joint_position=start_joint_position,
             payload_override=payload_override,
@@ -456,7 +470,7 @@ class AbstractRobot(Device):
         motion_state_stream = self.stream_execute(
             joint_trajectory,
             tcp,
-            actions,
+            actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
@@ -491,8 +505,14 @@ class AbstractRobot(Device):
             NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a target
                 pose in a collision-free motion.
         """
+        actions_list = _normalize_actions(actions)
+
+        if self._supports_direct_non_motion_actions(actions_list):
+            await self._execute_direct_non_motion_actions(actions_list)
+            return
+
         joint_trajectory = await self.plan(
-            actions,
+            actions_list,
             tcp,
             start_joint_position=start_joint_position,
             payload_override=payload_override,
@@ -500,7 +520,7 @@ class AbstractRobot(Device):
         await self.execute(
             joint_trajectory,
             tcp,
-            actions,
+            actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,

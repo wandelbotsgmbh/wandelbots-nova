@@ -46,55 +46,78 @@ class Pose(pydantic.BaseModel, Sized):
 
     Example:
     >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3))
-    Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3))
+    Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3), kinematic_configuration=None)
     """
 
     position: Vector3d
     orientation: Vector3d
+    kinematic_configuration: api.models.KinematicConfiguration | None = None
 
     def __init__(self, *args, **kwargs):
         """Parse a tuple into a dict
 
         Examples:
         >>> Pose((1, 2, 3, 4, 5, 6))
-        Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
+        Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6), kinematic_configuration=None)
         >>> Pose((1, 2, 3))
-        Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=0, y=0, z=0))
+        Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=0, y=0, z=0), kinematic_configuration=None)
         >>> Pose(api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.Vector3d([4, 5, 6])))
-        Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0))
+        Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None)
         >>> Pose(api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([4, 5, 6])))
-        Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0))
+        Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None)
         >>> pose = Pose((1, 2, 3, 4, 5, 6))
         >>> new_pose = Pose.model_validate(pose.model_dump())
         >>> pose == new_pose
         True
         >>> Pose(api.models.Pose(position=None, orientation=None))
-        Pose(position=Vector3d(x=0.0, y=0.0, z=0.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        Pose(position=Vector3d(x=0.0, y=0.0, z=0.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
         >>> Pose(api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=None))
-        Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
         >>> Pose(api.models.Pose(position=None, orientation=api.models.RotationVector([4, 5, 6])))
-        Pose(position=Vector3d(x=0.0, y=0.0, z=0.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0))
+        Pose(position=Vector3d(x=0.0, y=0.0, z=0.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None)
         >>> Pose(None)
-        Pose(position=Vector3d(x=0.0, y=0.0, z=0.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        Pose(position=Vector3d(x=0.0, y=0.0, z=0.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
+        >>> kc = api.models.KinematicConfiguration(kinematic_branch=api.models.KinematicBranch(shoulder_branch='FRONT', elbow_branch='UP', wrist_branch='NO_FLIP'))
+        >>> Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kc).kinematic_configuration == kc
+        True
+        >>> lr = api.models.LimitRange(lower_limit=-3.14, upper_limit=3.14)
+        >>> ar = [api.models.AxisRange(axis=0, range=lr), api.models.AxisRange(axis=5, range=lr)]
+        >>> kb = api.models.KinematicBranch(shoulder_branch='FRONT', elbow_branch='UP', wrist_branch='NO_FLIP')
+        >>> kc2 = api.models.KinematicConfiguration(kinematic_branch=kb, axis_ranges=ar)
+        >>> Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kc2).kinematic_configuration == kc2
+        True
         """
         # >>> Pose(api.models.TcpOffset(name='Flange', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.Vector3d([4, 5, 6]))))
         # Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6))
+        # Preserve kinematic_configuration from kwargs when positional args are parsed by _parse_args.
+        # _parse_args only returns position/orientation, so we inject it back before validation.
+        kinematic_configuration = kwargs.pop("kinematic_configuration", None)
         if args:
             values = _parse_args(*args)
+            values["kinematic_configuration"] = kinematic_configuration
             super().__init__(**values)
         else:
+            kwargs.setdefault("kinematic_configuration", kinematic_configuration)
             super().__init__(**kwargs)
 
     def __str__(self):
         return str(round(self).to_tuple())
 
     def __eq__(self, other):
+        """Check equality of two poses.
+
+        Note: Two poses are only equal if position, orientation AND kinematic_configuration
+        all match.
+        """
         if not isinstance(other, Pose):
             return NotImplemented
 
         first_val = tuple(round(val, _POSE_EQUALITY_PRECISION) for val in self.to_tuple())
         second_val = tuple(round(val, _POSE_EQUALITY_PRECISION) for val in other.to_tuple())
-        return first_val == second_val
+        return (
+            first_val == second_val
+            and self.kinematic_configuration == other.kinematic_configuration
+        )
 
     def __round__(self, n=None):
         if n is not None:
@@ -160,6 +183,9 @@ class Pose(pydantic.BaseModel, Sized):
     def to_api_model(self) -> api.models.Pose:
         """Convert to wandelbots_api_client Pose
 
+        Note: kinematic_configuration is not included in the result since api.models.Pose
+        does not support it. It is handled separately by motion actions (e.g. CartesianPTP).
+
         Examples:
         >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).to_api_model()
         Pose(position=Vector3d(root=[10.0, 20.0, 30.0]), orientation=RotationVector(root=[1.0, 2.0, 3.0]))
@@ -176,6 +202,9 @@ class Pose(pydantic.BaseModel, Sized):
         Pose concatenation combines two poses into a single pose that represents the cumulative effect of both
         transformations applied sequentially.
 
+        Note: kinematic_configuration is NOT propagated — the result always has
+        kinematic_configuration=None.
+
         Args:
             other: can be a Pose, or an iterable with 6 elements
 
@@ -184,18 +213,18 @@ class Pose(pydantic.BaseModel, Sized):
 
         Examples:
         >>> Pose((1, 2, 3, 0, 0, 0)) @ Pose((1, 2, 3, 0, 0, 0))
-        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
         >>> Pose((1, 2, 3, 0, 0, 0)) @ [1, 2, 3, 0, 0, 0]
-        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
         >>> Pose((1, 2, 3, 0, 0, 0)) @ (1, 2, 3, 0, 0, 0)
-        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
         >>> def as_iterator(data):
         ...     for d in data:
         ...         yield d
         >>> Pose((1, 2, 3, 0, 0, 0)) @ as_iterator([1, 2, 3, 0, 0, 0])
-        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
         >>> Pose((1, 2, 3, 0, 0, 0)) @ Vector3d.from_tuple((1, 2, 3))
-        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
         """
         if isinstance(other, Pose):
             transformed_matrix = np.dot(self.matrix, other.matrix)
@@ -224,24 +253,45 @@ class Pose(pydantic.BaseModel, Sized):
     @pydantic.model_serializer
     def serialize_model(self):
         """
+        Serializes the pose including kinematic_configuration if set.
+
         Examples:
         >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).model_dump()
         {'position': [10.0, 20.0, 30.0], 'orientation': [1.0, 2.0, 3.0]}
+
+        >>> from nova import api
+        >>> kc = api.models.KinematicConfiguration(kinematic_branch=api.models.KinematicBranch(shoulder_branch='FRONT', elbow_branch='UP', wrist_branch='NO_FLIP'))
+        >>> p = Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kc)
+        >>> d = p.model_dump()
+        >>> 'kinematic_configuration' in d
+        True
+        >>> Pose.model_validate(d) == p
+        True
         """
-        return self.to_api_model().model_dump()
+        result = self.to_api_model().model_dump()
+        if self.kinematic_configuration is not None:
+            result["kinematic_configuration"] = self.kinematic_configuration.model_dump()
+        return result
 
     @pydantic.model_validator(mode="before")
     @classmethod
     def model_validator(cls, data):
-        """Transform the data that is passed into model validator to match what we return in the model_dump"""
+        """Transform the data that is passed into model validator to match what we return in the model_dump.
+
+        Handles optional kinematic_configuration for roundtrip serialization.
+        """
         if not isinstance(data, dict):
             raise ValueError("model_validator only accepts dicts")
         pos = data["position"]
         ori = data["orientation"]
-        return {
+        result: dict[str, object] = {
             "position": Vector3d(x=pos[0], y=pos[1], z=pos[2]),
             "orientation": Vector3d(x=ori[0], y=ori[1], z=ori[2]),
         }
+        kc = data.get("kinematic_configuration")
+        if kc is not None:
+            result["kinematic_configuration"] = api.models.KinematicConfiguration.model_validate(kc)
+        return result
 
     def _to_homogenous_transformation_matrix(self):
         """Converts the pose (position and rotation vector) to a 4x4 homogeneous transformation matrix."""

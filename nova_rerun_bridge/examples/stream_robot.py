@@ -8,7 +8,7 @@ import signal
 from contextlib import asynccontextmanager
 
 import nova
-from nova import Nova, api
+from nova import Nova, api, run_program
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova_rerun_bridge import NovaRerunBridge
@@ -71,4 +71,4 @@ async def test():
 
 
 if __name__ == "__main__":
-    asyncio.run(test())
+    run_program(test)
