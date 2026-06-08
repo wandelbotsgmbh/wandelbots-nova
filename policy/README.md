@@ -170,6 +170,13 @@ flowchart TD
     class XE,XM,XR err;
 ```
 
+## Teleoperation
+
+There's no built-in teleop device, but the standalone jogging layer is the
+building block: feed `set_target(...)` from whatever input you have — a leader
+arm, keyboard, gamepad, spacemouse — in your own script. See
+[docs/JOGGING.md](docs/JOGGING.md).
+
 ## Further reading
 
 | Doc | Covers |
