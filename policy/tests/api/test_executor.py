@@ -244,6 +244,57 @@ async def test_a_lost_connection_raises_runtime_error(robot: _Robot):
 
 
 # ---------------------------------------------------------------------------
+# Mode auto-selection: joint vs cartesian, chosen from the schema
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_tcp_action_schema_opens_a_cartesian_session_and_sends_pose_waypoints():
+    """A schema with Observation.tcp(action=True) auto-selects cartesian mode.
+
+    The README/JOGGING.md claim is that request type is picked from the schema,
+    not configured by hand. So a policy returning a flat pose dict must (1) open
+    its session in ``mode="cartesian"`` (the PoseWaypointsRequest path) and (2)
+    have its six pose values routed through as a single 6-D waypoint — never
+    mistaken for joint targets.
+    """
+    mg = _mg()
+    schema = PolicySchema(observations=[Observation.tcp("eef", source=mg, action=True)])
+
+    async def pose_policy(_obs: object) -> dict[str, float]:
+        return {
+            "eef_x": 500.0,
+            "eef_y": 200.0,
+            "eef_z": 300.0,
+            "eef_rx": 0.0,
+            "eef_ry": 3.14,
+            "eef_rz": 0.0,
+        }
+
+    session = _fake_session()
+    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
+    with (
+        patch("policy.executor.WaypointJoggingSession", return_value=session) as session_cls,
+        patch("policy.executor.EstopMonitor", return_value=estop),
+    ):
+        await PolicyExecutor(schema, pose_policy, timeout_s=0.05).run()
+
+    # (1) The session was opened in cartesian mode.
+    assert session_cls.call_args.kwargs["mode"] == "cartesian"
+    # (2) The pose landed as one 6-D TCP waypoint, in [x, y, z, rx, ry, rz] order.
+    session.update_chunk.assert_called()
+    assert session.update_chunk.call_args.kwargs["steps"] == [[500.0, 200.0, 300.0, 0.0, 3.14, 0.0]]
+
+
+@pytest.mark.asyncio
+async def test_a_joint_schema_opens_a_joint_session(robot: _Robot):
+    """The default (no TCP action) opens the session in joint mode."""
+    with patch("policy.executor.WaypointJoggingSession", return_value=robot.session) as session_cls:
+        await PolicyExecutor(_schema(), _hold, timeout_s=0.05).run()
+    assert session_cls.call_args.kwargs["mode"] == "joint"
+
+
+# ---------------------------------------------------------------------------
 # RTC requires overlapping placement
 # ---------------------------------------------------------------------------
 

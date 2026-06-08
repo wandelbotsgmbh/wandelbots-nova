@@ -147,16 +147,22 @@ async with jog_tcp({mg1: "Flange", mg2: "Gripper"}) as jogger:
 
 ## Error Detection
 
-The session monitors the NOVA jogging state stream for blocking conditions:
+The session monitors the NOVA jogging state stream for pause conditions.
+Three of them are **blocking faults** — after consecutive ticks in one of these
+states, a `MotionError` is raised:
 
 | State | Meaning |
 |-------|---------|
 | `PAUSED_NEAR_JOINT_LIMIT` | Joint reached its limit |
 | `PAUSED_NEAR_COLLISION` | Self-collision detected |
 | `PAUSED_NEAR_SINGULARITY` | Kinematic singularity |
-| `PAUSED_BY_USER` | Waypoint buffer exhausted (send chunks faster) |
 
-After consecutive ticks in a blocking state, a `MotionError` is raised.
+One pause is **recoverable** and never raises — the robot resumes on its own
+once a fresh chunk arrives:
+
+| State | Meaning |
+|-------|---------|
+| `PAUSED_BY_USER` | Waypoint buffer exhausted (send chunks faster) |
 
 ## Configuration
 
