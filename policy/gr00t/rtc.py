@@ -12,7 +12,7 @@ Requires the server-side patch that forwards ``options`` to the model::
     # gr00t/policy/gr00t_policy.py, line ~408:
     model_pred = self.model.get_action(**collated_inputs, options=options)
 
-See ``policy/gr00t/RTC.md`` for the full investigation and design rationale.
+See ``policy/docs/RTC.md`` for the full investigation and design rationale.
 """
 
 from __future__ import annotations

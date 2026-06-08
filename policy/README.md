@@ -75,9 +75,6 @@ asyncio.run(main())
 
 Any async callable that maps `dict → dict` works — call a remote GPU server, run a local model, or return constants. The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
 
-▶ [`execute_custom_policy_on_dual_arm.py`](examples/execute_custom_policy_on_dual_arm.py) — two UR5e robots with cameras, IOs, and safety guards\
-▶ [`execute_gr00t_dual_arm.py`](examples/execute_gr00t_dual_arm.py) — dual arm with GR00T ZMQ + 4 cameras
-
 ## PolicySchema
 
 Decouples the policy from hardware topology. The policy sees a flat dictionary of named features — it never knows about motion groups, controllers, or hardware IO keys.
@@ -153,177 +150,38 @@ Stop conditions must be fast (no network calls). Use `Observation.computed()` fo
 
 ### Execution lifecycle
 
-| Trigger                      | Behavior                                          |
-| ---------------------------- | ------------------------------------------------- |
-| `timeout_s` expires          | Returns `ExecutionResult(reason="timeout")`       |
-| `executor.stop()` called     | Returns `ExecutionResult(reason="stopped")`       |
-| Stop condition returns `True`| Returns `ExecutionResult(reason="stop condition: <name>")` |
-| E-stop / protective stop     | Raises `EmergencyStopError`                       |
-| Self-collision / joint limit | Raises `MotionError`                              |
-| Connection lost              | Raises `RuntimeError`                             |
+`run()` drives the policy until one thing happens: a clean exit returns an
+`ExecutionResult`, a fault raises.
 
-## Motion Control
+```mermaid
+flowchart TD
+    Run(["await executor.run()"]) --> Loop(("tick loop"))
 
-Action chunks are sent to the NOVA Jogging API as **timestamped waypoints**. The server handles velocity profiling, interpolation, and servo control internally.
+    Loop -->|timeout_s expires| RT["return ExecutionResult\nreason = timeout"]
+    Loop -->|executor.stop| RS["return ExecutionResult\nreason = stopped"]
+    Loop -->|stop condition returns True| RC["return ExecutionResult\nreason = stop condition: name"]
+    Loop -->|e-stop / protective stop| XE["raise EmergencyStopError"]
+    Loop -->|self-collision / joint limit| XM["raise MotionError"]
+    Loop -->|connection lost| XR["raise RuntimeError"]
 
-```python
-from policy import PolicyExecutor
-
-executor = PolicyExecutor(
-    schema,
-    policy,
-    n_action_steps=8,       # send only the first 8 of 16 predicted steps
-    policy_rate_hz=20.0,    # query the policy at 20 Hz (overlapping chunks)
-)
+    classDef ok fill:#0e2a14,stroke:#3fb950,color:#d7ffe0;
+    classDef err fill:#2a0e0e,stroke:#f85149,color:#ffd7d7;
+    class RT,RS,RC ok;
+    class XE,XM,XR err;
 ```
 
-The executor operates as a **receding horizon controller**: at each tick it queries the policy for a new chunk and sends it to the server. Each chunk overlaps with the previous one — the server replaces waypoints older than the new chunk's first timestamp. This provides smooth, continuous motion even with variable inference latency.
+## Further reading
 
-Two request types are supported:
+| Doc | Covers |
+|---|---|
+| [docs/JOGGING.md](docs/JOGGING.md) | Motion control: how chunks are streamed as timestamped waypoints, joint/TCP modes, the execution loop (`policy_rate_hz`), standalone jogging, dual-arm, and error handling |
+| [docs/SCHEMA.md](docs/SCHEMA.md) | Advanced schema: IO mappings, relative actions, TCP actions, computed observations/actions |
+| [docs/GR00T.md](docs/GR00T.md) | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ (and [docs/RTC.md](docs/RTC.md) for real-time chunking) |
+| [docs/RERUN.md](docs/RERUN.md) | Optional real-time 3D visualization of execution |
 
-| Schema action type | Request sent | Coordinate system |
-|---|---|---|
-| Joint positions (default) | `JointWaypointsRequest` | Joint radians |
-| TCP poses (`action=True`) | `PoseWaypointsRequest` | Robot base frame (mm + rotation vector) |
+### Examples
 
-The server synchronizes its internal clock with the client via `jogger_session_timestamp_ms` in the state stream, ensuring timestamps remain aligned regardless of network latency.
+▶ [`execute_custom_policy_on_dual_arm.py`](examples/execute_custom_policy_on_dual_arm.py) — two UR5e robots with cameras, IOs, and stop conditions\
+▶ [`execute_gr00t_dual_arm.py`](examples/execute_gr00t_dual_arm.py) — dual arm with GR00T ZMQ + 4 cameras\
+▶ [`jogging/`](examples/jogging/) — standalone jogging (single/dual arm, joint/TCP, chunked), no policy
 
-See [`JOGGING.md`](JOGGING.md) for protocol details.
-
-#### Jogging (without a policy)
-
-The jogging layer can be used standalone — no policy, no schema, no cameras:
-
-```python
-from policy import jog_joints, jog_tcp
-from nova.types import Pose
-
-# Joint jogging — sends JointWaypointsRequest
-async with jog_joints(mg) as jogger:
-    async for state in jogger:
-        jogger.set_target([0.0, -1.57, 1.57, -1.57, -1.57, 0.0])
-
-# TCP jogging — sends PoseWaypointsRequest
-async with jog_tcp(mg, tcp="Flange") as jogger:
-    async for state in jogger:
-        jogger.set_target(Pose(500, 200, 300, 0, 3.14, 0))
-```
-
-Both modes support chunked targets for smoother motion:
-
-```python
-async with jog_joints(mg) as jogger:
-    async for state in jogger:
-        chunk = [compute_target(t + i * 0.033) for i in range(8)]
-        jogger.set_target(chunk, dt_ms=33.0)
-```
-
-See [`JOGGING.md`](JOGGING.md) for joint/TCP modes, dual-arm control, chunking, and error handling.\
-▶ [`jogging_dual_arm.py`](examples/jogging_dual_arm.py)
-
-## GR00T
-
-Built-in `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ. See [`gr00t/README.md`](gr00t/README.md).
-
----
-
-## Advanced Schema Features
-
-### IO mappings
-
-By default, `Observation.io(...)` entries are bidirectional — the policy observes and controls them. The `mapping` converts between hardware values and policy values:
-
-```python
-# Policy sees 0.0 (closed) or 100.0 (open)
-# Hardware reads/writes True/False on digital_out[0]
-Observation.io("gripper", source=mg, io="digital_out[0]",
-               mapping=BoolMapping(on=100.0))
-```
-
-For read-only sensors, set `action=False`:
-
-```python
-Observation.io("sensor", source=mg, io="digital_in[0]", action=False)
-```
-
-If observation and action need different hardware keys, use an explicit `Action.io()`:
-
-```python
-from policy import Action
-
-schema = PolicySchema(
-    observations=[
-        Observation.io("gripper", source=mg, io="analog_in[0]", action=False),
-    ],
-    actions=[
-        Action.io("gripper", target=mg, io="digital_out[0]",
-                  mapping=BoolMapping(on=1.0)),
-    ],
-)
-```
-
-### Relative actions
-
-Joint and TCP observations support `mode="relative"`. The mode controls how the policy's action output is interpreted:
-
-| Mode                   | Policy returns       | Executor sends to jogging |
-| ---------------------- | -------------------- | ------------------------- |
-| `"absolute"` (default) | target positions     | as-is                     |
-| `"relative"`           | offsets from current | `current + offset`        |
-
-```python
-Observation.joint_positions("arm", source=mg, mode="relative")
-```
-
-### TCP actions
-
-Policies that output Cartesian targets instead of joint positions. Set `action=True` on `Observation.tcp()` — the executor sends `PoseWaypointsRequest` for that motion group, and the server handles inverse kinematics internally:
-
-```python
-Observation.tcp("eef_pose", source=mg, tcp="Flange", action=True)
-```
-
-The policy receives named values (`eef_pose_x`, `eef_pose_y`, `eef_pose_z`, `eef_pose_rx`, `eef_pose_ry`, `eef_pose_rz`) in mm and radians (NOVA's native TCP format), and returns target values in the same format. Combine with `mode="relative"` for delta-based Cartesian control.
-
-### Rerun visualization
-
-Add `viewer=nova.viewers.Rerun()` to the `@nova.program` decorator to get real-time 3D visualization of the execution. The executor automatically logs robot meshes, action chunk TCP paths, TCP trails, camera images, and joint timeseries — zero overhead when no viewer is active.
-
-```python
-from nova import viewers
-
-@nova.program(id="my_policy", viewer=viewers.Rerun())
-async def run(ctx):
-    ...
-    executor = PolicyExecutor(schema, policy, timeout_s=10.0)
-    await executor.run()  # data streams to Rerun viewer automatically
-```
-
-Requires `wandelbots-nova[nova-rerun-bridge]`. Run `uv run download-models` once to fetch robot meshes.
-
-### Computed observations and actions
-
-For external data sources (OPC UA, PLC, databases) not covered by the built-in types:
-
-```python
-async def read_force_sensor(obs: dict) -> dict:
-    values = await opcua_client.read(["ns=2;s=ForceZ"])
-    return {"force_z": values[0]}
-
-schema = PolicySchema(observations=[
-    Observation.joint_positions("arm", source=mg),
-    Observation.computed(read_force_sensor),
-])
-```
-
-Computed actions trigger external side effects when the policy returns:
-
-```python
-async def write_plc(action: dict) -> None:
-    await plc_client.write("ns=2;s=ConveyorSpeed", action.get("conveyor_speed", 0.0))
-
-schema = PolicySchema(
-    observations=[Observation.joint_positions("arm", source=mg)],
-    actions=[Action.computed(write_plc)],
-)
-```

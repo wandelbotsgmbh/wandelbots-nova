@@ -4,6 +4,26 @@ Live [Rerun](https://rerun.io) logging for policy execution. **Entirely optional
 and zero-cost when no viewer is active** — the executor checks `_is_rerun_active()`
 and skips all logging if Rerun isn't initialized, so nothing here runs in production.
 
+## Usage
+
+Add `viewer=nova.viewers.Rerun()` to the `@nova.program` decorator to get
+real-time 3D visualization of the execution. The executor automatically logs
+robot meshes, action chunk TCP paths, TCP trails, camera images, and joint
+timeseries — zero overhead when no viewer is active.
+
+```python
+from nova import viewers
+
+@nova.program(id="my_policy", viewer=viewers.Rerun())
+async def run(ctx):
+    ...
+    executor = PolicyExecutor(schema, policy, timeout_s=10.0)
+    await executor.run()  # data streams to Rerun viewer automatically
+```
+
+Requires `wandelbots-nova[nova-rerun-bridge]`. Run `uv run download-models` once
+to fetch robot meshes.
+
 ## What it logs
 
 | Module            | Logs                                                                                                                                                    |

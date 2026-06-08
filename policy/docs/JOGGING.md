@@ -30,6 +30,11 @@ handles velocity profiling, interpolation, limits, and servo control internally.
 
 ### RTC mode (`policy_rate_hz=20`)
 
+In RTC mode the executor runs as a **receding horizon controller**: at each tick
+it queries the policy for a fresh chunk and sends it, overlapping the previous
+one. The server replaces waypoints older than the new chunk's first timestamp,
+giving smooth, continuous motion even with variable inference latency.
+
 ```
 1. Observe robot state
 2. Query policy → get action chunk
