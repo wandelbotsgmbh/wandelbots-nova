@@ -5,7 +5,7 @@ cameras. This is the simplest way to move a robot: open a session, send targets,
 and the server handles velocity profiling, interpolation, limits, and servo
 control internally.
 
-> Building policy execution on top of this? See [EXECUTOR.md](EXECUTOR.md) for
+> Building policy execution on top of this? See [executor.md](executor.md) for
 > the `PolicyExecutor` loop and the timestamp protocol.
 
 The `jog_joints()` and `jog_tcp()` functions provide a simple async context

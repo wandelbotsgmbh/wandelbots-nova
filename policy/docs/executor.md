@@ -2,7 +2,7 @@
 
 Advanced internals: how `PolicyExecutor` drives the jogging layer, and how
 client and server keep their clocks aligned. For the simple standalone jogging
-API (`jog_joints` / `jog_tcp`), see [JOGGING.md](JOGGING.md).
+API (`jog_joints` / `jog_tcp`), see [jogging.md](jogging.md).
 
 ## Pipeline
 

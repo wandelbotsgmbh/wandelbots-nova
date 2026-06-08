@@ -155,17 +155,17 @@ Stop conditions must be fast (no network calls). Use `Observation.computed()` fo
 There's no built-in teleop device, but the standalone jogging layer is the
 building block: feed `set_target(...)` from whatever input you have — a leader
 arm, keyboard, gamepad, spacemouse — in your own script. See
-[docs/JOGGING.md](docs/JOGGING.md).
+[docs/jogging.md](docs/jogging.md).
 
 ## Further reading
 
 | Doc                                | Covers                                                                                                                                                                     |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [docs/JOGGING.md](docs/JOGGING.md) | Standalone jogging: `jog_joints` / `jog_tcp`, joint/TCP modes, chunked targets, dual-arm, and error handling |
-| [docs/EXECUTOR.md](docs/EXECUTOR.md) | Advanced: the `PolicyExecutor` loop (`policy_rate_hz`, RTC) and the client/server timestamp protocol |
-| [docs/SCHEMA.md](docs/SCHEMA.md)   | Advanced schema: IO mappings, relative actions, TCP actions, computed observations/actions                                                                                 |
-| [docs/GR00T.md](docs/GR00T.md)     | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ (and [docs/RTC.md](docs/RTC.md) for real-time chunking)     |
-| [docs/RERUN.md](docs/RERUN.md)     | Optional real-time 3D visualization of execution                                                                                                                           |
+| [docs/jogging.md](docs/jogging.md) | Standalone jogging: `jog_joints` / `jog_tcp`, joint/TCP modes, chunked targets, dual-arm, and error handling |
+| [docs/executor.md](docs/executor.md) | Advanced: the `PolicyExecutor` loop (`policy_rate_hz`, RTC) and the client/server timestamp protocol |
+| [docs/schema.md](docs/schema.md)   | Advanced schema: IO mappings, relative actions, TCP actions, computed observations/actions                                                                                 |
+| [docs/gr00t.md](docs/gr00t.md)     | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ (and [docs/rtc.md](docs/rtc.md) for real-time chunking)     |
+| [docs/rerun.md](docs/rerun.md)     | Optional real-time 3D visualization of execution                                                                                                                           |
 
 ### Examples
 

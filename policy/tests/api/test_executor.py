@@ -252,7 +252,7 @@ async def test_a_lost_connection_raises_runtime_error(robot: _Robot):
 async def test_a_tcp_action_schema_opens_a_cartesian_session_and_sends_pose_waypoints():
     """A schema with Observation.tcp(action=True) auto-selects cartesian mode.
 
-    The README/JOGGING.md claim is that request type is picked from the schema,
+    The README/jogging.md claim is that request type is picked from the schema,
     not configured by hand. So a policy returning a flat pose dict must (1) open
     its session in ``mode="cartesian"`` (the PoseWaypointsRequest path) and (2)
     have its six pose values routed through as a single 6-D waypoint — never

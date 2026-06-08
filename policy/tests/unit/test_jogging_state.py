@@ -106,7 +106,7 @@ def test_unknown_pause_type_does_not_trigger():
 def test_paused_by_user_is_recoverable_and_never_raises():
     """PAUSED_BY_USER (waypoint buffer exhausted) is recoverable, not a fault.
 
-    JOGGING.md lists PAUSED_BY_USER alongside the fatal pause states, but it
+    jogging.md lists PAUSED_BY_USER alongside the fatal pause states, but it
     means "the buffer emptied, send chunks faster" — the robot resumes once a
     new chunk arrives. It must NOT be in _BLOCKING_PAUSES and must never raise,
     no matter how many consecutive ticks report it. This pins that contract so a

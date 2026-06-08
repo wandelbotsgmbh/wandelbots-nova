@@ -34,7 +34,7 @@ The client uses `PolicySchema` observations to build GR00T-compatible numpy arra
 
 RTC reuses the tail of the previous action prediction as a warm start for the
 diffusion denoising process, producing smoother overlapping action chunks.
-See [`RTC.md`](./RTC.md) for the full investigation and design.
+See [`rtc.md`](./rtc.md) for the full investigation and design.
 
 ### Server-side patch (required)
 

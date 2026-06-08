@@ -1,6 +1,6 @@
 """Tests for make_waypoints_request — the documented jogging timestamp protocol.
 
-This pure function is what EXECUTOR.md's "Timestamp Protocol" and JOGGING.md's
+This pure function is what executor.md's "Timestamp Protocol" and jogging.md's
 "Waypoint request types" tables actually describe: it turns raw steps + dt + a
 start timestamp into a NOVA JointWaypointsRequest or PoseWaypointsRequest, scaling
 every timestamp by the clock's speed ratio.

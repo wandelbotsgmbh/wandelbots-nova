@@ -100,4 +100,4 @@ schema = PolicySchema(
 
 ## Rerun visualization
 
-See [RERUN.md](RERUN.md) for real-time 3D visualization of execution.
+See [rerun.md](rerun.md) for real-time 3D visualization of execution.
