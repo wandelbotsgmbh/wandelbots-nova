@@ -41,7 +41,6 @@ class CameraSource(Protocol):
 
     async def connect(self) -> None:
         """Connect to camera hardware. Called once before execution starts."""
-        ...
 
     def read(self, max_age_s: float = 5.0) -> NDArray[Any]:
         """Read the latest frame from this camera.
@@ -57,8 +56,6 @@ class CameraSource(Protocol):
         Raises:
             RuntimeError: If no frame available or frame is stale.
         """
-        ...
 
     async def disconnect(self) -> None:
         """Release camera resources. Called after execution ends."""
-        ...
