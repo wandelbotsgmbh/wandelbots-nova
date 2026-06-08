@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from policy.jogging import JoggingStateTracker
+from policy.jogging.session import _BLOCKING_PAUSES
 from policy.types import MotionError
 
 
@@ -102,6 +103,23 @@ def test_unknown_pause_type_does_not_trigger():
     t.check()  # Should not raise
 
 
+def test_paused_by_user_is_recoverable_and_never_raises():
+    """PAUSED_BY_USER (waypoint buffer exhausted) is recoverable, not a fault.
+
+    JOGGING.md lists PAUSED_BY_USER alongside the fatal pause states, but it
+    means "the buffer emptied, send chunks faster" — the robot resumes once a
+    new chunk arrives. It must NOT be in _BLOCKING_PAUSES and must never raise,
+    no matter how many consecutive ticks report it. This pins that contract so a
+    well-meaning edit that "completes" the table by adding PAUSED_BY_USER to the
+    blocking set would fail here.
+    """
+    assert "PAUSED_BY_USER" not in _BLOCKING_PAUSES
+    t = JoggingStateTracker("0@ur10e", confirm_ticks=2)
+    for _ in range(20):
+        t.update_from_state(_state("PAUSED_BY_USER"))
+        t.check()  # never raises
+
+
 # ===========================================================================
 # Stateful property machine — the debounce contract over arbitrary tick
 # sequences. A reference counter mirrors the tracker: it must raise iff
@@ -119,8 +137,6 @@ from hypothesis.stateful import (  # noqa: E402
     invariant,
     rule,
 )
-
-from policy.jogging.session import _BLOCKING_PAUSES  # noqa: E402
 
 # Kinds that must NOT count toward a trip: RUNNING, no execute details, and a
 # pause type that isn't one of the blocking pauses.
