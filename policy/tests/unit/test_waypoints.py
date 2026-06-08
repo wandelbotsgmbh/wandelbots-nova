@@ -6,9 +6,9 @@ start timestamp into a NOVA JointWaypointsRequest or PoseWaypointsRequest, scali
 every timestamp by the clock's speed ratio.
 
 The two timing modes have a deliberate off-by-one that matters on the robot:
-  * absolute (start_time_ms >= 0): timestamps are
+  * absolute (first_timestamp_ms >= 0): timestamps are
     [base, base + dt, base + 2*dt, ...] starting *at* base;
-  * relative (start_time_ms == -1): timestamps are
+  * relative (first_timestamp_ms == -1): timestamps are
     [now + dt, now + 2*dt, ...] starting one dt *after* now.
 """
 
@@ -32,16 +32,16 @@ def _joint_steps(req) -> list[list[float]]:
 
 
 # ---------------------------------------------------------------------------
-# Trajectory-absolute mode (start_time_ms >= 0)
+# Trajectory-absolute mode (first_timestamp_ms >= 0)
 # ---------------------------------------------------------------------------
 
 
 def test_absolute_mode_places_timestamps_starting_at_the_scaled_base():
-    """start_time_ms=100, dt=10, ratio=1 -> [100, 110, 120]; steps preserved."""
+    """first_timestamp_ms=100, dt=10, ratio=1 -> [100, 110, 120]; steps preserved."""
     clock = JoggingTimeClock(speed_ratio=1.0)
     steps = [[0.0] * 6, [0.1] * 6, [0.2] * 6]
     req = make_waypoints_request(
-        clock, "joint", steps=steps, effective_dt_ms=10.0, start_time_ms=100
+        clock, "joint", steps=steps, effective_dt_ms=10.0, first_timestamp_ms=100
     )
     assert isinstance(req, api.models.JointWaypointsRequest)
     assert _joint_timestamps(req) == [100, 110, 120]
@@ -53,13 +53,13 @@ def test_absolute_mode_scales_both_the_base_and_the_step_spacing():
     clock = JoggingTimeClock(speed_ratio=2.0)
     steps = [[0.0] * 6, [0.0] * 6, [0.0] * 6]
     req = make_waypoints_request(
-        clock, "joint", steps=steps, effective_dt_ms=10.0, start_time_ms=100
+        clock, "joint", steps=steps, effective_dt_ms=10.0, first_timestamp_ms=100
     )
     assert _joint_timestamps(req) == [200, 220, 240]
 
 
 # ---------------------------------------------------------------------------
-# Relative mode (start_time_ms == -1): the off-by-one
+# Relative mode (first_timestamp_ms == -1): the off-by-one
 # ---------------------------------------------------------------------------
 
 
@@ -68,7 +68,7 @@ def test_relative_mode_starts_one_dt_after_now_not_at_now():
     clock = JoggingTimeClock(speed_ratio=1.0)  # never started -> client_elapsed_ms == 0
     steps = [[0.0] * 6, [0.0] * 6, [0.0] * 6]
     req = make_waypoints_request(
-        clock, "joint", steps=steps, effective_dt_ms=10.0, start_time_ms=-1
+        clock, "joint", steps=steps, effective_dt_ms=10.0, first_timestamp_ms=-1
     )
     # First waypoint is dt in the future, NOT 0 — the server interpolates toward it.
     assert _joint_timestamps(req) == [10, 20, 30]
@@ -84,7 +84,7 @@ def test_cartesian_mode_builds_a_pose_request_splitting_position_and_orientation
     clock = JoggingTimeClock(speed_ratio=1.0)
     steps = [[500.0, 200.0, 300.0, 0.1, 0.2, 0.3]]
     req = make_waypoints_request(
-        clock, "cartesian", steps=steps, effective_dt_ms=10.0, start_time_ms=0
+        clock, "cartesian", steps=steps, effective_dt_ms=10.0, first_timestamp_ms=0
     )
     assert isinstance(req, api.models.PoseWaypointsRequest)
     wp = req.waypoints[0]
@@ -97,7 +97,7 @@ def test_joint_mode_builds_a_joint_request():
     """The mode argument selects the request type: 'joint' -> JointWaypointsRequest."""
     clock = JoggingTimeClock(speed_ratio=1.0)
     req = make_waypoints_request(
-        clock, "joint", steps=[[0.0] * 6], effective_dt_ms=10.0, start_time_ms=0
+        clock, "joint", steps=[[0.0] * 6], effective_dt_ms=10.0, first_timestamp_ms=0
     )
     assert isinstance(req, api.models.JointWaypointsRequest)
 
@@ -105,7 +105,9 @@ def test_joint_mode_builds_a_joint_request():
 def test_empty_steps_produce_no_waypoints():
     """A chunk with no steps yields an empty waypoint list (nothing to send)."""
     clock = JoggingTimeClock(speed_ratio=1.0)
-    req = make_waypoints_request(clock, "joint", steps=[], effective_dt_ms=10.0, start_time_ms=0)
+    req = make_waypoints_request(
+        clock, "joint", steps=[], effective_dt_ms=10.0, first_timestamp_ms=0
+    )
     assert req.waypoints == []
 
 
@@ -127,7 +129,9 @@ def test_absolute_timestamps_are_a_nondecreasing_progression_from_the_base(ratio
     clock = JoggingTimeClock(speed_ratio=ratio)
     steps = [[0.0] * 6 for _ in range(n)]
     ts = _joint_timestamps(
-        make_waypoints_request(clock, "joint", steps=steps, effective_dt_ms=dt, start_time_ms=start)
+        make_waypoints_request(
+            clock, "joint", steps=steps, effective_dt_ms=dt, first_timestamp_ms=start
+        )
     )
     assert len(ts) == n
     assert ts[0] == clock.scale_timestamp(start)

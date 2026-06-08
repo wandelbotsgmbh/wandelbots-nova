@@ -122,7 +122,7 @@ async def replay_episode(ctx: nova.ProgramContext):
         chunk = actions[step:chunk_end] if step < len(actions) else [actions[-1]]
 
         # Use actual recording timestamps for dt between steps
-        start_time_ms = int((timestamps_s[step] - timestamps_s[0]) * 1000)
+        first_timestamp_ms = int((timestamps_s[step] - timestamps_s[0]) * 1000)
 
         return ActionChunk(
             joints={
@@ -130,7 +130,7 @@ async def replay_episode(ctx: nova.ProgramContext):
                 mg_right.id: [a[6:] for a in chunk],
             },
             dt_ms=dt_ms,
-            start_time_ms=start_time_ms,
+            first_timestamp_ms=first_timestamp_ms,
         )
 
     # Run

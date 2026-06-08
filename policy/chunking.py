@@ -63,7 +63,7 @@ def trim_chunk(chunk: ActionChunk, n: int) -> ActionChunk:
         tcp=trimmed_tcp,
         ios=chunk.ios,
         dt_ms=chunk.dt_ms,
-        start_time_ms=chunk.start_time_ms,
+        first_timestamp_ms=chunk.first_timestamp_ms,
         seam_backdate_steps=chunk.seam_backdate_steps,
     )
 
@@ -113,7 +113,7 @@ def apply_relative_mode(
         tcp=new_tcp,
         ios=chunk.ios,
         dt_ms=chunk.dt_ms,
-        start_time_ms=chunk.start_time_ms,
+        first_timestamp_ms=chunk.first_timestamp_ms,
         seam_backdate_steps=chunk.seam_backdate_steps,
     )
 
@@ -125,20 +125,19 @@ def placement_start_ms(
     session_elapsed_ms: int,
     backdate_ms: int,
 ) -> int:
-    """Compute the ``start_time_ms`` for a chunk on one session.
+    """Compute the ``first_timestamp_ms`` for a chunk on one session.
 
-    * An explicit ``chunk.start_time_ms`` (>=0) set by the policy always wins.
+    * An explicit ``chunk.first_timestamp_ms`` (>=0) set by the policy always wins.
     * Wait-for-chunk (``policy_rate_hz < 0``) — sequential, non-overlapping:
       relative placement (``-1``), i.e. start from the robot's current position
-      "now". There is no shared timeline to align to, so this avoids the slow
-      drift you'd get from re-using an absolute anchor across many chunks.
+      "now". There is no shared timeline to align to.
     * Overlapping (``policy_rate_hz >= 0``, typically RTC) — absolute
       timestamps anchored at send time, backdated by ``backdate_ms`` so the
       step matching the robot's current position lands at "now". Relative
       placement cannot express this, hence the two models exist.
     """
-    if chunk.start_time_ms >= 0:
-        return chunk.start_time_ms
+    if chunk.first_timestamp_ms >= 0:
+        return chunk.first_timestamp_ms
     if policy_rate_hz < 0:
         return -1
     return max(0, session_elapsed_ms - backdate_ms)

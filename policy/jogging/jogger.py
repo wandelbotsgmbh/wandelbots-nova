@@ -92,7 +92,7 @@ class _BaseJogger:
             session.update_chunk(
                 steps=value,
                 dt_ms=dt_ms,
-                start_time_ms=session.session_elapsed_ms,
+                first_timestamp_ms=session.session_elapsed_ms,
             )
             self._log_target(mg.id, value, dt_ms)
             return value[-1]

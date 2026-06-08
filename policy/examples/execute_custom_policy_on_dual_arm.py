@@ -88,8 +88,8 @@ async def mock_policy(obs: dict[str, Any]) -> ActionChunk:
         joints[mg_id] = steps
 
     # Trajectory-absolute timestamp so overlapping chunks align correctly
-    start_time_ms = int(elapsed * 1000)
-    return ActionChunk(joints=joints, dt_ms=50.0, start_time_ms=start_time_ms)
+    first_timestamp_ms = int(elapsed * 1000)
+    return ActionChunk(joints=joints, dt_ms=50.0, first_timestamp_ms=first_timestamp_ms)
 
 
 # ---------------------------------------------------------------------------

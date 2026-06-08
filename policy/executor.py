@@ -488,27 +488,29 @@ class PolicyExecutor:
             if session is None:
                 logger.warning("Unknown motion group in chunk: %s", group_id)
                 continue
-            start_time_ms = placement_start_ms(
-                chunk,
-                policy_rate_hz=self._policy_rate_hz,
-                session_elapsed_ms=session.session_elapsed_ms,
-                backdate_ms=backdate_ms,
-            )
-            session.update_chunk(steps=steps, dt_ms=chunk.dt_ms, start_time_ms=start_time_ms)
-
-        for group_id, raw_tcp_steps in chunk.tcp.items():
-            session = self._sessions.get(group_id)
-            if session is None:
-                logger.warning("Unknown motion group in TCP chunk: %s", group_id)
-                continue
-            start_time_ms = placement_start_ms(
+            first_timestamp_ms = placement_start_ms(
                 chunk,
                 policy_rate_hz=self._policy_rate_hz,
                 session_elapsed_ms=session.session_elapsed_ms,
                 backdate_ms=backdate_ms,
             )
             session.update_chunk(
-                steps=raw_tcp_steps, dt_ms=chunk.dt_ms, start_time_ms=start_time_ms
+                steps=steps, dt_ms=chunk.dt_ms, first_timestamp_ms=first_timestamp_ms
+            )
+
+        for group_id, raw_tcp_steps in chunk.tcp.items():
+            session = self._sessions.get(group_id)
+            if session is None:
+                logger.warning("Unknown motion group in TCP chunk: %s", group_id)
+                continue
+            first_timestamp_ms = placement_start_ms(
+                chunk,
+                policy_rate_hz=self._policy_rate_hz,
+                session_elapsed_ms=session.session_elapsed_ms,
+                backdate_ms=backdate_ms,
+            )
+            session.update_chunk(
+                steps=raw_tcp_steps, dt_ms=chunk.dt_ms, first_timestamp_ms=first_timestamp_ms
             )
 
         if chunk.ios:

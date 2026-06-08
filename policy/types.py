@@ -52,23 +52,24 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     dt_ms: float = 0.0
     """Time spacing between steps in milliseconds. 0 = single-step."""
 
-    start_time_ms: int = -1
+    first_timestamp_ms: int = -1
     """Where this chunk's first waypoint sits on the server's session timeline.
 
     Two placement models, selected by this one field:
 
     * **Absolute** (``>= 0``): timestamps are pinned to the server timeline as
-      ``[start_time_ms + dt, start_time_ms + 2*dt, ...]``. The *caller* decides
+      ``[first_timestamp_ms, first_timestamp_ms + dt, first_timestamp_ms + 2*dt, ...]`` — the
+      first waypoint lands exactly at the anchor (which may be in the *past*).
+      The *caller* decides
       the anchor. Required for overlapping chunks (RTC), where a specific
       interior step must land at "now" so consecutive chunks align and the
       server can replace waypoints older than the new anchor. Also used when the
       caller already knows the absolute time (standalone jogging, replay).
     * **Relative** (``-1``, default): the session ignores any caller anchor and
       places waypoints at ``[now + dt, now + 2*dt, ...]`` using the server clock
-      read at *send time*. Correct for sequential, non-overlapping jogging: there
-      is no timeline to align to, and computing "now" at the last instant avoids
-      both queue staleness and the slow drift you'd get from re-using an absolute
-      anchor across many chunks with an estimated speed ratio.
+      read at *send time*. The simplest correct placement for sequential,
+      non-overlapping jogging: there is no timeline to align to, and deriving
+      "now" at the last instant avoids queue staleness.
 
     Rule of thumb: overlapping/RTC ⇒ absolute; plain sequential ⇒ relative."""
 

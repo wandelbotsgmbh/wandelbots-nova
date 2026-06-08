@@ -28,7 +28,7 @@ class PendingChunk:
 
     steps: list[list[float]]
     dt_ms: float
-    start_time_ms: int
+    first_timestamp_ms: int
 
 
 def make_waypoints_request(
@@ -37,17 +37,17 @@ def make_waypoints_request(
     *,
     steps: list[list[float]],
     effective_dt_ms: float,
-    start_time_ms: int,
+    first_timestamp_ms: int,
 ) -> object:
     """Build a JointWaypointsRequest or PoseWaypointsRequest at stream-yield time.
 
     Scales the policy's real-time timestamps to server-time using the
     auto-computed speed ratio from ``clock``.
 
-    When ``start_time_ms >= 0`` (absolute placement), timestamps are
-    placed at [start_time_ms * ratio, ...] on the server timeline.
+    When ``first_timestamp_ms >= 0`` (absolute placement), timestamps are
+    placed at [first_timestamp_ms * ratio, ...] on the server timeline.
 
-    When ``start_time_ms == -1`` (relative placement), timestamps start from
+    When ``first_timestamp_ms == -1`` (relative placement), timestamps start from
     the current client elapsed time scaled to server time, computed here at
     send time so the anchor cannot go stale while the chunk waits in the queue.
 
@@ -62,8 +62,8 @@ def make_waypoints_request(
     # The policy sends in "real time"; we convert to "server time".
     scaled_dt_ms = clock.scale_dt(effective_dt_ms)
 
-    if start_time_ms >= 0:
-        base_ms = clock.scale_timestamp(start_time_ms)
+    if first_timestamp_ms >= 0:
+        base_ms = clock.scale_timestamp(first_timestamp_ms)
         timestamps = [base_ms + int(i * scaled_dt_ms) for i in range(len(steps))]
     else:
         server_now_ms = clock.scale_timestamp(client_now_ms)

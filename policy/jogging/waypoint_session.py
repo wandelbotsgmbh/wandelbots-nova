@@ -159,7 +159,7 @@ class WaypointJoggingSession:
         steps: list[list[float]],
         dt_ms: float,
         *,
-        start_time_ms: int = -1,
+        first_timestamp_ms: int = -1,
         **_kwargs: object,
     ) -> None:
         """Queue a new action chunk as waypoints.
@@ -171,17 +171,25 @@ class WaypointJoggingSession:
         Args:
             steps: Joint waypoints [rad] or TCP poses [x,y,z,rx,ry,rz] (mm/rad).
             dt_ms: Time between consecutive waypoints (ms). 0 = single-step.
-            start_time_ms: Anchor for the first waypoint on the server timeline.
-                When >=0 (absolute), timestamps are
-                [start_time_ms + dt, start_time_ms + 2*dt, ...].
-                When -1 (relative, default), the session ignores the anchor and
-                uses the server clock at send time: [now + dt, now + 2*dt, ...].
+            first_timestamp_ms: Where the chunk's first waypoint is anchored on the
+                server's session timeline. Both modes emit absolute server-time
+                timestamps; they differ only in the anchor:
+                  * >=0 (absolute): first waypoint lands exactly at this anchor,
+                    then [anchor, anchor + dt, anchor + 2*dt, ...]. The anchor
+                    may be in the *past*.
+                  * -1 (relative, default): anchor is "now" (server clock read
+                    at send time): [now + dt, now + 2*dt, ...].
 
-        Absolute placement (start_time_ms >= 0) is required for overlapping
-        chunks: by anchoring on the shared timeline, a waypoint is typically "in
-        the past" by the time the server receives it, which lets the server
-        interpolate smoothly from the current time forward without replanning
-        jitter. Relative placement is for plain sequential jogging.
+        Why two modes: for sequential, non-overlapping jogging there is nothing
+        to align to, so dropping the chunk at "now" (relative) is the simplest
+        correct placement. RTC produces *overlapping* chunks whose first steps
+        describe positions the robot has already passed; anchoring at "now"
+        would make it jump back to step 0. Absolute placement instead anchors in
+        the past (now - backdate) so the step matching the robot's current
+        position lands at "now" and the rest extends forward — the server drops
+        the already-past waypoints and interpolates smoothly, connecting
+        consecutive chunks. "Now" cannot express a past anchor, which is why
+        absolute placement exists.
         """
         if not steps:
             return
@@ -193,7 +201,7 @@ class WaypointJoggingSession:
         # immediately before yielding to the server, avoiding drift from any
         # internal await/scheduling delay between policy and stream send.
         self._pending_request = PendingChunk(
-            steps=steps, dt_ms=effective_dt_ms, start_time_ms=start_time_ms
+            steps=steps, dt_ms=effective_dt_ms, first_timestamp_ms=first_timestamp_ms
         )
 
         # Debug: log current robot position vs chunk first step (joint mode only)
@@ -367,7 +375,7 @@ class WaypointJoggingSession:
                     self._mode,
                     steps=pending.steps,
                     effective_dt_ms=pending.dt_ms,
-                    start_time_ms=pending.start_time_ms,
+                    first_timestamp_ms=pending.first_timestamp_ms,
                 )
 
                 yield api.models.ExecuteJoggingRequest(request)

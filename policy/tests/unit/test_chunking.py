@@ -133,8 +133,8 @@ def test_relative_tcp_offsets_from_current_pose():
 
 
 def test_explicit_start_time_always_wins():
-    """A start_time_ms the policy set explicitly is used verbatim."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0]]}, start_time_ms=1234)
+    """A first_timestamp_ms the policy set explicitly is used verbatim."""
+    chunk = ActionChunk(joints={"0@ur5e": [[0.0]]}, first_timestamp_ms=1234)
     assert (
         placement_start_ms(chunk, policy_rate_hz=20, session_elapsed_ms=999, backdate_ms=50) == 1234
     )
@@ -142,7 +142,7 @@ def test_explicit_start_time_always_wins():
 
 def test_wait_for_chunk_uses_relative_placement():
     """Sequential mode (policy_rate_hz < 0) places chunks relative ('now') = -1."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0]]})  # start_time_ms defaults to -1
+    chunk = ActionChunk(joints={"0@ur5e": [[0.0]]})  # first_timestamp_ms defaults to -1
     assert (
         placement_start_ms(chunk, policy_rate_hz=-1, session_elapsed_ms=5000, backdate_ms=80) == -1
     )
@@ -197,7 +197,7 @@ def test_duration_is_zero_whenever_dt_is_unset(n_steps, dt_ms):
 @settings(max_examples=200, deadline=None)
 def test_trim_bounds_each_arm_to_n_and_preserves_a_prefix(steps, n):
     """Trimming to n>0 yields min(len, n) steps that are an exact prefix."""
-    chunk = ActionChunk(joints={"0@ur5e": steps}, dt_ms=33.0, start_time_ms=7)
+    chunk = ActionChunk(joints={"0@ur5e": steps}, dt_ms=33.0, first_timestamp_ms=7)
     trimmed = trim_chunk(chunk, n)
     out = trimmed.joints["0@ur5e"]
     assert len(out) == min(len(steps), n)
@@ -212,12 +212,12 @@ def test_trim_never_mutates_chunk_metadata(steps, n):
         joints={"0@ur5e": steps},
         ios={"0@ur5e": {"do[0]": True}},
         dt_ms=33.0,
-        start_time_ms=7,
+        first_timestamp_ms=7,
         seam_backdate_steps=2,
     )
     trimmed = trim_chunk(chunk, n)
     assert trimmed.dt_ms == chunk.dt_ms
-    assert trimmed.start_time_ms == chunk.start_time_ms
+    assert trimmed.first_timestamp_ms == chunk.first_timestamp_ms
     assert trimmed.seam_backdate_steps == chunk.seam_backdate_steps
     assert trimmed.ios == chunk.ios
 
@@ -269,8 +269,8 @@ def test_relative_mode_with_no_groups_is_identity(steps):
 )
 @settings(max_examples=200, deadline=None)
 def test_an_explicit_start_time_always_wins(explicit, rate, elapsed, backdate):
-    """A start_time_ms the policy set (>= 0) is used verbatim in every mode."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]}, start_time_ms=explicit)
+    """A first_timestamp_ms the policy set (>= 0) is used verbatim in every mode."""
+    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]}, first_timestamp_ms=explicit)
     placed = placement_start_ms(
         chunk, policy_rate_hz=rate, session_elapsed_ms=elapsed, backdate_ms=backdate
     )
@@ -285,7 +285,7 @@ def test_an_explicit_start_time_always_wins(explicit, rate, elapsed, backdate):
 @settings(max_examples=100, deadline=None)
 def test_wait_for_chunk_mode_always_places_relative(rate, elapsed, backdate):
     """Sequential mode (rate < 0) with no explicit start always places at -1 ('now')."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]})  # start_time_ms defaults to -1
+    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]})  # first_timestamp_ms defaults to -1
     placed = placement_start_ms(
         chunk, policy_rate_hz=rate, session_elapsed_ms=elapsed, backdate_ms=backdate
     )
