@@ -15,9 +15,9 @@ Simple example to demonstrate how to add a welding part to the collision world a
 """
 
 
-async def load_and_transform_mesh(filepath: str, pose: api.models.Pose) -> trimesh.Geometry:
+async def load_and_transform_mesh(filepath: str, pose: api.models.Pose) -> trimesh.Trimesh:
     """Load mesh and transform to desired position."""
-    scene = trimesh.load_mesh(filepath, file_type="stl")
+    scene: trimesh.Trimesh = trimesh.load_mesh(filepath, file_type="stl")
 
     # Create transformation matrix from Pose
     transform = np.eye(4)
@@ -198,7 +198,7 @@ async def test(ctx: nova.ProgramContext):
     )
 
     # Log to rerun
-    await log_mesh_to_rerun(scene)  # type: ignore[arg-type]
+    await log_mesh_to_rerun(scene)
 
     cell = ctx.nova.cell()
     controller = await cell.controller("ur10e-welding")
@@ -238,9 +238,7 @@ async def test(ctx: nova.ProgramContext):
 
     # Add mesh to collision world
     mesh_collider = await add_mesh_to_collision_world(
-        collision_api=ctx.nova.api.store_collision_components_api,
-        cell_name=cell.id,
-        scene=scene,  # type: ignore[arg-type]
+        collision_api=ctx.nova.api.store_collision_components_api, cell_name=cell.id, scene=scene
     )
 
     # Build collision world with welding part included
