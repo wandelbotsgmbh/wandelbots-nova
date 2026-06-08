@@ -81,3 +81,63 @@ def test_extract_from_state_handles_missing_fields():
 
     assert JoggingTimeClock.extract_from_state(_Empty()) is None
     assert JoggingTimeClock.extract_from_state(object()) is None
+
+
+# ===========================================================================
+# Property-based invariants for the clock's scaling + clamp behaviour.
+# ===========================================================================
+
+from hypothesis import (  # noqa: E402
+    given,
+    settings,
+    strategies as st,
+)
+
+_RATIO = st.floats(min_value=1.0, max_value=50.0, allow_nan=False, allow_infinity=False)
+_TS = st.integers(min_value=0, max_value=1_000_000)
+
+
+@given(ratio=_RATIO, t=_TS)
+@settings(max_examples=200, deadline=None)
+def test_scaling_with_any_ratio_never_shrinks_a_timestamp(ratio, t):
+    """Since the server is never slower than wall-clock (ratio >= 1), scaling
+    a non-negative timestamp/dt can only grow it, and equals int(t * ratio)."""
+    clock = JoggingTimeClock(speed_ratio=ratio)
+    assert clock.scale_timestamp(t) == int(t * ratio)
+    assert clock.scale_timestamp(t) >= t
+    assert clock.scale_dt(float(t)) == t * ratio
+    assert clock.scale_dt(float(t)) >= t
+
+
+@given(ratio=_RATIO, a=_TS, b=_TS)
+@settings(max_examples=200, deadline=None)
+def test_scaling_is_monotonic_in_the_input(ratio, a, b):
+    """Ordering is preserved: a <= b implies scale(a) <= scale(b)."""
+    clock = JoggingTimeClock(speed_ratio=ratio)
+    lo, hi = sorted((a, b))
+    assert clock.scale_timestamp(lo) <= clock.scale_timestamp(hi)
+
+
+@given(
+    readings=st.lists(st.integers(min_value=-1000, max_value=1_000_000), min_size=0, max_size=20)
+)
+@settings(max_examples=200, deadline=None)
+def test_speed_ratio_stays_at_least_one_through_any_reading_sequence(readings):
+    """Whatever the state stream reports, speed_ratio is clamped >= 1.0."""
+    clock = JoggingTimeClock()
+    clock.start()
+    for ts in readings:
+        clock.update(ts)
+        assert clock.speed_ratio >= 1.0
+
+
+@given(readings=st.lists(st.integers(min_value=-1000, max_value=0), min_size=1, max_size=20))
+@settings(max_examples=100, deadline=None)
+def test_non_positive_readings_never_sync_the_clock(readings):
+    """A jogger clock stuck at <= 0 must never flip to synced or scale != 1.0."""
+    clock = JoggingTimeClock()
+    clock.start()
+    for ts in readings:
+        clock.update(ts)
+    assert clock.synced is False
+    assert clock.speed_ratio == 1.0
