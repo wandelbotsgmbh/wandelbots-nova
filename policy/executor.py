@@ -524,7 +524,9 @@ class PolicyExecutor:
         """Create a waypoint jogging session for a motion group."""
         tcp_groups = self._schema.tcp_action_groups()
         mode = "cartesian" if mg.id in tcp_groups else "joint"
-        tcp = tcp_groups.get(mg.id) or self._schema.tcp if mode == "cartesian" else self._schema.tcp
+        tcp = self._schema.tcp
+        if mode == "cartesian":
+            tcp = tcp_groups.get(mg.id) or self._schema.tcp
 
         return WaypointJoggingSession(
             motion_group=mg,

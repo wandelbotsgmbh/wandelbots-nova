@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from policy.types import ActionChunk
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from numpy.typing import NDArray
 
     from nova.types import RobotState
@@ -68,7 +70,7 @@ class CallbackPolicyClient:
     - A dict with "joints" key
     """
 
-    def __init__(self, fn: object) -> None:
+    def __init__(self, fn: Callable[..., Any]) -> None:
         self._fn = fn
 
     async def connect(self, motion_group_ids: list[str]) -> None:

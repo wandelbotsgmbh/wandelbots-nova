@@ -19,16 +19,19 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _max_steps(chunk: ActionChunk) -> int:
+    """Longest step sequence across all joint and TCP motion groups."""
+    return max(
+        (len(steps) for steps in (*chunk.joints.values(), *chunk.tcp.values())),
+        default=0,
+    )
+
+
 def chunk_duration_s(chunk: ActionChunk) -> float:
     """Compute how long a chunk takes to execute (seconds)."""
     if chunk.dt_ms <= 0:
         return 0.0
-    n_steps = 0
-    for steps in chunk.joints.values():
-        n_steps = max(n_steps, len(steps))
-    for steps in chunk.tcp.values():
-        n_steps = max(n_steps, len(steps))
-    return n_steps * chunk.dt_ms / 1000.0
+    return _max_steps(chunk) * chunk.dt_ms / 1000.0
 
 
 def trim_chunk(chunk: ActionChunk, n: int) -> ActionChunk:
@@ -41,10 +44,7 @@ def trim_chunk(chunk: ActionChunk, n: int) -> ActionChunk:
     if n <= 0:
         return chunk
 
-    actual_steps = max(
-        (len(steps) for steps in chunk.joints.values()),
-        default=max((len(steps) for steps in chunk.tcp.values()), default=0),
-    )
+    actual_steps = _max_steps(chunk)
     if 0 < actual_steps < n:
         logger.warning(
             "Policy returned %d steps but n_action_steps=%d. "
