@@ -10,8 +10,7 @@ if TYPE_CHECKING:
 
 
 class CameraManager:
-    """Connects, reads from, and disconnects a set of camera sources.
-    """
+    """Connects, reads from, and disconnects a set of camera sources."""
 
     def __init__(self, max_age_s: float) -> None:
         self._max_age_s = max_age_s

@@ -216,6 +216,11 @@ dist_glob_patterns = ["dist/*"]
 upload_to_vcs_release = true
 
 
+[tool.ruff.lint]
+# S110: flag `try/except: pass` blocks that swallow exceptions without an
+# explanatory comment (a standalone comment before `pass` satisfies the rule).
+extend-select = ["S110"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["nova", "nova_rerun_bridge", "novax"]
 

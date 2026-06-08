@@ -25,9 +25,11 @@ async def main(ctx: nova.ProgramContext):
     amplitude = 0.3
     frequency = 0.5
 
-    async with jog_joints([mg1, mg2], start_joint_position={mg1: HOME_LEFT, mg2: HOME_RIGHT}) as jogger:
+    async with jog_joints(
+        [mg1, mg2], start_joint_position={mg1: HOME_LEFT, mg2: HOME_RIGHT}
+    ) as jogger:
         t0 = time.monotonic()
-        async for _states in jogger:
+        async for _ in jogger:
             t = time.monotonic() - t0
             if t >= duration:
                 break

@@ -43,9 +43,7 @@ class StateStreamer:
         """Start the background streaming task."""
         self._sessions = sessions
         self._running = True
-        self._task = asyncio.create_task(
-            self._loop(), name="rerun-state-stream"
-        )
+        self._task = asyncio.create_task(self._loop(), name="rerun-state-stream")
 
     async def stop(self) -> None:
         """Stop the background streaming task."""
@@ -78,6 +76,7 @@ class StateStreamer:
 
                 await asyncio.sleep(0.01)  # ~100Hz
         except asyncio.CancelledError:
+            # Expected on shutdown; stop quietly without logging as an error.
             pass
         except (OSError, RuntimeError) as e:
             logger.debug("State stream logging stopped: %s", e)

@@ -9,7 +9,8 @@ import rerun.blueprint as rrb
 
 
 def send_blueprint(
-    motion_group_ids: list[str], camera_names: list[str],
+    motion_group_ids: list[str],
+    camera_names: list[str],
 ) -> None:
     """Send a Rerun blueprint with 3D view, camera panels, joints, and text logs."""
 
@@ -23,8 +24,7 @@ def send_blueprint(
     ]
 
     camera_views = [
-        rrb.Spatial2DView(contents=[f"policy/cameras/{n}"], name=n)
-        for n in camera_names
+        rrb.Spatial2DView(contents=[f"policy/cameras/{n}"], name=n) for n in camera_names
     ]
     joint_views = [
         rrb.TimeSeriesView(contents=[f"policy/{mg_id}/joints/**"], name=f"Joints {mg_id}")
@@ -50,8 +50,10 @@ def send_blueprint(
         if right_panels
         else views[0]
     )
-    rr.send_blueprint(rrb.Blueprint(
-        layout,
-        rrb.TimePanel(state="expanded", timeline="policy_time"),
-        collapse_panels=True,
-    ))
+    rr.send_blueprint(
+        rrb.Blueprint(
+            layout,
+            rrb.TimePanel(state="expanded", timeline="policy_time"),
+            collapse_panels=True,
+        )
+    )

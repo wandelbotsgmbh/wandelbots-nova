@@ -284,6 +284,7 @@ class WaypointJoggingSession:
                     self._clock.update(ts_ms)
                 self._jog_tracker.update_from_state(state)
         except asyncio.CancelledError:
+            # Expected on shutdown; stop quietly without logging as an error.
             pass
         except (OSError, RuntimeError) as e:
             logger.error("State stream error for %s: %s", self.motion_group_id, e)
@@ -378,6 +379,7 @@ class WaypointJoggingSession:
                 client_request_generator=client_request_generator,
             )
         except asyncio.CancelledError:
+            # Expected on shutdown; cancellation is not a jogging failure.
             pass
         except MotionError as e:
             self._failed = True

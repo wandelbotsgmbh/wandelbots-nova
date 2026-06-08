@@ -96,7 +96,7 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
 
     # Toggle RTC here. RTC (True) connects overlapping chunks via server-side
     # inpainting + a seam backdate; off (False) just runs plain chunks.
-    USE_RTC = False
+    use_rtc = False
 
     # dt_ms is deliberately larger than the model's native 66.7 ms step. With a
     # 16-step horizon and ~800 ms inference latency (network + 4-image transport
@@ -110,7 +110,7 @@ async def gr00t_dual_arm(ctx: nova.ProgramContext):
         host=GROOT_HOST,
         port=GROOT_PORT,
         dt_ms=130.0,
-        rtc=RTCConfig() if USE_RTC else None,
+        rtc=RTCConfig() if use_rtc else None,
     )
 
     info = await client.get_server_info()

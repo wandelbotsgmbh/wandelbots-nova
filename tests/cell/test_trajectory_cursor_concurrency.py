@@ -241,7 +241,8 @@ class TestCursorInstantiationRace:
         try:
             await cursor._initialize_task
         except (asyncio.CancelledError, Exception):
-            pass  # either fine – task was cancelled or completed
+            # Either fine – task was cancelled or completed.
+            pass
 
     async def test_forward_callable_before_initialize_task_completes(self):
         """forward() is synchronous – it must succeed even if the background

@@ -96,10 +96,12 @@ async def replay_episode(ctx: nova.ProgramContext):
     print("At start position")
 
     # Define schema
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("left_joints", source=mg_left),
-        Observation.joint_positions("right_joints", source=mg_right),
-    ])
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("left_joints", source=mg_left),
+            Observation.joint_positions("right_joints", source=mg_right),
+        ]
+    )
 
     # Replay policy: index into actions based on elapsed time
     async def replay(obs: dict[str, Any]) -> ActionChunk:

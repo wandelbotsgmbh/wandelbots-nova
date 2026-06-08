@@ -27,7 +27,9 @@ class PolicyRerunLogger:
     """
 
     def __init__(
-        self, motion_groups: list[MotionGroup], camera_names: list[str] | None = None,
+        self,
+        motion_groups: list[MotionGroup],
+        camera_names: list[str] | None = None,
     ) -> None:
         self._motion_groups = motion_groups
         self._camera_names = camera_names or []
@@ -82,8 +84,10 @@ class PolicyRerunLogger:
                 if description.safety_link_colliders is not None:
                     robot_model_geometries = [
                         api.models.LinkChain(
-                            [api.models.Link(link.root)
-                             for link in description.safety_link_colliders]
+                            [
+                                api.models.Link(link.root)
+                                for link in description.safety_link_colliders
+                            ]
                         )
                     ]
 
@@ -109,7 +113,8 @@ class PolicyRerunLogger:
             self._initialized = True
             logger.info(
                 "PolicyRerunLogger initialized for %d motion groups, %d cameras",
-                len(self._motion_groups), len(self._camera_names),
+                len(self._motion_groups),
+                len(self._camera_names),
             )
         except (OSError, RuntimeError, ValueError) as e:
             logger.warning("PolicyRerunLogger initialization failed: %s", e)
@@ -126,7 +131,8 @@ class PolicyRerunLogger:
             from policy.rerun.observation import log_observation  # noqa: PLC0415
 
             log_observation(
-                states, step,
+                states,
+                step,
                 start_time=self._start_time,
                 dh_robots=self._dh_robots,
                 visualizers=self._visualizers,
@@ -144,7 +150,8 @@ class PolicyRerunLogger:
             from policy.rerun.action_chunk import log_action_chunk  # noqa: PLC0415
 
             log_action_chunk(
-                chunk, step,
+                chunk,
+                step,
                 start_time=self._start_time,
                 dh_robots=self._dh_robots,
                 n_action_steps=n_action_steps,
@@ -177,8 +184,9 @@ class PolicyRerunLogger:
                     level=rr.TextLogLevel.INFO,
                 ),
             )
-        except (ImportError, OSError, RuntimeError):
-            pass
+        except (ImportError, OSError, RuntimeError) as e:
+            # Completion logging is best-effort; never let it break execution.
+            logger.debug("log_completion failed: %s", e)
 
     # ------------------------------------------------------------------
     # Continuous state streaming (between policy steps)

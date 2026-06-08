@@ -12,11 +12,13 @@ from policy.types import MotionError
 
 logger = logging.getLogger(__name__)
 
-_BLOCKING_PAUSES = frozenset({
-    "PAUSED_NEAR_JOINT_LIMIT",
-    "PAUSED_NEAR_COLLISION",
-    "PAUSED_NEAR_SINGULARITY",
-})
+_BLOCKING_PAUSES = frozenset(
+    {
+        "PAUSED_NEAR_JOINT_LIMIT",
+        "PAUSED_NEAR_COLLISION",
+        "PAUSED_NEAR_SINGULARITY",
+    }
+)
 
 
 class JoggingStateTracker:

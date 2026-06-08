@@ -30,8 +30,9 @@ def log_action_chunk(
     n_action_steps: int = 0,
 ) -> None:
     """Log action chunk as TCP path line strips and inspectable text."""
-    _log_joint_chunk(chunk, step, start_time=start_time, dh_robots=dh_robots,
-                     n_action_steps=n_action_steps)
+    _log_joint_chunk(
+        chunk, step, start_time=start_time, dh_robots=dh_robots, n_action_steps=n_action_steps
+    )
     _log_tcp_chunk(chunk, step, start_time=start_time, n_action_steps=n_action_steps)
     _log_text(chunk, step, start_time=start_time, n_action_steps=n_action_steps)
 
@@ -67,14 +68,18 @@ def _log_joint_chunk(
 
         # Log executed portion with orange→yellow gradient
         _log_line_strip(
-            f"policy/{mg_id}/action_chunk", executed_positions,
-            gradient=True, width=_CHUNK_WIDTH_UI,
+            f"policy/{mg_id}/action_chunk",
+            executed_positions,
+            gradient=True,
+            width=_CHUNK_WIDTH_UI,
         )
 
         # Log discarded tail in dim gray
         _log_discarded_tail(
             f"policy/{mg_id}/action_chunk_tail",
-            discarded_steps, dh_robot, executed_positions,
+            discarded_steps,
+            dh_robot,
+            executed_positions,
         )
 
 
@@ -98,9 +103,7 @@ def _log_tcp_chunk(
         executed = steps[:split]
         discarded = steps[split:]
 
-        executed_positions = [
-            [s[0], s[1], s[2]] for s in executed if len(s) >= _MIN_TCP_COMPONENTS
-        ]
+        executed_positions = [[s[0], s[1], s[2]] for s in executed if len(s) >= _MIN_TCP_COMPONENTS]
         if len(executed_positions) >= _MIN_LINE_STEPS:
             n = len(executed_positions)
             colors = [
@@ -189,7 +192,11 @@ def _log_text(
 
 
 def _log_line_strip(
-    entity_path: str, positions: list[list[float]], *, gradient: bool, width: float,
+    entity_path: str,
+    positions: list[list[float]],
+    *,
+    gradient: bool,
+    width: float,
 ) -> None:
     """Log a line strip with gradient or uniform color."""
 
@@ -200,18 +207,30 @@ def _log_line_strip(
             if gradient
             else [_CHUNK_COLOR_START] * n
         )
-        rr.log(entity_path, rr.LineStrips3D(
-            [positions], colors=colors, radii=rr.components.Radius.ui_points(width),
-        ))
+        rr.log(
+            entity_path,
+            rr.LineStrips3D(
+                [positions],
+                colors=colors,
+                radii=rr.components.Radius.ui_points(width),
+            ),
+        )
     elif positions:
-        rr.log(entity_path, rr.Points3D(
-            positions, colors=[_CHUNK_COLOR_START], radii=rr.components.Radius.ui_points(4.0),
-        ))
+        rr.log(
+            entity_path,
+            rr.Points3D(
+                positions,
+                colors=[_CHUNK_COLOR_START],
+                radii=rr.components.Radius.ui_points(4.0),
+            ),
+        )
 
 
 def _log_discarded_tail(
-    entity_path: str, discarded_steps: list[list[float]],
-    dh_robot: object, bridge_from: list[list[float]],
+    entity_path: str,
+    discarded_steps: list[list[float]],
+    dh_robot: object,
+    bridge_from: list[list[float]],
 ) -> None:
     """Log discarded chunk tail in dim gray, connected from last executed point."""
 
@@ -226,8 +245,11 @@ def _log_discarded_tail(
     if bridge_from:
         tail_positions = [bridge_from[-1], *tail_positions]
     if len(tail_positions) >= _MIN_LINE_STEPS:
-        rr.log(entity_path, rr.LineStrips3D(
-            [tail_positions],
-            colors=[_CHUNK_TAIL_COLOR],
-            radii=rr.components.Radius.ui_points(_CHUNK_TAIL_WIDTH_UI),
-        ))
+        rr.log(
+            entity_path,
+            rr.LineStrips3D(
+                [tail_positions],
+                colors=[_CHUNK_TAIL_COLOR],
+                radii=rr.components.Radius.ui_points(_CHUNK_TAIL_WIDTH_UI),
+            ),
+        )

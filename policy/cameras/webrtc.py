@@ -36,6 +36,7 @@ try:
     av.logging.set_level(av.logging.ERROR)
     _aiortc_available = True
 except ImportError:
+    # aiortc is an optional dependency; WebRTC camera support stays disabled.
     pass
 
 
