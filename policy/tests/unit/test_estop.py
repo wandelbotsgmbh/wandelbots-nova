@@ -1,7 +1,10 @@
 """Tests for e-stop detection.
 
-Unit tests mock the controller-state stream; the integration test drives a real
-virtual controller via ``set_estop`` and asserts ``EstopMonitor`` fires.
+These mock the controller-state stream at the SDK boundary and assert the
+observable behaviour: ``EstopMonitor`` raises (via its ``error``) on a
+non-operational safety state and stays clear on operational ones, and the
+``check_*`` helpers re-raise faults. The live counterpart lives in
+``integration/test_estop_live.py``.
 """
 
 from __future__ import annotations
@@ -13,31 +16,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from nova import api
-from policy.estop import (
-    _OPERATIONAL_SAFETY_STATES,
-    EstopMonitor,
-    check_estop,
-    check_sessions,
-)
+from policy.estop import EstopMonitor, check_estop, check_sessions
 from policy.types import EmergencyStopError, MotionError
 
 _SafetyState = api.models.SafetyStateType
 
 
 # ---------------------------------------------------------------------------
-# Safety-state definition (single source of truth = SafetyStateType enum)
-# ---------------------------------------------------------------------------
-
-
-def test_operational_states_are_the_enum_values():
-    assert (
-        frozenset({_SafetyState.SAFETY_STATE_NORMAL, _SafetyState.SAFETY_STATE_REDUCED})
-        == _OPERATIONAL_SAFETY_STATES
-    )
-
-
-# ---------------------------------------------------------------------------
-# check_estop / check_sessions
+# check_estop / check_sessions — faults re-raise, healthy state is a no-op
 # ---------------------------------------------------------------------------
 
 
@@ -126,6 +112,7 @@ async def _run_monitor_until(monitor: EstopMonitor, *, timeout_s: float = 1.0) -
 
 @pytest.mark.asyncio
 async def test_monitor_fires_on_non_operational_state():
+    """A protective stop in the state stream sets an EmergencyStopError."""
     state = types.SimpleNamespace(safety_state=_SafetyState.SAFETY_STATE_PROTECTIVE_STOP)
     monitor = _patched_monitor([state])
     await _run_monitor_until(monitor)
@@ -135,6 +122,7 @@ async def test_monitor_fires_on_non_operational_state():
 
 @pytest.mark.asyncio
 async def test_monitor_stays_clear_on_operational_states():
+    """NORMAL and REDUCED are operational — the monitor never fires."""
     states = [
         types.SimpleNamespace(safety_state=_SafetyState.SAFETY_STATE_NORMAL),
         types.SimpleNamespace(safety_state=_SafetyState.SAFETY_STATE_REDUCED),
@@ -142,38 +130,3 @@ async def test_monitor_stays_clear_on_operational_states():
     monitor = _patched_monitor(states)
     await _run_monitor_until(monitor, timeout_s=0.2)
     assert monitor.error is None
-
-
-# ---------------------------------------------------------------------------
-# Integration: drive a real virtual controller into e-stop
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_estop_monitor_detects_real_set_estop():
-    from nova import Nova
-    from nova.cell import virtual_controller
-
-    async with Nova() as nova_instance:
-        cell = nova_instance.cell()
-        controller = await cell.ensure_controller(
-            virtual_controller(
-                name="ur10e-estop-mon",
-                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type="universalrobots-ur10e",
-            )
-        )
-        mg = controller[0]
-        monitor = EstopMonitor([mg])
-        await monitor.start()
-        try:
-            await controller.set_estop(active=True)
-            for _ in range(50):
-                if monitor.error is not None:
-                    break
-                await asyncio.sleep(0.1)
-            assert isinstance(monitor.error, EmergencyStopError)
-        finally:
-            await monitor.stop()
-            await controller.set_estop(active=False)

@@ -122,9 +122,11 @@ async def test_single_arm_observation_format() -> None:
 
     try:
         mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("left_joints", source=mg),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("left_joints", source=mg),
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
 
@@ -158,10 +160,12 @@ async def test_dual_arm_observation_format() -> None:
     try:
         mg_left = _mg("0@left", "left")
         mg_right = _mg("0@right", "right")
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("left_arm", source=mg_left),
-            Observation.joint_positions("right_arm", source=mg_right),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("left_arm", source=mg_left),
+                Observation.joint_positions("right_arm", source=mg_right),
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@left", "0@right"])
 
@@ -195,11 +199,14 @@ async def test_io_observation_format() -> None:
         from policy.schema import BoolMapping
 
         mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-            Observation.io("gripper", source=mg, io="digital_out[0]",
-                           mapping=BoolMapping(on=100.0)),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+                Observation.io(
+                    "gripper", source=mg, io="digital_out[0]", mapping=BoolMapping(on=100.0)
+                ),
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
 
@@ -230,12 +237,15 @@ async def test_language_observation() -> None:
 
     try:
         mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-            Observation.constant("language", value="Pick up the box."),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+                Observation.constant("language", value="Pick up the box."),
+            ]
+        )
         client = Gr00tPolicyClient(
-            host="127.0.0.1", port=port,
+            host="127.0.0.1",
+            port=port,
         )
         await client.connect(["0@ur10e"])
 
@@ -262,9 +272,11 @@ async def test_image_observation_single_frame() -> None:
 
     try:
         mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
 
@@ -272,7 +284,8 @@ async def test_image_observation_single_frame() -> None:
         img[0, 0] = [255, 0, 0]
 
         await client.get_actions(
-            {"0@ur10e": _state((0.0,) * 6)}, schema,
+            {"0@ur10e": _state((0.0,) * 6)},
+            schema,
             images={"cam_left": img},
         )
 
@@ -298,9 +311,11 @@ async def test_image_observation_temporal_stack() -> None:
 
     try:
         mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
 
@@ -309,7 +324,8 @@ async def test_image_observation_temporal_stack() -> None:
         imgs[2, 0, 0] = [42, 0, 0]
 
         await client.get_actions(
-            {"0@ur10e": _state((0.0,) * 6)}, schema,
+            {"0@ur10e": _state((0.0,) * 6)},
+            schema,
             images={"wrist": imgs},
         )
 
@@ -342,9 +358,11 @@ async def test_action_decoding_single_arm() -> None:
 
     try:
         mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
 
@@ -387,10 +405,12 @@ async def test_action_decoding_dual_arm() -> None:
     try:
         mg_left = _mg("0@left", "left")
         mg_right = _mg("0@right", "right")
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("left_arm", source=mg_left),
-            Observation.joint_positions("right_arm", source=mg_right),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("left_arm", source=mg_left),
+                Observation.joint_positions("right_arm", source=mg_right),
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@left", "0@right"])
 
@@ -407,8 +427,6 @@ async def test_action_decoding_dual_arm() -> None:
         await client.close()
     finally:
         server.close()
-
-
 
 
 @pytest.mark.asyncio
@@ -446,11 +464,14 @@ async def test_io_action_decoding() -> None:
         from policy.schema import BoolMapping
 
         mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-            Observation.io("gripper", source=mg, io="digital_out[0]",
-                           mapping=BoolMapping(on=1.0)),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+                Observation.io(
+                    "gripper", source=mg, io="digital_out[0]", mapping=BoolMapping(on=1.0)
+                ),
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
 
@@ -487,11 +508,14 @@ async def test_io_action_bool_mapping_off() -> None:
         from policy.schema import BoolMapping
 
         mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-            Observation.io("gripper", source=mg, io="digital_out[0]",
-                           mapping=BoolMapping(on=1.0)),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+                Observation.io(
+                    "gripper", source=mg, io="digital_out[0]", mapping=BoolMapping(on=1.0)
+                ),
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
 
@@ -520,11 +544,14 @@ async def test_io_action_not_in_response() -> None:
         from policy.schema import BoolMapping
 
         mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-            Observation.io("gripper", source=mg, io="digital_out[0]",
-                           mapping=BoolMapping(on=1.0)),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+                Observation.io(
+                    "gripper", source=mg, io="digital_out[0]", mapping=BoolMapping(on=1.0)
+                ),
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
 
@@ -546,8 +573,10 @@ async def test_tcp_action_decoding() -> None:
 
     # GR00T returns joint action + TCP action as numpy arrays
     joint_arr = np.zeros((1, 4, 6), dtype=np.float32)
-    tcp_arr = np.array([[[100.0, 200.0, 300.0, 0.1, 0.2, 0.3],
-                         [101.0, 201.0, 301.0, 0.11, 0.21, 0.31]]], dtype=np.float32)  # (1, 2, 6)
+    tcp_arr = np.array(
+        [[[100.0, 200.0, 300.0, 0.1, 0.2, 0.3], [101.0, 201.0, 301.0, 0.11, 0.21, 0.31]]],
+        dtype=np.float32,
+    )  # (1, 2, 6)
     server.action_response = (
         {"arm": joint_arr, "eef": tcp_arr},
         {"dt_ms": 33.0},
@@ -557,10 +586,12 @@ async def test_tcp_action_decoding() -> None:
 
     try:
         mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-            Observation.tcp("eef", source=mg, action=True),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+                Observation.tcp("eef", source=mg, action=True),
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
 
@@ -568,15 +599,15 @@ async def test_tcp_action_decoding() -> None:
         pose = MagicMock()
         pose.position = MagicMock(x=100.0, y=200.0, z=300.0)
         pose.orientation = MagicMock(x=0.1, y=0.2, z=0.3)
-        result = await client.get_actions(
-            {"0@ur10e": _state((0.0,) * 6, pose=pose)}, schema
-        )
+        result = await client.get_actions({"0@ur10e": _state((0.0,) * 6, pose=pose)}, schema)
 
         assert isinstance(result, ActionChunk)
         assert "0@ur10e" in result.tcp
         assert len(result.tcp["0@ur10e"]) == 2  # 2 timesteps
         np.testing.assert_allclose(
-            result.tcp["0@ur10e"][0], [100.0, 200.0, 300.0, 0.1, 0.2, 0.3], atol=1e-5,
+            result.tcp["0@ur10e"][0],
+            [100.0, 200.0, 300.0, 0.1, 0.2, 0.3],
+            atol=1e-5,
         )
 
         await client.close()
@@ -597,19 +628,19 @@ async def test_tcp_action_not_in_response() -> None:
 
     try:
         mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-            Observation.tcp("eef", source=mg, action=True),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+                Observation.tcp("eef", source=mg, action=True),
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
 
         pose = MagicMock()
         pose.position = MagicMock(x=0.0, y=0.0, z=0.0)
         pose.orientation = MagicMock(x=0.0, y=0.0, z=0.0)
-        result = await client.get_actions(
-            {"0@ur10e": _state((0.0,) * 6, pose=pose)}, schema
-        )
+        result = await client.get_actions({"0@ur10e": _state((0.0,) * 6, pose=pose)}, schema)
 
         # No eef key in response → empty tcp dict
         assert result.tcp == {}
@@ -625,25 +656,36 @@ async def test_validate_schema_passes_when_keys_match() -> None:
     port = _find_free_port()
     server = _RecordingGr00tServer(port)
     server._modality_config = {
-        "state": {"__ModalityConfig_class__": True, "as_json": {
-            "modality_keys": ["arm_joints"],
-        }},
-        "video": {"__ModalityConfig_class__": True, "as_json": {
-            "modality_keys": ["cam_left"],
-        }},
-        "language": {"__ModalityConfig_class__": True, "as_json": {
-            "modality_keys": ["annotation.language.language_instruction"],
-        }},
+        "state": {
+            "__ModalityConfig_class__": True,
+            "as_json": {
+                "modality_keys": ["arm_joints"],
+            },
+        },
+        "video": {
+            "__ModalityConfig_class__": True,
+            "as_json": {
+                "modality_keys": ["cam_left"],
+            },
+        },
+        "language": {
+            "__ModalityConfig_class__": True,
+            "as_json": {
+                "modality_keys": ["annotation.language.language_instruction"],
+            },
+        },
     }
     server.start()
     try:
         mg = _mg()
         cam = MagicMock()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm_joints", source=mg),
-            Observation.image("cam_left", source=cam),
-            Observation.constant("language", value="Pick up the box."),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm_joints", source=mg),
+                Observation.image("cam_left", source=cam),
+                Observation.constant("language", value="Pick up the box."),
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
         await client.validate_schema(schema)  # should not raise
@@ -658,17 +700,22 @@ async def test_validate_schema_fails_on_missing_state_key() -> None:
     port = _find_free_port()
     server = _RecordingGr00tServer(port)
     server._modality_config = {
-        "state": {"__ModalityConfig_class__": True, "as_json": {
-            "modality_keys": ["left_arm", "right_arm"],
-        }},
+        "state": {
+            "__ModalityConfig_class__": True,
+            "as_json": {
+                "modality_keys": ["left_arm", "right_arm"],
+            },
+        },
     }
     server.start()
     try:
         mg = _mg()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("left_arm", source=mg),
-            # missing "right_arm"
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("left_arm", source=mg),
+                # missing "right_arm"
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
         with pytest.raises(ValueError, match="right_arm"):
@@ -684,22 +731,30 @@ async def test_validate_schema_fails_on_missing_image_key() -> None:
     port = _find_free_port()
     server = _RecordingGr00tServer(port)
     server._modality_config = {
-        "state": {"__ModalityConfig_class__": True, "as_json": {
-            "modality_keys": ["arm"],
-        }},
-        "video": {"__ModalityConfig_class__": True, "as_json": {
-            "modality_keys": ["cam_left", "cam_right"],
-        }},
+        "state": {
+            "__ModalityConfig_class__": True,
+            "as_json": {
+                "modality_keys": ["arm"],
+            },
+        },
+        "video": {
+            "__ModalityConfig_class__": True,
+            "as_json": {
+                "modality_keys": ["cam_left", "cam_right"],
+            },
+        },
     }
     server.start()
     try:
         mg = _mg()
         cam = MagicMock()
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-            Observation.image("cam_left", source=cam),
-            # missing "cam_right"
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+                Observation.image("cam_left", source=cam),
+                # missing "cam_right"
+            ]
+        )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
         with pytest.raises(ValueError, match="cam_right"):

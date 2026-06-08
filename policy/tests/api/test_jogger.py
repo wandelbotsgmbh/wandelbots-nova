@@ -8,14 +8,16 @@ the public ``jog_joints()`` API, substituting only the robot transport
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from policy.jogging import jog_joints
+from policy.jogging import jog_joints, jog_tcp
+from policy.jogging.jogger import JointJogger, TcpJogger
 from policy.types import MotionError
+
+_JointSetup = tuple[JointJogger, list[MagicMock], dict[object, MagicMock]]
+_TcpSetup = tuple[TcpJogger, MagicMock, dict[object, MagicMock]]
 
 
 def _mg(mg_id: str) -> MagicMock:
@@ -24,10 +26,10 @@ def _mg(mg_id: str) -> MagicMock:
     return mg
 
 
-def _fake_session(num_joints: int = 6) -> MagicMock:
+def _fake_session(num_joints: int = 6, *, mode: str = "joint") -> MagicMock:
     session = MagicMock()
     session.num_joints = num_joints
-    session.mode = "joint"
+    session.mode = mode
     session.has_failed = False
     session.failure_exception = None
     session.stop_condition_triggered = None
@@ -40,12 +42,12 @@ def _fake_session(num_joints: int = 6) -> MagicMock:
     return session
 
 
-@contextlib.contextmanager
-def _jogger(*mg_ids: str, num_joints: int = 6) -> Iterator[tuple]:
-    """Build a real jogger over fake robot transports.
+def _build_joint_jogger(*mg_ids: str, num_joints: int = 6) -> _JointSetup:
+    """Build a real joint jogger over fake robot transports.
 
-    Yields ``(jogger, motion_groups, sessions_by_mg)`` so a test can assert on
-    what the jogger streamed to each robot.
+    The transport is only patched while the jogger is being constructed (that
+    is when the sessions are created); the returned fakes are kept so a test
+    can assert what got streamed to each robot.
     """
     mgs = [_mg(mid) for mid in mg_ids]
     sessions: dict[object, MagicMock] = {}
@@ -56,7 +58,21 @@ def _jogger(*mg_ids: str, num_joints: int = 6) -> Iterator[tuple]:
 
     with patch("policy.jogging.jogger.WaypointJoggingSession", side_effect=make_session):
         jogger = jog_joints(mgs if len(mgs) > 1 else mgs[0])
-    yield jogger, mgs, sessions
+    return jogger, mgs, sessions
+
+
+def _build_tcp_jogger(mg_id: str, tcp: str = "Flange", *, num_joints: int = 6) -> _TcpSetup:
+    """Build a real single-arm TCP jogger over a fake robot transport."""
+    mg = _mg(mg_id)
+    sessions: dict[object, MagicMock] = {}
+
+    def make_session(*, motion_group: object, **_kw: object) -> MagicMock:
+        sessions[motion_group] = _fake_session(num_joints, mode="cartesian")
+        return sessions[motion_group]
+
+    with patch("policy.jogging.jogger.WaypointJoggingSession", side_effect=make_session):
+        jogger = jog_tcp(mg, tcp=tcp)
+    return jogger, mg, sessions
 
 
 # ---------------------------------------------------------------------------
@@ -66,8 +82,8 @@ def _jogger(*mg_ids: str, num_joints: int = 6) -> Iterator[tuple]:
 
 def test_setting_a_single_target_streams_it_to_the_robot():
     """A single joint target is pushed to the session as one waypoint step."""
-    with _jogger("0@ur10e") as (jogger, (mg,), sessions):
-        jogger.set_target([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
+    jogger.set_target([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
     sessions[mg].update_chunk.assert_called_once_with(
         steps=[[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]], dt_ms=0.0
     )
@@ -77,16 +93,16 @@ def test_setting_a_single_target_streams_it_to_the_robot():
 def test_setting_a_chunk_streams_every_step_and_tracks_the_last():
     """A chunk of future targets is streamed whole; the last step is the target."""
     chunk = [[float(i)] * 6 for i in range(4)]
-    with _jogger("0@ur10e") as (jogger, (mg,), sessions):
-        jogger.set_target(chunk, dt_ms=33.0)
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
+    jogger.set_target(chunk, dt_ms=33.0)
     sessions[mg].update_chunk.assert_called_once_with(steps=chunk, dt_ms=33.0, start_time_ms=0)
     assert jogger.target == chunk[-1]
 
 
 def test_each_arm_in_a_dual_setup_receives_its_own_target():
     """With two robots, each motion group is streamed only its own target."""
-    with _jogger("0@ur5e-left", "0@ur5e-right") as (jogger, (left, right), sessions):
-        jogger.set_target({left: [1.0] * 6, right: [2.0] * 6})
+    jogger, (left, right), sessions = _build_joint_jogger("0@ur5e-left", "0@ur5e-right")
+    jogger.set_target({left: [1.0] * 6, right: [2.0] * 6})
     sessions[left].update_chunk.assert_called_once()
     sessions[right].update_chunk.assert_called_once()
     assert jogger.target == {left: [1.0] * 6, right: [2.0] * 6}
@@ -99,18 +115,16 @@ def test_each_arm_in_a_dual_setup_receives_its_own_target():
 
 def test_a_target_with_the_wrong_joint_count_is_rejected():
     """A 3-value target for a 6-joint robot raises before any waypoint is sent."""
-    with _jogger("0@ur10e") as (jogger, (mg,), sessions):
-        with pytest.raises(ValueError, match="expects 6"):
-            jogger.set_target([1.0, 2.0, 3.0])
-        sessions[mg].update_chunk.assert_not_called()
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
+    with pytest.raises(ValueError, match="expects 6"):
+        jogger.set_target([1.0, 2.0, 3.0])
+    sessions[mg].update_chunk.assert_not_called()
 
 
 def test_a_bare_list_for_a_dual_setup_is_rejected():
     """Two robots need a dict target; a bare list is a usage error."""
-    with (
-        _jogger("0@ur5e-left", "0@ur5e-right") as (jogger, _mgs, _sessions),
-        pytest.raises(TypeError, match="dict"),
-    ):
+    jogger, _mgs, _sessions = _build_joint_jogger("0@ur5e-left", "0@ur5e-right")
+    with pytest.raises(TypeError, match="dict"):
         jogger.set_target([1.0] * 6)
 
 
@@ -122,33 +136,57 @@ def test_a_bare_list_for_a_dual_setup_is_rejected():
 @pytest.mark.asyncio
 async def test_a_motion_fault_surfaces_as_an_exception_through_the_loop():
     """A joint-limit / collision fault on the session is raised to the caller."""
-    with _jogger("0@ur10e") as (jogger, (mg,), sessions):
-        sessions[mg].has_failed = True
-        sessions[mg].failure_exception = MotionError("0@ur10e", "joint_limit")
-        with pytest.raises(MotionError):
-            async for _ in jogger:
-                break
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
+    sessions[mg].has_failed = True
+    sessions[mg].failure_exception = MotionError("0@ur10e", "joint_limit")
+    with pytest.raises(MotionError):
+        async for _ in jogger:
+            break
 
 
 @pytest.mark.asyncio
 async def test_a_lost_connection_surfaces_as_an_exception_through_the_loop():
     """A dropped jogging connection is raised, not swallowed."""
-    with _jogger("0@ur10e") as (jogger, (mg,), sessions):
-        sessions[mg].has_failed = True
-        sessions[mg].failure_exception = RuntimeError("connection reset")
-        with pytest.raises(RuntimeError, match="connection reset"):
-            async for _ in jogger:
-                break
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
+    sessions[mg].has_failed = True
+    sessions[mg].failure_exception = RuntimeError("connection reset")
+    with pytest.raises(RuntimeError, match="connection reset"):
+        async for _ in jogger:
+            break
 
 
 @pytest.mark.asyncio
 async def test_a_stop_condition_ends_the_loop_without_raising():
     """A fired stop condition ends iteration normally and is reported by name."""
-    with _jogger("0@ur10e") as (jogger, (mg,), sessions):
-        sessions[mg].stop_condition_triggered = "workspace_limit"
-        iterations = 0
-        async for _ in jogger:
-            iterations += 1
-            break
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
+    sessions[mg].stop_condition_triggered = "workspace_limit"
+    iterations = 0
+    async for _ in jogger:
+        iterations += 1
+        break
     assert iterations == 0  # loop ended before yielding any state
     assert jogger.stop_condition_triggered == "workspace_limit"
+
+
+# ---------------------------------------------------------------------------
+# TCP jogging streams a pose as a 6-DoF Cartesian waypoint
+# ---------------------------------------------------------------------------
+
+
+def test_tcp_jogging_streams_a_pose_as_a_cartesian_waypoint():
+    """jog_tcp(set_target(Pose)) pushes [x, y, z, rx, ry, rz] to the robot."""
+    from nova.types import Pose
+
+    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange")
+    jogger.set_target(Pose(500, 200, 300, 0, 3.14, 0))
+    sessions[mg].update_chunk.assert_called_once_with(
+        steps=[[500, 200, 300, 0, 3.14, 0]], dt_ms=0.0
+    )
+
+
+def test_tcp_jogging_streams_a_chunk_of_future_poses():
+    """jog_tcp accepts a chunk of [x, y, z, rx, ry, rz] steps for smoother motion."""
+    chunk = [[500.0 + i, 200.0, 300.0, 0.0, 3.14, 0.0] for i in range(4)]
+    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange")
+    jogger.set_target(chunk, dt_ms=33.0)
+    sessions[mg].update_chunk.assert_called_once_with(steps=chunk, dt_ms=33.0, start_time_ms=0)

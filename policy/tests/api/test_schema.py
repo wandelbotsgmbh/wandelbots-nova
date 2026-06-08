@@ -41,14 +41,18 @@ def _state(joints: tuple[float, ...], torques: tuple[float, ...] | None = None) 
 async def test_dual_arm_observation():
     left = _mg("0@left", "left")
     right = _mg("0@right", "right")
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("left_joints", source=left),
-        Observation.joint_positions("right_joints", source=right),
-    ])
-    obs = await schema.build_observation({
-        "0@left": _state((1.0, 2.0)),
-        "0@right": _state((3.0,)),
-    })
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("left_joints", source=left),
+            Observation.joint_positions("right_joints", source=right),
+        ]
+    )
+    obs = await schema.build_observation(
+        {
+            "0@left": _state((1.0, 2.0)),
+            "0@right": _state((3.0,)),
+        }
+    )
     assert obs == {"left_joints_1": 1.0, "left_joints_2": 2.0, "right_joints_1": 3.0}
 
 
@@ -64,22 +68,27 @@ async def test_concatenated_observation():
             Action.joint_positions("action", target=[left, right]),
         ],
     )
-    obs = await schema.build_observation({
-        "0@left": _state((1.0, 2.0)),
-        "0@right": _state((3.0, 4.0)),
-    })
+    obs = await schema.build_observation(
+        {
+            "0@left": _state((1.0, 2.0)),
+            "0@right": _state((3.0, 4.0)),
+        }
+    )
     assert obs == {"state_1": 1.0, "state_2": 2.0, "state_3": 3.0, "state_4": 4.0}
 
 
 @pytest.mark.asyncio
 async def test_constant_and_io_observation():
     mg = _mg()
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("joints", source=mg),
-        Observation.constant("task", value="pick"),
-        Observation.io("gripper", source=mg, io="digital_out[0]",
-                       mapping=BoolMapping(on=100.0)),
-    ])
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("joints", source=mg),
+            Observation.constant("task", value="pick"),
+            Observation.io(
+                "gripper", source=mg, io="digital_out[0]", mapping=BoolMapping(on=100.0)
+            ),
+        ]
+    )
     obs = await schema.build_observation(
         {"0@ur10e": _state((0.0,))},
         io_values={"digital_out[0]": True},
@@ -92,14 +101,18 @@ async def test_constant_and_io_observation():
 @pytest.mark.asyncio
 async def test_joint_torques_with_and_without_data():
     mg = _mg()
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("joints", source=mg),
-        Observation.joint_torques("torques", source=mg, default=[0.0, 0.0]),
-    ])
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("joints", source=mg),
+            Observation.joint_torques("torques", source=mg, default=[0.0, 0.0]),
+        ]
+    )
     # With torque data
-    obs = await schema.build_observation({
-        "0@ur10e": _state((0.0, 0.1), torques=(1.5, 2.5)),
-    })
+    obs = await schema.build_observation(
+        {
+            "0@ur10e": _state((0.0, 0.1), torques=(1.5, 2.5)),
+        }
+    )
     assert obs["torques_1"] == 1.5
     assert obs["torques_2"] == 2.5
 
@@ -118,17 +131,21 @@ async def test_joint_torques_with_and_without_data():
 async def test_inferred_and_non_inferred_actions():
     """action=True infers joint action; action=False does not."""
     mg = _mg()
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("joints", source=mg),
-    ])
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("joints", source=mg),
+        ]
+    )
     joints, _tcp, ios = await schema.parse_action({"joints_1": 0.5, "joints_2": -1.0})
     assert joints == {"0@ur10e": [[0.5, -1.0]]}
     assert ios is None
 
     # Non-action
-    schema2 = PolicySchema(observations=[
-        Observation.joint_positions("state", source=mg, action=False),
-    ])
+    schema2 = PolicySchema(
+        observations=[
+            Observation.joint_positions("state", source=mg, action=False),
+        ]
+    )
     joints2, _, _ = await schema2.parse_action({"state_1": 0.5})
     assert joints2 == {}
 
@@ -147,11 +164,14 @@ async def test_explicit_action_different_key():
 @pytest.mark.asyncio
 async def test_io_action_with_bool_mapping():
     mg = _mg()
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("joints", source=mg),
-        Observation.io("gripper", source=mg, io="digital_out[0]",
-                       mapping=BoolMapping(on=100.0)),
-    ])
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("joints", source=mg),
+            Observation.io(
+                "gripper", source=mg, io="digital_out[0]", mapping=BoolMapping(on=100.0)
+            ),
+        ]
+    )
     _, _, ios_open = await schema.parse_action({"joints_1": 0.0, "gripper": 80.0})
     _, _, ios_closed = await schema.parse_action({"joints_1": 0.0, "gripper": 20.0})
     assert ios_open == {"0@ur10e": {"digital_out[0]": True}}
@@ -170,10 +190,14 @@ async def test_concatenated_action():
             Action.joint_positions("action", target=[left, right]),
         ],
     )
-    joints, _tcp, _ = await schema.parse_action({
-        "action_1": 1.0, "action_2": 2.0,
-        "action_3": 3.0, "action_4": 4.0,
-    })
+    joints, _tcp, _ = await schema.parse_action(
+        {
+            "action_1": 1.0,
+            "action_2": 2.0,
+            "action_3": 3.0,
+            "action_4": 4.0,
+        }
+    )
     assert joints["0@left"] == [[1.0, 2.0]]
     assert joints["0@right"] == [[3.0, 4.0]]
 
@@ -181,9 +205,11 @@ async def test_concatenated_action():
 @pytest.mark.asyncio
 async def test_no_matching_action_keys():
     mg = _mg()
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("joints", source=mg),
-    ])
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("joints", source=mg),
+        ]
+    )
     joints, _tcp, ios = await schema.parse_action({"unrelated": 1.0})
     assert joints == {}
     assert ios is None
@@ -211,10 +237,12 @@ def test_bool_mapping():
 def test_duplicate_observation_key_raises():
     mg = _mg()
     with pytest.raises(ValueError, match="Duplicate observation key"):
-        PolicySchema(observations=[
-            Observation.joint_positions("joints", source=mg),
-            Observation.joint_positions("joints", source=mg),
-        ])
+        PolicySchema(
+            observations=[
+                Observation.joint_positions("joints", source=mg),
+                Observation.joint_positions("joints", source=mg),
+            ]
+        )
 
 
 def test_duplicate_action_key_raises():
@@ -245,11 +273,13 @@ async def test_computed_observation():
     async def read_opcua(obs: dict) -> dict:
         return {"plc_temp": 25.0}
 
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("joints", source=mg),
-        Observation.computed(read_sensor),
-        Observation.computed(read_opcua),
-    ])
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("joints", source=mg),
+            Observation.computed(read_sensor),
+            Observation.computed(read_opcua),
+        ]
+    )
     obs = await schema.build_observation({"0@ur10e": _state((0.1, 0.2))})
     assert obs["temperature"] == 42.5
     assert obs["force_z"] == pytest.approx(3.0)
@@ -281,10 +311,12 @@ async def test_computed_action():
 def test_relative_motion_groups():
     mg1 = _mg()
     mg2 = _mg("0@ur10e-2")
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("left", source=mg1, mode="relative"),
-        Observation.joint_positions("right", source=mg2, mode="absolute"),
-    ])
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("left", source=mg1, mode="relative"),
+            Observation.joint_positions("right", source=mg2, mode="absolute"),
+        ]
+    )
     assert schema.relative_motion_groups() == {"0@ur10e"}
 
 
@@ -292,8 +324,10 @@ def test_relative_motion_groups():
 async def test_parse_action_returns_raw_values_for_relative():
     """parse_action returns raw values regardless of mode — executor handles conversion."""
     mg = _mg()
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("arm", source=mg, mode="relative"),
-    ])
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=mg, mode="relative"),
+        ]
+    )
     joints, _tcp, _ = await schema.parse_action({"arm_1": 0.1, "arm_2": -0.2})
     assert joints["0@ur10e"][0] == [0.1, -0.2]
