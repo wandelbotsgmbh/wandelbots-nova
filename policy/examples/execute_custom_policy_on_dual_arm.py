@@ -21,8 +21,7 @@ import math
 import os
 from typing import Any
 
-import nova
-from nova import api, run_program, viewers
+from nova import ProgramContext, api, program, run_program, viewers
 from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -176,7 +175,7 @@ async def move_to_home(mg1, mg2) -> None:
     )
 
 
-@nova.program(
+@program(
     id="dual_arm_policy",
     name="Dual-Arm Policy Execution",
     viewer=viewers.Rerun(),
@@ -196,7 +195,7 @@ async def move_to_home(mg1, mg2) -> None:
         cleanup_controllers=False,
     ),
 )
-async def dual_arm_policy(ctx: nova.ProgramContext):
+async def dual_arm_policy(ctx: ProgramContext):
     cell = ctx.nova.cell()
     mg1 = (await cell.controller("ur5e-left"))[0]
     mg2 = (await cell.controller("ur5e-right"))[0]

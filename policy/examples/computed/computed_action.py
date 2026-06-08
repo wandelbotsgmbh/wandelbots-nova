@@ -28,8 +28,7 @@ Run:
 
 from typing import Any
 
-import nova
-from nova import api, run_program
+from nova import ProgramContext, api, program, run_program
 from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -76,7 +75,7 @@ async def mock_policy(obs: dict[str, Any]) -> dict[str, float]:
     return {f"arm_{i}": obs[f"arm_{i}"] for i in range(1, 7)}
 
 
-@nova.program(
+@program(
     id="computed-action-example",
     name="Computed Observation/Action Example",
     preconditions=ProgramPreconditions(
@@ -90,7 +89,7 @@ async def mock_policy(obs: dict[str, Any]) -> dict[str, float]:
         cleanup_controllers=False,
     ),
 )
-async def computed_action_example(ctx: nova.ProgramContext):
+async def computed_action_example(ctx: ProgramContext):
     cell = ctx.nova.cell()
     mg = (await cell.controller("ur5e"))[0]
 

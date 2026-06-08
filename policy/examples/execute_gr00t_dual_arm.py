@@ -11,8 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-import nova
-from nova import api, run_program, viewers
+from nova import ProgramContext, api, program, run_program, viewers
 from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -39,7 +38,7 @@ CAM_CONTEXT = "World_EnvAssets_rack_env0__3_00_intel_d456_screw_adapter_asm_tn__
 CAM_TARGET = "World_EnvAssets_rack_env0_d405_halter_stationaer_2_asm_01_tn__d405_halter_stationaer_2asm_ff0_D405_Solid_target_camera_rack_env0"
 
 
-@nova.program(
+@program(
     id="gr00t_dual_arm",
     name="GR00T Dual-Arm Policy",
     viewer=viewers.Rerun(),
@@ -59,7 +58,7 @@ CAM_TARGET = "World_EnvAssets_rack_env0_d405_halter_stationaer_2_asm_01_tn__d405
         cleanup_controllers=False,
     ),
 )
-async def gr00t_dual_arm(ctx: nova.ProgramContext):
+async def gr00t_dual_arm(ctx: ProgramContext):
     cell = ctx.nova.cell()
     mg_left = (await cell.controller("ur5e-left"))[0]
     mg_right = (await cell.controller("ur5e-right"))[0]
