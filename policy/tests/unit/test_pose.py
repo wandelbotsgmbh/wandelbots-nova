@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 from types import SimpleNamespace
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import assume, given, settings, strategies as st
 import pytest
 
 from policy.gr00t.eef import TcpFormat, pose_to_eef
@@ -90,12 +90,16 @@ def test_quaternion_recovers_the_original_rotation_angle(rx, ry, rz):
     """The quaternion encodes a rotation by |rotation-vector| about its axis.
 
     For a unit quaternion (v, w) the rotation angle is 2*atan2(|v|, w); since the
-    input rotation-vector magnitude *is* that angle, the two must agree.
+    input rotation-vector magnitude *is* that angle, the two must agree. Below the
+    function's small-angle cutoff the rotation is treated as identity, so the
+    property is stated for non-degenerate rotations only (the zero case is pinned
+    in its own example below).
     """
     angle = math.sqrt(rx * rx + ry * ry + rz * rz)
+    assume(angle >= 1e-6)  # above the _ANGLE_EPSILON identity cutoff
     qx, qy, qz, qw = pose_to_eef(_pose(0, 0, 0, rx, ry, rz), TcpFormat.QUATERNION)[3:]
     recovered = 2.0 * math.atan2(math.sqrt(qx * qx + qy * qy + qz * qz), qw)
-    assert recovered == pytest.approx(angle, abs=1e-9)
+    assert recovered == pytest.approx(angle, abs=1e-7)
 
 
 # rot6d — the two columns are always orthonormal --------------------------

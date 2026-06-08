@@ -1,17 +1,18 @@
 """Live dual-arm tests for PolicyExecutor against a real NOVA instance.
 
-These reuse existing controllers named in NOVA_TEST_CONTROLLERS (default
-"ur5e-left,ur5e-right") when present — e.g. the real arms on a robot cell —
-and otherwise provision virtual UR5e controllers, so the same test runs both
-on a physical-cell instance and on a freshly provisioned CI instance. They
-drive *two* robots through the full pipeline end to end: schema -> executor ->
-waypoint jogging session -> NOVA motion API -> state stream. They require
-NOVA_API / NOVA_ACCESS_TOKEN and are skipped unless run with `-m integration`.
+Each test provisions its own throwaway *virtual* controllers with unique names
+(the same create-on-demand pattern the core nova integration tests use) and
+deletes them on teardown, so the tests are self-contained and never touch a
+pre-existing controller. They drive *two* robots through the full pipeline end
+to end: schema -> executor -> waypoint jogging session -> NOVA motion API ->
+state stream. They require NOVA_API / NOVA_ACCESS_TOKEN and are skipped unless
+run with `-m integration`.
 """
 
 from __future__ import annotations
 
 import contextlib
+import uuid
 
 import pytest
 
@@ -20,26 +21,30 @@ from policy.schema import Observation, PolicySchema
 from policy.types import ActionChunk, StopContext
 
 
-def _dual_arm_names() -> list[str]:
-    import os
+async def _new_virtual_arm(cell, stack: contextlib.AsyncExitStack):
+    """Provision a uniquely-named virtual UR5e and schedule its deletion.
 
-    raw = os.environ.get("NOVA_TEST_CONTROLLERS", "ur5e-left,ur5e-right")
-    return [n.strip() for n in raw.split(",") if n.strip()]
-
-
-async def _ensure_controller(nova_instance, name: str):
-    """Reuse a controller by name, or provision a virtual UR5e with that name."""
+    Returns the controller. The controller is removed from the cell when the
+    ``stack`` unwinds, so each test leaves the instance as it found it.
+    """
     from nova import api
     from nova.cell import virtual_controller
 
-    cell = nova_instance.cell()
-    return await cell.ensure_controller(
+    name = f"policy-itest-{uuid.uuid4().hex[:8]}"
+    controller = await cell.ensure_controller(
         virtual_controller(
             name=name,
             manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
             type="universalrobots-ur5e",
         )
     )
+
+    async def _cleanup() -> None:
+        with contextlib.suppress(Exception):
+            await cell.delete_robot_controller(name, timeout=25)
+
+    stack.push_async_callback(_cleanup)
+    return controller
 
 
 @pytest.mark.integration
@@ -57,39 +62,38 @@ async def test_executor_jogs_both_arms_for_the_full_timeout():
 
     from nova import Nova
 
-    names = _dual_arm_names()
-    assert len(names) == 2, "dual-arm test needs exactly two controller names"
+    async with Nova() as nova_instance, contextlib.AsyncExitStack() as stack:
+        cell = nova_instance.cell()
+        controllers = [await _new_virtual_arm(cell, stack) for _ in range(2)]
+        mgs = [await stack.enter_async_context(c[0]) for c in controllers]
+        homes = {mg.id: list(await mg.joints()) for mg in mgs}
 
-    async with Nova() as nova_instance:
-        controllers = [await _ensure_controller(nova_instance, n) for n in names]
-        async with contextlib.AsyncExitStack() as stack:
-            mgs = [await stack.enter_async_context(c[0]) for c in controllers]
-            homes = {mg.id: list(await mg.joints()) for mg in mgs}
+        async def dual_wiggle(obs):
+            elapsed = obs.get("elapsed_s", 0.0)
+            joints = {}
+            for mg in mgs:
+                home = homes[mg.id]
+                steps = []
+                for i in range(8):  # 8 steps * 50 ms = 400 ms per chunk
+                    t = elapsed + i * 0.05
+                    target = list(home)
+                    target[0] = home[0] + 0.05 * math.sin(2 * math.pi * 0.3 * t)
+                    steps.append(target)
+                joints[mg.id] = steps
+            return ActionChunk(joints=joints, dt_ms=50.0)
 
-            async def dual_wiggle(obs):
-                elapsed = obs.get("elapsed_s", 0.0)
-                joints = {}
-                for mg in mgs:
-                    home = homes[mg.id]
-                    steps = []
-                    for i in range(8):  # 8 steps * 50 ms = 400 ms per chunk
-                        t = elapsed + i * 0.05
-                        target = list(home)
-                        target[0] = home[0] + 0.05 * math.sin(2 * math.pi * 0.3 * t)
-                        steps.append(target)
-                    joints[mg.id] = steps
-                return ActionChunk(joints=joints, dt_ms=50.0)
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions(f"arm{i}", source=mg) for i, mg in enumerate(mgs)
+            ]
+        )
+        executor = PolicyExecutor(schema, dual_wiggle, timeout_s=5.0)
 
-            schema = PolicySchema(
-                observations=[
-                    Observation.joint_positions(f"arm{i}", source=mg) for i, mg in enumerate(mgs)
-                ]
-            )
-            executor = PolicyExecutor(schema, dual_wiggle, timeout_s=5.0)
+        wall_start = time.monotonic()
+        result = await executor.run()
+        wall_elapsed = time.monotonic() - wall_start
 
-            wall_start = time.monotonic()
-            result = await executor.run()
-            wall_elapsed = time.monotonic() - wall_start
+        mg_ids = {mg.id for mg in mgs}
 
     # Ended because the timeout elapsed, not for any other reason.
     assert result.reason == "timeout"
@@ -98,7 +102,7 @@ async def test_executor_jogs_both_arms_for_the_full_timeout():
     assert wall_elapsed >= 4.8
     # Both arms were actually driven — both show up in the final observed state.
     assert result.last_state is not None
-    assert set(result.last_state) == {mg.id for mg in mgs}
+    assert set(result.last_state) == mg_ids
     assert result.steps > 0
 
 
@@ -113,37 +117,36 @@ async def test_stop_condition_ends_dual_arm_run_normally():
     """
     from nova import Nova
 
-    names = _dual_arm_names()
+    async with Nova() as nova_instance, contextlib.AsyncExitStack() as stack:
+        cell = nova_instance.cell()
+        controllers = [await _new_virtual_arm(cell, stack) for _ in range(2)]
+        mgs = [await stack.enter_async_context(c[0]) for c in controllers]
+        homes = {mg.id: list(await mg.joints()) for mg in mgs}
 
-    async with Nova() as nova_instance:
-        controllers = [await _ensure_controller(nova_instance, n) for n in names]
-        async with contextlib.AsyncExitStack() as stack:
-            mgs = [await stack.enter_async_context(c[0]) for c in controllers]
-            homes = {mg.id: list(await mg.joints()) for mg in mgs}
+        async def hold(obs):
+            return ActionChunk(joints={mg.id: [homes[mg.id]] for mg in mgs})
 
-            async def hold(obs):
-                return ActionChunk(joints={mg.id: [homes[mg.id]] for mg in mgs})
+        ticks = {"n": 0}
 
-            ticks = {"n": 0}
+        def stop_after_a_few_ticks(ctx: StopContext) -> bool:
+            ticks["n"] += 1
+            return ticks["n"] >= 5
 
-            def stop_after_a_few_ticks(ctx: StopContext) -> bool:
-                ticks["n"] += 1
-                return ticks["n"] >= 5
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions(f"arm{i}", source=mg) for i, mg in enumerate(mgs)
+            ]
+        )
+        executor = PolicyExecutor(
+            schema,
+            hold,
+            stop_conditions=[stop_after_a_few_ticks],
+            timeout_s=10.0,
+        )
 
-            schema = PolicySchema(
-                observations=[
-                    Observation.joint_positions(f"arm{i}", source=mg) for i, mg in enumerate(mgs)
-                ]
-            )
-            executor = PolicyExecutor(
-                schema,
-                hold,
-                stop_conditions=[stop_after_a_few_ticks],
-                timeout_s=10.0,
-            )
-
-            result = await executor.run()
+        result = await executor.run()
+        mg_ids = {mg.id for mg in mgs}
 
     assert result.reason == "stop condition: stop_after_a_few_ticks"
     assert result.last_state is not None
-    assert set(result.last_state) == {mg.id for mg in mgs}
+    assert set(result.last_state) == mg_ids
