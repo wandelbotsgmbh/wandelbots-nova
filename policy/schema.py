@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 # Value mappings
 # ---------------------------------------------------------------------------
 
+
 class Mapping:
     """Identity mapping — passes values through unchanged."""
 
@@ -52,6 +53,7 @@ class Mapping:
 
     def to_hardware(self, policy_value: float) -> bool | int | float | str:
         return policy_value
+
 
 class BoolMapping(Mapping):
     """Map between hardware bool and policy float.
@@ -80,9 +82,11 @@ class BoolMapping(Mapping):
 # Observation entries (created via Observation factory)
 # ---------------------------------------------------------------------------
 
+
 @dataclass(slots=True)
 class _ObsJoints:
     """Joint positions from one or more motion groups."""
+
     key: str
     source: MotionGroup | list[MotionGroup]
     action: bool = True
@@ -94,17 +98,9 @@ class _ObsJoints:
 
 
 @dataclass(slots=True)
-class _ObsJointSignal:
-    """Optional per-joint signal (torques/currents). Read-only."""
-    key: str
-    source: MotionGroup
-    field_name: str
-    default: list[float] | None = None
-
-
-@dataclass(slots=True)
 class _ObsTcp:
     """TCP pose from a motion group. Position in mm, orientation as rotation vector (rad)."""
+
     key: str
     source: MotionGroup
     tcp: str = ""
@@ -115,6 +111,7 @@ class _ObsTcp:
 @dataclass(slots=True)
 class _ObsIO:
     """IO value (digital/analog). Writable by default."""
+
     key: str
     source: MotionGroup
     io: str
@@ -125,6 +122,7 @@ class _ObsIO:
 @dataclass(slots=True)
 class _ObsImage:
     """Camera image from a CameraSource."""
+
     key: str
     source: CameraSource
 
@@ -132,6 +130,7 @@ class _ObsImage:
 @dataclass(slots=True)
 class _ObsConstant:
     """Fixed value in every observation."""
+
     key: str
     value: Any
 
@@ -142,13 +141,11 @@ ComputedObsFn = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 @dataclass(slots=True)
 class _ObsComputed:
     """Async function called each step: ``async (obs_so_far) -> dict``."""
+
     fn: ComputedObsFn
 
 
-ObservationEntry = (
-    _ObsJoints | _ObsJointSignal | _ObsTcp | _ObsIO
-    | _ObsImage | _ObsConstant | _ObsComputed
-)
+ObservationEntry = _ObsJoints | _ObsTcp | _ObsIO | _ObsImage | _ObsConstant | _ObsComputed
 
 
 class Observation:
@@ -156,38 +153,38 @@ class Observation:
 
     @staticmethod
     def joint_positions(
-        key: str, source: MotionGroup | list[MotionGroup], *,
-        action: bool = True, mode: ActionMode = "absolute",
+        key: str,
+        source: MotionGroup | list[MotionGroup],
+        *,
+        action: bool = True,
+        mode: ActionMode = "absolute",
     ) -> _ObsJoints:
         """Observe joint positions. Writable by default (infers matching action)."""
         return _ObsJoints(key=key, source=source, action=action, mode=mode)
 
     @staticmethod
-    def joint_torques(key: str, source: MotionGroup, *, default: list[float] | None = None) -> _ObsJointSignal:
-        """Observe joint torques (read-only)."""
-        return _ObsJointSignal(key=key, source=source, field_name="joint_torques", default=default)
-
-    @staticmethod
-    def joint_currents(key: str, source: MotionGroup, *, default: list[float] | None = None) -> _ObsJointSignal:
-        """Observe joint currents (read-only)."""
-        return _ObsJointSignal(key=key, source=source, field_name="joint_currents", default=default)
-
-    @staticmethod
     def tcp(
-        key: str, source: MotionGroup, *, tcp: str = "",
-        action: bool = False, mode: ActionMode = "absolute",
+        key: str,
+        source: MotionGroup,
+        *,
+        tcp: str = "",
+        action: bool = False,
+        mode: ActionMode = "absolute",
     ) -> _ObsTcp:
         """Observe TCP pose [x, y, z, rx, ry, rz] in mm / rad (Nova native).
 
         Set action=True to control via TCP waypoint jogging.
         """
-        return _ObsTcp(key=key, source=source, tcp=tcp,
-                       action=action, mode=mode)
+        return _ObsTcp(key=key, source=source, tcp=tcp, action=action, mode=mode)
 
     @staticmethod
     def io(
-        key: str, source: MotionGroup, io: str, *,
-        mapping: Mapping | None = None, action: bool = True,
+        key: str,
+        source: MotionGroup,
+        io: str,
+        *,
+        mapping: Mapping | None = None,
+        action: bool = True,
     ) -> _ObsIO:
         """Observe an IO value. Writable by default (policy can write it back)."""
         return _ObsIO(key=key, source=source, io=io, mapping=mapping or Mapping(), action=action)
@@ -224,9 +221,11 @@ class Observation:
 # Action entries (only needed when key differs from observation)
 # ---------------------------------------------------------------------------
 
+
 @dataclass(slots=True)
 class _ActJoints:
     """Explicit joint position action."""
+
     key: str
     target: MotionGroup | list[MotionGroup]
     mode: ActionMode = "absolute"
@@ -239,6 +238,7 @@ class _ActJoints:
 @dataclass(slots=True)
 class _ActIO:
     """Explicit IO write action."""
+
     key: str
     target: MotionGroup
     io: str
@@ -248,6 +248,7 @@ class _ActIO:
 @dataclass(slots=True)
 class _ActTcp:
     """Explicit TCP pose action."""
+
     key: str
     target: MotionGroup
     mode: ActionMode = "absolute"
@@ -259,6 +260,7 @@ ComputedActFn = Callable[[dict[str, Any]], Awaitable[None]]
 @dataclass(slots=True)
 class _ActComputed:
     """Async function called when policy returns: ``async (action_dict) -> None``."""
+
     fn: ComputedActFn
 
 
@@ -269,7 +271,9 @@ class Action:
     """Factory for explicit action entries."""
 
     @staticmethod
-    def joint_positions(key: str, target: MotionGroup | list[MotionGroup], *, mode: ActionMode = "absolute") -> _ActJoints:
+    def joint_positions(
+        key: str, target: MotionGroup | list[MotionGroup], *, mode: ActionMode = "absolute"
+    ) -> _ActJoints:
         """Joint action with a key different from the observation."""
         return _ActJoints(key=key, target=target, mode=mode)
 
@@ -304,6 +308,7 @@ class Action:
 # ---------------------------------------------------------------------------
 # PolicySchema
 # ---------------------------------------------------------------------------
+
 
 class PolicySchema:
     """Declares what a policy observes and controls."""
@@ -351,7 +356,7 @@ class PolicySchema:
         for o in self._observations:
             if isinstance(o, _ObsJoints):
                 yield from o.sources
-            elif isinstance(o, (_ObsTcp, _ObsIO, _ObsJointSignal)):
+            elif isinstance(o, (_ObsTcp, _ObsIO)):
                 yield o.source
         for a in self._actions:
             if isinstance(a, _ActJoints):
@@ -481,13 +486,14 @@ class PolicySchema:
     # -- Build observation --
 
     async def build_observation(
-        self, states: dict[str, RobotState], io_values: dict[str, object] | None = None,
+        self,
+        states: dict[str, RobotState],
+        io_values: dict[str, object] | None = None,
     ) -> dict[str, Any]:
         """Build a flat feature dict from robot states + IO values."""
         obs: dict[str, Any] = {}
         self._fill_joints(obs, states)
         self._fill_tcp(obs, states)
-        self._fill_joint_signals(obs, states)
         self._fill_ios(obs, io_values)
         self._fill_constants(obs)
         await self._fill_computed(obs)
@@ -514,17 +520,6 @@ class PolicySchema:
                 values = list(s.pose.position) + list(s.pose.orientation)
                 for suffix, v in zip(_TCP_SUFFIXES, values, strict=True):
                     obs[f"{o.key}_{suffix}"] = v
-
-    def _fill_joint_signals(self, obs: dict[str, Any], states: dict[str, RobotState]) -> None:
-        for o in self._observations:
-            if not isinstance(o, _ObsJointSignal):
-                continue
-            s = states.get(o.source.id)
-            values = getattr(s, o.field_name, None) if s is not None else None
-            data = values or (tuple(o.default) if o.default else None)
-            if data is not None:
-                for i, v in enumerate(data, 1):
-                    obs[f"{o.key}_{i}"] = v
 
     def _fill_ios(self, obs: dict[str, Any], io_values: dict[str, object] | None) -> None:
         if io_values is None:
@@ -614,7 +609,9 @@ class PolicySchema:
                 tcp_targets[mg.id] = [values]
         return tcp_targets
 
-    def _joint_action_sources(self, explicit_keys: set[str]) -> Iterator[tuple[str, list[MotionGroup], ActionMode]]:
+    def _joint_action_sources(
+        self, explicit_keys: set[str]
+    ) -> Iterator[tuple[str, list[MotionGroup], ActionMode]]:
         for a in self._actions:
             if isinstance(a, _ActJoints):
                 yield a.key, a.targets, a.mode
@@ -622,7 +619,9 @@ class PolicySchema:
             if isinstance(o, _ObsJoints) and o.action and o.key not in explicit_keys:
                 yield o.key, o.sources, o.mode
 
-    def _io_action_sources(self, explicit_keys: set[str]) -> Iterator[tuple[str, MotionGroup, str, Mapping]]:
+    def _io_action_sources(
+        self, explicit_keys: set[str]
+    ) -> Iterator[tuple[str, MotionGroup, str, Mapping]]:
         for a in self._actions:
             if isinstance(a, _ActIO):
                 yield a.key, a.target, a.io, a.mapping

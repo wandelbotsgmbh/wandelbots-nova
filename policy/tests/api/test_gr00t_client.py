@@ -49,8 +49,6 @@ def _state(
     s.joints = joints
     s.pose = pose
     s.tcp = None
-    s.joint_torques = None
-    s.joint_currents = None
     return s
 
 

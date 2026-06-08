@@ -22,13 +22,11 @@ def _mg(mg_id: str = "0@ur10e", controller_id: str = "ur10e") -> MagicMock:
     return mg
 
 
-def _state(joints: tuple[float, ...], torques: tuple[float, ...] | None = None) -> MagicMock:
+def _state(joints: tuple[float, ...]) -> MagicMock:
     s = MagicMock()
     s.joints = joints
     s.pose = None
     s.tcp = None
-    s.joint_torques = torques
-    s.joint_currents = None
     return s
 
 
@@ -96,30 +94,6 @@ async def test_constant_and_io_observation():
     assert obs["task"] == "pick"
     assert obs["joints_1"] == 0.0
     assert obs["gripper"] == 100.0
-
-
-@pytest.mark.asyncio
-async def test_joint_torques_with_and_without_data():
-    mg = _mg()
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("joints", source=mg),
-            Observation.joint_torques("torques", source=mg, default=[0.0, 0.0]),
-        ]
-    )
-    # With torque data
-    obs = await schema.build_observation(
-        {
-            "0@ur10e": _state((0.0, 0.1), torques=(1.5, 2.5)),
-        }
-    )
-    assert obs["torques_1"] == 1.5
-    assert obs["torques_2"] == 2.5
-
-    # Without torque data — falls back to default
-    obs = await schema.build_observation({"0@ur10e": _state((0.0, 0.1))})
-    assert obs["torques_1"] == 0.0
-    assert obs["torques_2"] == 0.0
 
 
 # ---------------------------------------------------------------------------

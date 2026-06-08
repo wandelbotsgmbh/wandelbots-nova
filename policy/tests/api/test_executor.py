@@ -71,7 +71,7 @@ def _fake_session() -> MagicMock:
     session.update_chunk = MagicMock()
     state = MagicMock()
     state.joints = (0.0,) * 6
-    state.pose = state.tcp = state.joint_torques = state.joint_currents = None
+    state.pose = state.tcp = None
     session.current_state = state
     return session
 

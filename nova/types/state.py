@@ -14,15 +14,11 @@ class RobotState(pydantic.BaseModel):
         tcp (str | None): The TCP name.
         joints (tuple[float, ...]): A tuple of joint angles in radians for each
             joint of the robot.
-        joint_torques (tuple[float, ...] | None): Joint torques if provided by the controller.
-        joint_currents (tuple[float, ...] | None): Joint currents if provided by the controller.
     """
 
     pose: Pose
     tcp: str | None
     joints: tuple[float, ...]
-    joint_torques: tuple[float, ...] | None = None
-    joint_currents: tuple[float, ...] | None = None
 
 
 class MotionState(pydantic.BaseModel):
@@ -60,17 +56,9 @@ def motion_group_state_to_motion_state(
         raise ValueError("There is no TCP pose attached to the motion group.")
 
     joints = motion_group_state.joint_position
-    joint_torques = getattr(motion_group_state, "joint_torque", None)
-    joint_currents = getattr(motion_group_state, "joint_current", None)
     path_parameter = motion_group_state.execute.details.location
     return MotionState(
         motion_group_id=motion_group_state.motion_group,
         path_parameter=path_parameter.root,
-        state=RobotState(
-            pose=Pose(tcp_pose),
-            tcp=tcp_name,
-            joints=tuple(joints.root),
-            joint_torques=tuple(joint_torques.root) if joint_torques is not None else None,
-            joint_currents=tuple(joint_currents.root) if joint_currents is not None else None,
-        ),
+        state=RobotState(pose=Pose(tcp_pose), tcp=tcp_name, joints=tuple(joints.root)),
     )
