@@ -182,3 +182,5 @@ benchmark_results
 policy/examples/apps/mock-camera-server/.venv/
 policy/benchmarks/output/
 DEV.md
+
+policy/examples/apps/gr00t/
