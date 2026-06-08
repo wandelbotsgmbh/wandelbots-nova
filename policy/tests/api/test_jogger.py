@@ -8,6 +8,7 @@ the public ``jog_joints()`` API, substituting only the robot transport
 
 from __future__ import annotations
 
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +16,22 @@ import pytest
 from policy.jogging import jog_joints, jog_tcp
 from policy.jogging.jogger import JointJogger, TcpJogger
 from policy.types import MotionError
+
+_JOGGER = "policy.jogging.jogger"
+
+
+@contextlib.contextmanager
+def _no_estop_no_rerun():
+    """Stub the e-stop monitor and disable Rerun for context-lifecycle tests."""
+    estop = MagicMock()
+    estop.start = AsyncMock()
+    estop.stop = AsyncMock()
+    with (
+        patch(f"{_JOGGER}.EstopMonitor", return_value=estop),
+        patch("policy.rerun._is_rerun_active", return_value=False),
+    ):
+        yield
+
 
 _JointSetup = tuple[JointJogger, list[MagicMock], dict[object, MagicMock]]
 _TcpSetup = tuple[TcpJogger, MagicMock, dict[object, MagicMock]]
@@ -190,3 +207,41 @@ def test_tcp_jogging_streams_a_chunk_of_future_poses():
     jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange")
     jogger.set_target(chunk, dt_ms=33.0)
     sessions[mg].update_chunk.assert_called_once_with(steps=chunk, dt_ms=33.0, first_timestamp_ms=0)
+
+
+# ---------------------------------------------------------------------------
+# Context lifecycle: entering starts the robots, exiting stops them
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_entering_the_context_starts_every_session_and_waits_ready():
+    """`async with jog_joints(...)` starts each robot and waits until it's ready."""
+    jogger, (left, right), sessions = _build_joint_jogger("0@ur5e-left", "0@ur5e-right")
+    with _no_estop_no_rerun():
+        async with jogger:
+            for mg in (left, right):
+                sessions[mg].start.assert_awaited_once()
+                sessions[mg].wait_ready.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_exiting_the_context_stops_every_session():
+    """Leaving the context tears down each robot's jogging session."""
+    jogger, (left, right), sessions = _build_joint_jogger("0@ur5e-left", "0@ur5e-right")
+    with _no_estop_no_rerun():
+        async with jogger:
+            pass
+    for mg in (left, right):
+        sessions[mg].stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_state_returns_the_current_robot_state():
+    """state() reports the live robot state from the session."""
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
+    sessions[mg].current_state = MagicMock(joints=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6))
+    with _no_estop_no_rerun():
+        async with jogger:
+            state = jogger.state()
+    assert state is sessions[mg].current_state
