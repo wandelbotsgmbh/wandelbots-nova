@@ -561,7 +561,7 @@ class TrajectoryCursor:
     @property
     def current_action_index(self) -> int | None:
         """Zero-based index of the action at the current location, or None if no actions."""
-        if self.actions is None:
+        if not self.actions:  # None or empty
             return None
         return action_index_for_location(self._current_location, len(self.actions))
 
