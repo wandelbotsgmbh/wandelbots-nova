@@ -46,6 +46,22 @@ def test_compute_rtc_options_clamps_within_horizon():
     assert state.last_overlap_steps == opts["rtc_overlap_steps"]
 
 
+def test_compute_rtc_options_does_not_mutate_the_latency_queue():
+    """compute_rtc_options is pure w.r.t. latency sampling.
+
+    The client owns the latency queue (it appends real measurements). This
+    helper must only read an estimate it is handed — appending here would
+    double-count and bias frozen_steps (regression: it used to push
+    ``avg + offset`` back into the queue on every call).
+    """
+    cfg = RTCConfig()
+    state = RTCState(action_horizon=16)
+    state.latency_queue.extend([0.05, 0.06, 0.07])
+    before = list(state.latency_queue)
+    compute_rtc_options(cfg, state, inference_latency=0.1, dt_ms=33.0)
+    assert list(state.latency_queue) == before
+
+
 # ===========================================================================
 # Property-based invariants — generalise the clamp examples above over whole
 # ranges of horizon / latency / dt / overlap-factor rather than one fixture.

@@ -94,7 +94,9 @@ def compute_rtc_options(
     ----------
     config: RTC configuration.
     state: Mutable RTC state (timing info).
-    inference_latency: Last measured inference round-trip in seconds.
+    inference_latency: Average measured inference latency in seconds. The
+        caller owns the latency queue and passes its mean here; this function
+        does not sample or mutate it.
     dt_ms: Step spacing of the action chunk in milliseconds.
         Used to derive the control frequency (steps/sec).
     """
@@ -103,14 +105,13 @@ def compute_rtc_options(
 
     control_freq = 1000.0 / dt_ms  # e.g. dt_ms=66.7 → 15 Hz
 
-    # Update latency tracking
+    # Latency budget for freezing: the average measured inference latency (passed
+    # in by the caller, which solely owns the latency queue) plus a systematic
+    # offset for ZMQ serialization / network. We do NOT append here — sampling
+    # the queue is the client's job; mutating it from this pure helper would
+    # double-count and bias the estimate.
     total_latency = inference_latency + config.systematic_latency_offset
-    max_chunk_time = (1.0 / control_freq) * state.action_horizon
-    if total_latency < max_chunk_time:
-        state.latency_queue.append(total_latency)
-
-    avg_latency = sum(state.latency_queue) / len(state.latency_queue) if state.latency_queue else 0
-    frozen_steps = int(avg_latency * control_freq)
+    frozen_steps = int(total_latency * control_freq)
 
     # Compute time since last inference → executed steps
     now = time.monotonic()
