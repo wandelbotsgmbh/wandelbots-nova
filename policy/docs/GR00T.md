@@ -106,10 +106,6 @@ Observation.io("left_gripper", source=mg,
                io="digital_out[0]")                     # → obs["state.left_gripper"]
 ```
 
-## Example Apps
-
-See [`examples/apps/gr00t/`](../examples/apps/gr00t/) for deployable Nova app examples.
-
 ## Inspecting a Server
 
 Before writing your schema, query the server to see what it expects:
