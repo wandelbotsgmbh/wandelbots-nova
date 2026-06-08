@@ -159,7 +159,8 @@ arm, keyboard, gamepad, spacemouse — in your own script. See
 
 | Doc                                | Covers                                                                                                                                                                     |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [docs/JOGGING.md](docs/JOGGING.md) | Motion control: how chunks are streamed as timestamped waypoints, joint/TCP modes, the execution loop (`policy_rate_hz`), standalone jogging, dual-arm, and error handling |
+| [docs/JOGGING.md](docs/JOGGING.md) | Standalone jogging: `jog_joints` / `jog_tcp`, joint/TCP modes, chunked targets, dual-arm, and error handling |
+| [docs/EXECUTOR.md](docs/EXECUTOR.md) | Advanced: the `PolicyExecutor` loop (`policy_rate_hz`, RTC) and the client/server timestamp protocol |
 | [docs/SCHEMA.md](docs/SCHEMA.md)   | Advanced schema: IO mappings, relative actions, TCP actions, computed observations/actions                                                                                 |
 | [docs/GR00T.md](docs/GR00T.md)     | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ (and [docs/RTC.md](docs/RTC.md) for real-time chunking)     |
 | [docs/RERUN.md](docs/RERUN.md)     | Optional real-time 3D visualization of execution                                                                                                                           |
