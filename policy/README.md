@@ -4,7 +4,7 @@
 
 Execute learned policies (imitation learning, reinforcement learning) on industrial robots via [Wandelbots NOVA](https://wandelbots.com).
 
-https://github.com/user-attachments/assets/0c29ee16-da6d-4a24-bacb-d2259666535d
+https://github.com/user-attachments/assets/de8a1bb6-9f35-4953-aa32-a8792d2b8244
 
 ## Overview
 
