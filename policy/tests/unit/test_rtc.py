@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from policy.gr00t.rtc import RTCConfig, RTCState, compute_rtc_options, detect_action_horizon
+from policy.gr00t.rtc import (
+    RTCConfig,
+    RTCState,
+    compute_rtc_options,
+    detect_action_horizon,
+    seam_backdate_steps,
+)
 
 
 def test_detect_action_horizon_batched():
@@ -44,6 +50,35 @@ def test_compute_rtc_options_clamps_within_horizon():
     assert 0 <= opts["rtc_frozen_steps"] <= opts["rtc_overlap_steps"]
     # State is updated for the executor's seam backdate.
     assert state.last_overlap_steps == opts["rtc_overlap_steps"]
+
+
+def test_seam_backdate_is_executed_minus_consumed_head_in_steady_state():
+    """In steady state (executed <= H) backdate = executed - (H - overlap)."""
+    state = RTCState(action_horizon=16, last_executed_steps=6, last_overlap_steps=12)
+    # 6 - 16 + 12 = 2
+    assert seam_backdate_steps(state) == 2
+
+
+def test_seam_backdate_is_capped_at_overlap_under_starvation():
+    """If the robot ran past the previous chunk (executed > H), cap at overlap.
+
+    Without the cap the anchor would slide so far into the past that the whole
+    chunk is discarded as stale and the robot stalls.
+    """
+    state = RTCState(action_horizon=16, last_executed_steps=30, last_overlap_steps=12)
+    # raw = 30 - 16 + 12 = 26, capped to overlap=12
+    assert seam_backdate_steps(state) == 12
+
+
+def test_seam_backdate_floors_at_zero_when_robot_is_behind_the_reused_head():
+    """A negative raw value (robot not yet in the reused head) floors at 0."""
+    state = RTCState(action_horizon=16, last_executed_steps=1, last_overlap_steps=4)
+    # raw = 1 - 16 + 4 = -11 -> 0
+    assert seam_backdate_steps(state) == 0
+
+
+def test_seam_backdate_is_zero_before_horizon_is_known():
+    assert seam_backdate_steps(RTCState()) == 0
 
 
 def test_compute_rtc_options_does_not_mutate_the_latency_queue():

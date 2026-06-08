@@ -148,6 +148,27 @@ def compute_rtc_options(
     }
 
 
+def seam_backdate_steps(state: RTCState) -> int:
+    """Steps to backdate the new chunk's anchor so its reused head aligns with
+    the robot's current position.
+
+    The robot is ``last_executed_steps`` into the previous chunk; the new chunk
+    reuses ``prev[H - overlap:]`` as its head, so the robot's position maps to
+    new step ``executed - (H - overlap)``. Placing that step at "now" connects
+    the chunks.
+
+    Bounded to ``[0, overlap]``: the matching step lives inside the reused head
+    (length ``overlap``). A larger raw value means the robot ran past the end of
+    the previous chunk (inference starvation); capping at ``overlap`` anchors
+    the seam at "now" instead of letting the anchor slide so far into the past
+    that the whole chunk is discarded as stale.
+    """
+    if state.action_horizon is None:
+        return 0
+    raw = state.last_executed_steps - state.action_horizon + state.last_overlap_steps
+    return max(0, min(raw, state.last_overlap_steps))
+
+
 def detect_action_horizon(action: dict[str, object]) -> int | None:
     """Detect the action horizon from a server response.
 

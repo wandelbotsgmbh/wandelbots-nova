@@ -21,6 +21,7 @@ from policy.gr00t.rtc import (  # noqa: TC001
     RTCState,
     compute_rtc_options,
     detect_action_horizon,
+    seam_backdate_steps,
 )
 from policy.gr00t.transport import Gr00tZmqTransport, require_dict
 from policy.policy_client import PolicyClient
@@ -212,21 +213,11 @@ class Gr00tPolicyClient(PolicyClient):
             self._rtc_state.last_inference_time = _time2.monotonic()
 
         chunk = self._decode_action(schema, action_raw, info_raw)
-        # Attach the RTC seam backdate (in steps) so the executor can place this
-        # chunk so its head aligns with the robot's current position. The robot
-        # is `executed` steps into the previous chunk; the new chunk reuses
-        # prev[H-overlap:] as its head, so the robot corresponds to new step
-        # (executed - (H - overlap)). Backdating the anchor by that many steps
-        # puts that step at "now", connecting consecutive chunks. NOTE: this is
-        # NOT simply `frozen` — that identity only holds when overlap is not
-        # clamped; the client clamps overlap to max_overlap_factor*H.
+        # Attach the RTC seam backdate (in steps) so the executor anchors this
+        # chunk's reused head at the robot's current position (see
+        # seam_backdate_steps).
         if options is not None and self._rtc_state.action_horizon is not None:
-            backdate = (
-                self._rtc_state.last_executed_steps
-                - self._rtc_state.action_horizon
-                + self._rtc_state.last_overlap_steps
-            )
-            backdate = max(0, backdate)
+            backdate = seam_backdate_steps(self._rtc_state)
             if backdate:
                 chunk = chunk.model_copy(update={"seam_backdate_steps": backdate})
         return chunk
