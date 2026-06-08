@@ -148,28 +148,6 @@ Stop conditions must be fast (no network calls). Use `Observation.computed()` fo
 
 > These are **software** stop conditions running in the executor loop — not a safety system. The robot can still move fast and a stop condition has no notion of its braking distance. For production, rely on the safety zones and protective stops configured on the robot controller.
 
-### Execution lifecycle
-
-`run()` drives the policy until one thing happens: a clean exit returns an
-`ExecutionResult`, a fault raises.
-
-```mermaid
-flowchart TD
-    Run(["await executor.run()"]) --> Loop(("tick loop"))
-
-    Loop -->|timeout_s expires| RT["return ExecutionResult\nreason = timeout"]
-    Loop -->|executor.stop| RS["return ExecutionResult\nreason = stopped"]
-    Loop -->|stop condition returns True| RC["return ExecutionResult\nreason = stop condition: name"]
-    Loop -->|e-stop / protective stop| XE["raise EmergencyStopError"]
-    Loop -->|self-collision / joint limit| XM["raise MotionError"]
-    Loop -->|connection lost| XR["raise RuntimeError"]
-
-    classDef ok fill:#0e2a14,stroke:#3fb950,color:#d7ffe0;
-    classDef err fill:#2a0e0e,stroke:#f85149,color:#ffd7d7;
-    class RT,RS,RC ok;
-    class XE,XM,XR err;
-```
-
 ## Teleoperation
 
 There's no built-in teleop device, but the standalone jogging layer is the
