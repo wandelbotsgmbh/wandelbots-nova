@@ -1,11 +1,16 @@
 """Tests for TrajectoryCursor action index and location logic."""
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
 
 from nova.actions.motions import lin
-from nova.cell.movement_controller.trajectory_cursor import MovementOption, TrajectoryCursor
+from nova.cell.movement_controller.trajectory_cursor import (
+    MovementOption,
+    TrajectoryCursor,
+    action_index_for_location,
+)
 from nova.types import Pose
 
 
@@ -245,3 +250,45 @@ def test_motion_event_with_no_actions():
     # Should serialize without error
     json_data = event.model_dump_json()
     assert '"current_action":null' in json_data or '"current_action": null' in json_data
+
+
+@pytest.mark.parametrize(
+    "location, num_actions, expected",
+    [
+        pytest.param(0.0, 3, 0, id="at_start"),
+        pytest.param(0.5, 3, 0, id="within_first"),
+        pytest.param(1.0, 3, 1, id="at_boundary"),
+        pytest.param(2.9, 3, 2, id="within_last"),
+        pytest.param(3.0, 3, 2, id="at_end_clamps"),
+        pytest.param(9.0, 3, 2, id="beyond_end_clamps"),
+        pytest.param(0.0, 1, 0, id="single_action_start"),
+        pytest.param(1.0, 1, 0, id="single_action_end_clamps"),
+    ],
+)
+def test_action_index_for_location(location, num_actions, expected):
+    assert action_index_for_location(location, num_actions) == expected
+
+
+def test_motion_event_includes_source_spans():
+    """The cursor exposes the exact source span to highlight per action."""
+    cursor = create_cursor(num_actions=3, initial_location=0.0)
+    current = cursor.current_action
+    target = cursor.next_action
+
+    event = cursor._get_motion_event(target)
+
+    assert event.current_action_source is not None
+    assert event.current_action_source.start_line is not None
+    assert event.current_action_source == current.source_location
+    assert event.target_action_source == target.source_location
+
+
+def test_motion_event_source_spans_serialize():
+    """Source spans are part of the serialized payload sent to the editor."""
+    cursor = create_cursor(num_actions=2, initial_location=0.0)
+    event = cursor._get_motion_event(cursor.current_action)
+
+    payload = json.loads(event.model_dump_json())
+    assert payload["current_action_source"] is not None
+    assert payload["current_action_source"]["start_line"] is not None
+    assert payload["current_action_source"] == event.current_action_source.model_dump()

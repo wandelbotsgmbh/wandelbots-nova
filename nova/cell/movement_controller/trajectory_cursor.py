@@ -60,6 +60,7 @@ from nova.actions.container import CombinedActions
 from nova.cell.movement_controller.trajectory_state_machine import TrajectoryExecutionMachine
 from nova.exceptions import InitMovementFailed
 from nova.types import ExecuteTrajectoryRequestStream, ExecuteTrajectoryResponseStream
+from nova.utils import SourceLocation
 
 logger = logging.getLogger(__name__)
 
@@ -342,15 +343,19 @@ class MotionEvent(pydantic.BaseModel):
         type: Whether motion started or stopped.
         current_location: Current position on the trajectory.
         current_action: The action at the current location (None if no actions available).
+        current_action_source: Exact source span to highlight for the current action.
         target_location: The intended destination location.
         target_action: The action at the target location (None if no actions available).
+        target_action_source: Exact source span to highlight for the target action.
     """
 
     type: MotionEventType
     current_location: float
     current_action: Action | None
+    current_action_source: SourceLocation | None = None
     target_location: float
     target_action: Action | None
+    target_action_source: SourceLocation | None = None
 
 
 ExecuteTrajectoryRequestCommand = Union[
@@ -415,6 +420,27 @@ class _QueueSentinel:
 
 # The single sentinel value used to signal queue termination
 _QUEUE_SENTINEL = _QueueSentinel()
+
+
+def action_index_for_location(location: float, num_actions: int) -> int:
+    """Map a trajectory location to a zero-based action index.
+
+    Integer locations are action boundaries (``location`` ``N`` is the start of
+    action ``N``). At or beyond the end of the trajectory the index is clamped to
+    the last action so the cursor keeps reporting the final action.
+
+    Args:
+        location: The current trajectory location.
+        num_actions: The number of actions in the trajectory (must be >= 1).
+
+    Returns:
+        The zero-based index of the action covering ``location``.
+    """
+    index = floor(location)
+    if index >= num_actions:
+        # at the end of the trajectory the current action remains the last one
+        return num_actions - 1
+    return index
 
 
 class TrajectoryCursor:
@@ -537,11 +563,7 @@ class TrajectoryCursor:
         """Zero-based index of the action at the current location, or None if no actions."""
         if self.actions is None:
             return None
-        index = floor(self._current_location)
-        if index >= len(self.actions):
-            # at the end of the trajectory current action remains the last one
-            return len(self.actions) - 1
-        return index
+        return action_index_for_location(self._current_location, len(self.actions))
 
     @property
     def current_action(self) -> Action | None:
@@ -1083,12 +1105,19 @@ class TrajectoryCursor:
 
     def _get_motion_event(self, target_action: Action | None) -> MotionEvent:
         """Create a MotionEvent with current cursor state."""
+        current_action = self.current_action
         return MotionEvent(
             type=MotionEventType.STARTED,
             current_location=self._current_location,
-            current_action=self.current_action,
+            current_action=current_action,
+            current_action_source=(
+                current_action.source_location if current_action is not None else None
+            ),
             target_location=self._target_location,
             target_action=target_action,
+            target_action_source=(
+                target_action.source_location if target_action is not None else None
+            ),
         )
 
     def __aiter__(self) -> AsyncIterator[api.models.MotionGroupState]:
