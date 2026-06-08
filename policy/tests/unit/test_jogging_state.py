@@ -100,3 +100,73 @@ def test_unknown_pause_type_does_not_trigger():
     t = JoggingStateTracker("0@ur10e", confirm_ticks=1)
     t.update_from_state(_state("PAUSED_SOME_OTHER_REASON"))
     t.check()  # Should not raise
+
+
+# ===========================================================================
+# Stateful property machine — the debounce contract over arbitrary tick
+# sequences. A reference counter mirrors the tracker: it must raise iff
+# `confirm_ticks` *consecutive* blocking ticks have been checked, and any
+# non-blocking tick resets the streak.
+# ===========================================================================
+
+from hypothesis import (  # noqa: E402
+    settings as _settings,
+    strategies as st,
+)
+from hypothesis.stateful import (  # noqa: E402
+    RuleBasedStateMachine,
+    initialize,
+    invariant,
+    rule,
+)
+
+from policy.jogging.session import _BLOCKING_PAUSES  # noqa: E402
+
+# Kinds that must NOT count toward a trip: RUNNING, no execute details, and a
+# pause type that isn't one of the blocking pauses.
+_CLEARING_KINDS = st.sampled_from(["RUNNING", "PAUSED_SOME_OTHER_REASON", None])
+
+
+def _tick_state(kind):
+    """A jogging state whose pause kind is `kind` (None => no execute details)."""
+    if kind is None:
+        s = MagicMock()
+        s.execute = None
+        return s
+    return _state(kind)
+
+
+class JoggingDebounceMachine(RuleBasedStateMachine):
+    """Drive a tracker with random blocking/clearing ticks; the model is a
+    consecutive-blocking counter that predicts exactly when it must trip."""
+
+    @initialize(ticks=st.integers(min_value=1, max_value=6))
+    def start(self, ticks):
+        self.confirm_ticks = ticks
+        self.tracker = JoggingStateTracker("0@ur10e", confirm_ticks=ticks)
+        self.streak = 0  # consecutive blocking ticks that have been checked
+
+    @rule(kind=st.sampled_from(sorted(_BLOCKING_PAUSES)))
+    def blocking_tick(self, kind):
+        self.tracker.update_from_state(_tick_state(kind))
+        self.streak += 1
+        if self.streak >= self.confirm_ticks:
+            # The model says we are at/over threshold -> must raise.
+            with pytest.raises(MotionError):
+                self.tracker.check()
+        else:
+            self.tracker.check()  # below threshold -> must not raise
+
+    @rule(kind=_CLEARING_KINDS)
+    def clearing_tick(self, kind):
+        self.tracker.update_from_state(_tick_state(kind))
+        self.streak = 0  # any non-blocking state resets the streak
+        self.tracker.check()  # never raises
+
+    @invariant()
+    def streak_never_negative(self):
+        assert self.streak >= 0
+
+
+TestJoggingDebounce = JoggingDebounceMachine.TestCase
+TestJoggingDebounce.settings = _settings(max_examples=200, stateful_step_count=40, deadline=None)
