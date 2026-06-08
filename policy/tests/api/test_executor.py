@@ -294,6 +294,65 @@ async def test_a_joint_schema_opens_a_joint_session(robot: _Robot):
     assert session_cls.call_args.kwargs["mode"] == "joint"
 
 
+@pytest.mark.asyncio
+async def test_send_routes_joint_and_tcp_targets_to_their_own_sessions():
+    """A mixed schema drives _send's two branches without cross-wiring.
+
+    One arm is joint-controlled, the other TCP-controlled, in a single schema.
+    The executor must open a joint session for the first and a cartesian session
+    for the second, then route each arm's slice of the policy output to the
+    right session: joint radians to the joint arm, a 6-D pose to the TCP arm —
+    never the other way round.
+    """
+    arm = _mg("0@ur5e-left")
+    eef = _mg("0@ur5e-right")
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=arm),
+            Observation.tcp("eef", source=eef, action=True),
+        ]
+    )
+
+    async def mixed_policy(_obs: object) -> dict[str, float]:
+        return {
+            **{f"arm_{i}": float(i) for i in range(1, 7)},
+            "eef_x": 500.0,
+            "eef_y": 200.0,
+            "eef_z": 300.0,
+            "eef_rx": 0.0,
+            "eef_ry": 3.14,
+            "eef_rz": 0.0,
+        }
+
+    sessions: dict[str, MagicMock] = {}
+
+    def make_session(*, motion_group: object, mode: str, **_kw: object) -> MagicMock:
+        s = _fake_session()
+        s.motion_group_id = motion_group.id  # type: ignore[attr-defined]
+        s.mode = mode
+        sessions[motion_group.id] = s  # type: ignore[attr-defined]
+        return s
+
+    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
+    with (
+        patch("policy.executor.WaypointJoggingSession", side_effect=make_session),
+        patch("policy.executor.EstopMonitor", return_value=estop),
+    ):
+        await PolicyExecutor(schema, mixed_policy, timeout_s=0.05).run()
+
+    # Joint arm: joint mode, six joint radians, routed via the joints branch.
+    joint_session = sessions["0@ur5e-left"]
+    assert joint_session.mode == "joint"
+    assert joint_session.update_chunk.call_args.kwargs["steps"] == [[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]
+
+    # TCP arm: cartesian mode, one 6-D pose, routed via the tcp branch.
+    tcp_session = sessions["0@ur5e-right"]
+    assert tcp_session.mode == "cartesian"
+    assert tcp_session.update_chunk.call_args.kwargs["steps"] == [
+        [500.0, 200.0, 300.0, 0.0, 3.14, 0.0]
+    ]
+
+
 # ---------------------------------------------------------------------------
 # RTC requires overlapping placement
 # ---------------------------------------------------------------------------
