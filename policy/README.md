@@ -4,7 +4,7 @@
 
 Execute learned policies (imitation learning, reinforcement learning) on industrial robots via [Wandelbots NOVA](https://wandelbots.com).
 
-## Architecture
+## Overview
 
 **Robot control lives on the IPC, not on the (potentially remote) GPU server running the policy.**
 
@@ -157,16 +157,15 @@ arm, keyboard, gamepad, spacemouse — in your own script. See
 
 ## Further reading
 
-| Doc | Covers |
-|---|---|
+| Doc                                | Covers                                                                                                                                                                     |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [docs/JOGGING.md](docs/JOGGING.md) | Motion control: how chunks are streamed as timestamped waypoints, joint/TCP modes, the execution loop (`policy_rate_hz`), standalone jogging, dual-arm, and error handling |
-| [docs/SCHEMA.md](docs/SCHEMA.md) | Advanced schema: IO mappings, relative actions, TCP actions, computed observations/actions |
-| [docs/GR00T.md](docs/GR00T.md) | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ (and [docs/RTC.md](docs/RTC.md) for real-time chunking) |
-| [docs/RERUN.md](docs/RERUN.md) | Optional real-time 3D visualization of execution |
+| [docs/SCHEMA.md](docs/SCHEMA.md)   | Advanced schema: IO mappings, relative actions, TCP actions, computed observations/actions                                                                                 |
+| [docs/GR00T.md](docs/GR00T.md)     | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ (and [docs/RTC.md](docs/RTC.md) for real-time chunking)     |
+| [docs/RERUN.md](docs/RERUN.md)     | Optional real-time 3D visualization of execution                                                                                                                           |
 
 ### Examples
 
 ▶ [`execute_custom_policy_on_dual_arm.py`](examples/execute_custom_policy_on_dual_arm.py) — two UR5e robots with cameras, IOs, and stop conditions\
 ▶ [`execute_gr00t_dual_arm.py`](examples/execute_gr00t_dual_arm.py) — dual arm with GR00T ZMQ + 4 cameras\
 ▶ [`jogging/`](examples/jogging/) — standalone jogging (single/dual arm, joint/TCP, chunked), no policy
-
