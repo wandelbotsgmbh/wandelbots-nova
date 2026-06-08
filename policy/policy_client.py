@@ -31,7 +31,6 @@ class PolicyClient(Protocol):
 
     async def connect(self, motion_group_ids: list[str]) -> None:
         """Establish connection to the policy service."""
-        ...
 
     async def validate_schema(self, schema: PolicySchema) -> None:
         """Validate that the schema satisfies the policy's requirements.
@@ -44,7 +43,6 @@ class PolicyClient(Protocol):
         can introspect the server's expected inputs (e.g. GR00T's
         ``get_modality_config``).
         """
-        ...
 
     async def get_actions(
         self,
@@ -54,11 +52,9 @@ class PolicyClient(Protocol):
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
         """Receive robot states + camera images, return action chunk."""
-        ...
 
     async def close(self) -> None:
         """Close the connection."""
-        ...
 
 
 class CallbackPolicyClient:
