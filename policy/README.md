@@ -4,6 +4,8 @@
 
 Execute learned policies (imitation learning, reinforcement learning) on industrial robots via [Wandelbots NOVA](https://wandelbots.com).
 
+<video src="https://github.com/wandelbotsgmbh/wandelbots-nova/raw/waypoint-jogging/policy/docs/assets/dual_arm_policy.mp4" autoplay loop muted playsinline width="100%"></video>
+
 ## Overview
 
 **Robot control lives on the IPC, not on the (potentially remote) GPU server running the policy.**
