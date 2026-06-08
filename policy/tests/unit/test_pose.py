@@ -1,101 +1,135 @@
-"""Tests for pose_to_eef rotation conversions."""
+"""Property-based tests for pose_to_eef rotation conversions.
+
+``pose_to_eef`` is a pure function (its signature is its own driving port), so
+these tests state its *invariants* over generated inputs rather than a handful
+of pinned examples:
+
+* position is always scaled mm -> m, for every output format;
+* the rotation-vector format passes orientation through untouched;
+* every quaternion is unit-norm and encodes the original rotation angle;
+* every rot6d output is a pair of orthonormal columns.
+
+A couple of exact-boundary cases (zero rotation) are kept as plain examples
+because the contract there is a single pinned value, not a property.
+"""
 
 from __future__ import annotations
 
 import math
-from unittest.mock import MagicMock
+from types import SimpleNamespace
 
+from hypothesis import given, settings, strategies as st
 import pytest
 
 from policy.gr00t.eef import TcpFormat, pose_to_eef
 
+# Strategies ---------------------------------------------------------------
 
-def _pose(x: float, y: float, z: float, rx: float, ry: float, rz: float) -> MagicMock:
-    """Create a mock Nova Pose (position in mm, orientation as rotation vector)."""
-    pos = MagicMock()
-    pos.x, pos.y, pos.z = x, y, z
-    ori = MagicMock()
-    ori.x, ori.y, ori.z = rx, ry, rz
-    pose = MagicMock()
-    pose.position = pos
-    pose.orientation = ori
-    return pose
+_MM = st.floats(min_value=-1e4, max_value=1e4, allow_nan=False, allow_infinity=False)
+_RV = st.floats(min_value=-math.pi, max_value=math.pi, allow_nan=False, allow_infinity=False)
+_FORMATS = st.sampled_from(list(TcpFormat))
 
 
-def test_rotation_vector_passthrough():
-    result = pose_to_eef(_pose(1000, 2000, 3000, 0.1, 0.2, 0.3), TcpFormat.ROTATION_VECTOR)
+def _pose(x: float, y: float, z: float, rx: float, ry: float, rz: float) -> object:
+    """A Nova-Pose-shaped object: position in mm, orientation as a rotation vector."""
+    return SimpleNamespace(
+        position=SimpleNamespace(x=x, y=y, z=z),
+        orientation=SimpleNamespace(x=rx, y=ry, z=rz),
+    )
+
+
+# Position scaling — holds for every format -------------------------------
+
+
+@given(x=_MM, y=_MM, z=_MM, rx=_RV, ry=_RV, rz=_RV, fmt=_FORMATS)
+@settings(max_examples=200, deadline=None)
+def test_position_is_always_scaled_from_mm_to_meters(x, y, z, rx, ry, rz, fmt):
+    """The first three outputs are the position in metres, whatever the format."""
+    result = pose_to_eef(_pose(x, y, z, rx, ry, rz), fmt)
+    assert result[0] == pytest.approx(x * 0.001)
+    assert result[1] == pytest.approx(y * 0.001)
+    assert result[2] == pytest.approx(z * 0.001)
+
+
+@given(x=_MM, y=_MM, z=_MM)
+@settings(max_examples=50, deadline=None)
+def test_position_scale_of_one_keeps_millimetres(x, y, z):
+    """position_scale=1.0 is the documented escape hatch to keep mm."""
+    result = pose_to_eef(_pose(x, y, z, 0, 0, 0), TcpFormat.ROTATION_VECTOR, position_scale=1.0)
+    assert result[:3] == pytest.approx([x, y, z])
+
+
+# rotation_vector — orientation passes through untouched ------------------
+
+
+@given(x=_MM, y=_MM, z=_MM, rx=_RV, ry=_RV, rz=_RV)
+@settings(max_examples=200, deadline=None)
+def test_rotation_vector_passes_orientation_through_unchanged(x, y, z, rx, ry, rz):
+    """ROTATION_VECTOR returns six values and never touches the orientation."""
+    result = pose_to_eef(_pose(x, y, z, rx, ry, rz), TcpFormat.ROTATION_VECTOR)
     assert len(result) == 6
-    # Position converted from mm to meters
-    assert result[0] == pytest.approx(1.0)
-    assert result[1] == pytest.approx(2.0)
-    assert result[2] == pytest.approx(3.0)
-    # Orientation passed through
-    assert result[3] == pytest.approx(0.1)
-    assert result[4] == pytest.approx(0.2)
-    assert result[5] == pytest.approx(0.3)
+    assert result[3:] == pytest.approx([rx, ry, rz])
 
 
-def test_quaternion_identity():
-    """Zero rotation vector → identity quaternion (0,0,0,1)."""
-    result = pose_to_eef(_pose(0, 0, 0, 0, 0, 0), TcpFormat.QUATERNION)
+# quaternion — unit norm + recovers the rotation it was built from --------
+
+
+@given(rx=_RV, ry=_RV, rz=_RV)
+@settings(max_examples=300, deadline=None)
+def test_quaternion_is_always_unit_norm(rx, ry, rz):
+    """A quaternion is seven values whose orientation part has unit length."""
+    result = pose_to_eef(_pose(0, 0, 0, rx, ry, rz), TcpFormat.QUATERNION)
     assert len(result) == 7
-    assert result[3:] == pytest.approx([0.0, 0.0, 0.0, 1.0], abs=1e-10)
-
-
-def test_quaternion_90deg_z():
-    """90° rotation around Z → qz=sin(45°), qw=cos(45°)."""
-    angle = math.pi / 2  # 90 degrees
-    result = pose_to_eef(_pose(0, 0, 0, 0, 0, angle), TcpFormat.QUATERNION)
-    expected_s = math.sin(angle / 2)
-    expected_c = math.cos(angle / 2)
-    assert result[3] == pytest.approx(0.0, abs=1e-10)
-    assert result[4] == pytest.approx(0.0, abs=1e-10)
-    assert result[5] == pytest.approx(expected_s, rel=1e-6)
-    assert result[6] == pytest.approx(expected_c, rel=1e-6)
-
-
-def test_quaternion_unit_norm():
-    """Any quaternion output should have unit norm."""
-    result = pose_to_eef(_pose(100, 200, 300, 0.7, -0.3, 1.2), TcpFormat.QUATERNION)
     qx, qy, qz, qw = result[3:]
-    norm = math.sqrt(qx**2 + qy**2 + qz**2 + qw**2)
-    assert norm == pytest.approx(1.0, rel=1e-8)
+    assert math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw) == pytest.approx(1.0, rel=1e-9)
 
 
-def test_rot6d_identity():
-    """Zero rotation → first two columns of identity matrix."""
-    result = pose_to_eef(_pose(0, 0, 0, 0, 0, 0), TcpFormat.ROT6D)
+@given(rx=_RV, ry=_RV, rz=_RV)
+@settings(max_examples=300, deadline=None)
+def test_quaternion_recovers_the_original_rotation_angle(rx, ry, rz):
+    """The quaternion encodes a rotation by |rotation-vector| about its axis.
+
+    For a unit quaternion (v, w) the rotation angle is 2*atan2(|v|, w); since the
+    input rotation-vector magnitude *is* that angle, the two must agree.
+    """
+    angle = math.sqrt(rx * rx + ry * ry + rz * rz)
+    qx, qy, qz, qw = pose_to_eef(_pose(0, 0, 0, rx, ry, rz), TcpFormat.QUATERNION)[3:]
+    recovered = 2.0 * math.atan2(math.sqrt(qx * qx + qy * qy + qz * qz), qw)
+    assert recovered == pytest.approx(angle, abs=1e-9)
+
+
+# rot6d — the two columns are always orthonormal --------------------------
+
+
+@given(rx=_RV, ry=_RV, rz=_RV)
+@settings(max_examples=300, deadline=None)
+def test_rot6d_columns_are_always_orthonormal(rx, ry, rz):
+    """rot6d returns nine values: two unit-length, mutually orthogonal columns."""
+    result = pose_to_eef(_pose(0, 0, 0, rx, ry, rz), TcpFormat.ROT6D)
     assert len(result) == 9
-    # First column of identity
-    assert result[3:6] == pytest.approx([1.0, 0.0, 0.0], abs=1e-10)
-    # Second column of identity
-    assert result[6:9] == pytest.approx([0.0, 1.0, 0.0], abs=1e-10)
-
-
-def test_rot6d_90deg_z():
-    """90° rotation around Z."""
-    angle = math.pi / 2
-    result = pose_to_eef(_pose(0, 0, 0, 0, 0, angle), TcpFormat.ROT6D)
-    # First column: [cos(90), sin(90), 0] = [0, 1, 0]
-    assert result[3] == pytest.approx(0.0, abs=1e-10)
-    assert result[4] == pytest.approx(1.0, abs=1e-10)
-    assert result[5] == pytest.approx(0.0, abs=1e-10)
-    # Second column: [-sin(90), cos(90), 0] = [-1, 0, 0]
-    assert result[6] == pytest.approx(-1.0, abs=1e-10)
-    assert result[7] == pytest.approx(0.0, abs=1e-10)
-    assert result[8] == pytest.approx(0.0, abs=1e-10)
-
-
-def test_rot6d_orthogonality():
-    """Columns of rot6d output must be orthogonal and unit length."""
-    result = pose_to_eef(_pose(500, -200, 800, 1.0, -0.5, 0.8), TcpFormat.ROT6D)
-    col1 = result[3:6]
-    col2 = result[6:9]
-    # Unit length
-    norm1 = math.sqrt(sum(v**2 for v in col1))
-    norm2 = math.sqrt(sum(v**2 for v in col2))
-    assert norm1 == pytest.approx(1.0, rel=1e-8)
-    assert norm2 == pytest.approx(1.0, rel=1e-8)
-    # Orthogonal (dot product = 0)
+    col1, col2 = result[3:6], result[6:9]
+    assert math.sqrt(sum(v * v for v in col1)) == pytest.approx(1.0, rel=1e-9)
+    assert math.sqrt(sum(v * v for v in col2)) == pytest.approx(1.0, rel=1e-9)
     dot = sum(a * b for a, b in zip(col1, col2, strict=True))
-    assert dot == pytest.approx(0.0, abs=1e-8)
+    assert dot == pytest.approx(0.0, abs=1e-9)
+
+
+# Exact boundaries — zero rotation is a pinned value, not a property ------
+# bypass: the contract at angle==0 is a single exact vector, so an example
+# states it more clearly than a property would.
+
+
+def test_zero_rotation_is_the_identity_quaternion():
+    result = pose_to_eef(_pose(0, 0, 0, 0, 0, 0), TcpFormat.QUATERNION)
+    assert result[3:] == pytest.approx([0.0, 0.0, 0.0, 1.0], abs=1e-12)
+
+
+def test_zero_rotation_is_the_identity_rot6d_columns():
+    result = pose_to_eef(_pose(0, 0, 0, 0, 0, 0), TcpFormat.ROT6D)
+    assert result[3:6] == pytest.approx([1.0, 0.0, 0.0], abs=1e-12)  # first identity column
+    assert result[6:9] == pytest.approx([0.0, 1.0, 0.0], abs=1e-12)  # second identity column
+
+
+def test_an_unknown_format_is_rejected():
+    with pytest.raises(ValueError, match="TcpFormat"):
+        pose_to_eef(_pose(0, 0, 0, 0, 0, 0), "euler_xyz")

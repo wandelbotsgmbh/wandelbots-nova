@@ -977,6 +977,18 @@ wheels = [
 ]
 
 [[package]]
+name = "hypothesis"
+version = "6.155.2"
+source = { registry = "https://code.wabo.run/api/v4/projects/889/packages/pypi/simple" }
+dependencies = [
+    { name = "sortedcontainers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f5/04/64032a1dccd2233615c8a3f701bbb563558575ed017496a24b6d81762c91/hypothesis-6.155.2.tar.gz", hash = "sha256:ae36880287c9c5defe9f199d3d2b67d9947a4da2a46e6c57373cbdf2345b20e1", size = 477765, upload-time = "2026-06-05T16:32:23.63Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ec/6e/e735f27ac1a530a4cd0a31cd970ec495a3a11830fdc5d281cc292593b330/hypothesis-6.155.2-py3-none-any.whl", hash = "sha256:c85ce6dcd630a90ce501f1d1dd1bc84b97f5649ca8a27e134c8cbf5aa480b1a5", size = 544213, upload-time = "2026-06-05T16:32:21.15Z" },
+]
+
+[[package]]
 name = "icecream"
 version = "2.2.0"
 source = { registry = "https://code.wabo.run/api/v4/projects/889/packages/pypi/simple" }
@@ -2786,6 +2798,7 @@ wandelscript = [
 dev = [
     { name = "freezegun" },
     { name = "glom" },
+    { name = "hypothesis" },
     { name = "icecream" },
     { name = "ipython", version = "9.10.1", source = { registry = "https://code.wabo.run/api/v4/projects/889/packages/pypi/simple" }, marker = "python_full_version < '3.12'" },
     { name = "ipython", version = "9.12.0", source = { registry = "https://code.wabo.run/api/v4/projects/889/packages/pypi/simple" }, marker = "python_full_version >= '3.12'" },
@@ -2847,6 +2860,7 @@ provides-extras = ["nova-rerun-bridge", "wandelscript", "novax", "policy", "benc
 dev = [
     { name = "freezegun", specifier = ">=1.5.5" },
     { name = "glom", specifier = ">=24.11.0" },
+    { name = "hypothesis", specifier = ">=6.100.0" },
     { name = "icecream", specifier = ">=2.1.5" },
     { name = "ipython", specifier = "<10" },
     { name = "mypy", specifier = ">=1.18.2" },

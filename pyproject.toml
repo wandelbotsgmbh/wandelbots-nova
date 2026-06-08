@@ -79,6 +79,7 @@ dev = [
     "ruff>=0.12.8",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
+    "hypothesis>=6.100.0",
     "mypy>=1.18.2",
     "pre-commit>=4.3.0",
     "icecream>=2.1.5",
