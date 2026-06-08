@@ -4,9 +4,7 @@
 
 Execute learned policies (imitation learning, reinforcement learning) on industrial robots via [Wandelbots NOVA](https://wandelbots.com).
 
-<video src="https://github.com/wandelbotsgmbh/wandelbots-nova/releases/download/v5.3.0/dual_arm_policy.mp4" autoplay loop muted playsinline controls width="100%">
-  <source src="https://github.com/wandelbotsgmbh/wandelbots-nova/releases/download/v5.3.0/dual_arm_policy.mp4" type="video/mp4">
-</video>
+https://github.com/user-attachments/assets/0c29ee16-da6d-4a24-bacb-d2259666535d
 
 ## Overview
 
