@@ -331,12 +331,12 @@ class WaypointJoggingSession:
         tcp = await self._resolve_tcp()
 
         async def client_request_generator(
-            response_stream: AsyncGenerator[api.models.ExecuteJoggingResponse, None],
-        ) -> AsyncGenerator[api.models.ExecuteJoggingRequest, None]:
+            response_stream: AsyncGenerator[api.models.ExecuteWaypointJoggingResponse, None],
+        ) -> AsyncGenerator[api.models.ExecuteWaypointJoggingRequest, None]:
             # 1. Initialize the jogging session.
             # The server starts its internal timer when the first waypoint
             # request arrives (not on InitializeJoggingRequest).
-            yield api.models.ExecuteJoggingRequest(
+            yield api.models.ExecuteWaypointJoggingRequest(
                 api.models.InitializeJoggingRequest(motion_group=self._motion_group.id, tcp=tcp)
             )
 
@@ -393,10 +393,10 @@ class WaypointJoggingSession:
                     backdate_ms=pending.backdate_ms,
                 )
 
-                yield api.models.ExecuteJoggingRequest(request)
+                yield api.models.ExecuteWaypointJoggingRequest(request)
 
         try:
-            await api_gateway.jogging_api.execute_jogging(
+            await api_gateway.jogging_api.execute_waypoint_jogging(
                 cell=cell,
                 controller=controller_id,
                 client_request_generator=client_request_generator,

@@ -3,7 +3,7 @@
 These drive the *real* async jogging + state-stream loops, substituting only
 the NOVA SDK boundary: the motion group, the API gateway, and the small
 ``_sdk`` accessors. The fake gateway plays the role of the server — it feeds the
-session a response stream and records the ``ExecuteJoggingRequest`` messages the
+session a response stream and records the ``ExecuteWaypointJoggingRequest`` messages the
 session yields back.
 
 Assertions are on the contract, not internals:
@@ -37,7 +37,7 @@ _SESSION = "policy.jogging.waypoint_session"
 
 
 # ---------------------------------------------------------------------------
-# Fake server: stands in for api_gateway.jogging_api.execute_jogging
+# Fake server: stands in for api_gateway.jogging_api.execute_waypoint_jogging
 # ---------------------------------------------------------------------------
 
 
@@ -65,7 +65,7 @@ class FakeJoggingServer:
         self._fault = fault
         self._stop = asyncio.Event()
 
-    async def execute_jogging(
+    async def execute_waypoint_jogging(
         self,
         *,
         cell: str,
@@ -139,7 +139,7 @@ def _build_session(
     mg.tcp_names = AsyncMock(return_value=["Flange"])
 
     gateway = MagicMock()
-    gateway.jogging_api.execute_jogging = server.execute_jogging
+    gateway.jogging_api.execute_waypoint_jogging = server.execute_waypoint_jogging
 
     session = WaypointJoggingSession(
         motion_group=mg,
@@ -170,7 +170,7 @@ async def _wait_until(predicate: Callable[[], bool], *, timeout: float = 1.0) ->
 
 
 def _inner(request: object) -> object:
-    """Unwrap the ExecuteJoggingRequest envelope to the concrete message."""
+    """Unwrap the ExecuteWaypointJoggingRequest envelope to the concrete message."""
     return getattr(request, "root", request)
 
 
