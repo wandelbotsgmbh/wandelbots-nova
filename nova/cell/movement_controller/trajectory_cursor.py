@@ -1094,20 +1094,37 @@ class TrajectoryCursor:
             op_type = current_op.operation_type if current_op else None
             match op_type:
                 case OperationType.FORWARD | OperationType.FORWARD_TO:
-                    target_action = self.next_action if self.next_action else self.current_action
+                    target_action = self._target_action(forward=True)
                     await motion_started.send_async(
                         self, event=self._get_motion_event(target_action)
                     )
                 case OperationType.BACKWARD | OperationType.BACKWARD_TO:
-                    target_action = (
-                        self.previous_action if self.previous_action else self.current_action
-                    )
+                    target_action = self._target_action(forward=False)
                     await motion_started.send_async(
                         self, event=self._get_motion_event(target_action)
                     )
                 case _:
                     pass
             await asyncio.sleep(interval)
+
+    def _target_action(self, *, forward: bool) -> Action | None:
+        """The action the cursor is moving toward, derived from the target location.
+
+        The action being executed is the segment between the current and target
+        location. Moving forward, an integer target is the end of that segment, so
+        the action ending there is targeted; moving backward, an integer target is
+        the start of the segment, so the action starting there is targeted. Falls
+        back to the current action when no distinct target is set.
+        """
+        if not self.actions:  # None or empty
+            return None
+        if self._target_location == self._current_location:
+            return self.current_action
+        if forward:
+            index = action_index_for_location(self._target_location, len(self.actions))
+        else:
+            index = max(0, min(floor(self._target_location), len(self.actions) - 1))
+        return self.actions[index]
 
     def _get_motion_event(self, target_action: Action | None) -> MotionEvent:
         """Create a MotionEvent with current cursor state."""
