@@ -8,6 +8,7 @@ transforms trivially unit-testable.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -118,26 +119,42 @@ def apply_relative_mode(
     )
 
 
-def placement_start_ms(
-    chunk: ActionChunk,
-    *,
-    policy_rate_hz: float,
-    session_elapsed_ms: int,
-    backdate_ms: int,
-) -> int:
-    """Compute the ``first_timestamp_ms`` for a chunk on one session.
+@dataclass(frozen=True, slots=True)
+class Placement:
+    """How a chunk should be anchored on the server timeline.
 
-    * An explicit ``chunk.first_timestamp_ms`` (>=0) set by the policy always wins.
-    * Wait-for-chunk (``policy_rate_hz < 0``) — sequential, non-overlapping:
-      relative placement (``-1``), i.e. start from the robot's current position
-      "now". There is no shared timeline to align to.
-    * Overlapping (``policy_rate_hz >= 0``, typically RTC) — absolute
-      timestamps anchored at send time, backdated by ``backdate_ms`` so the
-      step matching the robot's current position lands at "now". Relative
-      placement cannot express this, hence the two models exist.
+    * ``first_timestamp_ms >= 0`` — explicit absolute anchor (e.g. replay); used
+      verbatim. ``overlapping``/``backdate_ms`` are ignored.
+    * ``first_timestamp_ms == -1`` and ``overlapping`` — RTC: anchor at
+      ``now - backdate_ms`` resolved at *yield time*, with the step layout
+      starting at the anchor so step ``backdate`` lands at "now".
+    * ``first_timestamp_ms == -1`` and not ``overlapping`` — sequential: anchor
+      at "now" resolved at yield time, layout one ``dt`` into the future.
+    """
+
+    first_timestamp_ms: int
+    overlapping: bool
+    backdate_ms: int
+
+
+def placement(chunk: ActionChunk, *, policy_rate_hz: float, backdate_ms: int) -> Placement:
+    """Decide how a chunk is anchored on one session's timeline.
+
+    The "now" component of relative/overlapping placement is intentionally NOT
+    resolved here — it is computed at yield time in
+    :func:`policy.jogging.waypoints.make_waypoints_request` so the anchor cannot
+    go stale while the chunk waits in the session queue. This matters most for
+    RTC, whose seam alignment is sensitive to that queue delay.
+
+    * An explicit ``chunk.first_timestamp_ms`` (>=0) set by the policy always
+      wins (used verbatim).
+    * Wait-for-chunk (``policy_rate_hz < 0``) — sequential, non-overlapping.
+    * Overlapping (``policy_rate_hz >= 0``, typically RTC) — anchored at
+      ``now - backdate_ms`` so the step matching the robot's current position
+      lands at "now".
     """
     if chunk.first_timestamp_ms >= 0:
-        return chunk.first_timestamp_ms
+        return Placement(chunk.first_timestamp_ms, overlapping=False, backdate_ms=0)
     if policy_rate_hz < 0:
-        return -1
-    return max(0, session_elapsed_ms - backdate_ms)
+        return Placement(-1, overlapping=False, backdate_ms=0)
+    return Placement(-1, overlapping=True, backdate_ms=backdate_ms)

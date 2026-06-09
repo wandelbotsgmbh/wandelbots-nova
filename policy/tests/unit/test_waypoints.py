@@ -75,6 +75,54 @@ def test_relative_mode_starts_one_dt_after_now_not_at_now():
 
 
 # ---------------------------------------------------------------------------
+# Overlapping (RTC) mode: anchor at now - backdate, resolved at yield time
+# ---------------------------------------------------------------------------
+
+
+def test_overlapping_mode_anchors_in_the_past_so_the_backdated_step_lands_at_now():
+    """With overlapping + backdate, the layout starts at now - backdate.
+
+    A fresh clock reports elapsed 0, so anchor = max(0, 0 - backdate) = 0 and the
+    timestamps are [0, dt, 2dt, ...] (start *at* the anchor, unlike sequential's
+    one-dt offset). The point matching the robot lands at step `backdate`.
+    """
+    clock = JoggingTimeClock(speed_ratio=1.0)  # never started -> client_elapsed_ms == 0
+    steps = [[0.0] * 6, [0.0] * 6, [0.0] * 6]
+    req = make_waypoints_request(
+        clock,
+        "joint",
+        steps=steps,
+        effective_dt_ms=10.0,
+        first_timestamp_ms=-1,
+        overlapping=True,
+        backdate_ms=20,
+    )
+    assert _joint_timestamps(req) == [0, 10, 20]
+
+
+def test_overlapping_anchor_is_read_at_yield_time_not_precomputed():
+    """The 'now' anchor comes from the clock at call time, so advancing the
+    session clock shifts the whole progression — this is the staleness fix."""
+    clock = JoggingTimeClock(speed_ratio=1.0)
+    clock.start()
+    # Force a known elapsed by backdating the clock's start marker.
+    import time as _t
+
+    clock._client_start_time = _t.monotonic() - 0.500  # ~500 ms elapsed
+    req = make_waypoints_request(
+        clock,
+        "joint",
+        steps=[[0.0] * 6],
+        effective_dt_ms=10.0,
+        first_timestamp_ms=-1,
+        overlapping=True,
+        backdate_ms=100,
+    )
+    # anchor ~= 500 - 100 = 400 ms (allow scheduling slack)
+    assert 380 <= req.waypoints[0].timestamp <= 460
+
+
+# ---------------------------------------------------------------------------
 # Request-type dispatch + cartesian payload layout
 # ---------------------------------------------------------------------------
 

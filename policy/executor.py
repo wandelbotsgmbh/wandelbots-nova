@@ -15,7 +15,7 @@ from policy.cameras.manager import CameraManager
 from policy.chunking import (
     apply_relative_mode,
     chunk_duration_s,
-    placement_start_ms,
+    placement,
     trim_chunk,
 )
 from policy.estop import EstopMonitor, check_estop, check_sessions, triggered_stop_condition
@@ -477,25 +477,25 @@ class PolicyExecutor:
         """Send an action chunk to the motion groups.
 
         Placement (relative vs. absolute, with optional RTC seam backdate) is
-        decided per session by :func:`policy.chunking.placement_start_ms`. For
-        overlapping mode to keep the robot moving,
-        ``(horizon - seam_backdate_steps) * dt_ms`` must exceed the inference
-        latency (increase dt_ms or cut latency otherwise).
+        decided per session by :func:`policy.chunking.placement`; the "now"
+        component is resolved at yield time inside the session. For overlapping
+        mode to keep the robot moving, ``(horizon - seam_backdate_steps) *
+        dt_ms`` must exceed the inference latency (increase dt_ms or cut latency
+        otherwise).
         """
         backdate_ms = int(chunk.seam_backdate_steps * chunk.dt_ms) if chunk.dt_ms > 0 else 0
+        place = placement(chunk, policy_rate_hz=self._policy_rate_hz, backdate_ms=backdate_ms)
         for group_id, steps in chunk.joints.items():
             session = self._sessions.get(group_id)
             if session is None:
                 logger.warning("Unknown motion group in chunk: %s", group_id)
                 continue
-            first_timestamp_ms = placement_start_ms(
-                chunk,
-                policy_rate_hz=self._policy_rate_hz,
-                session_elapsed_ms=session.session_elapsed_ms,
-                backdate_ms=backdate_ms,
-            )
             session.update_chunk(
-                steps=steps, dt_ms=chunk.dt_ms, first_timestamp_ms=first_timestamp_ms
+                steps=steps,
+                dt_ms=chunk.dt_ms,
+                first_timestamp_ms=place.first_timestamp_ms,
+                overlapping=place.overlapping,
+                backdate_ms=place.backdate_ms,
             )
 
         for group_id, raw_tcp_steps in chunk.tcp.items():
@@ -503,14 +503,12 @@ class PolicyExecutor:
             if session is None:
                 logger.warning("Unknown motion group in TCP chunk: %s", group_id)
                 continue
-            first_timestamp_ms = placement_start_ms(
-                chunk,
-                policy_rate_hz=self._policy_rate_hz,
-                session_elapsed_ms=session.session_elapsed_ms,
-                backdate_ms=backdate_ms,
-            )
             session.update_chunk(
-                steps=raw_tcp_steps, dt_ms=chunk.dt_ms, first_timestamp_ms=first_timestamp_ms
+                steps=raw_tcp_steps,
+                dt_ms=chunk.dt_ms,
+                first_timestamp_ms=place.first_timestamp_ms,
+                overlapping=place.overlapping,
+                backdate_ms=place.backdate_ms,
             )
 
         if chunk.ios:

@@ -29,6 +29,8 @@ class PendingChunk:
     steps: list[list[float]]
     dt_ms: float
     first_timestamp_ms: int
+    overlapping: bool = False
+    backdate_ms: int = 0
 
 
 def make_waypoints_request(
@@ -38,35 +40,46 @@ def make_waypoints_request(
     steps: list[list[float]],
     effective_dt_ms: float,
     first_timestamp_ms: int,
+    overlapping: bool = False,
+    backdate_ms: int = 0,
 ) -> object:
     """Build a JointWaypointsRequest or PoseWaypointsRequest at stream-yield time.
 
     Scales the policy's real-time timestamps to server-time using the
-    auto-computed speed ratio from ``clock``.
+    auto-computed speed ratio from ``clock``. Three placement modes:
 
-    When ``first_timestamp_ms >= 0`` (absolute placement), timestamps are
-    placed at [first_timestamp_ms * ratio, ...] on the server timeline.
-
-    When ``first_timestamp_ms == -1`` (relative placement), timestamps start from
-    the current client elapsed time scaled to server time, computed here at
-    send time so the anchor cannot go stale while the chunk waits in the queue.
+    * ``first_timestamp_ms >= 0`` (explicit absolute, e.g. replay): timestamps
+      are ``[anchor, anchor + dt, ...]`` with ``anchor = scale(first_timestamp_ms)``.
+    * ``first_timestamp_ms == -1`` and ``overlapping`` (RTC): the "now" anchor is
+      read *here*, at yield time, so it cannot go stale while the chunk waits in
+      the queue. Anchored at ``now - backdate_ms`` with the layout starting at
+      the anchor, so the step matching the robot's current position lands at
+      "now".
+    * ``first_timestamp_ms == -1`` and not ``overlapping`` (sequential):
+      timestamps start one ``dt`` into the future from "now", also read at yield
+      time.
 
     In cartesian mode, steps are [x, y, z, rx, ry, rz] and are sent as a
     PoseWaypointsRequest. In joint mode, steps are joint radians sent as a
     JointWaypointsRequest.
     """
-    client_now_ms = clock.client_elapsed_ms
-
-    # Scale timestamps by auto-computed speed ratio so the server
-    # receives timestamps aligned.
-    # The policy sends in "real time"; we convert to "server time".
+    # Scale timestamps by auto-computed speed ratio so the server receives
+    # timestamps aligned. The policy sends in "real time"; we convert to
+    # "server time".
     scaled_dt_ms = clock.scale_dt(effective_dt_ms)
 
     if first_timestamp_ms >= 0:
         base_ms = clock.scale_timestamp(first_timestamp_ms)
         timestamps = [base_ms + int(i * scaled_dt_ms) for i in range(len(steps))]
+    elif overlapping:
+        # RTC: anchor in the past so step `backdate` lands at "now". Resolve
+        # "now" here, at yield, not in the executor — the queue delay between
+        # update_chunk and this yield would otherwise stale the seam.
+        anchor_ms = max(0, clock.client_elapsed_ms - backdate_ms)
+        base_ms = clock.scale_timestamp(anchor_ms)
+        timestamps = [base_ms + int(i * scaled_dt_ms) for i in range(len(steps))]
     else:
-        server_now_ms = clock.scale_timestamp(client_now_ms)
+        server_now_ms = clock.scale_timestamp(clock.client_elapsed_ms)
         timestamps = [server_now_ms + int((i + 1) * scaled_dt_ms) for i in range(len(steps))]
 
     if mode == "cartesian":

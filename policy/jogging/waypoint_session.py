@@ -160,6 +160,8 @@ class WaypointJoggingSession:
         dt_ms: float,
         *,
         first_timestamp_ms: int = -1,
+        overlapping: bool = False,
+        backdate_ms: int = 0,
         **_kwargs: object,
     ) -> None:
         """Queue a new action chunk as waypoints.
@@ -177,19 +179,26 @@ class WaypointJoggingSession:
                   * >=0 (absolute): first waypoint lands exactly at this anchor,
                     then [anchor, anchor + dt, anchor + 2*dt, ...]. The anchor
                     may be in the *past*.
-                  * -1 (relative, default): anchor is "now" (server clock read
-                    at send time): [now + dt, now + 2*dt, ...].
+                  * -1 (relative, default): anchor is "now", read at *yield
+                    time* (see ``overlapping`` for the two -1 sub-modes).
+            overlapping: Only meaningful when ``first_timestamp_ms == -1``.
+                False (sequential): timestamps are [now + dt, now + 2*dt, ...].
+                True (RTC): anchor at ``now - backdate_ms`` with the layout
+                starting at the anchor, so the step matching the robot's current
+                position lands at "now".
+            backdate_ms: RTC seam backdate in ms (steps * dt). Used only when
+                ``overlapping`` is True.
 
-        Why two modes: for sequential, non-overlapping jogging there is nothing
-        to align to, so dropping the chunk at "now" (relative) is the simplest
+        Why these modes: for sequential, non-overlapping jogging there is
+        nothing to align to, so dropping the chunk at "now" is the simplest
         correct placement. RTC produces *overlapping* chunks whose first steps
         describe positions the robot has already passed; anchoring at "now"
-        would make it jump back to step 0. Absolute placement instead anchors in
-        the past (now - backdate) so the step matching the robot's current
+        would make it jump back to step 0. Overlapping placement instead anchors
+        in the past (now - backdate) so the step matching the robot's current
         position lands at "now" and the rest extends forward — the server drops
         the already-past waypoints and interpolates smoothly, connecting
-        consecutive chunks. "Now" cannot express a past anchor, which is why
-        absolute placement exists.
+        consecutive chunks. The "now" for both -1 sub-modes is resolved at yield
+        time so the anchor cannot go stale while the chunk waits in the queue.
         """
         if not steps:
             return
@@ -201,7 +210,11 @@ class WaypointJoggingSession:
         # immediately before yielding to the server, avoiding drift from any
         # internal await/scheduling delay between policy and stream send.
         self._pending_request = PendingChunk(
-            steps=steps, dt_ms=effective_dt_ms, first_timestamp_ms=first_timestamp_ms
+            steps=steps,
+            dt_ms=effective_dt_ms,
+            first_timestamp_ms=first_timestamp_ms,
+            overlapping=overlapping,
+            backdate_ms=backdate_ms,
         )
 
         # Debug: log current robot position vs chunk first step (joint mode only)
@@ -376,6 +389,8 @@ class WaypointJoggingSession:
                     steps=pending.steps,
                     effective_dt_ms=pending.dt_ms,
                     first_timestamp_ms=pending.first_timestamp_ms,
+                    overlapping=pending.overlapping,
+                    backdate_ms=pending.backdate_ms,
                 )
 
                 yield api.models.ExecuteJoggingRequest(request)
