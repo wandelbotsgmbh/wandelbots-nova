@@ -95,7 +95,7 @@ def linear(
         t = (*target, 0.0, 0.0, 0.0) if len(target) == 3 else target
         target = Pose(t)
 
-    kwargs.update(line_number=utils.get_caller_linenumber())
+    kwargs.update(utils.get_caller_metas())
 
     return Linear(target=target, settings=settings, collision_setup=collision_setup, metas=kwargs)
 
@@ -164,7 +164,7 @@ def cartesian_ptp(
 
     """
     target = _convert_to_pose(target)
-    kwargs.update(line_number=utils.get_caller_linenumber())
+    kwargs.update(utils.get_caller_metas())
     return CartesianPTP(
         target=target, settings=settings, collision_setup=collision_setup, metas=kwargs
     )
@@ -229,7 +229,7 @@ def circular(
     """
     target = _convert_to_pose(target)
     intermediate = _convert_to_pose(intermediate)
-    kwargs.update(line_number=utils.get_caller_linenumber())
+    kwargs.update(utils.get_caller_metas())
     return Circular(
         target=target,
         intermediate=intermediate,
@@ -292,7 +292,7 @@ def joint_ptp(
 
     """
 
-    kwargs.update(line_number=utils.get_caller_linenumber())
+    kwargs.update(utils.get_caller_metas())
     return JointPTP(target=target, settings=settings, collision_setup=collision_setup, metas=kwargs)
 
 
@@ -343,7 +343,7 @@ def spline(
 
     """
     target = _convert_to_pose(target)
-    kwargs.update(line_number=utils.get_caller_linenumber())
+    kwargs.update(utils.get_caller_metas())
     return Spline(
         target=target,
         settings=settings,
@@ -406,7 +406,7 @@ def collision_free(
     >>> Action.from_dict(collision_free((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
     CollisionFreeMotion(metas={'line_number': 1}, type='collision_free', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, algorithm=CollisionFreeAlgorithm(root=RRTConnectAlgorithm(algorithm_name='RRTConnectAlgorithm', max_iterations=10000, max_step_size=0.1, adaptive_step_size=True, step_size=None, apply_smoothing=True, apply_blending=True)))
     """
-    kwargs.update(line_number=utils.get_caller_linenumber())
+    kwargs.update(utils.get_caller_metas())
     return CollisionFreeMotion(
         target=target,
         settings=settings,
