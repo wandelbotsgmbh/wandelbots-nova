@@ -270,23 +270,43 @@ def test_action_index_for_location(location, num_actions, expected):
 
 
 def test_motion_event_includes_source_spans():
-    """The cursor exposes the exact source span to highlight per action."""
-    cursor = create_cursor(num_actions=3, initial_location=0.0)
-    current = cursor.current_action
-    target = cursor.next_action
+    """Forward motion highlights the last visited action and targets the next one."""
+    cursor = create_cursor(num_actions=3, initial_location=1.5)
+    # Forward through segment [1, 2]: highlight action at 1.0, target action at 2.0.
+    last_visited = cursor._action_at_location(1.0)
+    heading_to = cursor._action_at_location(2.0)
 
-    event = cursor._get_motion_event(target)
+    event = cursor._get_motion_event(forward=True)
 
     assert event.current_action_source is not None
     assert event.current_action_source.start_line is not None
-    assert event.current_action_source == current.source_location
-    assert event.target_action_source == target.source_location
+    assert event.current_action is last_visited
+    assert event.current_action_source == last_visited.source_location
+    assert event.target_location == 2.0
+    assert event.target_action is heading_to
+    assert event.target_action_source == heading_to.source_location
+
+
+def test_motion_event_backward_highlights_last_visited():
+    """Backward motion highlights the action just left and targets the lower boundary."""
+    cursor = create_cursor(num_actions=3, initial_location=1.5)
+    # Backward through segment [1, 2]: highlight action at 2.0, target action at 1.0.
+    last_visited = cursor._action_at_location(2.0)
+    heading_to = cursor._action_at_location(1.0)
+
+    event = cursor._get_motion_event(forward=False)
+
+    assert event.current_action is last_visited
+    assert event.current_action_source == last_visited.source_location
+    assert event.target_location == 1.0
+    assert event.target_action is heading_to
+    assert event.target_action_source == heading_to.source_location
 
 
 def test_motion_event_source_spans_serialize():
     """Source spans are part of the serialized payload sent to the editor."""
     cursor = create_cursor(num_actions=2, initial_location=0.0)
-    event = cursor._get_motion_event(cursor.current_action)
+    event = cursor._get_motion_event()
 
     payload = json.loads(event.model_dump_json())
     assert payload["current_action_source"] is not None

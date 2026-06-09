@@ -535,8 +535,7 @@ class TrajectoryCursor:
 
     async def ainitialize(self):
         """Async initialization that emits the initial motion event."""
-        target_action = self.current_action
-        await motion_started.send_async(self, event=self._get_motion_event(target_action))
+        await motion_started.send_async(self, event=self._get_motion_event())
 
     @property
     def end_location(self) -> float:
@@ -958,14 +957,12 @@ class TrajectoryCursor:
                 if isinstance(command, api.models.StartMovementRequest):
                     match command.direction:
                         case api.models.Direction.DIRECTION_FORWARD:
-                            target_action = self.current_action
                             await motion_started.send_async(
-                                self, event=self._get_motion_event(target_action)
+                                self, event=self._get_motion_event(forward=True)
                             )
                         case api.models.Direction.DIRECTION_BACKWARD:
-                            target_action = self.current_action
                             await motion_started.send_async(
-                                self, event=self._get_motion_event(target_action)
+                                self, event=self._get_motion_event(forward=False)
                             )
 
     async def _motion_group_state_monitor(self, ready_event: asyncio.Event):
@@ -1094,41 +1091,52 @@ class TrajectoryCursor:
             op_type = current_op.operation_type if current_op else None
             match op_type:
                 case OperationType.FORWARD | OperationType.FORWARD_TO:
-                    target_action = self._target_action(forward=True)
                     await motion_started.send_async(
-                        self, event=self._get_motion_event(target_action)
+                        self, event=self._get_motion_event(forward=True)
                     )
                 case OperationType.BACKWARD | OperationType.BACKWARD_TO:
-                    target_action = self._target_action(forward=False)
                     await motion_started.send_async(
-                        self, event=self._get_motion_event(target_action)
+                        self, event=self._get_motion_event(forward=False)
                     )
                 case _:
                     pass
             await asyncio.sleep(interval)
 
-    def _target_action(self, *, forward: bool) -> Action | None:
-        """The action the cursor is moving toward, derived from the target location.
-
-        The action being executed is the segment between the current and target
-        location. Moving forward, an integer target is the end of that segment, so
-        the action ending there is targeted; moving backward, an integer target is
-        the start of the segment, so the action starting there is targeted. Falls
-        back to the current action when no distinct target is set.
-        """
+    def _action_at_location(self, location: float) -> Action | None:
+        """The action covering ``location`` using the cursor's boundary attribution."""
         if not self.actions:  # None or empty
             return None
-        if self._target_location == self._current_location:
-            return self.current_action
-        if forward:
-            index = action_index_for_location(self._target_location, len(self.actions))
-        else:
-            index = max(0, min(floor(self._target_location), len(self.actions) - 1))
+        index = action_index_for_location(location, len(self.actions))
         return self.actions[index]
 
-    def _get_motion_event(self, target_action: Action | None) -> MotionEvent:
-        """Create a MotionEvent with current cursor state."""
-        current_action = self.current_action
+    def _get_motion_event(self, *, forward: bool | None = None) -> MotionEvent:
+        """Create a MotionEvent for the current cursor state.
+
+        The highlighted (``current_*``) action is the *last visited* action: the
+        action at the integer boundary the cursor most recently reached in its
+        direction of travel. The ``target_*`` action is the action at the
+        boundary it is heading toward. For example, moving forward at location
+        ``1.5`` highlights the action at location ``1.0`` and targets the action
+        ending at location ``2.0``; moving backward at ``1.5`` highlights the
+        action at ``2.0`` and targets ``1.0``.
+
+        Args:
+            forward: Direction of travel. ``True`` for forward, ``False`` for
+                backward, ``None`` for a standstill/initial event (highlight and
+                target the action at the current location).
+        """
+        if forward is None:
+            source_location = self._current_location
+            target_location = self._current_location
+        elif forward:
+            source_location = self.current_action_start
+            target_location = self.current_action_start + 1.0
+        else:
+            source_location = self.current_action_end
+            target_location = self.current_action_end - 1.0
+
+        current_action = self._action_at_location(source_location)
+        target_action = self._action_at_location(target_location)
         return MotionEvent(
             type=MotionEventType.STARTED,
             current_location=self._current_location,
@@ -1136,7 +1144,7 @@ class TrajectoryCursor:
             current_action_source=(
                 current_action.source_location if current_action is not None else None
             ),
-            target_location=self._target_location,
+            target_location=target_location,
             target_action=target_action,
             target_action_source=(
                 target_action.source_location if target_action is not None else None
