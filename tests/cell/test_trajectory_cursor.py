@@ -37,7 +37,7 @@ def create_cursor(num_actions: int, initial_location: float) -> TrajectoryCursor
     [
         pytest.param(0.0, 0, id="at_trajectory_start"),
         pytest.param(0.5, 0, id="midway_through_first_action"),
-        pytest.param(1.0, 1, id="at_action_boundary"),
+        pytest.param(1.0, 0, id="at_action_boundary_belongs_to_finished_action"),
         pytest.param(1.7, 1, id="midway_through_middle_action"),
         pytest.param(2.5, 2, id="at_last_action"),
         pytest.param(3.0, 2, id="at_trajectory_end_clamps_to_last"),
@@ -122,7 +122,7 @@ def test_previous_action_start(location, expected):
     [
         pytest.param(3, 0.0, False, id="at_trajectory_start_returns_none"),
         pytest.param(3, 0.5, False, id="in_first_action_returns_none"),
-        pytest.param(3, 1.0, True, id="at_second_action_boundary"),
+        pytest.param(3, 1.0, False, id="at_first_action_end_boundary_returns_none"),
         pytest.param(3, 1.5, True, id="in_second_action"),
         pytest.param(3, 2.5, True, id="in_last_action"),
         pytest.param(1, 0.5, False, id="single_action_returns_none"),
@@ -257,7 +257,7 @@ def test_motion_event_with_no_actions():
     [
         pytest.param(0.0, 3, 0, id="at_start"),
         pytest.param(0.5, 3, 0, id="within_first"),
-        pytest.param(1.0, 3, 1, id="at_boundary"),
+        pytest.param(1.0, 3, 0, id="at_boundary_belongs_to_finished_action"),
         pytest.param(2.9, 3, 2, id="within_last"),
         pytest.param(3.0, 3, 2, id="at_end_clamps"),
         pytest.param(9.0, 3, 2, id="beyond_end_clamps"),

@@ -425,9 +425,12 @@ _QUEUE_SENTINEL = _QueueSentinel()
 def action_index_for_location(location: float, num_actions: int) -> int:
     """Map a trajectory location to a zero-based action index.
 
-    Integer locations are action boundaries (``location`` ``N`` is the start of
-    action ``N``). At or beyond the end of the trajectory the index is clamped to
-    the last action so the cursor keeps reporting the final action.
+    Action ``i`` occupies the segment ``[i, i + 1]``. An integer location ``N``
+    is the boundary where action ``N - 1`` *ends*, so it is attributed to the
+    action that just finished rather than to the next one. This keeps the action
+    that was executed highlighted when the cursor snaps to an action boundary.
+    The start of the trajectory (location ``0.0``) maps to the first action, and
+    at or beyond the end the index is clamped to the last action.
 
     Args:
         location: The current trajectory location.
@@ -436,7 +439,10 @@ def action_index_for_location(location: float, num_actions: int) -> int:
     Returns:
         The zero-based index of the action covering ``location``.
     """
-    index = floor(location)
+    index = ceil(location) - 1
+    if index < 0:
+        # at the very start of the trajectory the current action is the first one
+        return 0
     if index >= num_actions:
         # at the end of the trajectory the current action remains the last one
         return num_actions - 1
