@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.4.1 (2026-06-09)
+
+### Bug Fixes
+
+- Fixed cursor index clamping (#430)
+  ([#430](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/430),
+  [`6225a7d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6225a7d6e0e04d9806066693053ff74cfb8c6b01))
+
+
 ## v5.4.0 (2026-06-09)
 
 ### Bug Fixes
