@@ -425,9 +425,12 @@ _QUEUE_SENTINEL = _QueueSentinel()
 def action_index_for_location(location: float, num_actions: int) -> int:
     """Map a trajectory location to a zero-based action index.
 
-    Integer locations are action boundaries (``location`` ``N`` is the start of
-    action ``N``). At or beyond the end of the trajectory the index is clamped to
-    the last action so the cursor keeps reporting the final action.
+    Action ``i`` occupies the segment ``[i, i + 1]``. An integer location ``N``
+    is the boundary where action ``N - 1`` *ends*, so it is attributed to the
+    action that just finished rather than to the next one. This keeps the action
+    that was executed highlighted when the cursor snaps to an action boundary.
+    The start of the trajectory (location ``0.0``) maps to the first action, and
+    at or beyond the end the index is clamped to the last action.
 
     Args:
         location: The current trajectory location.
@@ -436,7 +439,10 @@ def action_index_for_location(location: float, num_actions: int) -> int:
     Returns:
         The zero-based index of the action covering ``location``.
     """
-    index = floor(location)
+    index = ceil(location) - 1
+    if index < 0:
+        # at the very start of the trajectory the current action is the first one
+        return 0
     if index >= num_actions:
         # at the end of the trajectory the current action remains the last one
         return num_actions - 1
@@ -529,8 +535,7 @@ class TrajectoryCursor:
 
     async def ainitialize(self):
         """Async initialization that emits the initial motion event."""
-        target_action = self.current_action
-        await motion_started.send_async(self, event=self._get_motion_event(target_action))
+        await motion_started.send_async(self, event=self._get_motion_event())
 
     @property
     def end_location(self) -> float:
@@ -952,14 +957,12 @@ class TrajectoryCursor:
                 if isinstance(command, api.models.StartMovementRequest):
                     match command.direction:
                         case api.models.Direction.DIRECTION_FORWARD:
-                            target_action = self.current_action
                             await motion_started.send_async(
-                                self, event=self._get_motion_event(target_action)
+                                self, event=self._get_motion_event(forward=True)
                             )
                         case api.models.Direction.DIRECTION_BACKWARD:
-                            target_action = self.current_action
                             await motion_started.send_async(
-                                self, event=self._get_motion_event(target_action)
+                                self, event=self._get_motion_event(forward=False)
                             )
 
     async def _motion_group_state_monitor(self, ready_event: asyncio.Event):
@@ -1088,24 +1091,52 @@ class TrajectoryCursor:
             op_type = current_op.operation_type if current_op else None
             match op_type:
                 case OperationType.FORWARD | OperationType.FORWARD_TO:
-                    target_action = self.next_action if self.next_action else self.current_action
                     await motion_started.send_async(
-                        self, event=self._get_motion_event(target_action)
+                        self, event=self._get_motion_event(forward=True)
                     )
                 case OperationType.BACKWARD | OperationType.BACKWARD_TO:
-                    target_action = (
-                        self.previous_action if self.previous_action else self.current_action
-                    )
                     await motion_started.send_async(
-                        self, event=self._get_motion_event(target_action)
+                        self, event=self._get_motion_event(forward=False)
                     )
                 case _:
                     pass
             await asyncio.sleep(interval)
 
-    def _get_motion_event(self, target_action: Action | None) -> MotionEvent:
-        """Create a MotionEvent with current cursor state."""
-        current_action = self.current_action
+    def _action_at_location(self, location: float) -> Action | None:
+        """The action covering ``location`` using the cursor's boundary attribution."""
+        if not self.actions:  # None or empty
+            return None
+        index = action_index_for_location(location, len(self.actions))
+        return self.actions[index]
+
+    def _get_motion_event(self, *, forward: bool | None = None) -> MotionEvent:
+        """Create a MotionEvent for the current cursor state.
+
+        The highlighted (``current_*``) action is the *last visited* action: the
+        action at the integer boundary the cursor most recently reached in its
+        direction of travel. The ``target_*`` action is the action at the
+        boundary it is heading toward. For example, moving forward at location
+        ``1.5`` highlights the action at location ``1.0`` and targets the action
+        ending at location ``2.0``; moving backward at ``1.5`` highlights the
+        action at ``2.0`` and targets ``1.0``.
+
+        Args:
+            forward: Direction of travel. ``True`` for forward, ``False`` for
+                backward, ``None`` for a standstill/initial event (highlight and
+                target the action at the current location).
+        """
+        if forward is None:
+            source_location = self._current_location
+            target_location = self._current_location
+        elif forward:
+            source_location = self.current_action_start
+            target_location = self.current_action_start + 1.0
+        else:
+            source_location = self.current_action_end
+            target_location = self.current_action_end - 1.0
+
+        current_action = self._action_at_location(source_location)
+        target_action = self._action_at_location(target_location)
         return MotionEvent(
             type=MotionEventType.STARTED,
             current_location=self._current_location,
@@ -1113,7 +1144,7 @@ class TrajectoryCursor:
             current_action_source=(
                 current_action.source_location if current_action is not None else None
             ),
-            target_location=self._target_location,
+            target_location=target_location,
             target_action=target_action,
             target_action_source=(
                 target_action.source_location if target_action is not None else None
