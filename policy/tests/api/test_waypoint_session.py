@@ -282,6 +282,22 @@ async def test_the_state_stream_updates_the_observable_robot_state():
 
 
 @pytest.mark.asyncio
+async def test_is_primed_flips_once_a_server_timestamp_arrives():
+    """is_primed stays False until the state stream carries a jogger timestamp."""
+    moved = SimpleNamespace(joints=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6))
+    session, server = _build_session(states=[_stream_state(moved, ts_ms=8)])
+    try:
+        await session.start()
+        assert session.is_primed is False  # init acknowledged, no motion yet
+        await _wait_until(lambda: session.is_primed)
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
 async def test_a_fired_stop_condition_ends_the_session_without_failing():
     """A stop condition that returns True stops the session as a normal end."""
 
