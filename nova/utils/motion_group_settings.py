@@ -22,15 +22,17 @@ def clamp_limits_override_to_global_limits(
     are left as-is. The input is not modified.
     """
     if global_limits is None:
-        return limits_override
-
+        # Return a copy to avoid aliasing the caller's object.
+        return limits_override.model_copy(deep=True)
     # Empty fallbacks so a missing tcp/joint maximum simply means "do not cap".
     tcp = global_limits.tcp or api.models.CartesianLimits()
     joints = global_limits.joints or []
 
     def cap_joints(values: list[float] | None, attr: str) -> list[float] | None:
-        if values is None or not joints:
-            return values
+        if values is None:
+            return None
+        if not joints:
+            return list(values)
         return [
             min(v, m) if i < len(joints) and (m := getattr(joints[i], attr)) is not None else v
             for i, v in enumerate(values)
@@ -69,7 +71,7 @@ def clamp_motion_commands_to_global_limits(
     Commands without a ``limits_override`` are passed through unchanged. Inputs are not modified.
     """
     if global_limits is None:
-        return motion_commands
+        return list(motion_commands)
     return [
         command.model_copy(
             update={
