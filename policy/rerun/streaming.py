@@ -6,9 +6,12 @@ import asyncio
 import contextlib
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from policy.rerun.constants import _MIN_LINE_STEPS, _TCP_TRAIL_COLOR, _TRAIL_WIDTH_UI
+
+if TYPE_CHECKING:
+    from nova.types import RobotState
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +75,7 @@ class StateStreamer:
                 for mg_id, session in self._sessions.items():
                     state = session.current_state
                     if state is not None:
-                        self._log_state(mg_id, list(state.joints))
+                        self._log_state(mg_id, state)
 
                 await asyncio.sleep(0.01)  # ~100Hz
         except asyncio.CancelledError:
@@ -81,20 +84,28 @@ class StateStreamer:
         except (OSError, RuntimeError) as e:
             logger.debug("State stream logging stopped: %s", e)
 
-    def _log_state(self, mg_id: str, joints: list[float]) -> None:
+    def _log_state(self, mg_id: str, state: RobotState) -> None:
         """Log a single state sample for one motion group."""
         import rerun as rr  # noqa: PLC0415
+
+        joints = list(state.joints)
 
         # Update 3D robot mesh position
         visualizer = self._visualizers.get(mg_id)
         if visualizer is not None:
             visualizer.log_robot_geometry(joint_position=joints)
 
-        # TCP trail from DH FK (actual path)
-        dh_robot = self._dh_robots.get(mg_id)
-        if dh_robot is not None:
-            positions = dh_robot.calculate_joint_positions(joints)
-            tcp_pos = positions[-1]
+        # TCP trail: prefer the actual TCP pose reported by the robot (honours
+        # the active/jogged TCP offset). Fall back to DH flange FK if no pose.
+        tcp_pos: list[float] | None = None
+        pose = getattr(state, "pose", None)
+        if pose is not None:
+            tcp_pos = list(pose.position)
+        else:
+            dh_robot = self._dh_robots.get(mg_id)
+            if dh_robot is not None:
+                tcp_pos = dh_robot.calculate_joint_positions(joints)[-1]
+        if tcp_pos is not None:
             trail = self._tcp_trail[mg_id]
             trail.append(tcp_pos)
             if len(trail) > self._max_trail_points:

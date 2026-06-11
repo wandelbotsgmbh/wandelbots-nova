@@ -18,6 +18,9 @@ from policy.rerun.constants import (
 import rerun as rr
 
 if TYPE_CHECKING:
+    from nova_rerun_bridge.dh_robot import DHRobot
+    import numpy as np
+
     from policy.types import ActionChunk
 
 
@@ -27,11 +30,17 @@ def log_action_chunk(
     *,
     start_time: float,
     dh_robots: dict[str, Any],
+    tcp_offsets: dict[str, Any] | None = None,
     n_action_steps: int = 0,
 ) -> None:
     """Log action chunk as TCP path line strips and inspectable text."""
     _log_joint_chunk(
-        chunk, step, start_time=start_time, dh_robots=dh_robots, n_action_steps=n_action_steps
+        chunk,
+        step,
+        start_time=start_time,
+        dh_robots=dh_robots,
+        tcp_offsets=tcp_offsets or {},
+        n_action_steps=n_action_steps,
     )
     _log_tcp_chunk(chunk, step, start_time=start_time, n_action_steps=n_action_steps)
     _log_text(chunk, step, start_time=start_time, n_action_steps=n_action_steps)
@@ -43,9 +52,9 @@ def _log_joint_chunk(
     *,
     start_time: float,
     dh_robots: dict[str, Any],
+    tcp_offsets: dict[str, Any],
     n_action_steps: int,
 ) -> None:
-
     elapsed = time.monotonic() - start_time
     rr.set_time("policy_time", duration=elapsed)
     rr.set_time("policy_step", sequence=step)
@@ -60,11 +69,11 @@ def _log_joint_chunk(
         executed_steps = steps[:split]
         discarded_steps = steps[split:]
 
-        # Compute TCP positions for executed steps
-        executed_positions = []
-        for joint_target in executed_steps:
-            positions = dh_robot.calculate_joint_positions(joint_target)
-            executed_positions.append(positions[-1])
+        # Project each joint target to the TCP so the chunk lines up with the
+        # live TCP trail. With the configured flange->TCP offset we apply it in
+        # the flange frame; without it we fall back to the bare flange point.
+        tcp_offset = tcp_offsets.get(mg_id)
+        executed_positions = [_step_to_tcp(dh_robot, j, tcp_offset) for j in executed_steps]
 
         # Log executed portion with orange→yellow gradient
         _log_line_strip(
@@ -80,7 +89,18 @@ def _log_joint_chunk(
             discarded_steps,
             dh_robot,
             executed_positions,
+            tcp_offset,
         )
+
+
+def _step_to_tcp(
+    dh_robot: DHRobot, joint_target: list[float], tcp_offset: np.ndarray | None
+) -> list[float]:
+    """TCP position for a joint target: flange FK, then the TCP offset if known."""
+    if tcp_offset is None:
+        return dh_robot.calculate_joint_positions(joint_target)[-1]
+    flange = dh_robot.calculate_flange_matrix(joint_target)
+    return (flange @ tcp_offset)[:3, 3].tolist()
 
 
 def _log_tcp_chunk(
@@ -229,8 +249,9 @@ def _log_line_strip(
 def _log_discarded_tail(
     entity_path: str,
     discarded_steps: list[list[float]],
-    dh_robot: object,
+    dh_robot: DHRobot,
     bridge_from: list[list[float]],
+    tcp_offset: np.ndarray | None = None,
 ) -> None:
     """Log discarded chunk tail in dim gray, connected from last executed point."""
 
@@ -238,10 +259,7 @@ def _log_discarded_tail(
         rr.log(entity_path, rr.Clear(recursive=False))
         return
 
-    tail_positions = [
-        dh_robot.calculate_joint_positions(jt)[-1]  # type: ignore[attr-defined]
-        for jt in discarded_steps
-    ]
+    tail_positions = [_step_to_tcp(dh_robot, jt, tcp_offset) for jt in discarded_steps]
     if bridge_from:
         tail_positions = [bridge_from[-1], *tail_positions]
     if len(tail_positions) >= _MIN_LINE_STEPS:

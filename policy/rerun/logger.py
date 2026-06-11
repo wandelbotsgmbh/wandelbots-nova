@@ -34,6 +34,7 @@ class PolicyRerunLogger:
         self._motion_groups = motion_groups
         self._camera_names = camera_names or []
         self._dh_robots: dict[str, Any] = {}
+        self._tcp_offsets: dict[str, Any] = {}  # mg_id -> 4x4 flange->TCP matrix
         self._visualizers: dict[str, Any] = {}  # mg_id -> RobotVisualizer
         self._initialized = False
         self._start_time: float = 0.0
@@ -70,6 +71,21 @@ class PolicyRerunLogger:
                 dh_params = description.dh_parameters or []
                 dh_robot = DHRobot(dh_parameters=dh_params, mounting=mounting)
                 self._dh_robots[mg.id] = dh_robot
+
+                # Configured flange->TCP offset for the active TCP, so joint
+                # action chunks can be drawn at the TCP (matching the live TCP
+                # trail) instead of at the flange. Best-effort; falls back to
+                # the flange if the TCP can't be resolved.
+                try:
+                    active_tcp = await mg.active_tcp_name()
+                    if active_tcp is not None:
+                        off = await mg.tcp_offset(active_tcp)
+                        self._tcp_offsets[mg.id] = DHRobot.matrix_from_position_rotvec(
+                            (off.position.x, off.position.y, off.position.z),
+                            (off.orientation.x, off.orientation.y, off.orientation.z),
+                        )
+                except (OSError, RuntimeError, ValueError, TypeError, KeyError) as e:
+                    logger.debug("TCP offset query failed for %s: %s", mg.id, e)
 
                 # TCP geometries for visualization
                 tcp_geometries: dict[str, api.models.Collider] = {}
@@ -154,6 +170,7 @@ class PolicyRerunLogger:
                 step,
                 start_time=self._start_time,
                 dh_robots=self._dh_robots,
+                tcp_offsets=self._tcp_offsets,
                 n_action_steps=n_action_steps,
             )
         except (OSError, RuntimeError, ValueError, TypeError) as e:

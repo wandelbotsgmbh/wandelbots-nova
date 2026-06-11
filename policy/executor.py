@@ -483,8 +483,7 @@ class PolicyExecutor:
         dt_ms`` must exceed the inference latency (increase dt_ms or cut latency
         otherwise).
         """
-        backdate_ms = int(chunk.seam_backdate_steps * chunk.dt_ms) if chunk.dt_ms > 0 else 0
-        place = placement(chunk, policy_rate_hz=self._policy_rate_hz, backdate_ms=backdate_ms)
+        place = placement(chunk, policy_rate_hz=self._policy_rate_hz)
         for group_id, steps in chunk.joints.items():
             session = self._sessions.get(group_id)
             if session is None:
@@ -493,9 +492,8 @@ class PolicyExecutor:
             session.update_chunk(
                 steps=steps,
                 dt_ms=chunk.dt_ms,
-                first_timestamp_ms=place.first_timestamp_ms,
-                overlapping=place.overlapping,
-                backdate_ms=place.backdate_ms,
+                anchor_ms=place.anchor_ms,
+                anchor_offset_steps=place.anchor_offset_steps,
             )
 
         for group_id, raw_tcp_steps in chunk.tcp.items():
@@ -506,9 +504,8 @@ class PolicyExecutor:
             session.update_chunk(
                 steps=raw_tcp_steps,
                 dt_ms=chunk.dt_ms,
-                first_timestamp_ms=place.first_timestamp_ms,
-                overlapping=place.overlapping,
-                backdate_ms=place.backdate_ms,
+                anchor_ms=place.anchor_ms,
+                anchor_offset_steps=place.anchor_offset_steps,
             )
 
         if chunk.ios:

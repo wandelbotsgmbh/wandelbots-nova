@@ -1,15 +1,12 @@
 """Tests for make_waypoints_request — the documented jogging timestamp protocol.
 
-This pure function is what executor.md's "Timestamp Protocol" and jogging.md's
-"Waypoint request types" tables actually describe: it turns raw steps + dt + a
-start timestamp into a NOVA JointWaypointsRequest or PoseWaypointsRequest, scaling
-every timestamp by the clock's speed ratio.
-
-The two timing modes have a deliberate off-by-one that matters on the robot:
-  * absolute (first_timestamp_ms >= 0): timestamps are
-    [base, base + dt, base + 2*dt, ...] starting *at* base;
-  * relative (first_timestamp_ms == -1): timestamps are
-    [now + dt, now + 2*dt, ...] starting one dt *after* now.
+This pure function turns raw steps + dt + an anchor into a NOVA
+JointWaypointsRequest or PoseWaypointsRequest, scaling every timestamp by the
+clock's speed ratio. Every waypoint is ``base + i*dt``; only ``base`` varies:
+  * explicit anchor (``anchor_ms >= 0``): base is that anchor;
+  * "now" anchor (``anchor_ms == NOW``): base is the clock's current elapsed;
+  * ``anchor_offset_steps`` then shifts base by whole dt steps (+1 ahead for
+    live targets, negative to backdate an RTC seam).
 """
 
 from __future__ import annotations
@@ -20,7 +17,7 @@ from hypothesis import given, settings, strategies as st
 
 from nova import api
 from policy.jogging.clock import JoggingTimeClock
-from policy.jogging.waypoints import make_waypoints_request
+from policy.jogging.waypoints import NOW, make_waypoints_request
 
 
 def _joint_timestamps(req) -> list[int]:
@@ -37,12 +34,10 @@ def _joint_steps(req) -> list[list[float]]:
 
 
 def test_absolute_mode_places_timestamps_starting_at_the_scaled_base():
-    """first_timestamp_ms=100, dt=10, ratio=1 -> [100, 110, 120]; steps preserved."""
+    """anchor_ms=100, dt=10, ratio=1 -> [100, 110, 120]; steps preserved."""
     clock = JoggingTimeClock(speed_ratio=1.0)
     steps = [[0.0] * 6, [0.1] * 6, [0.2] * 6]
-    req = make_waypoints_request(
-        clock, "joint", steps=steps, effective_dt_ms=10.0, first_timestamp_ms=100
-    )
+    req = make_waypoints_request(clock, "joint", steps=steps, effective_dt_ms=10.0, anchor_ms=100)
     assert isinstance(req, api.models.JointWaypointsRequest)
     assert _joint_timestamps(req) == [100, 110, 120]
     assert _joint_steps(req) == steps
@@ -52,39 +47,42 @@ def test_absolute_mode_scales_both_the_base_and_the_step_spacing():
     """speed_ratio=2 stretches base 100->200 and dt 10->20 -> [200, 220, 240]."""
     clock = JoggingTimeClock(speed_ratio=2.0)
     steps = [[0.0] * 6, [0.0] * 6, [0.0] * 6]
-    req = make_waypoints_request(
-        clock, "joint", steps=steps, effective_dt_ms=10.0, first_timestamp_ms=100
-    )
+    req = make_waypoints_request(clock, "joint", steps=steps, effective_dt_ms=10.0, anchor_ms=100)
     assert _joint_timestamps(req) == [200, 220, 240]
 
 
 # ---------------------------------------------------------------------------
-# Relative mode (first_timestamp_ms == -1): the off-by-one
+# "Now" anchor with a +1-step offset: the sequential off-by-one
 # ---------------------------------------------------------------------------
 
 
-def test_relative_mode_starts_one_dt_after_now_not_at_now():
-    """A fresh (unstarted) clock has elapsed 0; relative timestamps are [dt, 2dt, ...]."""
+def test_now_anchor_one_step_ahead_starts_one_dt_after_now_not_at_now():
+    """A fresh (unstarted) clock has elapsed 0; +1-step offset -> [dt, 2dt, ...]."""
     clock = JoggingTimeClock(speed_ratio=1.0)  # never started -> client_elapsed_ms == 0
     steps = [[0.0] * 6, [0.0] * 6, [0.0] * 6]
     req = make_waypoints_request(
-        clock, "joint", steps=steps, effective_dt_ms=10.0, first_timestamp_ms=-1
+        clock,
+        "joint",
+        steps=steps,
+        effective_dt_ms=10.0,
+        anchor_ms=NOW,
+        anchor_offset_steps=1,
     )
     # First waypoint is dt in the future, NOT 0 — the server interpolates toward it.
     assert _joint_timestamps(req) == [10, 20, 30]
 
 
 # ---------------------------------------------------------------------------
-# Overlapping (RTC) mode: anchor at now - backdate, resolved at yield time
+# Backdated "now" anchor (RTC seam), resolved at yield time
 # ---------------------------------------------------------------------------
 
 
-def test_overlapping_mode_anchors_in_the_past_so_the_backdated_step_lands_at_now():
-    """With overlapping + backdate, the layout starts at now - backdate.
+def test_backdated_now_anchor_anchors_in_the_past_so_the_backdated_step_lands_at_now():
+    """A negative offset backdates the anchor so an already-passed step lands at now.
 
-    A fresh clock reports elapsed 0, so anchor = max(0, 0 - backdate) = 0 and the
-    timestamps are [0, dt, 2dt, ...] (start *at* the anchor, unlike sequential's
-    one-dt offset). The point matching the robot lands at step `backdate`.
+    A fresh clock reports elapsed 0, so base = max(0, 0 - 2*dt) = 0 and the
+    timestamps are [0, dt, 2dt, ...] (start *at* the anchor). The point matching
+    the robot lands at step 2 (the backdate).
     """
     clock = JoggingTimeClock(speed_ratio=1.0)  # never started -> client_elapsed_ms == 0
     steps = [[0.0] * 6, [0.0] * 6, [0.0] * 6]
@@ -93,14 +91,13 @@ def test_overlapping_mode_anchors_in_the_past_so_the_backdated_step_lands_at_now
         "joint",
         steps=steps,
         effective_dt_ms=10.0,
-        first_timestamp_ms=-1,
-        overlapping=True,
-        backdate_ms=20,
+        anchor_ms=NOW,
+        anchor_offset_steps=-2,
     )
     assert _joint_timestamps(req) == [0, 10, 20]
 
 
-def test_overlapping_anchor_is_read_at_yield_time_not_precomputed():
+def test_now_anchor_is_read_at_yield_time_not_precomputed():
     """The 'now' anchor comes from the clock at call time, so advancing the
     session clock shifts the whole progression — this is the staleness fix."""
     clock = JoggingTimeClock(speed_ratio=1.0)
@@ -114,11 +111,10 @@ def test_overlapping_anchor_is_read_at_yield_time_not_precomputed():
         "joint",
         steps=[[0.0] * 6],
         effective_dt_ms=10.0,
-        first_timestamp_ms=-1,
-        overlapping=True,
-        backdate_ms=100,
+        anchor_ms=NOW,
+        anchor_offset_steps=-10,  # backdate 10 steps * 10ms = 100 ms
     )
-    # anchor ~= 500 - 100 = 400 ms (allow scheduling slack)
+    # base ~= 500 - 100 = 400 ms (allow scheduling slack)
     assert 380 <= req.waypoints[0].timestamp <= 460
 
 
@@ -131,9 +127,7 @@ def test_cartesian_mode_builds_a_pose_request_splitting_position_and_orientation
     """[x, y, z, rx, ry, rz] -> position=[x,y,z] (mm), orientation=[rx,ry,rz] (rad)."""
     clock = JoggingTimeClock(speed_ratio=1.0)
     steps = [[500.0, 200.0, 300.0, 0.1, 0.2, 0.3]]
-    req = make_waypoints_request(
-        clock, "cartesian", steps=steps, effective_dt_ms=10.0, first_timestamp_ms=0
-    )
+    req = make_waypoints_request(clock, "cartesian", steps=steps, effective_dt_ms=10.0, anchor_ms=0)
     assert isinstance(req, api.models.PoseWaypointsRequest)
     wp = req.waypoints[0]
     assert wp.timestamp == 0
@@ -145,7 +139,7 @@ def test_joint_mode_builds_a_joint_request():
     """The mode argument selects the request type: 'joint' -> JointWaypointsRequest."""
     clock = JoggingTimeClock(speed_ratio=1.0)
     req = make_waypoints_request(
-        clock, "joint", steps=[[0.0] * 6], effective_dt_ms=10.0, first_timestamp_ms=0
+        clock, "joint", steps=[[0.0] * 6], effective_dt_ms=10.0, anchor_ms=0
     )
     assert isinstance(req, api.models.JointWaypointsRequest)
 
@@ -153,9 +147,7 @@ def test_joint_mode_builds_a_joint_request():
 def test_empty_steps_produce_no_waypoints():
     """A chunk with no steps yields an empty waypoint list (nothing to send)."""
     clock = JoggingTimeClock(speed_ratio=1.0)
-    req = make_waypoints_request(
-        clock, "joint", steps=[], effective_dt_ms=10.0, first_timestamp_ms=0
-    )
+    req = make_waypoints_request(clock, "joint", steps=[], effective_dt_ms=10.0, anchor_ms=0)
     assert req.waypoints == []
 
 
@@ -177,9 +169,7 @@ def test_absolute_timestamps_are_a_nondecreasing_progression_from_the_base(ratio
     clock = JoggingTimeClock(speed_ratio=ratio)
     steps = [[0.0] * 6 for _ in range(n)]
     ts = _joint_timestamps(
-        make_waypoints_request(
-            clock, "joint", steps=steps, effective_dt_ms=dt, first_timestamp_ms=start
-        )
+        make_waypoints_request(clock, "joint", steps=steps, effective_dt_ms=dt, anchor_ms=start)
     )
     assert len(ts) == n
     assert ts[0] == clock.scale_timestamp(start)

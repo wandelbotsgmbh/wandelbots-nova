@@ -66,13 +66,14 @@ class _BaseJogger:
         self._estop: EstopMonitor | None = None
         self._rerun: PolicyRerunLogger | None = None
         self._loop_t0: float | None = None
+        self._ack0_ms: float = 0.0
         self._first_yield_t: float | None = None
         self._ease_in_s = ease_in_s
         self._ease_baseline: dict[MotionGroup, list[float]] = {}
 
     @property
     def elapsed(self) -> float:
-        """Seconds since the jogging motion actually started.
+        """Seconds of acknowledged motion since the jogging motion actually started.
 
         Holds at ``0.0`` until the robot reports it is actively executing motion
         (all sessions :attr:`~WaypointJoggingSession.is_running`), then ticks
@@ -82,8 +83,25 @@ class _BaseJogger:
         the robot is genuinely tracking, avoiding the hard catch-up jump on the
         first move. A fallback anchors anyway if RUNNING is never reported, so
         the loop can't stall.
+
+        Crucially this advances on **acknowledged server progress** (capped at
+        the chunk horizon), not wall-clock: if the connection stalls, a target
+        parameterised on ``elapsed`` stops advancing too, so it stays in step
+        with the waypoint anchors and the robot never has to jump to catch up
+        with a timeline that ran ahead while the link was down.
         """
-        return 0.0 if self._loop_t0 is None else time.monotonic() - self._loop_t0
+        if self._loop_t0 is None:
+            return 0.0
+        return max(0.0, (self._acknowledged_ms() - self._ack0_ms) / 1000.0)
+
+    def _acknowledged_ms(self) -> float:
+        """Acknowledged session "now" (ms), most conservative across all arms.
+
+        Taking the minimum means the shared jog timeline only advances as fast
+        as the slowest-acknowledged motion group, so a stall on any one arm
+        freezes the whole timeline.
+        """
+        return min(s.session_elapsed_ms for s in self._sessions.values())
 
     def _sessions_by_id(self) -> dict[str, WaypointJoggingSession]:
         """Sessions keyed by motion group ID (for Rerun streaming)."""
@@ -139,9 +157,11 @@ class _BaseJogger:
             raise ValueError(msg)
         session = self._sessions.get(mg)
         if session is not None:
-            # Single-step: use relative placement (server places the target one
-            # step in the future, from its current position).
-            session.update_chunk(steps=self._ease_steps(mg, [values], 0.0), dt_ms=0.0)
+            # Single-step live target: anchor at "now", one step ahead so the
+            # server has time to reach it from the robot's current position.
+            session.update_chunk(
+                steps=self._ease_steps(mg, [values], 0.0), dt_ms=0.0, anchor_offset_steps=1
+            )
         self._log_target(mg.id, [values], 0.0)
 
     def _push_target(self, mg: MotionGroup, value: list, dt_ms: float) -> list[float]:
@@ -150,11 +170,13 @@ class _BaseJogger:
         if session is None:
             return value if not isinstance(value[0], list) else value[-1]
         if value and isinstance(value[0], list):
-            # Chunked: use absolute placement for smooth overlapping
+            # Chunked: absolute anchor on the jogger's own session timeline so
+            # overlapping per-tick resends land identical steps at identical
+            # timestamps (one coherent trajectory, no seam jump).
             session.update_chunk(
                 steps=self._ease_steps(mg, value, dt_ms),
                 dt_ms=dt_ms,
-                first_timestamp_ms=session.session_elapsed_ms,
+                anchor_ms=session.session_elapsed_ms,
             )
             self._log_target(mg.id, value, dt_ms)
             return value[-1]
@@ -251,11 +273,17 @@ class _BaseJogger:
         """PTP move all motion groups to their start_joint_position positions."""
         import asyncio as _asyncio  # noqa: PLC0415
 
+        from nova import api  # noqa: PLC0415
         from nova.actions import jnt  # noqa: PLC0415
 
         async def _ptp(mg: MotionGroup, joints: list[float]) -> None:
             tcp = await mg.active_tcp_name() or (await mg.tcp_names())[0]
-            traj = await mg.plan([jnt(joints)], tcp)
+            # Clear collision setups so the cell's safety planes don't reject
+            # planning at this exact start pose (the same relaxation a manual
+            # PTP-to-home would use).
+            setup = await mg.get_setup(tcp)
+            setup.collision_setups = api.models.CollisionSetups({})
+            traj = await mg.plan([jnt(joints)], tcp, motion_group_setup=setup)
             await mg.execute(traj, tcp, actions=[jnt(joints)])
 
         tasks = [
@@ -294,6 +322,9 @@ class _BaseJogger:
                     # reports RUNNING can't stall the loop.
                     if running or now - self._first_yield_t > _ANCHOR_FALLBACK_S:
                         self._loop_t0 = now
+                        # Baseline the acknowledged clock at the same instant so
+                        # elapsed ticks from zero on the acknowledged timeline.
+                        self._ack0_ms = self._acknowledged_ms()
                 yield s
             await asyncio.sleep(0.01)
 

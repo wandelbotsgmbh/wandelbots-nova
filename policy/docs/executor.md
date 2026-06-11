@@ -109,15 +109,31 @@ of any clock drift between client and server.
 
 ### Trajectory-absolute timestamps
 
-For overlapping chunks, timestamps are **trajectory-absolute**: each chunk's
-timestamps start from `step_index * dt_ms` scaled by the speed ratio. This means
-timestamps are typically "in the past" by the time the server processes them,
-which lets the server interpolate smoothly from its current position forward.
+For overlapping chunks, timestamps are **trajectory-absolute**: the chunk is
+anchored at an explicit point on the server's session timeline rather than at
+"now". This is what lets consecutive overlapping chunks line up — identical
+steps land at identical timestamps, so the server stitches them into one
+trajectory instead of restarting at every resend.
+
+A policy can set an explicit anchor via `ActionChunk.first_timestamp_ms`:
 
 ```python
 ActionChunk(
     joints={"0@ur10e": chunk_steps},
     dt_ms=10.0,
-    start_time_ms=int(step_idx * 10.0),  # trajectory-absolute
+    first_timestamp_ms=int(step_idx * 10.0),  # explicit absolute anchor
 )
 ```
+
+When left at `-1`, the executor anchors automatically (see
+`policy/chunking.py::placement`): step 0 is placed at an absolute anchor with an
+offset measured in whole `dt` steps —
+
+| case | anchor | offset |
+|------|--------|--------|
+| explicit `first_timestamp_ms >= 0` | that value | `0` (exact) |
+| wait-for-chunk (`policy_rate_hz < 0`) | `now` | `+1` step (one dt ahead) |
+| overlapping / RTC (`policy_rate_hz >= 0`) | `now` | `-seam_backdate_steps` (backdated) |
+
+The `now` anchor is resolved at *yield time* (right before the websocket send)
+so it cannot go stale while the chunk waits in the session queue.

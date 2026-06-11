@@ -102,7 +102,7 @@ def test_setting_a_single_target_streams_it_to_the_robot():
     jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
     jogger.set_target([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
     sessions[mg].update_chunk.assert_called_once_with(
-        steps=[[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]], dt_ms=0.0
+        steps=[[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]], dt_ms=0.0, anchor_offset_steps=1
     )
     assert jogger.target == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
 
@@ -125,7 +125,7 @@ def test_setting_a_chunk_streams_every_step_and_tracks_the_last():
     chunk = [[float(i)] * 6 for i in range(4)]
     jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
     jogger.set_target(chunk, dt_ms=33.0)
-    sessions[mg].update_chunk.assert_called_once_with(steps=chunk, dt_ms=33.0, first_timestamp_ms=0)
+    sessions[mg].update_chunk.assert_called_once_with(steps=chunk, dt_ms=33.0, anchor_ms=0)
     assert jogger.target == chunk[-1]
 
 
@@ -210,7 +210,7 @@ def test_tcp_jogging_streams_a_pose_as_a_cartesian_waypoint():
     jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange")
     jogger.set_target(Pose(500, 200, 300, 0, 3.14, 0))
     sessions[mg].update_chunk.assert_called_once_with(
-        steps=[[500, 200, 300, 0, 3.14, 0]], dt_ms=0.0
+        steps=[[500, 200, 300, 0, 3.14, 0]], dt_ms=0.0, anchor_offset_steps=1
     )
 
 
@@ -219,7 +219,7 @@ def test_tcp_jogging_streams_a_chunk_of_future_poses():
     chunk = [[500.0 + i, 200.0, 300.0, 0.0, 3.14, 0.0] for i in range(4)]
     jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange")
     jogger.set_target(chunk, dt_ms=33.0)
-    sessions[mg].update_chunk.assert_called_once_with(steps=chunk, dt_ms=33.0, first_timestamp_ms=0)
+    sessions[mg].update_chunk.assert_called_once_with(steps=chunk, dt_ms=33.0, anchor_ms=0)
 
 
 # ---------------------------------------------------------------------------

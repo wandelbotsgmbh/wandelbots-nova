@@ -39,7 +39,17 @@ class JoggingTimeClock:
 
     speed_ratio: float = 1.0
     synced: bool = False
+    max_lookahead_ms: float = 250.0
+    """Cap on how far "now" may run ahead of the last acknowledged server time.
+
+    Set to the current chunk horizon (``len(steps) * dt``) by the session, so a
+    stalled connection lets the timeline drift at most one lookahead window
+    before it freezes — see :attr:`acknowledged_elapsed_ms`.
+    """
     _client_start_time: float = field(default=0.0, repr=False)
+    _last_server_ts_ms: int = field(default=0, repr=False)
+    _last_server_wall: float = field(default=0.0, repr=False)
+    _stalled: bool = field(default=False, repr=False)
 
     def start(self) -> None:
         """Mark the client-side session start time."""
@@ -52,6 +62,52 @@ class JoggingTimeClock:
             return 0
         return int((time.monotonic() - self._client_start_time) * 1000)
 
+    @property
+    def acknowledged_elapsed_ms(self) -> int:
+        """Session "now" driven by acknowledged server progress, not wall-clock.
+
+        The free-running wall clock keeps advancing even when a weak connection
+        stalls the jogging stream, so anchoring waypoints (and time-parameterised
+        targets) on wall time makes them race ahead of what the robot has
+        actually executed — then jump when the backlog finally lands.
+
+        Instead this returns the last acknowledged server time (converted back to
+        client-time via the speed ratio) plus the wall time elapsed since that
+        acknowledgement, but the extrapolation is **capped** at
+        :attr:`max_lookahead_ms`. On a healthy link the last reading is fresh, so
+        this tracks wall-clock to within a state-stream tick (no behaviour
+        change). When the stream stalls the extrapolation saturates at the cap
+        and "now" freezes — so content and anchors stop advancing past what the
+        robot has confirmed, and there is no catch-up jump on recovery.
+
+        Before the first server timestamp arrives the clock is unsynced and this
+        falls back to plain wall-clock elapsed.
+        """
+        if not self.synced or self.speed_ratio <= 0.0:
+            return self.client_elapsed_ms
+        acknowledged_client_ms = self._last_server_ts_ms / self.speed_ratio
+        drift_ms = (time.monotonic() - self._last_server_wall) * 1000.0
+        if drift_ms >= self.max_lookahead_ms:
+            self._note_stall(drift_ms)
+        drift_ms = min(max(0.0, drift_ms), self.max_lookahead_ms)
+        return int(acknowledged_client_ms + drift_ms)
+
+    def _note_stall(self, drift_ms: float) -> None:
+        """Warn once when the server timer stops advancing (edge-triggered).
+
+        Fires when no fresh ``jogger_session_timestamp_ms`` has arrived for
+        longer than one lookahead window, i.e. the jog clock has frozen at the
+        cap. Recovery is logged from :meth:`update` when server time resumes.
+        """
+        if not self._stalled:
+            self._stalled = True
+            logger.warning(
+                "Jogging connection stalled: no server timestamp for %.0f ms "
+                "(> %.0f ms lookahead) — jog clock frozen until it resumes.",
+                drift_ms,
+                self.max_lookahead_ms,
+            )
+
     def update(self, timestamp_ms: int) -> None:
         """Feed a new ``jogger_session_timestamp_ms`` reading from the state stream."""
         if timestamp_ms <= 0:
@@ -61,6 +117,18 @@ class JoggingTimeClock:
             logger.info(
                 "Server time sync established (jogger_session_timestamp_ms=%d)", timestamp_ms
             )
+        if self._stalled:
+            self._stalled = False
+            logger.info(
+                "Jogging connection recovered (jogger_session_timestamp_ms=%d); "
+                "server time advancing again.",
+                timestamp_ms,
+            )
+        # Record the latest acknowledged server time and when we saw it, so
+        # acknowledged_elapsed_ms can extrapolate from a real ack rather than
+        # from a free-running wall clock.
+        self._last_server_ts_ms = timestamp_ms
+        self._last_server_wall = time.monotonic()
         # Use raw ratio (server_time / client_time) directly.
         # Clamp >= 1.0 since the server is never slower than wall-clock.
         client_ms = self.client_elapsed_ms

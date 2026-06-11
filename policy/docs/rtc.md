@@ -33,10 +33,11 @@ state between calls will *appear* to show no freezing — it's the decode, not R
 1. **Server storage gating** — `self._rtc_prev_action` was only stored when
    `options is not None`; the first call has no options → never stored → never
    injected. Fixed by always storing.
-2. **Client legacy timestamp placement** — `PolicyExecutor` sent chunks with
-   `start_time_ms = -1` (legacy mode), re-placing every chunk at "now". The
-   server's frozen waypoints only line up on the **absolute** timeline, so the
-   executor now uses `start_time_ms = session.session_elapsed_ms`.
+2. **Client legacy timestamp placement** — `PolicyExecutor` re-placed every
+   chunk at "now" (legacy relative mode). The server's frozen waypoints only
+   line up on the **absolute** timeline, so the executor now anchors overlapping
+   chunks on the session timeline (`anchor_ms = session.session_elapsed_ms`,
+   backdated by `seam_backdate_steps`) — see `policy/chunking.py::placement`.
 
 ## What is RTC?
 

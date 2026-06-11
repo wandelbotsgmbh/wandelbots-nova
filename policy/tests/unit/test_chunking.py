@@ -14,6 +14,7 @@ from hypothesis import given, settings, strategies as st
 import pytest
 
 from policy.chunking import (
+    NOW,
     apply_relative_mode,
     chunk_duration_s,
     placement,
@@ -132,29 +133,28 @@ def test_relative_tcp_offsets_from_current_pose():
 # ---------------------------------------------------------------------------
 
 
-def test_explicit_start_time_wins_and_is_not_overlapping():
-    """A first_timestamp_ms the policy set explicitly is used verbatim."""
+def test_explicit_start_time_wins_and_is_anchored_exactly():
+    """A first_timestamp_ms the policy set explicitly becomes an exact anchor."""
     chunk = ActionChunk(joints={"0@ur5e": [[0.0]]}, first_timestamp_ms=1234)
-    place = placement(chunk, policy_rate_hz=20, backdate_ms=50)
-    assert place.first_timestamp_ms == 1234
-    assert place.overlapping is False
+    place = placement(chunk, policy_rate_hz=20)
+    assert place.anchor_ms == 1234
+    assert place.anchor_offset_steps == 0
 
 
-def test_wait_for_chunk_is_relative_not_overlapping():
-    """Sequential mode (policy_rate_hz < 0) places chunks relative ('now') = -1."""
+def test_wait_for_chunk_anchors_at_now_one_step_ahead():
+    """Sequential mode (policy_rate_hz < 0) anchors at 'now' (NOW), one step ahead."""
     chunk = ActionChunk(joints={"0@ur5e": [[0.0]]})  # first_timestamp_ms defaults to -1
-    place = placement(chunk, policy_rate_hz=-1, backdate_ms=80)
-    assert place.first_timestamp_ms == -1
-    assert place.overlapping is False
+    place = placement(chunk, policy_rate_hz=-1)
+    assert place.anchor_ms == NOW
+    assert place.anchor_offset_steps == 1
 
 
-def test_overlapping_mode_flags_overlapping_and_carries_backdate():
-    """Overlapping mode (rate >= 0) defers the anchor and carries the seam backdate."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0]]})
-    place = placement(chunk, policy_rate_hz=20, backdate_ms=800)
-    assert place.first_timestamp_ms == -1
-    assert place.overlapping is True
-    assert place.backdate_ms == 800
+def test_overlapping_mode_anchors_at_now_backdated_by_the_seam():
+    """Overlapping mode (rate >= 0) anchors at 'now' backdated by the seam steps."""
+    chunk = ActionChunk(joints={"0@ur5e": [[0.0]]}, seam_backdate_steps=8)
+    place = placement(chunk, policy_rate_hz=20)
+    assert place.anchor_ms == NOW
+    assert place.anchor_offset_steps == -8
 
 
 # ===========================================================================
@@ -256,39 +256,34 @@ def test_relative_mode_with_no_groups_is_identity(steps):
 @given(
     explicit=st.integers(min_value=0, max_value=100_000),
     rate=st.floats(-5.0, 60.0),
-    backdate=st.integers(min_value=0, max_value=2000),
 )
 @settings(max_examples=200, deadline=None)
-def test_an_explicit_start_time_always_wins(explicit, rate, backdate):
-    """A first_timestamp_ms the policy set (>= 0) is used verbatim in every mode."""
+def test_an_explicit_start_time_always_wins(explicit, rate):
+    """A first_timestamp_ms the policy set (>= 0) becomes an exact anchor in every mode."""
     chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]}, first_timestamp_ms=explicit)
-    place = placement(chunk, policy_rate_hz=rate, backdate_ms=backdate)
-    assert place.first_timestamp_ms == explicit
-    assert place.overlapping is False
+    place = placement(chunk, policy_rate_hz=rate)
+    assert place.anchor_ms == explicit
+    assert place.anchor_offset_steps == 0
 
 
-@given(
-    rate=st.floats(-5.0, -0.001),
-    backdate=st.integers(min_value=0, max_value=2000),
-)
+@given(rate=st.floats(-5.0, -0.001))
 @settings(max_examples=100, deadline=None)
-def test_wait_for_chunk_mode_always_places_relative(rate, backdate):
-    """Sequential mode (rate < 0) with no explicit start is relative, not overlapping."""
+def test_wait_for_chunk_mode_always_anchors_at_now_one_step_ahead(rate):
+    """Sequential mode (rate < 0) with no explicit start anchors at NOW, one step ahead."""
     chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]})  # first_timestamp_ms defaults to -1
-    place = placement(chunk, policy_rate_hz=rate, backdate_ms=backdate)
-    assert place.first_timestamp_ms == -1
-    assert place.overlapping is False
+    place = placement(chunk, policy_rate_hz=rate)
+    assert place.anchor_ms == NOW
+    assert place.anchor_offset_steps == 1
 
 
 @given(
     rate=st.floats(0.0, 60.0),
-    backdate=st.integers(min_value=0, max_value=2000),
+    seam=st.integers(min_value=0, max_value=64),
 )
 @settings(max_examples=200, deadline=None)
-def test_overlapping_mode_defers_now_and_carries_backdate(rate, backdate):
-    """Overlapping mode (rate >= 0) flags overlapping and carries the backdate."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]})
-    place = placement(chunk, policy_rate_hz=rate, backdate_ms=backdate)
-    assert place.first_timestamp_ms == -1
-    assert place.overlapping is True
-    assert place.backdate_ms == backdate
+def test_overlapping_mode_anchors_at_now_backdated_by_the_seam_property(rate, seam):
+    """Overlapping mode (rate >= 0) anchors at NOW, backdated by the seam steps."""
+    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]}, seam_backdate_steps=seam)
+    place = placement(chunk, policy_rate_hz=rate)
+    assert place.anchor_ms == NOW
+    assert place.anchor_offset_steps == -seam

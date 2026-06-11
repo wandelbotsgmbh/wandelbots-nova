@@ -84,6 +84,108 @@ def test_extract_from_state_handles_missing_fields():
 
 
 # ===========================================================================
+# acknowledged_elapsed_ms — "now" must follow the server, not a free-running
+# wall clock, so a stalled connection can't make targets race ahead.
+# ===========================================================================
+
+
+def test_unsynced_acknowledged_elapsed_falls_back_to_wall_clock():
+    """Before any server timestamp arrives, 'now' is just wall-clock elapsed."""
+    clock = JoggingTimeClock()
+    clock.start()
+    clock._client_start_time = time.monotonic() - 0.200  # ~200ms elapsed
+    assert clock.synced is False
+    assert 150 <= clock.acknowledged_elapsed_ms <= 260
+
+
+def test_acknowledged_elapsed_tracks_wall_clock_on_a_healthy_link():
+    """With fresh server acks, 'now' follows wall-clock to within a tick — the
+    capping is invisible on a healthy connection (no behaviour change)."""
+    clock = JoggingTimeClock(max_lookahead_ms=300.0)
+    clock.start()
+    clock._client_start_time = time.monotonic() - 0.500  # ~500ms wall elapsed
+    clock.update(500)  # server agrees it is 500ms in, just now
+    # ratio ~= 1.0; acknowledged 'now' ≈ 500ms with only a sub-tick of drift.
+    assert 480 <= clock.acknowledged_elapsed_ms <= 540
+
+
+def test_acknowledged_elapsed_freezes_when_the_stream_stalls():
+    """If no new server timestamp arrives, 'now' may drift at most one lookahead
+    window past the last ack, then freezes — so it can't run away while the
+    connection is down (the fix for catch-up jumps)."""
+    clock = JoggingTimeClock(max_lookahead_ms=250.0)
+    clock.start()
+    clock._client_start_time = time.monotonic() - 0.300
+    clock.update(300)  # last ack: server at 300ms, ratio ~= 1.0
+    # Simulate the stream having stalled 5 seconds ago.
+    clock._last_server_wall = time.monotonic() - 5.0
+    now = clock.acknowledged_elapsed_ms
+    # 300ms ack + at most a 250ms lookahead, NOT 300 + 5000.
+    assert now <= 300 / clock.speed_ratio + 250 + 5
+    assert now < 600
+
+
+def test_acknowledged_elapsed_resumes_from_the_new_ack_after_a_stall():
+    """Once a fresh server timestamp lands, 'now' snaps to acknowledged progress
+    rather than to the wall time that elapsed during the stall."""
+    clock = JoggingTimeClock(max_lookahead_ms=250.0)
+    clock.start()
+    clock._client_start_time = time.monotonic() - 0.300
+    clock.update(300)
+    # ... a long stall ... then a fresh ack arrives saying the server only
+    # advanced to 360ms (it was paused too).
+    clock._last_server_ts_ms = 360
+    clock._last_server_wall = time.monotonic()
+    assert 350 <= clock.acknowledged_elapsed_ms <= 380
+
+
+def test_stall_logs_a_warning_once_and_recovers(caplog):
+    """A frozen server timer warns exactly once, then logs recovery on resume."""
+    import logging
+
+    clock = JoggingTimeClock(max_lookahead_ms=250.0)
+    clock.start()
+    clock._client_start_time = time.monotonic() - 0.300
+    clock.update(300)
+    # Stream stalled well beyond the lookahead window.
+    clock._last_server_wall = time.monotonic() - 5.0
+
+    with caplog.at_level(logging.WARNING, logger="policy.jogging.clock"):
+        # Read "now" many times — the operator should see ONE warning, not a flood.
+        for _ in range(10):
+            _ = clock.acknowledged_elapsed_ms
+    stall_warnings = [r for r in caplog.records if "stalled" in r.message]
+    assert len(stall_warnings) == 1
+
+    # A fresh server timestamp resumes the timeline and logs recovery once.
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="policy.jogging.clock"):
+        clock.update(360)
+    assert any("recovered" in r.message for r in caplog.records)
+
+    # After recovery, a renewed stall warns again (edge-triggered, not latched).
+    caplog.clear()
+    clock._last_server_wall = time.monotonic() - 5.0
+    with caplog.at_level(logging.WARNING, logger="policy.jogging.clock"):
+        _ = clock.acknowledged_elapsed_ms
+    assert any("stalled" in r.message for r in caplog.records)
+
+
+def test_healthy_link_does_not_warn(caplog):
+    """Fresh acks within the lookahead window must never trip the stall warning."""
+    import logging
+
+    clock = JoggingTimeClock(max_lookahead_ms=300.0)
+    clock.start()
+    clock._client_start_time = time.monotonic() - 0.500
+    clock.update(500)
+    with caplog.at_level(logging.WARNING, logger="policy.jogging.clock"):
+        for _ in range(10):
+            _ = clock.acknowledged_elapsed_ms
+    assert not [r for r in caplog.records if "stalled" in r.message]
+
+
+# ===========================================================================
 # Property-based invariants for the clock's scaling + clamp behaviour.
 # ===========================================================================
 

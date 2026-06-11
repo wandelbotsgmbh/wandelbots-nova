@@ -21,7 +21,7 @@ from policy._sdk import get_api_gateway, get_cell, get_controller_id
 from policy.io import IOWriter
 from policy.jogging.clock import JoggingTimeClock
 from policy.jogging.session import JoggingStateTracker
-from policy.jogging.waypoints import PendingChunk, make_waypoints_request
+from policy.jogging.waypoints import NOW, PendingChunk, make_waypoints_request
 from policy.types import JoggingNotSupportedError, MotionError, StopContext
 
 if TYPE_CHECKING:
@@ -154,8 +154,13 @@ class WaypointJoggingSession:
 
     @property
     def session_elapsed_ms(self) -> int:
-        """Elapsed milliseconds on the client-side jogger session clock."""
-        return self._clock.client_elapsed_ms
+        """Session "now" anchored on acknowledged server progress (capped).
+
+        Driven by :attr:`JoggingTimeClock.acknowledged_elapsed_ms`, so on a weak
+        connection it freezes instead of running ahead of the robot — callers
+        that anchor chunks here won't produce a catch-up jump on recovery.
+        """
+        return self._clock.acknowledged_elapsed_ms
 
     @property
     def speed_ratio(self) -> float:
@@ -179,46 +184,28 @@ class WaypointJoggingSession:
         steps: list[list[float]],
         dt_ms: float,
         *,
-        first_timestamp_ms: int = -1,
-        overlapping: bool = False,
-        backdate_ms: int = 0,
+        anchor_ms: int = NOW,
+        anchor_offset_steps: int = 0,
         **_kwargs: object,
     ) -> None:
         """Queue a new action chunk as waypoints.
 
         Builds a JointWaypointsRequest or PoseWaypointsRequest (based on mode)
-        with timestamps computed from dt_ms.
-        The request is sent on the next jogging loop iteration.
+        with absolute server-time timestamps laid out as ``base + i*dt``. The
+        request is sent on the next jogging loop iteration; the timestamps are
+        computed at *yield time* (see :func:`make_waypoints_request`).
 
         Args:
             steps: Joint waypoints [rad] or TCP poses [x,y,z,rx,ry,rz] (mm/rad).
             dt_ms: Time between consecutive waypoints (ms). 0 = single-step.
-            first_timestamp_ms: Where the chunk's first waypoint is anchored on the
-                server's session timeline. Both modes emit absolute server-time
-                timestamps; they differ only in the anchor:
-                  * >=0 (absolute): first waypoint lands exactly at this anchor,
-                    then [anchor, anchor + dt, anchor + 2*dt, ...]. The anchor
-                    may be in the *past*.
-                  * -1 (relative, default): anchor is "now", read at *yield
-                    time* (see ``overlapping`` for the two -1 sub-modes).
-            overlapping: Only meaningful when ``first_timestamp_ms == -1``.
-                False (sequential): timestamps are [now + dt, now + 2*dt, ...].
-                True (RTC): anchor at ``now - backdate_ms`` with the layout
-                starting at the anchor, so the step matching the robot's current
-                position lands at "now".
-            backdate_ms: RTC seam backdate in ms (steps * dt). Used only when
-                ``overlapping`` is True.
-
-        Why these modes: for sequential, non-overlapping jogging there is
-        nothing to align to, so dropping the chunk at "now" is the simplest
-        correct placement. RTC produces *overlapping* chunks whose first steps
-        describe positions the robot has already passed; anchoring at "now"
-        would make it jump back to step 0. Overlapping placement instead anchors
-        in the past (now - backdate) so the step matching the robot's current
-        position lands at "now" and the rest extends forward — the server drops
-        the already-past waypoints and interpolates smoothly, connecting
-        consecutive chunks. The "now" for both -1 sub-modes is resolved at yield
-        time so the anchor cannot go stale while the chunk waits in the queue.
+            anchor_ms: Where step 0 sits on the server timeline. ``NOW`` (default)
+                resolves "now" at yield time so the anchor cannot go stale while
+                the chunk waits in the queue; ``>= 0`` is an explicit absolute
+                anchor (replay / scheduled segments), used verbatim.
+            anchor_offset_steps: Shift the anchor by whole ``dt`` steps. ``+1``
+                places step 0 one dt ahead (live single targets); a negative
+                value backdates the anchor so an already-passed step lands at
+                "now" (RTC seam stitching); ``0`` anchors exactly.
         """
         if not steps:
             return
@@ -226,24 +213,28 @@ class WaypointJoggingSession:
         # Single-step target: use a default step time
         effective_dt_ms = dt_ms if dt_ms > 0 else 100.0
 
+        # Cap how far the session clock may run ahead of acknowledged server
+        # time at this chunk's horizon, so a stalled link drifts at most one
+        # lookahead window before "now" freezes (see acknowledged_elapsed_ms).
+        self._clock.max_lookahead_ms = len(steps) * effective_dt_ms
+
         # Store raw chunk data. Timestamps are computed in _jogging_loop
         # immediately before yielding to the server, avoiding drift from any
         # internal await/scheduling delay between policy and stream send.
         self._pending_request = PendingChunk(
             steps=steps,
             dt_ms=effective_dt_ms,
-            first_timestamp_ms=first_timestamp_ms,
-            overlapping=overlapping,
-            backdate_ms=backdate_ms,
+            anchor_ms=anchor_ms,
+            anchor_offset_steps=anchor_offset_steps,
         )
 
         # Compare current robot position vs chunk first step (joint mode only).
-        # Skipped for overlapping RTC chunks: there the robot always lags the
-        # freshest prediction's step 0 by a few degrees, which is expected and
-        # not worth reporting. For sequential chunks a large first-step gap is a
-        # genuine discontinuity worth a WARNING.
+        # Skipped for backdated (overlapping RTC) chunks: there the robot always
+        # lags the freshest prediction's step 0 by a few degrees, which is
+        # expected and not worth reporting. For exact/ahead chunks a large
+        # first-step gap is a genuine discontinuity worth a WARNING.
         if (
-            not overlapping
+            anchor_offset_steps >= 0
             and self._mode == "joint"
             and self._current_joints is not None
             and len(steps) > 0
@@ -417,9 +408,8 @@ class WaypointJoggingSession:
                     self._mode,
                     steps=pending.steps,
                     effective_dt_ms=pending.dt_ms,
-                    first_timestamp_ms=pending.first_timestamp_ms,
-                    overlapping=pending.overlapping,
-                    backdate_ms=pending.backdate_ms,
+                    anchor_ms=pending.anchor_ms,
+                    anchor_offset_steps=pending.anchor_offset_steps,
                 )
 
                 yield api.models.ExecuteWaypointJoggingRequest(request)
