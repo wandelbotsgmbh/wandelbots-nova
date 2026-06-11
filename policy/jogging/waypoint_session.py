@@ -92,6 +92,7 @@ class WaypointJoggingSession:
         self._state_task: asyncio.Task[None] | None = None
         self._running = False
         self._ready = asyncio.Event()
+        self._primed = asyncio.Event()
         self._failed = False
         self._failure_reason: str = ""
         self._failure_exception: BaseException | None = None
@@ -127,6 +128,18 @@ class WaypointJoggingSession:
     async def wait_ready(self) -> None:
         """Wait until the jogging session is fully initialized and ready for waypoints."""
         await self._ready.wait()
+
+    @property
+    def is_primed(self) -> bool:
+        """Whether the server's jogging motion timer is confirmed running.
+
+        ``wait_ready`` only confirms the *init* request was acknowledged; the
+        server starts its motion timer on the first waypoint, and the robot's
+        control loop needs a moment after that to engage. ``is_primed`` flips
+        ``True`` the first time the state stream carries a server jogger-session
+        timestamp — i.e. the first waypoint is actually being executed.
+        """
+        return self._primed.is_set()
 
     @property
     def has_failed(self) -> bool:
@@ -321,6 +334,11 @@ class WaypointJoggingSession:
                 ts_ms = JoggingTimeClock.extract_from_state(state)
                 if ts_ms is not None:
                     self._clock.update(ts_ms)
+                    # First server timestamp == motion timer is running, i.e. the
+                    # first waypoint is being executed. Confirms the pipeline is
+                    # primed (see is_primed).
+                    if not self._primed.is_set():
+                        self._primed.set()
                 self._jog_tracker.update_from_state(state)
         except asyncio.CancelledError:
             # Expected on shutdown; stop quietly without logging as an error.

@@ -38,6 +38,10 @@ logger = logging.getLogger(__name__)
 
 _CARTESIAN_DIMS = 6  # x, y, z, rx, ry, rz — fixed by NOVA jogging API
 
+# Safety fallback: if the server never reports a jogging timestamp, anchor the
+# elapsed clock anyway after this many seconds so the loop can't stall.
+_PRIME_FALLBACK_S = 2.0
+
 
 # ---------------------------------------------------------------------------
 # Base jogger (shared lifecycle, error detection, state reading)
@@ -61,14 +65,20 @@ class _BaseJogger:
         self._estop: EstopMonitor | None = None
         self._rerun: PolicyRerunLogger | None = None
         self._loop_t0: float | None = None
+        self._first_yield_t: float | None = None
 
     @property
     def elapsed(self) -> float:
-        """Seconds since the first state was yielded by the jogging loop.
+        """Seconds since the jogging motion actually started.
 
-        Anchored to the first yielded state (not to ``__aenter__``), so startup
-        latency can't let a time-parameterised target drift ahead of the robot.
-        Returns ``0.0`` before the loop has yielded.
+        Anchored to the moment the server confirms its motion timer is running
+        (all sessions :attr:`~WaypointJoggingSession.is_primed`), not to
+        ``__aenter__``. Until then it returns ``0.0`` — so a time-parameterised
+        target stays at its start value, holding position while the robot's
+        control loop engages. This prevents the startup dead-time (~0.4s on real
+        hardware) from letting the target run ahead, which would force a hard
+        catch-up jump on the first move. A short fallback anchors anyway if no
+        server timestamp ever arrives, so the loop can't stall.
         """
         return 0.0 if self._loop_t0 is None else time.monotonic() - self._loop_t0
 
@@ -235,7 +245,15 @@ class _BaseJogger:
             s = self.state()
             if s is not None:
                 if self._loop_t0 is None:
-                    self._loop_t0 = time.monotonic()
+                    now = time.monotonic()
+                    if self._first_yield_t is None:
+                        self._first_yield_t = now
+                    primed = all(sess.is_primed for sess in self._sessions.values())
+                    # Anchor the elapsed clock once the server's motion timer is
+                    # confirmed running, or after a safety fallback so a robot
+                    # that never reports a timestamp can't stall the loop.
+                    if primed or now - self._first_yield_t > _PRIME_FALLBACK_S:
+                        self._loop_t0 = now
                 yield s
             await asyncio.sleep(0.01)
 
