@@ -29,8 +29,10 @@ def clamp_limits_override_to_global_limits(
     joints = global_limits.joints or []
 
     def cap_joints(values: list[float] | None, attr: str) -> list[float] | None:
-        if values is None or not joints:
-            return values
+        if values is None:
+            return None
+        if not joints:
+            return list(values)
         return [
             min(v, m) if i < len(joints) and (m := getattr(joints[i], attr)) is not None else v
             for i, v in enumerate(values)
