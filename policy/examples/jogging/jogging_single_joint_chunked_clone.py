@@ -9,7 +9,6 @@ Run:
 """
 
 import math
-import time
 
 import nova
 from nova import api, run_program, viewers
@@ -20,7 +19,7 @@ from policy import jog_joints
 # Current pose of the real ur10e / clone (read from get_state on 2026-06-11).
 HOME = [0.3202, -1.8691, 1.9472, -1.6528, -1.5776, 1.8531]
 
-CONTROLLER = "ur10e"  # the real robot (use "ur10e-clone" for the virtual dry-run)
+CONTROLLER = "ur10e-clone"  # the virtual dry-run (use "ur10e" for the real robot)
 
 
 @nova.program(
@@ -52,9 +51,8 @@ async def main(ctx: nova.ProgramContext):
     await mg.execute(traj, tcp, actions=[jnt(HOME, settings=settings)])
 
     async with jog_joints(mg) as jogger:
-        t0 = time.monotonic()
         async for _ in jogger:
-            t = time.monotonic() - t0
+            t = jogger.elapsed
             if t >= duration:
                 break
             chunk = []

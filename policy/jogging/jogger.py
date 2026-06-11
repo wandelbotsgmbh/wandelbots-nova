@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from typing import TYPE_CHECKING, overload
 
 from policy.estop import EstopMonitor, check_estop, check_sessions, triggered_stop_condition
@@ -59,6 +60,17 @@ class _BaseJogger:
         self._start_joint_position = start_joint_position
         self._estop: EstopMonitor | None = None
         self._rerun: PolicyRerunLogger | None = None
+        self._loop_t0: float | None = None
+
+    @property
+    def elapsed(self) -> float:
+        """Seconds since the first state was yielded by the jogging loop.
+
+        Anchored to the first yielded state (not to ``__aenter__``), so startup
+        latency can't let a time-parameterised target drift ahead of the robot.
+        Returns ``0.0`` before the loop has yielded.
+        """
+        return 0.0 if self._loop_t0 is None else time.monotonic() - self._loop_t0
 
     def _sessions_by_id(self) -> dict[str, WaypointJoggingSession]:
         """Sessions keyed by motion group ID (for Rerun streaming)."""
@@ -222,6 +234,8 @@ class _BaseJogger:
                 return
             s = self.state()
             if s is not None:
+                if self._loop_t0 is None:
+                    self._loop_t0 = time.monotonic()
                 yield s
             await asyncio.sleep(0.01)
 

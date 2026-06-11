@@ -31,7 +31,7 @@ from policy import (
 # Current pose of the real ur10e / clone (read from get_state on 2026-06-11).
 HOME = [0.3202, -1.8691, 1.9472, -1.6528, -1.5776, 1.8531]
 
-CONTROLLER = "ur10e"  # the real robot (use "ur10e-clone" for the virtual dry-run)
+CONTROLLER = "ur10e-clone"  # the virtual dry-run (use "ur10e" for the real robot)
 MG_ID = f"0@{CONTROLLER}"
 
 _start_time: float | None = None

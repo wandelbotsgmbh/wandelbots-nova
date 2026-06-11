@@ -1,7 +1,6 @@
 """Dual-arm TCP jogging: both TCPs trace 50mm circles in XZ plane."""
 
 import math
-import time
 
 import nova
 from nova import run_program, viewers
@@ -32,11 +31,10 @@ async def main(ctx: nova.ProgramContext):
         {mg1: tcp1, mg2: tcp2},
         start_joint_position={mg1: HOME_LEFT, mg2: HOME_RIGHT},
     ) as jogger:
-        t0 = time.monotonic()
         start1 = None
         start2 = None
         async for states in jogger:
-            t = time.monotonic() - t0
+            t = jogger.elapsed
             if t >= duration:
                 break
             if start1 is None:

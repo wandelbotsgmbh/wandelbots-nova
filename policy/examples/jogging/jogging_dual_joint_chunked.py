@@ -4,7 +4,6 @@ Uses 8-step chunks at 33ms for smooth motion with 264ms lookahead.
 """
 
 import math
-import time
 
 import nova
 from nova import run_program, viewers
@@ -34,9 +33,8 @@ async def main(ctx: nova.ProgramContext):
     async with jog_joints(
         [mg1, mg2], start_joint_position={mg1: HOME_LEFT, mg2: HOME_RIGHT}
     ) as jogger:
-        t0 = time.monotonic()
         async for _ in jogger:
-            t = time.monotonic() - t0
+            t = jogger.elapsed
             if t >= duration:
                 break
             chunk1 = []

@@ -1,7 +1,6 @@
 """Single-arm joint jogging with 8-step chunks for smoother tracking."""
 
 import math
-import time
 
 import nova
 from nova import run_program, viewers
@@ -27,9 +26,8 @@ async def main(ctx: nova.ProgramContext):
     dt_s = dt_ms / 1000.0
 
     async with jog_joints(mg, start_joint_position=HOME) as jogger:
-        t0 = time.monotonic()
         async for _ in jogger:
-            t = time.monotonic() - t0
+            t = jogger.elapsed
             if t >= duration:
                 break
             chunk = []

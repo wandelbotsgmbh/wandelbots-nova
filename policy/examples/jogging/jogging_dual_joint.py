@@ -1,7 +1,6 @@
 """Dual-arm joint jogging: mirror-symmetric oscillation for 5 seconds."""
 
 import math
-import time
 
 import nova
 from nova import run_program, viewers
@@ -28,9 +27,8 @@ async def main(ctx: nova.ProgramContext):
     async with jog_joints(
         [mg1, mg2], start_joint_position={mg1: HOME_LEFT, mg2: HOME_RIGHT}
     ) as jogger:
-        t0 = time.monotonic()
         async for _ in jogger:
-            t = time.monotonic() - t0
+            t = jogger.elapsed
             if t >= duration:
                 break
             wave = amplitude * math.sin(2 * math.pi * frequency * t)

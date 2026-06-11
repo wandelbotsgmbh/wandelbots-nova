@@ -4,7 +4,6 @@ Uses 100-step chunks at 10ms for smooth motion with 1s lookahead.
 """
 
 import math
-import time
 
 import nova
 from nova import run_program, viewers
@@ -37,7 +36,6 @@ async def main(ctx: nova.ProgramContext):
         {mg1: tcp1, mg2: tcp2},
         start_joint_position={mg1: HOME_LEFT, mg2: HOME_RIGHT},
     ) as jogger:
-        t0 = time.monotonic()
         start1 = None
         start2 = None
         center1_x = 0.0
@@ -45,7 +43,7 @@ async def main(ctx: nova.ProgramContext):
         center2_x = 0.0
         center2_z = 0.0
         async for states in jogger:
-            t = time.monotonic() - t0
+            t = jogger.elapsed
             if t >= duration:
                 break
             if start1 is None:
