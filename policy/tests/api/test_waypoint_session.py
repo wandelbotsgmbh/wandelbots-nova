@@ -28,7 +28,7 @@ import pytest
 from nova import api
 from nova.types import Pose
 from policy.jogging.waypoint_session import WaypointJoggingSession
-from policy.types import MotionError, WaypointConfig
+from policy.types import JoggingNotSupportedError, MotionError, WaypointConfig
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable, Sequence
@@ -60,9 +60,12 @@ class FakeJoggingServer:
     request the session produces.
     """
 
-    def __init__(self, *, fault: object | None = None) -> None:
+    def __init__(
+        self, *, fault: object | None = None, raise_exc: BaseException | None = None
+    ) -> None:
         self.requests: list[object] = []
         self._fault = fault
+        self._raise_exc = raise_exc
         self._stop = asyncio.Event()
 
     async def execute_waypoint_jogging(
@@ -74,6 +77,10 @@ class FakeJoggingServer:
             [AsyncGenerator[object, None]], AsyncGenerator[object, None]
         ],
     ) -> None:
+        if self._raise_exc is not None:
+            # Stand in for an api-gateway that rejects the websocket upgrade.
+            raise self._raise_exc
+
         async def responses() -> AsyncGenerator[object, None]:
             if self._fault is not None:
                 # The session checks for a motion error at the top of each
@@ -119,10 +126,11 @@ def _stream_state(state: object, *, ts_ms: int = 0) -> object:
 def _build_session(
     *,
     fault: object | None = None,
+    raise_exc: BaseException | None = None,
     states: Sequence[object] = (),
     stop_conditions: list[object] | None = None,
 ) -> tuple[WaypointJoggingSession, FakeJoggingServer]:
-    server = FakeJoggingServer(fault=fault)
+    server = FakeJoggingServer(fault=fault, raise_exc=raise_exc)
 
     async def state_stream(**_kw: object) -> AsyncGenerator[object, None]:
         for s in states:
@@ -228,6 +236,24 @@ async def test_a_motion_error_response_surfaces_as_a_failure():
         await _wait_until(lambda: session.has_failed)
         assert session.has_failed is True
         assert isinstance(session.failure_exception, MotionError)
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_missing_endpoint_404_surfaces_as_jogging_not_supported():
+    """An old gateway rejecting the websocket with HTTP 404 surfaces a typed error."""
+    from websockets.exceptions import InvalidStatus
+
+    not_found = InvalidStatus(SimpleNamespace(status_code=404))  # type: ignore[arg-type]
+    session, server = _build_session(raise_exc=not_found)
+    try:
+        await session.start()
+        await _wait_until(lambda: session.has_failed)
+        assert isinstance(session.failure_exception, JoggingNotSupportedError)
     finally:
         server.stop()
         await session.stop()

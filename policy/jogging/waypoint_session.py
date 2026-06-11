@@ -13,6 +13,8 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
+from websockets.exceptions import InvalidStatus
+
 from nova import api
 from nova.types import Pose, RobotState
 from policy._sdk import get_api_gateway, get_cell, get_controller_id
@@ -20,7 +22,7 @@ from policy.io import IOWriter
 from policy.jogging.clock import JoggingTimeClock
 from policy.jogging.session import JoggingStateTracker
 from policy.jogging.waypoints import PendingChunk, make_waypoints_request
-from policy.types import MotionError, StopContext
+from policy.types import JoggingNotSupportedError, MotionError, StopContext
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -29,6 +31,8 @@ if TYPE_CHECKING:
     from policy.types import JoggingMode, StopCondition, ValueType, WaypointConfig
 
 logger = logging.getLogger(__name__)
+
+_HTTP_NOT_FOUND = 404
 
 
 class WaypointJoggingSession:
@@ -318,7 +322,7 @@ class WaypointJoggingSession:
     # Jogging loop (waypoint mode)
     # -------------------------------------------------------------------------
 
-    async def _jogging_loop(self) -> None:  # noqa: C901
+    async def _jogging_loop(self) -> None:  # noqa: C901, PLR0915
         """Open jogging session and send waypoints when available.
 
         Uses the bidirectional stream's ping-pong pattern, but between chunks
@@ -404,6 +408,23 @@ class WaypointJoggingSession:
         except asyncio.CancelledError:
             # Expected on shutdown; cancellation is not a jogging failure.
             pass
+        except InvalidStatus as e:
+            # An old api-gateway (< 26.5) has no executeWaypointJogging endpoint
+            # and rejects the websocket upgrade with HTTP 404. Surface that as an
+            # actionable error rather than a generic connection loss.
+            if e.response.status_code == _HTTP_NOT_FOUND:
+                err = JoggingNotSupportedError(self.motion_group_id)
+                self._failed = True
+                self._failure_reason = str(err)
+                self._failure_exception = err
+                self._running = False
+                logger.error("%s", err)
+            else:
+                self._failed = True
+                self._failure_reason = str(e)
+                self._failure_exception = e
+                self._running = False
+                logger.error("Jogging connection rejected for %s: %s", self.motion_group_id, e)
         except MotionError as e:
             self._failed = True
             self._failure_reason = str(e)

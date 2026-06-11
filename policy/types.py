@@ -157,3 +157,22 @@ class MotionError(Exception):
     def __init__(self, motion_group_id: str, message: str) -> None:
         self.motion_group_id = motion_group_id
         super().__init__(f"Motion error on '{motion_group_id}': {message}")
+
+
+class JoggingNotSupportedError(Exception):
+    """Raised when the NOVA instance does not expose waypoint jogging.
+
+    The waypoint jogging websocket endpoint (``executeWaypointJogging``) only
+    exists on api-gateway ``>= 26.5``. Older gateways reject the upgrade with
+    HTTP 404; we surface that as this actionable error instead of a generic
+    connection failure, so callers know to upgrade NOVA rather than chase a
+    network problem.
+    """
+
+    def __init__(self, motion_group_id: str) -> None:
+        self.motion_group_id = motion_group_id
+        super().__init__(
+            f"Waypoint jogging is not available for '{motion_group_id}' on this "
+            "NOVA instance (the executeWaypointJogging endpoint returned HTTP 404). "
+            "It requires api-gateway >= 26.5."
+        )

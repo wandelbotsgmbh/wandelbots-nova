@@ -1,9 +1,9 @@
 """Waypoint request construction for jogging.
 
 Pure helpers that turn raw action steps + timing into NOVA API request models
-(``JointWaypointsRequest`` / ``PoseWaypointsRequest``), plus the SDK capability
-checks and the small pending-chunk record. No session state lives here — the
-session passes in its :class:`~policy.jogging.clock.JoggingTimeClock` and mode.
+(``JointWaypointsRequest`` / ``PoseWaypointsRequest``), plus the small
+pending-chunk record. No session state lives here — the session passes in its
+:class:`~policy.jogging.clock.JoggingTimeClock` and mode.
 """
 
 from __future__ import annotations
