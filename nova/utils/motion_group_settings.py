@@ -2,6 +2,88 @@ from nova import api
 from nova.types.motion_settings import MotionSettings
 
 
+def _cap(value: float | None, maximum: float | None) -> float | None:
+    """Return ``value`` capped at ``maximum``. An unset value or maximum means no change."""
+    if value is None or maximum is None:
+        return value
+    return min(value, maximum)
+
+
+def clamp_limits_override_to_global_limits(
+    limits_override: api.models.LimitsOverride, global_limits: api.models.LimitSet | None
+) -> api.models.LimitsOverride:
+    """Return a copy of ``limits_override`` capped at the motion group's global max limits.
+
+    A per-segment ``limits_override`` *replaces* the global limit for that segment, so a value
+    above the motion group maximum makes the planner produce a trajectory the hardware cannot
+    realize - which then gets down-scaled across its whole length at execution time. Capping
+    each value at the corresponding global maximum avoids that while leaving lower
+    (intentionally slower) values untouched. Unset fields and fields without a global maximum
+    are left as-is. The input is not modified.
+    """
+    if global_limits is None:
+        return limits_override
+
+    # Empty fallbacks so a missing tcp/joint maximum simply means "do not cap".
+    tcp = global_limits.tcp or api.models.CartesianLimits()
+    joints = global_limits.joints or []
+
+    def cap_joints(values: list[float] | None, attr: str) -> list[float] | None:
+        if values is None or not joints:
+            return values
+        return [
+            min(v, m) if i < len(joints) and (m := getattr(joints[i], attr)) is not None else v
+            for i, v in enumerate(values)
+        ]
+
+    return limits_override.model_copy(
+        update={
+            "tcp_velocity_limit": _cap(limits_override.tcp_velocity_limit, tcp.velocity),
+            "tcp_acceleration_limit": _cap(
+                limits_override.tcp_acceleration_limit, tcp.acceleration
+            ),
+            "tcp_jerk_limit": _cap(limits_override.tcp_jerk_limit, tcp.jerk),
+            "tcp_orientation_velocity_limit": _cap(
+                limits_override.tcp_orientation_velocity_limit, tcp.orientation_velocity
+            ),
+            "tcp_orientation_acceleration_limit": _cap(
+                limits_override.tcp_orientation_acceleration_limit, tcp.orientation_acceleration
+            ),
+            "tcp_orientation_jerk_limit": _cap(
+                limits_override.tcp_orientation_jerk_limit, tcp.orientation_jerk
+            ),
+            "joint_velocity_limits": cap_joints(limits_override.joint_velocity_limits, "velocity"),
+            "joint_acceleration_limits": cap_joints(
+                limits_override.joint_acceleration_limits, "acceleration"
+            ),
+            "joint_jerk_limits": cap_joints(limits_override.joint_jerk_limits, "jerk"),
+        }
+    )
+
+
+def clamp_motion_commands_to_global_limits(
+    motion_commands: list[api.models.MotionCommand], global_limits: api.models.LimitSet | None
+) -> list[api.models.MotionCommand]:
+    """Return a new command list with each ``limits_override`` capped at the global maxima.
+
+    Commands without a ``limits_override`` are passed through unchanged. Inputs are not modified.
+    """
+    if global_limits is None:
+        return motion_commands
+    return [
+        command.model_copy(
+            update={
+                "limits_override": clamp_limits_override_to_global_limits(
+                    command.limits_override, global_limits
+                )
+            }
+        )
+        if command.limits_override is not None
+        else command
+        for command in motion_commands
+    ]
+
+
 def _patched_joint_limits(
     joint_limits: list[api.models.JointLimits] | None,
     override_with_joint_limits: list[api.models.JointLimits] | None,

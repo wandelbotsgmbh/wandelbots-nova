@@ -2,7 +2,11 @@ import pytest
 
 from nova.api import models
 from nova.types.motion_settings import DEFAULT_TCP_VELOCITY_LIMIT, MotionSettings
-from nova.utils.motion_group_settings import update_motion_group_setup_with_motion_settings
+from nova.utils.motion_group_settings import (
+    clamp_limits_override_to_global_limits,
+    clamp_motion_commands_to_global_limits,
+    update_motion_group_setup_with_motion_settings,
+)
 
 
 def test_tcp_limits_patching_with_none_setup():
@@ -282,3 +286,101 @@ def test_joint_limits_merge_preserves_position_and_torque():
     assert joint.position.lower_limit == -1.57  # Preserved
     assert joint.position.upper_limit == 1.57  # Preserved
     assert joint.torque == 50.0  # Preserved
+
+
+def test_clamp_tcp_limits_above_max_are_reduced():
+    """TCP override values above the global max are clamped to the max."""
+    global_limits = models.LimitSet(
+        tcp=models.CartesianLimits(
+            velocity=250.0,
+            acceleration=1000.0,
+            orientation_velocity=2.0,
+            orientation_acceleration=5.0,
+        )
+    )
+    override = models.LimitsOverride(
+        tcp_velocity_limit=2500.0,  # way above max
+        tcp_acceleration_limit=500.0,  # below max -> unchanged
+        tcp_orientation_velocity_limit=10.0,  # above max
+    )
+
+    clamped = clamp_limits_override_to_global_limits(override, global_limits)
+
+    assert clamped.tcp_velocity_limit == 250.0  # clamped
+    assert clamped.tcp_acceleration_limit == 500.0  # untouched
+    assert clamped.tcp_orientation_velocity_limit == 2.0  # clamped
+    # input is not modified
+    assert override.tcp_velocity_limit == 2500.0
+    assert override.tcp_orientation_velocity_limit == 10.0
+
+
+def test_clamp_keeps_unset_and_missing_max_values():
+    """Unset override fields and fields without a global max are left untouched."""
+    global_limits = models.LimitSet(
+        tcp=models.CartesianLimits(velocity=250.0)  # only velocity has a max
+    )
+    override = models.LimitsOverride(
+        tcp_velocity_limit=None,  # unset -> stays None
+        tcp_acceleration_limit=9999.0,  # no max available -> untouched
+    )
+
+    clamped = clamp_limits_override_to_global_limits(override, global_limits)
+
+    assert clamped.tcp_velocity_limit is None
+    assert clamped.tcp_acceleration_limit == 9999.0
+
+
+def test_clamp_joint_limits_element_wise():
+    """Per-joint override values are clamped element-wise to the joint maxima."""
+    global_limits = models.LimitSet(
+        joints=[
+            models.JointLimits(velocity=1.0, acceleration=4.0),
+            models.JointLimits(velocity=2.0, acceleration=5.0),
+            models.JointLimits(velocity=3.0, acceleration=6.0),
+        ]
+    )
+    override = models.LimitsOverride(
+        joint_velocity_limits=[10.0, 0.5, 100.0], joint_acceleration_limits=[1.0, 50.0, 60.0]
+    )
+
+    clamped = clamp_limits_override_to_global_limits(override, global_limits)
+
+    assert clamped.joint_velocity_limits == [1.0, 0.5, 3.0]
+    assert clamped.joint_acceleration_limits == [1.0, 5.0, 6.0]
+
+
+def test_clamp_no_global_limits_is_noop():
+    """When there are no global limits, the override values are returned unchanged."""
+    override = models.LimitsOverride(tcp_velocity_limit=2500.0)
+
+    clamped = clamp_limits_override_to_global_limits(override, None)
+
+    assert clamped.tcp_velocity_limit == 2500.0
+
+
+def test_clamp_motion_commands_skips_commands_without_override():
+    """clamp_motion_commands_to_global_limits clamps overrides and skips None ones."""
+    global_limits = models.LimitSet(tcp=models.CartesianLimits(velocity=250.0))
+    cmd_with_override = models.MotionCommand(
+        path=models.PathJointPTP(
+            target_joint_position=models.Joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            path_definition_name="PathJointPTP",
+        ),
+        limits_override=models.LimitsOverride(tcp_velocity_limit=2500.0),
+    )
+    cmd_without_override = models.MotionCommand(
+        path=models.PathJointPTP(
+            target_joint_position=models.Joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            path_definition_name="PathJointPTP",
+        ),
+        limits_override=None,
+    )
+
+    clamped = clamp_motion_commands_to_global_limits(
+        [cmd_with_override, cmd_without_override], global_limits
+    )
+
+    assert clamped[0].limits_override.tcp_velocity_limit == 250.0
+    assert clamped[1].limits_override is None
+    # inputs are not modified
+    assert cmd_with_override.limits_override.tcp_velocity_limit == 2500.0
