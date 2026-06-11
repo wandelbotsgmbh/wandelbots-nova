@@ -52,6 +52,25 @@ async with jog_joints(mg) as jogger:
         jogger.set_target(chunk, dt_ms=33.0)
 ```
 
+## Timing targets (`jogger.elapsed`)
+
+For time-parameterised motion (e.g. a sinusoid), drive it with `jogger.elapsed`
+rather than your own `time.monotonic()` anchor. `elapsed` is the number of
+seconds since the **first yielded state** — so startup latency can't let the
+target run ahead of the robot, which would otherwise cause a catch-up jump and
+overshoot on the first move. It returns `0.0` before the loop yields.
+
+```python
+async with jog_joints(mg) as jogger:
+    async for _ in jogger:
+        t = jogger.elapsed
+        if t >= 5.0:
+            break
+        target = list(HOME)
+        target[0] += 0.2 * math.sin(2 * math.pi * 0.25 * t)
+        jogger.set_target(target)
+```
+
 ## Dual-arm
 
 ```python
