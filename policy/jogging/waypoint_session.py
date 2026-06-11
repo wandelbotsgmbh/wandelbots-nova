@@ -34,6 +34,11 @@ logger = logging.getLogger(__name__)
 
 _HTTP_NOT_FOUND = 404
 
+# Joint gap (deg) between a chunk's first step and the robot's current position
+# above which we treat it as a genuine discontinuity worth a WARNING (smaller
+# gaps are normal RTC tracking lag and are logged at DEBUG).
+_DISCONTINUITY_WARN_DEG = 10.0
+
 
 class WaypointJoggingSession:
     """Sends action chunks as timestamped waypoints via the NOVA Jogging API.
@@ -221,25 +226,34 @@ class WaypointJoggingSession:
             backdate_ms=backdate_ms,
         )
 
-        # Debug: log current robot position vs chunk first step (joint mode only)
-        if self._mode == "joint" and self._current_joints is not None and len(steps) > 0:
+        # Compare current robot position vs chunk first step (joint mode only).
+        # Skipped for overlapping RTC chunks: there the robot always lags the
+        # freshest prediction's step 0 by a few degrees, which is expected and
+        # not worth reporting. For sequential chunks a large first-step gap is a
+        # genuine discontinuity worth a WARNING.
+        if (
+            not overlapping
+            and self._mode == "joint"
+            and self._current_joints is not None
+            and len(steps) > 0
+        ):
             delta = [
                 abs(steps[0][j] - self._current_joints[j]) for j in range(min(3, len(steps[0])))
             ]
             max_delta = max(delta) * 57.3
-            if max_delta > 1.0:  # only log if > 1 degree
-                logger.warning(
-                    "%s: chunk first step is %.1f deg from current position! "
-                    "current=[%.4f,%.4f,%.4f] chunk_first=[%.4f,%.4f,%.4f]",
-                    self.motion_group_id,
-                    max_delta,
-                    self._current_joints[0],
-                    self._current_joints[1],
-                    self._current_joints[2],
-                    steps[0][0],
-                    steps[0][1],
-                    steps[0][2],
-                )
+            log = logger.warning if max_delta > _DISCONTINUITY_WARN_DEG else logger.debug
+            log(
+                "%s: chunk first step is %.1f deg from current position "
+                "(current=[%.4f,%.4f,%.4f] chunk_first=[%.4f,%.4f,%.4f])",
+                self.motion_group_id,
+                max_delta,
+                self._current_joints[0],
+                self._current_joints[1],
+                self._current_joints[2],
+                steps[0][0],
+                steps[0][1],
+                steps[0][2],
+            )
 
         # Request is built later at yield time.
 
