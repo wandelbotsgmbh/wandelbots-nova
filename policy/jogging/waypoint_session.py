@@ -92,7 +92,6 @@ class WaypointJoggingSession:
         self._state_task: asyncio.Task[None] | None = None
         self._running = False
         self._ready = asyncio.Event()
-        self._primed = asyncio.Event()
         self._failed = False
         self._failure_reason: str = ""
         self._failure_exception: BaseException | None = None
@@ -130,16 +129,15 @@ class WaypointJoggingSession:
         await self._ready.wait()
 
     @property
-    def is_primed(self) -> bool:
-        """Whether the server's jogging motion timer is confirmed running.
+    def is_running(self) -> bool:
+        """Whether the robot is actively executing jogging motion.
 
-        ``wait_ready`` only confirms the *init* request was acknowledged; the
-        server starts its motion timer on the first waypoint, and the robot's
-        control loop needs a moment after that to engage. ``is_primed`` flips
-        ``True`` the first time the state stream carries a server jogger-session
-        timestamp — i.e. the first waypoint is actually being executed.
+        Driven by the jogging state stream reporting ``kind == "RUNNING"``.
+        Reflects the robot's actual execution state (the control loop engages a
+        moment after the first waypoint), so it marks when motion truly begins
+        — the right moment to start a time-parameterised target.
         """
-        return self._primed.is_set()
+        return self._jog_tracker.last_kind == "RUNNING"
 
     @property
     def has_failed(self) -> bool:
@@ -334,11 +332,6 @@ class WaypointJoggingSession:
                 ts_ms = JoggingTimeClock.extract_from_state(state)
                 if ts_ms is not None:
                     self._clock.update(ts_ms)
-                    # First server timestamp == motion timer is running, i.e. the
-                    # first waypoint is being executed. Confirms the pipeline is
-                    # primed (see is_primed).
-                    if not self._primed.is_set():
-                        self._primed.set()
                 self._jog_tracker.update_from_state(state)
         except asyncio.CancelledError:
             # Expected on shutdown; stop quietly without logging as an error.

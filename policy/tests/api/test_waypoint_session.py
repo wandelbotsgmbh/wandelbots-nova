@@ -112,9 +112,10 @@ def _initial_state() -> object:
     )
 
 
-def _stream_state(state: object, *, ts_ms: int = 0) -> object:
+def _stream_state(state: object, *, ts_ms: int = 0, kind: str | None = None) -> object:
     """One MotionGroupState as yielded by ``stream_state``."""
-    details = SimpleNamespace(jogger_session_timestamp_ms=ts_ms, state=None)
+    jog_state = SimpleNamespace(kind=kind) if kind is not None else None
+    details = SimpleNamespace(jogger_session_timestamp_ms=ts_ms, state=jog_state)
     return SimpleNamespace(
         joint_position=list(state.joints),
         tcp_pose=None,  # keep the initial pose; avoids constructing a Pose here
@@ -282,14 +283,14 @@ async def test_the_state_stream_updates_the_observable_robot_state():
 
 
 @pytest.mark.asyncio
-async def test_is_primed_flips_once_a_server_timestamp_arrives():
-    """is_primed stays False until the state stream carries a jogger timestamp."""
+async def test_is_running_reflects_the_jogging_state():
+    """is_running follows the stream's RUNNING jogging state."""
     moved = SimpleNamespace(joints=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6))
-    session, server = _build_session(states=[_stream_state(moved, ts_ms=8)])
+    session, server = _build_session(states=[_stream_state(moved, kind="RUNNING")])
     try:
         await session.start()
-        assert session.is_primed is False  # init acknowledged, no motion yet
-        await _wait_until(lambda: session.is_primed)
+        assert session.is_running is False  # no execution state reported yet
+        await _wait_until(lambda: session.is_running)
     finally:
         server.stop()
         await session.stop()

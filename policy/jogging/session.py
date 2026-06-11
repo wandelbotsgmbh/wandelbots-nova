@@ -30,6 +30,15 @@ class JoggingStateTracker:
         self._paused_reason: str | None = None
         self._paused_detail: str = ""
         self._paused_count: int = 0
+        self._last_kind: str | None = None
+
+    @property
+    def last_kind(self) -> str | None:
+        """Most recent jogging-state kind (e.g. ``RUNNING``), or ``None``.
+
+        ``None`` means the state stream has not reported an execution state yet.
+        """
+        return self._last_kind
 
     def update_from_state(self, state: object) -> None:
         """Extract jogging pause reason from MotionGroupState.execute.details."""
@@ -41,6 +50,9 @@ class JoggingStateTracker:
             return
 
         kind: str = getattr(jog_state, "kind", "RUNNING")
+        if kind != self._last_kind:
+            logger.debug("%s jogging state -> %s", self.motion_group_id, kind)
+            self._last_kind = kind
         if kind == "RUNNING":
             self._paused_reason = None
             self._paused_detail = ""
