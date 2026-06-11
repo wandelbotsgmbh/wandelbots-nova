@@ -7,6 +7,7 @@ after a confirmed blocking pause (joint limit, collision, singularity).
 from __future__ import annotations
 
 import logging
+import time
 
 from policy.types import MotionError
 
@@ -31,6 +32,7 @@ class JoggingStateTracker:
         self._paused_detail: str = ""
         self._paused_count: int = 0
         self._last_kind: str | None = None
+        self._t0 = time.monotonic()
 
     @property
     def last_kind(self) -> str | None:
@@ -51,7 +53,12 @@ class JoggingStateTracker:
 
         kind: str = getattr(jog_state, "kind", "RUNNING")
         if kind != self._last_kind:
-            logger.debug("%s jogging state -> %s", self.motion_group_id, kind)
+            logger.debug(
+                "%s jogging state -> %s (+%.0fms)",
+                self.motion_group_id,
+                kind,
+                (time.monotonic() - self._t0) * 1000,
+            )
             self._last_kind = kind
         if kind == "RUNNING":
             self._paused_reason = None
