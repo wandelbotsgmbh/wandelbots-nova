@@ -184,3 +184,6 @@ DEV.md
 
 policy/examples/apps/gr00t/
 
+
+# Local-only clone examples (real-robot dry-runs, not for the repo)
+policy/examples/**/*_clone.py
