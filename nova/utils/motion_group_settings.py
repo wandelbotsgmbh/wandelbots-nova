@@ -69,7 +69,7 @@ def clamp_motion_commands_to_global_limits(
     Commands without a ``limits_override`` are passed through unchanged. Inputs are not modified.
     """
     if global_limits is None:
-        return motion_commands
+        return list(motion_commands)
     return [
         command.model_copy(
             update={
