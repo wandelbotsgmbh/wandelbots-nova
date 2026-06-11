@@ -86,6 +86,9 @@ class WaypointJoggingSession:
         # For normal chunks, store raw steps/timing and build the request at
         # yield-time so timestamps are computed as late as possible.
         self._pending_request: PendingChunk | None = None
+        # Set once the caller queues its first real chunk. Until then the loop
+        # self-primes with hold waypoints (see _queue_hold).
+        self._user_chunk_seen = False
 
         # Task management
         self._jogging_task: asyncio.Task[None] | None = None
@@ -174,6 +177,27 @@ class WaypointJoggingSession:
     def failure_exception(self) -> BaseException | None:
         return self._failure_exception
 
+    def _queue_hold(self) -> None:
+        """Queue the current position as a hold waypoint to engage jogging.
+
+        Used only at startup, before the caller's first chunk, so the robot's
+        control loop engages (PAUSED_BY_USER -> RUNNING) while the session and
+        rerun are still setting up — rather than the engagement appearing as a
+        pause at the start of the trajectory. No-op until the current position
+        is known from the state stream.
+        """
+        if self._mode == "joint":
+            if self._current_joints is None:
+                return
+            steps = [list(self._current_joints)]
+        else:
+            if self._current_tcp_pose is None:
+                return
+            steps = [list(self._current_tcp_pose.to_tuple())]
+        self._pending_request = PendingChunk(
+            steps=steps, dt_ms=100.0, first_timestamp_ms=-1, overlapping=False, backdate_ms=0
+        )
+
     def update_chunk(
         self,
         steps: list[list[float]],
@@ -222,6 +246,7 @@ class WaypointJoggingSession:
         """
         if not steps:
             return
+        self._user_chunk_seen = True
 
         # Single-step target: use a default step time
         effective_dt_ms = dt_ms if dt_ms > 0 else 100.0
@@ -389,8 +414,16 @@ class WaypointJoggingSession:
                 self._check_stop_conditions()
                 self._jog_tracker.check()
 
-                # Wait until a new chunk is available (sleep, don't send junk)
+                # Wait until a new chunk is available. Before the caller's first
+                # real chunk, self-prime with a hold at the current position so
+                # the robot's control loop engages (PAUSED_BY_USER -> RUNNING)
+                # during setup, instead of pausing at the trajectory start.
+                # Once jogging, sleep between chunks (don't send junk).
                 while self._pending_request is None and self._running:
+                    if not self._user_chunk_seen:
+                        self._queue_hold()
+                        if self._pending_request is not None:
+                            break
                     await asyncio.sleep(0.001)
 
                 if not self._running:
