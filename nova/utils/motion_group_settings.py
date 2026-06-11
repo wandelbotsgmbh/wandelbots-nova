@@ -22,8 +22,8 @@ def clamp_limits_override_to_global_limits(
     are left as-is. The input is not modified.
     """
     if global_limits is None:
-        return limits_override
-
+        # Return a copy to avoid aliasing the caller's object.
+        return limits_override.model_copy(deep=True)
     # Empty fallbacks so a missing tcp/joint maximum simply means "do not cap".
     tcp = global_limits.tcp or api.models.CartesianLimits()
     joints = global_limits.joints or []
