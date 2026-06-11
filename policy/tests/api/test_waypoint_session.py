@@ -205,37 +205,6 @@ async def test_it_initializes_the_jogging_session_before_any_waypoints():
 
 
 @pytest.mark.asyncio
-async def test_the_loop_self_primes_with_a_hold_before_any_user_chunk():
-    """At startup the loop holds the current position to engage jogging control.
-
-    The robot's control loop needs ~hundreds of ms to engage (PAUSED_BY_USER ->
-    RUNNING). Sending the current position as a hold during setup gets that out
-    of the way before the caller's trajectory starts.
-    """
-    session, server = _build_session()  # initial joints are all zero
-    try:
-        await session.start()
-        await session.wait_ready()
-
-        def _first_waypoint() -> object | None:
-            for req in server.requests:
-                inner = _inner(req)
-                if isinstance(inner, api.models.JointWaypointsRequest):
-                    return inner
-            return None
-
-        # No user chunk queued, yet a hold at the current position is sent.
-        await _wait_until(lambda: _first_waypoint() is not None)
-        hold = _first_waypoint()
-        assert list(hold.waypoints[0].joints.root) == [0.0] * 6
-    finally:
-        server.stop()
-        await session.stop()
-        for p in session._test_patches:  # type: ignore[attr-defined]
-            p.stop()
-
-
-@pytest.mark.asyncio
 async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
     """update_chunk(step) reaches the server as a JointWaypointsRequest."""
     session, server = _build_session()
@@ -245,20 +214,8 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
         target = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
         session.update_chunk(steps=[target], dt_ms=50.0, first_timestamp_ms=0)
 
-        # The loop self-primes with hold waypoints at startup, so find the
-        # request carrying our target rather than assuming it is the first.
-        def _target_sent() -> object | None:
-            for req in server.requests:
-                inner = _inner(req)
-                if (
-                    isinstance(inner, api.models.JointWaypointsRequest)
-                    and list(inner.waypoints[0].joints.root) == target
-                ):
-                    return inner
-            return None
-
-        await _wait_until(lambda: _target_sent() is not None)
-        waypoint_req = _target_sent()
+        await _wait_until(lambda: len(server.requests) >= 2)
+        waypoint_req = _inner(server.requests[1])
         assert isinstance(waypoint_req, api.models.JointWaypointsRequest)
         assert len(waypoint_req.waypoints) == 1
         sent = waypoint_req.waypoints[0]
