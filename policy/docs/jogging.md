@@ -57,12 +57,12 @@ async with jog_joints(mg) as jogger:
 For time-parameterised motion (e.g. a sinusoid), drive it with `jogger.elapsed`
 rather than your own `time.monotonic()` anchor. `elapsed` is the number of
 seconds since the **jogging motion actually started** — it stays `0.0` until the
-server confirms its motion timer is running (the first waypoint is being
-executed), then ticks from zero.
+server confirms its motion timer is running *and* a short warm-up has passed,
+then ticks from zero.
 
-This matters on real hardware: there is a ~0.4s dead-time between the first
-waypoint and the control loop engaging. Because `elapsed` holds at `0.0` during
-that window, your loop keeps sending the start target (the robot holds position
+This matters on real hardware: the server timestamp arrives ~0.4s before the
+robot's control loop mechanically engages. `elapsed` holds at `0.0` through that
+spin-up, so your loop keeps sending the start target (the robot holds position
 while control engages) instead of letting the target run ahead — which would
 otherwise force a hard catch-up jump on the first move.
 
