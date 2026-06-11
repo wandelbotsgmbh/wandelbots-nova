@@ -77,6 +77,22 @@ async with jog_joints(mg) as jogger:
         jogger.set_target(target)
 ```
 
+## Ease-in (`ease_in_s`)
+
+A time-parameterised target with non-zero velocity at `t=0` (a sinusoid has
+maximum velocity there) makes the robot lunge from a standstill to full speed on
+the first move. Pass `ease_in_s` to `jog_joints`/`jog_tcp` to ramp motion up from
+zero over the first N seconds: each target is blended from the robot's start
+position toward the requested value by `min(1, t / ease_in_s)`, so velocity
+starts at zero and is unchanged after the window. It is **off by default**
+(`ease_in_s=0`).
+
+```python
+async with jog_joints(mg, ease_in_s=1.0) as jogger:  # gentle 1s ramp
+    async for _ in jogger:
+        ...
+```
+
 ## Dual-arm
 
 ```python

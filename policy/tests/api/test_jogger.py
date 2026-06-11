@@ -59,7 +59,7 @@ def _fake_session(num_joints: int = 6, *, mode: str = "joint") -> MagicMock:
     return session
 
 
-def _build_joint_jogger(*mg_ids: str, num_joints: int = 6) -> _JointSetup:
+def _build_joint_jogger(*mg_ids: str, num_joints: int = 6, ease_in_s: float = 0.0) -> _JointSetup:
     """Build a real joint jogger over fake robot transports.
 
     The transport is only patched while the jogger is being constructed (that
@@ -74,7 +74,7 @@ def _build_joint_jogger(*mg_ids: str, num_joints: int = 6) -> _JointSetup:
         return sessions[motion_group]
 
     with patch("policy.jogging.jogger.WaypointJoggingSession", side_effect=make_session):
-        jogger = jog_joints(mgs if len(mgs) > 1 else mgs[0])
+        jogger = jog_joints(mgs if len(mgs) > 1 else mgs[0], ease_in_s=ease_in_s)
     return jogger, mgs, sessions
 
 
@@ -105,6 +105,19 @@ def test_setting_a_single_target_streams_it_to_the_robot():
         steps=[[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]], dt_ms=0.0
     )
     assert jogger.target == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+
+
+def test_ease_in_starts_motion_from_the_standstill_baseline():
+    """With ease_in_s set, the first target (at elapsed 0) collapses to the
+    robot's start position, so motion begins from a standstill instead of
+    jumping to the target's initial speed. Default (no ease-in) sends the raw
+    target — see test_setting_a_single_target_streams_it_to_the_robot.
+    """
+    # Fake session reports its current position as all zeros (the baseline).
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", ease_in_s=1.0)
+    jogger.set_target([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    sent = sessions[mg].update_chunk.call_args.kwargs["steps"][0]
+    assert sent == [0.0] * 6  # held at the start baseline, not the raw target
 
 
 def test_setting_a_chunk_streams_every_step_and_tracks_the_last():

@@ -57,6 +57,7 @@ class _BaseJogger:
         sessions: dict[MotionGroup, WaypointJoggingSession],
         *,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
+        ease_in_s: float = 0.0,
     ) -> None:
         self._mg_list = mg_list
         self._multi = len(mg_list) > 1
@@ -66,6 +67,8 @@ class _BaseJogger:
         self._rerun: PolicyRerunLogger | None = None
         self._loop_t0: float | None = None
         self._first_yield_t: float | None = None
+        self._ease_in_s = ease_in_s
+        self._ease_baseline: dict[MotionGroup, list[float]] = {}
 
     @property
     def elapsed(self) -> float:
@@ -91,6 +94,43 @@ class _BaseJogger:
         session = self._sessions.get(mg)
         return session.num_joints if session else None
 
+    def _ease_steps(
+        self, mg: MotionGroup, steps: list[list[float]], dt_ms: float
+    ) -> list[list[float]]:
+        """Blend targets toward a start baseline during the ease-in window.
+
+        Optional, off by default (``ease_in_s == 0``). When enabled, each step is
+        interpolated from the robot's position at jogging start toward the
+        requested target by ``min(1, t / ease_in_s)`` — so motion (and velocity)
+        ramps up smoothly from zero over the first ``ease_in_s`` seconds and is
+        unchanged afterwards. Each step uses its own time within a chunk.
+        """
+        if self._ease_in_s <= 0 or not steps:
+            return steps
+        session = self._sessions.get(mg)
+        if session is None:
+            return steps
+        base = self._ease_baseline.get(mg)
+        if base is None:
+            state = session.current_state
+            if state is None:
+                return steps  # no baseline yet; ease nothing this push
+            base = (
+                list(state.joints)
+                if session.mode == "joint"
+                else list(state.pose.position) + list(state.pose.orientation)
+            )
+            self._ease_baseline[mg] = base
+        t0 = self.elapsed
+        eased: list[list[float]] = []
+        for i, step in enumerate(steps):
+            e = min(1.0, (t0 + i * dt_ms / 1000.0) / self._ease_in_s)
+            if e >= 1.0:
+                eased.append(step)
+            else:
+                eased.append([base[k] + e * (step[k] - base[k]) for k in range(len(step))])
+        return eased
+
     def _validate_and_push(self, mg: MotionGroup, values: list[float]) -> None:
         """Validate target dimensions and push to session."""
         expected = self._expected_dims(mg)
@@ -101,7 +141,7 @@ class _BaseJogger:
         if session is not None:
             # Single-step: use relative placement (server places the target one
             # step in the future, from its current position).
-            session.update_chunk(steps=[values], dt_ms=0.0)
+            session.update_chunk(steps=self._ease_steps(mg, [values], 0.0), dt_ms=0.0)
         self._log_target(mg.id, [values], 0.0)
 
     def _push_target(self, mg: MotionGroup, value: list, dt_ms: float) -> list[float]:
@@ -112,7 +152,7 @@ class _BaseJogger:
         if value and isinstance(value[0], list):
             # Chunked: use absolute placement for smooth overlapping
             session.update_chunk(
-                steps=value,
+                steps=self._ease_steps(mg, value, dt_ms),
                 dt_ms=dt_ms,
                 first_timestamp_ms=session.session_elapsed_ms,
             )
@@ -276,6 +316,7 @@ class JointJogger(_BaseJogger):
         config: WaypointConfig | None = None,
         stop_conditions: list[StopCondition] | None = None,
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
+        ease_in_s: float = 0.0,
     ) -> None:
         cfg = config or WaypointConfig()
         sessions: dict[MotionGroup, WaypointJoggingSession] = {}
@@ -293,7 +334,9 @@ class JointJogger(_BaseJogger):
                 home_dict = start_joint_position
             else:
                 home_dict = {motion_groups[0]: start_joint_position}
-        super().__init__(motion_groups, sessions, start_joint_position=home_dict)
+        super().__init__(
+            motion_groups, sessions, start_joint_position=home_dict, ease_in_s=ease_in_s
+        )
         self._target: dict[MotionGroup, list[float]] | None = None
 
     @property
@@ -362,6 +405,7 @@ class TcpJogger(_BaseJogger):
         config: WaypointConfig | None = None,
         stop_conditions: list[StopCondition] | None = None,
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
+        ease_in_s: float = 0.0,
     ) -> None:
         cfg = config or WaypointConfig()
         sessions: dict[MotionGroup, WaypointJoggingSession] = {}
@@ -381,7 +425,7 @@ class TcpJogger(_BaseJogger):
                 home_dict = start_joint_position
             else:
                 home_dict = {mg_list[0]: start_joint_position}
-        super().__init__(mg_list, sessions, start_joint_position=home_dict)
+        super().__init__(mg_list, sessions, start_joint_position=home_dict, ease_in_s=ease_in_s)
         self._target: dict[MotionGroup, Pose] | None = None
 
     def _expected_dims(self, mg: MotionGroup) -> int | None:  # noqa: ARG002
@@ -458,6 +502,7 @@ def jog_joints(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
+    ease_in_s: float = ...,
 ) -> JointJogger: ...
 
 
@@ -468,6 +513,7 @@ def jog_joints(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
+    ease_in_s: float = ...,
 ) -> JointJogger: ...
 
 
@@ -477,6 +523,7 @@ def jog_joints(
     config: WaypointConfig | None = None,
     stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
+    ease_in_s: float = 0.0,
 ) -> JointJogger:
     """Create a joint position jogger using server-side waypoint jogging.
 
@@ -488,6 +535,9 @@ def jog_joints(
         start_joint_position: Joint positions to PTP-move to before starting jogging.
             Single list for one robot, or dict mapping each motion group
             to its start_joint_position joints for multi-robot.
+        ease_in_s: If > 0, ramp motion up from a standstill over this many
+            seconds at the start, so velocity begins at zero instead of jumping
+            to the target's initial speed. Default 0 (disabled).
 
     Returns:
         A :class:`JointJogger` async context manager.
@@ -510,6 +560,7 @@ def jog_joints(
         config=config,
         stop_conditions=stop_conditions,
         start_joint_position=start_joint_position,
+        ease_in_s=ease_in_s,
     )
 
 
@@ -521,6 +572,7 @@ def jog_tcp(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
+    ease_in_s: float = ...,
 ) -> TcpJogger: ...
 
 
@@ -541,6 +593,7 @@ def jog_tcp(
     config: WaypointConfig | None = None,
     stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
+    ease_in_s: float = 0.0,
 ) -> TcpJogger:
     """Create a TCP pose jogger using server-side waypoint jogging.
 
@@ -554,6 +607,9 @@ def jog_tcp(
         start_joint_position: Joint positions to PTP-move to before starting jogging.
             Single list for one robot, or dict mapping each motion group
             to its start joints for multi-robot.
+        ease_in_s: If > 0, ramp motion up from a standstill over this many
+            seconds at the start, so velocity begins at zero instead of jumping
+            to the target's initial speed. Default 0 (disabled).
 
     Returns:
         A :class:`TcpJogger` async context manager.
@@ -575,10 +631,12 @@ def jog_tcp(
             config=config,
             stop_conditions=stop_conditions,
             start_joint_position=start_joint_position,
+            ease_in_s=ease_in_s,
         )
     return TcpJogger(
         {motion_groups: tcp},
         config=config,
         stop_conditions=stop_conditions,
         start_joint_position=start_joint_position,
+        ease_in_s=ease_in_s,
     )
