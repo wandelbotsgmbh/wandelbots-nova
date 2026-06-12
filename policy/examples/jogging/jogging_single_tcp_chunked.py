@@ -6,7 +6,6 @@ Uses 100-step chunks at 10ms for smooth motion with 1s lookahead.
 import math
 
 import nova
-from nova import run_program, viewers
 from policy import jog_tcp
 
 START_JOINTS = [1.169, -0.733, 1.745, -3.054, 0.872, 2.094]
@@ -15,7 +14,7 @@ START_JOINTS = [1.169, -0.733, 1.745, -3.054, 0.872, 2.094]
 @nova.program(
     id="jogging_single_tcp_chunked",
     name="Single-Arm TCP Jogging (Chunked)",
-    viewer=viewers.Rerun(),
+    viewer=nova.viewers.Rerun(),
 )
 async def main(ctx: nova.ProgramContext):
     cell = ctx.nova.cell()
@@ -56,4 +55,4 @@ async def main(ctx: nova.ProgramContext):
 
 
 if __name__ == "__main__":
-    run_program(main)
+    nova.run_program(main)

@@ -27,7 +27,6 @@ from typing import Any
 import pyarrow.parquet as pq
 
 import nova
-from nova import api, run_program, viewers
 from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -44,17 +43,17 @@ CHUNK_SIZE = 8
     id="replay_episode",
     name="Replay Dataset Episode",
     description="Replays a recorded parquet episode on two UR5e robots via waypoint jogging.",
-    viewer=viewers.Rerun(),
+    viewer=nova.viewers.Rerun(),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name="ur5e-left",
-                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                manufacturer=nova.api.models.Manufacturer.UNIVERSALROBOTS,
                 type="universalrobots-ur5e",
             ),
             virtual_controller(
                 name="ur5e-right",
-                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                manufacturer=nova.api.models.Manufacturer.UNIVERSALROBOTS,
                 type="universalrobots-ur5e",
             ),
         ],
@@ -147,4 +146,4 @@ async def replay_episode(ctx: nova.ProgramContext):
 
 
 if __name__ == "__main__":
-    run_program(replay_episode)
+    nova.run_program(replay_episode)

@@ -2,6 +2,20 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "_CHUNK_COLOR_END",
+    "_CHUNK_COLOR_START",
+    "_CHUNK_TAIL_COLOR",
+    "_CHUNK_TAIL_WIDTH_UI",
+    "_CHUNK_WIDTH_UI",
+    "_MIN_LINE_STEPS",
+    "_MIN_TCP_COMPONENTS",
+    "_TCP_TRAIL_COLOR",
+    "_TEMPORAL_FRAME_NDIM",
+    "_TRAIL_WIDTH_UI",
+    "lerp_color",
+]
+
 _MIN_LINE_STEPS = 2
 _MIN_TCP_COMPONENTS = 3
 _TEMPORAL_FRAME_NDIM = 4
