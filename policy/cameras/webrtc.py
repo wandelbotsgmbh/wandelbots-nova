@@ -193,6 +193,7 @@ class WebRTCConnection:
                 if not self._frame_event.is_set():
                     self._frame_event.set()
         except (asyncio.CancelledError, MediaStreamError):
+            # Expected when the track ends or the task is cancelled on shutdown.
             pass
         except (OSError, RuntimeError) as e:
             logger.debug("Camera '%s' frame receiver stopped: %s", self._name, e)
