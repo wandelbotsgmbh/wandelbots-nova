@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.4.2 (2026-06-12)
+
+### Bug Fixes
+
+- **NDX-728**: Clamp joint limits based on mg limits, added entire.io (#431)
+  ([#431](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/431),
+  [`7a06a3a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7a06a3af7f558eb040289f9298abe46963ee737a))
+
+
 ## v5.4.1 (2026-06-09)
 
 ### Bug Fixes
