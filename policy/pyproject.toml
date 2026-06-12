@@ -8,7 +8,7 @@
 [project]
 name = "nova-policy"
 version = "0.1.0-alpha"
-description = "EXPERIMENTAL: PID-controlled jogging for policy execution on NOVA robots"
+description = "EXPERIMENTAL: waypoint-jogging-based policy execution for NOVA robots"
 requires-python = ">=3.12"
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -54,7 +54,7 @@ select = [
 ignore = [
     "E501",    # Line too long (formatter handles this)
     "S101",    # Allow assert (tests might import from here)
-    "PLR0913", # Too many arguments (PID controller needs them)
+    "PLR0913", # Too many arguments
 ]
 
 [tool.ruff.lint.mccabe]
