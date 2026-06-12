@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any
 
-from policy.rerun.constants import _MIN_LINE_STEPS, _TCP_TRAIL_COLOR, _TRAIL_WIDTH_UI
+from policy.rerun.constants import MIN_LINE_STEPS, TCP_TRAIL_COLOR, TRAIL_WIDTH_UI
 import rerun as rr
 
 if TYPE_CHECKING:
@@ -58,20 +58,20 @@ def log_observation(
             trail.append(tcp_pos)
             if len(trail) > max_trail_points:
                 trail.pop(0)
-            if len(trail) >= _MIN_LINE_STEPS:
+            if len(trail) >= MIN_LINE_STEPS:
                 rr.log(
                     f"policy/{mg_id}/tcp_trail",
                     rr.LineStrips3D(
                         [trail],
-                        colors=[_TCP_TRAIL_COLOR],
-                        radii=rr.components.Radius.ui_points(_TRAIL_WIDTH_UI),
+                        colors=[TCP_TRAIL_COLOR],
+                        radii=rr.components.Radius.ui_points(TRAIL_WIDTH_UI),
                     ),
                 )
             rr.log(
                 f"policy/{mg_id}/tcp",
                 rr.Points3D(
                     [tcp_pos],
-                    colors=[_TCP_TRAIL_COLOR],
+                    colors=[TCP_TRAIL_COLOR],
                     radii=rr.components.Radius.ui_points(4.0),
                 ),
             )

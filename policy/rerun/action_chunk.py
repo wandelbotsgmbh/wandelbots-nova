@@ -6,13 +6,13 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from policy.rerun.constants import (
-    _CHUNK_COLOR_END,
-    _CHUNK_COLOR_START,
-    _CHUNK_TAIL_COLOR,
-    _CHUNK_TAIL_WIDTH_UI,
-    _CHUNK_WIDTH_UI,
-    _MIN_LINE_STEPS,
-    _MIN_TCP_COMPONENTS,
+    CHUNK_COLOR_END,
+    CHUNK_COLOR_START,
+    CHUNK_TAIL_COLOR,
+    CHUNK_TAIL_WIDTH_UI,
+    CHUNK_WIDTH_UI,
+    MIN_LINE_STEPS,
+    MIN_TCP_COMPONENTS,
     lerp_color,
 )
 import rerun as rr
@@ -80,7 +80,7 @@ def _log_joint_chunk(
             f"policy/{mg_id}/action_chunk",
             executed_positions,
             gradient=True,
-            width=_CHUNK_WIDTH_UI,
+            width=CHUNK_WIDTH_UI,
         )
 
         # Log discarded tail in dim gray
@@ -125,35 +125,32 @@ def _log_tcp_chunk(
         executed = steps[:split]
         discarded = steps[split:]
 
-        executed_positions = [[s[0], s[1], s[2]] for s in executed if len(s) >= _MIN_TCP_COMPONENTS]
-        if len(executed_positions) >= _MIN_LINE_STEPS:
+        executed_positions = [[s[0], s[1], s[2]] for s in executed if len(s) >= MIN_TCP_COMPONENTS]
+        if len(executed_positions) >= MIN_LINE_STEPS:
             n = len(executed_positions)
             colors = [
-                lerp_color(_CHUNK_COLOR_START, _CHUNK_COLOR_END, i / max(n - 1, 1))
-                for i in range(n)
+                lerp_color(CHUNK_COLOR_START, CHUNK_COLOR_END, i / max(n - 1, 1)) for i in range(n)
             ]
             rr.log(
                 f"policy/{mg_id}/action_chunk_tcp",
                 rr.LineStrips3D(
                     [executed_positions],
                     colors=colors,
-                    radii=rr.components.Radius.ui_points(_CHUNK_WIDTH_UI),
+                    radii=rr.components.Radius.ui_points(CHUNK_WIDTH_UI),
                 ),
             )
 
         if discarded:
-            tail_positions = [
-                [s[0], s[1], s[2]] for s in discarded if len(s) >= _MIN_TCP_COMPONENTS
-            ]
+            tail_positions = [[s[0], s[1], s[2]] for s in discarded if len(s) >= MIN_TCP_COMPONENTS]
             if executed_positions:
                 tail_positions = [executed_positions[-1], *tail_positions]
-            if len(tail_positions) >= _MIN_LINE_STEPS:
+            if len(tail_positions) >= MIN_LINE_STEPS:
                 rr.log(
                     f"policy/{mg_id}/action_chunk_tcp_tail",
                     rr.LineStrips3D(
                         [tail_positions],
-                        colors=[_CHUNK_TAIL_COLOR],
-                        radii=rr.components.Radius.ui_points(_CHUNK_TAIL_WIDTH_UI),
+                        colors=[CHUNK_TAIL_COLOR],
+                        radii=rr.components.Radius.ui_points(CHUNK_TAIL_WIDTH_UI),
                     ),
                 )
         else:
@@ -182,7 +179,7 @@ def _log_text(
         if steps:
             joints_fmt = lambda j: "[" + ", ".join(f"{v:.4f}" for v in j) + "]"  # noqa: E731
             lines.append(f"    [0]   {joints_fmt(steps[0])}")
-            if n_steps > _MIN_LINE_STEPS:
+            if n_steps > MIN_LINE_STEPS:
                 mid = n_steps // 2
                 lines.append(f"    [{mid}] {joints_fmt(steps[mid])}")
             if n_steps > 1:
@@ -222,12 +219,12 @@ def _log_line_strip(
 ) -> None:
     """Log a line strip with gradient or uniform color."""
 
-    if len(positions) >= _MIN_LINE_STEPS:
+    if len(positions) >= MIN_LINE_STEPS:
         n = len(positions)
         colors = (
-            [lerp_color(_CHUNK_COLOR_START, _CHUNK_COLOR_END, i / max(n - 1, 1)) for i in range(n)]
+            [lerp_color(CHUNK_COLOR_START, CHUNK_COLOR_END, i / max(n - 1, 1)) for i in range(n)]
             if gradient
-            else [_CHUNK_COLOR_START] * n
+            else [CHUNK_COLOR_START] * n
         )
         rr.log(
             entity_path,
@@ -242,7 +239,7 @@ def _log_line_strip(
             entity_path,
             rr.Points3D(
                 positions,
-                colors=[_CHUNK_COLOR_START],
+                colors=[CHUNK_COLOR_START],
                 radii=rr.components.Radius.ui_points(4.0),
             ),
         )
@@ -264,12 +261,12 @@ def _log_discarded_tail(
     tail_positions = [_step_to_tcp(dh_robot, jt, tcp_offset) for jt in discarded_steps]
     if bridge_from:
         tail_positions = [bridge_from[-1], *tail_positions]
-    if len(tail_positions) >= _MIN_LINE_STEPS:
+    if len(tail_positions) >= MIN_LINE_STEPS:
         rr.log(
             entity_path,
             rr.LineStrips3D(
                 [tail_positions],
-                colors=[_CHUNK_TAIL_COLOR],
-                radii=rr.components.Radius.ui_points(_CHUNK_TAIL_WIDTH_UI),
+                colors=[CHUNK_TAIL_COLOR],
+                radii=rr.components.Radius.ui_points(CHUNK_TAIL_WIDTH_UI),
             ),
         )

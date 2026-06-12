@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from policy.rerun.constants import _TEMPORAL_FRAME_NDIM
+from policy.rerun.constants import TEMPORAL_FRAME_NDIM
 import rerun as rr
 
 
@@ -18,5 +18,5 @@ def log_images(images: dict[str, Any], *, start_time: float) -> None:
         if frame is None:
             continue
         if hasattr(frame, "ndim"):
-            img = frame[-1] if frame.ndim == _TEMPORAL_FRAME_NDIM else frame
+            img = frame[-1] if frame.ndim == TEMPORAL_FRAME_NDIM else frame
             rr.log(f"policy/cameras/{name}", rr.Image(img))
