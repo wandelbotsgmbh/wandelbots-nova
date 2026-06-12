@@ -1,6 +1,30 @@
 # CHANGELOG
 
 
+## v5.4.1 (2026-06-09)
+
+### Bug Fixes
+
+- Fixed cursor index clamping (#430)
+  ([#430](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/430),
+  [`6225a7d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6225a7d6e0e04d9806066693053ff74cfb8c6b01))
+
+
+## v5.4.0 (2026-06-09)
+
+### Bug Fixes
+
+- **NDX-440**: Issues with io_write actions (#411)
+  ([#411](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/411),
+  [`90d3d0d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/90d3d0d1b6234168acc164aaf930489112d430b9))
+
+### Features
+
+- **NDX-767**: Show complete action selection (not just the line) (#429)
+  ([#429](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/429),
+  [`b95fd48`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b95fd487eeb15f5560b1d9f00d0db1733e0d4c25))
+
+
 ## v5.3.0 (2026-06-04)
 
 ### Features

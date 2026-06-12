@@ -6,6 +6,8 @@ from typing import Any, ClassVar
 
 import pydantic
 
+from nova.utils import SourceLocation
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,6 +21,22 @@ class Action(pydantic.BaseModel, ABC):
     @classmethod
     def ensure_dict(cls, v):
         return {} if v is None else dict(v)
+
+    @property
+    def source_location(self) -> SourceLocation | None:
+        """The exact source-code span of this action's call expression, if known.
+
+        Returns the span captured when the action was created (see
+        :func:`nova.utils.get_caller_metas`), or ``None`` when no source
+        information is available. This is the precise selection an editor should
+        highlight for a single action.
+        """
+        raw = self.metas.get("source_location")
+        if raw is None:
+            return None
+        if isinstance(raw, SourceLocation):
+            return raw
+        return SourceLocation.model_validate(raw)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

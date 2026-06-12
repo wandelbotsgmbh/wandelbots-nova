@@ -1,11 +1,16 @@
 """Tests for TrajectoryCursor action index and location logic."""
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
 
 from nova.actions.motions import lin
-from nova.cell.movement_controller.trajectory_cursor import MovementOption, TrajectoryCursor
+from nova.cell.movement_controller.trajectory_cursor import (
+    MovementOption,
+    TrajectoryCursor,
+    action_index_for_location,
+)
 from nova.types import Pose
 
 
@@ -32,7 +37,7 @@ def create_cursor(num_actions: int, initial_location: float) -> TrajectoryCursor
     [
         pytest.param(0.0, 0, id="at_trajectory_start"),
         pytest.param(0.5, 0, id="midway_through_first_action"),
-        pytest.param(1.0, 1, id="at_action_boundary"),
+        pytest.param(1.0, 0, id="at_action_boundary_belongs_to_finished_action"),
         pytest.param(1.7, 1, id="midway_through_middle_action"),
         pytest.param(2.5, 2, id="at_last_action"),
         pytest.param(3.0, 2, id="at_trajectory_end_clamps_to_last"),
@@ -117,7 +122,7 @@ def test_previous_action_start(location, expected):
     [
         pytest.param(3, 0.0, False, id="at_trajectory_start_returns_none"),
         pytest.param(3, 0.5, False, id="in_first_action_returns_none"),
-        pytest.param(3, 1.0, True, id="at_second_action_boundary"),
+        pytest.param(3, 1.0, False, id="at_first_action_end_boundary_returns_none"),
         pytest.param(3, 1.5, True, id="in_second_action"),
         pytest.param(3, 2.5, True, id="in_last_action"),
         pytest.param(1, 0.5, False, id="single_action_returns_none"),
@@ -245,3 +250,65 @@ def test_motion_event_with_no_actions():
     # Should serialize without error
     json_data = event.model_dump_json()
     assert '"current_action":null' in json_data or '"current_action": null' in json_data
+
+
+@pytest.mark.parametrize(
+    "location, num_actions, expected",
+    [
+        pytest.param(0.0, 3, 0, id="at_start"),
+        pytest.param(0.5, 3, 0, id="within_first"),
+        pytest.param(1.0, 3, 0, id="at_boundary_belongs_to_finished_action"),
+        pytest.param(2.9, 3, 2, id="within_last"),
+        pytest.param(3.0, 3, 2, id="at_end_clamps"),
+        pytest.param(9.0, 3, 2, id="beyond_end_clamps"),
+        pytest.param(0.0, 1, 0, id="single_action_start"),
+        pytest.param(1.0, 1, 0, id="single_action_end_clamps"),
+    ],
+)
+def test_action_index_for_location(location, num_actions, expected):
+    assert action_index_for_location(location, num_actions) == expected
+
+
+def test_motion_event_includes_source_spans():
+    """Forward motion highlights the last visited action and targets the next one."""
+    cursor = create_cursor(num_actions=3, initial_location=1.5)
+    # Forward through segment [1, 2]: highlight action at 1.0, target action at 2.0.
+    last_visited = cursor._action_at_location(1.0)
+    heading_to = cursor._action_at_location(2.0)
+
+    event = cursor._get_motion_event(forward=True)
+
+    assert event.current_action_source is not None
+    assert event.current_action_source.start_line is not None
+    assert event.current_action is last_visited
+    assert event.current_action_source == last_visited.source_location
+    assert event.target_location == 2.0
+    assert event.target_action is heading_to
+    assert event.target_action_source == heading_to.source_location
+
+
+def test_motion_event_backward_highlights_last_visited():
+    """Backward motion highlights the action just left and targets the lower boundary."""
+    cursor = create_cursor(num_actions=3, initial_location=1.5)
+    # Backward through segment [1, 2]: highlight action at 2.0, target action at 1.0.
+    last_visited = cursor._action_at_location(2.0)
+    heading_to = cursor._action_at_location(1.0)
+
+    event = cursor._get_motion_event(forward=False)
+
+    assert event.current_action is last_visited
+    assert event.current_action_source == last_visited.source_location
+    assert event.target_location == 1.0
+    assert event.target_action is heading_to
+    assert event.target_action_source == heading_to.source_location
+
+
+def test_motion_event_source_spans_serialize():
+    """Source spans are part of the serialized payload sent to the editor."""
+    cursor = create_cursor(num_actions=2, initial_location=0.0)
+    event = cursor._get_motion_event()
+
+    payload = json.loads(event.model_dump_json())
+    assert payload["current_action_source"] is not None
+    assert payload["current_action_source"]["start_line"] is not None
+    assert payload["current_action_source"] == event.current_action_source.model_dump()
