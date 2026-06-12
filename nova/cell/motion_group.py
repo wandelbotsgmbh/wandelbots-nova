@@ -23,7 +23,10 @@ from nova.utils.collision_setup import (
     validate_collision_setups,
 )
 from nova.utils.joint_trajectory import combine_trajectories
-from nova.utils.motion_group_settings import update_motion_group_setup_with_motion_settings
+from nova.utils.motion_group_settings import (
+    clamp_motion_commands_to_global_limits,
+    update_motion_group_setup_with_motion_settings,
+)
 
 from .movement_controller import move_forward
 from .robot_cell import AbstractRobot
@@ -689,6 +692,13 @@ class MotionGroup(AbstractRobot):
             motion_group_setup.collision_setups.root["collision-check"] = first_collision_setup
 
         motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()
+
+        # Clamp per-segment limit overrides to the motion group's global max limits so that
+        # too-high per-motion limits do not force the planner to produce a trajectory that
+        # gets down-scaled across its whole length at execution time.
+        motion_commands = clamp_motion_commands_to_global_limits(
+            motion_commands, motion_group_setup.global_limits
+        )
 
         # Plan the trajectory
         plan_trajectory_response = await self._api_client.trajectory_planning_api.plan_trajectory(
