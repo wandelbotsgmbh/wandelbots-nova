@@ -534,7 +534,8 @@ def jog_joints(
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
     ease_in_s: float = ...,
-) -> JointJogger: ...
+) -> JointJogger:
+    pass
 
 
 @overload
@@ -545,7 +546,8 @@ def jog_joints(
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
     ease_in_s: float = ...,
-) -> JointJogger: ...
+) -> JointJogger:
+    pass
 
 
 def jog_joints(
@@ -604,7 +606,8 @@ def jog_tcp(
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
     ease_in_s: float = ...,
-) -> TcpJogger: ...
+) -> TcpJogger:
+    pass
 
 
 @overload
@@ -614,7 +617,8 @@ def jog_tcp(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
-) -> TcpJogger: ...
+) -> TcpJogger:
+    pass
 
 
 def jog_tcp(

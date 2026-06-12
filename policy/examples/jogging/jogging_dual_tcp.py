@@ -3,7 +3,6 @@
 import math
 
 import nova
-from nova import run_program, viewers
 from nova.types import Pose
 from policy import jog_tcp
 
@@ -14,7 +13,7 @@ HOME_RIGHT = [-1.169, -2.3911, -1.8675, 0.0, -0.872, -2.094]
 @nova.program(
     id="jogging_dual_tcp",
     name="Dual-Arm TCP Jogging",
-    viewer=viewers.Rerun(),
+    viewer=nova.viewers.Rerun(),
 )
 async def main(ctx: nova.ProgramContext):
     cell = ctx.nova.cell()
@@ -64,4 +63,4 @@ async def main(ctx: nova.ProgramContext):
 
 
 if __name__ == "__main__":
-    run_program(main)
+    nova.run_program(main)

@@ -3,7 +3,6 @@
 import math
 
 import nova
-from nova import run_program, viewers
 from policy import jog_joints
 
 HOME_LEFT = [1.169, -0.733, 1.745, -3.054, 0.872, 2.094]
@@ -13,7 +12,7 @@ HOME_RIGHT = [-1.169, -2.3911, -1.8675, 0.0, -0.872, -2.094]
 @nova.program(
     id="jogging_dual_joint",
     name="Dual-Arm Joint Jogging",
-    viewer=viewers.Rerun(),
+    viewer=nova.viewers.Rerun(),
 )
 async def main(ctx: nova.ProgramContext):
     cell = ctx.nova.cell()
@@ -40,4 +39,4 @@ async def main(ctx: nova.ProgramContext):
 
 
 if __name__ == "__main__":
-    run_program(main)
+    nova.run_program(main)
