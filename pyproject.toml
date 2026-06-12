@@ -93,13 +93,6 @@ dev = [
     "pytest-xdist>=3.8.0",
 ]
 
-[tool.uv]
-prerelease = "allow"
-
-[[tool.uv.index]]
-name = "wandelbots"
-url = "https://code.wabo.run/api/v4/projects/889/packages/pypi/simple"
-
 [tool.hatch.metadata]
 allow-direct-references = true
 
