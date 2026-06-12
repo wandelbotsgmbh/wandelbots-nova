@@ -41,11 +41,19 @@ def log_observation(
         if visualizer is not None:
             visualizer.log_robot_geometry(joint_position=joints)
 
-        # TCP trail (actual path in green, screen-space width)
-        dh_robot = dh_robots.get(mg_id)
-        if dh_robot is not None:
-            positions = dh_robot.calculate_joint_positions(joints)
-            tcp_pos = positions[-1]
+        # TCP trail (actual path in green, screen-space width). Prefer the real
+        # TCP pose reported by the robot (honours the active TCP offset) so the
+        # trail lines up with the action chunk and the robot's TCP; fall back to
+        # DH flange FK only if no pose is available.
+        tcp_pos: list[float] | None = None
+        pose = getattr(state, "pose", None)
+        if pose is not None:
+            tcp_pos = list(pose.position)
+        else:
+            dh_robot = dh_robots.get(mg_id)
+            if dh_robot is not None:
+                tcp_pos = dh_robot.calculate_joint_positions(joints)[-1]
+        if tcp_pos is not None:
             trail = tcp_trail[mg_id]
             trail.append(tcp_pos)
             if len(trail) > max_trail_points:
