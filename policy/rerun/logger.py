@@ -77,13 +77,12 @@ class PolicyRerunLogger:
                 # trail) instead of at the flange. Best-effort; falls back to
                 # the flange if the TCP can't be resolved.
                 try:
+                    from policy.rerun.kinematics import tcp_offset_matrix  # noqa: PLC0415
+
                     active_tcp = await mg.active_tcp_name()
                     if active_tcp is not None:
                         off = await mg.tcp_offset(active_tcp)
-                        self._tcp_offsets[mg.id] = DHRobot.matrix_from_position_rotvec(
-                            (off.position.x, off.position.y, off.position.z),
-                            (off.orientation.x, off.orientation.y, off.orientation.z),
-                        )
+                        self._tcp_offsets[mg.id] = tcp_offset_matrix(off)
                 except (OSError, RuntimeError, ValueError, TypeError, KeyError) as e:
                     logger.debug("TCP offset query failed for %s: %s", mg.id, e)
 
