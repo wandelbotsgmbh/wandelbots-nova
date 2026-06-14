@@ -68,3 +68,17 @@ For multi-step tasks, state a brief plan:
 Strong success criteria allow independent iteration. Weak criteria (“make it work”) invite endless clarification.
 
 ---
+
+## NOVA API (v2)
+
+The SDK targets the **released** NOVA API v2. Treat the installed `wandelbots_api_client`
+(`nova.api` re-exports `wandelbots_api_client.v2_pydantic`) as the source of truth — it matches
+the released API, whereas an internal/nightly spec may contain fields that are not released yet.
+
+**For anything involving the NOVA API — model field names, motion planning requests
+(`plan_trajectory`, `MotionGroupSetup`, `LimitSet`, `LimitsOverride`), robot limits, or
+torque/velocity/acceleration/jerk limits — use the `nova-api-v2` skill**
+(`.agents/skills/nova-api-v2/SKILL.md`). It documents how to verify fields against the installed
+client, the planning data flow, and the key limits/torque rules (e.g. `torque` is a
+motion-group-global per-joint limit with no per-segment override, and controller-reported torque
+is already forwarded to the planner via `global_limits`).
