@@ -1,0 +1,83 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "4bfb35d08aaf",
+  "session_id": "4ab52a8a-9277-4983-8438-6fe99dd0443a",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-14T22:56:37.93558Z",
+  "branch": "fix/NDX-752",
+  "checkpoints_count": 4,
+  "files_touched": [
+    ".agents/skills/nova-api-v2/SKILL.md",
+    "AGENTS.md",
+    "tests/nova/utils/test_collision_setup.py"
+  ],
+  "agent": "Copilot CLI",
+  "model": "",
+  "turn_id": "06825515f488",
+  "checkpoint_transcript_start": 433,
+  "transcript_lines_at_start": 433,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-14T22:56:37.921265Z",
+    "agent_lines": 23,
+    "agent_removed": 0,
+    "human_added": 135,
+    "human_modified": 36,
+    "human_removed": 0,
+    "total_committed": 182,
+    "total_lines_changed": 194,
+    "agent_percentage": 11.855670103092782,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 59,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 57,
+      "user_lines_removed": 12,
+      "agent_lines_added": 59,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "tests/nova/utils/test_collision_setup.py": 57
+      },
+      "user_removed_per_file": {
+        "tests/nova/utils/test_collision_setup.py": 12
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 57,
+      "user_lines_removed": 12,
+      "agent_lines_added": 177,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "tests/nova/utils/test_collision_setup.py": 57
+      },
+      "user_removed_per_file": {
+        "tests/nova/utils/test_collision_setup.py": 12
+      }
+    }
+  ]
+}

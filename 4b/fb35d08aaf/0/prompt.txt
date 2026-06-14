@@ -1,0 +1,47 @@
+The Kuka controller now reads the torque limits from the controller, these values can be used during a motion planning to have a better behavior in certain circumstances.
+
+Changes in the nova python sdk have to be made to be able to use that new information and then send it to the planner. Maybe also there some changes will be needed to actually use that data.
+
+Use torque limits when planning a trajectory
+
+
+check if you can implement this. also check it against the API (https://portal.wandelbots.io/docs/api/v2/ui/#/) add a AGENTS.md entry on the API. keep in mind, this is the latest NOVA release API. so it might not cover nighly api changes that are not released. also only look on the API v2
+
+---
+
+def test_motion_group_setup_forwards_joint_torque_limits():
+    """Torque limits reported by the controller flow into ``global_limits`` for the planner.
+
+    ``torque`` is a per-joint global limit (``LimitSet.joints[i].torque``); it has no per-segment
+    override in the v2 API. Controllers that report it (e.g. KUKA) must have it forwarded to
+    ``plan_trajectory`` unchanged via ``MotionGroupSetup.global_limits``.
+    """
+    description = models.MotionGroupDescription(
+        motion_group_model=models.MotionGroupModel("UniversalRobots_UR5e"),
+        operation_limits=models.OperationLimits(
+            auto_limits=models.LimitSet(
+                joints=[
+                    models.JointLimits(velocity=3.0, acceleration=10.0, torque=150.0),
+                    models.JointLimits(velocity=3.0, acceleration=10.0, torque=101.0),
+                ],
+                tcp=models.CartesianLimits(velocity=250.0),
+            )
+        ),
+    )
+
+    setup = motion_group_setup_from_motion_group_description(description)
+
+    assert setup.global_limits is not None
+    assert setup.global_limits.joints is not None
+    assert [joint.torque for joint in setup.global_limits.joints] == [150.0, 101.0]
+
+
+can we also ensure that the limits flow into the controller when a action array is constructured and plan is used?
+
+---
+
+create a skill for this using /skill-creator under .agents/skills
+
+---
+
+reuse the skill in the agents md
