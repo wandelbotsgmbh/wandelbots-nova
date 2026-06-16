@@ -340,7 +340,11 @@ class Gr00tPolicyClient(PolicyClient):
         if io_values:
             for iom in schema.obs_io_mappings:
                 raw = io_values.get(iom.io)
-                val = iom.mapping.to_policy(cast("bool | int | float", raw)) if raw is not None else 0.0
+                val = (
+                    iom.mapping.to_policy(cast("bool | int | float", raw))
+                    if raw is not None
+                    else 0.0
+                )
                 state_dict[iom.key] = _to_state_array([val])
 
         return state_dict
