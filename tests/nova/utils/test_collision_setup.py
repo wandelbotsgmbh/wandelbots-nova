@@ -5,8 +5,7 @@ import pytest
 from nova.actions import joint_ptp
 from nova.api import models
 from nova.cell.motion_group import MotionGroup
-from nova.utils.collision_setup import \
-    motion_group_setup_from_motion_group_description
+from nova.utils.collision_setup import motion_group_setup_from_motion_group_description
 
 _JOINT_TORQUES = [150.0, 140.0, 100.0, 30.0, 30.0, 20.0]
 
