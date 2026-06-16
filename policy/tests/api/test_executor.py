@@ -49,9 +49,9 @@ def _schema(mode: ActionMode = "absolute") -> PolicySchema:
     return PolicySchema(observations=obs)
 
 
-async def _hold(_obs: object) -> dict[str, float]:
+async def _hold(_obs: object) -> ActionChunk:
     """A trivial policy: hold all six joints at zero."""
-    return {f"arm_{i}": 0.0 for i in range(1, 7)}
+    return ActionChunk(joints={MG_ID: [[0.0] * 6]})
 
 
 def _fake_session() -> MagicMock:
@@ -261,15 +261,8 @@ async def test_a_tcp_action_schema_opens_a_cartesian_session_and_sends_pose_wayp
     mg = _mg()
     schema = PolicySchema(observations=[Observation.tcp("eef", source=mg, action=True)])
 
-    async def pose_policy(_obs: object) -> dict[str, float]:
-        return {
-            "eef_x": 500.0,
-            "eef_y": 200.0,
-            "eef_z": 300.0,
-            "eef_rx": 0.0,
-            "eef_ry": 3.14,
-            "eef_rz": 0.0,
-        }
+    async def pose_policy(_obs: object) -> ActionChunk:
+        return ActionChunk(tcp={mg.id: [[500.0, 200.0, 300.0, 0.0, 3.14, 0.0]]})
 
     session = _fake_session()
     estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
@@ -313,16 +306,11 @@ async def test_send_routes_joint_and_tcp_targets_to_their_own_sessions():
         ]
     )
 
-    async def mixed_policy(_obs: object) -> dict[str, float]:
-        return {
-            **{f"arm_{i}": float(i) for i in range(1, 7)},
-            "eef_x": 500.0,
-            "eef_y": 200.0,
-            "eef_z": 300.0,
-            "eef_rx": 0.0,
-            "eef_ry": 3.14,
-            "eef_rz": 0.0,
-        }
+    async def mixed_policy(_obs: object) -> ActionChunk:
+        return ActionChunk(
+            joints={"0@ur5e-left": [[float(i) for i in range(1, 7)]]},
+            tcp={"0@ur5e-right": [[500.0, 200.0, 300.0, 0.0, 3.14, 0.0]]},
+        )
 
     sessions: dict[str, MagicMock] = {}
 

@@ -364,6 +364,7 @@ class PolicyExecutor:
                 images,
                 self._all_io_values or None,
             )
+            await self._schema.run_computed_actions(action)
             action = self._apply_relative_mode(action, robot_states)
             stopped_by = self._check_stop_conditions_pre_send(action, robot_states)
             if stopped_by is not None:

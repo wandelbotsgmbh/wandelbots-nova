@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from policy.types import ActionChunk
-
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -14,6 +12,7 @@ if TYPE_CHECKING:
 
     from nova.types import RobotState
     from policy.schema import PolicySchema
+    from policy.types import ActionChunk
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +59,9 @@ class PolicyClient(Protocol):
 class CallbackPolicyClient:
     """Policy client that calls a local async function.
 
-    The user function receives a flat feature dict and returns either:
-    - A flat feature dict (keys matching the PolicySchema)
-    - An ActionChunk directly
-    - A dict with "joints" key
+    The user function receives a flat feature dict built from the schema
+    (observations) and returns an :class:`ActionChunk` — one or more future
+    steps for each motion group.
     """
 
     def __init__(self, fn: Callable[..., Any]) -> None:
@@ -89,15 +87,4 @@ class CallbackPolicyClient:
         if images:
             obs.update(images)
 
-        result = await self._fn(obs)  # type: ignore[operator]
-
-        if isinstance(result, ActionChunk):
-            return result
-        if isinstance(result, dict):
-            if "joints" in result or "tcp" in result:
-                return ActionChunk(**result)
-            joints, tcp_targets, ios = await schema.parse_action(result)
-            if joints or tcp_targets:
-                return ActionChunk(joints=joints, tcp=tcp_targets, ios=ios)
-        msg = f"Policy must return ActionChunk or dict, got {type(result).__name__}"
-        raise TypeError(msg)
+        return await self._fn(obs)

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -173,7 +173,7 @@ class Gr00tPolicyClient(PolicyClient):
         """Build GR00T observation from raw states + images, send, decode response."""
         import time as _time  # noqa: PLC0415
 
-        groot_obs = self._build_groot_obs(states, schema, images, io_values)
+        groot_obs = await self._build_groot_obs(states, schema, images, io_values)
 
         # RTC: compute options (overlap/frozen steps) based on latency
         # Server stores the previous action internally — we just send timing params
@@ -286,7 +286,7 @@ class Gr00tPolicyClient(PolicyClient):
     # Observation building — reads raw states via schema mappings
     # ------------------------------------------------------------------
 
-    def _build_groot_obs(
+    async def _build_groot_obs(
         self,
         states: dict[str, RobotState],
         schema: PolicySchema,
@@ -295,6 +295,7 @@ class Gr00tPolicyClient(PolicyClient):
     ) -> dict[str, Any]:
         """Convert raw robot states → GR00T observation format."""
         state_dict = self._build_state_dict(states, schema, io_values)
+        await self._fill_computed_state(state_dict, schema)
         groot_obs: dict[str, Any] = {"state": state_dict}
 
         if images:
@@ -339,10 +340,25 @@ class Gr00tPolicyClient(PolicyClient):
         if io_values:
             for iom in schema.obs_io_mappings:
                 raw = io_values.get(iom.io)
-                val = iom.mapping.to_policy(raw) if raw is not None else 0.0
+                val = iom.mapping.to_policy(cast("bool | int | float", raw)) if raw is not None else 0.0
                 state_dict[iom.key] = _to_state_array([val])
 
         return state_dict
+
+    async def _fill_computed_state(
+        self, state_dict: dict[str, np.ndarray], schema: PolicySchema
+    ) -> None:
+        """Run Observation.computed hooks and merge numeric results into the state.
+
+        GR00T's state is a numeric payload, so each computed value must be a
+        scalar or sequence of floats keyed to a model state input. Non-numeric
+        values (strings, images) are not supported here.
+        """
+        for obs in schema.computed_observations:
+            extra = await obs.fn(state_dict)
+            for key, value in extra.items():
+                values = value if isinstance(value, (list, tuple)) else [value]
+                state_dict[key] = _to_state_array([float(v) for v in values])
 
     # ------------------------------------------------------------------
     # Action decoding
@@ -386,7 +402,7 @@ class Gr00tPolicyClient(PolicyClient):
             if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM:
                 tcp_targets[mg.id] = arr[0].astype(np.float32).tolist()
 
-        dt_ms = float(info.get("dt_ms", self._dt_ms))
+        dt_ms = float(cast("float", info.get("dt_ms", self._dt_ms)))
         return ActionChunk(joints=joints, tcp=tcp_targets, ios=ios or None, dt_ms=dt_ms)
 
 

@@ -12,6 +12,7 @@ from policy.schema import (
     Observation,
     PolicySchema,
 )
+from policy.types import ActionChunk
 
 
 def _mg(mg_id: str = "0@ur10e", controller_id: str = "ur10e") -> MagicMock:
@@ -97,96 +98,49 @@ async def test_constant_and_io_observation():
 
 
 # ---------------------------------------------------------------------------
-# Action parsing
+# Computed hooks
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_inferred_and_non_inferred_actions():
-    """action=True infers joint action; action=False does not."""
+async def test_observation_computed_is_evaluated():
+    """Observation.computed runs during build_observation and is merged into obs."""
     mg = _mg()
+    calls: list[dict] = []
+
+    async def read_sensor(obs: dict) -> dict:
+        calls.append(dict(obs))
+        return {"sensor": 42.0}
+
     schema = PolicySchema(
         observations=[
             Observation.joint_positions("joints", source=mg),
+            Observation.computed(read_sensor),
         ]
     )
-    joints, _tcp, ios = await schema.parse_action({"joints_1": 0.5, "joints_2": -1.0})
-    assert joints == {"0@ur10e": [[0.5, -1.0]]}
-    assert ios is None
+    obs = await schema.build_observation({"0@ur10e": _state((0.1, 0.2))})
 
-    # Non-action
-    schema2 = PolicySchema(
-        observations=[
-            Observation.joint_positions("state", source=mg, action=False),
-        ]
-    )
-    joints2, _, _ = await schema2.parse_action({"state_1": 0.5})
-    assert joints2 == {}
+    assert len(calls) == 1
+    assert obs["sensor"] == 42.0
 
 
 @pytest.mark.asyncio
-async def test_explicit_action_different_key():
+async def test_action_computed_is_evaluated():
+    """Action.computed fires once with the policy's ActionChunk."""
     mg = _mg()
+    received: list[ActionChunk] = []
+
+    async def journal(chunk: ActionChunk) -> None:
+        received.append(chunk)
+
     schema = PolicySchema(
-        observations=[Observation.joint_positions("obs", source=mg, action=False)],
-        actions=[Action.joint_positions("action", target=mg)],
+        observations=[Observation.joint_positions("joints", source=mg)],
+        actions=[Action.computed(journal)],
     )
-    joints, _tcp, _ios = await schema.parse_action({"action_1": 0.5, "action_2": -1.0})
-    assert joints == {"0@ur10e": [[0.5, -1.0]]}
+    chunk = ActionChunk(joints={"0@ur10e": [[0.1, 0.2]]})
+    await schema.run_computed_actions(chunk)
 
-
-@pytest.mark.asyncio
-async def test_io_action_with_bool_mapping():
-    mg = _mg()
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("joints", source=mg),
-            Observation.io(
-                "gripper", source=mg, io="digital_out[0]", mapping=BoolMapping(on=100.0)
-            ),
-        ]
-    )
-    _, _, ios_open = await schema.parse_action({"joints_1": 0.0, "gripper": 80.0})
-    _, _, ios_closed = await schema.parse_action({"joints_1": 0.0, "gripper": 20.0})
-    assert ios_open == {"0@ur10e": {"digital_out[0]": True}}
-    assert ios_closed == {"0@ur10e": {"digital_out[0]": False}}
-
-
-@pytest.mark.asyncio
-async def test_concatenated_action():
-    left = _mg("0@left", "left")
-    right = _mg("0@right", "right")
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("state", source=[left, right], action=False),
-        ],
-        actions=[
-            Action.joint_positions("action", target=[left, right]),
-        ],
-    )
-    joints, _tcp, _ = await schema.parse_action(
-        {
-            "action_1": 1.0,
-            "action_2": 2.0,
-            "action_3": 3.0,
-            "action_4": 4.0,
-        }
-    )
-    assert joints["0@left"] == [[1.0, 2.0]]
-    assert joints["0@right"] == [[3.0, 4.0]]
-
-
-@pytest.mark.asyncio
-async def test_no_matching_action_keys():
-    mg = _mg()
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("joints", source=mg),
-        ]
-    )
-    joints, _tcp, ios = await schema.parse_action({"unrelated": 1.0})
-    assert joints == {}
-    assert ios is None
+    assert received == [chunk]
 
 
 # ---------------------------------------------------------------------------
@@ -260,23 +214,6 @@ async def test_computed_observation():
     assert obs["plc_temp"] == 25.0
 
 
-@pytest.mark.asyncio
-async def test_computed_action():
-    mg = _mg()
-    triggered = {}
-
-    async def write_plc(action: dict) -> None:
-        triggered["conveyor"] = action.get("conveyor_speed", 0.0)
-
-    schema = PolicySchema(
-        observations=[Observation.joint_positions("joints", source=mg)],
-        actions=[Action.computed(write_plc)],
-    )
-    joints, _tcp, _ = await schema.parse_action({"joints_1": 0.5, "conveyor_speed": 42.0})
-    assert joints == {"0@ur10e": [[0.5]]}
-    assert triggered["conveyor"] == 42.0
-
-
 # ---------------------------------------------------------------------------
 # Relative mode
 # ---------------------------------------------------------------------------
@@ -292,16 +229,3 @@ def test_relative_motion_groups():
         ]
     )
     assert schema.relative_motion_groups() == {"0@ur10e"}
-
-
-@pytest.mark.asyncio
-async def test_parse_action_returns_raw_values_for_relative():
-    """parse_action returns raw values regardless of mode — executor handles conversion."""
-    mg = _mg()
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("arm", source=mg, mode="relative"),
-        ]
-    )
-    joints, _tcp, _ = await schema.parse_action({"arm_1": 0.1, "arm_2": -0.2})
-    assert joints["0@ur10e"][0] == [0.1, -0.2]

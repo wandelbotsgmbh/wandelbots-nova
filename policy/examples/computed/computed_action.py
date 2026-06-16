@@ -12,8 +12,8 @@ per-step ``observe -> infer -> act`` loop:
   * Pre-inference, ``Observation.computed(read_sensor)`` is awaited and its return
     dict is merged into the observation passed to the policy. This injects the
     F/T reading under ``obs["sensor"]`` as an additional input feature.
-  * Post-inference, ``Action.computed(report_action)`` is awaited with the raw
-    action dict emitted by the policy. It is a pure sink (returns ``None``) and is
+  * Post-inference, ``Action.computed(report_action)`` is awaited with the
+    ``ActionChunk`` emitted by the policy. It is a pure sink (returns ``None``) and is
     decoupled from actuation — the joint targets are dispatched to the controller
     through the normal action pipeline regardless.
 
@@ -33,9 +33,10 @@ from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
-from policy import Action, Observation, PolicyExecutor, PolicySchema
+from policy import Action, ActionChunk, Observation, PolicyExecutor, PolicySchema
 
 HOME = (0.0, -1.57, 1.57, -1.57, -1.57, 0.0)
+MG_ID = "0@ur5e"
 
 
 # --- IN: a computed observation -------------------------------------------
@@ -57,22 +58,22 @@ async def read_sensor(obs: dict[str, Any]) -> dict[str, float]:
 _step = 0
 
 
-async def report_action(action: dict[str, float]) -> None:
-    """Side effect: log what the policy decided (and what it saw)."""
+async def report_action(chunk: ActionChunk) -> None:
+    """Side effect: log what the policy decided (the first step of its chunk)."""
     global _step
     _step += 1
     if _step % 25 == 0:
-        joints = [round(action[f"arm_{i}"], 3) for i in range(1, 7)]
+        joints = [round(j, 3) for j in chunk.joints[MG_ID][0]]
         print(f"  [computed action] step={_step} target={joints}")
 
 
 # --- The policy -----------------------------------------------------------
 
 
-async def mock_policy(obs: dict[str, Any]) -> dict[str, float]:
+async def mock_policy(obs: dict[str, Any]) -> ActionChunk:
     """Hold position. ``obs['sensor']`` is the wrist force from Observation.computed."""
     assert obs["sensor"] == 42.0  # the injected sensor reading is visible to the policy
-    return {f"arm_{i}": obs[f"arm_{i}"] for i in range(1, 7)}
+    return ActionChunk(joints={MG_ID: [[obs[f"arm_{i}"] for i in range(1, 7)]]})
 
 
 @program(

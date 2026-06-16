@@ -226,6 +226,45 @@ async def test_io_observation_format() -> None:
 
 
 @pytest.mark.asyncio
+async def test_computed_observation_format() -> None:
+    """A numeric Observation.computed value should appear as a (1,1,1) state entry."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server.start()
+    time.sleep(0.1)
+
+    try:
+        called: list[dict] = []
+
+        async def read_force(obs: dict) -> dict:
+            called.append(obs)
+            return {"force_z": 0.7}
+
+        mg = _mg()
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+                Observation.computed(read_force),
+            ]
+        )
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+
+        await client.get_actions({"0@ur10e": _state((0.0,) * 6)}, schema)
+
+        assert len(called) == 1  # the function was actually triggered
+        state = server.last_observation["state"]
+        assert "force_z" in state
+        arr = state["force_z"]
+        assert arr.shape == (1, 1, 1)
+        assert arr[0, 0, 0] == pytest.approx(0.7)
+
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
 async def test_language_observation() -> None:
     """Language instruction should appear in observation."""
     port = _find_free_port()

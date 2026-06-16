@@ -106,6 +106,14 @@ Observation.io("left_gripper", source=mg,
                io="digital_out[0]")                     # → obs["state.left_gripper"]
 ```
 
+### Computed observations and actions
+
+`Action.computed` fires for every policy (the executor runs it after each call).
+`Observation.computed` also fires for GR00T, but its values are merged into GR00T's
+numeric state payload — so each computed value must be a scalar/sequence of floats keyed
+to a model state input. Non-numeric outputs (strings, images) are only supported on the
+callback (bring-your-own-function) path.
+
 ## Inspecting a Server
 
 Before writing your schema, query the server to see what it expects:

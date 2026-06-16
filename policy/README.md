@@ -44,17 +44,21 @@ uv add wandelbots-nova
 
 ## Quick Start
 
-A policy is just an async function: observations in, actions out.
+A policy is just an async function: observations in, an action chunk out.
 
 ```python
 import asyncio
 from nova import Nova
-from policy import Observation, PolicyExecutor, PolicySchema
+from policy import ActionChunk, Observation, PolicyExecutor, PolicySchema
 
 
-async def my_policy(obs):
-    """Nudge each joint by a small offset."""
-    return {k: v + 0.01 for k, v in obs.items() if k.startswith("arm_")}
+async def my_policy(obs) -> ActionChunk:
+    """Nudge each joint by a small offset (two steps, 50ms apart)."""
+    arm = [obs[f"arm_{i}"] for i in range(1, 7)]
+    return ActionChunk(
+        joints={"0@ur10e": [[j + 0.01 for j in arm], [j + 0.02 for j in arm]]},
+        dt_ms=50.0,
+    )
 
 
 async def main():
@@ -75,11 +79,11 @@ async def main():
 asyncio.run(main())
 ```
 
-Any async callable that maps `dict → dict` works — call a remote GPU server, run a local model, or return constants. The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
+Any async callable that maps a feature `dict` to an `ActionChunk` works — call a remote GPU server, run a local model, or replay a trajectory. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
 
 ## PolicySchema
 
-Decouples the policy from hardware topology. The policy sees a flat dictionary of named features — it never knows about motion groups, controllers, or hardware IO keys.
+Decouples the policy's **observations** from hardware topology. The policy sees a flat dictionary of named features built from the schema — it doesn't read motion groups, controllers, or hardware IO keys to interpret its inputs.
 
 ```python
 from policy import BoolMapping, Observation, PolicySchema
@@ -105,7 +109,7 @@ This produces observations like:
 }
 ```
 
-The policy returns the same keys with target values. Joints are sent as `JointWaypointsRequest`, TCP targets as `PoseWaypointsRequest`, and IOs get written to hardware with the mapping applied in reverse.
+The policy returns an `ActionChunk` keyed by motion-group id. Joint targets are sent as `JointWaypointsRequest`, TCP targets as `PoseWaypointsRequest`, and IO values get written to hardware (use `BoolMapping`/`Mapping` on the matching observation so a learned policy's scaled outputs map back to hardware values).
 
 ### Cameras
 

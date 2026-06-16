@@ -126,7 +126,7 @@ async def count_steps(obs: dict[str, Any]) -> dict[str, Any]:
 _action_count = 0
 
 
-async def log_action(action: dict[str, Any]) -> None:
+async def log_action(action: ActionChunk) -> None:
     """Example Action.computed — logs every 100th action."""
     global _action_count
     _action_count += 1
@@ -153,7 +153,7 @@ def stop_on_io(ctx: StopContext) -> bool:
 
 async def move_to_home(mg1, mg2) -> None:
     fast = MotionSettings(tcp_velocity_limit=500.0)
-    tcp1, tcp2 = (await mg1.tcp_names())[0], (await mg2.tcp_names())[0]
+    tcp1 = tcp2 = "gripper"
     # Move to HOME first, then to the policy's first target (avoids initial jump)
     t1 = await mg1.plan(
         [joint_ptp(HOME_LEFT, settings=fast), joint_ptp(FIRST_LEFT, settings=fast)], tcp1

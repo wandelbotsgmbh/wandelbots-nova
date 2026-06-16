@@ -5,12 +5,12 @@ single virtual UR5e and a trivial mock policy, so they run without a model serve
 
 | File | Shows |
 |---|---|
-| `computed_action.py` | Both hooks together: `Observation.computed` injecting an external sensor reading into each observation, and `Action.computed` logging the policy's action dict. |
+| `computed_action.py` | Both hooks together: `Observation.computed` injecting an external sensor reading into each observation, and `Action.computed` logging the policy's action chunk. |
 
 `Observation.computed(fn)` registers `async fn(obs) -> dict`, called every step
 *before* the policy; the returned keys are merged into the observation.
-`Action.computed(fn)` registers `async fn(action) -> None`, called every step
-*after* the policy with the raw action it returned. The action hook drives nothing
+`Action.computed(fn)` registers `async fn(chunk: ActionChunk) -> None`, called every step
+*after* the policy with the chunk it returned. The action hook drives nothing
 on the robot itself — use it for logging, metrics, or external hardware.
 
 Run:

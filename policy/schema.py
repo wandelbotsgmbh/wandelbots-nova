@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from policy.cameras import CameraSource
-    from policy.types import ActionMode
+    from policy.types import ActionChunk, ActionMode
 
 logger = logging.getLogger(__name__)
 
@@ -254,12 +254,12 @@ class _ActTcp:
     mode: ActionMode = "absolute"
 
 
-ComputedActFn = Callable[[dict[str, Any]], Awaitable[None]]
+ComputedActFn = Callable[["ActionChunk"], Awaitable[None]]
 
 
 @dataclass(slots=True)
 class _ActComputed:
-    """Async function called when policy returns: ``async (action_dict) -> None``."""
+    """Async side-effect called with the policy's chunk: ``async (chunk) -> None``."""
 
     fn: ComputedActFn
 
@@ -289,17 +289,16 @@ class Action:
 
     @staticmethod
     def computed(fn: ComputedActFn) -> _ActComputed:
-        """Async function for side effects when the policy returns.
+        """Async side effect run after each policy call, with the returned chunk.
 
         Example::
 
-            async def update_conveyor(action: dict) -> None:
-                speed = action.get("conveyor_speed", 0.0)
-                await plc.write_register(100, speed)
+            async def journal(chunk: ActionChunk) -> None:
+                await db.write(chunk.joints)
 
             schema = PolicySchema(
                 observations=[Observation.joint_positions("arm", source=mg)],
-                actions=[Action.computed(update_conveyor)],
+                actions=[Action.computed(journal)],
             )
         """
         return _ActComputed(fn=fn)
@@ -391,6 +390,10 @@ class PolicySchema:
     @property
     def obs_io_mappings(self) -> list[_ObsIO]:
         return [o for o in self._observations if isinstance(o, _ObsIO)]
+
+    @property
+    def computed_observations(self) -> list[_ObsComputed]:
+        return [o for o in self._observations if isinstance(o, _ObsComputed)]
 
     @property
     def io_action_keys(self) -> list[tuple[str, MotionGroup, str, Mapping]]:
@@ -543,113 +546,9 @@ class PolicySchema:
                 extra = await o.fn(obs)
                 obs.update(extra)
 
-    # -- Parse action --
-
-    async def parse_action(
-        self,
-        action: dict[str, float],
-    ) -> tuple[
-        dict[str, list[list[float]]],
-        dict[str, list[list[float]]],
-        dict[str, dict[str, bool | int | float | str]] | None,
-    ]:
-        """Parse a flat action dict into per-MG joints, TCP targets, and IOs."""
-        explicit_keys = {a.key for a in self._actions if hasattr(a, "key")}
-        joints = self._parse_joints(action, explicit_keys)
-        tcp_targets = self._parse_tcp(action, explicit_keys)
-        ios = self._parse_ios(action, explicit_keys)
-
-        # Computed side effects
+    async def run_computed_actions(self, action: ActionChunk) -> None:
+        """Fire ``Action.computed`` side effects with the policy's chunk."""
         for a in self._actions:
             if isinstance(a, _ActComputed):
                 await a.fn(action)
 
-        return joints, tcp_targets, ios or None
-
-    def _parse_joints(
-        self,
-        action: dict[str, float],
-        explicit_keys: set[str],
-    ) -> dict[str, list[list[float]]]:
-        joints: dict[str, list[list[float]]] = {}
-        for key, sources, _mode in self._joint_action_sources(explicit_keys):
-            values = _extract_indexed(action, key)
-            if not values:
-                continue
-            if len(sources) == 1:
-                joints[sources[0].id] = [values]
-            else:
-                per_mg = len(values) // len(sources)
-                for i, mg in enumerate(sources):
-                    chunk = values[i * per_mg : (i + 1) * per_mg]
-                    if chunk:
-                        joints[mg.id] = [chunk]
-        return joints
-
-    def _parse_ios(
-        self,
-        action: dict[str, float],
-        explicit_keys: set[str],
-    ) -> dict[str, dict[str, bool | int | float | str]]:
-        ios: dict[str, dict[str, bool | int | float | str]] = {}
-        for key, mg, hw_key, mapping in self._io_action_sources(explicit_keys):
-            if key in action:
-                ios.setdefault(mg.id, {})[hw_key] = mapping.to_hardware(float(action[key]))
-        return ios
-
-    def _parse_tcp(
-        self,
-        action: dict[str, float],
-        explicit_keys: set[str],
-    ) -> dict[str, list[list[float]]]:
-        tcp_targets: dict[str, list[list[float]]] = {}
-        for key, mg in self._tcp_action_sources(explicit_keys):
-            values = _extract_tcp(action, key)
-            if values:
-                tcp_targets[mg.id] = [values]
-        return tcp_targets
-
-    def _joint_action_sources(
-        self, explicit_keys: set[str]
-    ) -> Iterator[tuple[str, list[MotionGroup], ActionMode]]:
-        for a in self._actions:
-            if isinstance(a, _ActJoints):
-                yield a.key, a.targets, a.mode
-        for o in self._observations:
-            if isinstance(o, _ObsJoints) and o.action and o.key not in explicit_keys:
-                yield o.key, o.sources, o.mode
-
-    def _io_action_sources(
-        self, explicit_keys: set[str]
-    ) -> Iterator[tuple[str, MotionGroup, str, Mapping]]:
-        for a in self._actions:
-            if isinstance(a, _ActIO):
-                yield a.key, a.target, a.io, a.mapping
-        for o in self._observations:
-            if isinstance(o, _ObsIO) and o.action and o.key not in explicit_keys:
-                yield o.key, o.source, o.io, o.mapping
-
-    def _tcp_action_sources(self, explicit_keys: set[str]) -> Iterator[tuple[str, MotionGroup]]:
-        for a in self._actions:
-            if isinstance(a, _ActTcp):
-                yield a.key, a.target
-        for o in self._observations:
-            if isinstance(o, _ObsTcp) and o.action and o.key not in explicit_keys:
-                yield o.key, o.source
-
-
-def _extract_indexed(d: dict[str, float], prefix: str) -> list[float]:
-    """Extract {prefix}_1, {prefix}_2, ... from a dict."""
-    values: list[float] = []
-    i = 1
-    while f"{prefix}_{i}" in d:
-        values.append(float(d[f"{prefix}_{i}"]))
-        i += 1
-    return values
-
-
-def _extract_tcp(d: dict[str, float], prefix: str) -> list[float]:
-    """Extract {prefix}_x, {prefix}_y, ..., {prefix}_rz from a dict."""
-    if f"{prefix}_x" not in d:
-        return []
-    return [float(d[f"{prefix}_{s}"]) for s in _TCP_SUFFIXES]

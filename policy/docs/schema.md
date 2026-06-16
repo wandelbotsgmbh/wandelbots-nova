@@ -86,15 +86,15 @@ schema = PolicySchema(observations=[
 ])
 ```
 
-Computed actions trigger external side effects when the policy returns:
+Computed actions trigger external side effects after each policy call, receiving the returned `ActionChunk`:
 
 ```python
-async def write_plc(action: dict) -> None:
-    await plc_client.write("ns=2;s=ConveyorSpeed", action.get("conveyor_speed", 0.0))
+async def journal(chunk: ActionChunk) -> None:
+    await db.write(chunk.joints)
 
 schema = PolicySchema(
     observations=[Observation.joint_positions("arm", source=mg)],
-    actions=[Action.computed(write_plc)],
+    actions=[Action.computed(journal)],
 )
 ```
 
