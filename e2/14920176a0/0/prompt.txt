@@ -1,0 +1,3 @@
+https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/27604143351/job/81612402815?pr=432
+
+read the logs and fix the CI issues
