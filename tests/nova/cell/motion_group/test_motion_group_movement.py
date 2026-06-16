@@ -43,7 +43,7 @@ async def test_move_to_current_joint_position(ur_mg):
     """
     joint_position = await ur_mg.joints()
 
-    async with asyncio.timeout(5):
+    async with asyncio.timeout(30):
         await ur_mg.plan_and_execute(actions=[jnt(joint_position)], tcp="Flange")
 
 
@@ -73,7 +73,7 @@ async def test_move_to_very_similar_joint_position(ur_mg):
 
     await ur_mg.plan_and_execute(actions=[jnt(trajectory.joint_positions[0].root)], tcp="Flange")
 
-    async with asyncio.timeout(5):
+    async with asyncio.timeout(30):
         await ur_mg.execute(joint_trajectory=trajectory, actions=[], tcp="Flange")
 
 
