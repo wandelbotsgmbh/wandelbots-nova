@@ -200,16 +200,18 @@ class PolicyExecutor:
         self.status = ExecutorStatus(phase=Phase.CONNECTING, message="Connecting...")
         try:
             await self._run_episode()
-        except (MotionError, EmergencyStopError):
+        except (MotionError, EmergencyStopError) as exc:
             self.status = ExecutorStatus(
                 phase=Phase.ERROR,
                 step=self.status.step,
-                message=str(self.result) if self.result else "",
+                message=str(exc),
             )
             raise
-        except Exception:
+        except Exception as exc:
             self.status = ExecutorStatus(
-                phase=Phase.ERROR, step=self.status.step, message="Unexpected error"
+                phase=Phase.ERROR,
+                step=self.status.step,
+                message=f"{type(exc).__name__}: {exc}",
             )
             raise
         finally:
