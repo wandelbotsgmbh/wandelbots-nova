@@ -63,12 +63,9 @@ async def start(
     )
 
     # Define different motion settings based on the robot's limits
-    aggressiveFast = MotionSettings(tcp_velocity_limit=max_tcp_velocity, joint_acceleration_limits=max_joint_accelerations)
-    softFast = MotionSettings(tcp_velocity_limit=max_tcp_velocity, joint_acceleration_limits=tuple(a * 0.7 for a in max_joint_accelerations))
-    softSlow = MotionSettings(tcp_velocity_limit=250, joint_acceleration_limits=tuple(a * 0.7 for a in max_joint_accelerations))
-
-    # Set soft accelerations and slow velocity as used motion settings
-    motion_settings = softSlow
+    aggressive_fast = MotionSettings(tcp_velocity_limit=max_tcp_velocity, joint_acceleration_limits=max_joint_accelerations)
+    soft_medium = MotionSettings(tcp_velocity_limit=250, joint_acceleration_limits=tuple(a * 0.7 for a in max_joint_accelerations))
+    soft_slow = MotionSettings(tcp_velocity_limit=100, joint_acceleration_limits=tuple(a * 0.7 for a in max_joint_accelerations))
 
     home_joints = await motion_group.joints()
     tcp_names = await motion_group.tcp_names()
@@ -80,22 +77,22 @@ async def start(
 
     # Actions define the sequence of movements and other actions to be executed by the robot
     actions = [
-        joint_ptp(home_joints, settings=motion_settings),  # Move to home position slowly
-        cartesian_ptp(target_pose, settings=motion_settings),  # Move to target pose
+        joint_ptp(home_joints, settings=soft_slow),  # Move to home position slowly
+        cartesian_ptp(target_pose, settings=soft_medium),  # Move to target pose
         cartesian_ptp(
-            target_pose @ [200, 0, 0, 0, 0, 0], settings=motion_settings
+            target_pose @ [200, 0, 0, 0, 0, 0], settings=soft_medium
         ),  # Move 100mm in target pose's local x-axis
         linear(
-            target_pose @ (200, 200, 0, 0, 0, 0), settings=motion_settings
+            target_pose @ (200, 200, 0, 0, 0, 0), settings=soft_medium
         ),  # Move 100mm in local x and y axes
-        joint_ptp(home_joints, settings=motion_settings),
-        cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0)), settings=motion_settings),
+        joint_ptp(home_joints, settings=soft_slow),
+        cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0)), settings=soft_medium),
         circular(
             target_pose @ Pose((0, 200, 0, 0, 0, 0)),
             intermediate=target_pose @ Pose((0, 200, 0, 0, 0, 0)),
-            settings=motion_settings,
+            settings=soft_medium,
         ),
-        joint_ptp(home_joints, settings=motion_settings),
+        joint_ptp(home_joints, settings=soft_slow),
     ]
 
     # Start the cycle
