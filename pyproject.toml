@@ -49,7 +49,7 @@ wandelscript = [
     "numpy>=1.1.19",
 ]
 novax = ["fastapi>=0.115.6", "uvicorn>=0.34.0", "python-decouple>=3.8"]
-policy = [
+novapolicy = [
     "aiortc>=1.14.0",
     "msgpack>=1.1.0,<2",
     "Pillow>=10.0.0",

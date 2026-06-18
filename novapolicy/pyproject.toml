@@ -1,9 +1,9 @@
-# Metadata for the policy extra package.
+# Metadata for the novapolicy extra package.
 # This is NOT an independently installable package — it ships as part of
-# wandelbots-nova and is activated via: pip install wandelbots-nova[policy]
+# wandelbots-nova and is activated via: pip install wandelbots-nova[novapolicy]
 #
 # Dependencies are declared in the root pyproject.toml under
-# [project.optional-dependencies] policy = [...]
+# [project.optional-dependencies] novapolicy = [...]
 
 [project]
 name = "nova-policy"

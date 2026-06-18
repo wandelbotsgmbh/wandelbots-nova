@@ -39,7 +39,7 @@ The executor decides **when** to start and **when** to stop, and runs the softwa
 ## Install
 
 ```bash
-uv add wandelbots-nova
+uv add wandelbots-nova --extra novapolicy
 ```
 
 ## Quick Start
