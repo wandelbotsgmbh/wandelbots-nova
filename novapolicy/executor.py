@@ -480,7 +480,7 @@ class PolicyExecutor:
         """Send an action chunk to the motion groups.
 
         Placement (relative vs. absolute, with optional RTC seam backdate) is
-        decided per session by :func:`policy.chunking.placement`; the "now"
+        decided per session by :func:`novapolicy.chunking.placement`; the "now"
         component is resolved at yield time inside the session. For overlapping
         mode to keep the robot moving, ``(horizon - seam_backdate_steps) *
         dt_ms`` must exceed the inference latency (increase dt_ms or cut latency

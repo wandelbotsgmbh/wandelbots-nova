@@ -14,7 +14,7 @@ Prerequisites:
     pip install pyarrow
 
 Usage:
-    NOVA_API=http://172.31.12.76 PYTHONPATH=. python policy/examples/replay/replay_episode.py
+    NOVA_API=http://172.31.12.76 PYTHONPATH=. python novapolicy/examples/replay/replay_episode.py
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
+import time
 from typing import Any
 
 import pyarrow.parquet as pq
@@ -103,10 +104,13 @@ async def replay_episode(ctx: nova.ProgramContext):
     )
 
     # Replay policy: index into actions based on elapsed time
+    replay_start: float | None = None
+
     async def replay(obs: dict[str, Any]) -> ActionChunk:
-        session = executor._sessions.get(mg_left.id)
-        elapsed_ms = session.session_elapsed_ms if session else 0
-        elapsed_s = elapsed_ms / 1000.0
+        nonlocal replay_start
+        if replay_start is None:
+            replay_start = time.monotonic()
+        elapsed_s = time.monotonic() - replay_start
 
         # Find which step corresponds to current elapsed time
         step = 0

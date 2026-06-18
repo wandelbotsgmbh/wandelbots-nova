@@ -23,7 +23,7 @@ In production, replace ``read_sensor`` with the sensor driver read and
 ``report_action`` with the journal sink (file, time-series DB, PLC register).
 
 Run:
-    NOVA_API=http://<instance-ip> PYTHONPATH=. python policy/examples/computed/computed_action.py
+    NOVA_API=http://<instance-ip> PYTHONPATH=. python novapolicy/examples/computed/computed_action.py
 """
 
 from typing import Any

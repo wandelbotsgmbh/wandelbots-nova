@@ -1,4 +1,4 @@
-"""Tests for policy.io.IOWriter."""
+"""Tests for novapolicy.io.IOWriter."""
 
 from __future__ import annotations
 

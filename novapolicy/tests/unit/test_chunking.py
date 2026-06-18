@@ -1,4 +1,4 @@
-"""Tests for the pure action-chunk transforms in :mod:`policy.chunking`.
+"""Tests for the pure action-chunk transforms in :mod:`novapolicy.chunking`.
 
 These are stateless functions the executor leans on for receding-horizon
 trimming, relative→absolute conversion, chunk timing, and where each chunk

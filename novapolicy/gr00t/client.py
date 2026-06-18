@@ -51,7 +51,7 @@ class Gr00tPolicyClient(PolicyClient):
     response back to an ``ActionChunk``.
 
     This implementation targets GR00T protocol version
-    :data:`~policy.gr00t.GROOT_PROTOCOL_VERSION`.
+    :data:`~novapolicy.gr00t.GROOT_PROTOCOL_VERSION`.
 
     Parameters
     ----------

@@ -1,4 +1,4 @@
-"""Pure action-chunk transforms used by :class:`~policy.executor.PolicyExecutor`.
+"""Pure action-chunk transforms used by :class:`~novapolicy.executor.PolicyExecutor`.
 
 These are deliberately free functions with no executor state: they take a
 chunk (and whatever context they need) and return a new chunk or a scalar.
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 NOW = -1
-"""Anchor sentinel: resolve "now" at yield time (see :data:`policy.jogging.waypoints.NOW`)."""
+"""Anchor sentinel: resolve "now" at yield time (see :data:`novapolicy.jogging.waypoints.NOW`)."""
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ def placement(chunk: ActionChunk, *, policy_rate_hz: float) -> Placement:
     """Decide how a chunk is anchored on one session's timeline.
 
     The "now" component is intentionally NOT resolved here — it is computed at
-    yield time in :func:`policy.jogging.waypoints.make_waypoints_request` so the
+    yield time in :func:`novapolicy.jogging.waypoints.make_waypoints_request` so the
     anchor cannot go stale while the chunk waits in the session queue. This
     matters most for RTC, whose seam alignment is sensitive to that delay.
 

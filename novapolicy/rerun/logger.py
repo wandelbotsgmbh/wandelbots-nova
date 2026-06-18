@@ -56,6 +56,7 @@ class PolicyRerunLogger:
 
         try:
             from nova import api  # noqa: PLC0415
+            from novapolicy._sdk import get_api_gateway  # noqa: PLC0415
             from novapolicy.rerun.blueprint import send_blueprint  # noqa: PLC0415
 
             self._start_time = time.monotonic()
@@ -63,7 +64,7 @@ class PolicyRerunLogger:
             for mg in self._motion_groups:
                 description = await mg.get_description()
                 model = await mg.get_model()
-                model_data = await load_model_data(model, mg._api_client)
+                model_data = await load_model_data(model, get_api_gateway(mg))
                 mounting = description.mounting or api.models.Pose(
                     position=api.models.Vector3d([0, 0, 0]),
                     orientation=api.models.RotationVector([0, 0, 0]),

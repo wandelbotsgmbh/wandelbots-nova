@@ -3,7 +3,7 @@
 Pure helpers that turn raw action steps + timing into NOVA API request models
 (``JointWaypointsRequest`` / ``PoseWaypointsRequest``), plus the small
 pending-chunk record. No session state lives here — the session passes in its
-:class:`~policy.jogging.clock.JoggingTimeClock` and mode.
+:class:`~novapolicy.jogging.clock.JoggingTimeClock` and mode.
 """
 
 from __future__ import annotations

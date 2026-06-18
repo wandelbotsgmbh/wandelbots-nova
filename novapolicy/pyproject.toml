@@ -9,7 +9,7 @@
 name = "nova-policy"
 version = "0.1.0-alpha"
 description = "EXPERIMENTAL: waypoint-jogging-based policy execution for NOVA robots"
-requires-python = ">=3.12"
+requires-python = ">=3.11, <3.13"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",

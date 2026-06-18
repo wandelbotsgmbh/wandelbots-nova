@@ -3,7 +3,7 @@
 Run:
     NOVA_API=http://172.31.11.129 PYTHONPATH=. uv run --with pyzmq --with msgpack \
         --with aiortc --with requests --with python-statemachine \
-        python policy/examples/execute_gr00t_dual_arm.py
+        python novapolicy/examples/execute_gr00t_dual_arm.py
 """
 
 from __future__ import annotations
