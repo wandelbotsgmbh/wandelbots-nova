@@ -41,6 +41,16 @@ giving smooth, continuous motion even with variable inference latency.
 5. Go to 1
 ```
 
+![A new chunk replaces the still-buffered tail of the previous one; the robot jogs from its actual position onto the new chunk, bounded by velocity and acceleration limits](images/action-chunk-blending.png)
+
+The overlap is a **hard replace, not a mathematical blend**: from the new chunk's
+first timestamp onward, the previous chunk's still-buffered targets are discarded
+(the faded dashed tail) and the new chunk's values are used verbatim. The robot does
+not teleport — the servo aims from the robot's actual position toward the new targets
+and catches up bounded by the jogger's velocity/acceleration limits (the white line).
+The smoothness comes entirely from those limits, which is why a large jump between
+chunks is dangerous — the problem [Real-Time Chunking](rtc.md) solves on the policy side.
+
 ## Configuration
 
 ```python
