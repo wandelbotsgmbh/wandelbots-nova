@@ -282,7 +282,9 @@ async def test_a_tcp_action_schema_opens_a_cartesian_session_and_sends_pose_wayp
 @pytest.mark.asyncio
 async def test_a_joint_schema_opens_a_joint_session(robot: _Robot):
     """The default (no TCP action) opens the session in joint mode."""
-    with patch("novapolicy.executor.WaypointJoggingSession", return_value=robot.session) as session_cls:
+    with patch(
+        "novapolicy.executor.WaypointJoggingSession", return_value=robot.session
+    ) as session_cls:
         await PolicyExecutor(_schema(), _hold, timeout_s=0.05).run()
     assert session_cls.call_args.kwargs["mode"] == "joint"
 
