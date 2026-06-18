@@ -8,6 +8,17 @@ https://github.com/user-attachments/assets/de8a1bb6-9f35-4953-aa32-a8792d2b8244
 
 ## Overview
 
+NOVA owns everything physical. Each cycle it assembles one **observation** — the camera
+images, the current joint configuration, and the relevant I/O states — and hands it to the
+policy. The policy returns an **action chunk** (joint targets), which NOVA streams to the
+jogging interface and servos onto the robot. NOVA handles cameras, robot state, execution,
+safety, and closing the loop every cycle; the policy only maps observation → action chunk.
+
+That interface is the same whether the policy is an imitation-learning model, a VLA like
+GR00T, or a world model — so any trained model is a swappable module.
+
+![NOVA assembles an observation, the policy returns an action chunk, NOVA executes it on the robot](docs/images/policy-blackbox.png)
+
 **Robot control lives on the IPC, not on the (potentially remote) GPU server running the policy.**
 
 ```mermaid
