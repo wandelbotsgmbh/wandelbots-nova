@@ -13,7 +13,7 @@ Prerequisites:
     CAMERA_SERVER=http://192.168.1.22:9100  (optional)
 
 Run:
-    PYTHONPATH=. python policy/examples/execute_custom_policy_on_dual_arm.py
+    PYTHONPATH=. python novapolicy/examples/execute_custom_policy_on_dual_arm.py
 """
 
 import asyncio
