@@ -15,7 +15,7 @@ requires-python = ">=3.11, <3.13"
 readme = "README.md"
 dependencies = [
     "httpx>=0.28.0,<0.29",
-    "wandelbots_api_client==26.5.0rc1",
+    "wandelbots_api_client==26.5.0",
     "websockets>=14.1.0,<15",
     "loguru>=0.7.2,<0.8",
     "pydantic>=2.11.4,<3",
@@ -97,10 +97,10 @@ dev = [
 allow-direct-references = true
 
 [tool.hatch.build.targets.sdist]
-include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "policy"]
+include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "novapolicy"]
 
 [tool.hatch.build.targets.wheel]
-include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "policy"]
+include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "novapolicy"]
 
 
 [tool.pytest.ini_options]
