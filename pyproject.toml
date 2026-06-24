@@ -15,7 +15,7 @@ requires-python = ">=3.11, <3.13"
 readme = "README.md"
 dependencies = [
     "httpx>=0.28.0,<0.29",
-    "wandelbots_api_client~=26.4.0",
+    "wandelbots_api_client==26.5.0",
     "websockets>=14.1.0,<15",
     "loguru>=0.7.2,<0.8",
     "pydantic>=2.11.4,<3",
@@ -49,6 +49,13 @@ wandelscript = [
     "numpy>=1.1.19",
 ]
 novax = ["fastapi>=0.115.6", "uvicorn>=0.34.0", "python-decouple>=3.8"]
+novapolicy = [
+    "aiortc>=1.14.0",
+    "msgpack>=1.1.0,<2",
+    "Pillow>=10.0.0",
+    "pyzmq>=26.0.0,<27",
+    "requests>=2.33.1",
+]
 benchmark = [
     "rerun-sdk==0.26.2",
     "requests>=2.32.3",
@@ -76,6 +83,7 @@ dev = [
     "ruff>=0.12.8",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
+    "hypothesis>=6.100.0",
     "mypy>=1.18.2",
     "pre-commit>=4.3.0",
     "icecream>=2.1.5",
@@ -86,14 +94,14 @@ dev = [
     "pytest-xdist>=3.8.0",
 ]
 
-[tool.uv]
-prerelease = "allow"
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.sdist]
-include = ["nova", "nova_rerun_bridge", "wandelscript", "novax"]
+include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "novapolicy"]
 
 [tool.hatch.build.targets.wheel]
-include = ["nova", "nova_rerun_bridge", "wandelscript", "novax"]
+include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "novapolicy"]
 
 
 [tool.pytest.ini_options]
