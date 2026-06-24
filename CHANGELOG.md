@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.6.1 (2026-06-24)
+
+### Bug Fixes
+
+- **NDX-752**: Use torque limits when planning a trajectory (#432)
+  ([#432](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/432),
+  [`bb99551`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bb99551e52df4cfd40ceeb88c86d01d3186d7650))
+
+
 ## v5.6.0 (2026-06-24)
 
 ### Features
