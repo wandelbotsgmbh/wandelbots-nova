@@ -91,7 +91,9 @@ class IOAccess(Device):
                 raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
 
             await self._api_client.controller_ios_api.set_output_values(
-                cell=self._cell, controller=self._controller_id, io_value=[io_value]
+                cell=self._cell,
+                controller=self._controller_id,
+                io_value=[io_value],  # ty: ignore[invalid-argument-type]
             )
 
     async def _ensure_value_type(self, key: str, value: ValueType):

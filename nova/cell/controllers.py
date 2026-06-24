@@ -128,7 +128,7 @@ def virtual_controller(
     virtual_config = api.models.VirtualController(
         manufacturer=manufacturer,
         type=type,
-        json_=controller_config_json,
+        json_=controller_config_json,  # ty: ignore[unknown-argument]
         initial_joint_position=json.dumps(position),
     )
     return _build_controller(name=name, configuration=virtual_config)

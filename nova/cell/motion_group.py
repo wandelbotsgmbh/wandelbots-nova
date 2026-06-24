@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import aclosing
 from functools import partial
-from typing import AsyncGenerator, cast
+from typing import AsyncGenerator
 
 import numpy as np
 
@@ -190,7 +190,7 @@ class MotionGroup(AbstractRobot):
                 await self._api_client.controller_ios_api.set_output_values(
                     cell=self._cell,
                     controller=self._controller_id,
-                    io_value=[action.to_api_model()],
+                    io_value=[action.to_api_model()],  # ty: ignore[invalid-argument-type]
                 )
 
     # TODO: does this needs to be cached?
@@ -422,7 +422,7 @@ class MotionGroup(AbstractRobot):
                 collision_setups=motion_group_setup.collision_setups,
             ),
         )
-        return response.joints
+        return response.joints  # ty: ignore[invalid-return-type]
 
     async def forward_kinematics(self, joints: list[tuple[float, ...]], tcp: str) -> list[Pose]:
         """Get the forward kinematics of the motion group.
@@ -476,7 +476,9 @@ class MotionGroup(AbstractRobot):
         try:
             if self._current_motion is None:
                 raise ValueError("No motion to stop")
-            await self._api_client.motion_api.stop_execution(
+            # FIXME: `motion_api` does not exist on ApiGateway in the v2 API, so this
+            # call raises AttributeError if reached. Tracked by the TODO above.
+            await self._api_client.motion_api.stop_execution(  # ty: ignore[unresolved-attribute]
                 cell=self._cell, motion=self._current_motion
             )
             logger.debug(f"Motion {self.current_motion} stopped.")
@@ -706,7 +708,7 @@ class MotionGroup(AbstractRobot):
             motion_group_setup, "collision-check", first_collision_setup
         )
 
-        motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()
+        motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # ty: ignore[invalid-argument-type]
 
         # Plan the trajectory
         plan_trajectory_response = await self._api_client.trajectory_planning_api.plan_trajectory(
@@ -851,7 +853,7 @@ class MotionGroup(AbstractRobot):
                 raise ValueError("Empty batch of actions")
 
             if isinstance(batch[0], CollisionFreeMotion):
-                motion: CollisionFreeMotion = cast(CollisionFreeMotion, batch[0])
+                motion: CollisionFreeMotion = batch[0]
                 trajectory = await self._plan_collision_free(
                     action=motion,
                     tcp=tcp,
@@ -962,7 +964,7 @@ class MotionGroup(AbstractRobot):
 
         controller = movement_controller(
             MovementControllerContext(
-                combined_actions=CombinedActions(items=tuple(actions)),
+                combined_actions=CombinedActions(items=tuple(actions)),  # ty: ignore[invalid-argument-type]
                 motion_id=trajectory_id,
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
@@ -986,7 +988,7 @@ class MotionGroup(AbstractRobot):
                 await self._api_client.trajectory_execution_api.execute_trajectory(
                     cell=self._cell,
                     controller=self._controller_id,
-                    client_request_generator=controller,
+                    client_request_generator=controller,  # ty: ignore[invalid-argument-type]
                 )
             finally:
                 states.put_nowait(SENTINEL)

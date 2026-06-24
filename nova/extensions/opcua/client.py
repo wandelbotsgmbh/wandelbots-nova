@@ -186,7 +186,7 @@ class OPCUAClient:
         """
         node = await self.get_node(key)
         data_type_variant = await node.read_data_type_as_variant_type()
-        data_value = DataValue(Variant(val, data_type_variant))
+        data_value = DataValue(Variant(val, data_type_variant))  # ty: ignore[invalid-argument-type]
         await node.write_value(data_value)
 
     async def call_node(self, parent_key: str, function_key: str, *args):

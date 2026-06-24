@@ -182,7 +182,7 @@ class IODevice(InputDevice, OutputDevice, Protocol):
 class AbstractDeviceState(Protocol):
     """A state of a device"""
 
-    def __eq__(self, other: "AbstractDeviceState") -> bool:
+    def __eq__(self, other: "AbstractDeviceState") -> bool:  # ty: ignore[invalid-method-override]
         """Check if the state is equal to another state"""
 
 
@@ -637,9 +637,9 @@ class RobotCell:
         devices = {"timer": timer, **kwargs}
         # TODO: if "timer" has not the same id it cannot correctly be serialized/deserialized currently
         for device_name, device in devices.items():
-            if device is not None and device_name != device.id:
+            if device is not None and device_name != device.id:  # ty: ignore[unresolved-attribute]
                 raise ValueError(
-                    f"The device name should match its name in the robotcell but are '{device_name}' and '{device.id}'"
+                    f"The device name should match its name in the robotcell but are '{device_name}' and '{device.id}'"  # ty: ignore[unresolved-attribute]
                 )
         self._devices = devices
         self._device_exit_stack = AsyncExitStack()

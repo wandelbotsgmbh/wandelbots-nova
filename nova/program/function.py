@@ -50,8 +50,8 @@ class ProgramPreconditions(BaseModel):
 
 
 class Program(BaseModel, Generic[Parameters, Return]):
-    _wrapped: Callable[..., Coroutine[Any, Any, Return]] = PrivateAttr(
-        default_factory=lambda *args, **kwargs: None  # type: ignore[assignment]
+    _wrapped: Callable[..., Coroutine[Any, Any, Return]] = PrivateAttr(  # ty: ignore[invalid-assignment]
+        default_factory=lambda *args, **kwargs: None
     )
     _viewer: Any | None = PrivateAttr(default=None)
     program_id: str
@@ -71,9 +71,9 @@ class Program(BaseModel, Generic[Parameters, Return]):
         params = list(signature.parameters.values())
         if not params or params[0].name != "ctx":
             raise TypeError(
-                f"Program function '{value.__name__}' must have 'ctx' as its first parameter. "
+                f"Program function '{value.__name__}' must have 'ctx' as its first parameter. "  # ty: ignore[unresolved-attribute]
                 "Define it as 'async def "
-                f"{value.__name__}(ctx, ...):'."
+                f"{value.__name__}(ctx, ...):'."  # ty: ignore[unresolved-attribute]
             )
 
         # If ctx is untyped, annotate it with NovaProgramContext for better introspection
@@ -82,7 +82,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
             annotations.setdefault("ctx", ProgramContext)
             value.__annotations__ = annotations
 
-        program_id = value.__name__
+        program_id = value.__name__  # ty: ignore[unresolved-attribute]
         docstring = parse_docstring(value.__doc__ or "")
         description = docstring.description
 
@@ -130,7 +130,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
             )
 
         if not nova.is_connected():
-            logger.warn(
+            logger.warning(
                 "The provided NOVA instance is not connected. "
                 "Use `from nova import run_program` and run your program via `run_program(my_program, ...)`."
                 "OR provide an opened NOVA instance via `nova=...`."
@@ -213,8 +213,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
     def __repr__(self) -> str:
         if self.input_model:
             input_fields = ", ".join(
-                f"{k}: {v.annotation.__name__}"  # type: ignore
-                for k, v in self.input_model.model_fields.items()
+                f"{k}: {v.annotation.__name__}" for k, v in self.input_model.model_fields.items()
             )
         else:
             input_fields = "none"
@@ -223,10 +222,10 @@ class Program(BaseModel, Generic[Parameters, Return]):
         if hasattr(self.output_model, "model_fields") and "root" in self.output_model.model_fields:
             root_annotation = self.output_model.model_fields["root"].annotation
             # If it's a TypeVar, get its bound type
-            if hasattr(root_annotation, "__bound__") and root_annotation.__bound__:  # type: ignore
-                output_type = root_annotation.__bound__.__name__  # type: ignore
+            if hasattr(root_annotation, "__bound__") and root_annotation.__bound__:
+                output_type = root_annotation.__bound__.__name__
             else:
-                output_type = root_annotation.__name__  # type: ignore
+                output_type = root_annotation.__name__
         else:
             output_type = self.output_model.__name__
 
@@ -259,13 +258,13 @@ class Program(BaseModel, Generic[Parameters, Return]):
         for name, field in self.input_model.model_fields.items():
             # Convert field type to appropriate Python type
             field_type = field.annotation
-            if hasattr(field_type, "__origin__") and field_type.__origin__ is Annotated:  # type: ignore
-                field_type = field_type.__origin__  # type: ignore
+            if hasattr(field_type, "__origin__") and field_type.__origin__ is Annotated:
+                field_type = field_type.__origin__
 
             # Handle optional fields
             is_optional = False
-            if hasattr(field_type, "__origin__") and field_type.__origin__ is Union:  # type: ignore
-                field_type = field_type.__args__[0]  # type: ignore
+            if hasattr(field_type, "__origin__") and field_type.__origin__ is Union:
+                field_type = field_type.__args__[0]
                 is_optional = True
 
             # For complex types (like Pydantic models), use JSON parsing
@@ -283,7 +282,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 parser.add_argument(
                     f"--{name}",
                     dest=name,
-                    type=field_type,  # type: ignore
+                    type=field_type,
                     default=field.default if field.default is not None else None,
                     required=not is_optional and field.default is None,
                     help=field.description or f"{name} parameter",
@@ -450,7 +449,7 @@ def program(
     ) -> Program[Parameters, Coroutine[Any, Any, Return]]:
         # Validate that the function is async
         if not asyncio.iscoroutinefunction(function):
-            raise TypeError(f"Program function '{function.__name__}' must be async")
+            raise TypeError(f"Program function '{function.__name__}' must be async")  # ty: ignore[unresolved-attribute]
 
         program_obj = Program.validate(function)
         if id:
