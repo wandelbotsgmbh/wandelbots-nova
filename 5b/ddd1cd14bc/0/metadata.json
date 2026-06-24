@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "5bddd1cd14bc",
+  "session_id": "85bcedb6-72a7-4355-bb40-69d058a557c3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-24T18:01:13.176288Z",
+  "branch": "fix/NDX-752",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "tests/nova/cell/motion_group/test_motion_group_task_cancelation.py"
+  ],
+  "agent": "Copilot CLI",
+  "model": "",
+  "turn_id": "ef009ead2f7e",
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 17
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-24T18:01:13.094143Z",
+    "agent_lines": 20,
+    "agent_removed": 5,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 20,
+    "total_lines_changed": 25,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
