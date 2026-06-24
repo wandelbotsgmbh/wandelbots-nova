@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.6.0 (2026-06-24)
+
+### Features
+
+- Update collision setup example (#435)
+  ([#435](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/435),
+  [`61f9e1d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/61f9e1d5450a5810dae91dc59f4d3864e1bb26f8))
+
+
 ## v5.5.0 (2026-06-24)
 
 ### Features
