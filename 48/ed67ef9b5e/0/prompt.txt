@@ -1,0 +1,137 @@
+https://github.com/wandelbotsgmbh/wandelbots-nova/pull/431
+
+check the changes in this MR. a college said that the backend already does the clamping. the thing that could be missing is to correctly set the global limits in the plan call from the motion group motion setup. check this. doing clamping on our side is wrong. 
+
+the question is do we correctly pass the global limits before the change. if not we need to revert and fix this.
+
+if we already pass them its likely a bug in the backend.
+
+---
+
+ecommended follow-up: file/track the down‑scaling as a backend (motion‑planner/RAE) issue — the SDK already sends the correct [global_limits](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html), so the planner should be capping over‑high per‑segment `limits_override` instead of replacing the global ceiling unbounded.
+
+yes do this
+
+---
+
+this method should rather return the motion group setup and clone it before
+
+---
+
+are we sure we set the controller global limits here too?
+
+---
+
+review the planning and make a plan how to simplify the code and streamline the implementations. right now it looks not clean. e.g. from the code it is not clear where the global controller limits are set
+
+---
+
+implement 1-5
+
+---
+
+https://pypi.org/project/ty/ integrate ty and remove mypy and fix the issues.
+
+---
+
+Continue: "Continue to iterate?"
+
+---
+
+review the tests around plan and the changes. can we improve testability and add more tests. (favoured unit tests). also can we better test the global limits behaviour?
+
+---
+
+- ``_plan_with_collision_check`` (collision-checked ``plan_trajectory``) keeps
+  ``MotionGroupSetup.global_limits`` at the controller maximum and sends the user limits as a
+  per-segment ``limits_override`` inside each motion command.
+- ``_plan_collision_free`` has no per-segment override, so the user limits are folded directly
+  into ``global_limits``.
+
+  can we streamline this? _plan_with_collision_check way is the correct way.
+
+---
+
+Start implementation
+
+---
+
+Run uv run ty check
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:14)nova/extensions/opcua/client.py:229:13: error[invalid-argument-type] Argument is incorrect: Expected `Double`, found `int | float`
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:15)nova/extensions/opcua/client.py:230:13: error[invalid-argument-type] Argument is incorrect: Expected `UInt32`, found `int`
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:16)nova/extensions/opcua/client.py:231:13: error[invalid-argument-type] Argument is incorrect: Expected `UInt32`, found `int`
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:17)nova/extensions/opcua/client.py:234:13: error[invalid-argument-type] Argument is incorrect: Expected `UInt32`, found `int`
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:18)nova/extensions/opcua/client.py:235:13: error[invalid-argument-type] Argument is incorrect: Expected `Boolean`, found `Literal[True]`
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:19)nova/extensions/opcua/client.py:236:13: error[invalid-argument-type] Argument is incorrect: Expected `Byte`, found `int`
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:20)Found 6 diagnostics
+
+fix this
+
+---
+
+ok, for the collision free planning we need clamping against the controller global limits as it was before. this will be added to the API later but we need a workaround for now. try to make the code standalone and add some tests. check the branch for the clamping logic
+
+---
+
+Start implementation
+
+---
+
+add a good MR description based on the branch changes and findings. keep it understandable.
+
+---
+
+https://github.com/wandelbotsgmbh/wandelbots-nova/pull/432 check the failed jobs and investigate what needs to be fixed. also the tests are very long running
+
+---
+
+tests/nova/cell/motion_group/test_motion_group_movement.py::test_move_when_start_position_is_different_from_current_position PASSED
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28114973069/job/83252429070?pr=432#step:7:16178)tests/nova/cell/motion_group/test_motion_group_task_cancelation.py::test_movement_stops_when_canceling_task_with_execute FAILED
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28114973069/job/83252429070?pr=432#step:7:16179)tests/nova/cell/motion_group/test_motion_group_task_cancelation.py::test_movement_stops_when_async_generator_raises_exception PASSED
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28114973069/job/83252429070?pr=432#step:7:16180)Error: The operation was canceled.
+
+this test still fails
+
+---
+
+**ake the test itself robust** once we confirm the assertion (e.g. tolerance instead of `==`).
+
+do this
+
+---
+
+review the integration tests. we get way too much logs and also check if they really provide value or if we can make them faster somehow. right now also the result logs are massive
+
+---
+
+I'm reviewing the integration tests in the wandelbots-nova Python SDK repo at /Users/cbiering/home/dev/wandelbots/wandelbots-nova. Goal: reduce excessive log output, assess test value, and find speed-up opportunities.
+
+Please do a THOROUGH read-only investigation and report back:
+
+1. **Inventory of integration tests**: Find every test marked `@pytest.mark.integration` (grep for `pytest.mark.integration`). List each file and test function, with a one-line description of what each verifies. Note duplicates / overlapping coverage.
+
+2. **Slowness sources**: For each integration test, note any `asyncio.sleep(...)` calls, `asyncio.timeout(...)` values, real robot movements (plan/execute/plan_and_execute), and fixtures that create controllers (`virtual_controller`, `ensure_controller`, `Nova()` context). Identify the biggest time sinks (sleeps, repeated controller setup, back-and-forth moves). Sum up approximate sleep time per file.
+
+3. **Logging volume**: Find what drives massive log output. Check:
+   - pyproject.toml `[tool.pytest.ini_options]` — report `addopts`, `log_cli`, `log_cli_level`, and any `-s`/`-v`/`log` settings (note the integration CI command is `pytest -rs -s -v -m integration`).
+   - The SDK logging setup in `nova/logging/` (how the logger is configured, default level, any DEBUG/stream logging that prints per-state during execution).
+   - Any `logger.info`/`logger.debug`/`print` inside the integration tests themselves and inside hot paths like state streaming / execute loops that would emit per-robot-state log lines.
+   - Whether `log_cli_level = "DEBUG"` plus `-s` causes the firehose.
+
+4. **Fixtures & conftest**: Look at tests/conftest.py and any conftest under tests/nova/ or tests/integration/ for logging config, fixtures, markers, and per-test setup that adds time or logs.
+
+Report concrete file paths and line numbers. Do NOT modify anything. Give me a structured summary I can act on, including specific recommendations for (a) cutting log volume, (b) which tests are redundant or low-value, and (c) concrete speed-ups (e.g., reducing sleeps, sharing fixtures, parallelization constraints given they hit one robot instance).
+
+---
+
+Start implementation

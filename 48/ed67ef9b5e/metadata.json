@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "48ed67ef9b5e",
+  "strategy": "manual-commit",
+  "branch": "fix/NDX-752",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".github/workflows/nova-run-examples.yaml",
+    "nova/core/gateway.py",
+    "tests/cell/test_io.py",
+    "tests/novax/api/test_nats.py",
+    "tests/novax/api/test_program_cycle.py",
+    "tests/novax/api/test_program_run.py",
+    "tests/novax/api/wait_utils.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/48/ed67ef9b5e/0/metadata.json",
+      "transcript": "/48/ed67ef9b5e/0/full.jsonl",
+      "content_hash": "/48/ed67ef9b5e/0/content_hash.txt",
+      "prompt": "/48/ed67ef9b5e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}
