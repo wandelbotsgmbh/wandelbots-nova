@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "a040cb29ef30",
+  "strategy": "manual-commit",
+  "branch": "fix/NDX-728-2",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".github/workflows/nova-dev.yaml",
+    ".pre-commit-config.yaml",
+    "CLAUDE.md",
+    "nova/cell/controllers.py",
+    "nova/cell/io.py",
+    "nova/cell/motion_group.py",
+    "nova/cell/movement_controller/trajectory_cursor.py",
+    "nova/cell/robot_cell.py",
+    "nova/cell/tuner.py",
+    "nova/core/gateway.py",
+    "nova/events/__init__.py",
+    "nova/extensions/opcua/client.py",
+    "nova/program/function.py",
+    "nova/program/runner.py",
+    "nova/types/pose.py",
+    "nova/version.py",
+    "nova/viewers/rerun.py",
+    "nova_rerun_bridge/collision_scene.py",
+    "nova_rerun_bridge/robot_visualizer.py",
+    "pyproject.toml",
+    "uv.lock",
+    "wandelscript/version.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a0/40cb29ef30/0/metadata.json",
+      "transcript": "/a0/40cb29ef30/0/full.jsonl",
+      "content_hash": "/a0/40cb29ef30/0/content_hash.txt",
+      "prompt": "/a0/40cb29ef30/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}

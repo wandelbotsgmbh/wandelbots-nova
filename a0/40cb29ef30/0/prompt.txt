@@ -1,0 +1,37 @@
+https://github.com/wandelbotsgmbh/wandelbots-nova/pull/431
+
+check the changes in this MR. a college said that the backend already does the clamping. the thing that could be missing is to correctly set the global limits in the plan call from the motion group motion setup. check this. doing clamping on our side is wrong. 
+
+the question is do we correctly pass the global limits before the change. if not we need to revert and fix this.
+
+if we already pass them its likely a bug in the backend.
+
+---
+
+ecommended follow-up: file/track the down‑scaling as a backend (motion‑planner/RAE) issue — the SDK already sends the correct [global_limits](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html), so the planner should be capping over‑high per‑segment `limits_override` instead of replacing the global ceiling unbounded.
+
+yes do this
+
+---
+
+this method should rather return the motion group setup and clone it before
+
+---
+
+are we sure we set the controller global limits here too?
+
+---
+
+review the planning and make a plan how to simplify the code and streamline the implementations. right now it looks not clean. e.g. from the code it is not clear where the global controller limits are set
+
+---
+
+implement 1-5
+
+---
+
+https://pypi.org/project/ty/ integrate ty and remove mypy and fix the issues.
+
+---
+
+Continue: "Continue to iterate?"

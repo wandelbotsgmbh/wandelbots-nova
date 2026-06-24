@@ -1,0 +1,81 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "a040cb29ef30",
+  "session_id": "85bcedb6-72a7-4355-bb40-69d058a557c3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-24T09:59:01.685353Z",
+  "branch": "fix/NDX-728-2",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".github/workflows/nova-dev.yaml",
+    ".pre-commit-config.yaml",
+    "CLAUDE.md",
+    "nova/cell/controllers.py",
+    "nova/cell/io.py",
+    "nova/cell/motion_group.py",
+    "nova/cell/movement_controller/trajectory_cursor.py",
+    "nova/cell/robot_cell.py",
+    "nova/cell/tuner.py",
+    "nova/core/gateway.py",
+    "nova/events/__init__.py",
+    "nova/extensions/opcua/client.py",
+    "nova/program/function.py",
+    "nova/program/runner.py",
+    "nova/types/pose.py",
+    "nova/version.py",
+    "nova/viewers/rerun.py",
+    "nova_rerun_bridge/collision_scene.py",
+    "nova_rerun_bridge/robot_visualizer.py",
+    "pyproject.toml",
+    "uv.lock",
+    "wandelscript/version.py"
+  ],
+  "agent": "Copilot CLI",
+  "model": "",
+  "turn_id": "ace29b36be41",
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-24T09:59:01.673354Z",
+    "agent_lines": 0,
+    "agent_removed": 48,
+    "human_added": 0,
+    "human_modified": 58,
+    "human_removed": 72,
+    "total_committed": 5,
+    "total_lines_changed": 178,
+    "agent_percentage": 26.96629213483146,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 58,
+      "user_lines_removed": 130,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".github/workflows/nova-dev.yaml": 1,
+        ".pre-commit-config.yaml": 3,
+        "CLAUDE.md": 1,
+        "pyproject.toml": 25,
+        "uv.lock": 28
+      },
+      "user_removed_per_file": {
+        ".github/workflows/nova-dev.yaml": 1,
+        ".pre-commit-config.yaml": 4,
+        "CLAUDE.md": 1,
+        "pyproject.toml": 15,
+        "uv.lock": 109
+      }
+    }
+  ]
+}
