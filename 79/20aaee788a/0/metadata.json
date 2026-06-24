@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "7920aaee788a",
+  "session_id": "85bcedb6-72a7-4355-bb40-69d058a557c3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-24T11:21:56.751402Z",
+  "branch": "fix/NDX-728-2",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "nova/extensions/opcua/client.py",
+    "uv.lock"
+  ],
+  "agent": "Copilot CLI",
+  "model": "",
+  "turn_id": "f6a0e31eb25f",
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-24T11:21:56.729992Z",
+    "agent_lines": 415,
+    "agent_removed": 213,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 415,
+    "total_lines_changed": 628,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 2,
+      "user_lines_removed": 2,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "examples/start_here.py": 2
+      },
+      "user_removed_per_file": {
+        "examples/start_here.py": 2
+      }
+    }
+  ]
+}
