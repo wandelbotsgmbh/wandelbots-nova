@@ -3,15 +3,13 @@ from nova import Nova, api, run_program
 from nova.actions import cartesian_ptp
 from nova.cell import virtual_controller
 from nova.types import Pose
-from nova.viewers.utils import extract_collision_setups_from_actions
-from nova_rerun_bridge import NovaRerunBridge
 
 
-async def build_collision_world(
+async def build_and_store_collision_world(
     nova: Nova, cell_name: str, motion_group_description: api.models.MotionGroupDescription
 ) -> str:
-    collision_api = nova._api_client.store_collision_components_api
-    scene_api = nova._api_client.store_collision_setups_api
+    collision_components_api = nova.api.store_collision_components_api
+    collision_setup_api = nova.api.store_collision_setups_api
 
     # Load all colliders from the JSON data
     colliders: dict[str, api.models.Collider] = {}
@@ -132,7 +130,9 @@ async def build_collision_world(
 
     # Store all colliders
     for name, collider in colliders.items():
-        await collision_api.store_collider(cell=cell_name, collider=name, collider2=collider)
+        await collision_components_api.store_collider(
+            cell=cell_name, collider=name, collider2=collider
+        )
 
     # Define TCP collider geometry
     tool_collider = api.models.Collider(
@@ -140,7 +140,7 @@ async def build_collision_world(
             size_x=100, size_y=100, size_z=100, shape_type="box", box_type=api.models.BoxType.FULL
         )
     )
-    await collision_api.store_collision_tool(
+    await collision_components_api.store_collision_tool(
         cell=cell_name, tool="tool_box", request_body={"tool_collider": tool_collider}
     )
 
@@ -158,14 +158,16 @@ async def build_collision_world(
         colliders=api.models.ColliderDictionary(colliders), tool=robot_tool, link_chain=link_chain
     )
     setup_id = "collision_scene"
-    await scene_api.store_collision_setup(
+    await collision_setup_api.store_collision_setup(
         cell=cell_name, setup=setup_id, collision_setup=collision_setup
     )
+
     return setup_id
 
 
 @nova.program(
     name="15_collison_world",
+    viewer=nova.viewers.Rerun(),  # add this line for a 3D visualization
     preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -178,42 +180,36 @@ async def build_collision_world(
     ),
 )
 async def test(ctx: nova.ProgramContext):
-    async with NovaRerunBridge(ctx.nova) as bridge:
-        await bridge.setup_blueprint()
 
-        cell = ctx.nova.cell()
-        controller = await cell.controller("ur5")
-        # Connect to the controller and activate motion groups
-        motion_group = controller[0]
-        await bridge.log_safety_zones(motion_group)
+    cell = ctx.nova.cell()
+    controller = await cell.controller("ur5")
+    motion_group = controller[0]
 
-        motion_group_description = await motion_group.get_description()
+    motion_group_description = await motion_group.get_description()
 
-        await build_collision_world(ctx.nova, cell.id, motion_group_description)
-        collision_setups = (
-            await ctx.nova.api.store_collision_setups_api.list_stored_collision_setups(cell=cell.id)
-        )
-        collision_setup = list(collision_setups.values())[0]
+    collision_setup_id = await build_and_store_collision_world(
+        ctx.nova, cell.id, motion_group_description
+    )
 
-        bridge.log_collision_setups(collision_setups=collision_setups)
+    # this is how already stored collision setups can be loaded from NOVA
+    collision_setup = await ctx.nova.api.store_collision_setups_api.get_stored_collision_setup(
+        cell=cell.id,  # your cell identifier, typically "cell"
+        setup=collision_setup_id,  # the string key stored on the NOVA instance
+    )
 
-        tcp_names = await motion_group.tcp_names()
-        tcp = tcp_names[0]
-        current_pose = await motion_group.tcp_pose(tcp)
-        target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
+    tcp_names = await motion_group.tcp_names()
+    tcp = tcp_names[0]
+    current_pose = await motion_group.tcp_pose(tcp)
+    target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))
 
-        actions = [
-            cartesian_ptp(target=target_pose, collision_setup=collision_setup),
-            cartesian_ptp(target=current_pose, collision_setup=collision_setup),
-        ]
-        joint_trajectory = await motion_group.plan(actions=actions, tcp=tcp)
+    actions = [
+        cartesian_ptp(target=target_pose, collision_setup=collision_setup),
+        cartesian_ptp(target=current_pose, collision_setup=collision_setup),
+    ]
 
-        await bridge.log_trajectory(
-            joint_trajectory,
-            tcp,
-            motion_group,
-            collision_setups=extract_collision_setups_from_actions(actions),
-        )
+    joint_trajectory = await motion_group.plan(actions=actions, tcp=tcp)
+
+    await motion_group.execute(joint_trajectory, tcp, actions)
 
 
 if __name__ == "__main__":
