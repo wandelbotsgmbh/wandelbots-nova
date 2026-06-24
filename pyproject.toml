@@ -94,6 +94,7 @@ dev = [
     "pyinstrument>=5.1.1",
     "glom>=24.11.0",
     "pytest-xdist>=3.8.0",
+    "pytest-timeout>=2.3.1",
 ]
 
 [tool.hatch.metadata]
@@ -115,7 +116,9 @@ log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 addopts = """
     --doctest-modules
     --junitxml=reports/pytest.xml
-    --import-mode=importlib"""
+    --import-mode=importlib
+    --timeout=300
+    --timeout-method=thread"""
 junit_family = "xunit2"
 norecursedirs = "develop .ipynb_checkpoints .venv .tox *.egg"
 testpaths = """

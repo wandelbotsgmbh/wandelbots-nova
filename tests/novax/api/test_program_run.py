@@ -10,6 +10,7 @@ from nova import api
 from nova.core.nova import Nova
 from nova.program.runner import ProgramRun, ProgramStatus
 from novax.novax import Novax
+from tests.novax.api.wait_utils import wait_for_message_count
 
 
 @nova.program(
@@ -41,7 +42,7 @@ async def test_novax_program_successful_run(novax_app):
         start_program = client.post("/programs/sucessful_program/start", json={"arguments": {}})
         assert start_program.status_code == 200, "Failed to start test program"
 
-        await asyncio.sleep(10)
+        await wait_for_message_count(program_status_messages, 3)
 
         assert len(program_status_messages) == 3, (
             f"Expected 3 program status messages, but got {len(program_status_messages)}"
@@ -88,7 +89,7 @@ async def test_novax_program_failed_run(novax_app):
         start_program = client.post("/programs/failing_program/start", json={"arguments": {}})
         assert start_program.status_code == 200, "Failed to start test program"
 
-        await asyncio.sleep(8)
+        await wait_for_message_count(program_status_messages, 3)
 
         assert len(program_status_messages) == 3, (
             f"Expected 3 program status messages, but got {len(program_status_messages)}"
@@ -138,7 +139,7 @@ async def test_novax_program_stopped_run(novax_app):
         assert start_program.status_code == 200, "Failed to start test program"
 
         # Wait for the program to start running
-        await asyncio.sleep(5)
+        await wait_for_message_count(program_status_messages, 2)
 
         # Verify program is running
         assert len(program_status_messages) >= 2, (
@@ -155,7 +156,7 @@ async def test_novax_program_stopped_run(novax_app):
         assert stop_program.status_code == 200, "Failed to stop test program"
 
         # Wait for the stop event to be processed
-        await asyncio.sleep(5)
+        await wait_for_message_count(program_status_messages, 3)
 
         # Verify that we received the STOPPED event
         assert len(program_status_messages) == 3, (

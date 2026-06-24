@@ -2,14 +2,13 @@
 Simple test programs for integration testing.
 """
 
-import asyncio
-
 import pytest
 from fastapi.testclient import TestClient
 
 import nova
 from nova.core.nova import Nova
 from nova.events import CycleFailedEvent, CycleFinishedEvent, CycleStartedEvent
+from tests.novax.api.wait_utils import wait_for_message_count
 
 
 @nova.program(
@@ -41,7 +40,7 @@ async def test_novax_program_cycle_data(novax_app):
             )
             assert start_program.status_code == 200, "Failed to start test program"
 
-            await asyncio.sleep(5)
+            await wait_for_message_count(cycle_messages, 2)
 
             assert len(cycle_messages) == 2, (
                 f"Expected 2 cycle messages, but got {len(cycle_messages)}"
@@ -85,7 +84,7 @@ async def test_novax_program_cycle_failure(novax_app):
         )
         assert start_program.status_code == 200, "Failed to start test program"
 
-        await asyncio.sleep(5)
+        await wait_for_message_count(cycle_messages, 2)
 
         assert len(cycle_messages) == 2, f"Expected 2 cycle messages, but got {len(cycle_messages)}"
 
@@ -127,7 +126,7 @@ async def test_novax_program_cycle_with_extra(novax_app):
             )
             assert start_program.status_code == 200, "Failed to start test program"
 
-            await asyncio.sleep(5)
+            await wait_for_message_count(cycle_messages, 2)
 
             assert len(cycle_messages) == 2, (
                 "Expected 2 cycle messages, but got {len(cycle_messages)}"

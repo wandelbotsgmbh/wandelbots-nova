@@ -13,16 +13,17 @@ async def test_nats_pub_sub():
     await nova.open()
 
     collected_message = None
+    received = asyncio.Event()
 
     async def cb(msg):
-        print("received message")
         nonlocal collected_message
         collected_message = msg
+        received.set()
 
     await nova.nats.subscribe("nova.test.subject", cb=cb)
     await nova.nats.publish(subject="nova.test.subject", payload=b"test message")
 
-    await asyncio.sleep(2)
+    await asyncio.wait_for(received.wait(), timeout=5)
 
     assert collected_message is not None, "No message received"
     assert collected_message.data == b"test message", (
@@ -41,16 +42,19 @@ async def test_nats_message_order():
     await nova.open()
 
     messages = []
+    all_received = asyncio.Event()
 
     async def collect_message(msg):
         messages.append(msg.data.decode())
+        if len(messages) >= 10:
+            all_received.set()
 
     await nova.nats.subscribe("nova.test.order", cb=collect_message)
 
     for i in range(1, 11):
         await nova.nats.publish(subject="nova.test.order", payload=str(i).encode())
 
-    await asyncio.sleep(3)
+    await asyncio.wait_for(all_received.wait(), timeout=5)
 
     assert len(messages) == 10
     assert messages == ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
