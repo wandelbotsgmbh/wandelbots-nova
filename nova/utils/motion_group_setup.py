@@ -10,9 +10,12 @@ plan request, in particular the robot limits:
 - **Per-motion user limits** (``MotionSettings``) are applied differently depending on the planning
   API used (see the planning methods in ``nova/cell/motion_group.py``):
     - ``plan_trajectory`` (collision-checked path) keeps ``global_limits`` as the controller max and
-      sends the user limits as a per-segment ``limits_override``.
-    - ``plan_collision_free`` has no per-segment override, so the user limits are folded into
-      ``global_limits`` via :func:`update_motion_group_setup_with_motion_settings`.
+      sends the user limits as a per-segment ``limits_override`` on each ``MotionCommand``.
+    - ``plan_collision_free`` has no per-segment override mechanism (``PlanCollisionFreeRequest``
+      carries no ``limits_override`` field and no motion-command list), so the user limits are
+      folded into ``global_limits`` via :func:`update_motion_group_setup_with_motion_settings`.
+      This difference is forced by the released API, not a stylistic choice; the two paths are
+      functionally equivalent whenever the user limit does not exceed the controller maximum.
 """
 
 from nova import api
@@ -133,9 +136,11 @@ def update_motion_group_setup_with_motion_settings(
     This function patches the TCP and joint limits with the provided motion settings. The input
     ``motion_group_setup`` is not modified; a copy is returned (only ``global_limits`` is deep-copied).
 
-    Used by the ``plan_collision_free`` path, which has no per-segment ``limits_override``: the
-    user limits are folded into ``global_limits`` instead. The collision-checked
-    ``plan_trajectory`` path does not use this — it sends per-segment overrides.
+    Used by the ``plan_collision_free`` path, which has no per-segment ``limits_override``
+    (``PlanCollisionFreeRequest`` does not expose one): folding the user limits into
+    ``global_limits`` is the only mechanism the released API offers there. The collision-checked
+    ``plan_trajectory`` path does not use this -- it sends per-segment overrides and keeps
+    ``global_limits`` at the controller maximum.
 
     Args:
         motion_group_setup: The motion group setup to patch

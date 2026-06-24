@@ -703,7 +703,11 @@ class MotionGroup(AbstractRobot):
         first_collision_setup = collision_setups[0] if len(collision_setups) > 0 else None
 
         # global_limits stays at the controller maximum here; the user MotionSettings are sent as
-        # per-segment limits_override inside the motion commands (see CombinedActions.to_motion_command).
+        # a per-segment limits_override inside each motion command (see
+        # CombinedActions.to_motion_command). This is possible because PlanTrajectoryRequest carries
+        # a list of MotionCommands, each with its own LimitsOverride field. The collision-free path
+        # (_plan_collision_free) cannot do this and folds the limits into global_limits instead --
+        # see the note there for why the two paths necessarily differ.
         motion_group_setup = _with_collision_setup(
             motion_group_setup, "collision-check", first_collision_setup
         )
@@ -782,9 +786,19 @@ class MotionGroup(AbstractRobot):
         else:
             raise ValueError("Invalid target type for CollisionFreeMotion")
 
-        # plan_collision_free has no per-segment limits_override, so fold the user MotionSettings
-        # into global_limits (which otherwise holds the controller maximum). This differs from the
-        # collision-checked path in _plan_with_collision_check, which sends per-segment overrides.
+        # The collision-checked path keeps global_limits at the controller maximum and sends user
+        # limits as a per-segment limits_override. We cannot mirror that here: PlanCollisionFreeRequest
+        # has no limits_override field (only motion_group_setup, start_joint_position, target,
+        # constraint, algorithm) and no per-segment motion-command list, so folding the user
+        # MotionSettings into global_limits is the ONLY mechanism the released API offers. This is
+        # API-forced, not a stylistic choice.
+        #
+        # The two paths are functionally equivalent whenever the user limit <= the controller
+        # maximum (the effective ceiling is the user limit either way). The only divergence is when
+        # a user limit exceeds the controller maximum: folding raises global_limits above the
+        # controller max here, whereas the collision-checked path keeps global_limits pinned at the
+        # max. That case is left as-is by design (the SDK does not clamp; the backend down-scales at
+        # execution time -- see NDX-728).
         if action.settings is not None:
             motion_group_setup = update_motion_group_setup_with_motion_settings(
                 motion_group_setup=motion_group_setup, settings=action.settings
