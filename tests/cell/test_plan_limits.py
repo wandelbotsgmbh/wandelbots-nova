@@ -7,7 +7,8 @@ subtle part worth locking in:
   ``MotionGroupSetup.global_limits`` at the controller maximum and sends the user limits as a
   per-segment ``limits_override`` inside each motion command.
 - ``_plan_collision_free`` has no per-segment override, so the user limits are folded directly
-  into ``global_limits``.
+  into ``global_limits`` -- then clamped back down to the controller maximum (a workaround until
+  the collision-free planner clamps server-side).
 
 These tests also assert the no-mutation invariants of the setup helpers, since both paths must
 deep-copy the caller's setup before patching it.
@@ -193,6 +194,52 @@ async def test_collision_free_does_not_mutate_caller_setup():
     )
 
     assert setup.global_limits.tcp.velocity == CONTROLLER_MAX_TCP_VELOCITY
+
+
+@pytest.mark.asyncio
+async def test_collision_free_clamps_tcp_limit_above_controller_max():
+    """A user TCP limit above the controller maximum is clamped back to the controller maximum.
+
+    WORKAROUND behaviour: folding would otherwise raise global_limits above what the hardware
+    supports. Clamping keeps the collision-free request within the controller ceiling.
+    """
+    setup = motion_group_setup_from_motion_group_description(_controller_max_description())
+    motion_group = _motion_group()
+    plan_collision_free = AsyncMock(return_value=_collision_free_response(_joint_trajectory()))
+    motion_group._api_client.trajectory_planning_api.plan_collision_free = plan_collision_free
+
+    await motion_group._plan_collision_free(
+        action=collision_free(
+            (0.1,) * 6, settings=MotionSettings(tcp_velocity_limit=CONTROLLER_MAX_TCP_VELOCITY * 4)
+        ),
+        tcp=None,
+        motion_group_setup=setup,
+        start_joint_position=START,
+    )
+
+    request = plan_collision_free.await_args.kwargs["plan_collision_free_request"]
+    assert request.motion_group_setup.global_limits.tcp.velocity == CONTROLLER_MAX_TCP_VELOCITY
+
+
+@pytest.mark.asyncio
+async def test_collision_free_clamps_joint_limits_above_controller_max():
+    """User joint velocity limits above the controller maximum are clamped element-wise."""
+    setup = motion_group_setup_from_motion_group_description(_controller_max_description())
+    motion_group = _motion_group()
+    plan_collision_free = AsyncMock(return_value=_collision_free_response(_joint_trajectory()))
+    motion_group._api_client.trajectory_planning_api.plan_collision_free = plan_collision_free
+
+    too_fast = (CONTROLLER_MAX_JOINT_VELOCITY * 3,) * 6
+    await motion_group._plan_collision_free(
+        action=collision_free((0.1,) * 6, settings=MotionSettings(joint_velocity_limits=too_fast)),
+        tcp=None,
+        motion_group_setup=setup,
+        start_joint_position=START,
+    )
+
+    request = plan_collision_free.await_args.kwargs["plan_collision_free_request"]
+    joints = request.motion_group_setup.global_limits.joints
+    assert all(joint.velocity == CONTROLLER_MAX_JOINT_VELOCITY for joint in joints)
 
 
 # ---------------------------------------------------------------------------

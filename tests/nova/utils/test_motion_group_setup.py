@@ -7,6 +7,7 @@ from nova.api import models
 from nova.cell.motion_group import MotionGroup
 from nova.types.motion_settings import DEFAULT_TCP_VELOCITY_LIMIT, MotionSettings
 from nova.utils.motion_group_setup import (
+    clamp_limit_set_to_max,
     controller_global_limits,
     get_joint_position_limits_from_motion_group_setup,
     motion_group_setup_from_motion_group_description,
@@ -531,3 +532,80 @@ def test_update_does_not_mutate_input_setup():
     assert patched.global_limits.tcp.velocity == 10.0
     # Original is untouched (global_limits is deep-copied internally).
     assert setup.global_limits.tcp.velocity == 250.0
+
+
+# ---------------------------------------------------------------------------
+# clamp_limit_set_to_max (WORKAROUND for the collision-free fold)
+# ---------------------------------------------------------------------------
+
+
+def test_clamp_reduces_tcp_values_above_max():
+    """TCP fields above the controller maximum are reduced to the maximum."""
+    limits = models.LimitSet(
+        tcp=models.CartesianLimits(velocity=999.0, acceleration=10.0, orientation_velocity=8.0)
+    )
+    max_limits = models.LimitSet(
+        tcp=models.CartesianLimits(velocity=250.0, acceleration=100.0, orientation_velocity=2.0)
+    )
+
+    clamped = clamp_limit_set_to_max(limits, max_limits)
+
+    assert clamped.tcp.velocity == 250.0  # above max -> clamped
+    assert clamped.tcp.acceleration == 10.0  # below max -> kept
+    assert clamped.tcp.orientation_velocity == 2.0  # above max -> clamped
+
+
+def test_clamp_keeps_unset_and_missing_max_values():
+    """Unset (None) values and channels without a maximum are left untouched."""
+    limits = models.LimitSet(
+        tcp=models.CartesianLimits(velocity=999.0, acceleration=None, jerk=5.0)
+    )
+    # max has no jerk maximum and no acceleration maximum.
+    max_limits = models.LimitSet(tcp=models.CartesianLimits(velocity=250.0))
+
+    clamped = clamp_limit_set_to_max(limits, max_limits)
+
+    assert clamped.tcp.velocity == 250.0
+    assert clamped.tcp.acceleration is None  # unset stays unset
+    assert clamped.tcp.jerk == 5.0  # no max for jerk -> kept
+
+
+def test_clamp_joint_limits_element_wise():
+    """Joint limits are clamped per joint against the matching maximum."""
+    limits = models.LimitSet(
+        joints=[models.JointLimits(velocity=5.0, torque=999.0), models.JointLimits(velocity=1.0)]
+    )
+    max_limits = models.LimitSet(
+        joints=[models.JointLimits(velocity=3.0, torque=150.0), models.JointLimits(velocity=3.0)]
+    )
+
+    clamped = clamp_limit_set_to_max(limits, max_limits)
+
+    assert clamped.joints[0].velocity == 3.0  # above max -> clamped
+    assert clamped.joints[0].torque == 150.0  # above max -> clamped
+    assert clamped.joints[1].velocity == 1.0  # below max -> kept
+
+
+def test_clamp_no_max_limits_is_noop():
+    """When there is no maximum to clamp against, the input is returned unchanged."""
+    limits = models.LimitSet(tcp=models.CartesianLimits(velocity=999.0))
+
+    assert clamp_limit_set_to_max(limits, None) is limits
+
+
+def test_clamp_does_not_mutate_input():
+    """Clamping returns a new LimitSet and must not mutate the caller's value."""
+    limits = models.LimitSet(
+        tcp=models.CartesianLimits(velocity=999.0), joints=[models.JointLimits(velocity=5.0)]
+    )
+    max_limits = models.LimitSet(
+        tcp=models.CartesianLimits(velocity=250.0), joints=[models.JointLimits(velocity=3.0)]
+    )
+
+    clamped = clamp_limit_set_to_max(limits, max_limits)
+
+    assert clamped.tcp.velocity == 250.0
+    assert clamped.joints[0].velocity == 3.0
+    # Input untouched.
+    assert limits.tcp.velocity == 999.0
+    assert limits.joints[0].velocity == 5.0

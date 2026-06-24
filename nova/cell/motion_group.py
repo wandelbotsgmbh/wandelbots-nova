@@ -22,6 +22,7 @@ from nova.utils.collision_setup import (
 )
 from nova.utils.joint_trajectory import combine_trajectories
 from nova.utils.motion_group_setup import (
+    clamp_limit_set_to_max,
     get_joint_position_limits_from_motion_group_setup,
     motion_group_setup_from_motion_group_description,
     update_motion_group_setup_with_motion_settings,
@@ -232,7 +233,7 @@ class MotionGroup(AbstractRobot):
 
            .. warning:: Only use this if you have ensured the physical controller is
               configured with the same payload. In most cases the automatic resolution
-              (rules 2–4) is correct and should be preferred.
+              (rules 2-4) is correct and should be preferred.
 
         2. **Convention:** if ``tcp_name`` is provided AND ``description.payloads``
            contains an entry whose key equals ``tcp_name``, that payload is used. A
@@ -794,15 +795,21 @@ class MotionGroup(AbstractRobot):
         # API-forced, not a stylistic choice.
         #
         # The two paths are functionally equivalent whenever the user limit <= the controller
-        # maximum (the effective ceiling is the user limit either way). The only divergence is when
-        # a user limit exceeds the controller maximum: folding raises global_limits above the
-        # controller max here, whereas the collision-checked path keeps global_limits pinned at the
-        # max. That case is left as-is by design (the SDK does not clamp; the backend down-scales at
-        # execution time -- see NDX-728).
+        # maximum (the effective ceiling is the user limit either way). If a user limit exceeds the
+        # controller maximum, folding would raise global_limits above what the hardware supports, so
+        # we clamp the folded limits back to the controller maximum below. This is a temporary
+        # workaround until the collision-free planner clamps server-side (see clamp_limit_set_to_max).
         if action.settings is not None:
+            # global_limits still holds the controller maximum here (from the setup builder); keep a
+            # reference so the folded user limits can be clamped back to it.
+            controller_max_limits = motion_group_setup.global_limits
             motion_group_setup = update_motion_group_setup_with_motion_settings(
                 motion_group_setup=motion_group_setup, settings=action.settings
             )
+            if motion_group_setup.global_limits is not None and controller_max_limits is not None:
+                motion_group_setup.global_limits = clamp_limit_set_to_max(
+                    motion_group_setup.global_limits, controller_max_limits
+                )
 
         for best_joint_solution in best_joint_solutions:
             try:

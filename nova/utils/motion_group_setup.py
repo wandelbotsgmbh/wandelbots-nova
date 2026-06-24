@@ -188,3 +188,84 @@ def update_motion_group_setup_with_motion_settings(
     )
 
     return motion_group_setup
+
+
+# ---------------------------------------------------------------------------
+# WORKAROUND -- clamp folded collision-free limits to the controller maximum.
+#
+# ``plan_collision_free`` has no per-segment ``limits_override``, so per-motion ``MotionSettings``
+# are folded into ``global_limits`` by ``update_motion_group_setup_with_motion_settings`` above. A
+# user limit higher than the controller maximum would otherwise *raise* the global ceiling above
+# what the hardware supports. Until the collision-free planner clamps server-side, the SDK clamps
+# the folded limits back down to the controller's global (auto-mode) maximum.
+#
+# This block is intentionally self-contained: remove it together with its single call site in
+# ``MotionGroup._plan_collision_free`` once the planner clamps collision-free limits server-side.
+# ---------------------------------------------------------------------------
+
+# Scalar (float) limit fields that have a meaningful maximum to clamp against. A joint's
+# ``position`` is a ``LimitRange`` (not a scalar) and is intentionally excluded.
+_CLAMP_CARTESIAN_FIELDS = (
+    "velocity",
+    "acceleration",
+    "jerk",
+    "orientation_velocity",
+    "orientation_acceleration",
+    "orientation_jerk",
+)
+_CLAMP_JOINT_FIELDS = ("velocity", "acceleration", "jerk", "torque")
+
+
+def _min_optional(value: float | None, maximum: float | None) -> float | None:
+    """Return ``min(value, maximum)`` unless either side is unset, then return ``value``."""
+    if value is None or maximum is None:
+        return value
+    return min(value, maximum)
+
+
+def _clamp_cartesian_limits(
+    limits: api.models.CartesianLimits | None, max_limits: api.models.CartesianLimits | None
+) -> api.models.CartesianLimits | None:
+    if limits is None or max_limits is None:
+        return limits
+    clamped = limits.model_copy(deep=True)
+    for field in _CLAMP_CARTESIAN_FIELDS:
+        setattr(clamped, field, _min_optional(getattr(limits, field), getattr(max_limits, field)))
+    return clamped
+
+
+def _clamp_joint_limits(
+    limits: api.models.JointLimits, max_limits: api.models.JointLimits
+) -> api.models.JointLimits:
+    clamped = limits.model_copy(deep=True)
+    for field in _CLAMP_JOINT_FIELDS:
+        setattr(clamped, field, _min_optional(getattr(limits, field), getattr(max_limits, field)))
+    return clamped
+
+
+def clamp_limit_set_to_max(
+    limits: api.models.LimitSet, max_limits: api.models.LimitSet | None
+) -> api.models.LimitSet:
+    """Return a copy of ``limits`` with every set value clamped to ``max_limits``.
+
+    Each set TCP/elbow/flange Cartesian field and each set joint field is reduced to
+    ``min(value, maximum)``. Unset (``None``) values, channels without a corresponding maximum, and
+    a ``max_limits`` of ``None`` are left untouched. The input ``limits`` is not mutated. Joint
+    limits are clamped element-wise by index; joints without a corresponding maximum are kept as-is.
+    """
+    if max_limits is None:
+        return limits
+
+    clamped = limits.model_copy(deep=True)
+    clamped.tcp = _clamp_cartesian_limits(limits.tcp, max_limits.tcp)
+    clamped.elbow = _clamp_cartesian_limits(limits.elbow, max_limits.elbow)
+    clamped.flange = _clamp_cartesian_limits(limits.flange, max_limits.flange)
+
+    if limits.joints is not None and max_limits.joints is not None:
+        max_joints = max_limits.joints
+        clamped.joints = [
+            _clamp_joint_limits(joint, max_joints[i]) if i < len(max_joints) else joint
+            for i, joint in enumerate(limits.joints)
+        ]
+
+    return clamped
