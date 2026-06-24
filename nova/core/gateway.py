@@ -40,7 +40,7 @@ class _Interceptor:
                     raise e
                 finally:
                     duration = time.time() - start
-                    logger.info(f"API CALL: {name} took {duration:.2f} seconds")
+                    logger.debug(f"API CALL: {name} took {duration:.2f} seconds")
                     logger.debug(f"API CALL: {name} with args={args}, kwargs={kwargs}")
 
             return async_wrapper
@@ -55,7 +55,7 @@ class _Interceptor:
                 raise e
             finally:
                 duration = time.time() - start
-                logger.info(f"API CALL: {name} took {duration:.2f} seconds")
+                logger.debug(f"API CALL: {name} took {duration:.2f} seconds")
                 logger.debug(f"API CALL: {name} with args={args}, kwargs={kwargs}")
 
         return sync_wrapper

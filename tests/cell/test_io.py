@@ -62,10 +62,12 @@ async def setup_virtual_profinet() -> AsyncGenerator[tuple[str, ...], None]:
             await nova.api.bus_ios_api.add_bus_io_service(
                 cell="cell", bus_io_type=api.models.BusIOType(api.models.BusIOProfinetVirtual())
             )
-            # sometimes we get error if we communicate with bus io right after we get the "connected" message
-            await asyncio.sleep(30)
 
-        await bus_io_service_ready.wait()
+        # Wait (event-driven) until the bus IO service reports CONNECTED instead of a
+        # fixed sleep, then keep a short settle buffer: communicating with the bus IO
+        # immediately after the "connected" message can still error.
+        await asyncio.wait_for(bus_io_service_ready.wait(), timeout=60)
+        await asyncio.sleep(5)
 
         await nova.api.bus_ios_api.add_profinet_io(
             cell="cell",
