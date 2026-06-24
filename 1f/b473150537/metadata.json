@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "1fb473150537",
+  "strategy": "manual-commit",
+  "branch": "fix/NDX-728-2",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "nova/cell/motion_group.py",
+    "nova/utils/motion_group_setup.py",
+    "tests/cell/test_plan_limits.py",
+    "tests/nova/utils/test_motion_group_setup.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/1f/b473150537/0/metadata.json",
+      "transcript": "/1f/b473150537/0/full.jsonl",
+      "content_hash": "/1f/b473150537/0/content_hash.txt",
+      "prompt": "/1f/b473150537/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}
