@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.5.0 (2026-06-24)
+
+### Features
+
+- Add policy package to execute learned policies (imitation learning, reinforcement learning) (#428)
+  ([#428](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/428),
+  [`8a0f57e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8a0f57e3afdae6fbcf79e3ef67a983bbc4a22e66))
+
+
 ## v5.4.2 (2026-06-12)
 
 ### Bug Fixes
