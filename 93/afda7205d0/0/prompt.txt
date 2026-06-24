@@ -1,0 +1,83 @@
+https://github.com/wandelbotsgmbh/wandelbots-nova/pull/431
+
+check the changes in this MR. a college said that the backend already does the clamping. the thing that could be missing is to correctly set the global limits in the plan call from the motion group motion setup. check this. doing clamping on our side is wrong. 
+
+the question is do we correctly pass the global limits before the change. if not we need to revert and fix this.
+
+if we already pass them its likely a bug in the backend.
+
+---
+
+ecommended follow-up: file/track the down‑scaling as a backend (motion‑planner/RAE) issue — the SDK already sends the correct [global_limits](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html), so the planner should be capping over‑high per‑segment `limits_override` instead of replacing the global ceiling unbounded.
+
+yes do this
+
+---
+
+this method should rather return the motion group setup and clone it before
+
+---
+
+are we sure we set the controller global limits here too?
+
+---
+
+review the planning and make a plan how to simplify the code and streamline the implementations. right now it looks not clean. e.g. from the code it is not clear where the global controller limits are set
+
+---
+
+implement 1-5
+
+---
+
+https://pypi.org/project/ty/ integrate ty and remove mypy and fix the issues.
+
+---
+
+Continue: "Continue to iterate?"
+
+---
+
+review the tests around plan and the changes. can we improve testability and add more tests. (favoured unit tests). also can we better test the global limits behaviour?
+
+---
+
+- ``_plan_with_collision_check`` (collision-checked ``plan_trajectory``) keeps
+  ``MotionGroupSetup.global_limits`` at the controller maximum and sends the user limits as a
+  per-segment ``limits_override`` inside each motion command.
+- ``_plan_collision_free`` has no per-segment override, so the user limits are folded directly
+  into ``global_limits``.
+
+  can we streamline this? _plan_with_collision_check way is the correct way.
+
+---
+
+Start implementation
+
+---
+
+Run uv run ty check
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:14)nova/extensions/opcua/client.py:229:13: error[invalid-argument-type] Argument is incorrect: Expected `Double`, found `int | float`
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:15)nova/extensions/opcua/client.py:230:13: error[invalid-argument-type] Argument is incorrect: Expected `UInt32`, found `int`
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:16)nova/extensions/opcua/client.py:231:13: error[invalid-argument-type] Argument is incorrect: Expected `UInt32`, found `int`
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:17)nova/extensions/opcua/client.py:234:13: error[invalid-argument-type] Argument is incorrect: Expected `UInt32`, found `int`
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:18)nova/extensions/opcua/client.py:235:13: error[invalid-argument-type] Argument is incorrect: Expected `Boolean`, found `Literal[True]`
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:19)nova/extensions/opcua/client.py:236:13: error[invalid-argument-type] Argument is incorrect: Expected `Byte`, found `int`
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28094719739/job/83181202426?pr=433#step:8:20)Found 6 diagnostics
+
+fix this
+
+---
+
+ok, for the collision free planning we need clamping against the controller global limits as it was before. this will be added to the API later but we need a workaround for now. try to make the code standalone and add some tests. check the branch for the clamping logic
+
+---
+
+Start implementation
