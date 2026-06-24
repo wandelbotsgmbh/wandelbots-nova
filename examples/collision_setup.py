@@ -3,8 +3,6 @@ from nova import Nova, api, run_program
 from nova.actions import cartesian_ptp
 from nova.cell import virtual_controller
 from nova.types import Pose
-from nova.viewers.utils import extract_collision_setups_from_actions
-from nova_rerun_bridge import NovaRerunBridge
 
 
 async def build_and_store_collision_world(
@@ -132,7 +130,9 @@ async def build_and_store_collision_world(
 
     # Store all colliders
     for name, collider in colliders.items():
-        await collision_components_api.store_collider(cell=cell_name, collider=name, collider2=collider)
+        await collision_components_api.store_collider(
+            cell=cell_name, collider=name, collider2=collider
+        )
 
     # Define TCP collider geometry
     tool_collider = api.models.Collider(
@@ -187,12 +187,14 @@ async def test(ctx: nova.ProgramContext):
 
     motion_group_description = await motion_group.get_description()
 
-    collision_setup_id = await build_and_store_collision_world(ctx.nova, cell.id, motion_group_description)
-    
+    collision_setup_id = await build_and_store_collision_world(
+        ctx.nova, cell.id, motion_group_description
+    )
+
     # this is how already stored collision setups can be loaded from NOVA
     collision_setup = await ctx.nova.api.store_collision_setups_api.get_stored_collision_setup(
-        cell=cell.cell_id,        # your cell identifier, typically "cell"
-        setup=collision_setup_id,     # the string key stored on the NOVA instance
+        cell=cell.cell_id,  # your cell identifier, typically "cell"
+        setup=collision_setup_id,  # the string key stored on the NOVA instance
     )
 
     tcp_names = await motion_group.tcp_names()
