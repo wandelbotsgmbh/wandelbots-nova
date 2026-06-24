@@ -131,7 +131,7 @@ def update_motion_group_setup_with_motion_settings(
     """Return a copy of the motion group setup patched with the motion settings.
 
     This function patches the TCP and joint limits with the provided motion settings. The input
-    ``motion_group_setup`` is not modified; a deep copy is returned.
+    ``motion_group_setup`` is not modified; a copy is returned (only ``global_limits`` is deep-copied).
 
     Used by the ``plan_collision_free`` path, which has no per-segment ``limits_override``: the
     user limits are folded into ``global_limits`` instead. The collision-checked
@@ -144,7 +144,9 @@ def update_motion_group_setup_with_motion_settings(
     Returns:
         A new motion group setup with the settings applied.
     """
-    motion_group_setup = motion_group_setup.model_copy(deep=True)
+    motion_group_setup = motion_group_setup.model_copy(deep=False)
+    if motion_group_setup.global_limits is not None:
+        motion_group_setup.global_limits = motion_group_setup.global_limits.model_copy(deep=True)
     tcp_settings = settings.as_tcp_cartesian_limits()
 
     if motion_group_setup.global_limits is None:
