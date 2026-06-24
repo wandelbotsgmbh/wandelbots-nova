@@ -4,7 +4,7 @@ import os.path
 import tempfile
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import asyncua
 import httpx
@@ -226,14 +226,14 @@ class OPCUAClient:
         )
 
         create_sub_params = CreateSubscriptionParameters(
-            RequestedPublishingInterval=config.requested_publishing_interval,
-            RequestedLifetimeCount=config.requested_lifetime_count,
-            RequestedMaxKeepAliveCount=self._client.get_keepalive_count(
-                config.requested_publishing_interval
+            RequestedPublishingInterval=ua.Double(config.requested_publishing_interval),
+            RequestedLifetimeCount=ua.UInt32(config.requested_lifetime_count),
+            RequestedMaxKeepAliveCount=ua.UInt32(
+                self._client.get_keepalive_count(config.requested_publishing_interval)
             ),
-            MaxNotificationsPerPublish=config.max_notifications_per_publish,
-            PublishingEnabled=True,
-            Priority=config.priority,
+            MaxNotificationsPerPublish=ua.UInt32(config.max_notifications_per_publish),
+            PublishingEnabled=cast(ua.Boolean, True),
+            Priority=ua.Byte(config.priority),
         )
         sub = await self._client.create_subscription(create_sub_params, data_change_sub)
         self._compare_subscription_parameters(create_sub_params, sub.parameters)
