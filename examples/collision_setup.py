@@ -193,7 +193,7 @@ async def test(ctx: nova.ProgramContext):
 
     # this is how already stored collision setups can be loaded from NOVA
     collision_setup = await ctx.nova.api.store_collision_setups_api.get_stored_collision_setup(
-        cell=cell.cell_id,  # your cell identifier, typically "cell"
+        cell=cell.id,  # your cell identifier, typically "cell"
         setup=collision_setup_id,  # the string key stored on the NOVA instance
     )
 
