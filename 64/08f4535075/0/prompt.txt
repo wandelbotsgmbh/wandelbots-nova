@@ -1,0 +1,15 @@
+Run uv run ty check
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28126772176/job/83292491786?pr=433#step:8:14)tests/nova/utils/test_collision_setup.py:8:40: error[unresolved-import] Module `nova.utils.collision_setup` has no member `motion_group_setup_from_motion_group_description`
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/28126772176/job/83292491786?pr=433#step:8:15)Found 1 diagnostic
+
+fix this
+
+---
+
+A) lets go
+
+---
+
+Start implementation
