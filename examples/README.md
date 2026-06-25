@@ -14,6 +14,7 @@ Examples on how to use the wandelbots-nova library.
 8. [Serialize program](serialize_program.py)
 9. [Merge trajectories with blending](merge_trajectories.py)
 10. [Kinematic configuration](kinematic_configuration.py)
+11. [Path triggers (IO writes between motions)](path_triggers.py)
 
 ## Usage
 
