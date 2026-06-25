@@ -5,6 +5,8 @@
 [![Build status](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/nova-release.yaml/badge.svg)](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/nova-release.yaml)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/wandelbotsgmbh/wandelbots-nova)
 
+> **📚 New to the SDK?** Explore the [DeepWiki documentation](https://deepwiki.com/wandelbotsgmbh/wandelbots-nova) for architecture guides and tutorials. You can also **chat with it** to get code examples, detailed explanations, and answers to your questions.
+
 This library provides an SDK for the Wandelbots NOVA API.
 
 The SDK will help you to build your own apps and services using Python on top of Wandelbots NOVA and makes programming a robot as easy as possible.
@@ -141,6 +143,8 @@ Curated examples in this repository showcase typical SDK workflows:
 <img width="100%" alt="thumbnail" src="https://github.com/user-attachments/assets/6f0c441e-b133-4a3a-bf0e-0e947d3efad4" />
 
 8. **Merge trajectories with blending**: [merge_trajectories.py](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/merge_trajectories.py)
+
+9. **Kinematic configuration**: [kinematic_configuration.py](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/kinematic_configuration.py)
 
 ## Wandelscript (deprecated)
 

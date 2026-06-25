@@ -21,7 +21,7 @@ uv run ruff check --select I --fix
 uv run ruff check .
 
 # Type checking
-uv run mypy
+uv run ty check
 
 PYTHONPATH=. uv run pytest -rs -v -m "not integration"
 # Run all unit tests (excluding integration tests)

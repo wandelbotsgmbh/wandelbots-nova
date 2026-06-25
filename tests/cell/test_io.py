@@ -7,7 +7,7 @@ from typing import Any, AsyncGenerator
 import pytest
 
 from nova import Nova, api
-from nova.actions import ptp
+from nova.actions import ptp, wait
 from nova.actions.base import Action
 from nova.actions.io import io_write
 from nova.cell import virtual_controller
@@ -62,10 +62,12 @@ async def setup_virtual_profinet() -> AsyncGenerator[tuple[str, ...], None]:
             await nova.api.bus_ios_api.add_bus_io_service(
                 cell="cell", bus_io_type=api.models.BusIOType(api.models.BusIOProfinetVirtual())
             )
-            # sometimes we get error if we communicate with bus io right after we get the "connected" message
-            await asyncio.sleep(30)
 
-        await bus_io_service_ready.wait()
+        # Wait (event-driven) until the bus IO service reports CONNECTED instead of a
+        # fixed sleep, then keep a short settle buffer: communicating with the bus IO
+        # immediately after the "connected" message can still error.
+        await asyncio.wait_for(bus_io_service_ready.wait(), timeout=60)
+        await asyncio.sleep(5)
 
         await nova.api.bus_ios_api.add_profinet_io(
             cell="cell",
@@ -320,6 +322,19 @@ SET_IO_ON_PATH_TEST_CASES = [
         ),
         id="write_only_mixed_io",
     ),
+    pytest.param(
+        SetIOOnPathTestCase(
+            description="set bus io with a write-wait-write action list and no motions",
+            bus_io_prestate={"test_bool": False, "test_bool_2": False},
+            actions=[
+                io_write("test_bool", True, origin=api.models.IOOrigin.BUS_IO),
+                wait(0.1),
+                io_write("test_bool_2", True, origin=api.models.IOOrigin.BUS_IO),
+            ],
+            expected_bus_io={"test_bool": True, "test_bool_2": True},
+        ),
+        id="write_wait_write_only_bus_io",
+    ),
 ]
 
 
@@ -347,15 +362,15 @@ async def test_set_io_on_path(
         # VERIFY
         for io in test_case.expected_controller_io:
             value = await ur.read(io)
-            assert test_case.expected_controller_io[io] == value, (
-                f"Controller IO: {io} doesn't match the expected value."
-            )
+            assert (
+                test_case.expected_controller_io[io] == value
+            ), f"Controller IO: {io} doesn't match the expected value."
 
         for io in test_case.expected_bus_io:
             values = await get_bus_io_value([io], nova=nova)
-            assert values[io] == test_case.expected_bus_io[io], (
-                f"Bus IO: {io} doesn't match the expected value"
-            )
+            assert (
+                values[io] == test_case.expected_bus_io[io]
+            ), f"Bus IO: {io} doesn't match the expected value"
 
 
 @pytest.mark.asyncio

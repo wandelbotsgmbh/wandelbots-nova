@@ -177,3 +177,13 @@ nova_rerun_bridge/nova_rerun_bridge_app/nova
 
 kubeconfig
 **/kubeconfig
+benchmark_results
+policy/examples/apps/mock-camera-server/.venv/
+policy/benchmarks/output/
+DEV.md
+
+policy/examples/apps/gr00t/
+
+
+# Local-only clone examples (real-robot dry-runs, not for the repo)
+policy/examples/**/*_clone.py

@@ -34,7 +34,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Typecheck
-        run: uv run mypy
+        run: uv run ty check
 
       - name: Run tests
         run: PYTHONPATH=. LOG_LEVEL=WARNING uv run pytest -rs -v -m "not integration"

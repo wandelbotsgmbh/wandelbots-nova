@@ -182,7 +182,7 @@ class IODevice(InputDevice, OutputDevice, Protocol):
 class AbstractDeviceState(Protocol):
     """A state of a device"""
 
-    def __eq__(self, other: "AbstractDeviceState") -> bool:
+    def __eq__(self, other: "AbstractDeviceState") -> bool:  # ty: ignore[invalid-method-override]
         """Check if the state is equal to another state"""
 
 
@@ -221,7 +221,9 @@ class AbstractRobot(Device):
     def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:
         return False
 
-    async def _execute_direct_non_motion_actions(self, actions: list[Action], tcp: str) -> None:
+    async def _execute_direct_non_motion_actions(
+        self, actions: list[Action], tcp: str | None
+    ) -> None:
         raise NotImplementedError(
             f"{self.__class__.__name__} does not support direct execution of non-motion action lists"
         )
@@ -462,7 +464,10 @@ class AbstractRobot(Device):
             return
 
         joint_trajectory = await self.plan(
-            actions_list, tcp, start_joint_position=start_joint_position
+            actions_list,
+            tcp,
+            start_joint_position=start_joint_position,
+            payload_override=payload_override,
         )
         motion_state_stream = self.stream_execute(
             joint_trajectory,
@@ -509,7 +514,10 @@ class AbstractRobot(Device):
             return
 
         joint_trajectory = await self.plan(
-            actions_list, tcp, start_joint_position=start_joint_position
+            actions_list,
+            tcp,
+            start_joint_position=start_joint_position,
+            payload_override=payload_override,
         )
         await self.execute(
             joint_trajectory,
@@ -631,9 +639,9 @@ class RobotCell:
         devices = {"timer": timer, **kwargs}
         # TODO: if "timer" has not the same id it cannot correctly be serialized/deserialized currently
         for device_name, device in devices.items():
-            if device is not None and device_name != device.id:
+            if device is not None and device_name != device.id:  # ty: ignore[unresolved-attribute]
                 raise ValueError(
-                    f"The device name should match its name in the robotcell but are '{device_name}' and '{device.id}'"
+                    f"The device name should match its name in the robotcell but are '{device_name}' and '{device.id}'"  # ty: ignore[unresolved-attribute]
                 )
         self._devices = devices
         self._device_exit_stack = AsyncExitStack()

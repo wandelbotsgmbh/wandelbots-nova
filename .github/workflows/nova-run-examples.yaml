@@ -64,14 +64,18 @@ jobs:
   test-integration:
     runs-on: ubuntu-latest
     needs: setup-instance
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       max-parallel: 1
       matrix:
         include:
           # single entry for the whole integration‑test batch
+          # NOTE: no `-s` — let pytest capture stdout/logs and only print them for
+          # failing tests; otherwise every passing test dumps the per-API-call INFO
+          # logs and the result log becomes huge.
           - id: integration
-            run_cmd: "pytest -rs -s -v -m integration"
+            run_cmd: "pytest -rs -v -m integration"
           # each example gets its own matrix entry
           - id: start_here
             run_cmd: "python examples/start_here.py"

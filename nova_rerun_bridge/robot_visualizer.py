@@ -1,4 +1,5 @@
 import re
+from io import BytesIO
 from typing import Any, cast
 
 import numpy as np
@@ -10,13 +11,7 @@ from nova import api
 from nova.types import Pose
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.dh_robot import DHRobot
-from nova_rerun_bridge.helper_scripts.download_models import get_project_root
 from nova_rerun_bridge.hull_visualizer import HullVisualizer
-
-
-def get_model_path(model_name: str) -> str:
-    """Get absolute path to model file in project directory"""
-    return str(get_project_root() / "models" / f"{model_name}.glb")
 
 
 def _copy_graph_matrix(matrix: object) -> np.ndarray:
@@ -39,7 +34,7 @@ class RobotVisualizer:
         albedo_factor: list = [255, 255, 255],
         collision_link_chain: api.models.LinkChain | None = None,
         collision_tcp: api.models.Tool | None = None,
-        motion_group_model: str = "",
+        model_data: bytes | None = None,
         show_collision_link_chain: bool = False,
         show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
@@ -55,7 +50,7 @@ class RobotVisualizer:
         :param albedo_factor: A list representing the RGB values [R, G, B] to apply as the albedo factor.
         :param collision_link_chain: Collision link chain geometries for the robot
         :param collision_tcp: Collision TCP geometries
-        :param model_from_controller: Model name from controller for loading robot mesh
+        :param model_data: GLB model data as bytes, loaded directly from the NOVA API
         :param show_collision_link_chain: Whether to render robot collision mesh geometry
         :param show_collision_tool: Whether to render TCP tool collision geometry
         :param show_safety_link_chain: Whether to render robot safety geometry (from controller)
@@ -77,7 +72,7 @@ class RobotVisualizer:
             cast(list[Any], collision_link_chain.root) if collision_link_chain else []
         )
         self.collision_tcp_geometries: dict[str, api.models.Collider] = (
-            cast(dict[str, api.models.Collider], collision_tcp.root) if collision_tcp else {}
+            collision_tcp.root if collision_tcp else {}
         )
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool
@@ -88,17 +83,16 @@ class RobotVisualizer:
         self.layer_nodes_dict: dict[str, list[str]] = {}
         self.parent_nodes_dict: dict[str, str] = {}
 
-        # load mesh
-        try:
-            glb_path = get_model_path(motion_group_model)
-            self.scene = trimesh.load_scene(glb_path, file_type="glb")
-            self.mesh_loaded = True
-            self.edge_data = self.scene.graph.transforms.edge_data
+        if model_data:
+            try:
+                self.scene = trimesh.load_scene(BytesIO(model_data), file_type="glb")
+                self.mesh_loaded = True
+                self.edge_data = self.scene.graph.transforms.edge_data
 
-            # After loading, auto-discover any child nodes that match *_J0n
-            self.discover_joints()
-        except Exception as e:
-            print(f"Failed to load mesh: {e}")
+                # After loading, auto-discover any child nodes that match *_J0n
+                self.discover_joints()
+            except Exception as e:
+                print(f"Failed to load mesh: {e}")
 
         # Group safety geometries by link index for easier lookup later on
         for link_chain in robot_model_geometries:

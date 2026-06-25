@@ -1,7 +1,5 @@
-import asyncio
-
 import nova
-from nova import Nova, api
+from nova import Nova, api, run_program
 from nova.actions import cartesian_ptp, linear
 from nova.cell import virtual_controller
 from nova.exceptions import PlanTrajectoryFailed
@@ -71,4 +69,4 @@ async def test():
 
 
 if __name__ == "__main__":
-    asyncio.run(test())
+    run_program(test)

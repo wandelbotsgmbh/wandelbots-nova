@@ -20,6 +20,11 @@ from nova.types.pose import Pose
 
 # logger = logging.getLogger(__name__)
 
+# A fully stopped robot may still report sub-millimeter differences between two
+# pose reads, so "did not move" is asserted within this tolerance instead of with
+# exact float equality.
+STOPPED_POSITION_TOLERANCE_MM = 1.0
+
 
 @pytest.fixture
 async def ur_mg():
@@ -104,7 +109,9 @@ async def test_movement_stops_when_canceling_task_with_execute(ur_mg):
 
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
-    assert pose.position.x == new_pose.position.x, "Robot moved after task was cancelled."
+    assert abs(new_pose.position.x - pose.position.x) < STOPPED_POSITION_TOLERANCE_MM, (
+        "Robot moved after task was cancelled."
+    )
 
 
 @pytest.mark.asyncio
@@ -147,7 +154,9 @@ async def test_movement_stops_when_async_generator_raises_exception(ur_mg):
 
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
-    assert pose.position.x == new_pose.position.x, "Robot moved after task was cancelled."
+    assert abs(new_pose.position.x - pose.position.x) < STOPPED_POSITION_TOLERANCE_MM, (
+        "Robot moved after task was cancelled."
+    )
 
 
 def create_movement_controller(exception: BaseException) -> MovementController:
@@ -208,7 +217,9 @@ async def test_movement_stops_when_custom_controller_raises(ur_mg):
 
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
-    assert pose.position.x == new_pose.position.x, "Robot moved after task was cancelled."
+    assert abs(new_pose.position.x - pose.position.x) < STOPPED_POSITION_TOLERANCE_MM, (
+        "Robot moved after task was cancelled."
+    )
 
 
 @pytest.mark.asyncio
@@ -248,7 +259,9 @@ async def test_task_cancelation_when_movement_controller_cancels_we_should_propa
 
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
-    assert pose.position.x == new_pose.position.x, "Robot moved after task was cancelled."
+    assert abs(new_pose.position.x - pose.position.x) < STOPPED_POSITION_TOLERANCE_MM, (
+        "Robot moved after task was cancelled."
+    )
 
 
 def process_worker(controller_name: str):
@@ -302,4 +315,6 @@ async def _test_task_cancelation_when_process_is_killed(ur_mg):
     # wait a little to and check that position not changed
     await asyncio.sleep(2)
     new_pose = await ur_mg.tcp_pose()
-    assert pose.position.x == new_pose.position.x, "Robot moved after task was cancelled."
+    assert abs(new_pose.position.x - pose.position.x) < STOPPED_POSITION_TOLERANCE_MM, (
+        "Robot moved after task was cancelled."
+    )

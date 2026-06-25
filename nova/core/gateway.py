@@ -40,7 +40,7 @@ class _Interceptor:
                     raise e
                 finally:
                     duration = time.time() - start
-                    logger.info(f"API CALL: {name} took {duration:.2f} seconds")
+                    logger.debug(f"API CALL: {name} took {duration:.2f} seconds")
                     logger.debug(f"API CALL: {name} with args={args}, kwargs={kwargs}")
 
             return async_wrapper
@@ -55,7 +55,7 @@ class _Interceptor:
                 raise e
             finally:
                 duration = time.time() - start
-                logger.info(f"API CALL: {name} took {duration:.2f} seconds")
+                logger.debug(f"API CALL: {name} took {duration:.2f} seconds")
                 logger.debug(f"API CALL: {name} with args={args}, kwargs={kwargs}")
 
         return sync_wrapper
@@ -68,7 +68,7 @@ class _Interceptor:
 def _intercept(api_instance: T, gateway: "ApiGateway") -> T:
     # we ignore the type error here because
     # we want the return type to be the same as the original api instance to not break typing support
-    return _Interceptor(api_instance, gateway)  # type: ignore[return-value]
+    return _Interceptor(api_instance, gateway)  # ty: ignore[invalid-return-type]
 
 
 class ApiGateway:

@@ -1,6 +1,102 @@
 # CHANGELOG
 
 
+## v5.6.2 (2026-06-25)
+
+### Bug Fixes
+
+- **NDX-728**: Revert clamping the mg limits and refactoring (#433)
+  ([#433](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/433),
+  [`2421bfc`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2421bfc89934352dc3ecb247f8b1f37827a5c181))
+
+
+## v5.6.1 (2026-06-24)
+
+### Bug Fixes
+
+- **NDX-752**: Use torque limits when planning a trajectory (#432)
+  ([#432](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/432),
+  [`bb99551`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bb99551e52df4cfd40ceeb88c86d01d3186d7650))
+
+
+## v5.6.0 (2026-06-24)
+
+### Features
+
+- Update collision setup example (#435)
+  ([#435](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/435),
+  [`61f9e1d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/61f9e1d5450a5810dae91dc59f4d3864e1bb26f8))
+
+
+## v5.5.0 (2026-06-24)
+
+### Features
+
+- Add policy package to execute learned policies (imitation learning, reinforcement learning) (#428)
+  ([#428](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/428),
+  [`8a0f57e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8a0f57e3afdae6fbcf79e3ef67a983bbc4a22e66))
+
+
+## v5.4.2 (2026-06-12)
+
+### Bug Fixes
+
+- **NDX-728**: Clamp joint limits based on mg limits, added entire.io (#431)
+  ([#431](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/431),
+  [`7a06a3a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7a06a3af7f558eb040289f9298abe46963ee737a))
+
+
+## v5.4.1 (2026-06-09)
+
+### Bug Fixes
+
+- Fixed cursor index clamping (#430)
+  ([#430](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/430),
+  [`6225a7d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6225a7d6e0e04d9806066693053ff74cfb8c6b01))
+
+
+## v5.4.0 (2026-06-09)
+
+### Bug Fixes
+
+- **NDX-440**: Issues with io_write actions (#411)
+  ([#411](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/411),
+  [`90d3d0d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/90d3d0d1b6234168acc164aaf930489112d430b9))
+
+### Features
+
+- **NDX-767**: Show complete action selection (not just the line) (#429)
+  ([#429](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/429),
+  [`b95fd48`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b95fd487eeb15f5560b1d9f00d0db1733e0d4c25))
+
+
+## v5.3.0 (2026-06-04)
+
+### Features
+
+- Add support of cartesian PTP with configured pose (#425)
+  ([#425](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/425),
+  [`75e362b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/75e362be934d62b6387b7c59db19096f13599d94))
+
+
+## v5.2.0 (2026-06-04)
+
+### Features
+
+- Add on-demand robot model downloading from NOVA API (#422)
+  ([#422](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/422),
+  [`38c2279`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/38c227916ffc0194d2d4dd5379ca6835af0091e3))
+
+
+## v5.1.4 (2026-06-03)
+
+### Chores
+
+- **api**: Update wandelbots-api-client to 26.4.0 (#423)
+  ([#423](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/423),
+  [`fe1d72e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fe1d72e0e2d74e7867caf5d7cf9486bbd3a2131b))
+
+
 ## v5.1.3 (2026-05-20)
 
 ### Bug Fixes

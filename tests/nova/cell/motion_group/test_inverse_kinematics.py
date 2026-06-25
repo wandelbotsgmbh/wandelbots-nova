@@ -167,7 +167,7 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup(ur_mg)
     # if you change the orientation, IK will find no solution
     orientation = ((120 / 360) * 2 * pi, (-135 / 360) * 2 * pi, 0)
     solutions = await ur_mg._inverse_kinematics(
-        poses=[Pose(700, 0, 1, *orientation)], tcp="Flange", motion_group_setup=setup
+        poses=[Pose(700, 0, 7, *orientation)], tcp="Flange", motion_group_setup=setup
     )
 
     assert len(solutions) == 1, "Inverse kinematics did not return solutions for all poses"

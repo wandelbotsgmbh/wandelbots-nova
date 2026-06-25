@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import aclosing
 from functools import partial
-from typing import Any, AsyncGenerator, cast
+from typing import Any, AsyncGenerator
 
 import numpy as np
 
@@ -25,13 +25,16 @@ from nova.exceptions import LoadPlanFailed, NoInverseKinematicsSolutionFound, Pl
 from nova.types import Pose, RobotState
 from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.utils.collision_setup import (
-    get_joint_position_limits_from_motion_group_setup,
     get_safety_collision_setup_from_motion_group_description,
-    motion_group_setup_from_motion_group_description,
     validate_collision_setups,
 )
 from nova.utils.joint_trajectory import combine_trajectories
-from nova.utils.motion_group_settings import update_motion_group_setup_with_motion_settings
+from nova.utils.motion_group_setup import (
+    clamp_limit_set_to_max,
+    get_joint_position_limits_from_motion_group_setup,
+    motion_group_setup_from_motion_group_description,
+    update_motion_group_setup_with_motion_settings,
+)
 
 from .movement_controller import move_forward
 from .movement_controller.async_action_executor import AsyncActionExecutor
@@ -124,6 +127,25 @@ def _find_and_sort_best_joint_solutions(
     return [tuple(solution) for solution in np_sorted_solutions]
 
 
+def _with_collision_setup(
+    motion_group_setup: api.models.MotionGroupSetup,
+    key: str,
+    collision_setup: api.models.CollisionSetup | None,
+) -> api.models.MotionGroupSetup:
+    """Return a copy of the setup with ``collision_setup`` registered under ``key``.
+
+    The input setup is deep-copied so the caller's instance is not mutated. The copy is
+    intentionally a deep copy even though collision scenes can be large, because we must not
+    create a side effect on the provided motion group setup.
+    """
+    motion_group_setup = motion_group_setup.model_copy(deep=True)
+    if motion_group_setup.collision_setups is None:
+        motion_group_setup.collision_setups = api.models.CollisionSetups({})
+    if collision_setup is not None:
+        motion_group_setup.collision_setups.root[key] = collision_setup
+    return motion_group_setup
+
+
 class MotionGroup(AbstractRobot):
     """Manages motion planning and execution within a specified motion group."""
 
@@ -159,7 +181,9 @@ class MotionGroup(AbstractRobot):
     def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:
         return len(actions) > 0 and all(not action.is_motion() for action in actions)
 
-    async def _execute_direct_non_motion_actions(self, actions: list[Action], tcp: str) -> None:
+    async def _execute_direct_non_motion_actions(
+        self, actions: list[Action], tcp: str | None
+    ) -> None:
         execution_state = ExecutionState()
         current_state = await self.get_state(tcp)
         active_tasks: dict[str, tuple[AsyncAction, asyncio.Task[Any]]] = {}
@@ -193,7 +217,7 @@ class MotionGroup(AbstractRobot):
                     await self._api_client.controller_ios_api.set_output_values(
                         cell=self._cell,
                         controller=self._controller_id,
-                        io_value=[action.to_api_model()],
+                        io_value=[action.to_api_model()],  # ty: ignore[invalid-argument-type]
                     )
             elif isinstance(action, WaitAction):
                 await asyncio.sleep(action.wait_for_in_seconds)
@@ -282,7 +306,7 @@ class MotionGroup(AbstractRobot):
 
            .. warning:: Only use this if you have ensured the physical controller is
               configured with the same payload. In most cases the automatic resolution
-              (rules 2–4) is correct and should be preferred.
+              (rules 2-4) is correct and should be preferred.
 
         2. **Convention:** if ``tcp_name`` is provided AND ``description.payloads``
            contains an entry whose key equals ``tcp_name``, that payload is used. A
@@ -321,6 +345,14 @@ class MotionGroup(AbstractRobot):
             payload=resolved_payload,
         )
 
+    @staticmethod
+    def _log_payload_override(name: str) -> None:
+        logger.info(
+            "Using explicit payload override '%s' for planning. "
+            "Ensure the physical controller is configured with the same payload.",
+            name,
+        )
+
     async def _resolve_payload(
         self,
         payload_override: str | api.models.Payload | None,
@@ -332,18 +364,10 @@ class MotionGroup(AbstractRobot):
 
         # Rule 1: explicit caller arg
         if isinstance(payload_override, api.models.Payload):
-            logger.info(
-                "Using explicit payload override '%s' for planning. "
-                "Ensure the physical controller is configured with the same payload.",
-                payload_override.name,
-            )
+            self._log_payload_override(payload_override.name)
             return payload_override
         if isinstance(payload_override, str):
-            logger.info(
-                "Using explicit payload override '%s' for planning. "
-                "Ensure the physical controller is configured with the same payload.",
-                payload_override,
-            )
+            self._log_payload_override(payload_override)
             return payloads[payload_override]
 
         # Rule 2: TCP-name convention
@@ -445,7 +469,7 @@ class MotionGroup(AbstractRobot):
                 When provided, the calculation will avoid configurations that lead to collisions.
                 If link_chain or tool are not specified in the collision setup, they will be automatically populated
                 from the motion group's default collision setup to ensure robot and tool geometry are included.
-                Check `nova.utils.collision_setup.motion_group_setup_from_motion_group_description` for default collision setups used for the inverse kinematics calculation.
+                Check `nova.utils.motion_group_setup.motion_group_setup_from_motion_group_description` for default collision setups used for the inverse kinematics calculation.
 
         Returns:
             list[list[tuple[float, ...]]]: All found joint position solutions for each pose. The outer list corresponds to each pose,
@@ -472,7 +496,7 @@ class MotionGroup(AbstractRobot):
                 collision_setups=motion_group_setup.collision_setups,
             ),
         )
-        return response.joints
+        return response.joints  # ty: ignore[invalid-return-type]
 
     async def forward_kinematics(self, joints: list[tuple[float, ...]], tcp: str) -> list[Pose]:
         """Get the forward kinematics of the motion group.
@@ -526,7 +550,9 @@ class MotionGroup(AbstractRobot):
         try:
             if self._current_motion is None:
                 raise ValueError("No motion to stop")
-            await self._api_client.motion_api.stop_execution(
+            # FIXME: `motion_api` does not exist on ApiGateway in the v2 API, so this
+            # call raises AttributeError if reached. Tracked by the TODO above.
+            await self._api_client.motion_api.stop_execution(  # ty: ignore[unresolved-attribute]
                 cell=self._cell, motion=self._current_motion
             )
             logger.debug(f"Motion {self.current_motion} stopped.")
@@ -750,16 +776,19 @@ class MotionGroup(AbstractRobot):
         collision_setups = validate_collision_setups(actions)
         first_collision_setup = collision_setups[0] if len(collision_setups) > 0 else None
 
-        # this is bad for memory because collision scenes can be very large
-        # but we do it for now anyway because we don't want to create side effect on the provided motion group setup
-        motion_group_setup = motion_group_setup.model_copy(deep=True)
-        if motion_group_setup.collision_setups is None:
-            motion_group_setup.collision_setups = api.models.CollisionSetups({})
+        # global_limits stays at the controller maximum here; the user MotionSettings are sent as
+        # a per-segment limits_override inside each motion command (see
+        # CombinedActions.to_motion_command). This is possible because PlanTrajectoryRequest carries
+        # a list of MotionCommands, each with its own LimitsOverride field. The collision-free path
+        # (_plan_collision_free) cannot do this and folds the limits into global_limits instead --
+        # see the note there for why the two paths necessarily differ.
+        motion_group_setup = _with_collision_setup(
+            motion_group_setup, "collision-check", first_collision_setup
+        )
 
-        if first_collision_setup is not None:
-            motion_group_setup.collision_setups.root["collision-check"] = first_collision_setup
-
-        motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
+        motion_commands = CombinedActions(
+            items=tuple(actions)  # ty: ignore[invalid-argument-type]
+        ).to_motion_command()
 
         # Plan the trajectory
         plan_trajectory_response = await self._api_client.trajectory_planning_api.plan_trajectory(
@@ -806,16 +835,9 @@ class MotionGroup(AbstractRobot):
         if start_joint_position is None:
             raise RuntimeError("start_joint_position must be provided for CollisionFreeMotion")
 
-        # this is bad for memory because collision scenes can be very large
-        # but we do it for now anyway because we don't want to create side effect on the provided motion group setup
-        motion_group_setup = motion_group_setup.model_copy(deep=True)
-        if motion_group_setup.collision_setups is None:
-            motion_group_setup.collision_setups = api.models.CollisionSetups({})
-
-        if action.collision_setup is not None:
-            motion_group_setup.collision_setups.root["collision-free-motion"] = (
-                action.collision_setup
-            )
+        motion_group_setup = _with_collision_setup(
+            motion_group_setup, "collision-free-motion", action.collision_setup
+        )
 
         best_joint_solutions: list[tuple[float, ...]] = []
         if isinstance(action.target, Pose):
@@ -840,11 +862,29 @@ class MotionGroup(AbstractRobot):
         else:
             raise ValueError("Invalid target type for CollisionFreeMotion")
 
-        # Update the collision setup with user data
+        # The collision-checked path keeps global_limits at the controller maximum and sends user
+        # limits as a per-segment limits_override. We cannot mirror that here: PlanCollisionFreeRequest
+        # has no limits_override field (only motion_group_setup, start_joint_position, target,
+        # constraint, algorithm) and no per-segment motion-command list, so folding the user
+        # MotionSettings into global_limits is the ONLY mechanism the released API offers. This is
+        # API-forced, not a stylistic choice.
+        #
+        # The two paths are functionally equivalent whenever the user limit <= the controller
+        # maximum (the effective ceiling is the user limit either way). If a user limit exceeds the
+        # controller maximum, folding would raise global_limits above what the hardware supports, so
+        # we clamp the folded limits back to the controller maximum below. This is a temporary
+        # workaround until the collision-free planner clamps server-side (see clamp_limit_set_to_max).
         if action.settings is not None:
-            update_motion_group_setup_with_motion_settings(
+            # global_limits still holds the controller maximum here (from the setup builder); keep a
+            # reference so the folded user limits can be clamped back to it.
+            controller_max_limits = motion_group_setup.global_limits
+            motion_group_setup = update_motion_group_setup_with_motion_settings(
                 motion_group_setup=motion_group_setup, settings=action.settings
             )
+            if motion_group_setup.global_limits is not None and controller_max_limits is not None:
+                motion_group_setup.global_limits = clamp_limit_set_to_max(
+                    motion_group_setup.global_limits, controller_max_limits
+                )
 
         for best_joint_solution in best_joint_solutions:
             try:
@@ -898,29 +938,9 @@ class MotionGroup(AbstractRobot):
                     )
 
         current_joints = start_joint_position or await self.joints()
-        if motion_group_setup is None:
-            motion_group_setup = await self.get_setup(
-                tcp_name=tcp, payload_override=payload_override
-            )
-        elif payload_override is not None:
-            # Caller supplied both an explicit setup and a payload override;
-            # the explicit payload wins. Do not mutate the caller's setup.
-            motion_group_setup = motion_group_setup.model_copy(deep=True)
-            if isinstance(payload_override, api.models.Payload):
-                # Already a concrete Payload — no need to fetch the description.
-                logger.info(
-                    "Using explicit payload override '%s' for planning. "
-                    "Ensure the physical controller is configured with the same payload.",
-                    payload_override.name,
-                )
-                motion_group_setup.payload = payload_override
-            else:
-                description = await self._fetch_motion_group_description()
-                motion_group_setup.payload = await self._resolve_payload(
-                    payload_override=payload_override,
-                    tcp_name=tcp,
-                    motion_group_description=description,
-                )
+        motion_group_setup = await self._resolve_setup_for_plan(
+            tcp=tcp, motion_group_setup=motion_group_setup, payload_override=payload_override
+        )
 
         # TODO: can be done in parallel, would be a big performance boost
         all_trajectories = []
@@ -929,7 +949,7 @@ class MotionGroup(AbstractRobot):
                 raise ValueError("Empty batch of actions")
 
             if isinstance(batch[0], CollisionFreeMotion):
-                motion: CollisionFreeMotion = cast(CollisionFreeMotion, batch[0])
+                motion: CollisionFreeMotion = batch[0]
                 trajectory = await self._plan_collision_free(
                     action=motion,
                     tcp=tcp,
@@ -941,26 +961,8 @@ class MotionGroup(AbstractRobot):
 
                 current_joints = tuple(trajectory.joint_positions[-1].root)
             elif isinstance(batch[0], WaitAction):
-                # Waits generate a trajectory with the same joint position at each timestep
-                # Use 50ms timesteps from 0 to wait_for_in_seconds
-                wait_time = batch[0].wait_for_in_seconds
-                timestep = 0.050  # 50ms timestep
-                num_steps = max(2, int(wait_time / timestep) + 1)  # Ensure at least 2 points
-
-                # Create equal-length arrays for positions, times, and locations
-                joint_positions = [
-                    api.models.Joints(list(current_joints)) for _ in range(num_steps)
-                ]
-                times = [i * timestep for i in range(num_steps)]
-                # Ensure the last timestep is exactly the wait duration
-                times[-1] = wait_time
-                # Use the same location value for all points
-                locations = [0] * num_steps
-
-                trajectory = api.models.JointTrajectory(
-                    joint_positions=joint_positions,
-                    times=times,
-                    locations=[api.models.Location(float(loc)) for loc in locations],
+                trajectory = self._build_wait_trajectory(
+                    current_joints, batch[0].wait_for_in_seconds
                 )
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
@@ -977,6 +979,55 @@ class MotionGroup(AbstractRobot):
                 current_joints = tuple(trajectory.joint_positions[-1])
 
         return combine_trajectories(all_trajectories)
+
+    async def _resolve_setup_for_plan(
+        self,
+        tcp: str | None,
+        motion_group_setup: api.models.MotionGroupSetup | None,
+        payload_override: str | api.models.Payload | None,
+    ) -> api.models.MotionGroupSetup:
+        """Return the motion group setup to plan with, applying any payload override."""
+        if motion_group_setup is None:
+            return await self.get_setup(tcp_name=tcp, payload_override=payload_override)
+
+        if payload_override is None:
+            return motion_group_setup
+
+        # Caller supplied both an explicit setup and a payload override;
+        # the explicit payload wins. Do not mutate the caller's setup.
+        motion_group_setup = motion_group_setup.model_copy(deep=True)
+        if isinstance(payload_override, api.models.Payload):
+            # Already a concrete Payload — no need to fetch the description.
+            self._log_payload_override(payload_override.name)
+            motion_group_setup.payload = payload_override
+        else:
+            description = await self._fetch_motion_group_description()
+            motion_group_setup.payload = await self._resolve_payload(
+                payload_override=payload_override,
+                tcp_name=tcp,
+                motion_group_description=description,
+            )
+        return motion_group_setup
+
+    @staticmethod
+    def _build_wait_trajectory(
+        current_joints: tuple[float, ...], wait_time: float
+    ) -> api.models.JointTrajectory:
+        """Build a trajectory that holds ``current_joints`` for ``wait_time`` seconds."""
+        # Waits generate a trajectory with the same joint position at each timestep.
+        # Use 50ms timesteps from 0 to wait_time.
+        timestep = 0.050  # 50ms timestep
+        num_steps = max(2, int(wait_time / timestep) + 1)  # Ensure at least 2 points
+
+        joint_positions = [api.models.Joints(list(current_joints)) for _ in range(num_steps)]
+        times = [i * timestep for i in range(num_steps)]
+        # Ensure the last timestep is exactly the wait duration
+        times[-1] = wait_time
+        return api.models.JointTrajectory(
+            joint_positions=joint_positions,
+            times=times,
+            locations=[api.models.Location(0.0) for _ in range(num_steps)],
+        )
 
     # TODO: refactor and simplify code, tests are already there
     async def _execute(
@@ -1047,7 +1098,7 @@ class MotionGroup(AbstractRobot):
                 await self._api_client.trajectory_execution_api.execute_trajectory(
                     cell=self._cell,
                     controller=self._controller_id,
-                    client_request_generator=controller,
+                    client_request_generator=controller,  # ty: ignore[invalid-argument-type]
                 )
             finally:
                 states.put_nowait(SENTINEL)

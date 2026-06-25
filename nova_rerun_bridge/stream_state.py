@@ -11,6 +11,7 @@ from nova.utils.downsample import downsample_stream
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.consts import TIME_REALTIME_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
+from nova_rerun_bridge.model_loader import load_model_data
 from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 
 
@@ -103,6 +104,8 @@ async def stream_motion_group(
         ]
 
     try:
+        model_data = await load_model_data(motion_group_model, motion_group._api_client)
+
         mounting = motion_group_description.mounting or api.models.Pose(
             position=api.models.Vector3d([0, 0, 0]),
             orientation=api.models.RotationVector([0, 0, 0]),
@@ -119,7 +122,7 @@ async def stream_motion_group(
             static_transform=False,
             base_entity_path=motion_group.id,
             albedo_factor=[0, 255, 100],
-            motion_group_model=motion_group_model,
+            model_data=model_data,
         )
 
         logger.info(f"Started streaming motion group {motion_group.id}")
