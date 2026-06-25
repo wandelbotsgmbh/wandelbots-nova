@@ -19,6 +19,8 @@ from nova.actions.execution_state import ExecutionState
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CartesianPTP, Circular, CollisionFreeMotion, Linear
+from nova.actions.path_trigger import DistanceTrigger
+from nova.actions.path_trigger_resolver import resolve_trigger_locations
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, NoInverseKinematicsSolutionFound, PlanTrajectoryFailed
@@ -1029,6 +1031,47 @@ class MotionGroup(AbstractRobot):
             locations=[api.models.Location(0.0) for _ in range(num_steps)],
         )
 
+    async def _resolve_set_io_overrides(
+        self,
+        combined_actions: CombinedActions,
+        joint_trajectory: api.models.JointTrajectory,
+        tcp: str | None,
+    ) -> dict[int, float] | None:
+        """Resolve path-triggered write actions to concrete float locations.
+
+        Time- and distance-based triggers are positioned relative to a motion
+        action and only become concrete once the trajectory is planned. Distance
+        triggers additionally need the per-sample TCP positions, computed here
+        via forward kinematics (only when such triggers are present).
+
+        Returns ``None`` when there is nothing to override.
+        """
+        triggered = [
+            action.action
+            for action in combined_actions.actions
+            if isinstance(action.action, WriteAction) and action.action.trigger is not None
+        ]
+        if not triggered:
+            return None
+
+        times = list(joint_trajectory.times)
+        locations = [location.root for location in joint_trajectory.locations]
+
+        tcp_positions: list[tuple[float, ...]] | None = None
+        if any(isinstance(write.trigger, DistanceTrigger) for write in triggered):
+            if tcp is None:
+                logger.warning(
+                    "Distance-based path triggers require a TCP but none was provided; "
+                    "these triggers will fall back to their motion boundary."
+                )
+            else:
+                joints = [tuple(sample.root) for sample in joint_trajectory.joint_positions]
+                poses = await self.forward_kinematics(joints, tcp)
+                tcp_positions = [pose.position.to_tuple() for pose in poses]
+
+        overrides = resolve_trigger_locations(combined_actions, times, locations, tcp_positions)
+        return overrides or None
+
     # TODO: refactor and simplify code, tests are already there
     async def _execute(
         self,
@@ -1060,6 +1103,9 @@ class MotionGroup(AbstractRobot):
 
         # Create async action executor if there are executor actions
         combined_actions = CombinedActions(items=tuple(actions))  # type: ignore
+        set_io_location_overrides = await self._resolve_set_io_overrides(
+            combined_actions, joint_trajectory, tcp
+        )
         executor_actions = combined_actions.get_executor_actions()
         executor: AsyncActionExecutor | None = None
         if executor_actions:
@@ -1079,6 +1125,7 @@ class MotionGroup(AbstractRobot):
                 pause_on_io=pause_on_io,
                 motion_group_state_stream_gen=self.stream_state,
                 async_action_executor=executor,
+                set_io_location_overrides=set_io_location_overrides,
             )
         )
 

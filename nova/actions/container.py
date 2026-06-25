@@ -151,16 +151,33 @@ class CombinedActions(pydantic.BaseModel):
             motion_commands.append(motion_command)
         return motion_commands
 
-    def to_set_io(self) -> list[api.models.SetIO]:
-        return [
-            api.models.SetIO(
-                io=api.models.IOValue(action.action.to_api_model()),
-                location=action.path_parameter,
-                io_origin=action.action.origin,
-            )
-            for action in self.actions
-            if isinstance(action.action, WriteAction)
+    def to_set_io(
+        self, location_overrides: dict[int, float] | None = None
+    ) -> list[api.models.SetIO]:
+        """Build the ``SetIO`` overlay entries for all write actions.
+
+        Args:
+            location_overrides: Optional mapping from write-action subsequence
+                index to a resolved float location, used for path-triggered
+                writes (see :mod:`nova.actions.path_trigger_resolver`). When an
+                index is absent the action's default ``path_parameter`` is used.
+        """
+        overrides = location_overrides or {}
+        write_actions = [
+            action for action in self.actions if isinstance(action.action, WriteAction)
         ]
+        result: list[api.models.SetIO] = []
+        for index, action in enumerate(write_actions):
+            write = action.action
+            assert isinstance(write, WriteAction)
+            result.append(
+                api.models.SetIO(
+                    io=api.models.IOValue(write.to_api_model()),
+                    location=overrides.get(index, action.path_parameter),
+                    io_origin=write.origin,
+                )
+            )
+        return result
 
     def get_async_actions(self) -> list[ActionLocation]:
         """Get all AsyncAction items with their path parameters.
@@ -207,6 +224,10 @@ class MovementControllerContext(pydantic.BaseModel):
     start_on_io: api.models.StartOnIO | None = None
     pause_on_io: api.models.PauseOnIO | None = None
     motion_group_state_stream_gen: Callable[[], AsyncIterator[api.models.MotionGroupState]]
+
+    # Resolved float locations for path-triggered write actions, keyed by
+    # write-action subsequence index (see nova.actions.path_trigger_resolver).
+    set_io_location_overrides: dict[int, float] | None = None
 
     # Async action support — typed as Any to avoid circular import with AsyncActionExecutor
     async_action_executor: Any | None = None

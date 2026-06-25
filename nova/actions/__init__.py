@@ -29,6 +29,18 @@ from nova.actions.motions import (
     linear,
     ptp,
 )
+from nova.actions.path_trigger import (
+    DistanceTrigger,
+    PathParameterTrigger,
+    PathTrigger,
+    TimeTrigger,
+    TriggerReference,
+    after_distance,
+    after_time,
+    at_path,
+    before_distance,
+    before_time,
+)
 from nova.actions.trajectory_builder import TrajectoryBuilder
 
 __all__ = [
@@ -62,4 +74,14 @@ __all__ = [
     "MovementController",
     "MovementControllerContext",
     "TrajectoryBuilder",
+    "PathTrigger",
+    "PathParameterTrigger",
+    "TimeTrigger",
+    "DistanceTrigger",
+    "TriggerReference",
+    "at_path",
+    "after_time",
+    "before_time",
+    "after_distance",
+    "before_distance",
 ]

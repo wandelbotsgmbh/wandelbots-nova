@@ -203,7 +203,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         )
 
         # === Enqueue initial start command ===
-        set_io_list = context.combined_actions.to_set_io()
+        set_io_list = context.combined_actions.to_set_io(context.set_io_location_overrides)
         command_queue.put_nowait(
             api.models.StartMovementRequest(
                 direction=api.models.Direction.DIRECTION_FORWARD,
