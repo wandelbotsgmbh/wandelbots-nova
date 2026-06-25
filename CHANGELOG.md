@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.6.2 (2026-06-25)
+
+### Bug Fixes
+
+- **NDX-728**: Revert clamping the mg limits and refactoring (#433)
+  ([#433](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/433),
+  [`2421bfc`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2421bfc89934352dc3ecb247f8b1f37827a5c181))
+
+
 ## v5.6.1 (2026-06-24)
 
 ### Bug Fixes
