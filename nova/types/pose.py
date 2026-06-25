@@ -178,7 +178,7 @@ class Pose(pydantic.BaseModel, Sized):
         >>> Pose(position=Vector3d(x=10, y=20, z=30), orientation=Vector3d(x=1, y=2, z=3)).to_tuple()
         (10, 20, 30, 1, 2, 3)
         """
-        return self.position.to_tuple() + self.orientation.to_tuple()
+        return self.position.to_tuple() + self.orientation.to_tuple()  # ty: ignore[invalid-return-type]
 
     def to_api_model(self) -> api.models.Pose:
         """Convert to wandelbots_api_client Pose

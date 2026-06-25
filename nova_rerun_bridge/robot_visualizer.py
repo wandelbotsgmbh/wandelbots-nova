@@ -72,7 +72,7 @@ class RobotVisualizer:
             cast(list[Any], collision_link_chain.root) if collision_link_chain else []
         )
         self.collision_tcp_geometries: dict[str, api.models.Collider] = (
-            cast(dict[str, api.models.Collider], collision_tcp.root) if collision_tcp else {}
+            collision_tcp.root if collision_tcp else {}
         )
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool

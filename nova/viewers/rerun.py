@@ -314,7 +314,7 @@ class Rerun(Viewer):
                 # Log the trajectory from the failed plan
                 if hasattr(error.error, "joint_trajectory") and error.error.joint_trajectory:
                     downsampled_trajectory = downsample_trajectory(
-                        error.error.joint_trajectory,
+                        error.error.joint_trajectory,  # ty: ignore[invalid-argument-type]
                         sample_interval_ms=self.trajectory_sample_interval_ms,
                     )
                     if tcp is not None:

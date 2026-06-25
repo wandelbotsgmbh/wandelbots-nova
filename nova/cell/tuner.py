@@ -86,7 +86,7 @@ class TrajectoryTuner:
                 command = data.get("command")
                 speed = data.get("speed")
                 if speed is not None:
-                    speed = pydantic.PositiveInt(speed)
+                    speed = pydantic.TypeAdapter(pydantic.PositiveInt).validate_python(speed)
             except (json.JSONDecodeError, ValueError) as e:
                 logger.warning(f"Invalid message format in trajectory-cursor: {e}")
                 return

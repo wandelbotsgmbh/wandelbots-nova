@@ -17,11 +17,10 @@ repos:
       - id: trailing-whitespace
       - id: check-json
         files: \.json$
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: 'v1.14.1'
+  - repo: https://github.com/astral-sh/ty-pre-commit
+    rev: v0.0.53
     hooks:
-      - id: mypy
-        args: [--no-warn-unused-ignores]
+      - id: ty
   - repo: https://github.com/adrienverge/yamllint.git
     rev: v1.35.1
     hooks:
