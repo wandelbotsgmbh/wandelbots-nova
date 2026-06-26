@@ -496,7 +496,10 @@ class TrajectoryCursor:
             motion_id: Unique identifier for this motion execution.
             motion_group_state_stream: Async stream of motion group state updates.
             joint_trajectory: The planned joint-space trajectory to execute.
-            actions: List of motion actions that make up the trajectory. Optional for location-based navigation.
+            actions: Actions that make up the trajectory. May contain a mix of
+                motion and non-motion actions (e.g. ``WriteAction``); only the
+                motion actions drive the cursor's location-to-action mapping.
+                Optional for location-based navigation.
             initial_location: Starting position on the trajectory (usually 0.0).
             detach_on_standstill: If True, automatically detach when robot stops.
         """
@@ -513,8 +516,14 @@ class TrajectoryCursor:
         self._raw_actions: tuple[Action, ...] | None = (
             tuple(actions) if actions is not None else None
         )
-        motion_actions = [a for a in actions if a.is_motion()] if actions is not None else None
-        self.actions = CombinedActions(items=motion_actions) if motion_actions is not None else None  # ty: ignore[invalid-argument-type]
+        # Delegate motion detection to CombinedActions.motions instead of
+        # re-implementing it here.
+        raw_combined = (
+            CombinedActions(items=self._raw_actions) if self._raw_actions is not None else None  # ty: ignore[invalid-argument-type]
+        )
+        self.actions = (
+            CombinedActions(items=tuple(raw_combined.motions)) if raw_combined is not None else None
+        )
 
         if self.actions is not None:
             expected_end_location = len(self.actions)

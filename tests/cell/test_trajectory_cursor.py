@@ -1,5 +1,7 @@
 """Tests for TrajectoryCursor action index and location logic."""
 
+import asyncio
+import contextlib
 import json
 from unittest.mock import MagicMock
 
@@ -390,5 +392,9 @@ async def test_cursor_accepts_mixed_motion_and_non_motion_actions():
         # preserved so the follow-up work can emit events for them.
         assert cursor._raw_actions == tuple(actions)
     finally:
-        # Tear down the background init task started by __init__.
+        # Tear down the background init task started by __init__. Cancel +
+        # await so the task is fully reaped before the test exits (avoids
+        # "Task was destroyed but it is pending!" warnings).
         cursor._initialize_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await cursor._initialize_task
