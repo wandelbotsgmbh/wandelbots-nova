@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.6.3 (2026-06-26)
+
+### Bug Fixes
+
+- **NDX-777**: Ignore non-motion actions instead of failing (#436)
+  ([#436](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/436),
+  [`a109c8a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a109c8aa6e04089560327b857af585c9e6101af3))
+
+
 ## v5.6.2 (2026-06-25)
 
 ### Bug Fixes
