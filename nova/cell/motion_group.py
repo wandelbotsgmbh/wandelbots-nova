@@ -2,15 +2,25 @@ import asyncio
 import logging
 from contextlib import aclosing
 from functools import partial
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 import numpy as np
 
 from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
+from nova.actions.async_action import (
+    ActionExecutionContext,
+    AsyncAction,
+    AwaitAction,
+    ErrorHandlingMode,
+    WaitUntilAction,
+)
+from nova.actions.execution_state import ExecutionState
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CartesianPTP, Circular, CollisionFreeMotion, Linear
+from nova.actions.path_trigger import DistanceTrigger
+from nova.actions.path_trigger_resolver import resolve_trigger_locations
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, NoInverseKinematicsSolutionFound, PlanTrajectoryFailed
@@ -29,6 +39,7 @@ from nova.utils.motion_group_setup import (
 )
 
 from .movement_controller import move_forward
+from .movement_controller.async_action_executor import AsyncActionExecutor
 from .robot_cell import AbstractRobot
 from .tuner import TrajectoryTuner
 
@@ -170,29 +181,93 @@ class MotionGroup(AbstractRobot):
         return self._current_motion
 
     def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:
-        return len(actions) > 0 and all(
-            isinstance(action, (WaitAction, WriteAction)) for action in actions
-        )
+        return len(actions) > 0 and all(not action.is_motion() for action in actions)
 
-    async def _execute_direct_non_motion_actions(self, actions: list[Action]) -> None:
+    async def _execute_direct_non_motion_actions(
+        self, actions: list[Action], tcp: str | None
+    ) -> None:
+        execution_state = ExecutionState()
+        current_state = await self.get_state(tcp)
+        active_tasks: dict[str, tuple[AsyncAction, asyncio.Task[Any]]] = {}
+        completed_action_ids: set[str] = set()
+
+        async def await_async_action(
+            async_action: AsyncAction, task: asyncio.Task[Any], timeout: float | None = None
+        ) -> None:
+            try:
+                if timeout is not None:
+                    await asyncio.wait_for(task, timeout=timeout)
+                else:
+                    await task
+            except asyncio.TimeoutError:
+                logger.warning(f"Async action '{async_action.action_id}' timed out")
+            except Exception as exc:
+                logger.error(
+                    f"Async action '{async_action.action_id}' failed: {exc}", exc_info=True
+                )
+            finally:
+                active_tasks.pop(async_action.action_id, None)
+                completed_action_ids.add(async_action.action_id)
+
         for action in actions:
-            if isinstance(action, WaitAction):
+            if isinstance(action, WriteAction):
+                if action.origin == api.models.IOOrigin.BUS_IO:
+                    await self._api_client.bus_ios_api.set_bus_io_values(
+                        cell=self._cell, io_value=[api.models.IOValue(action.to_api_model())]
+                    )
+                else:
+                    await self._api_client.controller_ios_api.set_output_values(
+                        cell=self._cell,
+                        controller=self._controller_id,
+                        io_value=[action.to_api_model()],  # ty: ignore[invalid-argument-type]
+                    )
+            elif isinstance(action, WaitAction):
                 await asyncio.sleep(action.wait_for_in_seconds)
-                continue
-
-            if not isinstance(action, WriteAction):
-                raise ValueError(f"Unsupported non-motion action type: {type(action).__name__}")
-
-            if action.origin == api.models.IOOrigin.BUS_IO:
-                await self._api_client.bus_ios_api.set_bus_io_values(
-                    cell=self._cell, io_value=[api.models.IOValue(action.to_api_model())]
+            elif isinstance(action, AsyncAction):
+                context = ActionExecutionContext(
+                    trigger_location=0.0,
+                    current_state=current_state,
+                    motion_group_id=self.id,
+                    action_name=action.action_name,
+                    action_args=action.args,
+                    action_kwargs=action.kwargs,
+                    state=execution_state,
                 )
+
+                async def execute_async_action(
+                    async_action: AsyncAction = action, ctx: ActionExecutionContext = context
+                ) -> Any:
+                    handler = async_action.get_handler()
+                    return await handler(ctx)
+
+                task = asyncio.create_task(
+                    execute_async_action(), name=f"async-action-{action.action_id}"
+                )
+                active_tasks[action.action_id] = (action, task)
+            elif isinstance(action, AwaitAction):
+                if action.action_id in completed_action_ids:
+                    continue
+
+                running = active_tasks.get(action.action_id)
+                if running is None:
+                    raise ValueError(
+                        f"AwaitAction references action_id '{action.action_id}' "
+                        "which has no corresponding AsyncAction"
+                    )
+
+                async_action, task = running
+                await await_async_action(async_action, task, timeout=action.timeout)
+            elif isinstance(action, WaitUntilAction):
+                satisfied = await execution_state.wait_for(action.predicate, timeout=action.timeout)
+                if not satisfied:
+                    logger.warning(
+                        f"WaitUntilAction timed out after {action.timeout}s at location 0.0"
+                    )
             else:
-                await self._api_client.controller_ios_api.set_output_values(
-                    cell=self._cell,
-                    controller=self._controller_id,
-                    io_value=[action.to_api_model()],  # ty: ignore[invalid-argument-type]
-                )
+                raise ValueError(f"Unsupported non-motion action type: {type(action)}")
+
+        for async_action, task in list(active_tasks.values()):
+            await await_async_action(async_action, task)
 
     # TODO: does this needs to be cached?
     async def _fetch_motion_group_description(self) -> api.models.MotionGroupDescription:
@@ -713,7 +788,9 @@ class MotionGroup(AbstractRobot):
             motion_group_setup, "collision-check", first_collision_setup
         )
 
-        motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # ty: ignore[invalid-argument-type]
+        motion_commands = CombinedActions(
+            items=tuple(actions)  # ty: ignore[invalid-argument-type]
+        ).to_motion_command()
 
         # Plan the trajectory
         plan_trajectory_response = await self._api_client.trajectory_planning_api.plan_trajectory(
@@ -954,6 +1031,47 @@ class MotionGroup(AbstractRobot):
             locations=[api.models.Location(0.0) for _ in range(num_steps)],
         )
 
+    async def _resolve_set_io_overrides(
+        self,
+        combined_actions: CombinedActions,
+        joint_trajectory: api.models.JointTrajectory,
+        tcp: str | None,
+    ) -> dict[int, float] | None:
+        """Resolve path-triggered write actions to concrete float locations.
+
+        Time- and distance-based triggers are positioned relative to a motion
+        action and only become concrete once the trajectory is planned. Distance
+        triggers additionally need the per-sample TCP positions, computed here
+        via forward kinematics (only when such triggers are present).
+
+        Returns ``None`` when there is nothing to override.
+        """
+        triggered = [
+            action.action
+            for action in combined_actions.actions
+            if isinstance(action.action, WriteAction) and action.action.trigger is not None
+        ]
+        if not triggered:
+            return None
+
+        times = list(joint_trajectory.times)
+        locations = [location.root for location in joint_trajectory.locations]
+
+        tcp_positions: list[tuple[float, ...]] | None = None
+        if any(isinstance(write.trigger, DistanceTrigger) for write in triggered):
+            if tcp is None:
+                logger.warning(
+                    "Distance-based path triggers require a TCP but none was provided; "
+                    "these triggers will fall back to their motion boundary."
+                )
+            else:
+                joints = [tuple(sample.root) for sample in joint_trajectory.joint_positions]
+                poses = await self.forward_kinematics(joints, tcp)
+                tcp_positions = [pose.position.to_tuple() for pose in poses]
+
+        overrides = resolve_trigger_locations(combined_actions, times, locations, tcp_positions)
+        return overrides or None
+
     # TODO: refactor and simplify code, tests are already there
     async def _execute(
         self,
@@ -983,13 +1101,31 @@ class MotionGroup(AbstractRobot):
         # Load planned trajectory
         trajectory_id = await self._load_planned_motion(joint_trajectory, tcp)
 
+        # Create async action executor if there are executor actions
+        combined_actions = CombinedActions(items=tuple(actions))  # type: ignore
+        set_io_location_overrides = await self._resolve_set_io_overrides(
+            combined_actions, joint_trajectory, tcp
+        )
+        executor_actions = combined_actions.get_executor_actions()
+        executor: AsyncActionExecutor | None = None
+        if executor_actions:
+            execution_state = ExecutionState()
+            executor = AsyncActionExecutor(
+                motion_group_id=self.id,
+                executor_actions=executor_actions,
+                execution_state=execution_state,
+                error_mode=ErrorHandlingMode.COLLECT,
+            )
+
         controller = movement_controller(
             MovementControllerContext(
-                combined_actions=CombinedActions(items=tuple(actions)),  # ty: ignore[invalid-argument-type]
+                combined_actions=combined_actions,
                 motion_id=trajectory_id,
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
                 motion_group_state_stream_gen=self.stream_state,
+                async_action_executor=executor,
+                set_io_location_overrides=set_io_location_overrides,
             )
         )
 

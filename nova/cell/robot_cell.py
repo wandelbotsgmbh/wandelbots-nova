@@ -221,7 +221,9 @@ class AbstractRobot(Device):
     def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:
         return False
 
-    async def _execute_direct_non_motion_actions(self, actions: list[Action]) -> None:
+    async def _execute_direct_non_motion_actions(
+        self, actions: list[Action], tcp: str | None
+    ) -> None:
         raise NotImplementedError(
             f"{self.__class__.__name__} does not support direct execution of non-motion action lists"
         )
@@ -458,7 +460,7 @@ class AbstractRobot(Device):
         actions_list = _normalize_actions(actions)
 
         if self._supports_direct_non_motion_actions(actions_list):
-            await self._execute_direct_non_motion_actions(actions_list)
+            await self._execute_direct_non_motion_actions(actions_list, tcp)
             return
 
         joint_trajectory = await self.plan(
@@ -508,7 +510,7 @@ class AbstractRobot(Device):
         actions_list = _normalize_actions(actions)
 
         if self._supports_direct_non_motion_actions(actions_list):
-            await self._execute_direct_non_motion_actions(actions_list)
+            await self._execute_direct_non_motion_actions(actions_list, tcp)
             return
 
         joint_trajectory = await self.plan(

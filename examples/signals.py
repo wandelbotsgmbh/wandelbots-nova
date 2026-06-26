@@ -59,6 +59,8 @@ async def main(ctx: nova.ProgramContext) -> None:
         io_write("test_bool", False, origin=api.models.IOOrigin.BUS_IO),
         ptp(target_pose),
         io_write("test_bool", True, origin=api.models.IOOrigin.BUS_IO),
+        io_write("test_foo", True, origin=api.models.IOOrigin.BUS_IO),
+        io_write("test_bar", True, origin=api.models.IOOrigin.BUS_IO),
     ]
 
     await motion_group.plan_and_execute(actions, "Flange")
