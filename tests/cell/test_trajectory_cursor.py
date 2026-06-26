@@ -312,3 +312,83 @@ def test_motion_event_source_spans_serialize():
     assert payload["current_action_source"] is not None
     assert payload["current_action_source"]["start_line"] is not None
     assert payload["current_action_source"] == event.current_action_source.model_dump()
+
+
+# ---------------------------------------------------------------------------
+# Non-motion actions in the incoming action list (Option B)
+# ---------------------------------------------------------------------------
+#
+# The planner only assigns trajectory location units to motion actions
+# (see nova.actions.container.CombinedActions.to_motion_command). When the
+# caller passes a mixed list (motions + WriteAction / WaitAction / ...), the
+# trajectory's end location matches the number of motions, not len(actions).
+#
+# The cursor must:
+#   1. not raise during construction,
+#   2. keep its motion-aligned indexing (self.actions only contains motions),
+#   3. preserve the original list (with non-motion actions in order) so that
+#      future work can emit events on traversal of non-motion actions.
+
+
+async def _silent_state_stream():
+    """An async stream that yields nothing and never completes."""
+    import asyncio as _asyncio
+
+    await _asyncio.Future()
+    yield  # pragma: no cover
+
+
+def _trajectory_for_motion_count(num_motions: int):
+    """Minimal real JointTrajectory whose end location matches num_motions."""
+    from nova import api as _api
+
+    n = num_motions + 1
+    return _api.models.JointTrajectory(
+        joint_positions=[_api.models.Joints([0.0] * 6)] * n,
+        times=[float(i) for i in range(n)],
+        locations=[_api.models.Location(root=float(i)) for i in range(n)],
+    )
+
+
+async def test_cursor_accepts_mixed_motion_and_non_motion_actions():
+    """Cursor construction must tolerate non-motion actions in the action list.
+
+    Per the planner contract, joint_trajectory.locations[-1] equals the number
+    of motion actions, not the total number of actions. The cursor must filter
+    non-motion actions from its motion-aligned ``self.actions`` while keeping
+    the original list available for future event-emission work.
+    """
+    from nova.actions.io import io_write
+
+    motions = [lin(Pose((i * 100.0, 0, 0, 0, 0, 0))) for i in range(3)]
+    write = io_write(key="digital_out[0]", value=True)
+    # Interleave so order matters for the preserved raw list.
+    actions = [motions[0], write, motions[1], motions[2]]
+
+    trajectory = _trajectory_for_motion_count(num_motions=3)
+
+    # Construction must not raise the length-mismatch ValueError.
+    cursor = TrajectoryCursor(
+        motion_id="traj-mixed",
+        motion_group_state_stream=_silent_state_stream(),
+        joint_trajectory=trajectory,
+        actions=actions,
+        initial_location=0.0,
+    )
+    try:
+        # The motion-aligned action list drives indexing and must contain
+        # only the motion actions.
+        assert cursor.actions is not None
+        assert len(cursor.actions) == 3
+        assert list(cursor.actions) == motions
+
+        # Location-to-action indexing stays consistent with the trajectory.
+        assert cursor.end_location == 3.0
+        assert cursor.current_action is motions[0]
+
+        # The original action list (with non-motion entries, in order) is
+        # preserved so the follow-up work can emit events for them.
+        assert cursor._raw_actions == tuple(actions)
+    finally:
+        # Tear down the background init task started by __init__.
+        cursor._initialize_task.cancel()
