@@ -496,13 +496,34 @@ class TrajectoryCursor:
             motion_id: Unique identifier for this motion execution.
             motion_group_state_stream: Async stream of motion group state updates.
             joint_trajectory: The planned joint-space trajectory to execute.
-            actions: List of motion actions that make up the trajectory. Optional for location-based navigation.
+            actions: Actions that make up the trajectory. May contain a mix of
+                motion and non-motion actions (e.g. ``WriteAction``); only the
+                motion actions drive the cursor's location-to-action mapping.
+                Optional for location-based navigation.
             initial_location: Starting position on the trajectory (usually 0.0).
             detach_on_standstill: If True, automatically detach when robot stops.
         """
         self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
-        self.actions = CombinedActions(items=actions) if actions is not None else None  # ty: ignore[invalid-argument-type]
+
+        # The planner only assigns trajectory location units to motion actions
+        # (see nova.actions.container.CombinedActions.to_motion_command), so the
+        # cursor's location-to-action mapping must also be motion-only.
+        # Non-motion actions (e.g. WriteAction) are kept on ``_raw_actions`` in
+        # their original order so future work can emit events or use them as
+        # execution-step boundaries without losing positional information.
+        # TODO: surface non-motion actions through the cursor's event API.
+        self._raw_actions: tuple[Action, ...] | None = (
+            tuple(actions) if actions is not None else None
+        )
+        # Delegate motion detection to CombinedActions.motions instead of
+        # re-implementing it here.
+        raw_combined = (
+            CombinedActions(items=self._raw_actions) if self._raw_actions is not None else None  # ty: ignore[invalid-argument-type]
+        )
+        self.actions = (
+            CombinedActions(items=tuple(raw_combined.motions)) if raw_combined is not None else None
+        )
 
         if self.actions is not None:
             expected_end_location = len(self.actions)
@@ -510,7 +531,7 @@ class TrajectoryCursor:
             if abs(actual_end_location - expected_end_location) > 0.01:
                 raise ValueError(
                     f"Trajectory end location ({actual_end_location}) does not match "
-                    f"number of actions ({expected_end_location}). "
+                    f"number of motion actions ({expected_end_location}). "
                     f"Expected location to be approximately {expected_end_location}.0"
                 )
         self._pending_intent: Intent | None = None
