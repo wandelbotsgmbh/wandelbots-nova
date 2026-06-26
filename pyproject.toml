@@ -126,7 +126,14 @@ markers = """
 python-version = "3.11"
 
 [tool.ty.src]
-include = ["nova", "examples", "tests", "wandelscript", "novax", "nova_rerun_bridge"]
+include = [
+    "nova",
+    "examples",
+    "tests",
+    "wandelscript",
+    "novax",
+    "nova_rerun_bridge",
+]
 exclude = [
     "wandelscript/grammar",
     "wandelscript/motions.py",

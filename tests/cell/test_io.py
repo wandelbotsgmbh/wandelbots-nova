@@ -362,15 +362,15 @@ async def test_set_io_on_path(
         # VERIFY
         for io in test_case.expected_controller_io:
             value = await ur.read(io)
-            assert (
-                test_case.expected_controller_io[io] == value
-            ), f"Controller IO: {io} doesn't match the expected value."
+            assert test_case.expected_controller_io[io] == value, (
+                f"Controller IO: {io} doesn't match the expected value."
+            )
 
         for io in test_case.expected_bus_io:
             values = await get_bus_io_value([io], nova=nova)
-            assert (
-                values[io] == test_case.expected_bus_io[io]
-            ), f"Bus IO: {io} doesn't match the expected value"
+            assert values[io] == test_case.expected_bus_io[io], (
+                f"Bus IO: {io} doesn't match the expected value"
+            )
 
 
 @pytest.mark.asyncio
