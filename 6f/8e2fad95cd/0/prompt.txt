@@ -1,0 +1,10 @@
+https://github.com/wandelbotsgmbh/wandelbots-nova/pull/437
+
+write a good (short) PR description
+
+---
+
+novax = Novax()
+novax.include_programs_router(app) 
+
+can we simplify this too?. can we also import it from the sdk when its optionally installed?
