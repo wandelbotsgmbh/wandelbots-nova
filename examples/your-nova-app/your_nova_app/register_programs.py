@@ -22,9 +22,7 @@ app = FastAPI(
 # Include the programs router and auto-register every @nova.program in this app.
 # Importing start_here above is enough — programs register themselves on import.
 # See https://github.com/wandelbotsgmbh/wandelbots-nova/blob/main/README.md#novax for more information
-novax = Novax()
-novax.include_programs_router(app)
-novax.auto_register()
+novax = Novax(app)
 
 app.add_middleware(
     CORSMiddleware,

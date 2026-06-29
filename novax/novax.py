@@ -19,10 +19,13 @@ from novax.program_manager import ProgramManager
 
 
 class Novax:
-    def __init__(self, *, app_name: str | None = None):
+    def __init__(self, app: FastAPI | None = None, *, app_name: str | None = None):
         """Initialize the Novax class.
 
         Args:
+            app: Optional FastAPI app. If provided, the programs router is included
+                and all imported ``@nova.program`` functions are auto-registered, so
+                ``Novax(app)`` is all you need.
             app_name (str | None, optional): This one is read from the environment variable APP_NAME. Only change it for development purposes. Defaults to None.
         """
         app_name = app_name or APP_NAME
@@ -35,6 +38,10 @@ class Novax:
             cell_id=CELL_NAME, app_name=app_name, nova_config=nova.config
         )
         self._app: FastAPI | None = None
+
+        if app is not None:
+            self.include_programs_router(app)
+            self.auto_register()
 
     @property
     def program_manager(self) -> ProgramManager:
