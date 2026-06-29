@@ -158,13 +158,13 @@ def require_dict(response: object, *, name: str) -> dict[str, object]:
 
 def _require_msgpack() -> object:
     if _msgpack is None:
-        msg = "msgpack is required for Gr00tPolicyClient"
+        msg = "msgpack is required for Gr00tPolicyClient. Install with: wandelbots-nova[novapolicy-gr00t]"
         raise ModuleNotFoundError(msg)
     return _msgpack
 
 
 def _require_zmq() -> object:
     if _zmq is None:
-        msg = "pyzmq is required for Gr00tPolicyClient"
+        msg = "pyzmq is required for Gr00tPolicyClient. Install with: wandelbots-nova[novapolicy-gr00t]"
         raise ModuleNotFoundError(msg)
     return _zmq

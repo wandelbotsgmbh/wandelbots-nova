@@ -12,6 +12,8 @@ the server handles velocity profiling, interpolation, and IK internally.
 
 from __future__ import annotations
 
+import importlib
+
 from novapolicy.cameras import CameraSource, WebRTCCameras
 from novapolicy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
 from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
@@ -36,6 +38,21 @@ from novapolicy.types import (
     WaypointConfig,
 )
 
+
+def __getattr__(name: str) -> object:
+    """Load backend-specific clients only when requested."""
+    if name == "LeRobotPolicyClient":
+        try:
+            return importlib.import_module("novapolicy.lerobot").LeRobotPolicyClient
+        except ModuleNotFoundError as exc:
+            msg = (
+                "LeRobotPolicyClient requires the LeRobot policy extra. "
+                "Install with `python -m pip install 'wandelbots-nova[novapolicy-lerobot]'`."
+            )
+            raise ModuleNotFoundError(msg) from exc
+    raise AttributeError(name)
+
+
 __all__ = [
     "Action",
     "ActionChunk",
@@ -49,6 +66,7 @@ __all__ = [
     "Gr00tPolicyClient",
     "JoggingNotSupportedError",
     "JointJogger",
+    "LeRobotPolicyClient",
     "Mapping",
     "MotionError",
     "Observation",
