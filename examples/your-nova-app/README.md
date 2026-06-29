@@ -13,6 +13,16 @@ Use the following steps for development:
     * access the docs on `http://localhost:8000/docs`
 * build, push and install the app with `nova app install`
 
+## quick run (no app needed)
+
+To iterate on a program from dev without scaffolding an app, just point the
+`novax` CLI at any file with `@nova.program` functions — they auto-register:
+
+```bash
+uv run novax run your_nova_app/start_here.py --cell cell
+```
+
+
 ## formatting
 
 ```bash

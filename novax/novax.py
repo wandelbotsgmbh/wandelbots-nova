@@ -1,4 +1,9 @@
+import importlib
+import importlib.util
+import json
 from contextlib import asynccontextmanager
+from pathlib import Path
+from types import ModuleType
 from typing import AsyncIterator, Optional
 
 from fastapi import APIRouter, FastAPI
@@ -7,8 +12,9 @@ from nova import api
 from nova.core.nova import Nova
 from nova.logging import logger
 from nova.program.function import Program
+from nova.program.registry import get_registered_programs
 from nova.program.store import ProgramStore
-from novax.config import APP_NAME, CELL_NAME
+from novax.config import APP_NAME, CELL_NAME, PROGRAM_ENDPOINT_URL
 from novax.program_manager import ProgramManager
 
 
@@ -46,6 +52,26 @@ class Novax:
             str: The program ID
         """
         return self._program_manager.register_program(program)
+
+    def auto_register(self) -> list[str]:
+        """Register every program defined with ``@nova.program`` that has been imported.
+
+        Programs add themselves to a global registry when decorated, so importing the
+        modules that define them (directly or via :meth:`register_module`) is enough to
+        expose them. Returns the list of registered program IDs.
+        """
+        registered: list[str] = []
+        for program in get_registered_programs():
+            if not self._program_manager.has_program(program.program_id):
+                self._program_manager.register_program(program)
+            registered.append(program.program_id)
+        return registered
+
+    def register_module(self, module: ModuleType | str) -> list[str]:
+        """Import a module (or a path to a .py file) and register all its programs."""
+        if isinstance(module, str):
+            module = _import_module(module)
+        return self.auto_register()
 
     def deregister_program(self, program_id: str):
         """
@@ -111,7 +137,15 @@ class Novax:
 
             for program_id, store_program in store_programs.items():
                 try:
-                    await program_store.put(f"{APP_NAME}.{program_id}", store_program)
+                    if PROGRAM_ENDPOINT_URL:
+                        # The released Program model has no endpoint_url field, so
+                        # write the JSON directly with the extra key for routing.
+                        payload = store_program.model_dump(mode="json")
+                        payload["endpoint_url"] = PROGRAM_ENDPOINT_URL
+                        kv = await program_store._key_value()
+                        await kv.put(f"{APP_NAME}.{program_id}", json.dumps(payload).encode())
+                    else:
+                        await program_store.put(f"{APP_NAME}.{program_id}", store_program)
                     logger.debug(f"Program {program_id} synced to store")
                 except Exception as e:
                     logger.error(f"Failed to sync program {program_id} to store: {e}")
@@ -197,8 +231,9 @@ class Novax:
         app.dependency_overrides[get_program_manager] = get_program_manager_override
 
         if not CELL_NAME:
-            logger.error(
-                "Novax: CELL_NAME environment variable is not set, your programs will not be registered"
+            logger.info(
+                "Novax: CELL_NAME is not set; programs will not be synced to the NOVA store "
+                "(local dev mode). Set CELL_NAME to make programs visible in NOVA."
             )
         else:
             programs_router.lifespan_context = self.program_store_lifespan
@@ -207,3 +242,48 @@ class Novax:
         app.include_router(programs_router)
 
         return app
+
+    def serve(
+        self,
+        *,
+        host: str = "0.0.0.0",
+        port: int = 3000,
+        title: str = "Novax API",
+        version: str = "1.0.0",
+        root_path: str = "",
+    ) -> None:
+        """Build the app, register all decorated programs and run the server.
+
+        This is the one-call entry point for development: it creates the FastAPI app,
+        wires the programs router, auto-registers every imported ``@nova.program`` and
+        starts uvicorn. CORS is open so the NOVA frontend can reach it.
+        """
+        import uvicorn
+        from fastapi.middleware.cors import CORSMiddleware
+
+        app = self.create_app(title=title, version=version, root_path=root_path)
+        self.include_programs_router(app)
+        self.auto_register()
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        uvicorn.run(
+            app, host=host, port=port, log_level="info", proxy_headers=True, forwarded_allow_ips="*"
+        )
+
+
+def _import_module(module: str) -> ModuleType:
+    """Import a module by dotted path or a path to a ``.py`` file."""
+    path = Path(module)
+    if path.suffix == ".py" and path.exists():
+        spec = importlib.util.spec_from_file_location(path.stem, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Cannot import program file: {module}")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    return importlib.import_module(module)

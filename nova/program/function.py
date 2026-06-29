@@ -36,6 +36,7 @@ from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
 
+from . import registry
 from .context import ProgramContext, current_program_context_var
 
 logger = logging.getLogger(__name__)
@@ -460,6 +461,7 @@ def program(
             program_obj.description = description
         program_obj.preconditions = preconditions
         program_obj._viewer = viewer
+        registry.register(program_obj)
         return program_obj
 
     # If used as @nova.program(), return the decorator.
