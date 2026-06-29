@@ -1,0 +1,99 @@
+check novax. right now the progress is too complex to get things into the api. the users need to deploy and build a custom app to have a new program. do you see a way/concept to quickly deploy a program somehow to nova or make it available easily from dev and also simplify novax (make it more implicit e.g. registering all programs on auto)? 
+
+review the current state and concept and try to improve it.
+
+---
+
+Explore the `novax/` package in /Users/cbiering/home/dev/wandelbots/wandelbots-nova thoroughly (medium-thorough). I want to understand the current concept and developer workflow for getting a program into NOVA. Report on:
+
+1. What `Novax` class does (novax/novax.py) — its full public API, how programs are registered, FastAPI integration, lifecycle.
+2. The `@program` decorator pattern (nova/program/) — how programs are defined and discovered.
+3. `program_manager.py` — how programs are managed.
+4. The `nova app create` CLI and `examples/your-nova-app/` — what scaffolding a custom app currently requires (files, deploy steps).
+5. How a program gets exposed via the API (endpoints, registration calls). Find explicit registration calls developers must write.
+6. Any auto-discovery or implicit registration mechanisms that already exist.
+7. The `novax/api/` directory contents.
+
+Quote specific function/class names, file paths and line numbers. Show me a minimal app example end-to-end. Report the friction points: what manual steps a developer must do to make a new program available.
+
+---
+
+Start implementation
+
+---
+
+uv run novax examples
+2026-06-29 11:08:30 [INFO] nova: Extracted app name 'novax' from BASE_PATH '/default/novax'
+usage: novax [-h] {run} ...
+novax: error: argument command: invalid choice: 'examples' (choose from 'run')
+
+wandelbots-nova on  main [$!?] is 📦 v5.6.2 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com took 2s 
+❯ uv run novax examples
+
+what do I wrong=?
+
+---
+
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1244, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 856, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 814, in _connect_and_send_request
+    raise ConnectionTimeoutError(
+aiohttp.client_exceptions.ConnectionTimeoutError: Connection timeout to host ws://172.31.10.242/api/nats
+^C^C^C^C^C^C^C^C^C^C^C^C^C^C^C
+
+cannot cancel it
+
+---
+
+http://172.31.13.176/api/v2/ui/#/operations/listPrograms
+
+t Wandelbots-Nova-Python-SDK/5.6.2
+2026-06-29 11:12:04 [DEBUG] asyncio: Using selector: KqueueSelector
+INFO:     Started server process [53637]
+INFO:     Waiting for application startup.
+2026-06-29 11:12:04 [INFO] nova: Novax: Connected to Nova API
+2026-06-29 11:12:04 [INFO] nova: Novax: Starting program discovery and registration to store
+2026-06-29 11:12:04 [DEBUG] nova: Program start_here synced to store
+2026-06-29 11:12:04 [INFO] nova: Novax: 1 programs discovered and synced to store on startup
+2026-06-29 11:12:04 [INFO] nova: Novax: Programs registered to store on startup
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:3000 (Press CTRL+C to quit)
+
+running the service, why does it not show?
+
+---
+
+what do I do wrong? do I need to start a nats server? do I need to set another env variable?
+
+---
+
+you can run the script to check. thats the set api http://172.31.13.176 and the set cell is "cell"
+
+---
+
+the server runs, you can check
+
+---
+
+the local one under localhost:3000 works. why does the dev not work on the remote nova?
+
+---
+
+https://ngrok.com/ can we use ngrok to share the local for a short time?
+
+---
+
+can we fix it in ../program-manager so that it works with ngrok? the aim is that the nova api shows the programs
+
+---
+
+implement the change in the service manager repo. and ensure we put in the values here.
+
+---
+
+Explore /Users/cbiering/home/dev/wandelbots/service-manager (medium-thorough). I need to understand: 1) the listPrograms endpoint GET /experimental/cells/{cell}/programs — where it reads programs from (NATS KV bucket nova_cells_{cell}_programs?). 2) The Program model/struct fields (program, name, description, app, input_schema, preconditions). 3) How a program is STARTED — how does the service-manager route a start request to the app that owns the program? Is there an app endpoint/host/base_path/url field anywhere? 4) Where apps register their ingress/host. 5) The language (Go?), file paths, struct definitions, and the KV read/write code. Quote file paths, struct field names, and the start-routing logic. I want to know what field would need to be added so NOVA can route execution to an arbitrary URL (e.g. ngrok tunnel).

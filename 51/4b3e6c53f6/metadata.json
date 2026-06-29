@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "514b3e6c53f6",
+  "strategy": "manual-commit",
+  "branch": "feat/novax-easier",
+  "checkpoints_count": 11,
+  "files_touched": [
+    "examples/your-nova-app/README.md",
+    "examples/your-nova-app/your_nova_app/register_programs.py",
+    "nova/program/__init__.py",
+    "nova/program/function.py",
+    "nova/program/registry.py",
+    "novax/cli.py",
+    "novax/config.py",
+    "novax/novax.py",
+    "pyproject.toml",
+    "tests/novax/test_auto_register.py",
+    "uv.lock"
+  ],
+  "sessions": [
+    {
+      "metadata": "/51/4b3e6c53f6/0/metadata.json",
+      "transcript": "/51/4b3e6c53f6/0/full.jsonl",
+      "content_hash": "/51/4b3e6c53f6/0/content_hash.txt",
+      "prompt": "/51/4b3e6c53f6/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}
