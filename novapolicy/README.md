@@ -49,9 +49,35 @@ The executor decides **when** to start and **when** to stop, and runs the softwa
 
 ## Install
 
+`novapolicy` is split into optional extras so users only install the policy transport they need.
+
+| Extra | Use when you need | Adds |
+| --- | --- | --- |
+| `novapolicy` | core `PolicyExecutor`, schema, waypoint jogging, WebRTC cameras, custom callback policies | `aiortc`, `Pillow`, `requests` |
+| `novapolicy-gr00t` | NVIDIA GR00T ZeroMQ policy client | core policy deps + `msgpack`, `pyzmq` |
+| `novapolicy-lerobot` | LeRobot async gRPC inference client/server integration | core policy deps + `lerobot[async]` |
+
+Install exactly one policy-client extra if you know which backend you use:
+
 ```bash
+# Core policy execution + WebRTC cameras only
 uv add wandelbots-nova --extra novapolicy
+
+# GR00T client support
+uv add wandelbots-nova --extra novapolicy-gr00t
+
+# LeRobot async-inference client support
+uv add wandelbots-nova --extra novapolicy-lerobot
 ```
+
+Extras can also be combined, for example when developing or testing multiple policy backends:
+
+```bash
+uv add wandelbots-nova --extra novapolicy-gr00t --extra novapolicy-lerobot
+```
+
+The GR00T and LeRobot clients keep their heavy transport dependencies optional. If a missing-extra
+error is raised at runtime, install the matching backend extra above.
 
 ## Quick Start
 
