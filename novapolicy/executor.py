@@ -323,11 +323,10 @@ class PolicyExecutor:
         Raises MotionError, EmergencyStopError directly.
         """
         step = 0
-        start_time = time.monotonic()
+        start_time: float | None = None
         last_obs: dict[str, Any] | None = None
 
-        self.status.phase = Phase.EXECUTING
-        self.status.message = "Running policy..."
+        self.status.message = "Preparing policy..."
 
         # Determine timing mode
         # -1 = wait for chunk, 0 = as fast as possible, >0 = fixed rate
@@ -339,7 +338,11 @@ class PolicyExecutor:
             # (e.g. dt_ms=0 with policy_rate_hz<=0, or a local in-process policy).
             await asyncio.sleep(0)
 
-            if self._timeout_s > 0 and (time.monotonic() - start_time) >= self._timeout_s:
+            if (
+                start_time is not None
+                and self._timeout_s > 0
+                and (time.monotonic() - start_time) >= self._timeout_s
+            ):
                 return _result("timeout", step, start_time, last_obs)
 
             tick_start = time.monotonic()
@@ -358,6 +361,13 @@ class PolicyExecutor:
                 self._rerun.log_observation(robot_states, step)
                 if images:
                     self._rerun.log_images(images)
+
+            if start_time is None:
+                await self._prepare_policy(robot_states, images)
+                start_time = time.monotonic()
+                tick_start = start_time
+                self.status.phase = Phase.EXECUTING
+                self.status.message = "Running policy..."
 
             # Query policy → send to robot
             action = await self._policy.get_actions(
@@ -392,7 +402,17 @@ class PolicyExecutor:
 
             await self._wait_after_send(trimmed, tick_start, start_time, fixed_rate_period)
 
-        return _result("stopped", step, start_time, last_obs)
+        return _result("stopped", step, start_time or time.monotonic(), last_obs)
+
+    async def _prepare_policy(
+        self,
+        robot_states: dict[str, RobotState],
+        images: dict[str, Any] | None,
+    ) -> None:
+        """Run optional policy setup before the execution timeout starts."""
+        prepare = getattr(self._policy, "prepare", None)
+        if prepare is not None:
+            await prepare(robot_states, self._schema, images, self._all_io_values or None)
 
     async def _wait_after_send(
         self,

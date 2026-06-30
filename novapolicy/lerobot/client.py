@@ -154,6 +154,22 @@ class LeRobotPolicyClient(PolicyClient):
             msg = "LeRobotPolicyClient currently requires at least one joint action target"
             raise ValueError(msg)
 
+    async def prepare(
+        self,
+        states: dict[str, RobotState],
+        schema: PolicySchema,
+        images: dict[str, Any] | None = None,
+        io_values: dict[str, object] | None = None,  # noqa: ARG002
+    ) -> None:
+        """Send LeRobot policy setup before the executor timeout starts."""
+        if self._stub is None:
+            await self.connect([])
+
+        state_names = self._state_names(states, schema)
+        action_slices = self._joint_action_slices(states, schema)
+        self._validate_dimensions(state_names, action_slices)
+        await asyncio.to_thread(self._ensure_policy_setup, schema, state_names, images)
+
     async def get_actions(
         self,
         states: dict[str, RobotState],

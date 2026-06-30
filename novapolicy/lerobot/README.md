@@ -61,13 +61,18 @@ python -m lerobot.async_inference.policy_server \
   --port=8080
 ```
 
-The server listens first. It loads the policy only after a client connects and sends
-`SendPolicyInstructions`.
+The server listens first. It loads the policy only after `LeRobotPolicyClient` connects and sends
+`SendPolicyInstructions`. `PolicyExecutor` does not know about the LeRobot protocol directly; it
+only calls the generic policy-client API. For LeRobot, `SendPolicyInstructions` is sent while the
+executor is still in its `CONNECTING` phase, so model-loading/setup latency does not consume the
+execution timeout.
 
 Optional LeRobot server timing flags:
 
-- `--fps`: controls LeRobot's server-side `TimedAction` timestamps. NOVA uses the
-  `LeRobotPolicyClient(fps=...)` value for `ActionChunk.dt_ms`, so keep them aligned if you set both.
+- `--fps`: controls LeRobot's server-side `TimedAction` timestamps. `LeRobotPolicyClient`
+  ignores those timestamps and sets `ActionChunk.dt_ms = 1000 / fps`; `PolicyExecutor` then uses
+  that `dt_ms` when scheduling waypoints. Keep the server flag aligned with the client `fps` if you
+  set both.
 - `--inference_latency`: adds a target response delay in `GetActions`. Leave it at the LeRobot
   default unless you intentionally want the server to pace responses.
 - `--obs_queue_timeout`: how long `GetActions` waits for an observation before returning empty.
@@ -110,7 +115,7 @@ async with Nova(config=NovaConfig(host="http://<nova-host>")) as nova:
         policy_type="act",
         fps=15,
         actions_per_chunk=8,
-        device="cuda",  # server-side torch device: cuda, mps, or cpu
+        device="cuda",
     )
 
     executor = PolicyExecutor(schema, policy, n_action_steps=8, timeout_s=10)
@@ -163,8 +168,9 @@ fps=15  # ActionChunk.dt_ms = 1000 / 15
 
 This should match the policy's intended control rate. This is separate from the LeRobot server's
 optional `--fps` CLI flag. The server flag is used by LeRobot when it creates `TimedAction`
-timestamps; `LeRobotPolicyClient` decodes the returned action tensors into NOVA `ActionChunk`s and
-uses this client-side `fps` for the chunk `dt_ms`.
+timestamps; `LeRobotPolicyClient` does not use those timestamps. It decodes the returned action
+tensors into NOVA `ActionChunk`s and sets the chunk `dt_ms` from this client-side `fps`.
+`PolicyExecutor` then uses that `dt_ms` when scheduling the returned chunk.
 
 ### `actions_per_chunk`
 
@@ -172,33 +178,6 @@ Number of action steps requested from the server.
 
 The LeRobot async server does not infer this. It is part of LeRobot's `RemotePolicyConfig`, and the
 server slices `policy.predict_action_chunk(...)` to the requested length.
-
-### `device`
-
-Server-side torch device. This is the device on the machine running the LeRobot server, not the
-NOVA/IPC/client machine.
-
-Typical values:
-
-- `"cuda"` when the LeRobot server runs on an NVIDIA GPU host
-- `"mps"` when the LeRobot server runs on Apple Silicon
-- `"cpu"` for CPU-only testing
-
-The LeRobot async protocol does not expose a hardware-capability RPC. Treat this as deployment
-configuration. To check the server host:
-
-```bash
-nvidia-smi
-
-python - <<'PY'
-import torch
-print('cuda available:', torch.cuda.is_available())
-print('mps available:', torch.backends.mps.is_available())
-PY
-```
-
-Passing the wrong value usually fails during `SendPolicyInstructions`, when the server calls
-`policy.to(device)`.
 
 ### `state_overrides`
 
@@ -254,12 +233,17 @@ action motion groups. IO/TCP actions from a flat LeRobot action vector are not d
 
 ## Protocol notes
 
-The LeRobot async server flow is:
+The LeRobot async server flow, implemented inside `LeRobotPolicyClient`, is:
 
-1. `Ready`
-2. `SendPolicyInstructions`
-3. `SendObservations`
-4. `GetActions`
+1. `Ready` when the policy client connects
+2. `SendPolicyInstructions` during the optional policy `prepare(...)` step, while the executor is
+   still in `CONNECTING`
+3. `SendObservations` for each policy step
+4. `GetActions` to receive the action chunk
+
+`PolicyExecutor` triggers this indirectly by calling the `PolicyClient` methods; it does not send
+LeRobot RPCs itself. The executor switches to `EXECUTING` after preparation, so
+readiness/model-loading time is excluded from `timeout_s`.
 
 `SendPolicyInstructions` contains a pickled LeRobot `RemotePolicyConfig` with:
 
@@ -270,8 +254,8 @@ The LeRobot async server flow is:
 - `device`
 - `rename_map` (left empty by this client)
 
-The server does not expose model metadata before setup. Keep `policy_type`, `fps`,
-`actions_per_chunk`, and `device` in your deployment configuration next to the checkpoint path.
+The server does not expose model metadata before setup. Keep `policy_type`, `fps`, and
+`actions_per_chunk` in your deployment configuration next to the checkpoint path.
 
 ## Troubleshooting
 
@@ -279,12 +263,6 @@ The server does not expose model metadata before setup. Keep `policy_type`, `fps
 
 Check that `pretrained_name_or_path` exists on the LeRobot server machine, not just on the NOVA
 client machine.
-
-### CUDA/MPS/device errors during `SendPolicyInstructions`
-
-Check the LeRobot server host and set `device` accordingly. For a remote NVIDIA GPU server, use
-`device="cuda"`. For a local Mac server, use `device="mps"` only if MPS is available, otherwise use
-`device="cpu"`.
 
 ### Image shape or missing image errors
 
