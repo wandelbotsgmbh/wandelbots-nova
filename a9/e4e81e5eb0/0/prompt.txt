@@ -1,0 +1,5 @@
+remove the endpoint url part for now. we just ship the simplifications of the novax lib + autodiscover programs.
+
+---
+
+write me a little plan to not loose the information about the endpoint url + ngrok + stuff we need to consider and do to reimplement it. (markdown)
