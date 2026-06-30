@@ -1,0 +1,1 @@
+update register programs with the novax import. also can you give a descriptive error when a user tries to import novax without installing the optional package first? e.g. run uv sync --extra novax
