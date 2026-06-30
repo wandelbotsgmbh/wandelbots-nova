@@ -3,9 +3,10 @@ from decouple import config
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
-from nova import Novax
+from your_nova_app.start_here import \
+    start  # noqa: F401  (import registers the program)
 
-from your_nova_app.start_here import start  # noqa: F401  (import registers the program)
+from nova import Novax
 
 CELL_ID = config("CELL_ID", default="cell", cast=str)
 BASE_PATH = config("BASE_PATH", default="", cast=str)

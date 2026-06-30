@@ -123,6 +123,14 @@ class Novax:
         """
         try:
             logger.info("Novax: Starting program discovery and registration to store")
+            if PROGRAM_ENDPOINT_URL:
+                logger.warning(
+                    "PROGRAM_ENDPOINT_URL is set (%s). This routes program start/stop "
+                    "to a custom URL and relies on NOVA's endpoint_url support, which is "
+                    "not yet released. It is a no-op against current NOVA versions and is "
+                    "safe to leave unset.",
+                    PROGRAM_ENDPOINT_URL,
+                )
             programs = await self._program_manager.get_programs()
 
             store_programs = {}
@@ -145,8 +153,10 @@ class Novax:
             for program_id, store_program in store_programs.items():
                 try:
                     if PROGRAM_ENDPOINT_URL:
-                        # The released Program model has no endpoint_url field, so
-                        # write the JSON directly with the extra key for routing.
+                        # Opt-in only. The released Program model has no endpoint_url
+                        # field and NOVA's released routing ignores it, so this is a
+                        # no-op until the matching service-manager change ships. When
+                        # set, write the JSON directly with the extra routing key.
                         payload = store_program.model_dump(mode="json")
                         payload["endpoint_url"] = PROGRAM_ENDPOINT_URL
                         kv = await program_store._key_value()
