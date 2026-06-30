@@ -58,6 +58,7 @@ class _FakeChannel:
 class _FakeStub:
     def __init__(self, _channel: _FakeChannel) -> None:
         self.ready_calls = 0
+        self.policy_setup_calls = 0
         self.policy_setup: _RemotePolicyConfig | None = None
         self.observations: list[_TimedObservation] = []
 
@@ -66,6 +67,7 @@ class _FakeStub:
         return _Message()
 
     def SendPolicyInstructions(self, request: _Message, *, timeout: float) -> _Message:  # noqa: N802
+        self.policy_setup_calls += 1
         self.policy_setup = pickle.loads(request.data)  # noqa: S301 - trusted fake protocol payload.
         return _Message()
 
@@ -221,6 +223,37 @@ async def test_get_actions_sends_lerobot_async_protocol_and_decodes_chunk(
         6.0,
     ]
     np.testing.assert_array_equal(observation.observation["cam_scene_1"], image)
+
+
+@pytest.mark.asyncio
+async def test_prepare_sends_policy_instructions_before_first_inference(
+    fake_lerobot: _FakeLeRobot,
+) -> None:
+    mg = _mg()
+    schema = _schema(mg)
+    image = np.zeros((120, 160, 3), dtype=np.uint8)
+    client = LeRobotPolicyClient("127.0.0.1:8080", "model", fps=15, actions_per_chunk=8)
+
+    await client.prepare(
+        {mg.id: _state((1.0, 2.0, 3.0, 4.0, 5.0, 6.0))},
+        schema,
+        images={"cam_scene_1": image},
+        io_values={"digital_out[0]": True},
+    )
+
+    assert fake_lerobot.stub is not None
+    assert fake_lerobot.stub.policy_setup_calls == 1
+    assert fake_lerobot.stub.observations == []
+
+    await client.get_actions(
+        {mg.id: _state((1.0, 2.0, 3.0, 4.0, 5.0, 6.0))},
+        schema,
+        images={"cam_scene_1": image},
+        io_values={"digital_out[0]": True},
+    )
+
+    assert fake_lerobot.stub.policy_setup_calls == 1
+    assert len(fake_lerobot.stub.observations) == 1
 
 
 @pytest.mark.asyncio

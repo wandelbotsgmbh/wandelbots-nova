@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from novapolicy.executor import PolicyExecutor
+from novapolicy.executor import Phase, PolicyExecutor
 from novapolicy.schema import Observation, ObservationEntry, PolicySchema
 from novapolicy.types import (
     ActionChunk,
@@ -52,6 +52,42 @@ def _schema(mode: ActionMode = "absolute") -> PolicySchema:
 async def _hold(_obs: object) -> ActionChunk:
     """A trivial policy: hold all six joints at zero."""
     return ActionChunk(joints={MG_ID: [[0.0] * 6]})
+
+
+class _SlowSetupPolicy:
+    def __init__(self) -> None:
+        self.prepare_calls = 0
+        self.phase_during_prepare: object | None = None
+        self.executor: PolicyExecutor | None = None
+
+    async def connect(self, motion_group_ids: list[str]) -> None:
+        pass
+
+    async def validate_schema(self, schema: PolicySchema) -> None:
+        pass
+
+    async def prepare(
+        self,
+        states: dict[str, object],
+        schema: PolicySchema,
+        images: dict[str, object] | None = None,
+        io_values: dict[str, object] | None = None,
+    ) -> None:
+        self.prepare_calls += 1
+        self.phase_during_prepare = self.executor.phase if self.executor is not None else None
+        await asyncio.sleep(0.25)
+
+    async def get_actions(
+        self,
+        states: dict[str, object],
+        schema: PolicySchema,
+        images: dict[str, object] | None = None,
+        io_values: dict[str, object] | None = None,
+    ) -> ActionChunk:
+        return ActionChunk(joints={MG_ID: [[0.0] * 6]}, dt_ms=1.0)
+
+    async def close(self) -> None:
+        pass
 
 
 def _fake_session() -> MagicMock:
@@ -139,6 +175,28 @@ async def test_a_plain_async_function_is_accepted_as_a_policy(robot: _Robot):
     result = await executor.run()
     assert result.reason == "timeout"
     assert result.steps > 0
+
+
+@pytest.mark.asyncio
+async def test_policy_prepare_time_does_not_count_towards_execution_timeout(robot: _Robot):
+    """Backend setup can be slow; timeout starts with the first real policy call."""
+    policy = _SlowSetupPolicy()
+    executor = PolicyExecutor(
+        _schema(),
+        policy,
+        motion=WaypointConfig(),
+        timeout_s=0.05,
+        policy_rate_hz=0,
+    )
+    policy.executor = executor
+
+    result = await executor.run()
+
+    assert policy.prepare_calls == 1
+    assert policy.phase_during_prepare == Phase.CONNECTING
+    assert result.reason == "timeout"
+    assert result.steps > 0
+    assert result.duration_s < 0.2
 
 
 # ---------------------------------------------------------------------------
