@@ -36,13 +36,8 @@ def __getattr__(name: str):
     # `from nova import Novax` only when it is installed. Kept lazy to avoid a
     # hard dependency on FastAPI in the core SDK.
     if name == "Novax":
-        try:
-            from novax import Novax
-        except ImportError as exc:
-            raise ImportError(
-                "Novax requires the optional 'novax' extra. Install it with "
-                "`pip install wandelbots-nova[novax]`."
-            ) from exc
+        from novax import Novax
+
         return Novax
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
