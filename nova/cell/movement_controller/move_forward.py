@@ -3,6 +3,10 @@ import logging
 
 from nova import api
 from nova.actions import MovementControllerContext
+from nova.cell.movement_controller.stall_watchdog import (
+    StandstillObservation,
+    run_standstill_watchdog,
+)
 from nova.cell.movement_controller.trajectory_state_machine import TrajectoryExecutionMachine
 from nova.exceptions import ErrorDuringMovement, InitMovementFailed
 from nova.types import (
@@ -27,20 +31,35 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     async def movement_controller(
         response_stream: ExecuteTrajectoryResponseStream,
     ) -> ExecuteTrajectoryRequestStream:
+        obs = StandstillObservation()
+
         async def motion_group_state_monitor(stream_started_event: asyncio.Event):
             try:
                 logger.info("Starting state monitor for trajectory")
                 machine = TrajectoryExecutionMachine()
                 machine.send("start")
+                loop = asyncio.get_running_loop()
 
                 async for motion_group_state in context.motion_group_state_stream_gen():
                     if not stream_started_event.is_set():
                         stream_started_event.set()
 
+                    # Track standstill on EVERY frame, even ones without an
+                    # `execute` block — those bare standstill frames are how
+                    # the controller reports "robot at rest" and are exactly
+                    # what the state machine discards. The watchdog needs them.
+                    obs.update(motion_group_state, loop.time())
+
                     logger.debug(
                         f"Trajectory: {context.motion_id} state monitor received state: {motion_group_state}"
                     )
 
+                    # The machine completes on a bare standstill once
+                    # TrajectoryEnded has been seen (see
+                    # TrajectoryExecutionMachine.process_motion_state) — the
+                    # controller drops the `execute` block at standstill
+                    # (robotics/wbr RAEv2_ProtoRobotState), so that bare frame is
+                    # the only completion signal we may receive.
                     machine.process_motion_state(motion_group_state)
 
                     if machine.is_ended:
@@ -138,13 +157,35 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             error_response_consumer(response_stream),
             name=f"execute-trajectory-error-consumer-{context.motion_id}",
         )
-        tasks = {error_consumer, state_monitor}
+
+        watchdog = asyncio.create_task(
+            run_standstill_watchdog(
+                obs,
+                motion_id=context.motion_id,
+                target_joint_position=context.target_joint_position,
+                stall_timeout_s=context.stall_timeout_s,
+                max_stall_s=context.max_stall_s,
+                at_target_tolerance=context.at_target_tolerance,
+            ),
+            name=f"standstill-watchdog-{context.motion_id}",
+        )
+        tasks = {error_consumer, state_monitor, watchdog}
 
         try:
             logger.info(f"Trajectory: {context.motion_id} waiting for completion or error")
             done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             if state_monitor in done:
                 logger.info(f"Trajectory: {context.motion_id} completed via state monitor")
+                return
+
+            if watchdog in done:
+                # Re-raise MovementStalled if the watchdog refused to confirm.
+                watchdog.result()
+                logger.warning(
+                    f"Trajectory: {context.motion_id} completed via standstill watchdog "
+                    f"(robot at target; terminal completion event was never observed on "
+                    f"the state stream)"
+                )
                 return
 
             if error_consumer in done:

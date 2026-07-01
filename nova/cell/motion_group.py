@@ -983,6 +983,13 @@ class MotionGroup(AbstractRobot):
         # Load planned trajectory
         trajectory_id = await self._load_planned_motion(joint_trajectory, tcp)
 
+        # Final joint position of the plan — lets the completion watchdog confirm
+        # the robot is actually at target before treating an unobserved standstill
+        # as completion (see move_forward.standstill_watchdog).
+        target_joint_position: tuple[float, ...] | None = None
+        if joint_trajectory.joint_positions:
+            target_joint_position = tuple(joint_trajectory.joint_positions[-1].root)
+
         controller = movement_controller(
             MovementControllerContext(
                 combined_actions=CombinedActions(items=tuple(actions)),  # ty: ignore[invalid-argument-type]
@@ -990,6 +997,7 @@ class MotionGroup(AbstractRobot):
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
                 motion_group_state_stream_gen=self.stream_state,
+                target_joint_position=target_joint_position,
             )
         )
 
