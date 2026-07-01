@@ -76,7 +76,7 @@ class Novax:
     def register_module(self, module: ModuleType | str) -> list[str]:
         """Import a module (or a path to a .py file) and register all its programs."""
         if isinstance(module, str):
-            module = _import_module(module)
+            _import_module(module)
         return self.auto_register()
 
     def deregister_program(self, program_id: str):
