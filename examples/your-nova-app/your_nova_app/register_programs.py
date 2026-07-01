@@ -1,10 +1,9 @@
 import uvicorn
+import your_nova_app.start_here  # noqa: F401  (import registers the program)
 from decouple import config
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
-from your_nova_app.start_here import \
-    start  # noqa: F401  (import registers the program)
 
 from nova import Novax
 
