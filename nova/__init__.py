@@ -1,4 +1,6 @@
 # Import api, types, and actions modules
+from typing import TYPE_CHECKING
+
 from nova import actions, api, exceptions, types, viewers
 from nova.cell import Cell, Controller, MotionGroup
 from nova.config import NovaConfig
@@ -6,6 +8,12 @@ from nova.core.nova import Nova
 from nova.logging import logger
 from nova.program import ProgramContext, ProgramPreconditions, program, run_program
 from nova.version import version
+
+if TYPE_CHECKING:
+    # Declared for static analysis / __all__ export checks only. At runtime
+    # `Novax` is provided lazily via __getattr__ so the optional `novax` extra
+    # stays optional; defining it at module scope would shadow __getattr__.
+    from novax import Novax
 
 __version__ = version
 
