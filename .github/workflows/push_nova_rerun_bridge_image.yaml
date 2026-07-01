@@ -62,6 +62,7 @@ jobs:
           done
 
           # Move to final destination
+          mkdir -p nova_rerun_bridge/nova_rerun_bridge_app
           mv temp_build/* nova_rerun_bridge/nova_rerun_bridge_app/
           rm -rf temp_build
 
