@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.7.0 (2026-07-01)
+
+### Features
+
+- Made novax usage easier e.g. autoscanning (#437)
+  ([#437](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/437),
+  [`fc10ad6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fc10ad6abb94d1583c64a1bd489ca4d5df938b68))
+
+
 ## v5.6.3 (2026-06-26)
 
 ### Bug Fixes
