@@ -1,5 +1,6 @@
 import importlib
 import importlib.util
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from types import ModuleType
@@ -68,8 +69,7 @@ class Novax:
         """
         registered: list[str] = []
         for program in get_registered_programs():
-            if not self._program_manager.has_program(program.program_id):
-                self._program_manager.register_program(program)
+            self._program_manager.register_program(program)
             registered.append(program.program_id)
         return registered
 
@@ -265,7 +265,7 @@ class Novax:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
-            allow_credentials=True,
+            allow_credentials=False,
             allow_methods=["*"],
             allow_headers=["*"],
         )
@@ -281,7 +281,17 @@ def _import_module(module: str) -> ModuleType:
         spec = importlib.util.spec_from_file_location(path.stem, path)
         if spec is None or spec.loader is None:
             raise ImportError(f"Cannot import program file: {module}")
+        # Reuse an already-loaded module to avoid duplicate instances on repeated imports.
+        cached = sys.modules.get(spec.name)
+        if cached is not None:
+            return cached
         mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
+        # Register before executing so the module can import itself during execution.
+        sys.modules[spec.name] = mod
+        try:
+            spec.loader.exec_module(mod)
+        except Exception:
+            sys.modules.pop(spec.name, None)
+            raise
         return mod
     return importlib.import_module(module)

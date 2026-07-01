@@ -27,7 +27,10 @@ def main() -> None:
         if args.cell:
             os.environ["CELL_NAME"] = args.cell
         # Import lazily so CELL_NAME is set before novax.config reads it.
-        from novax.novax import Novax, _import_module
+        # Import Novax via `nova` so a missing `novax` extra surfaces the clear
+        # install hint from novax/__init__.py instead of a raw ModuleNotFoundError.
+        from nova import Novax
+        from novax.novax import _import_module
 
         _import_module(args.target)
         novax = Novax()
