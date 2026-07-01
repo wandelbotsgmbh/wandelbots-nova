@@ -1,11 +1,11 @@
 import uvicorn
+import your_nova_app.start_here  # noqa: F401  (import registers the program)
 from decouple import config
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
-from novax import Novax
 
-from your_nova_app.start_here import start
+from nova import Novax
 
 CELL_ID = config("CELL_ID", default="cell", cast=str)
 BASE_PATH = config("BASE_PATH", default="", cast=str)
@@ -19,11 +19,10 @@ app = FastAPI(
     root_path=BASE_PATH,
 )
 
-# Include the programs router and register the fist program
+# Include the programs router and auto-register every @nova.program in this app.
+# Importing start_here above is enough — programs register themselves on import.
 # See https://github.com/wandelbotsgmbh/wandelbots-nova/blob/main/README.md#novax for more information
-novax = Novax()
-novax.include_programs_router(app)
-novax.register_program(start)
+novax = Novax(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -79,6 +78,7 @@ def main(host: str = "0.0.0.0", port: int = 3000):
         proxy_headers=True,
         forwarded_allow_ips="*",
     )
+
 
 if __name__ == "__main__":
     main()
