@@ -1,0 +1,41 @@
+ensure you have enough tests in place to test the autodiscover of programs
+
+---
+
+is this a valid point?
+
+---
+
+yes apply it
+
+---
+
+is this valid?
+
+---
+
+My take: it's a reasonable "follow the documented pattern" hardening, but not a real bug in this project. I'd only apply it if you want to support self-importing program files. Want me to apply it (optionally with a [sys.modules](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html) lookup to also dedupe, and keeping the [path.stem](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html) key)?
+
+yes
+
+---
+
+is this valid?
+
+---
+
+can you fix this by using the import from nova init?
+
+---
+
+My take: reasonable hardening for a dev server; low real-world risk given it's local-only, but [allow_credentials=False](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html) is the correct default when origins are wildcarded. Want me to apply the suggestion?
+
+yes
+
+---
+
+can you fix this by using the import from nova init?
+
+---
+
+is this relevant?
