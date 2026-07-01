@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "42bc06a33cf1",
+  "session_id": "2ba874a4-07e1-4cbd-87a2-f72f9518b327",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-01T09:14:35.41431Z",
+  "branch": "feat/novax-easier",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "nova/__init__.py"
+  ],
+  "agent": "Copilot CLI",
+  "model": "",
+  "turn_id": "690e8e91cab5",
+  "checkpoint_transcript_start": 325,
+  "transcript_lines_at_start": 325,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-01T09:14:35.406708Z",
+    "agent_lines": 8,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 8,
+    "total_lines_changed": 8,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

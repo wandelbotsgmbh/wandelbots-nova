@@ -1,0 +1,7 @@
+check if the PR description still fits and update it if not. (e.g. remove endpoint_url there.).
+
+---
+
+My take: low priority — safe to dismiss since ruff/ty are clean. If you want to silence that particular bot, I'll add the [TYPE_CHECKING](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html) import (not the `None` placeholder). Want me to?
+
+yes
