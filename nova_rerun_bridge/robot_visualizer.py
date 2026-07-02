@@ -216,6 +216,67 @@ class RobotVisualizer:
 
         return color
 
+    def get_dh_theta_mesh_correction(
+        self,
+        link_index: int,
+        link_transform: np.ndarray,
+        inverse_transform: np.ndarray,
+        root_transform: np.ndarray,
+        joint_transform: np.ndarray,
+    ) -> np.ndarray:
+        """Return the extra theta rotation needed after flattening a GLB link mesh.
+
+        Three.js keeps the GLB as a parent/child tree: rotate a joint node and all child
+        meshes follow automatically. Here we log each mesh as its own Rerun entity instead,
+        so that tree is gone and we have to recreate the missing joint-to-mesh offset.
+
+        Most models need the old DH-theta correction for that offset. Some GLB files already
+        include the theta offset in the joint frame, and applying it again breaks the mesh.
+        To avoid model-name special cases, check the zero pose:
+        - if the DH joint origin and GLB joint origin are not the same, do not rotate around
+          the DH origin because that would move the mesh to a wrong place;
+        - if the origins match, apply the theta rotation only when it makes the zero-pose
+          mesh frame line up better with Rerun's coordinate system.
+        """
+        identity_transform = np.eye(4)
+        if len(self.robot.dh_parameters) <= link_index:
+            return identity_transform
+
+        theta = self.robot.dh_parameters[link_index].theta or 0.0
+        if abs(theta) < 1e-12:
+            return identity_transform
+
+        joint_transform_scaled = joint_transform.copy()
+        joint_transform_scaled[:3, 3] *= 1000
+        glb_joint_transform = root_transform @ joint_transform_scaled
+
+        zero_link_transforms = self.compute_forward_kinematics(
+            joint_positions=[0.0] * len(self.robot.dh_parameters)
+        )
+        zero_link_transform = zero_link_transforms[link_index]
+        mounting_transform = self.robot.pose_to_matrix(self.robot.mounting)
+        zero_link_transform_without_mounting = np.linalg.inv(mounting_transform) @ zero_link_transform
+        joint_position_error = np.linalg.norm(
+            zero_link_transform_without_mounting[:3, 3] - glb_joint_transform[:3, 3]
+        )
+        if joint_position_error > 1.0:
+            return identity_transform
+
+        theta_transform = np.eye(4)
+        theta_transform[:3, :3] = Rotation.from_euler("z", theta, degrees=False).as_matrix()
+
+        transform = root_transform @ inverse_transform
+        without_theta = link_transform @ transform
+        with_theta = link_transform @ theta_transform @ transform
+        target_rotation = root_transform[:3, :3]
+
+        def rotation_error(candidate: np.ndarray) -> float:
+            return Rotation.from_matrix(target_rotation.T @ candidate[:3, :3]).magnitude()
+
+        if rotation_error(with_theta) < rotation_error(without_theta) - 1e-9:
+            return theta_transform
+        return identity_transform
+
     def get_transform_matrix(self):
         """
         Creates a transformation matrix that converts from glTF's right-handed Y-up
@@ -641,23 +702,17 @@ class RobotVisualizer:
                     ctransform = _copy_graph_matrix(cumulative_transform)
                     inverse_transform = np.linalg.inv(ctransform)
 
-                    # DH theta is rotated, rotate mesh around z in direction of theta
-                    rotation_matrix_z_4x4 = np.eye(4)
-                    if len(self.robot.dh_parameters) > link_index:
-                        theta = self.robot.dh_parameters[link_index].theta or 0.0
-                        rotation_z_minus_90 = Rotation.from_euler(
-                            "z", theta, degrees=False
-                        ).as_matrix()
-                        rotation_matrix_z_4x4[:3, :3] = rotation_z_minus_90
-
                     # scale positions to mm
                     inverse_transform[:3, 3] *= 1000
 
                     root_transform = self.get_transform_matrix()
+                    theta_correction_transform = self.get_dh_theta_mesh_correction(
+                        link_index, link_transform, inverse_transform, root_transform, ctransform
+                    )
 
                     transform = root_transform @ inverse_transform
 
-                    final_transform = link_transform @ rotation_matrix_z_4x4 @ transform
+                    final_transform = link_transform @ theta_correction_transform @ transform
 
                     self.init_mesh(entity_path, geom, joint_name)
                     log_geometry(entity_path, final_transform)
@@ -739,23 +794,17 @@ class RobotVisualizer:
                         ctransform = _copy_graph_matrix(cumulative_transform)
                         inverse_transform = np.linalg.inv(ctransform)
 
-                        # DH theta is rotated, rotate mesh around z in direction of theta
-                        rotation_matrix_z_4x4 = np.eye(4)
-                        if len(self.robot.dh_parameters) > link_index:
-                            theta = self.robot.dh_parameters[link_index].theta or 0.0
-                            rotation_z_minus_90 = Rotation.from_euler(
-                                "z", theta, degrees=False
-                            ).as_matrix()
-                            rotation_matrix_z_4x4[:3, :3] = rotation_z_minus_90
-
                         # scale positions to mm
                         inverse_transform[:3, 3] *= 1000
 
                         root_transform = self.get_transform_matrix()
+                        theta_correction_transform = self.get_dh_theta_mesh_correction(
+                            link_index, link_transform, inverse_transform, root_transform, ctransform
+                        )
 
                         transform = root_transform @ inverse_transform
 
-                        final_transform = link_transform @ rotation_matrix_z_4x4 @ transform
+                        final_transform = link_transform @ theta_correction_transform @ transform
 
                         self.init_mesh(entity_path, geom, joint_name)
                         collect_geometry_data(entity_path, final_transform)
