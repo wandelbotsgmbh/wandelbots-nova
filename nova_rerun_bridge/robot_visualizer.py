@@ -226,10 +226,7 @@ class RobotVisualizer:
         return color
 
     def get_dh_theta_mesh_correction(
-        self,
-        link_index: int,
-        root_transform: np.ndarray,
-        joint_transform: np.ndarray,
+        self, link_index: int, root_transform: np.ndarray, joint_transform: np.ndarray
     ) -> np.ndarray:
         """Return the extra theta rotation needed after flattening a GLB link mesh.
 
