@@ -234,17 +234,19 @@ class RobotVisualizer:
     ) -> np.ndarray:
         """Return the extra theta rotation needed after flattening a GLB link mesh.
 
-        Three.js keeps the GLB as a parent/child tree: rotate a joint node and all child
-        meshes follow automatically. Here we log each mesh as its own Rerun entity instead,
-        so that tree is gone and we have to recreate the missing joint-to-mesh offset.
+        The Rerun visualizer flattens GLB meshes and logs each mesh as its own Rerun
+        entity. Once flattened, meshes no longer inherit the original GLB joint
+        transforms, so the visualizer has to recreate the missing joint-to-mesh offset.
 
-        Most models need the old DH-theta correction for that offset. Some GLB files already
-        include the theta offset in the joint frame, and applying it again breaks the mesh.
-        To avoid model-name special cases, check the zero pose:
-        - if the DH joint origin and GLB joint origin are not the same, do not rotate around
-          the DH origin because that would move the mesh to a wrong place;
-        - if the origins match, apply the theta rotation only when it makes the zero-pose
-          mesh frame line up better with Rerun's coordinate system.
+        Some GLB joint frames already contain the DH theta offset. Applying the offset
+        again would rotate those meshes twice.
+
+        Apply the extra DH theta correction only when static zero-pose frame checks show
+        that the flattened GLB mesh needs it:
+        - if the DH zero-pose joint origin and GLB joint origin differ, do not rotate
+          around the DH origin because that would move the mesh incorrectly;
+        - if the origins match, apply the theta correction only when it improves zero-pose
+          frame alignment with Rerun's coordinate system.
         """
         identity_transform = np.eye(4)
         if len(self.robot.dh_parameters) <= link_index:
