@@ -67,6 +67,15 @@ class RobotVisualizer:
         self.base_entity_path = base_entity_path.rstrip("/")
         self.albedo_factor = albedo_factor
         self.mesh_loaded = False
+        self.inverse_mounting_transform = np.linalg.inv(
+            self.robot.pose_to_matrix(self.robot.mounting)
+        )
+        self.zero_link_transforms_without_mounting = [
+            self.inverse_mounting_transform @ transform
+            for transform in self.compute_forward_kinematics(
+                joint_positions=[0.0] * len(self.robot.dh_parameters)
+            )
+        ]
         # Group collision geometries by link
         self.collision_link_geometries: list[Any] = (
             cast(list[Any], collision_link_chain.root) if collision_link_chain else []
@@ -219,7 +228,6 @@ class RobotVisualizer:
     def get_dh_theta_mesh_correction(
         self,
         link_index: int,
-        link_transform: np.ndarray,
         inverse_transform: np.ndarray,
         root_transform: np.ndarray,
         joint_transform: np.ndarray,
@@ -250,14 +258,9 @@ class RobotVisualizer:
         joint_transform_scaled[:3, 3] *= 1000
         glb_joint_transform = root_transform @ joint_transform_scaled
 
-        zero_link_transforms = self.compute_forward_kinematics(
-            joint_positions=[0.0] * len(self.robot.dh_parameters)
-        )
-        zero_link_transform = zero_link_transforms[link_index]
-        mounting_transform = self.robot.pose_to_matrix(self.robot.mounting)
-        zero_link_transform_without_mounting = np.linalg.inv(mounting_transform) @ zero_link_transform
+        zero_link_transform = self.zero_link_transforms_without_mounting[link_index]
         joint_position_error = np.linalg.norm(
-            zero_link_transform_without_mounting[:3, 3] - glb_joint_transform[:3, 3]
+            zero_link_transform[:3, 3] - glb_joint_transform[:3, 3]
         )
         if joint_position_error > 1.0:
             return identity_transform
@@ -266,8 +269,8 @@ class RobotVisualizer:
         theta_transform[:3, :3] = Rotation.from_euler("z", theta, degrees=False).as_matrix()
 
         transform = root_transform @ inverse_transform
-        without_theta = link_transform @ transform
-        with_theta = link_transform @ theta_transform @ transform
+        without_theta = zero_link_transform @ transform
+        with_theta = zero_link_transform @ theta_transform @ transform
         target_rotation = root_transform[:3, :3]
 
         def rotation_error(candidate: np.ndarray) -> float:
@@ -707,7 +710,7 @@ class RobotVisualizer:
 
                     root_transform = self.get_transform_matrix()
                     theta_correction_transform = self.get_dh_theta_mesh_correction(
-                        link_index, link_transform, inverse_transform, root_transform, ctransform
+                        link_index, inverse_transform, root_transform, ctransform
                     )
 
                     transform = root_transform @ inverse_transform
@@ -799,7 +802,7 @@ class RobotVisualizer:
 
                         root_transform = self.get_transform_matrix()
                         theta_correction_transform = self.get_dh_theta_mesh_correction(
-                            link_index, link_transform, inverse_transform, root_transform, ctransform
+                            link_index, inverse_transform, root_transform, ctransform
                         )
 
                         transform = root_transform @ inverse_transform
