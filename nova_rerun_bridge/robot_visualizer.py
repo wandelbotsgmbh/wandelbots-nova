@@ -228,7 +228,6 @@ class RobotVisualizer:
     def get_dh_theta_mesh_correction(
         self,
         link_index: int,
-        inverse_transform: np.ndarray,
         root_transform: np.ndarray,
         joint_transform: np.ndarray,
     ) -> np.ndarray:
@@ -256,31 +255,27 @@ class RobotVisualizer:
         if abs(theta) < 1e-12:
             return identity_transform
 
-        joint_transform_scaled = joint_transform.copy()
-        joint_transform_scaled[:3, 3] *= 1000
-        glb_joint_transform = root_transform @ joint_transform_scaled
-
+        root_rotation = root_transform[:3, :3]
         zero_link_transform = self.zero_link_transforms_without_mounting[link_index]
-        joint_position_error = np.linalg.norm(
-            zero_link_transform[:3, 3] - glb_joint_transform[:3, 3]
-        )
-        if joint_position_error > 1.0:
+        glb_joint_position = root_rotation @ (joint_transform[:3, 3] * 1000)
+        if np.linalg.norm(zero_link_transform[:3, 3] - glb_joint_position) > 1.0:
+            return identity_transform
+
+        theta_rotation = Rotation.from_euler("z", theta, degrees=False).as_matrix()
+        base_rotation = root_rotation.T @ zero_link_transform[:3, :3]
+        joint_rotation_inverse = joint_transform[:3, :3].T
+
+        def rotation_error(correction: np.ndarray) -> float:
+            return Rotation.from_matrix(
+                base_rotation @ correction @ root_rotation @ joint_rotation_inverse
+            ).magnitude()
+
+        if rotation_error(theta_rotation) >= rotation_error(np.eye(3)) - 1e-9:
             return identity_transform
 
         theta_transform = np.eye(4)
-        theta_transform[:3, :3] = Rotation.from_euler("z", theta, degrees=False).as_matrix()
-
-        transform = root_transform @ inverse_transform
-        without_theta = zero_link_transform @ transform
-        with_theta = zero_link_transform @ theta_transform @ transform
-        target_rotation = root_transform[:3, :3]
-
-        def rotation_error(candidate: np.ndarray) -> float:
-            return Rotation.from_matrix(target_rotation.T @ candidate[:3, :3]).magnitude()
-
-        if rotation_error(with_theta) < rotation_error(without_theta) - 1e-9:
-            return theta_transform
-        return identity_transform
+        theta_transform[:3, :3] = theta_rotation
+        return theta_transform
 
     def get_transform_matrix(self):
         """
@@ -712,7 +707,7 @@ class RobotVisualizer:
 
                     root_transform = self.get_transform_matrix()
                     theta_correction_transform = self.get_dh_theta_mesh_correction(
-                        link_index, inverse_transform, root_transform, ctransform
+                        link_index, root_transform, ctransform
                     )
 
                     transform = root_transform @ inverse_transform
@@ -804,7 +799,7 @@ class RobotVisualizer:
 
                         root_transform = self.get_transform_matrix()
                         theta_correction_transform = self.get_dh_theta_mesh_correction(
-                            link_index, inverse_transform, root_transform, ctransform
+                            link_index, root_transform, ctransform
                         )
 
                         transform = root_transform @ inverse_transform
