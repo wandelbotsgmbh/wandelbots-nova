@@ -172,6 +172,50 @@ jobs:
           fi
           echo "All integration tests passed"
 
+  create_motion_group_models:
+    if: ${{ always() }}
+    needs: [setup-instance, integration-summary]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up Python environment
+        run: |
+          pip install uv
+          uv sync
+
+      - name: Decode output secrets
+        uses: cloudposse/github-action-secret-outputs@main
+        id: role
+        with:
+          secret: ${{ secrets.GPG_PASSWORD }}
+          op: decode
+          in: ${{ needs.setup-instance.outputs.PORTAL_PROD_ACCESS_TOKEN }}
+
+      - name: Generate motion group models
+        env:
+          NOVA_API: https://${{ needs.setup-instance.outputs.PORTAL_PROD_HOST }}
+          NOVA_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
+        run: |
+          uv run python ./scripts/create_motion_group_models.py
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add nova/cell/motion_group_models.py
+          git diff --cached --quiet || git commit -m "chore: update motion group models enum" && git push
+
   # This job cleans up the NOVA instance
   cleanup-instance:
     if: ${{ always() }}
