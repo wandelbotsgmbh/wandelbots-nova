@@ -30,8 +30,12 @@ def generate_enum_source(models: list[str]) -> str:
         "",
         "class MotionGroupModel(StrEnum):",
     ]
-    for model in sorted(models):
-        lines.append(f'\t{model} = "{to_enum_value(model)}"')
+    if not models:
+        lines.append("\tpass")
+        logger.warning("API returned no models — skipping file generation.")
+    else:
+        for model in sorted(models):
+            lines.append(f'\t{model} = "{to_enum_value(model)}"')
     lines.append("")
     return "\n".join(lines)
 

@@ -4,6 +4,7 @@ Covers the pure conversion helpers (to_enum_value, generate_enum_source) and
 an integration test that mocks the NOVA API and runs main() end-to-end.
 """
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -67,9 +68,12 @@ class TestGenerateEnumSource:
         kuka_pos = source.index("KUKA_KR16_R2010_2")
         assert abb_pos < fanuc_pos < kuka_pos
 
-    def test_empty_models_list(self):
+    def test_empty_models_list(self, caplog):
+        caplog.set_level(logging.WARNING, logger="scripts.create_motion_group_models")
+
         source = generate_enum_source([])
-        assert "class MotionGroupModel(StrEnum):" in source
+        assert "class MotionGroupModel(StrEnum):\n\tpass" in source
+        assert "API returned no models — skipping file generation." in caplog.text
         assert '= "' not in source
 
     def test_contains_auto_generated_header(self):
@@ -87,6 +91,7 @@ class TestMainIntegration:
     async def test_main_writes_generated_file(self, tmp_path, caplog):
         output_file = tmp_path / "motion_group_models.py"
         mock = _mock_nova(return_value=["KUKA_KR16_R2010_2", "ABB_1200_07_7"])
+        caplog.set_level(logging.INFO, logger="scripts.create_motion_group_models")
 
         with (
             patch("scripts.create_motion_group_models.Nova", return_value=mock),
@@ -104,6 +109,7 @@ class TestMainIntegration:
     async def test_main_with_empty_api_response_does_not_write(self, tmp_path, caplog):
         output_file = tmp_path / "motion_group_models.py"
         mock = _mock_nova(return_value=[])
+        caplog.set_level(logging.WARNING, logger="scripts.create_motion_group_models")
 
         with (
             patch("scripts.create_motion_group_models.Nova", return_value=mock),
@@ -112,7 +118,7 @@ class TestMainIntegration:
             await main()
 
         assert not output_file.exists()
-        assert "API returned no models" in caplog.text
+        assert "API returned no models — skipping file generation." in caplog.text
 
     @pytest.mark.asyncio
     async def test_main_api_raises_exception(self, tmp_path):

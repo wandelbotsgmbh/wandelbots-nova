@@ -173,7 +173,7 @@ jobs:
           echo "All integration tests passed"
 
   create_motion_group_models:
-    if: ${{ always() }}
+    if: ${{ needs.setup-instance.result == 'success' && needs.integration-summary.result == 'success' && github.event.pull_request.head.repo.full_name == github.repository }}
     needs: [setup-instance, integration-summary]
     runs-on: ubuntu-latest
     permissions:
@@ -214,7 +214,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add nova/cell/motion_group_models.py
-          git diff --cached --quiet || git commit -m "chore: update motion group models enum" && git push
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update motion group models enum"
+            git push
+          fi
 
   # This job cleans up the NOVA instance
   cleanup-instance:
