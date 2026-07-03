@@ -131,9 +131,7 @@ class TestMainIntegration:
     @pytest.mark.asyncio
     async def test_main_api_returns_404(self, tmp_path):
         output_file = tmp_path / "motion_group_models.py"
-        mock = _mock_nova(
-            side_effect=NotFoundException(status=404, reason="Not found")
-        )
+        mock = _mock_nova(side_effect=NotFoundException(status=404, reason="Not found"))
 
         with (
             patch("scripts.create_motion_group_models.Nova", return_value=mock),
@@ -147,9 +145,7 @@ class TestMainIntegration:
     @pytest.mark.asyncio
     async def test_main_api_returns_500(self, tmp_path):
         output_file = tmp_path / "motion_group_models.py"
-        mock = _mock_nova(
-            side_effect=ServiceException(status=500, reason="Internal server error")
-        )
+        mock = _mock_nova(side_effect=ServiceException(status=500, reason="Internal server error"))
 
         with (
             patch("scripts.create_motion_group_models.Nova", return_value=mock),
