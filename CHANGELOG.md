@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.7.2 (2026-07-06)
+
+### Bug Fixes
+
+- Rerun visualization for DH theta robot meshes (#439)
+  ([#439](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/439),
+  [`bbb8e5e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bbb8e5e55b89be64889ae35c9f7547b36830b257))
+
+
 ## v5.7.1 (2026-07-06)
 
 ### Bug Fixes
