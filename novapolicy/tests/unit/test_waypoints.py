@@ -1,8 +1,9 @@
 """Tests for make_waypoints_request — the documented jogging timestamp protocol.
 
 This pure function turns raw steps + dt + an anchor into a NOVA
-JointWaypointsRequest or PoseWaypointsRequest, scaling every timestamp by the
-clock's speed ratio. Every waypoint is ``base + i*dt``; only ``base`` varies:
+``ActionChunkRequest`` (a single list of timestamped waypoints, each carrying
+either joint or Cartesian coordinates), scaling every timestamp by the clock's
+speed ratio. Every waypoint is ``base + i*dt``; only ``base`` varies:
   * explicit anchor (``anchor_ms >= 0``): base is that anchor;
   * "now" anchor (``anchor_ms == NOW``): base is the clock's current elapsed;
   * ``anchor_offset_steps`` then shifts base by whole dt steps (+1 ahead for
@@ -25,7 +26,7 @@ def _joint_timestamps(req) -> list[int]:
 
 
 def _joint_steps(req) -> list[list[float]]:
-    return [list(w.joints.root) for w in req.waypoints]
+    return [list(w.waypoint.root.joints.root) for w in req.waypoints]
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +39,7 @@ def test_absolute_mode_places_timestamps_starting_at_the_scaled_base():
     clock = JoggingTimeClock(speed_ratio=1.0)
     steps = [[0.0] * 6, [0.1] * 6, [0.2] * 6]
     req = make_waypoints_request(clock, "joint", steps=steps, effective_dt_ms=10.0, anchor_ms=100)
-    assert isinstance(req, api.models.JointWaypointsRequest)
+    assert isinstance(req, api.models.ActionChunkRequest)
     assert _joint_timestamps(req) == [100, 110, 120]
     assert _joint_steps(req) == steps
 
@@ -128,20 +129,22 @@ def test_cartesian_mode_builds_a_pose_request_splitting_position_and_orientation
     clock = JoggingTimeClock(speed_ratio=1.0)
     steps = [[500.0, 200.0, 300.0, 0.1, 0.2, 0.3]]
     req = make_waypoints_request(clock, "cartesian", steps=steps, effective_dt_ms=10.0, anchor_ms=0)
-    assert isinstance(req, api.models.PoseWaypointsRequest)
+    assert isinstance(req, api.models.ActionChunkRequest)
     wp = req.waypoints[0]
     assert wp.timestamp == 0
-    assert list(wp.pose.position.root) == [500.0, 200.0, 300.0]
-    assert list(wp.pose.orientation.root) == [0.1, 0.2, 0.3]
+    assert wp.waypoint.root.kind == "POSE"
+    assert list(wp.waypoint.root.pose.position.root) == [500.0, 200.0, 300.0]
+    assert list(wp.waypoint.root.pose.orientation.root) == [0.1, 0.2, 0.3]
 
 
 def test_joint_mode_builds_a_joint_request():
-    """The mode argument selects the request type: 'joint' -> JointWaypointsRequest."""
+    """The mode argument selects the waypoint kind: 'joint' -> JOINTS waypoints."""
     clock = JoggingTimeClock(speed_ratio=1.0)
     req = make_waypoints_request(
         clock, "joint", steps=[[0.0] * 6], effective_dt_ms=10.0, anchor_ms=0
     )
-    assert isinstance(req, api.models.JointWaypointsRequest)
+    assert isinstance(req, api.models.ActionChunkRequest)
+    assert req.waypoints[0].waypoint.root.kind == "JOINTS"
 
 
 def test_empty_steps_produce_no_waypoints():

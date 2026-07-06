@@ -254,9 +254,9 @@ async def test_a_tcp_action_schema_opens_a_cartesian_session_and_sends_pose_wayp
 
     The README/jogging.md claim is that request type is picked from the schema,
     not configured by hand. So a policy returning a flat pose dict must (1) open
-    its session in ``mode="cartesian"`` (the PoseWaypointsRequest path) and (2)
-    have its six pose values routed through as a single 6-D waypoint — never
-    mistaken for joint targets.
+    its session in ``mode="cartesian"`` (the POSE waypoint path) and (2) have
+    its six pose values routed through as a single 6-D waypoint — never mistaken
+    for joint targets.
     """
     mg = _mg()
     schema = PolicySchema(observations=[Observation.tcp("eef", source=mg, action=True)])

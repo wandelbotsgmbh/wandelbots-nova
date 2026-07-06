@@ -1,9 +1,10 @@
 """Server jogger-clock synchronization for waypoint jogging.
 
-The NOVA server exposes ``jogger_session_timestamp_ms`` in the state stream.
-``JoggingTimeClock`` observes it, compares to the client wall-clock, and derives
-a speed ratio used to scale outgoing waypoint timestamps so the robot moves at
-real-time speed regardless of the server's internal rate.
+The NOVA server exposes ``session_timestamp_ms`` in the state stream
+(field on ``ActionChunkStreamingDetails``). ``JoggingTimeClock`` observes it,
+compares to the client wall-clock, and derives a speed ratio used to scale
+outgoing waypoint timestamps so the robot moves at real-time speed regardless
+of the server's internal rate.
 """
 
 from __future__ import annotations
@@ -19,9 +20,10 @@ logger = logging.getLogger(__name__)
 class JoggingTimeClock:
     """Tracks the server's jogger session clock and computes the speed ratio.
 
-    The server exposes ``jogger_session_timestamp_ms`` in the state stream
-    (field on ``JoggingDetails``). It starts at 0 after ``InitializeJoggingRequest``
-    and increments while waypoints are being executed.
+    The server exposes ``session_timestamp_ms`` in the state stream
+    (field on ``ActionChunkStreamingDetails``). It starts at 0 after
+    ``InitializeActionChunksRequest`` and increments while waypoints are being
+    executed.
 
     This class observes that timestamp, compares it to the client's wall-clock
     elapsed time, and derives the speed ratio (server_time / client_time).
@@ -95,7 +97,7 @@ class JoggingTimeClock:
     def _note_stall(self, drift_ms: float) -> None:
         """Warn once when the server timer stops advancing (edge-triggered).
 
-        Fires when no fresh ``jogger_session_timestamp_ms`` has arrived for
+        Fires when no fresh ``session_timestamp_ms`` has arrived for
         longer than one lookahead window, i.e. the jog clock has frozen at the
         cap. Recovery is logged from :meth:`update` when server time resumes.
         """
@@ -109,18 +111,18 @@ class JoggingTimeClock:
             )
 
     def update(self, timestamp_ms: int) -> None:
-        """Feed a new ``jogger_session_timestamp_ms`` reading from the state stream."""
+        """Feed a new ``session_timestamp_ms`` reading from the state stream."""
         if timestamp_ms <= 0:
             return
         if not self.synced:
             self.synced = True
             logger.info(
-                "Server time sync established (jogger_session_timestamp_ms=%d)", timestamp_ms
+                "Server time sync established (session_timestamp_ms=%d)", timestamp_ms
             )
         if self._stalled:
             self._stalled = False
             logger.info(
-                "Jogging connection recovered (jogger_session_timestamp_ms=%d); "
+                "Jogging connection recovered (session_timestamp_ms=%d); "
                 "server time advancing again.",
                 timestamp_ms,
             )
@@ -145,14 +147,18 @@ class JoggingTimeClock:
 
     @staticmethod
     def extract_from_state(state: object) -> int | None:
-        """Extract jogger_session_timestamp_ms from a MotionGroupState, or None."""
+        """Extract the action-chunk session timestamp from a MotionGroupState.
+
+        Reads ``execute.details.session_timestamp_ms`` (the field on
+        ``ActionChunkStreamingDetails``). Returns None if not present.
+        """
         execute = getattr(state, "execute", None)
         if execute is None:
             return None
         details = getattr(execute, "details", None)
         if details is None:
             return None
-        ts = getattr(details, "jogger_session_timestamp_ms", None)
+        ts = getattr(details, "session_timestamp_ms", None)
         if isinstance(ts, int):
             return ts
         return None

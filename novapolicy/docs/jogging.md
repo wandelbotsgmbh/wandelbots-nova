@@ -109,35 +109,36 @@ async with jog_tcp({mg1: "Flange", mg2: "Gripper"}) as jogger:
         jogger.set_target({mg1: pose1, mg2: pose2})
 ```
 
-## Waypoint request types
+## Waypoint payloads
 
-The NOVA Jogging API accepts **timestamped waypoints** — either joint positions
-or TCP poses:
+The NOVA action-chunk streaming API accepts **timestamped waypoints** — either
+joint positions or TCP poses — in `ActionChunkRequest` messages:
 
-| Mode | Request | Steps format | Use case |
-|------|---------|--------------|----------|
-| `"joint"` | `JointWaypointsRequest` | Joint radians `[j1, j2, ..., j6]` | Joint-space (default) |
-| `"cartesian"` | `PoseWaypointsRequest` | TCP pose `[x, y, z, rx, ry, rz]` (mm + rad) | Cartesian-space |
+| Mode | Waypoint kind | Steps format | Use case |
+|------|---------------|--------------|----------|
+| `"joint"` | `JOINTS` | Joint radians `[j1, j2, ..., j6]` | Joint-space (default) |
+| `"cartesian"` | `POSE` | TCP pose `[x, y, z, rx, ry, rz]` (mm + rad) | Cartesian-space |
 
-`jog_joints` / `jog_tcp` pick the request type for you. Under a policy, the mode
-is selected automatically based on whether the schema contains
+`jog_joints` / `jog_tcp` pick the waypoint kind for you. Under a policy, the
+mode is selected automatically based on whether the schema contains
 `Observation.tcp(..., action=True)` entries.
 
 ## Error detection
 
-The session monitors the NOVA jogging state stream for pause conditions.
-Three of them are **blocking faults** — after consecutive ticks in one of these
+The session monitors the NOVA action-chunk state stream for braking conditions.
+Four of them are **blocking faults** — after consecutive ticks in one of these
 states, a `MotionError` is raised:
 
 | State | Meaning |
 |-------|---------|
-| `PAUSED_NEAR_JOINT_LIMIT` | Joint reached its limit |
-| `PAUSED_NEAR_COLLISION` | Self-collision detected |
-| `PAUSED_NEAR_SINGULARITY` | Kinematic singularity |
+| `BRAKING_NEAR_JOINT_LIMIT` | Joint reached its limit |
+| `BRAKING_NEAR_COLLISION` | Self-collision detected |
+| `BRAKING_NEAR_SINGULARITY` | Kinematic singularity |
+| `BRAKING_NEAR_WORKSPACE_BOUNDARY` | Workspace boundary reached |
 
-One pause is **recoverable** and never raises — the robot resumes on its own
-once a fresh chunk arrives:
+User pause/stop states are reported but do not become motion errors:
 
 | State | Meaning |
 |-------|---------|
 | `PAUSED_BY_USER` | Waypoint buffer exhausted (send chunks faster) |
+| `STOPPED_BY_USER` | Streaming session stopped by the client/operator |

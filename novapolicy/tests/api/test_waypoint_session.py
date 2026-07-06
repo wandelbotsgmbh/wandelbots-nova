@@ -3,7 +3,7 @@
 These drive the *real* async jogging + state-stream loops, substituting only
 the NOVA SDK boundary: the motion group, the API gateway, and the small
 ``_sdk`` accessors. The fake gateway plays the role of the server — it feeds the
-session a response stream and records the ``ExecuteWaypointJoggingRequest`` messages the
+session a response stream and records the ``ExecuteActionChunksRequest`` messages the
 session yields back.
 
 Assertions are on the contract, not internals:
@@ -38,12 +38,13 @@ _SESSION = "novapolicy.jogging.waypoint_session"
 
 
 # ---------------------------------------------------------------------------
-# Fake server: stands in for api_gateway.jogging_api.execute_waypoint_jogging
+# Fake server: stands in for
+# api_gateway.action_chunk_streaming_api.execute_action_chunks
 # ---------------------------------------------------------------------------
 
 
 def _ok() -> object:
-    """A normal jogging response (no motion error)."""
+    """A normal action-chunk response (no motion error)."""
     return SimpleNamespace(root=SimpleNamespace())
 
 
@@ -55,10 +56,10 @@ def _motion_error(message: str = "joint_limit") -> object:
 class FakeJoggingServer:
     """Consumes the session's request generator and replays scripted responses.
 
-    The session yields an ``InitializeJoggingRequest`` first, then one waypoint
-    request per response it receives (once a chunk is queued). We keep emitting
-    ``_ok()`` responses on a short cadence until stopped, recording every
-    request the session produces.
+    The session yields an ``InitializeActionChunksRequest`` first, then one
+    ActionChunkRequest per response it receives (once a chunk is queued). We keep
+    emitting ``_ok()`` responses on a short cadence until stopped, recording
+    every request the session produces.
     """
 
     def __init__(
@@ -69,7 +70,7 @@ class FakeJoggingServer:
         self._raise_exc = raise_exc
         self._stop = asyncio.Event()
 
-    async def execute_waypoint_jogging(
+    async def execute_action_chunks(
         self,
         *,
         cell: str,
@@ -116,7 +117,7 @@ def _initial_state() -> object:
 def _stream_state(state: object, *, ts_ms: int = 0, kind: str | None = None) -> object:
     """One MotionGroupState as yielded by ``stream_state``."""
     jog_state = SimpleNamespace(kind=kind) if kind is not None else None
-    details = SimpleNamespace(jogger_session_timestamp_ms=ts_ms, state=jog_state)
+    details = SimpleNamespace(session_timestamp_ms=ts_ms, state=jog_state)
     return SimpleNamespace(
         joint_position=list(state.joints),
         tcp_pose=None,  # keep the initial pose; avoids constructing a Pose here
@@ -150,7 +151,7 @@ def _build_session(
     mg.tcp_names = AsyncMock(return_value=["Flange"])
 
     gateway = MagicMock()
-    gateway.jogging_api.execute_waypoint_jogging = server.execute_waypoint_jogging
+    gateway.action_chunk_streaming_api.execute_action_chunks = server.execute_action_chunks
 
     session = WaypointJoggingSession(
         motion_group=mg,
@@ -181,7 +182,7 @@ async def _wait_until(predicate: Callable[[], bool], *, timeout: float = 1.0) ->
 
 
 def _inner(request: object) -> object:
-    """Unwrap the ExecuteWaypointJoggingRequest envelope to the concrete message."""
+    """Unwrap the ExecuteActionChunksRequest envelope to the concrete message."""
     return getattr(request, "root", request)
 
 
@@ -192,13 +193,13 @@ def _inner(request: object) -> object:
 
 @pytest.mark.asyncio
 async def test_it_initializes_the_jogging_session_before_any_waypoints():
-    """The very first message to the server is an InitializeJoggingRequest."""
+    """The very first message to the server is an InitializeActionChunksRequest."""
     session, server = _build_session()
     try:
         await session.start()
         await session.wait_ready()
         await _wait_until(lambda: len(server.requests) >= 1)
-        assert isinstance(_inner(server.requests[0]), api.models.InitializeJoggingRequest)
+        assert isinstance(_inner(server.requests[0]), api.models.InitializeActionChunksRequest)
     finally:
         server.stop()
         await session.stop()
@@ -208,7 +209,7 @@ async def test_it_initializes_the_jogging_session_before_any_waypoints():
 
 @pytest.mark.asyncio
 async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
-    """update_chunk(step) reaches the server as a JointWaypointsRequest."""
+    """update_chunk(step) reaches the server as an ActionChunkRequest."""
     session, server = _build_session()
     try:
         await session.start()
@@ -218,10 +219,11 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
 
         await _wait_until(lambda: len(server.requests) >= 2)
         waypoint_req = _inner(server.requests[1])
-        assert isinstance(waypoint_req, api.models.JointWaypointsRequest)
+        assert isinstance(waypoint_req, api.models.ActionChunkRequest)
         assert len(waypoint_req.waypoints) == 1
         sent = waypoint_req.waypoints[0]
-        assert list(sent.joints.root) == target
+        assert sent.waypoint.root.kind == "JOINTS"
+        assert list(sent.waypoint.root.joints.root) == target
         assert sent.timestamp == 0  # absolute anchor at 0, single step
     finally:
         server.stop()
@@ -323,7 +325,7 @@ async def test_a_fired_stop_condition_ends_the_session_without_failing():
 @pytest.mark.asyncio
 async def test_jog_tcp_chunk_is_sent_as_evenly_spaced_pose_waypoints():
     """A TCP chunk pushed through ``jog_tcp`` reaches the server as a single
-    ``PoseWaypointsRequest`` whose waypoints carry the chunk's poses and
+    ``ActionChunkRequest`` whose POSE waypoints carry the chunk's poses and
     timestamps laid out exactly as the waypoint API expects: absolute,
     non-negative, strictly increasing, and spaced by ``dt_ms``.
 
@@ -334,7 +336,7 @@ async def test_jog_tcp_chunk_is_sent_as_evenly_spaced_pose_waypoints():
     server = FakeJoggingServer()
 
     async def state_stream(**_kw: object) -> AsyncGenerator[object, None]:
-        # No jogger_session_timestamp_ms (ts_ms=0 is ignored), so the clock's
+        # No session_timestamp_ms (ts_ms=0 is ignored), so the clock's
         # speed_ratio stays 1.0 and server-time == client-time: dt is unscaled.
         while True:
             yield _stream_state(_initial_state(), kind="RUNNING")
@@ -348,7 +350,7 @@ async def test_jog_tcp_chunk_is_sent_as_evenly_spaced_pose_waypoints():
     mg.tcp_names = AsyncMock(return_value=["Flange"])
 
     gateway = MagicMock()
-    gateway.jogging_api.execute_waypoint_jogging = server.execute_waypoint_jogging
+    gateway.action_chunk_streaming_api.execute_action_chunks = server.execute_action_chunks
 
     estop = MagicMock()
     estop.start = AsyncMock()
@@ -375,22 +377,23 @@ async def test_jog_tcp_chunk_is_sent_as_evenly_spaced_pose_waypoints():
             jogger.set_target(chunk, dt_ms=dt_ms)
             await _wait_until(
                 lambda: any(
-                    isinstance(_inner(r), api.models.PoseWaypointsRequest) for r in server.requests
+                    isinstance(_inner(r), api.models.ActionChunkRequest) for r in server.requests
                 )
             )
 
         pose_req = next(
             _inner(r)
             for r in server.requests
-            if isinstance(_inner(r), api.models.PoseWaypointsRequest)
+            if isinstance(_inner(r), api.models.ActionChunkRequest)
         )
         waypoints = pose_req.waypoints
 
         # Every chunk step became one pose waypoint, in order.
         assert len(waypoints) == len(chunk)
         for sent, expected in zip(waypoints, chunk, strict=True):
-            assert [sent.pose.position.root[k] for k in range(3)] == expected[:3]
-            assert [sent.pose.orientation.root[k] for k in range(3)] == expected[3:6]
+            assert sent.waypoint.root.kind == "POSE"
+            assert [sent.waypoint.root.pose.position.root[k] for k in range(3)] == expected[:3]
+            assert [sent.waypoint.root.pose.orientation.root[k] for k in range(3)] == expected[3:6]
 
         # Timestamps: the layout the waypoint API expects.
         timestamps = [w.timestamp for w in waypoints]
@@ -424,7 +427,9 @@ async def test_overlapping_tcp_chunks_share_one_absolute_timeline():
         return [
             r
             for r in (_inner(x) for x in server.requests)
-            if isinstance(r, api.models.PoseWaypointsRequest)
+            if isinstance(r, api.models.ActionChunkRequest)
+            and r.waypoints
+            and r.waypoints[0].waypoint.root.kind == "POSE"
         ]
 
     try:
@@ -445,10 +450,12 @@ async def test_overlapping_tcp_chunks_share_one_absolute_timeline():
 
         first, second = _pose_requests()[0], _pose_requests()[1]
         a_by_ts = {
-            w.timestamp: tuple(w.pose.position.root[k] for k in range(3)) for w in first.waypoints
+            w.timestamp: tuple(w.waypoint.root.pose.position.root[k] for k in range(3))
+            for w in first.waypoints
         }
         b_by_ts = {
-            w.timestamp: tuple(w.pose.position.root[k] for k in range(3)) for w in second.waypoints
+            w.timestamp: tuple(w.waypoint.root.pose.position.root[k] for k in range(3))
+            for w in second.waypoints
         }
 
         # The two chunks share four absolute timestamps...
@@ -471,8 +478,8 @@ async def test_overlapping_joint_chunks_share_one_absolute_timeline():
     joint targets at identical absolute timestamps.
 
     Same per-tick resend as the TCP case, but the joint path emits
-    ``JointWaypointsRequest`` messages. The absolute-timeline guarantee is
-    mode-independent, so the overlap must coincide here too.
+    ``ActionChunkRequest`` messages with JOINTS waypoints. The absolute-timeline
+    guarantee is mode-independent, so the overlap must coincide here too.
     """
     session, server = _build_session(mode="joint")
 
@@ -480,7 +487,9 @@ async def test_overlapping_joint_chunks_share_one_absolute_timeline():
         return [
             r
             for r in (_inner(x) for x in server.requests)
-            if isinstance(r, api.models.JointWaypointsRequest)
+            if isinstance(r, api.models.ActionChunkRequest)
+            and r.waypoints
+            and r.waypoints[0].waypoint.root.kind == "JOINTS"
         ]
 
     try:
@@ -499,8 +508,8 @@ async def test_overlapping_joint_chunks_share_one_absolute_timeline():
         await _wait_until(lambda: len(_joint_requests()) >= 2)
 
         first, second = _joint_requests()[0], _joint_requests()[1]
-        a_by_ts = {w.timestamp: tuple(w.joints.root) for w in first.waypoints}
-        b_by_ts = {w.timestamp: tuple(w.joints.root) for w in second.waypoints}
+        a_by_ts = {w.timestamp: tuple(w.waypoint.root.joints.root) for w in first.waypoints}
+        b_by_ts = {w.timestamp: tuple(w.waypoint.root.joints.root) for w in second.waypoints}
 
         overlap = set(a_by_ts) & set(b_by_ts)
         assert overlap == {150, 200, 250, 300}

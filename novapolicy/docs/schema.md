@@ -58,8 +58,9 @@ Observation.joint_positions("arm", source=mg, mode="relative")
 ## TCP actions
 
 Policies that output Cartesian targets instead of joint positions. Set
-`action=True` on `Observation.tcp()` — the executor sends `PoseWaypointsRequest`
-for that motion group, and the server handles inverse kinematics internally:
+`action=True` on `Observation.tcp()` — the executor sends `ActionChunkRequest`
+messages with `POSE` waypoints for that motion group, and the server handles
+inverse kinematics internally:
 
 ```python
 Observation.tcp("eef_pose", source=mg, tcp="Flange", action=True)

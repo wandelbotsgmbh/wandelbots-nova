@@ -1,8 +1,11 @@
-"""Waypoint request construction for jogging.
+"""Timestamped waypoint construction for action-chunk jogging.
 
-Pure helpers that turn raw action steps + timing into NOVA API request models
-(``JointWaypointsRequest`` / ``PoseWaypointsRequest``), plus the small
-pending-chunk record. No session state lives here — the session passes in its
+The NOVA endpoint is now named action-chunk streaming, but each chunk is still
+serialized as a list of timestamped waypoints. Keep this module focused on that
+lower-level waypoint shape: pure helpers that turn raw action steps + timing into
+a NOVA API ``ActionChunkRequest`` (a single list of timestamped waypoints, each
+carrying either joint or Cartesian coordinates), plus the small pending-chunk
+record. No session state lives here — the session passes in its
 :class:`~novapolicy.jogging.clock.JoggingTimeClock` and mode.
 """
 
@@ -44,7 +47,7 @@ def make_waypoints_request(
     anchor_ms: int = NOW,
     anchor_offset_steps: int = 0,
 ) -> object:
-    """Build a JointWaypointsRequest or PoseWaypointsRequest at stream-yield time.
+    """Build an ActionChunkRequest at stream-yield time.
 
     Every waypoint carries an absolute server-time timestamp laid out as
     ``base + i*dt``. The only decision is where ``base`` (step 0) sits:
@@ -75,24 +78,30 @@ def make_waypoints_request(
 
 
 def _build_joint_request(timestamps: list[int], steps: list[list[float]]) -> object:
-    """Build a JointWaypointsRequest from timestamps and joint steps.
+    """Build an ActionChunkRequest of joint waypoints from timestamps and steps.
 
-    The request uses the array-of-structs layout: a single ``waypoints``
-    list where each ``JointWaypoint`` bundles its timestamp with its joints.
+    Each ``Waypoint`` bundles its timestamp with a ``JointWaypoint`` (discriminated
+    by ``kind == "JOINTS"``) carrying the joint positions.
     """
-    return api.models.JointWaypointsRequest(
+    return api.models.ActionChunkRequest(
         waypoints=[
-            api.models.JointWaypoint(timestamp=ts, joints=api.models.Joints(root=step))
+            api.models.Waypoint(
+                timestamp=ts,
+                waypoint=api.models.WaypointCoordinates(
+                    api.models.JointWaypoint(joints=api.models.Joints(root=step))
+                ),
+            )
             for ts, step in zip(timestamps, steps, strict=True)
         ],
     )
 
 
 def _build_pose_request(timestamps: list[int], steps: list[list[float]]) -> object:
-    """Build a PoseWaypointsRequest from timestamps and TCP pose steps.
+    """Build an ActionChunkRequest of pose waypoints from timestamps and steps.
 
     Each step is [x, y, z, rx, ry, rz] where position is in mm and
-    orientation is a rotation vector in radians.
+    orientation is a rotation vector in radians. Each ``Waypoint`` bundles its
+    timestamp with a ``PoseWaypoint`` (discriminated by ``kind == "POSE"``).
     """
     from wandelbots_api_client.v2_pydantic.models.models import (  # noqa: PLC0415
         Pose as ApiPose,
@@ -106,7 +115,12 @@ def _build_pose_request(timestamps: list[int], steps: list[list[float]]) -> obje
         pos = Vector3d(root=list(step[:3]))
         orient = RotationVector(root=list(step[3:6]))
         waypoints.append(
-            api.models.PoseWaypoint(timestamp=ts, pose=ApiPose(position=pos, orientation=orient))
+            api.models.Waypoint(
+                timestamp=ts,
+                waypoint=api.models.WaypointCoordinates(
+                    api.models.PoseWaypoint(pose=ApiPose(position=pos, orientation=orient))
+                ),
+            )
         )
 
-    return api.models.PoseWaypointsRequest(waypoints=waypoints)
+    return api.models.ActionChunkRequest(waypoints=waypoints)

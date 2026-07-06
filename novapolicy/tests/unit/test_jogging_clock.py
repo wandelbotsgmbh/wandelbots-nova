@@ -1,6 +1,7 @@
 """Tests for JoggingTimeClock — pins the server-time-sync heuristic behavior.
 
-The clock keys off ``jogger_session_timestamp_ms`` from the state stream:
+The clock keys off ``session_timestamp_ms`` from the state stream
+(``ActionChunkStreamingDetails``):
   * while that field stays 0 (never wired up / not yet advancing) the clock
     never syncs and ``speed_ratio`` stays 1.0 (scaling is a no-op);
   * once it advances, ``speed_ratio`` becomes an active multiplier applied to
@@ -24,7 +25,7 @@ def test_unsynced_clock_is_identity():
 
 
 def test_zero_timestamp_never_syncs():
-    """A jogger_session_timestamp_ms stuck at 0 must not flip the clock to synced."""
+    """A session_timestamp_ms stuck at 0 must not flip the clock to synced."""
     clock = JoggingTimeClock()
     clock.start()
     for _ in range(5):
@@ -59,10 +60,10 @@ def test_ratio_clamped_to_at_least_one():
 
 
 def test_extract_from_state_walks_execute_details():
-    """extract_from_state reads execute.details.jogger_session_timestamp_ms."""
+    """extract_from_state reads execute.details.session_timestamp_ms."""
 
     class _Details:
-        jogger_session_timestamp_ms = 123
+        session_timestamp_ms = 123
 
     class _Execute:
         details = _Details()
