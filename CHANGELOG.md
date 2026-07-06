@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.7.1 (2026-07-06)
+
+### Bug Fixes
+
+- GR00T schema validation for IO state observations (#438)
+  ([#438](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/438),
+  [`9487296`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/948729631ff075ca547e6af333d526a30c2c8264))
+
+
 ## v5.7.0 (2026-07-01)
 
 ### Features
