@@ -167,7 +167,8 @@ class LeRobotPolicyClient(PolicyClient):
 
         state_names = self._state_names(states, schema)
         action_slices = self._joint_action_slices(states, schema)
-        self._validate_dimensions(state_names, action_slices)
+        io_action_slices = self._io_action_slices(action_slices, schema)
+        self._validate_dimensions(state_names, action_slices, io_action_slices)
         await asyncio.to_thread(self._ensure_policy_setup, schema, state_names, images)
 
     async def get_actions(
@@ -184,11 +185,12 @@ class LeRobotPolicyClient(PolicyClient):
         raw_obs = await self._build_raw_observation(states, schema, images, io_values)
         state_names = self._state_names(states, schema)
         action_slices = self._joint_action_slices(states, schema)
-        self._validate_dimensions(state_names, action_slices)
+        io_action_slices = self._io_action_slices(action_slices, schema)
+        self._validate_dimensions(state_names, action_slices, io_action_slices)
 
         await asyncio.to_thread(self._ensure_policy_setup, schema, state_names, images)
         actions = await asyncio.to_thread(self._send_observation_and_get_actions, raw_obs)
-        return self._decode_actions(actions, action_slices)
+        return self._decode_actions(actions, action_slices, io_action_slices)
 
     async def close(self) -> None:
         """Close the gRPC channel."""
@@ -355,10 +357,23 @@ class LeRobotPolicyClient(PolicyClient):
                 offset += dof
         return slices
 
+    def _io_action_slices(
+        self,
+        action_slices: list[tuple[str, slice]],
+        schema: PolicySchema,
+    ) -> list[tuple[str, str, Any, slice]]:
+        offset = max((sl.stop for _mg_id, sl in action_slices), default=0)
+        slices: list[tuple[str, str, Any, slice]] = []
+        for _key, motion_group, io, mapping in schema.io_action_keys:
+            slices.append((motion_group.id, io, mapping, slice(offset, offset + 1)))
+            offset += 1
+        return slices
+
     def _validate_dimensions(
         self,
         state_names: list[str],
         action_slices: list[tuple[str, slice]],
+        io_action_slices: list[tuple[str, str, Any, slice]],
     ) -> None:
         if self._expected_state_dim is not None and len(state_names) != self._expected_state_dim:
             msg = (
@@ -368,12 +383,16 @@ class LeRobotPolicyClient(PolicyClient):
             )
             raise ValueError(msg)
 
-        action_dim = max((sl.stop for _mg_id, sl in action_slices), default=0)
+        action_dim = max(
+            [sl.stop for _mg_id, sl in action_slices]
+            + [sl.stop for _mg_id, _io, _mapping, sl in io_action_slices],
+            default=0,
+        )
         if self._expected_action_dim is not None and action_dim != self._expected_action_dim:
             msg = (
                 "LeRobot policy action dimension mismatch: "
-                f"checkpoint expects {self._expected_action_dim}, schema joint actions produce "
-                f"{action_dim}. This client currently decodes flat LeRobot actions as joint targets only."
+                f"checkpoint expects {self._expected_action_dim}, schema actions produce {action_dim}. "
+                "This client decodes flat LeRobot actions as joint targets followed by IO actions."
             )
             raise ValueError(msg)
 
@@ -381,19 +400,32 @@ class LeRobotPolicyClient(PolicyClient):
         self,
         actions: list[Any],
         action_slices: list[tuple[str, slice]],
+        io_action_slices: list[tuple[str, str, Any, slice]],
     ) -> ActionChunk:
         if not actions:
             msg = "LeRobot returned no action steps"
             raise ValueError(msg)
 
         joints: dict[str, list[list[float]]] = {mg_id: [] for mg_id, _sl in action_slices}
+        action_arrays: list[np.ndarray[Any, Any]] = []
         for timed_action in actions:
             action = timed_action.get_action()
             if hasattr(action, "detach"):
                 action = action.detach().cpu().numpy()
             action_arr = np.asarray(action, dtype=np.float32).reshape(-1)
+            action_arrays.append(action_arr)
             for mg_id, action_slice in action_slices:
                 values = action_arr[action_slice]
                 joints[mg_id].append([float(v) for v in values])
 
-        return ActionChunk(joints=joints, dt_ms=self.dt_ms)
+        ios: dict[str, dict[str, bool | int | float | str]] = {}
+        if io_action_slices:
+            first_action = action_arrays[0]
+            for mg_id, io, mapping, action_slice in io_action_slices:
+                values = first_action[action_slice]
+                if values.size != 1:
+                    msg = f"LeRobot IO action {io!r} expected one value, got {values.size}"
+                    raise ValueError(msg)
+                ios.setdefault(mg_id, {})[io] = mapping.to_hardware(float(values[0]))
+
+        return ActionChunk(joints=joints, ios=ios or None, dt_ms=self.dt_ms)

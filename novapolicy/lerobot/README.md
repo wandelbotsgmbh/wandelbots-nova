@@ -228,8 +228,9 @@ example:
 WebRTCCameras(..., resize=(320, 240))
 ```
 
-Returned LeRobot actions are decoded as flat joint targets and split according to the schema's joint
-action motion groups. IO/TCP actions from a flat LeRobot action vector are not decoded yet.
+Returned LeRobot actions are decoded as flat joint targets followed by IO actions. Joint targets are
+split according to the schema's joint action motion groups. IO actions are written once per returned
+chunk using the first action step. TCP actions from a flat LeRobot action vector are not decoded yet.
 
 ## Protocol notes
 
@@ -272,5 +273,6 @@ the checkpoint.
 
 ### Actions are the wrong dimension
 
-The returned flat action vector must match the total DOF of the schema's joint action motion groups.
-For a single 6-axis arm, the policy should return six action values per step.
+The returned flat action vector must match the total DOF of the schema's joint action motion groups
+plus any schema IO actions. For a single 6-axis arm with one gripper IO action, the policy should
+return seven action values per step.

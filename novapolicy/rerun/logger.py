@@ -23,16 +23,19 @@ class PolicyRerunLogger:
     """Logs policy execution data to Rerun.
 
     Uses RobotVisualizer from nova_rerun_bridge for 3D mesh rendering,
-    and DH FK for action chunk TCP path visualization (no network calls).
+    and DH FK for action chunk path visualization (no network calls).
     """
 
     def __init__(
         self,
         motion_groups: list[MotionGroup],
         camera_names: list[str] | None = None,
+        *,
+        use_tcp_offset_for_joint_actions: bool = False,
     ) -> None:
         self._motion_groups = motion_groups
         self._camera_names = camera_names or []
+        self._use_tcp_offset_for_joint_actions = use_tcp_offset_for_joint_actions
         self._dh_robots: dict[str, Any] = {}
         self._tcp_offsets: dict[str, Any] = {}  # mg_id -> 4x4 flange->TCP matrix
         self._visualizers: dict[str, Any] = {}  # mg_id -> RobotVisualizer
@@ -42,7 +45,7 @@ class PolicyRerunLogger:
         self._max_trail_points = 500
         self._streamer: StateStreamer | None = None
 
-    async def initialize(self) -> None:
+    async def initialize(self) -> None:  # noqa: C901
         """Fetch DH parameters, create robot visualizers, and send blueprint."""
         try:
             from nova_rerun_bridge.dh_robot import DHRobot  # noqa: PLC0415
@@ -73,19 +76,20 @@ class PolicyRerunLogger:
                 dh_robot = DHRobot(dh_parameters=dh_params, mounting=mounting)
                 self._dh_robots[mg.id] = dh_robot
 
-                # Configured flange->TCP offset for the active TCP, so joint
-                # action chunks can be drawn at the TCP (matching the live TCP
-                # trail) instead of at the flange. Best-effort; falls back to
-                # the flange if the TCP can't be resolved.
-                try:
-                    from novapolicy.rerun.kinematics import tcp_offset_matrix  # noqa: PLC0415
+                # Joint action chunks are drawn at the flange by default. A
+                # policy schema with joint actions does not declare a TCP, so
+                # silently applying the controller's active TCP offset can make
+                # the action marker look displaced from what is actually sent.
+                if self._use_tcp_offset_for_joint_actions:
+                    try:
+                        from novapolicy.rerun.kinematics import tcp_offset_matrix  # noqa: PLC0415
 
-                    active_tcp = await mg.active_tcp_name()
-                    if active_tcp is not None:
-                        off = await mg.tcp_offset(active_tcp)
-                        self._tcp_offsets[mg.id] = tcp_offset_matrix(off)
-                except (OSError, RuntimeError, ValueError, TypeError, KeyError) as e:
-                    logger.debug("TCP offset query failed for %s: %s", mg.id, e)
+                        active_tcp = await mg.active_tcp_name()
+                        if active_tcp is not None:
+                            off = await mg.tcp_offset(active_tcp)
+                            self._tcp_offsets[mg.id] = tcp_offset_matrix(off)
+                    except (OSError, RuntimeError, ValueError, TypeError, KeyError) as e:
+                        logger.debug("TCP offset query failed for %s: %s", mg.id, e)
 
                 # TCP geometries for visualization
                 tcp_geometries: dict[str, api.models.Collider] = {}

@@ -11,6 +11,8 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from nova import api
+from nova.actions import jnt
 from novapolicy.cameras.manager import CameraManager
 from novapolicy.chunking import (
     apply_relative_mode,
@@ -93,6 +95,7 @@ class PolicyExecutor:
         motion: WaypointConfig | None = None,
         policy_rate_hz: float = -1,
         n_action_steps: int = 0,
+        start_joint_position: dict[MotionGroup, list[float]] | None = None,
     ) -> None:
         """Create a policy executor.
 
@@ -119,6 +122,8 @@ class PolicyExecutor:
                 have higher prediction uncertainty and are discarded.
                 The policy still predicts the full action_horizon (e.g. 16)
                 which is used internally for RTC warm-starting.
+            start_joint_position: Optional mapping of motion group to joint pose
+                to PTP-move to before starting waypoint jogging.
         """
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
@@ -132,6 +137,7 @@ class PolicyExecutor:
             self._policy = policy
 
         self._motion: WaypointConfig = motion or WaypointConfig()
+        self._start_joint_position = start_joint_position
         self._stop_conditions = stop_conditions or []
         self._timeout_s = timeout_s
         self._policy_rate_hz = policy_rate_hz
@@ -261,6 +267,20 @@ class PolicyExecutor:
     # Execution lifecycle
     # -------------------------------------------------------------------------
 
+    async def _move_to_start_joint_position(self) -> None:
+        """PTP move configured motion groups before starting waypoint jogging."""
+
+        async def ptp(mg: MotionGroup, joints: list[float]) -> None:
+            tcp = await mg.active_tcp_name() or (await mg.tcp_names())[0]
+            setup = await mg.get_setup(tcp)
+            setup.collision_setups = api.models.CollisionSetups({})
+            trajectory = await mg.plan([jnt(joints)], tcp, motion_group_setup=setup)
+            await mg.execute(trajectory, tcp, actions=[jnt(joints)])
+
+        await asyncio.gather(
+            *(ptp(mg, joints) for mg, joints in self._start_joint_position.items())
+        )
+
     async def _run_episode(self) -> None:
         """Orchestrate one episode: create sessions, loop observe→act, tear down.
 
@@ -275,6 +295,9 @@ class PolicyExecutor:
         # Create and start sessions
         for mg in self._motion_groups:
             self._sessions[mg.id] = self._create_session(mg)
+
+        if self._start_joint_position:
+            await self._move_to_start_joint_position()
 
         image_sources = self._schema.image_sources
         if image_sources:
