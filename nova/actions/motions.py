@@ -31,7 +31,16 @@ class Motion(Action, ABC):
 
     """
 
-    type: Literal["linear", "cartesian_ptp", "circular", "joint_ptp", "spline", "collision_free"]
+    type: Literal[
+        "linear",
+        "cartesian_ptp",
+        "direction_constrained_cartesian_ptp",
+        "circular",
+        "joint_ptp",
+        "direction_constrained_joint_ptp",
+        "spline",
+        "collision_free",
+    ]
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     collision_setup: api.models.CollisionSetup | None = None
@@ -173,6 +182,102 @@ def cartesian_ptp(
 ptp = cartesian_ptp
 
 
+class DirectionConstrainedCartesianPTP(Motion):
+    """A direction-constrained cartesian point-to-point motion
+
+    Examples:
+    >>> constraint = api.models.DirectionConstraint(
+    ...     world=api.models.Vector3d([0.0, 0.0, 1.0]),
+    ...     tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
+    ...     tolerance=0.05,
+    ... )
+    >>> DirectionConstrainedCartesianPTP(
+    ...     target=api.models.ConstrainedPose(
+    ...         position=api.models.Vector3d([1.0, 2.0, 3.0]),
+    ...         orientation=0.0,
+    ...     ),
+    ...     constraint=constraint,
+    ...     settings=MotionSettings(tcp_velocity_limit=30),
+    ... )
+    DirectionConstrainedCartesianPTP(metas={}, type='direction_constrained_cartesian_ptp', target=ConstrainedPose(position=Vector3d(root=[1.0, 2.0, 3.0]), orientation=0.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, constraint=DirectionConstraint(world=Vector3d(root=[0.0, 0.0, 1.0]), tcp=Vector3d(root=[0.0, 1.0, 0.0]), tolerance=0.05, constraint_name='DirectionConstraint'))
+
+    """
+
+    type: Literal["direction_constrained_cartesian_ptp"] = "direction_constrained_cartesian_ptp"
+    target: api.models.ConstrainedPose
+    constraint: api.models.DirectionConstraint
+
+    def to_api_model(self) -> api.models.PathDirectionConstrainedCartesianPTP:
+        """Serialize the model to the API model
+
+        Examples:
+        >>> constraint = api.models.DirectionConstraint(
+        ...     world=api.models.Vector3d([0.0, 0.0, 1.0]),
+        ...     tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
+        ...     tolerance=0.05,
+        ... )
+        >>> DirectionConstrainedCartesianPTP(
+        ...     target=api.models.ConstrainedPose(
+        ...         position=api.models.Vector3d([1.0, 2.0, 3.0]),
+        ...         orientation=0.0,
+        ...     ),
+        ...     constraint=constraint,
+        ...     settings=MotionSettings(),
+        ... ).to_api_model()
+        PathDirectionConstrainedCartesianPTP(target_pose=ConstrainedPose(position=Vector3d(root=[1.0, 2.0, 3.0]), orientation=0.0), constraint=DirectionConstraint(world=Vector3d(root=[0.0, 0.0, 1.0]), tcp=Vector3d(root=[0.0, 1.0, 0.0]), tolerance=0.05, constraint_name='DirectionConstraint'), path_definition_name='DirectionConstrainedCartesianPTP')
+        """
+        if not isinstance(self.target, api.models.ConstrainedPose):
+            raise ValueError("Target must be a ConstrainedPose object")
+        return api.models.PathDirectionConstrainedCartesianPTP(
+            target_pose=self.target,
+            constraint=self.constraint,
+            path_definition_name="DirectionConstrainedCartesianPTP",
+        )
+
+
+def direction_constrained_cartesian_ptp(
+    target: api.models.ConstrainedPose,
+    constraint: api.models.DirectionConstraint,
+    settings: MotionSettings = MotionSettings(),
+    collision_setup: api.models.CollisionSetup | None = None,
+    **kwargs: dict[str, Any],
+) -> DirectionConstrainedCartesianPTP:
+    """Convenience function to create a direction-constrained cartesian PTP motion
+
+    Args:
+        target: the constrained cartesian target pose
+        constraint: the direction constraint to satisfy during the motion
+        settings: the motion settings
+
+    Returns: the direction-constrained cartesian PTP motion
+
+    Examples:
+    >>> constraint = api.models.DirectionConstraint(
+    ...     world=api.models.Vector3d([0.0, 0.0, 1.0]),
+    ...     tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
+    ...     tolerance=0.05,
+    ... )
+    >>> direction_constrained_cartesian_ptp(
+    ...     api.models.ConstrainedPose(
+    ...         position=api.models.Vector3d([1.0, 2.0, 3.0]),
+    ...         orientation=0.0,
+    ...     ),
+    ...     constraint=constraint,
+    ...     settings=MotionSettings(tcp_velocity_limit=30),
+    ... )
+    DirectionConstrainedCartesianPTP(metas={'line_number': 1}, type='direction_constrained_cartesian_ptp', target=ConstrainedPose(position=Vector3d(root=[1.0, 2.0, 3.0]), orientation=0.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, constraint=DirectionConstraint(world=Vector3d(root=[0.0, 0.0, 1.0]), tcp=Vector3d(root=[0.0, 1.0, 0.0]), tolerance=0.05, constraint_name='DirectionConstraint'))
+
+    """
+    kwargs.update(utils.get_caller_metas())
+    return DirectionConstrainedCartesianPTP(
+        target=target,
+        constraint=constraint,
+        settings=settings,
+        collision_setup=collision_setup,
+        metas=kwargs,
+    )
+
+
 class Circular(Motion):
     """A circular motion
 
@@ -297,6 +402,92 @@ def joint_ptp(
 
 
 jnt = joint_ptp
+
+
+class DirectionConstrainedJointPTP(Motion):
+    """A direction-constrained joint point-to-point motion
+
+    Examples:
+    >>> constraint = api.models.DirectionConstraint(
+    ...     world=api.models.Vector3d([0.0, 0.0, 1.0]),
+    ...     tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
+    ...     tolerance=0.05,
+    ... )
+    >>> DirectionConstrainedJointPTP(
+    ...     target=(1, 2, 3, 4, 5, 6),
+    ...     constraint=constraint,
+    ...     settings=MotionSettings(tcp_velocity_limit=30),
+    ... )
+    DirectionConstrainedJointPTP(metas={}, type='direction_constrained_joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, constraint=DirectionConstraint(world=Vector3d(root=[0.0, 0.0, 1.0]), tcp=Vector3d(root=[0.0, 1.0, 0.0]), tolerance=0.05, constraint_name='DirectionConstraint'))
+
+    """
+
+    type: Literal["direction_constrained_joint_ptp"] = "direction_constrained_joint_ptp"
+    constraint: api.models.DirectionConstraint
+
+    def to_api_model(self) -> api.models.PathDirectionConstrainedJointPTP:
+        """Serialize the model to the API model
+
+        Examples:
+        >>> constraint = api.models.DirectionConstraint(
+        ...     world=api.models.Vector3d([0.0, 0.0, 1.0]),
+        ...     tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
+        ...     tolerance=0.05,
+        ... )
+        >>> DirectionConstrainedJointPTP(
+        ...     target=(1, 2, 3, 4, 5, 6),
+        ...     constraint=constraint,
+        ...     settings=MotionSettings(),
+        ... ).to_api_model()
+        PathDirectionConstrainedJointPTP(target_joint_position=DoubleArray(root=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]), constraint=DirectionConstraint(world=Vector3d(root=[0.0, 0.0, 1.0]), tcp=Vector3d(root=[0.0, 1.0, 0.0]), tolerance=0.05, constraint_name='DirectionConstraint'), path_definition_name='DirectionConstrainedJointPTP')
+        """
+        if not isinstance(self.target, tuple):
+            raise ValueError("Target must be a tuple object")
+        return api.models.PathDirectionConstrainedJointPTP(
+            target_joint_position=api.models.DoubleArray(list(self.target)),
+            constraint=self.constraint,
+            path_definition_name="DirectionConstrainedJointPTP",
+        )
+
+
+def direction_constrained_joint_ptp(
+    target: tuple[float, ...],
+    constraint: api.models.DirectionConstraint,
+    settings: MotionSettings = MotionSettings(),
+    collision_setup: api.models.CollisionSetup | None = None,
+    **kwargs: dict[str, Any],
+) -> DirectionConstrainedJointPTP:
+    """Convenience function to create a direction-constrained joint PTP motion
+
+    Args:
+        target: the target joint configuration
+        constraint: the direction constraint to satisfy during the motion
+        settings: the motion settings
+
+    Returns: the direction-constrained joint PTP motion
+
+    Examples:
+    >>> constraint = api.models.DirectionConstraint(
+    ...     world=api.models.Vector3d([0.0, 0.0, 1.0]),
+    ...     tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
+    ...     tolerance=0.05,
+    ... )
+    >>> direction_constrained_joint_ptp(
+    ...     (1, 2, 3, 4, 5, 6),
+    ...     constraint=constraint,
+    ...     settings=MotionSettings(tcp_velocity_limit=30),
+    ... )
+    DirectionConstrainedJointPTP(metas={'line_number': 1}, type='direction_constrained_joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, constraint=DirectionConstraint(world=Vector3d(root=[0.0, 0.0, 1.0]), tcp=Vector3d(root=[0.0, 1.0, 0.0]), tolerance=0.05, constraint_name='DirectionConstraint'))
+
+    """
+    kwargs.update(utils.get_caller_metas())
+    return DirectionConstrainedJointPTP(
+        target=target,
+        constraint=constraint,
+        settings=settings,
+        collision_setup=collision_setup,
+        metas=kwargs,
+    )
 
 
 class Spline(Motion):
