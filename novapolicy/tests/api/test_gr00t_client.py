@@ -732,6 +732,35 @@ async def test_validate_schema_passes_when_keys_match() -> None:
 
 
 @pytest.mark.asyncio
+async def test_validate_schema_passes_when_state_key_is_io_observation() -> None:
+    """validate_schema accepts IO observations as state keys."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server._modality_config = {
+        "state": {
+            "__ModalityConfig_class__": True,
+            "as_json": {
+                "modality_keys": ["gripper"],
+            },
+        },
+    }
+    server.start()
+    try:
+        mg = _mg()
+        schema = PolicySchema(
+            observations=[
+                Observation.io("gripper", source=mg, io="digital_out[0]"),
+            ]
+        )
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+        await client.validate_schema(schema)  # should not raise
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
 async def test_validate_schema_fails_on_missing_state_key() -> None:
     """validate_schema raises ValueError when a state key is missing."""
     port = _find_free_port()
