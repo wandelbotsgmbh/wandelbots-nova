@@ -19,8 +19,7 @@ Prerequisites:
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-import nova
-from nova import api, run_program, viewers
+from nova import ProgramContext, ProgramPreconditions, api, run_program, program, viewers
 from nova.actions import (
     direction_constrained_cartesian_ptp,
     direction_constrained_joint_ptp,
@@ -52,10 +51,10 @@ def project_cartesian_pose_direction_constraint(
     )
 
 
-@nova.program(
+@program(
     name="Plan and Execute (Direction Constrained)",
     viewer=viewers.Rerun(),
-    preconditions=nova.ProgramPreconditions(
+    preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name="ur10e",
@@ -66,7 +65,7 @@ def project_cartesian_pose_direction_constraint(
         cleanup_controllers=False,
     ),
 )
-async def plan_and_execute_direction_constrained(ctx: nova.ProgramContext):
+async def plan_and_execute_direction_constrained(ctx: ProgramContext):
     cell = ctx.nova.cell()
     controller = await cell.controller("ur10e")
     motion_group = controller[0]
