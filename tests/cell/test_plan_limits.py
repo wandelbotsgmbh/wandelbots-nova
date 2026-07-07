@@ -159,6 +159,30 @@ async def test_collision_free_folds_user_limits_into_global():
 
 
 @pytest.mark.asyncio
+async def test_collision_free_forwards_constraint_to_request():
+    setup = motion_group_setup_from_motion_group_description(_controller_max_description())
+    motion_group = _motion_group()
+    plan_collision_free = AsyncMock(return_value=_collision_free_response(_joint_trajectory()))
+    motion_group._api_client.trajectory_planning_api.plan_collision_free = plan_collision_free
+
+    constraint = models.DirectionConstraint(
+        world=models.Vector3d([0.0, 0.0, 1.0]),
+        tcp=models.Vector3d([0.0, 1.0, 0.0]),
+        tolerance=0.05,
+    )
+
+    await motion_group._plan_collision_free(
+        action=collision_free((0.1,) * 6, constraint=constraint),
+        tcp=None,
+        motion_group_setup=setup,
+        start_joint_position=START,
+    )
+
+    request = plan_collision_free.await_args.kwargs["plan_collision_free_request"]
+    assert request.constraint == constraint
+
+
+@pytest.mark.asyncio
 async def test_collision_free_default_settings_clamp_global_to_default_velocity():
     """Even without explicit user limits, collision_free folds the *default* MotionSettings
     (``tcp_velocity_limit`` defaults to 50 mm/s) into global_limits, clamping the controller max.

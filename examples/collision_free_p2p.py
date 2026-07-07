@@ -203,6 +203,12 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
             collision_setup=collision_setup,
             settings=MotionSettings(tcp_velocity_limit=30),
             algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
+            # optionally enforce a tcp orientation
+            # constraint=api.models.DirectionConstraint(
+            #     world=api.models.Vector3d([0.0, 0.0, 1.0]),
+            #     tcp=api.models.Vector3d([0.0, 0.0, -1.0]),
+            #     tolerance=0.05,
+            # ),
         )
     ]
 
