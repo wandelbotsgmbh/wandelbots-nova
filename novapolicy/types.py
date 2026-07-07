@@ -172,7 +172,7 @@ class JoggingNotSupportedError(Exception):
     def __init__(self, motion_group_id: str) -> None:
         self.motion_group_id = motion_group_id
         super().__init__(
-            f"Waypoint jogging is not available for '{motion_group_id}' on this "
+            f"Action-chunk streaming is not available for '{motion_group_id}' on this "
             "NOVA instance (the executeActionChunks endpoint returned HTTP 404). "
             "It requires api-gateway >= 26.6."
         )

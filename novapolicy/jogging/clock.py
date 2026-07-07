@@ -1,4 +1,4 @@
-"""Server jogger-clock synchronization for waypoint jogging.
+"""Server jogger-clock synchronization for action-chunk streaming.
 
 The NOVA server exposes ``session_timestamp_ms`` in the state stream
 (field on ``ActionChunkStreamingDetails``). ``JoggingTimeClock`` observes it,
