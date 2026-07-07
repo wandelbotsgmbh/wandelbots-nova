@@ -1,4 +1,5 @@
 import json
+
 from nova import api
 from nova.actions import (
     cartesian_ptp,
