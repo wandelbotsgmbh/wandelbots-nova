@@ -890,6 +890,7 @@ class MotionGroup(AbstractRobot):
                         motion_group_setup=motion_group_setup,
                         start_joint_position=list(start_joint_position),
                         target=list(best_joint_solution),
+                        constraint=action.constraint,
                         algorithm=action.algorithm,
                     ),
                 )
