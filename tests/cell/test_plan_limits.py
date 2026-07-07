@@ -166,9 +166,7 @@ async def test_collision_free_forwards_constraint_to_request():
     motion_group._api_client.trajectory_planning_api.plan_collision_free = plan_collision_free
 
     constraint = models.DirectionConstraint(
-        world=models.Vector3d([0.0, 0.0, 1.0]),
-        tcp=models.Vector3d([0.0, 1.0, 0.0]),
-        tolerance=0.05,
+        world=models.Vector3d([0.0, 0.0, 1.0]), tcp=models.Vector3d([0.0, 1.0, 0.0]), tolerance=0.05
     )
 
     await motion_group._plan_collision_free(

@@ -33,8 +33,7 @@ def test_program_serialization_deserialization():
         ),
         direction_constrained_cartesian_ptp(
             api.models.ConstrainedPose(
-                position=api.models.Vector3d([1.0, 2.0, 3.0]),
-                orientation=0.0,
+                position=api.models.Vector3d([1.0, 2.0, 3.0]), orientation=0.0
             ),
             constraint=direction_constraint,
             settings=MotionSettings(tcp_velocity_limit=150),
@@ -195,10 +194,7 @@ def test_direction_constrained_motion_to_api_model():
     )
 
     cartesian_motion = direction_constrained_cartesian_ptp(
-        api.models.ConstrainedPose(
-            position=api.models.Vector3d([1.0, 2.0, 3.0]),
-            orientation=0.1,
-        ),
+        api.models.ConstrainedPose(position=api.models.Vector3d([1.0, 2.0, 3.0]), orientation=0.1),
         constraint=direction_constraint,
     )
     cartesian_path = cartesian_motion.to_api_model()
@@ -206,8 +202,7 @@ def test_direction_constrained_motion_to_api_model():
     assert cartesian_path.path_definition_name == "DirectionConstrainedCartesianPTP"
 
     joint_motion = direction_constrained_joint_ptp(
-        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-        constraint=direction_constraint,
+        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0), constraint=direction_constraint
     )
     joint_path = joint_motion.to_api_model()
     assert isinstance(joint_path.target_joint_position, api.models.DoubleArray)
