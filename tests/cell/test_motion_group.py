@@ -255,6 +255,94 @@ def mock_motion_group():
 
 
 @pytest.mark.asyncio
+async def test_project_joint_position_direction_constraint_uses_resolved_setup(mock_motion_group):
+    mock_motion_group._api_client.kinematics_api = MagicMock()
+    mock_motion_group._api_client.kinematics_api.project_joint_position_direction_constraint = (
+        AsyncMock(
+            return_value=api.models.ProjectJointPositionDirectionConstraintResponse(
+                projected_joint_positions=[api.models.DoubleArray([0.2, -0.3]), None]
+            )
+        )
+    )
+    mock_motion_group.get_model = AsyncMock(return_value="test-model")
+    mock_motion_group.tcp_offset = AsyncMock(return_value=Pose((10, 20, 30, 0.1, 0.2, 0.3)))
+    mock_motion_group.get_mounting = AsyncMock(return_value=Pose((100, 200, 300, 0.4, 0.5, 0.6)))
+    mock_motion_group.get_setup = AsyncMock(
+        return_value=api.models.MotionGroupSetup(
+            motion_group_model=api.models.MotionGroupModel("test-model"),
+            cycle_time=8,
+            global_limits=api.models.LimitSet(
+                joints=[
+                    api.models.JointLimits(
+                        position=api.models.LimitRange(lower_limit=-1.0, upper_limit=1.0)
+                    )
+                ]
+            ),
+        )
+    )
+    constraint = api.models.DirectionConstraint(
+        world=api.models.Vector3d([0.0, 0.0, 1.0]),
+        tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
+        tolerance=5.0,
+    )
+
+    projected = await mock_motion_group.project_joint_position_direction_constraint(
+        joints=[(0.1, -0.2), (1.1, -1.2)], constraint=constraint, tcp="Flange"
+    )
+
+    assert projected == [(0.2, -0.3), None]
+    mock_motion_group.get_setup.assert_awaited_once_with("Flange")
+    call_kwargs = mock_motion_group._api_client.kinematics_api.project_joint_position_direction_constraint.await_args.kwargs
+    assert call_kwargs["cell"] == "test_cell"
+    request = call_kwargs["project_joint_position_direction_constraint_request"]
+    assert request.motion_group_model == api.models.MotionGroupModel("test-model")
+    assert request.joint_positions == [
+        api.models.DoubleArray([0.1, -0.2]),
+        api.models.DoubleArray([1.1, -1.2]),
+    ]
+    assert request.constraint == constraint
+    assert request.joint_position_limits == api.models.JointPositionLimits(
+        root=[api.models.LimitRange(lower_limit=-1.0, upper_limit=1.0)]
+    )
+
+
+@pytest.mark.asyncio
+async def test_project_joint_position_direction_constraint_uses_explicit_setup(mock_motion_group):
+    mock_motion_group._api_client.kinematics_api = MagicMock()
+    mock_motion_group._api_client.kinematics_api.project_joint_position_direction_constraint = (
+        AsyncMock(
+            return_value=api.models.ProjectJointPositionDirectionConstraintResponse(
+                projected_joint_positions=[api.models.DoubleArray([0.5, 0.6])]
+            )
+        )
+    )
+    mock_motion_group.get_model = AsyncMock(return_value="test-model")
+    mock_motion_group.tcp_offset = AsyncMock(return_value=Pose((0, 0, 0, 0, 0, 0)))
+    mock_motion_group.get_mounting = AsyncMock(return_value=None)
+    mock_motion_group.get_setup = AsyncMock()
+    setup = api.models.MotionGroupSetup(
+        motion_group_model=api.models.MotionGroupModel("test-model"),
+        cycle_time=8,
+        collision_setups=api.models.CollisionSetups({}),
+    )
+    constraint = api.models.DirectionConstraint(
+        world=api.models.Vector3d([1.0, 0.0, 0.0]),
+        tcp=api.models.Vector3d([1.0, 0.0, 0.0]),
+        tolerance=2.0,
+    )
+
+    projected = await mock_motion_group.project_joint_position_direction_constraint(
+        joints=[(0.4, 0.5)], constraint=constraint, tcp="Tool0", motion_group_setup=setup
+    )
+
+    assert projected == [(0.5, 0.6)]
+    mock_motion_group.get_setup.assert_not_awaited()
+    call_kwargs = mock_motion_group._api_client.kinematics_api.project_joint_position_direction_constraint.await_args.kwargs
+    request = call_kwargs["project_joint_position_direction_constraint_request"]
+    assert request.collision_setups == setup.collision_setups
+
+
+@pytest.mark.asyncio
 async def test_plan_and_execute_write_only_actions_use_direct_io_calls(mock_motion_group):
     actions = [
         io_write("digital_in[0]", True),
