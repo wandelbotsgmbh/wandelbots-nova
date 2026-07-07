@@ -2,8 +2,8 @@ import asyncio
 import inspect
 from typing import AsyncIterable, AsyncIterator, Callable, Generic, TypeVar
 
-from nova.utils.source_location import SourceLocation, get_caller_metas, source_location_for_frame
 from nova.utils.joint_position import shift_joint_position_close_to_reference
+from nova.utils.source_location import SourceLocation, get_caller_metas, source_location_for_frame
 
 __all__ = [
     "StreamExtractor",
