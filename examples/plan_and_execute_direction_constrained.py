@@ -19,7 +19,7 @@ Prerequisites:
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-from nova import ProgramContext, ProgramPreconditions, api, run_program, program, viewers
+from nova import ProgramContext, ProgramPreconditions, api, program, run_program, viewers
 from nova.actions import (
     direction_constrained_cartesian_ptp,
     direction_constrained_joint_ptp,
@@ -27,8 +27,8 @@ from nova.actions import (
     linear,
 )
 from nova.cell import virtual_controller
-from nova.utils import shift_joint_position_close_to_reference
 from nova.types import MotionSettings, Pose, Vector3d
+from nova.utils import shift_joint_position_close_to_reference
 
 
 def project_cartesian_pose_direction_constraint(
