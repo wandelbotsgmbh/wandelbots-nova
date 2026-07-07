@@ -28,6 +28,7 @@ exclude = [
     "venv",
     "wandelscript/grammar",
     "examples/your-nova-app",
+    "nova/cell/motion_group_models.py"
 ]
 
 # Same as Black.
