@@ -3,12 +3,14 @@ import inspect
 from typing import AsyncIterable, AsyncIterator, Callable, Generic, TypeVar
 
 from nova.utils.source_location import SourceLocation, get_caller_metas, source_location_for_frame
+from nova.utils.joint_position import shift_joint_position_close_to_reference
 
 __all__ = [
     "StreamExtractor",
     "get_caller_linenumber",
     "SourceLocation",
     "get_caller_metas",
+    "shift_joint_position_close_to_reference",
     "source_location_for_frame",
 ]
 
