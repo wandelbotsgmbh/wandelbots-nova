@@ -560,6 +560,7 @@ class CollisionFreeMotion(Motion):
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     collision_setup: api.models.CollisionSetup | None = None
+    constraint: api.models.DirectionConstraint | None = None
 
     algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(
         api.models.RRTConnectAlgorithm()
@@ -576,6 +577,7 @@ def collision_free(
     target: Pose | tuple[float, ...],
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
+    constraint: api.models.DirectionConstraint | None = None,
     algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(
         api.models.RRTConnectAlgorithm()
     ),
@@ -602,6 +604,7 @@ def collision_free(
         target=target,
         settings=settings,
         collision_setup=collision_setup,
+        constraint=constraint,
         algorithm=algorithm,
         metas=kwargs,
     )

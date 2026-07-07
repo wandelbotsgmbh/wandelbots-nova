@@ -2,6 +2,7 @@ import json
 from nova import api
 from nova.actions import (
     cartesian_ptp,
+    collision_free,
     direction_constrained_cartesian_ptp,
     direction_constrained_joint_ptp,
     joint_ptp,
@@ -37,6 +38,11 @@ def test_program_serialization_deserialization():
             ),
             constraint=direction_constraint,
             settings=MotionSettings(tcp_velocity_limit=150),
+        ),
+        collision_free(
+            home_joints,
+            constraint=direction_constraint,
+            settings=MotionSettings(tcp_velocity_limit=200),
         ),
         joint_ptp(home_joints, settings=MotionSettings(tcp_velocity_limit=200)),
     ]
@@ -89,6 +95,8 @@ def test_program_serialization_deserialization():
             deserialized_action.settings.tcp_velocity_limit
             == original_action.settings.tcp_velocity_limit
         )
+        if hasattr(original_action, "constraint"):
+            assert deserialized_action.constraint == original_action.constraint
 
 
 def test_program_serialization_deserialization_collision_scene():

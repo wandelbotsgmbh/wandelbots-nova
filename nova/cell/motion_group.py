@@ -835,6 +835,7 @@ class MotionGroup(AbstractRobot):
                         motion_group_setup=motion_group_setup,
                         start_joint_position=api.models.DoubleArray(list(start_joint_position)),
                         target=api.models.DoubleArray(list(best_joint_solution)),
+                        constraint=action.constraint,
                         algorithm=action.algorithm,
                     ),
                 )
