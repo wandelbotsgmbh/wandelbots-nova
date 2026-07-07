@@ -28,6 +28,6 @@ def shift_joint_position_close_to_reference(
         if (upper_limit is not None and shifted_joints[i] > upper_limit) or (
             lower_limit is not None and shifted_joints[i] < lower_limit
         ):
-            return joint_position  # this should not happen, only when initial joints where out of limits
+            return joint_position  # this should not happen, only when initial joints were out of limits
 
     return shifted_joints
