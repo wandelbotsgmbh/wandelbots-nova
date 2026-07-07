@@ -22,7 +22,7 @@ from pydantic import Field
 import nova
 from nova import api, run_program
 from nova.actions import cartesian_ptp, circular, joint_ptp, linear
-from nova.cell import virtual_controller, MotionGroupModel
+from nova.cell import MotionGroupModel, virtual_controller
 from nova.types import MotionSettings, Pose
 
 

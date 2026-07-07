@@ -12,7 +12,6 @@ from wandelbots_api_client.v2_pydantic.exceptions import NotFoundException, Serv
 
 from scripts.create_motion_group_models import generate_enum_source, main, to_enum_value
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
