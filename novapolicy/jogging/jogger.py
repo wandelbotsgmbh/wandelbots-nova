@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import math
 import time
 from typing import TYPE_CHECKING, overload
 
@@ -70,6 +71,10 @@ class _BaseJogger:
         self._first_yield_t: float | None = None
         self._ease_in_s = ease_in_s
         self._ease_baseline: dict[MotionGroup, list[float]] = {}
+        self._target_buffers: dict[MotionGroup, list[list[float]]] = {}
+        self._last_append_elapsed: dict[MotionGroup, float] = {}
+        self._last_append_wall: dict[MotionGroup, float] = {}
+        self._append_buffer_sent: set[MotionGroup] = set()
 
     @property
     def elapsed(self) -> float:
@@ -151,10 +156,7 @@ class _BaseJogger:
 
     def _validate_and_push(self, mg: MotionGroup, values: list[float]) -> None:
         """Validate target dimensions and push to session."""
-        expected = self._expected_dims(mg)
-        if expected is not None and len(values) != expected:
-            msg = f"Target has {len(values)} values but motion group '{mg.id}' expects {expected}"
-            raise ValueError(msg)
+        self._validate_target_dims(mg, values)
         session = self._sessions.get(mg)
         if session is not None:
             # Single-step live target: anchor at "now", one step ahead so the
@@ -164,7 +166,9 @@ class _BaseJogger:
             )
         self._log_target(mg.id, [values], 0.0)
 
-    def _push_target(self, mg: MotionGroup, value: list, dt_ms: float) -> list[float]:
+    def _push_target(
+        self, mg: MotionGroup, value: list, dt_ms: float, *, extend_buffer: bool = True
+    ) -> list[float]:
         """Push a single or chunk target to a session. Returns the final target."""
         session = self._sessions.get(mg)
         if session is None:
@@ -173,15 +177,109 @@ class _BaseJogger:
             # Chunked: absolute anchor on the jogger's own session timeline so
             # overlapping per-tick resends land identical steps at identical
             # timestamps (one coherent trajectory, no seam jump).
-            session.update_chunk(
-                steps=self._ease_steps(mg, value, dt_ms),
-                dt_ms=dt_ms,
-                anchor_ms=session.session_elapsed_ms,
-            )
+            kwargs = {
+                "steps": self._ease_steps(mg, value, dt_ms),
+                "dt_ms": dt_ms,
+                "anchor_ms": session.session_elapsed_ms,
+            }
+            if not extend_buffer:
+                kwargs["extend_buffer"] = False
+            session.update_chunk(**kwargs)
             self._log_target(mg.id, value, dt_ms)
             return value[-1]
         self._validate_and_push(mg, value)
         return value
+
+    def _append_target(
+        self,
+        mg: MotionGroup,
+        values: list[float],
+        *,
+        dt_ms: float | None,
+        buffer_ms: float | None = None,
+    ) -> bool:
+        """Append one live target sample and send a rolling buffered chunk once primed.
+
+        Timing has two phases when ``dt_ms`` is omitted:
+        * Priming: before the first buffered chunk is sent, sample spacing is
+          estimated from input arrival time because the jogger clock cannot run
+          until waypoints are sent.
+        * Streaming: after the first chunk starts jogging, sample spacing is
+          derived only from ``jogger.elapsed`` / acknowledged controller time.
+        """
+        self._validate_target_dims(mg, values)
+
+        effective_dt_ms = self._append_dt_ms(mg, dt_ms)
+        buffer = self._target_buffers.setdefault(mg, [])
+        if effective_dt_ms is None:
+            if mg not in self._append_buffer_sent and not buffer:
+                buffer.append(list(values))
+            return False
+
+        buffer.append(list(values))
+        min_buffer_ms = self._buffer_ms(mg, buffer_ms)
+        min_steps = max(1, math.ceil(min_buffer_ms / effective_dt_ms))
+        if len(buffer) > min_steps:
+            del buffer[: len(buffer) - min_steps]
+        if len(buffer) < min_steps:
+            return False
+
+        self._push_target(mg, [list(step) for step in buffer], effective_dt_ms, extend_buffer=False)
+        self._append_buffer_sent.add(mg)
+        return True
+
+    def _append_dt_ms(self, mg: MotionGroup, dt_ms: float | None) -> float | None:
+        if dt_ms is not None:
+            if dt_ms <= 0:
+                msg = "append_target requires dt_ms > 0"
+                raise ValueError(msg)
+            self._last_append_elapsed[mg] = self.elapsed
+            self._last_append_wall[mg] = time.monotonic()
+            return dt_ms
+
+        now_elapsed = self.elapsed
+        now_wall = time.monotonic()
+        previous_elapsed = self._last_append_elapsed.get(mg)
+        previous_wall = self._last_append_wall.get(mg)
+        self._last_append_elapsed[mg] = now_elapsed
+        self._last_append_wall[mg] = now_wall
+
+        if previous_elapsed is not None:
+            elapsed_ms = (now_elapsed - previous_elapsed) * 1000.0
+            if elapsed_ms > 0:
+                return elapsed_ms
+
+        # Startup only: before the first chunk is sent, jogger.elapsed may be
+        # frozen at 0 because the robot cannot enter RUNNING until it receives
+        # waypoints. Use wall-clock only to estimate input sample spacing for
+        # initial buffer priming; chunk timestamps are still anchored later on
+        # the server-synchronized jogging clock.
+        if mg not in self._append_buffer_sent and previous_wall is not None:
+            wall_ms = (now_wall - previous_wall) * 1000.0
+            return wall_ms if wall_ms > 0 else None
+
+        return None
+
+    def _clear_append_buffer(self, mg: MotionGroup) -> None:
+        """Forget buffered teleop samples when switching back to immediate targets."""
+        self._target_buffers.pop(mg, None)
+        self._last_append_elapsed.pop(mg, None)
+        self._last_append_wall.pop(mg, None)
+        self._append_buffer_sent.discard(mg)
+
+    def _validate_target_dims(self, mg: MotionGroup, values: list[float]) -> None:
+        expected = self._expected_dims(mg)
+        if expected is not None and len(values) != expected:
+            msg = f"Target has {len(values)} values but motion group '{mg.id}' expects {expected}"
+            raise ValueError(msg)
+
+    def _buffer_ms(self, mg: MotionGroup, buffer_ms: float | None) -> float:
+        if buffer_ms is not None:
+            return max(0.0, buffer_ms)
+        session = self._sessions.get(mg)
+        if session is None:
+            return 0.0
+        return max(0.0, session.config.min_buffer_ms)
 
     def _log_target(self, mg_id: str, steps: list[list[float]], dt_ms: float) -> None:
         """Log jogging target to Rerun as an action chunk visualization."""
@@ -192,10 +290,15 @@ class _BaseJogger:
         # Determine if this is joint or TCP based on session mode
         session_by_id = self._sessions_by_id()
         session = session_by_id.get(mg_id)
+        state = session.current_state if session is not None else None
         if session is not None and session.mode == "cartesian":
             chunk = ActionChunk(tcp={mg_id: steps}, dt_ms=dt_ms)
+            if steps and state is not None:
+                self._rerun.log_tcp_tracking(mg_id, steps[0], state, step=0)
         else:
             chunk = ActionChunk(joints={mg_id: steps}, dt_ms=dt_ms)
+            if steps and state is not None:
+                self._rerun.log_joint_tracking(mg_id, steps[0], state, step=0)
         self._rerun.log_action_chunk(chunk, step=0)
 
     def state(self) -> dict[MotionGroup, RobotState] | RobotState | None:
@@ -379,6 +482,47 @@ class JointJogger(_BaseJogger):
             return self._target.get(self._mg_list[0])
         return self._target
 
+    def append_target(
+        self,
+        target: list[float] | dict[MotionGroup, list[float]],
+        *,
+        dt_ms: float | None = None,
+        buffer_ms: float | None = None,
+    ) -> bool:
+        """Append one joint target sample to a rolling teleop buffer.
+
+        The first calls only fill the buffer. Once it contains ``buffer_ms`` of
+        samples, the first chunk is sent and starts the jogger/controller clock.
+        From then on, automatic timing uses ``jogger.elapsed``. This
+        intentionally adds latency equal to the buffer size, but keeps the
+        controller fed with future waypoints instead of one point at a time.
+
+        Returns ``True`` once a chunk was sent, ``False`` while the buffer is
+        still priming or while acknowledged jogger time has not advanced.
+        """
+        if isinstance(target, list):
+            if target and isinstance(target[0], list):
+                msg = "append_target accepts one target sample, not a chunk"
+                raise TypeError(msg)
+            if self._multi:
+                msg = "For multiple motion groups, pass a dict[MotionGroup, list[float]]"
+                raise TypeError(msg)
+            mg = self._mg_list[0]
+            sent = self._append_target(mg, target, dt_ms=dt_ms, buffer_ms=buffer_ms)
+            self._target = {mg: target}
+            return sent
+        if isinstance(target, dict):
+            self._target = self._target or {}
+            sent_any = False
+            for mg, values in target.items():
+                sent_any = (
+                    self._append_target(mg, values, dt_ms=dt_ms, buffer_ms=buffer_ms) or sent_any
+                )
+                self._target[mg] = values
+            return sent_any
+        msg = f"Expected list or dict, got {type(target)}"
+        raise TypeError(msg)
+
     def set_target(
         self,
         target: (
@@ -404,11 +548,13 @@ class JointJogger(_BaseJogger):
                 raise TypeError(msg)
             mg = self._mg_list[0]
             final = self._push_target(mg, target, dt_ms)
+            self._clear_append_buffer(mg)
             self._target = {mg: final}
         elif isinstance(target, dict):
             self._target = self._target or {}
             for mg, mg_value in target.items():
                 self._target[mg] = self._push_target(mg, mg_value, dt_ms)
+                self._clear_append_buffer(mg)
         else:
             msg = f"Expected list or dict, got {type(target)}"
             raise TypeError(msg)
@@ -471,6 +617,48 @@ class TcpJogger(_BaseJogger):
             return self._target.get(self._mg_list[0])
         return self._target
 
+    def append_target(
+        self,
+        target: Pose | dict[MotionGroup, Pose],
+        *,
+        dt_ms: float | None = None,
+        buffer_ms: float | None = None,
+    ) -> bool:
+        """Append one TCP target sample to a rolling teleop buffer.
+
+        The first calls only fill the buffer. Once it contains ``buffer_ms`` of
+        samples, the first chunk is sent and starts the jogger/controller clock.
+        From then on, automatic timing uses ``jogger.elapsed``. This
+        intentionally adds latency equal to the buffer size, but keeps the
+        controller fed with future waypoints instead of one point at a time.
+
+        Returns ``True`` once a chunk was sent, ``False`` while the buffer is
+        still priming or while acknowledged jogger time has not advanced.
+        """
+        from nova.types import Pose  # noqa: PLC0415
+
+        if isinstance(target, Pose):
+            if self._multi:
+                msg = "For multiple motion groups, pass a dict[MotionGroup, Pose]"
+                raise TypeError(msg)
+            mg = self._mg_list[0]
+            values = list(target.position) + list(target.orientation)
+            sent = self._append_target(mg, values, dt_ms=dt_ms, buffer_ms=buffer_ms)
+            self._target = {mg: target}
+            return sent
+        if isinstance(target, dict):
+            self._target = self._target or {}
+            sent_any = False
+            for mg, pose in target.items():
+                values = list(pose.position) + list(pose.orientation)
+                sent_any = (
+                    self._append_target(mg, values, dt_ms=dt_ms, buffer_ms=buffer_ms) or sent_any
+                )
+                self._target[mg] = pose
+            return sent_any
+        msg = f"Expected Pose or dict, got {type(target)}"
+        raise TypeError(msg)
+
     def set_target(
         self,
         target: Pose | list[list[float]] | dict[MotionGroup, Pose | list[list[float]]],
@@ -495,6 +683,7 @@ class TcpJogger(_BaseJogger):
                 raise TypeError(msg)
             mg = self._mg_list[0]
             self._validate_and_push(mg, list(target.position) + list(target.orientation))
+            self._clear_append_buffer(mg)
             self._target = {mg: target}
         elif isinstance(target, list):
             if self._multi:
@@ -502,6 +691,7 @@ class TcpJogger(_BaseJogger):
                 raise TypeError(msg)
             mg = self._mg_list[0]
             self._push_target(mg, target, dt_ms)
+            self._clear_append_buffer(mg)
             self._target = {mg: target[-1] if target and isinstance(target[0], list) else target}
         elif isinstance(target, dict):
             self._target = self._target or {}
@@ -512,6 +702,7 @@ class TcpJogger(_BaseJogger):
                 else:
                     self._push_target(mg, value, dt_ms)
                     self._target[mg] = value[-1] if value and isinstance(value[0], list) else value
+                self._clear_append_buffer(mg)
         else:
             msg = f"Expected Pose, list, or dict, got {type(target)}"
             raise TypeError(msg)

@@ -6,6 +6,8 @@ MIN_LINE_STEPS = 2
 MIN_TCP_COMPONENTS = 3
 TEMPORAL_FRAME_NDIM = 4
 TCP_TRAIL_COLOR = (50, 220, 100)  # green — actual TCP path
+TCP_TARGET_TRAIL_COLOR = (255, 220, 40)  # yellow — commanded TCP path
+TCP_ERROR_VECTOR_COLOR = (255, 60, 60)  # red — actual→commanded TCP error
 
 # Action chunk gradient: orange (start) → yellow (end)
 CHUNK_COLOR_START = (255, 80, 20)
