@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.7.3 (2026-07-08)
+
+### Chores
+
+- Upgrade rerun-sdk to 0.34.0 (#443)
+  ([#443](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/443),
+  [`5c00fa4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5c00fa416c00ea22b61e5fbc534d384ce1d41357))
+
+
 ## v5.7.2 (2026-07-06)
 
 ### Bug Fixes
