@@ -35,7 +35,7 @@ dependencies = [
 
 [project.optional-dependencies]
 nova-rerun-bridge = [
-    "rerun-sdk==0.26.2",
+    "rerun-sdk==0.34.0",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",
@@ -57,7 +57,7 @@ novapolicy = [
     "requests>=2.33.1",
 ]
 benchmark = [
-    "rerun-sdk==0.26.2",
+    "rerun-sdk==0.34.0",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",

@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11, <3.13"
 
 [[package]]
@@ -1610,21 +1610,21 @@ wheels = [
 
 [[package]]
 name = "rerun-sdk"
-version = "0.26.2"
+version = "0.34.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
     { name = "numpy" },
     { name = "pillow" },
+    { name = "psutil" },
     { name = "pyarrow" },
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4b/4a/767c20e1529d74d9be5b5e55c6c26b63a6918ef3c1709fc422d08a460114/rerun_sdk-0.26.2-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:3d4151c9a3484e112b53d1df90c8fa07397dc7b8bfbb420f09e011eff20f1ef2", size = 93349439, upload-time = "2025-10-27T11:34:10.745Z" },
-    { url = "https://files.pythonhosted.org/packages/2b/3d/d8dd0af9c287a85d51ec99d69406cc4b94a9feb1d6f192d3bbcaac9f0b81/rerun_sdk-0.26.2-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:03977d2aba4966d9a70b682eca196123fda11408fecd733441ede9916c6341e2", size = 86323042, upload-time = "2025-10-27T11:34:17.995Z" },
-    { url = "https://files.pythonhosted.org/packages/13/29/53d8d98799ab32418fd4ba6834d6a5749c31f56160d3c87f52a7219887e9/rerun_sdk-0.26.2-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:b6128c3c4f014cae5be18e4d37657c5932d1bcdb2ce5e9d4b488a6eed47f7437", size = 92677274, upload-time = "2025-10-27T11:34:22.601Z" },
-    { url = "https://files.pythonhosted.org/packages/f5/86/0b9c8f56398b4fc85f8e99279907c258413a297e5603f8f2537fe5806e51/rerun_sdk-0.26.2-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:a6f97b60aaa7d4e8c6124a3f6b97ce9dbd09520050955f0e0bdacb72b0eb106a", size = 98768129, upload-time = "2025-10-27T11:34:27.36Z" },
-    { url = "https://files.pythonhosted.org/packages/be/e7/99fc91c0f99f69d7d43e1db0a6f6cb8273ffc02111539bfc1fee43749bad/rerun_sdk-0.26.2-cp39-abi3-win_amd64.whl", hash = "sha256:a493ad6c8357022cba2ca6f8954a81d0faf984b0b22154eb1d976bfc7649df63", size = 84267089, upload-time = "2025-10-27T11:34:32.023Z" },
+    { url = "https://files.pythonhosted.org/packages/58/0a/a69fc60fc2c8858ba0b41c5fd9aa6983f2a9c454a9b130c63130172550fd/rerun_sdk-0.34.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:9a66b55f60f7d052cdbde4c8899199a9d3d0c74057fccc55dbc1087e01aa27bb", size = 133553711, upload-time = "2026-07-06T08:58:55.157Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/13/20eb2ba71564761f25f4eccb9330929e5ab912f0784850de890666024768/rerun_sdk-0.34.0-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:80fab3ec340f6f8f0ff2eb15a5df4985d0c8f0bf612eb030c1bc5abacf816f06", size = 142880343, upload-time = "2026-07-06T08:59:00.757Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/10/dda8cbcc4fc82eeff6cbf84042f7979f329fd768a010c47d5f11e855fb9b/rerun_sdk-0.34.0-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:75b87269a839aa2e3aeb0b1fbfb06c7f1e86d833fc63b92dd1935964476987e5", size = 147496445, upload-time = "2026-07-06T08:59:05.778Z" },
+    { url = "https://files.pythonhosted.org/packages/2b/81/2481820e853f88493bd7cdb22a345f5fb7a6101c214a858be79693d4f1d4/rerun_sdk-0.34.0-cp310-abi3-win_amd64.whl", hash = "sha256:2b2ccb60cebb9b5fea9893415aad791447dffe8db89e45075d642446d94f8a5c", size = 126561176, upload-time = "2026-07-06T08:59:10.78Z" },
 ]
 
 [[package]]
@@ -1920,7 +1920,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "5.6.3"
+version = "5.7.2"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
@@ -2027,8 +2027,8 @@ requires-dist = [
     { name = "requests", marker = "extra == 'benchmark'", specifier = ">=2.32.3" },
     { name = "requests", marker = "extra == 'nova-rerun-bridge'", specifier = ">=2.32.3" },
     { name = "requests", marker = "extra == 'novapolicy'", specifier = ">=2.33.1" },
-    { name = "rerun-sdk", marker = "extra == 'benchmark'", specifier = "==0.26.2" },
-    { name = "rerun-sdk", marker = "extra == 'nova-rerun-bridge'", specifier = "==0.26.2" },
+    { name = "rerun-sdk", marker = "extra == 'benchmark'", specifier = "==0.34.0" },
+    { name = "rerun-sdk", marker = "extra == 'nova-rerun-bridge'", specifier = "==0.34.0" },
     { name = "scipy", specifier = ">=1.14.1,<2" },
     { name = "trimesh", marker = "extra == 'benchmark'", specifier = ">=4.5.3" },
     { name = "trimesh", marker = "extra == 'nova-rerun-bridge'", specifier = ">=4.5.3" },
