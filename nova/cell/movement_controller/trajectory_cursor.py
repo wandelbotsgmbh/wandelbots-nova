@@ -380,6 +380,8 @@ class Intent:
     operation_type: OperationType
     target_location: float | None = None
     playback_speed_in_percent: int | None = None
+    start_on_io: api.models.StartOnIO | None = None
+    pause_on_io: api.models.PauseOnIO | None = None
 
     def to_commands(self) -> list[ExecuteTrajectoryRequestCommand]:
         """Build the concrete API commands for this intent."""
@@ -406,8 +408,8 @@ class Intent:
                         if self.target_location is not None
                         else None
                     ),
-                    start_on_io=None,
-                    pause_on_io=None,
+                    start_on_io=self.start_on_io,
+                    pause_on_io=self.pause_on_io,
                 )
             )
         return commands
@@ -470,14 +472,20 @@ class TrajectoryCursor:
 
     Example:
         ```python
-        async with motion_group.execute_trajectory_async(actions) as cursor:
-            # Move forward through the trajectory
-            await cursor.forward()
+        cursor = TrajectoryCursor(
+            motion_id=motion_id,
+            motion_group_state_stream=state_stream,
+            joint_trajectory=trajectory,
+            actions=actions,
+        )
 
-            # Or step through action by action
-            while cursor.get_movement_options() & {MovementOption.CAN_MOVE_FORWARD}:
-                result = await cursor.forward_to_next_action()
-                print(f"Completed action at location {result.final_location}")
+        # Move forward through the trajectory
+        await cursor.forward()
+
+        # Or step through action by action
+        while cursor.get_movement_options() & {MovementOption.CAN_MOVE_FORWARD}:
+            result = await cursor.forward_to_next_action()
+            print(f"Completed action at location {result.final_location}")
         ```
     """
 
@@ -652,7 +660,11 @@ class TrajectoryCursor:
         self._intent_event.set()
 
     def forward(
-        self, target_location: float | None = None, playback_speed_in_percent: int | None = None
+        self,
+        target_location: float | None = None,
+        playback_speed_in_percent: int | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
     ) -> asyncio.Future[OperationResult]:
         """Move forward along the trajectory.
 
@@ -662,10 +674,21 @@ class TrajectoryCursor:
         Args:
             target_location: Optional location to stop at. If None, moves to end.
             playback_speed_in_percent: Optional speed override (1-100).
+            start_on_io: Optional IO condition to wait for before movement starts.
+            pause_on_io: Optional IO condition that pauses movement while it is
+                in progress.
 
         Returns:
             Future that resolves with OperationResult when movement stops.
+            If the cursor has already been detached, returns a failed future.
         """
+        if self._stop_event.is_set():
+            future: asyncio.Future[OperationResult] = asyncio.Future()
+            future.set_exception(
+                RuntimeError("Cannot move: TrajectoryCursor has already been detached")
+            )
+            return future
+
         future = self._start_operation(
             OperationType.FORWARD, expected_response_type=api.models.StartMovementResponse
         )
@@ -678,12 +701,18 @@ class TrajectoryCursor:
                 operation_type=OperationType.FORWARD,
                 target_location=target_location,
                 playback_speed_in_percent=playback_speed_in_percent,
+                start_on_io=start_on_io,
+                pause_on_io=pause_on_io,
             )
         )
         return future
 
     def backward(
-        self, target_location: float | None = None, playback_speed_in_percent: int | None = None
+        self,
+        target_location: float | None = None,
+        playback_speed_in_percent: int | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
     ) -> asyncio.Future[OperationResult]:
         """Move backward along the trajectory.
 
@@ -693,10 +722,21 @@ class TrajectoryCursor:
         Args:
             target_location: Optional location to stop at. If None, moves to start.
             playback_speed_in_percent: Optional speed override (1-100).
+            start_on_io: Optional IO condition to wait for before movement starts.
+            pause_on_io: Optional IO condition that pauses movement while it is
+                in progress.
 
         Returns:
             Future that resolves with OperationResult when movement stops.
+            If the cursor has already been detached, returns a failed future.
         """
+        if self._stop_event.is_set():
+            future: asyncio.Future[OperationResult] = asyncio.Future()
+            future.set_exception(
+                RuntimeError("Cannot move: TrajectoryCursor has already been detached")
+            )
+            return future
+
         future = self._start_operation(
             OperationType.BACKWARD, expected_response_type=api.models.StartMovementResponse
         )
@@ -709,18 +749,27 @@ class TrajectoryCursor:
                 operation_type=OperationType.BACKWARD,
                 target_location=target_location,
                 playback_speed_in_percent=playback_speed_in_percent,
+                start_on_io=start_on_io,
+                pause_on_io=pause_on_io,
             )
         )
         return future
 
     def forward_to(
-        self, location: float, playback_speed_in_percent: int | None = None
+        self,
+        location: float,
+        playback_speed_in_percent: int | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
     ) -> asyncio.Future[OperationResult]:
         """Move forward to a specific location on the trajectory.
 
         Args:
             location: Target location to move to (must be >= current location).
             playback_speed_in_percent: Optional speed override (1-100).
+            start_on_io: Optional IO condition to wait for before movement starts.
+            pause_on_io: Optional IO condition that pauses movement while it is
+                in progress.
 
         Returns:
             Future that resolves with OperationResult when target is reached.
@@ -734,17 +783,27 @@ class TrajectoryCursor:
             return future
         self._target_location = location
         return self.forward(
-            target_location=location, playback_speed_in_percent=playback_speed_in_percent
+            target_location=location,
+            playback_speed_in_percent=playback_speed_in_percent,
+            start_on_io=start_on_io,
+            pause_on_io=pause_on_io,
         )
 
     def backward_to(
-        self, location: float, playback_speed_in_percent: int | None = None
+        self,
+        location: float,
+        playback_speed_in_percent: int | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
     ) -> asyncio.Future[OperationResult]:
         """Move backward to a specific location on the trajectory.
 
         Args:
             location: Target location to move to (must be <= current location).
             playback_speed_in_percent: Optional speed override (1-100).
+            start_on_io: Optional IO condition to wait for before movement starts.
+            pause_on_io: Optional IO condition that pauses movement while it is
+                in progress.
 
         Returns:
             Future that resolves with OperationResult when target is reached.
@@ -757,10 +816,18 @@ class TrajectoryCursor:
             )
             return future
         self._target_location = location
-        return self.backward(location, playback_speed_in_percent=playback_speed_in_percent)
+        return self.backward(
+            location,
+            playback_speed_in_percent=playback_speed_in_percent,
+            start_on_io=start_on_io,
+            pause_on_io=pause_on_io,
+        )
 
     def forward_to_next_action(
-        self, playback_speed_in_percent: int | None = None
+        self,
+        playback_speed_in_percent: int | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
     ) -> asyncio.Future[OperationResult]:
         """Move forward to the start of the next action (or next integer location if no actions).
 
@@ -770,6 +837,12 @@ class TrajectoryCursor:
 
         Args:
             playback_speed_in_percent: Optional speed override (1-100).
+            start_on_io: Optional IO condition to wait for before movement starts.
+                Ignored if already at the end of the trajectory (no movement is
+                commanded in that case).
+            pause_on_io: Optional IO condition that pauses movement while it is
+                in progress. Same caveat as ``start_on_io`` applies at the end
+                of the trajectory.
 
         Returns:
             Future that resolves with OperationResult when next action start is reached.
@@ -787,10 +860,18 @@ class TrajectoryCursor:
                 )
             )
             return future
-        return self.forward_to(target_location, playback_speed_in_percent=playback_speed_in_percent)
+        return self.forward_to(
+            target_location,
+            playback_speed_in_percent=playback_speed_in_percent,
+            start_on_io=start_on_io,
+            pause_on_io=pause_on_io,
+        )
 
     def backward_to_previous_action(
-        self, playback_speed_in_percent: int | None = None
+        self,
+        playback_speed_in_percent: int | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
     ) -> asyncio.Future[OperationResult]:
         """Move backward to the start of the previous action (or previous integer location if no actions).
 
@@ -800,6 +881,12 @@ class TrajectoryCursor:
 
         Args:
             playback_speed_in_percent: Optional speed override (1-100).
+            start_on_io: Optional IO condition to wait for before movement starts.
+                Ignored if already at the start of the trajectory (no movement is
+                commanded in that case).
+            pause_on_io: Optional IO condition that pauses movement while it is
+                in progress. Same caveat as ``start_on_io`` applies at the start
+                of the trajectory.
 
         Returns:
             Future that resolves with OperationResult when previous action start is reached.
@@ -811,7 +898,10 @@ class TrajectoryCursor:
         )
         if target_location >= 0:
             return self.backward_to(
-                target_location, playback_speed_in_percent=playback_speed_in_percent
+                target_location,
+                playback_speed_in_percent=playback_speed_in_percent,
+                start_on_io=start_on_io,
+                pause_on_io=pause_on_io,
             )
         else:
             # At start of trajectory - return immediately
