@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.7.4 (2026-07-10)
+
+### Bug Fixes
+
+- Add start_on_io and pause_on_io params to TrajectoryCursor (#445)
+  ([#445](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/445),
+  [`3b997bf`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3b997bf382f77d2a9d4c58db27eb7ea97d56587d))
+
+
 ## v5.7.3 (2026-07-08)
 
 ### Chores

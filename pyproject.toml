@@ -1,6 +1,6 @@
 [project]
 name = "wandelbots-nova"
-version = "5.7.3"
+version = "5.7.4"
 description = "Official Python SDK for the Wandelbots Nova"
 authors = [
     { name = "Wandelbots GmbH" },
@@ -69,6 +69,7 @@ download-models = "nova_rerun_bridge.helper_scripts.download_models:update_robot
 wandelscript = "wandelscript.cli:app"
 ws = "wandelscript.cli:app"
 novax = "novax.cli:main"
+
 
 
 
@@ -262,6 +263,7 @@ upload_to_vcs_release = true
 
 [tool.ruff.lint.isort]
 known-first-party = ["nova", "nova_rerun_bridge", "novax"]
+
 
 
 
