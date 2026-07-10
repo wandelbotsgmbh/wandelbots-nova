@@ -16,11 +16,7 @@ Two areas are covered:
    generic plug-in point ``move_forward`` itself uses — via a small adapter
    factory (``_make_cursor_controller``). This is **not** wired through
    ``TrajectoryTuner``/``nova/cell/tuner.py`` (that path doesn't forward these
-   params — a deliberate, separate scope decision). The timing-sensitive tests
-   are disabled (``_test_`` prefix, ``@pytest.mark.integration`` commented out)
-   for the same reason ``test_pause_on_io.py``'s own mid-motion-trigger test is
-   disabled: virtual-controller timing has been flaky in CI. They're checked in
-   as a reference for manual verification against a live/virtual controller.
+   params — a deliberate, separate scope decision).
 """
 
 import asyncio
@@ -219,10 +215,9 @@ async def _plan_move(mg, delta: float):
     return trajectory, actions
 
 
-# TODO: enable once verified against a live/virtual controller; not run in CI.
-# @pytest.mark.asyncio
-# @pytest.mark.integration
-async def _test_cursor_forward_start_on_io_delays_movement_start(kuka_mg):
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cursor_forward_start_on_io_delays_movement_start(kuka_mg):
     """start_on_io must gate the actual start of movement: the robot should not
     move until the IO condition becomes true, even though forward() was already
     called."""
@@ -273,11 +268,9 @@ async def _test_cursor_forward_start_on_io_delays_movement_start(kuka_mg):
         execute_task.cancel()
 
 
-# TODO: enable once verified against a live/virtual controller; not run in CI.
-# Disabled to match test_pause_on_io.py's own (flaky-in-CI) mid-motion-trigger test.
-# @pytest.mark.asyncio
-# @pytest.mark.integration
-async def _test_cursor_forward_pause_on_io_stops_early_mid_trajectory(kuka_mg):
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cursor_forward_pause_on_io_stops_early_mid_trajectory(kuka_mg):
     """pause_on_io must stop the cursor's forward() early, mid-trajectory, with
     no exception raised — TrajectoryPausedOnIO resolves the operation cleanly."""
     mg, kuka = kuka_mg
@@ -338,10 +331,9 @@ async def _test_cursor_forward_pause_on_io_stops_early_mid_trajectory(kuka_mg):
         execute_task.cancel()
 
 
-# TODO: enable once verified against a live/virtual controller; not run in CI.
-# @pytest.mark.asyncio
-# @pytest.mark.integration
-async def _test_cursor_detach_on_standstill_tears_down_on_pause_on_io(kuka_mg):
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cursor_detach_on_standstill_tears_down_on_pause_on_io(kuka_mg):
     """detach_on_standstill=True must fully tear down the control loop when
     pause_on_io fires mid-motion, exactly as it does on true completion — this
     pins the TrajectoryPausedOnIO -> is_ended (not is_paused) contract for a
@@ -403,8 +395,16 @@ async def _test_cursor_detach_on_standstill_tears_down_on_pause_on_io(kuka_mg):
         # detach_on_standstill=True treats the IO-triggered pause like real
         # completion (is_ended), not like a resumable pause (is_paused).
         assert cursor._stop_event.is_set()
-        with pytest.raises(StopAsyncIteration):
-            await asyncio.wait_for(cursor.__anext__(), timeout=2.0)
+
+        # _in_queue holds every intermediate MotionGroupState pushed while the
+        # move was running, with the sentinel appended only once at the very
+        # end — drain them all rather than assuming the next item is already
+        # the sentinel.
+        async def _drain(cursor):
+            async for _ in cursor:
+                pass
+
+        await asyncio.wait_for(_drain(cursor), timeout=5.0)
 
         # A subsequent forward() must fail fast (not hang) rather than queue
         # a command nothing will ever send.
