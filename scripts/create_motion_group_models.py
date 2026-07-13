@@ -32,7 +32,6 @@ def generate_enum_source(models: list[str]) -> str:
     ]
     if not models:
         lines.append("\tpass")
-        logger.warning("API returned no models — skipping file generation.")
     else:
         for model in sorted(models):
             lines.append(f'\t{model} = "{to_enum_value(model)}"')
@@ -44,8 +43,7 @@ async def main() -> None:
     async with Nova() as nova:
         models = await nova.api.motion_group_models_api.get_motion_group_models()
         if not models:
-            logger.warning("API returned no models — skipping file generation.")
-            return
+            raise Exception("API returned no models — skipping file generation.")
         source = generate_enum_source(models)
         OUTPUT_PATH.write_text(source)
         logger.info("Wrote %d models to %s", len(models), OUTPUT_PATH)
