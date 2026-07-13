@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from wandelbots_api_client.v2_pydantic.exceptions import NotFoundException, ServiceException
 
-from scripts.create_motion_group_models import generate_enum_source, main, to_enum_value
+from nova.helper_scripts.create_motion_group_models import generate_enum_source, main, to_enum_value
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -27,6 +27,10 @@ def _mock_nova(return_value=None, side_effect=None) -> MagicMock:
     )
     return mock
 
+
+IMPORT_PATH = "nova.helper_scripts.create_motion_group_models"
+NOVA_IMPORT_PATH = IMPORT_PATH + ".Nova"
+OUTPUT_FILE_IMPORT_PATH = IMPORT_PATH + ".OUTPUT_PATH"
 
 # ---------------------------------------------------------------------------
 # to_enum_value
@@ -55,8 +59,8 @@ class TestGenerateEnumSource:
 
         assert "class MotionGroupModel(StrEnum):" in source
         assert "from enum import StrEnum" in source
-        assert 'ABB_1200_07_7 = "abb-1200_07_7"' in source
-        assert 'KUKA_KR16_R2010_2 = "kuka-kr16_r2010_2"' in source
+        assert '    ABB_1200_07_7 = "abb-1200_07_7"' in source
+        assert '    KUKA_KR16_R2010_2 = "kuka-kr16_r2010_2"' in source
 
     def test_output_is_sorted(self):
         models = ["KUKA_KR16_R2010_2", "ABB_1200_07_7", "FANUC_CRX10IA_L"]
@@ -68,12 +72,10 @@ class TestGenerateEnumSource:
         assert abb_pos < fanuc_pos < kuka_pos
 
     def test_empty_models_list(self, caplog):
-        caplog.set_level(logging.WARNING, logger="scripts.create_motion_group_models")
-
-        source = generate_enum_source([])
-        assert "class MotionGroupModel(StrEnum):\n\tpass" in source
-        assert "API returned no models — skipping file generation." in caplog.text
-        assert '= "' not in source
+        with pytest.raises(Exception, match="API returned no models — skipping file generation."):
+            source = generate_enum_source([])
+            assert "class MotionGroupModel(StrEnum):\n    pass" in source
+            assert '= "' not in source
 
     def test_contains_auto_generated_header(self):
         source = generate_enum_source(["KUKA_KR16_R2010_2"])
@@ -90,34 +92,34 @@ class TestMainIntegration:
     async def test_main_writes_generated_file(self, tmp_path, caplog):
         output_file = tmp_path / "motion_group_models.py"
         mock = _mock_nova(return_value=["KUKA_KR16_R2010_2", "ABB_1200_07_7"])
-        caplog.set_level(logging.INFO, logger="scripts.create_motion_group_models")
+        caplog.set_level(logging.INFO, logger=IMPORT_PATH)
 
         with (
-            patch("scripts.create_motion_group_models.Nova", return_value=mock),
-            patch("scripts.create_motion_group_models.OUTPUT_PATH", output_file),
+            patch(NOVA_IMPORT_PATH, return_value=mock),
+            patch(OUTPUT_FILE_IMPORT_PATH, output_file),
         ):
             await main()
 
         content = output_file.read_text()
         assert "class MotionGroupModel(StrEnum):" in content
-        assert 'ABB_1200_07_7 = "abb-1200_07_7"' in content
-        assert 'KUKA_KR16_R2010_2 = "kuka-kr16_r2010_2"' in content
+        assert '    ABB_1200_07_7 = "abb-1200_07_7"' in content
+        assert '    KUKA_KR16_R2010_2 = "kuka-kr16_r2010_2"' in content
         assert "Wrote 2 models" in caplog.text
 
     @pytest.mark.asyncio
     async def test_main_with_empty_api_response_does_not_write(self, tmp_path, caplog):
         output_file = tmp_path / "motion_group_models.py"
         mock = _mock_nova(return_value=[])
-        caplog.set_level(logging.WARNING, logger="scripts.create_motion_group_models")
 
         with (
-            patch("scripts.create_motion_group_models.Nova", return_value=mock),
-            patch("scripts.create_motion_group_models.OUTPUT_PATH", output_file),
+            patch(NOVA_IMPORT_PATH, return_value=mock),
+            patch(OUTPUT_FILE_IMPORT_PATH, output_file),
         ):
-            await main()
+            with pytest.raises(Exception, match="API returned no models — skipping file generation."):
+
+                await main()
 
         assert not output_file.exists()
-        assert "API returned no models — skipping file generation." in caplog.text
 
     @pytest.mark.asyncio
     async def test_main_api_raises_exception(self, tmp_path):
@@ -125,8 +127,8 @@ class TestMainIntegration:
         mock = _mock_nova(side_effect=RuntimeError("API unreachable"))
 
         with (
-            patch("scripts.create_motion_group_models.Nova", return_value=mock),
-            patch("scripts.create_motion_group_models.OUTPUT_PATH", output_file),
+            patch(NOVA_IMPORT_PATH, return_value=mock),
+            patch(OUTPUT_FILE_IMPORT_PATH, output_file),
         ):
             with pytest.raises(RuntimeError, match="API unreachable"):
                 await main()
@@ -139,8 +141,8 @@ class TestMainIntegration:
         mock = _mock_nova(side_effect=NotFoundException(status=404, reason="Not found"))
 
         with (
-            patch("scripts.create_motion_group_models.Nova", return_value=mock),
-            patch("scripts.create_motion_group_models.OUTPUT_PATH", output_file),
+            patch(NOVA_IMPORT_PATH, return_value=mock),
+            patch(OUTPUT_FILE_IMPORT_PATH, output_file),
         ):
             with pytest.raises(NotFoundException):
                 await main()
@@ -153,8 +155,8 @@ class TestMainIntegration:
         mock = _mock_nova(side_effect=ServiceException(status=500, reason="Internal server error"))
 
         with (
-            patch("scripts.create_motion_group_models.Nova", return_value=mock),
-            patch("scripts.create_motion_group_models.OUTPUT_PATH", output_file),
+            patch(NOVA_IMPORT_PATH, return_value=mock),
+            patch(OUTPUT_FILE_IMPORT_PATH, output_file),
         ):
             with pytest.raises(ServiceException):
                 await main()
@@ -173,7 +175,7 @@ class TestMainIntegrationRealAPI:
     async def test_main_writes_generated_file_from_real_api(self, tmp_path):
         output_file = tmp_path / "motion_group_models.py"
 
-        with patch("scripts.create_motion_group_models.OUTPUT_PATH", output_file):
+        with patch(OUTPUT_FILE_IMPORT_PATH, output_file):
             await main()
 
         content = output_file.read_text()
