@@ -94,7 +94,7 @@ jobs:
           NOVA_API: https://${{ needs.setup-instance.outputs.PORTAL_PROD_HOST }}
           NOVA_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
         run: |
-          uv run python ./scripts/create_motion_group_models.py
+          uv run python ./nova/helper_scripts/create_motion_group_models.py
 
       - name: Commit and push if changed
         run: |
@@ -103,7 +103,7 @@ jobs:
           git add nova/cell/motion_group_models.py
           if ! git diff --cached --quiet; then
             git commit -m "chore: update motion group models enum"
-            git push
+            git push origin HEAD:${{ github.head_ref }}
           fi
 
   # This job runs the integration tests and examples
