@@ -443,7 +443,7 @@ class MotionGroup(AbstractRobot):
 
         joint_positions = [api.models.DoubleArray(list(joint_config)) for joint_config in joints]
 
-        tcp_offset = await self.tcp_offset(tcp) if tcp is not None else None
+        tcp_offset = (await self.tcp_offset(tcp)).to_api_model() if tcp is not None else None
         motion_group_model = await self.get_model()
         mounting = await self.get_mounting()
 
@@ -452,7 +452,7 @@ class MotionGroup(AbstractRobot):
             forward_kinematics_request=api.models.ForwardKinematicsRequest(
                 motion_group_model=api.models.MotionGroupModel(motion_group_model),
                 joint_positions=joint_positions,
-                tcp_offset=tcp_offset.to_api_model() if tcp_offset is not None else None,
+                tcp_offset=tcp_offset,
                 mounting=mounting.to_api_model() if mounting is not None else None,
             ),
         )
