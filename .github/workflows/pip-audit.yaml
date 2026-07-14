@@ -22,6 +22,7 @@ jobs:
         with:
           python-version: "3.11"
           pip-version: "26.1.2"
+          pip-install: "setuptools>=83.0.0"
 
       - name: Set up Python environment
         run: |
@@ -30,3 +31,5 @@ jobs:
 
       - name: Audit dependencies
         uses: pypa/gh-action-pip-audit@v1.1.0
+        with:
+          virtual-environment: .venv
