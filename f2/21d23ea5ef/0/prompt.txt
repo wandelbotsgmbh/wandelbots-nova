@@ -118,3 +118,31 @@ Usage:
   nova app install [source] [flags]
 
   getting this. where is v1 still used?
+
+---
+
+do we really need fastapi & uvicorn deps in novax. if not we could put novax into the sdk and get rid of the extra install. 
+
+evaluate that
+
+---
+
+Explore the `wandelbots-nova` SDK repo at /Users/cbiering/home/dev/wandelbots/wandelbots-nova to answer an architecture question: does the `novax` package really depend on FastAPI and uvicorn, and could novax be merged into the core SDK to remove the `[novax]` optional-install extra?
+
+Investigate and report thoroughly:
+
+1. **How the `[novax]` extra is defined** in the root /Users/cbiering/home/dev/wandelbots/wandelbots-nova/pyproject.toml. Quote the `[project.optional-dependencies]` (or equivalent) entries — which packages are in the `novax` extra (fastapi, uvicorn, etc.), and any other extras (nova-rerun-bridge, etc.). Also note base `dependencies`.
+
+2. **Every place fastapi / uvicorn / starlette is imported** across the whole repo (novax/, nova/, wandelscript/, novapolicy/). Use grep for `import fastapi`, `from fastapi`, `import uvicorn`, `starlette`, `pydantic`. List each file and what it uses (e.g. APIRouter, FastAPI, Depends, uvicorn.run).
+
+3. **What novax/ actually contains** — list the files in novax/ and summarize each module's purpose (novax.py, program_manager.py, api/, cli.py, config.py). Identify which parts are FastAPI-coupled vs framework-agnostic.
+
+4. **How `nova` core lazily exposes Novax** — look at nova/__init__.py `__getattr__` for Novax and any lazy-import pattern, and whether core `nova` imports novax anywhere at module load (which would create a hard dependency).
+
+5. **Whether uvicorn is used only as a dev/run server** — is `uvicorn.run` called inside novax, or only in the example app's register_programs.py? Is uvicorn actually needed by the library or just the app entrypoint?
+
+6. **Weight of fastapi/uvicorn as always-on deps** — note if fastapi/starlette/uvicorn are heavy or pull large transitive deps, and whether the SDK is meant to be lightweight for non-server users (check README / any comments in nova/__init__.py about keeping novax optional).
+
+7. Any tests or CLI (novax/cli.py, `nova app` scaffolding) that depend on fastapi/uvicorn.
+
+Report file paths with line numbers and quote the key pyproject sections and import lines. Do NOT modify anything — read-only.
