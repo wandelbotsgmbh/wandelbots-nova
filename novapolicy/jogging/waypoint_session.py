@@ -1,8 +1,8 @@
 """Waypoint jogging session — sends timestamped position waypoints directly.
 
-Uses NOVA's JointWaypointsRequest and PoseWaypointsRequest to stream action
-chunks. The server handles velocity profiling, interpolation, and limits
-internally.
+Uses NOVA's action-chunk-streaming API (``ActionChunkRequest`` with unified
+joint/pose waypoints) to stream action chunks. The server handles velocity
+profiling, interpolation, and limits internally.
 """
 
 from __future__ import annotations
@@ -190,7 +190,7 @@ class WaypointJoggingSession:
     ) -> None:
         """Queue a new action chunk as waypoints.
 
-        Builds a JointWaypointsRequest or PoseWaypointsRequest (based on mode)
+        Builds an ActionChunkRequest (joint or pose waypoints, based on mode)
         with absolute server-time timestamps laid out as ``base + i*dt``. The
         request is sent on the next jogging loop iteration; the timestamps are
         computed at *yield time* (see :func:`make_waypoints_request`).
@@ -351,13 +351,15 @@ class WaypointJoggingSession:
         tcp = await self._resolve_tcp()
 
         async def client_request_generator(
-            response_stream: AsyncGenerator[api.models.ExecuteWaypointJoggingResponse, None],
-        ) -> AsyncGenerator[api.models.ExecuteWaypointJoggingRequest, None]:
-            # 1. Initialize the jogging session.
+            response_stream: AsyncGenerator[api.models.ExecuteActionChunksResponse, None],
+        ) -> AsyncGenerator[api.models.ExecuteActionChunksRequest, None]:
+            # 1. Initialize the action-chunk-streaming session.
             # The server starts its internal timer when the first waypoint
-            # request arrives (not on InitializeJoggingRequest).
-            yield api.models.ExecuteWaypointJoggingRequest(
-                api.models.InitializeJoggingRequest(motion_group=self._motion_group.id, tcp=tcp)
+            # request arrives (not on InitializeActionChunksRequest).
+            yield api.models.ExecuteActionChunksRequest(
+                api.models.InitializeActionChunksRequest(
+                    motion_group=self._motion_group.id, tcp=tcp
+                )
             )
 
             # 2. Main loop: for each server response, either send a new
@@ -368,7 +370,7 @@ class WaypointJoggingSession:
                     return
 
                 # Signal that the session is ready on first server response.
-                # This means InitializeJoggingRequest was acknowledged and
+                # This means InitializeActionChunksRequest was acknowledged and
                 # the server is ready to accept waypoints.
                 if not self._ready.is_set():
                     self._ready.set()
@@ -412,10 +414,10 @@ class WaypointJoggingSession:
                     anchor_offset_steps=pending.anchor_offset_steps,
                 )
 
-                yield api.models.ExecuteWaypointJoggingRequest(request)
+                yield api.models.ExecuteActionChunksRequest(request)
 
         try:
-            await api_gateway.jogging_api.execute_waypoint_jogging(
+            await api_gateway.action_chunk_streaming_api.execute_action_chunks(
                 cell=cell,
                 controller=controller_id,
                 client_request_generator=client_request_generator,
@@ -424,7 +426,7 @@ class WaypointJoggingSession:
             # Expected on shutdown; cancellation is not a jogging failure.
             pass
         except InvalidStatus as e:
-            # An old api-gateway (< 26.5) has no executeWaypointJogging endpoint
+            # An old api-gateway (< 26.6) has no executeActionChunks endpoint
             # and rejects the websocket upgrade with HTTP 404. Surface that as an
             # actionable error rather than a generic connection loss.
             if e.response.status_code == _HTTP_NOT_FOUND:

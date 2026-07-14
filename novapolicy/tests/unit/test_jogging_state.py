@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from novapolicy.jogging import JoggingStateTracker
-from novapolicy.jogging.session import _BLOCKING_PAUSES
+from novapolicy.jogging.session import _BLOCKING_BRAKES
 from novapolicy.types import MotionError
 
 
@@ -38,11 +38,11 @@ def test_collision_raises_after_confirm():
 
     # First 2 ticks — confirmed but not yet at threshold
     for _ in range(2):
-        t.update_from_state(_state("PAUSED_NEAR_COLLISION"))
+        t.update_from_state(_state("BRAKING_NEAR_COLLISION"))
         t.check()  # Should not raise yet
 
     # 3rd tick → should raise
-    t.update_from_state(_state("PAUSED_NEAR_COLLISION"))
+    t.update_from_state(_state("BRAKING_NEAR_COLLISION"))
     with pytest.raises(MotionError, match="collision"):
         t.check()
 
@@ -50,9 +50,9 @@ def test_collision_raises_after_confirm():
 def test_joint_limit_raises():
     t = JoggingStateTracker("0@ur10e", confirm_ticks=3)
     for _ in range(2):
-        t.update_from_state(_state("PAUSED_NEAR_JOINT_LIMIT", joint_indices=[2, 4]))
+        t.update_from_state(_state("BRAKING_NEAR_JOINT_LIMIT", joint_indices=[2, 4]))
         t.check()  # Should not raise yet (count < 3)
-    t.update_from_state(_state("PAUSED_NEAR_JOINT_LIMIT", joint_indices=[2, 4]))
+    t.update_from_state(_state("BRAKING_NEAR_JOINT_LIMIT", joint_indices=[2, 4]))
     with pytest.raises(MotionError, match="joint_limit"):
         t.check()
 
@@ -60,29 +60,39 @@ def test_joint_limit_raises():
 def test_singularity_raises():
     t = JoggingStateTracker("0@ur10e", confirm_ticks=3)
     for _ in range(2):
-        t.update_from_state(_state("PAUSED_NEAR_SINGULARITY"))
+        t.update_from_state(_state("BRAKING_NEAR_SINGULARITY"))
         t.check()
-    t.update_from_state(_state("PAUSED_NEAR_SINGULARITY"))
+    t.update_from_state(_state("BRAKING_NEAR_SINGULARITY"))
     with pytest.raises(MotionError, match="singularity"):
         t.check()
 
 
-def test_transient_pause_resets():
-    """A brief pause followed by RUNNING doesn't accumulate."""
+def test_workspace_boundary_raises():
+    t = JoggingStateTracker("0@ur10e", confirm_ticks=3)
+    for _ in range(2):
+        t.update_from_state(_state("BRAKING_NEAR_WORKSPACE_BOUNDARY"))
+        t.check()
+    t.update_from_state(_state("BRAKING_NEAR_WORKSPACE_BOUNDARY"))
+    with pytest.raises(MotionError, match="workspace_boundary"):
+        t.check()
+
+
+def test_transient_braking_resets():
+    """A brief braking state followed by RUNNING doesn't accumulate."""
     t = JoggingStateTracker("0@ur10e", confirm_ticks=5)
 
-    # 2 ticks paused
+    # 2 braking ticks
     for _ in range(2):
-        t.update_from_state(_state("PAUSED_NEAR_COLLISION"))
+        t.update_from_state(_state("BRAKING_NEAR_COLLISION"))
         t.check()
 
     # Back to running — resets counter
     t.update_from_state(_state("RUNNING"))
     t.check()
 
-    # 2 more ticks paused — still below threshold
+    # 2 more braking ticks — still below threshold
     for _ in range(2):
-        t.update_from_state(_state("PAUSED_NEAR_COLLISION"))
+        t.update_from_state(_state("BRAKING_NEAR_COLLISION"))
         t.check()  # Should not raise (only 2, not 5)
 
 
@@ -96,8 +106,8 @@ def test_no_execute_details_is_safe():
         t.check()
 
 
-def test_unknown_pause_type_does_not_trigger():
-    """Only _BLOCKING_PAUSES trigger — other kinds are ignored."""
+def test_unknown_state_type_does_not_trigger():
+    """Only _BLOCKING_BRAKES trigger — other kinds are ignored."""
     t = JoggingStateTracker("0@ur10e", confirm_ticks=1)
     t.update_from_state(_state("PAUSED_SOME_OTHER_REASON"))
     t.check()  # Should not raise
@@ -106,17 +116,25 @@ def test_unknown_pause_type_does_not_trigger():
 def test_paused_by_user_is_recoverable_and_never_raises():
     """PAUSED_BY_USER (waypoint buffer exhausted) is recoverable, not a fault.
 
-    jogging.md lists PAUSED_BY_USER alongside the fatal pause states, but it
-    means "the buffer emptied, send chunks faster" — the robot resumes once a
-    new chunk arrives. It must NOT be in _BLOCKING_PAUSES and must never raise,
+    It means "the buffer emptied, send chunks faster" — the robot resumes once a
+    new chunk arrives. It must NOT be in _BLOCKING_BRAKES and must never raise,
     no matter how many consecutive ticks report it. This pins that contract so a
     well-meaning edit that "completes" the table by adding PAUSED_BY_USER to the
     blocking set would fail here.
     """
-    assert "PAUSED_BY_USER" not in _BLOCKING_PAUSES
+    assert "PAUSED_BY_USER" not in _BLOCKING_BRAKES
     t = JoggingStateTracker("0@ur10e", confirm_ticks=2)
     for _ in range(20):
         t.update_from_state(_state("PAUSED_BY_USER"))
+        t.check()  # never raises
+
+
+def test_stopped_by_user_is_terminal_but_not_motion_error():
+    """STOPPED_BY_USER is reported by the stream but must not look like braking."""
+    assert "STOPPED_BY_USER" not in _BLOCKING_BRAKES
+    t = JoggingStateTracker("0@ur10e", confirm_ticks=2)
+    for _ in range(20):
+        t.update_from_state(_state("STOPPED_BY_USER"))
         t.check()  # never raises
 
 
@@ -138,9 +156,11 @@ from hypothesis.stateful import (  # noqa: E402
     rule,
 )
 
-# Kinds that must NOT count toward a trip: RUNNING, no execute details, and a
-# pause type that isn't one of the blocking pauses.
-_CLEARING_KINDS = st.sampled_from(["RUNNING", "PAUSED_SOME_OTHER_REASON", None])
+# Kinds that must NOT count toward a trip: RUNNING, user pause/stop, no execute
+# details, and a state type that isn't one of the blocking brakes.
+_CLEARING_KINDS = st.sampled_from(
+    ["RUNNING", "PAUSED_BY_USER", "STOPPED_BY_USER", "PAUSED_SOME_OTHER_REASON", None]
+)
 
 
 def _tick_state(kind):
@@ -162,7 +182,7 @@ class JoggingDebounceMachine(RuleBasedStateMachine):
         self.tracker = JoggingStateTracker("0@ur10e", confirm_ticks=ticks)
         self.streak = 0  # consecutive blocking ticks that have been checked
 
-    @rule(kind=st.sampled_from(sorted(_BLOCKING_PAUSES)))
+    @rule(kind=st.sampled_from(sorted(_BLOCKING_BRAKES)))
     def blocking_tick(self, kind):
         self.tracker.update_from_state(_tick_state(kind))
         self.streak += 1

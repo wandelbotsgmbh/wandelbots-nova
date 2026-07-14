@@ -127,6 +127,9 @@ class ApiGateway:
             api.api.ControllerInputsOutputsApi(api_client=self._api_client), self
         )
         self.jogging_api = _intercept(api.api.JoggingApi(api_client=self._api_client), self)
+        self.action_chunk_streaming_api = _intercept(
+            api.api.ActionChunkStreamingApi(api_client=self._api_client), self
+        )
         self.store_object_api = _intercept(
             api.api.StoreObjectApi(api_client=self._api_client), self
         )

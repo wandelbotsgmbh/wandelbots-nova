@@ -1,7 +1,8 @@
-"""Jogging state tracking — detects blocking pause conditions.
+"""Jogging state tracking — detects blocking braking conditions.
 
-Monitors the NOVA jogging state stream and raises ``MotionError``
-after a confirmed blocking pause (joint limit, collision, singularity).
+Monitors the NOVA action-chunk-streaming state stream and raises ``MotionError``
+after a confirmed blocking brake (joint limit, collision, singularity, or
+workspace boundary).
 """
 
 from __future__ import annotations
@@ -13,24 +14,25 @@ from novapolicy.types import MotionError
 
 logger = logging.getLogger(__name__)
 
-_BLOCKING_PAUSES = frozenset(
+_BLOCKING_BRAKES = frozenset(
     {
-        "PAUSED_NEAR_JOINT_LIMIT",
-        "PAUSED_NEAR_COLLISION",
-        "PAUSED_NEAR_SINGULARITY",
+        "BRAKING_NEAR_JOINT_LIMIT",
+        "BRAKING_NEAR_COLLISION",
+        "BRAKING_NEAR_SINGULARITY",
+        "BRAKING_NEAR_WORKSPACE_BOUNDARY",
     }
 )
 
 
 class JoggingStateTracker:
-    """Tracks NOVA jogging pause state and raises on confirmed standstill."""
+    """Tracks NOVA action-chunk state and raises on confirmed braking."""
 
     def __init__(self, motion_group_id: str, *, confirm_ticks: int = 10) -> None:
         self.motion_group_id = motion_group_id
         self._confirm_ticks = confirm_ticks
-        self._paused_reason: str | None = None
-        self._paused_detail: str = ""
-        self._paused_count: int = 0
+        self._braking_reason: str | None = None
+        self._braking_detail: str = ""
+        self._braking_count: int = 0
         self._last_kind: str | None = None
         self._t0 = time.monotonic()
 
@@ -43,12 +45,12 @@ class JoggingStateTracker:
         return self._last_kind
 
     def update_from_state(self, state: object) -> None:
-        """Extract jogging pause reason from MotionGroupState.execute.details."""
+        """Extract braking reason from MotionGroupState.execute.details.state."""
         jog_state = self._extract_jogging_state(state)
 
         if jog_state is None:
-            self._paused_reason = None
-            self._paused_detail = ""
+            self._braking_reason = None
+            self._braking_detail = ""
             return
 
         kind: str = getattr(jog_state, "kind", "RUNNING")
@@ -61,16 +63,16 @@ class JoggingStateTracker:
             )
             self._last_kind = kind
         if kind == "RUNNING":
-            self._paused_reason = None
-            self._paused_detail = ""
+            self._braking_reason = None
+            self._braking_detail = ""
         else:
-            self._paused_reason = kind
+            self._braking_reason = kind
             if hasattr(jog_state, "joint_indices"):
-                self._paused_detail = f"joints: {jog_state.joint_indices}"
+                self._braking_detail = f"joints: {jog_state.joint_indices}"
             elif hasattr(jog_state, "description"):
-                self._paused_detail = jog_state.description
+                self._braking_detail = jog_state.description
             else:
-                self._paused_detail = ""
+                self._braking_detail = ""
 
     @staticmethod
     def _extract_jogging_state(state: object) -> object | None:
@@ -84,16 +86,16 @@ class JoggingStateTracker:
         return getattr(details, "state", None)
 
     def check(self) -> None:
-        """Raise MotionError after confirmed blocking pause."""
-        if self._paused_reason is None or self._paused_reason not in _BLOCKING_PAUSES:
-            self._paused_count = 0
+        """Raise MotionError after confirmed blocking brake."""
+        if self._braking_reason is None or self._braking_reason not in _BLOCKING_BRAKES:
+            self._braking_count = 0
             return
 
-        self._paused_count += 1
-        if self._paused_count >= self._confirm_ticks:
-            reason = self._paused_reason.replace("PAUSED_NEAR_", "").lower()
-            detail = f" ({self._paused_detail})" if self._paused_detail else ""
+        self._braking_count += 1
+        if self._braking_count >= self._confirm_ticks:
+            reason = self._braking_reason.replace("BRAKING_NEAR_", "").lower()
+            detail = f" ({self._braking_detail})" if self._braking_detail else ""
             raise MotionError(
                 self.motion_group_id,
-                f"Jogging paused: {reason}{detail}",
+                f"Jogging braking: {reason}{detail}",
             )
