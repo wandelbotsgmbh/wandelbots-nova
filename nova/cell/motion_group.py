@@ -20,6 +20,7 @@ from nova.utils.collision_setup import (
     get_safety_collision_setup_from_motion_group_description,
     validate_collision_setups,
 )
+from nova.utils.joint_position import shift_joint_position_close_to_reference
 from nova.utils.joint_trajectory import combine_trajectories
 from nova.utils.motion_group_setup import (
     clamp_limit_set_to_max,
@@ -63,35 +64,6 @@ def split_actions_into_batches(actions: list[Action]) -> list[list[Action]]:
     return batches
 
 
-def _move_close_to_reference(
-    joint_position: np.ndarray,
-    reference_position: np.ndarray,
-    joint_limits: list[api.models.JointLimits] | None,
-) -> np.ndarray:
-    shifted_joints = joint_position + np.pi * 2 * np.round(
-        (reference_position - joint_position) / (np.pi * 2)
-    )
-
-    if joint_limits is None:
-        return shifted_joints
-
-    for i, joint_limit in enumerate(joint_limits):
-        if joint_limit.position is None:
-            continue
-
-        lower_limit = joint_limit.position.lower_limit
-        upper_limit = joint_limit.position.upper_limit
-        while upper_limit is not None and shifted_joints[i] > upper_limit:
-            shifted_joints[i] -= np.pi * 2
-        while lower_limit is not None and shifted_joints[i] < lower_limit:
-            shifted_joints[i] += np.pi * 2
-        if (upper_limit is not None and shifted_joints[i] > upper_limit) or (
-            lower_limit is not None and shifted_joints[i] < lower_limit
-        ):
-            return joint_position  # this should not happen, only when initial joints where out of limits
-    return shifted_joints
-
-
 def _find_and_sort_best_joint_solutions(
     start_joint_positions: tuple[float, ...],
     solutions: list[tuple[float, ...]],
@@ -101,7 +73,7 @@ def _find_and_sort_best_joint_solutions(
     np_solutions = [np.array(solution) for solution in solutions]
     np_start_joint_positions = np.array(start_joint_positions)
     moved_solutions = [
-        _move_close_to_reference(
+        shift_joint_position_close_to_reference(
             joint_position=target_joints,
             reference_position=np_start_joint_positions,
             joint_limits=joint_limits,
@@ -461,6 +433,49 @@ class MotionGroup(AbstractRobot):
             raise ValueError("No TCP poses returned from forward kinematics")
 
         return [Pose(tcp_pose) for tcp_pose in response.tcp_poses]
+
+    async def project_joint_position_direction_constraint(
+        self,
+        joints: list[tuple[float, ...]],
+        constraint: api.models.DirectionConstraint,
+        tcp: str,
+        motion_group_setup: api.models.MotionGroupSetup | None = None,
+    ) -> list[tuple[float, ...] | None]:
+        """Project joint positions to satisfy a direction constraint.
+
+        This wraps the ``project_joint_position_direction_constraint`` kinematics endpoint.
+        If a projected joint position violates collision or joint-position limits, the
+        corresponding entry in the returned list is ``None``.
+        """
+        motion_group_setup = motion_group_setup or await self.get_setup(tcp)
+
+        tcp_offset = await self.tcp_offset(tcp)
+        motion_group_model = await self.get_model()
+        mounting = await self.get_mounting()
+
+        joint_position_limits = get_joint_position_limits_from_motion_group_setup(
+            motion_group_setup
+        )
+
+        response = await self._api_client.kinematics_api.project_joint_position_direction_constraint(
+            cell=self._cell,
+            project_joint_position_direction_constraint_request=api.models.ProjectJointPositionDirectionConstraintRequest(
+                motion_group_model=api.models.MotionGroupModel(motion_group_model),
+                joint_positions=[
+                    api.models.DoubleArray(list(joint_config)) for joint_config in joints
+                ],
+                constraint=constraint,
+                tcp_offset=tcp_offset.to_api_model(),
+                mounting=mounting.to_api_model() if mounting is not None else None,
+                joint_position_limits=joint_position_limits,
+                collision_setups=motion_group_setup.collision_setups,
+            ),
+        )
+
+        return [
+            tuple(joint_position.root) if joint_position is not None else None
+            for joint_position in response.projected_joint_positions
+        ]
 
     async def open(self):
         # TODO if there is no explicit motion group activation, what should we do here?
@@ -827,6 +842,7 @@ class MotionGroup(AbstractRobot):
                         motion_group_setup=motion_group_setup,
                         start_joint_position=api.models.DoubleArray(list(start_joint_position)),
                         target=api.models.DoubleArray(list(best_joint_solution)),
+                        constraint=action.constraint,
                         algorithm=action.algorithm,
                     ),
                 )

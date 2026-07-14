@@ -1,7 +1,13 @@
 import json
 
 from nova import api
-from nova.actions import cartesian_ptp, joint_ptp
+from nova.actions import (
+    cartesian_ptp,
+    collision_free,
+    direction_constrained_cartesian_ptp,
+    direction_constrained_joint_ptp,
+    joint_ptp,
+)
 from nova.actions.base import Action
 from nova.types import MotionSettings, Pose
 
@@ -13,9 +19,31 @@ def test_program_serialization_deserialization():
     target_pose = Pose((1.0, 2.0, 3.0, 0.0, 0.0, 0.0))
 
     # Create actions with custom settings
+    direction_constraint = api.models.DirectionConstraint(
+        world=api.models.Vector3d([0.0, 0.0, 1.0]),
+        tcp=api.models.Vector3d([0.0, 0.0, 1.0]),
+        tolerance=0.05,
+    )
     actions = [
         joint_ptp(home_joints, settings=MotionSettings(tcp_velocity_limit=200)),
         cartesian_ptp(target_pose, settings=MotionSettings(tcp_velocity_limit=150)),
+        direction_constrained_joint_ptp(
+            home_joints,
+            constraint=direction_constraint,
+            settings=MotionSettings(tcp_velocity_limit=200),
+        ),
+        direction_constrained_cartesian_ptp(
+            api.models.ConstrainedPose(
+                position=api.models.Vector3d([1.0, 2.0, 3.0]), orientation=0.0
+            ),
+            constraint=direction_constraint,
+            settings=MotionSettings(tcp_velocity_limit=150),
+        ),
+        collision_free(
+            home_joints,
+            constraint=direction_constraint,
+            settings=MotionSettings(tcp_velocity_limit=200),
+        ),
         joint_ptp(home_joints, settings=MotionSettings(tcp_velocity_limit=200)),
     ]
 
@@ -67,6 +95,8 @@ def test_program_serialization_deserialization():
             deserialized_action.settings.tcp_velocity_limit
             == original_action.settings.tcp_velocity_limit
         )
+        if hasattr(original_action, "constraint"):
+            assert deserialized_action.constraint == original_action.constraint
 
 
 def test_program_serialization_deserialization_collision_scene():
@@ -155,3 +185,26 @@ def test_program_serialization_deserialization_collision_scene():
             deserialized_action.settings.tcp_velocity_limit
             == original_action.settings.tcp_velocity_limit
         )
+
+
+def test_direction_constrained_motion_to_api_model():
+    direction_constraint = api.models.DirectionConstraint(
+        world=api.models.Vector3d([0.0, 0.0, 1.0]),
+        tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
+        tolerance=0.05,
+    )
+
+    cartesian_motion = direction_constrained_cartesian_ptp(
+        api.models.ConstrainedPose(position=api.models.Vector3d([1.0, 2.0, 3.0]), orientation=0.1),
+        constraint=direction_constraint,
+    )
+    cartesian_path = cartesian_motion.to_api_model()
+    assert isinstance(cartesian_path.target_pose, api.models.ConstrainedPose)
+    assert cartesian_path.path_definition_name == "DirectionConstrainedCartesianPTP"
+
+    joint_motion = direction_constrained_joint_ptp(
+        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0), constraint=direction_constraint
+    )
+    joint_path = joint_motion.to_api_model()
+    assert isinstance(joint_path.target_joint_position, api.models.DoubleArray)
+    assert joint_path.path_definition_name == "DirectionConstrainedJointPTP"
