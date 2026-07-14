@@ -425,8 +425,15 @@ class MotionGroup(AbstractRobot):
         )
         return response.joints  # ty: ignore[invalid-return-type]
 
-    async def forward_kinematics(self, joints: list[tuple[float, ...]], tcp: str) -> list[Pose]:
+    async def forward_kinematics(
+        self, joints: list[tuple[float, ...]], tcp: str | None
+    ) -> list[Pose]:
         """Get the forward kinematics of the motion group.
+
+        Args:
+            joints: The joint configurations to compute poses for.
+            tcp: The TCP to apply. If None, no TCP offset is applied and the returned
+                poses are the flange poses.
 
         Returns:
             list[Pose]: The forward kinematics of the motion group. Empty list if not available.
@@ -436,7 +443,7 @@ class MotionGroup(AbstractRobot):
 
         joint_positions = [api.models.DoubleArray(list(joint_config)) for joint_config in joints]
 
-        tcp_offset = await self.tcp_offset(tcp)
+        tcp_offset = await self.tcp_offset(tcp) if tcp is not None else None
         motion_group_model = await self.get_model()
         mounting = await self.get_mounting()
 
@@ -445,7 +452,7 @@ class MotionGroup(AbstractRobot):
             forward_kinematics_request=api.models.ForwardKinematicsRequest(
                 motion_group_model=api.models.MotionGroupModel(motion_group_model),
                 joint_positions=joint_positions,
-                tcp_offset=tcp_offset.to_api_model(),
+                tcp_offset=tcp_offset.to_api_model() if tcp_offset is not None else None,
                 mounting=mounting.to_api_model() if mounting is not None else None,
             ),
         )

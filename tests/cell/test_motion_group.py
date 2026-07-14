@@ -246,6 +246,10 @@ def mock_motion_group():
     mock_api_client.trajectory_planning_api.plan_trajectory = AsyncMock()
     mock_api_client.virtual_controller_api = MagicMock()
     mock_api_client.virtual_controller_api.add_virtual_controller_tcp = AsyncMock()
+    mock_api_client.motion_group_api = MagicMock()
+    mock_api_client.motion_group_api.get_motion_group_description = AsyncMock()
+    mock_api_client.kinematics_api = MagicMock()
+    mock_api_client.kinematics_api.forward_kinematics = AsyncMock()
     return MotionGroup(
         api_client=mock_api_client,
         cell="test_cell",
@@ -528,3 +532,63 @@ async def test_ensure_virtual_tcp_different_rotation_types_not_equal(mock_motion
             orientation_type=tcp.orientation_type,
         ),
     )
+
+
+@pytest.mark.asyncio
+async def test_forward_kinematics_without_tcp_skips_tcp_offset(mock_motion_group):
+    """tcp=None must compute the flange pose and must not resolve any TCP offset."""
+    gripper_pose = api.models.Pose(
+        position=api.models.Vector3d([10, 20, 30]), orientation=api.models.RotationVector([0, 0, 0])
+    )
+    mock_motion_group._api_client.motion_group_api.get_motion_group_description.return_value = (
+        api.models.MotionGroupDescription(
+            motion_group_model=api.models.MotionGroupModel("test-model"),
+            operation_limits=api.models.OperationLimits(),
+            mounting=None,
+            tcps={"gripper": api.models.TcpOffset(name="gripper", pose=gripper_pose)}
+        )
+    )
+    flange_pose = api.models.Pose(
+        position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([0, 0, 0])
+    )
+    mock_motion_group._api_client.kinematics_api.forward_kinematics.return_value = MagicMock(
+        tcp_poses=[flange_pose]
+    )
+
+    result = await mock_motion_group.forward_kinematics(joints=[(0, 0, 0, 0, 0, 0)], tcp=None)
+
+    assert result == [Pose(flange_pose)]
+    request = mock_motion_group._api_client.kinematics_api.forward_kinematics.call_args.kwargs[
+        "forward_kinematics_request"
+    ]
+    assert request.tcp_offset is None
+
+
+@pytest.mark.asyncio
+async def test_forward_kinematics_with_tcp_applies_tcp_offset(mock_motion_group):
+    """tcp=<name> must resolve and forward that TCP's offset to the API request."""
+    gripper_pose = api.models.Pose(
+        position=api.models.Vector3d([10, 20, 30]), orientation=api.models.RotationVector([0, 0, 0])
+    )
+    mock_motion_group._api_client.motion_group_api.get_motion_group_description.return_value = (
+        api.models.MotionGroupDescription(
+            motion_group_model=api.models.MotionGroupModel("test-model"),
+            operation_limits=api.models.OperationLimits(),
+            mounting=None,
+            tcps={"gripper": api.models.TcpOffset(name="gripper", pose=gripper_pose)}
+        )
+    )
+    tcp_pose = api.models.Pose(
+        position=api.models.Vector3d([11, 22, 33]), orientation=api.models.RotationVector([0, 0, 0])
+    )
+    mock_motion_group._api_client.kinematics_api.forward_kinematics.return_value = MagicMock(
+        tcp_poses=[tcp_pose]
+    )
+
+    result = await mock_motion_group.forward_kinematics(joints=[(0, 0, 0, 0, 0, 0)], tcp="gripper")
+
+    assert result == [Pose(tcp_pose)]
+    request = mock_motion_group._api_client.kinematics_api.forward_kinematics.call_args.kwargs[
+        "forward_kinematics_request"
+    ]
+    assert request.tcp_offset == Pose(gripper_pose).to_api_model()
