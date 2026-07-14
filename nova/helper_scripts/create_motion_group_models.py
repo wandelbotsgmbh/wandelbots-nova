@@ -34,7 +34,6 @@ def generate_enum_source(models: list[str]) -> str:
 
 from typing import Literal
 
-
 MotionGroupModel = Literal[
 {values},
 ]

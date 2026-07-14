@@ -2,7 +2,6 @@
 
 from typing import Literal
 
-
 MotionGroupModel = Literal[
     "abb-1010_037_15",
     "abb-1100_0475_4",
