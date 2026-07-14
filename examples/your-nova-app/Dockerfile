@@ -20,6 +20,7 @@ RUN --mount=from=uv,source=/uv,target=/bin/uv \
     uv sync --no-install-project --no-dev
 
 COPY static static
+COPY README.md ./
 COPY your_nova_app your_nova_app
 
 RUN --mount=from=uv,source=/uv,target=/bin/uv \

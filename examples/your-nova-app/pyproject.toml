@@ -5,18 +5,21 @@ description = ""
 requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
-    "wandelbots-nova[novax,nova-rerun-bridge]>=3.5.3,<4",
+    "wandelbots-nova[novax,nova-rerun-bridge]>=5.7.4,<6",
     "python-decouple~=3.8",
     "requests>=2.32.3,<3",
 ]
 
+[project.scripts]
+app = "your_nova_app.register_programs:main"
+
 [dependency-groups]
 dev = [
-    "ruff>=0.14.1",
+    "ruff>=0.15.21",
 ]
 
 [tool.uv]
-package = false
+package = true
 
 [build-system]
 requires = ["hatchling"]
