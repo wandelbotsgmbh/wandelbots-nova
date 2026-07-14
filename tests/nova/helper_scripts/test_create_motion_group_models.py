@@ -5,12 +5,17 @@ an integration test that mocks the NOVA API and runs main() end-to-end.
 """
 
 import logging
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from wandelbots_api_client.v2_pydantic.exceptions import NotFoundException, ServiceException
 
-from nova.helper_scripts.create_motion_group_models import generate_enum_source, main, to_enum_value
+from nova.helper_scripts.create_motion_group_models import (
+    convert_motion_group_model_string,
+    generate_enum_source,
+    update_motion_group_models,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -39,12 +44,12 @@ OUTPUT_FILE_IMPORT_PATH = IMPORT_PATH + ".OUTPUT_PATH"
 
 class TestToEnumValue:
     def test_converts_valid_strings(self):
-        assert to_enum_value("ABB_15000_0_95_5") == "abb-15000_0_95_5"
-        assert to_enum_value("KUKA_KR250_R2700_2") == "kuka-kr250_r2700_2"
-        assert to_enum_value("Yaskawa_AR1440") == "yaskawa-ar1440"
+        assert convert_motion_group_model_string("ABB_15000_0_95_5") == "abb-15000_0_95_5"
+        assert convert_motion_group_model_string("KUKA_KR250_R2700_2") == "kuka-kr250_r2700_2"
+        assert convert_motion_group_model_string("Yaskawa_AR1440") == "yaskawa-ar1440"
 
     def test_preserves_numbers(self):
-        assert to_enum_value("FANUC_CRX10IA_L") == "fanuc-crx10ia_l"
+        assert convert_motion_group_model_string("FANUC_CRX10IA_L") == "fanuc-crx10ia_l"
 
 
 # ---------------------------------------------------------------------------
@@ -57,25 +62,22 @@ class TestGenerateEnumSource:
         models = ["KUKA_KR16_R2010_2", "ABB_1200_07_7"]
         source = generate_enum_source(models)
 
-        assert "class MotionGroupModel(StrEnum):" in source
-        assert "from enum import StrEnum" in source
-        assert '    ABB_1200_07_7 = "abb-1200_07_7"' in source
-        assert '    KUKA_KR16_R2010_2 = "kuka-kr16_r2010_2"' in source
+        assert "MotionGroupModel = Literal[" in source
+        assert '    "abb-1200_07_7",' in source
+        assert '    "kuka-kr16_r2010_2",' in source
 
     def test_output_is_sorted(self):
         models = ["KUKA_KR16_R2010_2", "ABB_1200_07_7", "FANUC_CRX10IA_L"]
         source = generate_enum_source(models)
 
-        abb_pos = source.index("ABB_1200_07_7")
-        fanuc_pos = source.index("FANUC_CRX10IA_L")
-        kuka_pos = source.index("KUKA_KR16_R2010_2")
+        abb_pos = source.index("abb-1200_07_7")
+        fanuc_pos = source.index("fanuc-crx10ia_l")
+        kuka_pos = source.index("kuka-kr16_r2010_2")
         assert abb_pos < fanuc_pos < kuka_pos
 
     def test_empty_models_list(self, caplog):
         with pytest.raises(Exception, match="API returned no models — skipping file generation."):
-            source = generate_enum_source([])
-            assert "class MotionGroupModel(StrEnum):\n    pass" in source
-            assert '= "' not in source
+            _ = generate_enum_source([])
 
     def test_contains_auto_generated_header(self):
         source = generate_enum_source(["KUKA_KR16_R2010_2"])
@@ -98,13 +100,14 @@ class TestMainIntegration:
             patch(NOVA_IMPORT_PATH, return_value=mock),
             patch(OUTPUT_FILE_IMPORT_PATH, output_file),
         ):
-            await main()
+            await update_motion_group_models()
 
         content = output_file.read_text()
-        assert "class MotionGroupModel(StrEnum):" in content
-        assert '    ABB_1200_07_7 = "abb-1200_07_7"' in content
-        assert '    KUKA_KR16_R2010_2 = "kuka-kr16_r2010_2"' in content
-        assert "Wrote 2 models" in caplog.text
+        assert "MotionGroupModel = Literal[" in content
+        assert '    "abb-1200_07_7",' in content
+        assert '    "kuka-kr16_r2010_2",' in content
+        assert "]" in content
+        assert "Wrote 2 models to " in caplog.text
 
     @pytest.mark.asyncio
     async def test_main_with_empty_api_response_does_not_write(self, tmp_path, caplog):
@@ -115,9 +118,10 @@ class TestMainIntegration:
             patch(NOVA_IMPORT_PATH, return_value=mock),
             patch(OUTPUT_FILE_IMPORT_PATH, output_file),
         ):
-            with pytest.raises(Exception, match="API returned no models — skipping file generation."):
-
-                await main()
+            with pytest.raises(
+                Exception, match="API returned no models — skipping file generation."
+            ):
+                await update_motion_group_models()
 
         assert not output_file.exists()
 
@@ -131,7 +135,7 @@ class TestMainIntegration:
             patch(OUTPUT_FILE_IMPORT_PATH, output_file),
         ):
             with pytest.raises(RuntimeError, match="API unreachable"):
-                await main()
+                await update_motion_group_models()
 
         assert not output_file.exists()
 
@@ -145,7 +149,7 @@ class TestMainIntegration:
             patch(OUTPUT_FILE_IMPORT_PATH, output_file),
         ):
             with pytest.raises(NotFoundException):
-                await main()
+                await update_motion_group_models()
 
         assert not output_file.exists()
 
@@ -159,7 +163,7 @@ class TestMainIntegration:
             patch(OUTPUT_FILE_IMPORT_PATH, output_file),
         ):
             with pytest.raises(ServiceException):
-                await main()
+                await update_motion_group_models()
 
         assert not output_file.exists()
 
@@ -176,9 +180,9 @@ class TestMainIntegrationRealAPI:
         output_file = tmp_path / "motion_group_models.py"
 
         with patch(OUTPUT_FILE_IMPORT_PATH, output_file):
-            await main()
+            await update_motion_group_models()
 
         content = output_file.read_text()
-        assert "class MotionGroupModel(StrEnum):" in content
+        assert "MotionGroupModel = Literal[" in content
         # The real API should return at least one model
-        assert '= "' in content
+        assert re.search(r'^\s*"[^"]+",$', content, re.MULTILINE)

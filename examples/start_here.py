@@ -22,7 +22,7 @@ from pydantic import Field
 import nova
 from nova import api, run_program
 from nova.actions import cartesian_ptp, circular, joint_ptp, linear
-from nova.cell import MotionGroupModel, virtual_controller
+from nova.cell import virtual_controller
 from nova.types import MotionSettings, Pose
 
 
@@ -36,7 +36,7 @@ from nova.types import MotionSettings, Pose
             virtual_controller(
                 name="kuka-kr16-r2010",
                 manufacturer=api.models.Manufacturer.KUKA,
-                type=MotionGroupModel.KUKA_KR16_R2010_2,
+                type="kuka-kr16_r2010_2",
             )
         ],
         cleanup_controllers=False,

@@ -102,7 +102,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add nova/cell/motion_group_models.py
           if ! git diff --cached --quiet; then
-            git commit -m "chore: update motion group models enum"
+            git commit -m "chore: update motion group models"
             git push origin HEAD:${{ github.head_ref }}
           fi
 
