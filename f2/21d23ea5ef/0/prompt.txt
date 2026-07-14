@@ -1,0 +1,120 @@
+tart_here  # noqa: F401  (import registers the program)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/examples/your-nova-app/your_nova_app/start_here.py", line 29, in <module>
+    @nova.program(
+     ~~~~~~~~~~~~^
+        id="start_here",  # Unique identifier of the program. If not provided, the function name will be used.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+        ),
+        ^^
+    )
+    ^
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/examples/your-nova-app/.venv/lib/python3.13/site-packages/nova/program/function.py", line 455, in decorator
+    program_obj = Program.validate(function)
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/examples/your-nova-app/.venv/lib/python3.13/site-packages/nova/program/function.py", line 74, in validate
+    raise TypeError(
+    ...<3 lines>...
+    )
+TypeError: Program function 'start' must have 'ctx' as its first parameter. Define it as 'async def start(ctx, ...):'.
+
+
+in the examples/your-nova-app update to the newest nova version changes. 
+
+also is there a simpler way to run it view uv? e.g. "uv run ." to start the app entry point
+
+---
+
+create a .env.example based on the value in the app NOVA_API=172.31.12.72
+CELL_NAME="cell"
+LOG_LEVEL=info
+
+---
+
+ic                                                                    0.0s
+ => [stage-1 6/7] COPY your_nova_app your_nova_app                                                      0.0s
+ => ERROR [stage-1 7/7] RUN --mount=from=uv,source=/uv,target=/bin/uv     --mount=type=cache,target=/r  7.4s
+------
+ > [stage-1 7/7] RUN --mount=from=uv,source=/uv,target=/bin/uv     --mount=type=cache,target=/root/.cache/uv     uv sync --locked --no-dev:
+1.910 Resolved 70 packages in 78ms
+1.998    Building your-nova-app @ file:///app
+7.144   × Failed to build `your-nova-app @ file:///app`
+7.144   ├─▶ The build backend returned an error
+7.148   ╰─▶ Call to `hatchling.build.build_editable` failed (exit status: 1)
+7.148 
+7.148       [stderr]
+7.148       Traceback (most recent call last):
+7.148         File "<string>", line 11, in <module>
+7.148         File
+7.148       "/root/.cache/uv/builds-v0/.tmpNLox95/lib/python3.12/site-packages/hatchling/build.py",
+7.148       line 83, in build_editable
+7.148           return os.path.basename(next(builder.build(directory=wheel_directory,
+7.148       versions=["editable"])))
+7.148       
+7.148       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7.148         File
+7.148       "/root/.cache/uv/builds-v0/.tmpNLox95/lib/python3.12/site-packages/hatchling/builders/plugin/interface.py",
+7.148       line 92, in build
+7.148           self.metadata.validate_fields()
+7.148         File
+7.148       "/root/.cache/uv/builds-v0/.tmpNLox95/lib/python3.12/site-packages/hatchling/metadata/core.py",
+7.148       line 266, in validate_fields
+7.148           self.core.validate_fields()
+7.148         File
+7.148       "/root/.cache/uv/builds-v0/.tmpNLox95/lib/python3.12/site-packages/hatchling/metadata/core.py",
+7.148       line 1437, in validate_fields
+7.148           getattr(self, attribute)
+7.148         File
+7.148       "/root/.cache/uv/builds-v0/.tmpNLox95/lib/python3.12/site-packages/hatchling/metadata/core.py",
+7.148       line 533, in readme
+7.148           raise OSError(message)
+7.148       OSError: Readme file does not exist: README.md
+7.148 
+7.148       hint: This usually indicates a problem with the package or the build
+7.148       environment.
+------
+Dockerfile:25
+
+getting this error when running nova app install .
+
+---
+
+1 warning found (use docker --debug to expand):
+ - CopyIgnoredFile: Attempting to Copy file "README.md" that is excluded by .dockerignore (line 23)
+Dockerfile:23
+--------------------
+  21 |     
+  22 |     COPY static static
+  23 | >>> COPY README.md ./
+  24 |     COPY your_nova_app your_nova_app
+  25 |     
+--------------------
+ERROR: failed to build: failed to solve: failed to compute cache key: failed to calculate checksum of ref 8cdec62e-b494-47b8-ae8e-2b128b332793::jckl8a3pqdlhxk9q6sj1ey23t: "/README.md": not found
+Error: exit status 1
+
+---
+
+already exists
+03944bf5bf4e: Layer already exists
+latest: digest: sha256:b48bbf9dbb2ebab6269eb68270754f4aa1d5b297838fcb99f7494362bf8a2cee size: 2618
+Error: Get "http://172.31.12.72/api/v1/cells": dial tcp 172.31.12.72:80: i/o timeout
+Usage:
+  nova app install [source] [flags]
+
+Examples:
+# install from the current directory (.nova and Dockerfile must be present)
+nova app install
+
+# install from the current directory (
+
+    do you see how I can define on which instance to deploy with nova cli?
+
+---
+
+1f823b96175: Layer already exists
+latest: digest: sha256:b48bbf9dbb2ebab6269eb68270754f4aa1d5b297838fcb99f7494362bf8a2cee size: 2618
+Error: failed to list cells: 410 Gone {"code":"ApiVersionUnsupported","message":"API v1 is no longer supported. Please migrate your API calls to v2. Refer to the migration guide for more details."}
+Usage:
+  nova app install [source] [flags]
+
+  getting this. where is v1 still used?

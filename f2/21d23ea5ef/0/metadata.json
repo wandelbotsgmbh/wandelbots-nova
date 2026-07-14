@@ -1,0 +1,148 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "f221d23ea5ef",
+  "session_id": "82665cb5-d261-40ea-9de0-a89ba278028a",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-14T14:36:43.415056Z",
+  "branch": "fix/nova-app-template",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "examples/your-nova-app/.dockerignore",
+    "examples/your-nova-app/.env.example",
+    "examples/your-nova-app/Dockerfile",
+    "examples/your-nova-app/README.md",
+    "examples/your-nova-app/pyproject.toml",
+    "examples/your-nova-app/uv.lock",
+    "examples/your-nova-app/your_nova_app/start_here.py"
+  ],
+  "agent": "Copilot CLI",
+  "model": "",
+  "turn_id": "f2ee1b4f07d3",
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-14T14:36:43.405642Z",
+    "agent_lines": 46,
+    "agent_removed": 45,
+    "human_added": 11,
+    "human_modified": 9,
+    "human_removed": 0,
+    "total_committed": 64,
+    "total_lines_changed": 111,
+    "agent_percentage": 81.98198198198197,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1696,
+      "user_lines_removed": 2,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "examples/your-nova-app/pyproject.toml": 2,
+        "examples/your-nova-app/uv.lock": 1694
+      },
+      "user_removed_per_file": {
+        "examples/your-nova-app/pyproject.toml": 2
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1745,
+      "agent_lines_removed": 51
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 1,
+      "user_lines_removed": 1,
+      "agent_lines_added": 1757,
+      "agent_lines_removed": 51,
+      "user_added_per_file": {
+        "examples/your-nova-app/.env.example": 1
+      },
+      "user_removed_per_file": {
+        "examples/your-nova-app/.env.example": 1
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 1,
+      "user_lines_removed": 1,
+      "agent_lines_added": 1758,
+      "agent_lines_removed": 51,
+      "user_added_per_file": {
+        "examples/your-nova-app/.env.example": 1
+      },
+      "user_removed_per_file": {
+        "examples/your-nova-app/.env.example": 1
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 4,
+      "user_lines_removed": 4,
+      "agent_lines_added": 1758,
+      "agent_lines_removed": 52,
+      "user_added_per_file": {
+        "examples/your-nova-app/.env.example": 1,
+        "examples/your-nova-app/.nova": 3
+      },
+      "user_removed_per_file": {
+        "examples/your-nova-app/.env.example": 1,
+        "examples/your-nova-app/.nova": 3
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1758,
+      "agent_lines_removed": 52
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 6,
+      "user_lines_removed": 2,
+      "agent_lines_added": 1758,
+      "agent_lines_removed": 52,
+      "user_added_per_file": {
+        "examples/your-nova-app/your_nova_app/start_here.py": 6
+      },
+      "user_removed_per_file": {
+        "examples/your-nova-app/your_nova_app/start_here.py": 2
+      }
+    }
+  ]
+}
