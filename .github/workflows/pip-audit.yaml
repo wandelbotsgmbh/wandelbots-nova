@@ -28,6 +28,8 @@ jobs:
         run: |
           pip install uv
           uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
+          # uv-managed venvs don't seed pip; gh-action-pip-audit needs it to inspect .venv.
+          uv pip install "pip==26.1.2" "setuptools>=83.0.0"
 
       - name: Audit dependencies
         uses: pypa/gh-action-pip-audit@v1.1.0
