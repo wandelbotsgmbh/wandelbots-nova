@@ -545,7 +545,7 @@ async def test_forward_kinematics_without_tcp_skips_tcp_offset(mock_motion_group
             motion_group_model=api.models.MotionGroupModel("test-model"),
             operation_limits=api.models.OperationLimits(),
             mounting=None,
-            tcps={"gripper": api.models.TcpOffset(name="gripper", pose=gripper_pose)}
+            tcps={"gripper": api.models.TcpOffset(name="gripper", pose=gripper_pose)},
         )
     )
     flange_pose = api.models.Pose(
@@ -575,7 +575,7 @@ async def test_forward_kinematics_with_tcp_applies_tcp_offset(mock_motion_group)
             motion_group_model=api.models.MotionGroupModel("test-model"),
             operation_limits=api.models.OperationLimits(),
             mounting=None,
-            tcps={"gripper": api.models.TcpOffset(name="gripper", pose=gripper_pose)}
+            tcps={"gripper": api.models.TcpOffset(name="gripper", pose=gripper_pose)},
         )
     )
     tcp_pose = api.models.Pose(
