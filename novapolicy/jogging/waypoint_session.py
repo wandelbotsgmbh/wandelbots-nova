@@ -55,6 +55,7 @@ class WaypointJoggingSession:
         tcp: str = "",
         mode: JoggingMode = "joint",
         stop_conditions: list[StopCondition] | None = None,
+        trace_trajectory: bool = False,
     ) -> None:
         self._motion_group = motion_group
         self._config = config
@@ -86,6 +87,16 @@ class WaypointJoggingSession:
         # For normal chunks, store raw steps/timing and build the request at
         # yield-time so timestamps are computed as late as possible.
         self._pending_request: PendingChunk | None = None
+        self._queued_chunk_count = 0
+        self._scheduled_chunk_count = 0
+        self._scheduled_until_server_ms = 0
+        self._scheduled_waypoint_timestamps: list[int] = []
+
+        # Optional in-memory diagnostic trace. It is written by PolicyExecutor
+        # after the episode, keeping file IO out of the control/state loops.
+        self._trace_trajectory = trace_trajectory
+        self._trajectory_state_trace: list[dict[str, object]] = []
+        self._trajectory_request_trace: list[dict[str, object]] = []
 
         # Task management
         self._jogging_task: asyncio.Task[None] | None = None
@@ -95,6 +106,10 @@ class WaypointJoggingSession:
         self._failed = False
         self._failure_reason: str = ""
         self._failure_exception: BaseException | None = None
+        self._waypoint_chunk_count = 0
+        self._monitor_chunk_index = 0
+        self._monitor_waypoints: list[tuple[int, list[float]]] = []
+        self._monitor_next_waypoint = 0
 
     def set_io_values_ref(self, values: dict[str, object]) -> None:
         """Set the shared IO values dict (from IOStreamCache)."""
@@ -124,9 +139,31 @@ class WaypointJoggingSession:
             return None
         return self._build_robot_state()
 
-    async def wait_ready(self) -> None:
-        """Wait until the jogging session is fully initialized and ready for waypoints."""
-        await self._ready.wait()
+    async def wait_ready(self, timeout_s: float = 10.0) -> None:
+        """Wait until the jogging session is initialized or fail if startup dies."""
+        deadline = time.monotonic() + timeout_s
+        while not self._ready.is_set():
+            if self._failed:
+                if self._failure_exception is not None:
+                    raise RuntimeError(
+                        f"Waypoint jogging failed for {self.motion_group_id}: "
+                        f"{self._failure_reason}"
+                    ) from self._failure_exception
+                raise RuntimeError(
+                    f"Waypoint jogging failed for {self.motion_group_id}: {self._failure_reason}"
+                )
+            if time.monotonic() >= deadline:
+                reason = self._failure_reason or "no ready acknowledgement from NOVA"
+                raise RuntimeError(
+                    f"Timed out waiting for waypoint jogging readiness for "
+                    f"{self.motion_group_id}: {reason}"
+                )
+            await asyncio.sleep(0.05)
+
+    @property
+    def jogging_state(self) -> str | None:
+        """Latest NOVA waypoint-jogging execution state."""
+        return self._jog_tracker.last_kind
 
     @property
     def is_running(self) -> bool:
@@ -163,6 +200,36 @@ class WaypointJoggingSession:
         return self._clock.acknowledged_elapsed_ms
 
     @property
+    def queued_chunk_count(self) -> int:
+        """Sequence number of the latest chunk queued by the executor."""
+        return self._queued_chunk_count
+
+    @property
+    def scheduled_chunk_count(self) -> int:
+        """Sequence number of the latest chunk timestamped for NOVA."""
+        return self._scheduled_chunk_count
+
+    @property
+    def scheduled_until_server_ms(self) -> int:
+        """Final NOVA session timestamp of the latest scheduled chunk."""
+        return self._scheduled_until_server_ms
+
+    @property
+    def scheduled_waypoint_timestamps(self) -> tuple[int, ...]:
+        """NOVA timestamps of the latest scheduled waypoint request."""
+        return tuple(self._scheduled_waypoint_timestamps)
+
+    @property
+    def last_server_timestamp_ms(self) -> int:
+        """Latest raw NOVA jogger-session timestamp from the state stream."""
+        return self._clock.last_server_timestamp_ms
+
+    @property
+    def estimated_server_timestamp_ms(self) -> int:
+        """Estimated current NOVA jogger-session timestamp."""
+        return self._clock.estimated_server_timestamp_ms
+
+    @property
     def speed_ratio(self) -> float:
         """Auto-computed ratio: server_time / client_time.
 
@@ -170,6 +237,16 @@ class WaypointJoggingSession:
         Returns 1.0 before server time is available.
         """
         return self._clock.speed_ratio
+
+    @property
+    def trajectory_trace(self) -> dict[str, object]:
+        """Exact controller samples and waypoint requests collected for diagnostics."""
+        return {
+            "motion_group_id": self.motion_group_id,
+            "mode": self._mode,
+            "states": self._trajectory_state_trace,
+            "requests": self._trajectory_request_trace,
+        }
 
     @property
     def failure_reason(self) -> str:
@@ -186,6 +263,9 @@ class WaypointJoggingSession:
         *,
         anchor_ms: int = NOW,
         anchor_offset_steps: int = 0,
+        server_anchor_ms: int | None = None,
+        server_dt_ms: float | None = None,
+        action_timestep: int = -1,
         **_kwargs: object,
     ) -> None:
         """Queue a new action chunk as waypoints.
@@ -206,6 +286,13 @@ class WaypointJoggingSession:
                 places step 0 one dt ahead (live single targets); a negative
                 value backdates the anchor so an already-passed step lands at
                 "now" (RTC seam stitching); ``0`` anchors exactly.
+            server_anchor_ms: Exact raw NOVA jogger-session timestamp for step
+                zero. Used by fixed-rate queue replacement to preserve the
+                timeline established by its initial bridge.
+            server_dt_ms: Exact raw controller-time waypoint spacing. Policy
+                queues use this to avoid client-wall clock-rate scaling.
+            action_timestep: Absolute policy timestep represented by ``steps[0]``.
+                Used only by the optional trajectory diagnostic trace.
         """
         if not steps:
             return
@@ -221,11 +308,16 @@ class WaypointJoggingSession:
         # Store raw chunk data. Timestamps are computed in _jogging_loop
         # immediately before yielding to the server, avoiding drift from any
         # internal await/scheduling delay between policy and stream send.
+        self._queued_chunk_count += 1
         self._pending_request = PendingChunk(
             steps=steps,
             dt_ms=effective_dt_ms,
             anchor_ms=anchor_ms,
             anchor_offset_steps=anchor_offset_steps,
+            server_anchor_ms=server_anchor_ms,
+            server_dt_ms=server_dt_ms,
+            action_timestep=action_timestep,
+            sequence=self._queued_chunk_count,
         )
 
         # Compare current robot position vs chunk first step (joint mode only).
@@ -323,6 +415,20 @@ class WaypointJoggingSession:
                 ts_ms = JoggingTimeClock.extract_from_state(state)
                 if ts_ms is not None:
                     self._clock.update(ts_ms)
+                    if self._trace_trajectory:
+                        pose = self._current_tcp_pose
+                        self._trajectory_state_trace.append(
+                            {
+                                "server_timestamp_ms": ts_ms,
+                                "joints": list(self._current_joints),
+                                "tcp": (
+                                    [*pose.position, *pose.orientation]
+                                    if pose is not None
+                                    else None
+                                ),
+                            }
+                        )
+                    self._measure_waypoint_tracking(ts_ms)
                 self._jog_tracker.update_from_state(state)
         except asyncio.CancelledError:
             # Expected on shutdown; stop quietly without logging as an error.
@@ -363,9 +469,30 @@ class WaypointJoggingSession:
             # 2. Main loop: for each server response, either send a new
             #    chunk (if ready) or sleep until one is ready.
             first_chunk = True
+            submitted_chunk: tuple[int, list[int]] | None = None
             async for response in response_stream:
                 if not self._running:
                     return
+
+                if submitted_chunk is not None:
+                    chunk_index, submitted_timestamps = submitted_chunk
+                    acknowledged_server_now_ms = self._clock.estimated_server_timestamp_ms
+                    due_count = sum(
+                        timestamp <= acknowledged_server_now_ms
+                        for timestamp in submitted_timestamps
+                    )
+                    logger.info(
+                        "%s waypoint chunk=%d acknowledged at server_now=%dms "
+                        "due=%d/%d first=%dms last=%dms",
+                        self.motion_group_id,
+                        chunk_index,
+                        acknowledged_server_now_ms,
+                        due_count,
+                        len(submitted_timestamps),
+                        submitted_timestamps[0],
+                        submitted_timestamps[-1],
+                    )
+                    submitted_chunk = None
 
                 # Signal that the session is ready on first server response.
                 # This means InitializeJoggingRequest was acknowledged and
@@ -410,7 +537,37 @@ class WaypointJoggingSession:
                     effective_dt_ms=pending.dt_ms,
                     anchor_ms=pending.anchor_ms,
                     anchor_offset_steps=pending.anchor_offset_steps,
+                    server_anchor_ms=pending.server_anchor_ms,
+                    server_dt_ms=pending.server_dt_ms,
                 )
+                self._log_waypoint_timing(request)
+                self._scheduled_chunk_count = pending.sequence
+                self._scheduled_waypoint_timestamps = [
+                    waypoint.timestamp for waypoint in request.waypoints
+                ]
+                self._scheduled_until_server_ms = self._scheduled_waypoint_timestamps[-1]
+                if self._trace_trajectory:
+                    self._trajectory_request_trace.append(
+                        {
+                            "sequence": pending.sequence,
+                            "action_timestep": pending.action_timestep,
+                            "policy_dt_ms": pending.dt_ms,
+                            "anchor_ms": pending.anchor_ms,
+                            "anchor_offset_steps": pending.anchor_offset_steps,
+                            "server_anchor_ms": pending.server_anchor_ms,
+                            "server_dt_ms": pending.server_dt_ms,
+                            "server_sample_ms": self._clock.last_server_timestamp_ms,
+                            "estimated_server_now_ms": self._clock.estimated_server_timestamp_ms,
+                            "speed_ratio": self._clock.speed_ratio,
+                            "timestamps_ms": list(self._scheduled_waypoint_timestamps),
+                            "steps": pending.steps,
+                        }
+                    )
+                submitted_chunk = (
+                    self._waypoint_chunk_count,
+                    self._scheduled_waypoint_timestamps,
+                )
+                self._start_waypoint_tracking_measurement(request)
 
                 yield api.models.ExecuteWaypointJoggingRequest(request)
 
@@ -453,6 +610,80 @@ class WaypointJoggingSession:
                 self._failure_exception = e
                 self._running = False
                 logger.error("Jogging connection lost for %s: %s", self.motion_group_id, e)
+
+    def _start_waypoint_tracking_measurement(self, request: object) -> None:
+        """Record targets so state samples can measure tracking at each deadline."""
+        waypoints = getattr(request, "waypoints", None)
+        if self._mode != "joint" or not waypoints:
+            self._monitor_waypoints = []
+            return
+        self._monitor_chunk_index = self._waypoint_chunk_count
+        self._monitor_waypoints = [
+            (waypoint.timestamp, list(waypoint.joints.root)) for waypoint in waypoints
+        ]
+        self._monitor_next_waypoint = 0
+
+    def _measure_waypoint_tracking(self, server_timestamp_ms: int) -> None:
+        """Log actual joint error when the NOVA clock crosses waypoint deadlines."""
+        if not self._monitor_waypoints or self._current_joints is None:
+            return
+        while self._monitor_next_waypoint < len(self._monitor_waypoints):
+            index = self._monitor_next_waypoint
+            target_timestamp_ms, target_joints = self._monitor_waypoints[index]
+            if server_timestamp_ms < target_timestamp_ms:
+                return
+            max_error_deg = (
+                max(
+                    abs(current - target)
+                    for current, target in zip(self._current_joints, target_joints, strict=True)
+                )
+                * 57.3
+            )
+            log = logger.info if index in {0, len(self._monitor_waypoints) - 1} else logger.debug
+            log(
+                "%s waypoint tracking chunk=%d index=%d deadline=%dms "
+                "observed=%dms lateness=%dms max_error=%.2fdeg",
+                self.motion_group_id,
+                self._monitor_chunk_index,
+                index,
+                target_timestamp_ms,
+                server_timestamp_ms,
+                server_timestamp_ms - target_timestamp_ms,
+                max_error_deg,
+            )
+            self._monitor_next_waypoint += 1
+        self._monitor_waypoints = []
+
+    def _log_waypoint_timing(self, request: object) -> None:
+        waypoints = getattr(request, "waypoints", None)
+        if not waypoints:
+            return
+        self._waypoint_chunk_count += 1
+        timestamps = [waypoint.timestamp for waypoint in waypoints]
+        server_dt_ms = timestamps[1] - timestamps[0] if len(timestamps) > 1 else 0
+        final_server_dt_ms = timestamps[-1] - timestamps[-2] if len(timestamps) > 1 else 0
+        real_dt_ms = server_dt_ms / self._clock.speed_ratio
+        final_real_dt_ms = final_server_dt_ms / self._clock.speed_ratio
+        server_sample_ms = self._clock.last_server_timestamp_ms
+        server_now_ms = self._clock.estimated_server_timestamp_ms
+        logger.info(
+            "%s waypoint chunk=%d count=%d server_sample=%dms estimated_now=%dms "
+            "first=%dms ahead=%dms last=%dms server_dt=%dms final_server_dt=%dms "
+            "speed_ratio=%.3f real_dt=%.1fms final_real_dt=%.1fms",
+            self.motion_group_id,
+            self._waypoint_chunk_count,
+            len(timestamps),
+            server_sample_ms,
+            server_now_ms,
+            timestamps[0],
+            timestamps[0] - server_now_ms,
+            timestamps[-1],
+            server_dt_ms,
+            final_server_dt_ms,
+            self._clock.speed_ratio,
+            real_dt_ms,
+            final_real_dt_ms,
+        )
 
     async def _resolve_tcp(self) -> str:
         """Get the TCP name for jogging."""

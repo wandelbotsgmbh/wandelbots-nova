@@ -3,8 +3,9 @@
 The clock keys off ``jogger_session_timestamp_ms`` from the state stream:
   * while that field stays 0 (never wired up / not yet advancing) the clock
     never syncs and ``speed_ratio`` stays 1.0 (scaling is a no-op);
-  * once it advances, ``speed_ratio`` becomes an active multiplier applied to
-    every outgoing waypoint timestamp.
+  * clock rate is measured from deltas between server and monotonic-clock
+    samples, without assuming that both clocks started together;
+  * the latest server sample is extrapolated to estimate server "now".
 """
 
 from __future__ import annotations
@@ -33,17 +34,16 @@ def test_zero_timestamp_never_syncs():
     assert clock.speed_ratio == 1.0
 
 
-def test_advancing_timestamp_syncs_and_scales():
-    """Once the server clock advances, speed_ratio becomes an active multiplier."""
+def test_advancing_timestamp_syncs_and_scales_from_clock_deltas():
+    """Clock rate comes from sample deltas, independent of the clocks' origins."""
     clock = JoggingTimeClock()
     clock.start()
-    # Simulate ~100ms of client wall-clock having elapsed.
-    clock._client_start_time = time.monotonic() - 0.100
-    # Server reports it is 200ms into the session → ratio ~= 2.0.
-    clock.update(200)
+    clock.update(1_000)
+    # Simulate 100 ms of wall time between samples while the server advances 200 ms.
+    clock._rate_reference_wall = time.monotonic() - 0.100
+    clock.update(1_200)
     assert clock.synced is True
     assert clock.speed_ratio >= 1.5
-    # Scaling now multiplies outgoing timestamps by the ratio.
     assert clock.scale_timestamp(100) == int(100 * clock.speed_ratio)
     assert clock.scale_dt(50.0) == 50.0 * clock.speed_ratio
 
@@ -52,10 +52,19 @@ def test_ratio_clamped_to_at_least_one():
     """The server is never slower than wall-clock; ratio is clamped >= 1.0."""
     clock = JoggingTimeClock()
     clock.start()
-    # Client elapsed 200ms but server only reports 50ms → raw ratio 0.25.
-    clock._client_start_time = time.monotonic() - 0.200
-    clock.update(50)
+    clock.update(1_000)
+    # Server advances 50 ms over 200 ms of wall time → raw ratio 0.25.
+    clock._rate_reference_wall = time.monotonic() - 0.200
+    clock.update(1_050)
     assert clock.speed_ratio == 1.0
+
+
+def test_estimated_server_now_extrapolates_an_aged_state_sample():
+    clock = JoggingTimeClock(speed_ratio=2.0, synced=True, max_lookahead_ms=500.0)
+    clock._last_server_ts_ms = 500
+    clock._last_server_wall = time.monotonic() - 0.100
+
+    assert 680 <= clock.estimated_server_timestamp_ms <= 730
 
 
 def test_extract_from_state_walks_execute_details():

@@ -17,6 +17,9 @@ from novapolicy.chunking import (
     NOW,
     apply_relative_mode,
     chunk_duration_s,
+    connect_action_chunk,
+    create_bridge_chunk,
+    interpolate_action_chunk_ramps,
     placement,
     trim_chunk,
 )
@@ -89,6 +92,152 @@ def test_trim_shorter_than_n_is_left_alone(caplog):
     trimmed = trim_chunk(chunk, 8)
     assert len(trimmed.joints["0@ur5e"]) == 4
     assert "Policy returned 4 steps" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# interpolate_action_chunk_ramps — allocate time for acceleration and braking
+# ---------------------------------------------------------------------------
+
+
+def test_endpoint_ramps_preserve_original_waypoints_and_remap_indices():
+    chunk = ActionChunk(
+        joints={"0@ur5e": [[0.0], [1.0], [2.0], [3.0]]},
+        dt_ms=50.0,
+    )
+
+    interpolated = interpolate_action_chunk_ramps(chunk, interpolation_steps=3)
+
+    assert [step[0] for step in interpolated.motion.joints["0@ur5e"]] == pytest.approx(
+        [0.0, 1 / 9, 4 / 9, 1.0, 2.0, 23 / 9, 26 / 9, 3.0]
+    )
+    assert interpolated.original_step_indices["0@ur5e"] == (0, 3, 4, 7)
+    assert interpolated.motion.dt_ms == 50.0
+
+
+def test_single_interval_uses_smoothstep_when_accelerating_and_braking():
+    chunk = ActionChunk(joints={"0@ur5e": [[0.0], [1.0]]}, dt_ms=50.0)
+
+    interpolated = interpolate_action_chunk_ramps(chunk, interpolation_steps=4)
+
+    assert [step[0] for step in interpolated.motion.joints["0@ur5e"]] == pytest.approx(
+        [0.0, 0.15625, 0.5, 0.84375, 1.0]
+    )
+    assert interpolated.original_step_indices["0@ur5e"] == (0, 4)
+
+
+def test_ramp_interpolation_steps_must_be_at_least_two():
+    with pytest.raises(ValueError, match="at least 2"):
+        interpolate_action_chunk_ramps(ActionChunk(), interpolation_steps=1)
+
+
+# ---------------------------------------------------------------------------
+# create_bridge_chunk — connect current state to policy step zero
+# ---------------------------------------------------------------------------
+
+
+def test_bridge_uses_policy_spacing_and_ends_at_first_joint_waypoint():
+    state = SimpleNamespace(joints=[0.0, 0.0])
+    chunk = ActionChunk(
+        joints={"0@ur5e": [[3.0, 0.0], [4.0, 0.0], [5.0, 0.0]]},
+        ios={"0@ur5e": {"do[0]": True}},
+        dt_ms=50.0,
+    )
+
+    bridge = create_bridge_chunk(chunk, {"0@ur5e": state})
+
+    assert bridge is not None
+    assert bridge.joints["0@ur5e"] == [
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [2.0, 0.0],
+        [3.0, 0.0],
+    ]
+    assert bridge.dt_ms == 50.0
+    assert bridge.ios is None
+
+
+def test_connected_chunk_has_no_duplicate_policy_boundary_or_ios():
+    state = SimpleNamespace(joints=[0.0, 0.0])
+    chunk = ActionChunk(
+        joints={"0@ur5e": [[3.0, 0.0], [4.0, 0.0], [5.0, 0.0]]},
+        ios={"0@ur5e": {"do[0]": True}},
+        dt_ms=50.0,
+    )
+
+    connected = connect_action_chunk(chunk, {"0@ur5e": state})
+
+    assert connected is not None
+    assert connected.motion.joints["0@ur5e"] == [
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [2.0, 0.0],
+        [3.0, 0.0],
+        [4.0, 0.0],
+        [5.0, 0.0],
+    ]
+    assert connected.policy_start_steps == {"0@ur5e": 3}
+    assert connected.motion.ios is None
+    assert connected.motion.dt_ms == 50.0
+
+
+def test_bridge_is_omitted_when_first_waypoint_is_within_normal_spacing():
+    state = SimpleNamespace(joints=[0.0, 0.0])
+    chunk = ActionChunk(joints={"0@ur5e": [[0.5, 0.0], [1.5, 0.0]]}, dt_ms=50.0)
+
+    assert create_bridge_chunk(chunk, {"0@ur5e": state}) is None
+
+
+def test_always_anchored_bridge_holds_current_state_before_a_near_waypoint():
+    state = SimpleNamespace(joints=[0.0, 0.0])
+    chunk = ActionChunk(joints={"0@ur5e": [[0.5, 0.0], [1.5, 0.0]]}, dt_ms=50.0)
+
+    connected = connect_action_chunk(
+        chunk,
+        {"0@ur5e": state},
+        always_anchor=True,
+    )
+
+    assert connected is not None
+    assert connected.bridge.joints["0@ur5e"] == [[0.0, 0.0], [0.5, 0.0]]
+    assert connected.motion.joints["0@ur5e"] == [
+        [0.0, 0.0],
+        [0.5, 0.0],
+        [1.5, 0.0],
+    ]
+    assert connected.policy_start_steps == {"0@ur5e": 1}
+
+
+def test_bridge_supports_tcp_translation_without_mixing_rotation_units():
+    pose = SimpleNamespace(position=[0.0, 0.0, 0.0], orientation=[0.0, 0.0, 0.0])
+    state = SimpleNamespace(pose=pose)
+    chunk = ActionChunk(
+        tcp={
+            "0@ur5e": [
+                [30.0, 0.0, 0.0, 0.3, 0.0, 0.0],
+                [40.0, 0.0, 0.0, 0.4, 0.0, 0.0],
+            ]
+        },
+        dt_ms=20.0,
+    )
+
+    bridge = create_bridge_chunk(chunk, {"0@ur5e": state})
+
+    assert bridge is not None
+    expected = [
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        [10.0, 0.0, 0.0, 0.1, 0.0, 0.0],
+        [20.0, 0.0, 0.0, 0.2, 0.0, 0.0],
+        [30.0, 0.0, 0.0, 0.3, 0.0, 0.0],
+    ]
+    for actual_step, expected_step in zip(bridge.tcp["0@ur5e"], expected, strict=True):
+        assert actual_step == pytest.approx(expected_step)
+
+
+def test_bridge_requires_at_least_two_policy_waypoints_for_spacing():
+    state = SimpleNamespace(joints=[0.0])
+    chunk = ActionChunk(joints={"0@ur5e": [[10.0]]}, dt_ms=50.0)
+
+    assert create_bridge_chunk(chunk, {"0@ur5e": state}) is None
 
 
 # ---------------------------------------------------------------------------

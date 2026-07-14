@@ -73,6 +73,14 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
 
     Rule of thumb: overlapping/RTC ⇒ absolute; plain sequential ⇒ relative."""
 
+    action_timestep: int = -1
+    """Absolute policy-queue timestep of the first action, or ``-1`` if absent.
+
+    Fixed-rate queue clients use this to preserve one action timeline across
+    NOVA chunk replacements. The executor maps timestep zero to the initial
+    bridge boundary, then places later lookaheads at the corresponding absolute
+    session timestamps instead of re-anchoring each replacement to ``now``."""
+
     seam_backdate_steps: int = 0
     """RTC seam backdate, in steps, for connecting overlapping chunks.
 

@@ -33,6 +33,10 @@ class PendingChunk:
     dt_ms: float
     anchor_ms: int = NOW
     anchor_offset_steps: int = 0
+    server_anchor_ms: int | None = None
+    server_dt_ms: float | None = None
+    action_timestep: int = -1
+    sequence: int = 0
 
 
 def make_waypoints_request(
@@ -43,12 +47,18 @@ def make_waypoints_request(
     effective_dt_ms: float,
     anchor_ms: int = NOW,
     anchor_offset_steps: int = 0,
+    server_anchor_ms: int | None = None,
+    server_dt_ms: float | None = None,
 ) -> object:
     """Build a JointWaypointsRequest or PoseWaypointsRequest at stream-yield time.
 
     Every waypoint carries an absolute server-time timestamp laid out as
     ``base + i*dt``. The only decision is where ``base`` (step 0) sits:
 
+    * ``server_anchor_ms`` set: an exact raw NOVA jogger-session timestamp,
+      used for queue replacements that must preserve an existing server timeline.
+    * ``server_dt_ms`` set: exact spacing in that raw controller timeline. This
+      bypasses client-wall clock-rate scaling for controller-timed policy queues.
     * ``anchor_ms == NOW`` (default): ``base`` is "now", read *here* at yield
       time so it cannot go stale while the chunk waits in the queue. "Now" is
       acknowledged server progress (capped), not wall-clock, so a stalled link
@@ -61,12 +71,20 @@ def make_waypoints_request(
     server has time to reach it); a negative value backdates the anchor so an
     already-passed step lands at "now" (RTC seam stitching); ``0`` anchors
     exactly. All timestamps are scaled to server-time by the clock's speed
-    ratio (the policy sends in real time).
+    ratio.
     """
-    scaled_dt_ms = clock.scale_dt(effective_dt_ms)
-    base_real_ms = clock.acknowledged_elapsed_ms if anchor_ms == NOW else anchor_ms
-    base_real_ms = max(0.0, base_real_ms + anchor_offset_steps * effective_dt_ms)
-    base_ms = clock.scale_timestamp(int(base_real_ms))
+    scaled_dt_ms = server_dt_ms if server_dt_ms is not None else clock.scale_dt(effective_dt_ms)
+    if server_anchor_ms is not None:
+        base_ms = server_anchor_ms + int(anchor_offset_steps * scaled_dt_ms)
+    elif anchor_ms == NOW:
+        # Schedule directly in the server clock domain. Converting through a
+        # client-relative session origin assumes both clocks started together;
+        # that assumption makes later chunks drift into the server's past.
+        base_ms = clock.estimated_server_timestamp_ms + int(anchor_offset_steps * scaled_dt_ms)
+    else:
+        base_real_ms = max(0.0, anchor_ms + anchor_offset_steps * effective_dt_ms)
+        base_ms = clock.scale_timestamp(int(base_real_ms))
+    base_ms = max(0, base_ms)
     timestamps = [base_ms + int(i * scaled_dt_ms) for i in range(len(steps))]
 
     if mode == "cartesian":

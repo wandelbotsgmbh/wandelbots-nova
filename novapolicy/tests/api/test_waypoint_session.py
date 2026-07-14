@@ -132,6 +132,7 @@ def _build_session(
     states: Sequence[object] = (),
     stop_conditions: list[object] | None = None,
     mode: str = "joint",
+    trace_trajectory: bool = False,
 ) -> tuple[WaypointJoggingSession, FakeJoggingServer]:
     server = FakeJoggingServer(fault=fault, raise_exc=raise_exc)
 
@@ -158,6 +159,7 @@ def _build_session(
         tcp="Flange",
         mode=mode,
         stop_conditions=stop_conditions,
+        trace_trajectory=trace_trajectory,
     )
 
     patches = [
@@ -209,12 +211,17 @@ async def test_it_initializes_the_jogging_session_before_any_waypoints():
 @pytest.mark.asyncio
 async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
     """update_chunk(step) reaches the server as a JointWaypointsRequest."""
-    session, server = _build_session()
+    session, server = _build_session(trace_trajectory=True)
     try:
         await session.start()
         await session.wait_ready()
         target = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
-        session.update_chunk(steps=[target], dt_ms=50.0, anchor_ms=0)
+        session.update_chunk(
+            steps=[target],
+            dt_ms=50.0,
+            anchor_ms=0,
+            action_timestep=7,
+        )
 
         await _wait_until(lambda: len(server.requests) >= 2)
         waypoint_req = _inner(server.requests[1])
@@ -223,6 +230,23 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
         sent = waypoint_req.waypoints[0]
         assert list(sent.joints.root) == target
         assert sent.timestamp == 0  # absolute anchor at 0, single step
+        request_trace = session.trajectory_trace["requests"]
+        assert request_trace == [
+            {
+                "sequence": 1,
+                "action_timestep": 7,
+                "policy_dt_ms": 50.0,
+                "anchor_ms": 0,
+                "anchor_offset_steps": 0,
+                "server_anchor_ms": None,
+                "server_dt_ms": None,
+                "server_sample_ms": 0,
+                "estimated_server_now_ms": 0,
+                "speed_ratio": 1.0,
+                "timestamps_ms": [0],
+                "steps": [target],
+            }
+        ]
     finally:
         server.stop()
         await session.stop()

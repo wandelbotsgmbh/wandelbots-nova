@@ -15,6 +15,13 @@ from __future__ import annotations
 import importlib
 
 from novapolicy.cameras import CameraSource, WebRTCCameras
+from novapolicy.chunking import (
+    ConnectedActionChunk,
+    InterpolatedActionChunk,
+    connect_action_chunk,
+    create_bridge_chunk,
+    interpolate_action_chunk_ramps,
+)
 from novapolicy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
 from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
 from novapolicy.jogging import JointJogger, TcpJogger, jog_joints, jog_tcp
@@ -60,10 +67,12 @@ __all__ = [
     "BoolMapping",
     "CallbackPolicyClient",
     "CameraSource",
+    "ConnectedActionChunk",
     "EmergencyStopError",
     "ExecutionResult",
     "ExecutorStatus",
     "Gr00tPolicyClient",
+    "InterpolatedActionChunk",
     "JoggingNotSupportedError",
     "JointJogger",
     "LeRobotPolicyClient",
@@ -80,6 +89,9 @@ __all__ = [
     "TcpJogger",
     "WaypointConfig",
     "WebRTCCameras",
+    "connect_action_chunk",
+    "create_bridge_chunk",
+    "interpolate_action_chunk_ramps",
     "jog_joints",
     "jog_tcp",
 ]

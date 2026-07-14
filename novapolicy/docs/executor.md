@@ -21,9 +21,10 @@ flowchart LR
 ```
 1. Observe robot state
 2. Query policy → get action chunk
-3. Send waypoints to server
-4. Wait for chunk to finish (n_steps * dt_ms)
-5. Go to 1
+3. Bridge from the observed state when the first target is farther than normal waypoint spacing
+4. Send bridge + policy waypoints as one continuous request
+5. Wait for the exact final NOVA timestamp and standstill
+6. Go to 1
 ```
 
 ### RTC mode (`policy_rate_hz=20`)
@@ -58,15 +59,16 @@ from novapolicy import PolicyExecutor, WaypointConfig
 
 # WaypointConfig: how waypoints are sent to the robot
 config = WaypointConfig(
-    n_action_steps=8,       # send only first N steps per chunk (0 = all)
     state_rate_ms=10,       # state stream update rate
 )
 
-# PolicyExecutor: controls timing
+# PolicyExecutor: controls timing and chunk transforms
 executor = PolicyExecutor(
     schema, policy,
     motion=config,
-    policy_rate_hz=-1,      # -1 = wait, 0 = ASAP, >0 = fixed Hz
+    # Omit policy_rate_hz for sequential execution.
+    # Set 0 for continuous ASAP replacement or >0 for fixed-rate replacement.
+    n_action_steps=8,       # send only first N policy steps (0 = all)
 )
 ```
 
@@ -74,24 +76,100 @@ executor = PolicyExecutor(
 
 | Value | Behavior | Use case |
 |---|---|---|
-| `-1` (default) | Wait for chunk to finish, then replan | Policies without RTC |
-| `0` | Call as fast as possible (no sleep) | Benchmarking / max throughput |
-| `>0` (e.g. `20`) | Fixed-rate overlapping calls | RTC-capable policies (e.g. GR00T) |
+| `-1` (default) | Wait for exact chunk completion and standstill, bridge to the next prediction, then replan | Sequential policies without RTC |
+| `0` | Continuously replace chunks as fast as inference allows | Continuous/RTC-capable policies |
+| `>0` (e.g. `20`) | Continuously replace chunks at a fixed rate | RTC-capable policies (e.g. GR00T) |
 
 ```python
 # Sequential (non-RTC policy, e.g. GR00T without RTC)
 executor = PolicyExecutor(
     schema, policy,
-    motion=WaypointConfig(n_action_steps=8),
+    motion=WaypointConfig(),
+    n_action_steps=8,
 )
 
 # RTC-capable policy (overlapping chunks at 20 Hz)
 executor = PolicyExecutor(
     schema, policy,
     policy_rate_hz=20,
-    motion=WaypointConfig(n_action_steps=8),
+    motion=WaypointConfig(),
+    n_action_steps=8,
 )
 ```
+
+For a sequential policy there is no reason to specify `policy_rate_hz`: its default already means
+“execute the chunk, reach standstill, observe, and infer again.” Set a non-negative value only when
+chunks are intentionally replaced continuously. The execution mode also controls bridging; there
+are no separate `wait_for_settle` or `bridge_to_first_waypoint` switches.
+
+### Bridging a distant first waypoint
+
+Sequential policies can predict a first waypoint farther from the stopped robot than the spacing
+inside the predicted chunk. With the default `policy_rate_hz=-1`, the executor automatically
+prepends an interpolated bridge to the policy motion. Genuine RTC clients do not bridge because
+they align overlapping chunks model-side. An asynchronous action-queue client can explicitly
+request a measured-state bridge for its initial lookahead; bridge and policy remain one continuous
+request and NOVA does not stop at their boundary. The initial connector always prepends the measured
+state; when interpolation is unnecessary, it is exactly ``[current, policy waypoint zero]``. The
+executor preserves the exact NOVA timestamp already assigned to policy waypoint zero at the first
+bridge boundary. That timestamp is the immutable action-timestep origin; sampling controller
+``now`` after reaching the boundary would shift and replay the trajectory. Later lookaheads replace
+waypoints at ``origin + action_timestep * policy_dt`` without another measured-state bridge or a new
+hold at ``now``. Policy queue timestamps use the raw controller timer and policy spacing directly;
+they never use client wall time or a client/server clock-rate estimate. Each replacement prepends
+the preceding published action and retains the selected action plus its immutable successor,
+creating an explicit past/current/future overlap before newly aggregated targets. Queue consumption
+uses the latest acknowledged raw controller timestamp, so actions elapsed during a delayed local
+tick are dropped. Rerun renders the three-point retained seam in Nova Violet; it is a view of the
+active overlap, not a measured-state re-anchoring request.
+
+```python
+executor = PolicyExecutor(
+    schema,
+    policy,
+    interpolate_chunk_ramps=True,
+)
+```
+
+The generic `novapolicy.connect_action_chunk(chunk, states)` transform measures the largest spatial
+interval between consecutive policy waypoints. If the robot-to-first-waypoint distance exceeds that
+interval, it creates enough interpolated waypoints that every bridge interval is no larger. The
+first bridge waypoint holds the observed current state; interpolation starts at the following
+timestamp so request transport cannot shorten the first movement interval.
+
+Bridge and policy motion are submitted as one continuous waypoint request using the policy chunk's
+`dt_ms`. Policy waypoint zero appears once at the boundary, so NOVA does not enter standstill there.
+The connected motion carries no IO actions; the executor uses the exact scheduled NOVA timestamp of
+policy waypoint zero to fire the original IO and computed actions at the boundary. It then waits for
+the combined request's final timestamp and standstill. In Rerun, the bridge is a persistent Nova
+Violet line with an endpoint marker; policy output remains orange and the measured TCP trail remains
+green. `novapolicy.create_bridge_chunk` remains available when only the interpolated prefix is
+needed. Joint distance
+is measured in joint space; TCP translation and rotation-vector spacing are handled separately.
+Chunks with fewer than two motion waypoints provide no spacing reference and are not bridged unless
+the client explicitly requires the initial queue anchor. Bridging is part of sequential mode and is
+disabled for overlapping RTC execution after its initial timeline has been established.
+
+### Acceleration and braking interpolation
+
+A settled executor intentionally lets every submitted waypoint request end, so every request starts
+and finishes at zero velocity. `interpolate_chunk_ramps=True` replaces the first and final waypoint
+intervals with three same-`dt_ms` intervals by default:
+
+- the first interval uses quadratic ease-in (increasing displacement),
+- the final interval uses quadratic ease-out (decreasing displacement),
+- a single interval uses smoothstep so both endpoint velocities approach zero.
+
+All original waypoints remain in the request. The generic
+`novapolicy.interpolate_action_chunk_ramps(...)` helper returns both the interpolated motion and an
+original-index → interpolated-index mapping. The executor uses that mapping to keep deferred IO and
+computed actions aligned with policy waypoint zero after a bridge. Configure the subdivision count
+with `ramp_interpolation_steps`; each added point retains the original `dt_ms`, intentionally
+increasing request duration. This is for settled chunks only and must not be combined with
+fixed-rate/RTC overlap.
+
+The policy API currently has no episode-final signal. Consequently, settled execution brakes every
+request endpoint rather than trying to guess which prediction will be the episode's final chunk.
 
 Higher rates give smoother overlapping but require faster inference.
 The server requires continuous waypoint updates — if the buffer empties
@@ -114,8 +192,11 @@ client sends:    timestamps = [start_ms * ratio, start_ms * ratio + dt * ratio, 
 server receives: timestamps aligned with its internal clock
 ```
 
-This auto-synchronization ensures the robot moves at real-time speed regardless
-of any clock drift between client and server.
+This auto-synchronization applies to relative/``now``-anchored jogging. An
+asynchronous policy queue is different: its first bridge assigns an exact raw
+controller timestamp to action zero, and every replacement uses
+``origin + action_timestep * policy_dt``. Queue timestamps therefore do not use
+client wall time or speed-ratio scaling.
 
 ### Trajectory-absolute timestamps
 

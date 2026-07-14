@@ -109,16 +109,30 @@ async with Nova(config=NovaConfig(host="http://<nova-host>")) as nova:
         ),
     ])
 
+    from novapolicy.lerobot import load_execution_settings
+
+    # This config must be visible to the NOVA client. The model weights may
+    # remain at a server-only path.
+    execution = load_execution_settings("./my_lerobot_policy/config.json")
+
     policy = LeRobotPolicyClient(
         server_address="<lerobot-server-host>:8080",
         pretrained_name_or_path="/models/my_lerobot_policy",  # path on the LeRobot server
         policy_type="act",
         fps=15,
-        actions_per_chunk=8,
+        playback_speed=1.0,
+        actions_per_chunk=execution.chunk_size,
         device="cuda",
     )
 
-    executor = PolicyExecutor(schema, policy, n_action_steps=8, timeout_s=10)
+    executor = PolicyExecutor(
+        schema,
+        policy,
+        policy_rate_hz=-1,
+        n_action_steps=execution.n_action_steps,
+        interpolate_chunk_ramps=True,
+        timeout_s=80,
+    )
     result = await executor.run()
 ```
 
@@ -172,12 +186,141 @@ timestamps; `LeRobotPolicyClient` does not use those timestamps. It decodes the 
 tensors into NOVA `ActionChunk`s and sets the chunk `dt_ms` from this client-side `fps`.
 `PolicyExecutor` then uses that `dt_ms` when scheduling the returned chunk.
 
+### `playback_speed`
+
+Explicit physical playback speed relative to the dataset rate:
+
+```python
+playback_speed=0.75  # execute 25% slower: 15 Hz dataset actions use 88.89 ms intervals
+```
+
+The dataset frequency remains `fps=15`; only the physical `ActionChunk.dt_ms` is scaled:
+
+```text
+dt_ms = 1000 / (fps * playback_speed)
+```
+
+Keep this at `1.0` for nominal dataset timing. Values below `1.0` are useful when the NOVA
+best-effort waypoint tracker follows the learned actions more aggressively than the original data
+collection controller.
+
+### Checkpoint execution settings
+
+LeRobot checkpoints define both values needed for ACT chunk execution:
+
+- `chunk_size`: number of actions predicted by the model
+- `n_action_steps`: number of predicted actions intended for execution before replanning
+
+Load them rather than duplicating magic numbers:
+
+```python
+from novapolicy.lerobot import load_execution_settings
+
+settings = load_execution_settings("./pretrained_model")
+# settings.chunk_size == 11
+# settings.n_action_steps == 8
+```
+
+The source can be a local checkpoint directory, a direct `config.json` path, or a Hugging Face
+model id. If `pretrained_name_or_path` names a path that exists only on a remote inference server,
+the NOVA client cannot inspect it: LeRobot's current async RPC has no checkpoint-metadata method.
+Provide a client-local copy of `config.json` or set both values explicitly.
+
+The UR3 example performs this discovery automatically. Explicit CLI values take precedence:
+
+```text
+--actions-per-chunk 11 --n-action-steps 8
+```
+
 ### `actions_per_chunk`
 
-Number of action steps requested from the server.
+Number of action steps requested from the server. For ACT, use the checkpoint's `chunk_size` so the
+full prediction remains available for logging and visualization. `PolicyExecutor.n_action_steps`
+then limits execution to the checkpoint's intended execution horizon.
 
 The LeRobot async server does not infer this. It is part of LeRobot's `RemotePolicyConfig`, and the
 server slices `policy.predict_action_chunk(...)` to the requested length.
+
+### Settled ACT chunks
+
+For NOVA waypoint jogging, execute the checkpoint-defined ACT execution horizon and wait for NOVA
+to report that its waypoint buffer reached standstill before the next inference:
+
+```python
+PolicyExecutor(
+    schema,
+    policy,
+    policy_rate_hz=-1,
+    n_action_steps=settings.n_action_steps,
+    interpolate_chunk_ramps=True,
+)
+```
+
+This prevents the policy observation from being captured while the robot is still moving and avoids
+executing the lower-confidence tail beyond the checkpoint's configured execution horizon. The
+default sequential mode (`policy_rate_hz=-1`) automatically waits for exact NOVA standstill and, if
+ACT's first target is farther away than the spacing inside its executed horizon, prepends a
+same-`dt_ms` interpolated bridge to one continuous motion request. IO and computed actions fire when
+NOVA's server clock reaches policy waypoint zero; the
+robot does not stop at that boundary. Endpoint interpolation allocates additional same-`dt_ms`
+intervals for acceleration and braking of each settled request. See
+[`docs/executor.md`](../docs/executor.md#bridging-a-distant-first-waypoint).
+
+### `use_async_queue`
+
+Enable this only when the robot transport can track LeRobot's fixed-rate client queue:
+
+```python
+from novapolicy.lerobot import AsyncQueueAggregation, LeRobotPolicyClient
+
+policy = LeRobotPolicyClient(
+    ...,
+    use_async_queue=True,
+    async_queue_aggregation=AsyncQueueAggregation.WEIGHTED_AVERAGE,
+    async_queue_refill_threshold=0.75,
+)
+```
+
+Aggregation is applied only when an old and a new action target the same future timestep:
+
+| Mode | Merge |
+|---|---|
+| `WEIGHTED_AVERAGE` | `0.3 * old + 0.7 * new` (LeRobot default) |
+| `LATEST_ONLY` | `new` |
+| `AVERAGE` | arithmetic mean of every prediction received for the timestep |
+| `CONSERVATIVE` | `0.7 * old + 0.3 * new` |
+
+The generic client retains LeRobot's weighted-average default. The physical UR3 example defaults to
+`AVERAGE`; repeated plug-task runs showed lower peak path curvature without the delayed transition
+caused by conservative aggregation.
+
+The client normally consumes one action each policy control tick, requests a refill when 75% of the
+previous chunk remains by default, and merges overlapping actions using the selected enum mode.
+Refills use LeRobot's `must_go` flag because the server's default one-radian observation similarity
+tolerance would otherwise defer most ACT inference until queue depletion. Configure
+`PolicyExecutor` with `policy_rate_hz=fps` and `n_action_steps=0`.
+
+NOVA's jogger clock advances independently of the Python control loop. Before consuming an action,
+the executor maps the latest acknowledged raw NOVA controller timestamp to the absolute LeRobot
+timestep; if local work delayed a tick, the client drops every action whose execution time elapsed.
+Threshold-triggered inference remains asynchronous while NOVA executes its published lookahead. It
+is merged on a later controller-synchronized tick instead of blocking after a timestep has already
+been selected. The client then prepends the predecessor from NOVA's published trajectory and retains
+the selected action plus its immutable successor. The replacement therefore contains an exact
+past/current/future seam before aggregation begins. IO remains sourced from the selected current
+action, not the prepended predecessor.
+
+Between inference updates the client consumes actions internally without resending a shrinking
+tail, so existing NOVA waypoints keep their original timeline. The initial queue prediction receives
+a measured-state bridge and execution waits for its exact policy-zero boundary. The timestamp
+already assigned to policy waypoint zero becomes the immutable action-timestep origin. Later merged
+lookaheads use ``origin + action_timestep * policy_dt`` directly in the raw controller-timer domain.
+Client wall time, server/client speed-ratio estimation, and post-boundary re-origining are not part of
+queue timestamp calculation. Only each integer timestamp sent to NOVA is quantized. The overlapping
+prefix is retained instead of being restarted from a measured-state hold at ``now``. This prevents
+both catch-up motion and repeated zero-velocity braking/acceleration. In Rerun, the three-point
+retained replacement seam is shown in Nova Violet while fresh policy output remains orange. This is
+still LeRobot async ACT queue execution, not model-side RTC.
 
 ### `state_overrides`
 
@@ -239,8 +382,9 @@ The LeRobot async server flow, implemented inside `LeRobotPolicyClient`, is:
 1. `Ready` when the policy client connects
 2. `SendPolicyInstructions` during the optional policy `prepare(...)` step, while the executor is
    still in `CONNECTING`
-3. `SendObservations` for each policy step
-4. `GetActions` to receive the action chunk
+3. `SendObservations` with the latest consumed action timestep
+4. `GetActions` in a background refill task
+5. Consume one queued action per control tick and blend overlapping future timesteps
 
 `PolicyExecutor` triggers this indirectly by calling the `PolicyClient` methods; it does not send
 LeRobot RPCs itself. The executor switches to `EXECUTING` after preparation, so

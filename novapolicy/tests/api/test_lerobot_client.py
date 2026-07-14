@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import pickle
 from types import SimpleNamespace
@@ -14,6 +15,7 @@ import pytest
 from novapolicy.schema import BoolMapping, Observation, PolicySchema
 
 client_module = pytest.importorskip("novapolicy.lerobot.client")
+AsyncQueueAggregation = client_module.AsyncQueueAggregation
 LeRobotPolicyClient = client_module.LeRobotPolicyClient
 
 
@@ -35,11 +37,15 @@ class _TimedObservation:
 
 
 class _TimedAction:
-    def __init__(self, values: list[float]) -> None:
+    def __init__(self, values: list[float], timestep: int = 0) -> None:
         self._values = np.asarray(values, dtype=np.float32)
+        self._timestep = timestep
 
     def get_action(self) -> np.ndarray:
         return self._values
+
+    def get_timestep(self) -> int:
+        return self._timestep
 
 
 class _Message:
@@ -61,6 +67,10 @@ class _FakeStub:
         self.policy_setup_calls = 0
         self.policy_setup: _RemotePolicyConfig | None = None
         self.observations: list[_TimedObservation] = []
+        self.action_values = [
+            [10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 1.0],
+            [20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 0.0],
+        ]
 
     def Ready(self, _request: object, *, timeout: float) -> _Message:  # noqa: N802
         self.ready_calls += 1
@@ -77,9 +87,10 @@ class _FakeStub:
         return _Message()
 
     def GetActions(self, _request: object, *, timeout: float) -> _Message:  # noqa: N802
+        start = self.observations[-1].timestep
         actions = [
-            _TimedAction([10.0, 11.0, 12.0, 13.0, 14.0, 15.0]),
-            _TimedAction([20.0, 21.0, 22.0, 23.0, 24.0, 25.0]),
+            _TimedAction(values, timestep=start + index)
+            for index, values in enumerate(self.action_values)
         ]
         return _Message(pickle.dumps(actions))
 
@@ -107,7 +118,9 @@ def fake_lerobot(monkeypatch: pytest.MonkeyPatch) -> _FakeLeRobot:
             fake.stub = _FakeStub(channel)
             return fake.stub
 
-    def send_bytes_in_chunks(data: bytes, message_cls: type[_Message], *, silent: bool) -> list[_Message]:
+    def send_bytes_in_chunks(
+        data: bytes, message_cls: type[_Message], *, silent: bool
+    ) -> list[_Message]:
         return [message_cls(data=data)]
 
     monkeypatch.setattr(client_module, "grpc", fake.grpc)
@@ -153,6 +166,41 @@ def _schema(mg: MagicMock, image_source: object | None = None) -> PolicySchema:
     )
 
 
+def test_playback_speed_scales_physical_action_timing() -> None:
+    client = LeRobotPolicyClient(
+        "127.0.0.1:8080",
+        "model",
+        fps=15,
+        playback_speed=0.75,
+        actions_per_chunk=11,
+    )
+
+    assert client.dt_ms == pytest.approx(1000.0 / 15.0 / 0.75)
+
+
+@pytest.mark.parametrize("playback_speed", [0.0, -0.5])
+def test_playback_speed_must_be_positive(playback_speed: float) -> None:
+    with pytest.raises(ValueError, match="playback_speed must be positive"):
+        LeRobotPolicyClient(
+            "127.0.0.1:8080",
+            "model",
+            fps=15,
+            playback_speed=playback_speed,
+            actions_per_chunk=11,
+        )
+
+
+@pytest.mark.parametrize("threshold", [0.0, -0.1, 1.1])
+def test_async_queue_refill_threshold_must_be_a_fraction(threshold: float) -> None:
+    with pytest.raises(ValueError, match="async_queue_refill_threshold must be in"):
+        LeRobotPolicyClient(
+            "127.0.0.1:8080",
+            "model",
+            actions_per_chunk=11,
+            async_queue_refill_threshold=threshold,
+        )
+
+
 @pytest.mark.asyncio
 async def test_get_actions_sends_lerobot_async_protocol_and_decodes_chunk(
     fake_lerobot: _FakeLeRobot,
@@ -185,6 +233,7 @@ async def test_get_actions_sends_lerobot_async_protocol_and_decodes_chunk(
             [20.0, 21.0, 22.0, 23.0, 24.0, 25.0],
         ]
     }
+    assert chunk.ios == {mg.id: {"digital_out[0]": True}}
 
     assert fake_lerobot.stub is not None
     assert fake_lerobot.stub.ready_calls == 1
@@ -223,6 +272,178 @@ async def test_get_actions_sends_lerobot_async_protocol_and_decodes_chunk(
         6.0,
     ]
     np.testing.assert_array_equal(observation.observation["cam_scene_1"], image)
+
+
+@pytest.mark.parametrize(
+    ("aggregation", "expected"),
+    [
+        (AsyncQueueAggregation.WEIGHTED_AVERAGE, 7.6),
+        (AsyncQueueAggregation.LATEST_ONLY, 10.0),
+        (AsyncQueueAggregation.AVERAGE, 6.0),
+        (AsyncQueueAggregation.CONSERVATIVE, 4.4),
+    ],
+)
+def test_async_queue_aggregation_modes(
+    aggregation: object,
+    expected: float,
+) -> None:
+    client = LeRobotPolicyClient(
+        "127.0.0.1:8080",
+        "model",
+        actions_per_chunk=4,
+        use_async_queue=True,
+        async_queue_aggregation=aggregation,
+    )
+    client._latest_action_timestep = 0
+    client._action_queue = [(3, np.asarray([2.0], dtype=np.float32))]
+
+    assert client._merge_timed_actions([_TimedAction([10.0], timestep=3)])
+    assert client._action_queue[0][1][0] == pytest.approx(expected)
+
+
+@pytest.mark.asyncio
+async def test_async_queue_refills_and_blends_overlapping_timesteps(
+    fake_lerobot: _FakeLeRobot,
+) -> None:
+    mg = _mg()
+    schema = _schema(mg)
+    image = np.zeros((120, 160, 3), dtype=np.uint8)
+    client = LeRobotPolicyClient(
+        "127.0.0.1:8080",
+        "model",
+        fps=15,
+        actions_per_chunk=4,
+        use_async_queue=True,
+    )
+
+    client.enable_trajectory_trace()
+    await client.connect([mg.id])
+    assert fake_lerobot.stub is not None
+    fake_lerobot.stub.action_values = [
+        [float(index)] * 6 + [float(index % 2)] for index in range(4)
+    ]
+
+    first = await client.get_actions(
+        {mg.id: _state((0.0,) * 6)},
+        schema,
+        images={"cam_scene_1": image},
+        io_values={"digital_out[0]": False},
+    )
+    assert [step[0] for step in first.joints[mg.id]] == [0.0, 1.0, 2.0, 3.0]
+    assert first.action_timestep == 0
+    assert fake_lerobot.stub.observations[-1].timestep == 0
+    assert fake_lerobot.stub.observations[-1].must_go is True
+
+    second = await client.get_actions(
+        {mg.id: _state((1.0,) * 6)},
+        schema,
+        images={"cam_scene_1": image},
+        io_values={"digital_out[0]": False},
+    )
+
+    # Refill runs asynchronously while NOVA executes its published lookahead.
+    # Waiting here would age the controller timestep selected before inference.
+    assert second.joints == {}
+    assert second.ios == {mg.id: {"digital_out[0]": True}}
+
+    while client._pending_actions_task is not None and not client._pending_actions_task.done():
+        await asyncio.sleep(0)
+    assert fake_lerobot.stub.observations[-1].timestep == 1
+    assert fake_lerobot.stub.observations[-1].must_go is True
+    third = await client.get_actions(
+        {mg.id: _state((2.0,) * 6)},
+        schema,
+        images={"cam_scene_1": image},
+        io_values={"digital_out[0]": False},
+    )
+
+    # The next tick publishes the completed refill. Published timestep 1 is
+    # prepended, selected timestep 2 and successor timestep 3 stay frozen, and
+    # timestep 4 extends the queue. IO comes from selected timestep 2.
+    assert third.action_timestep == 1
+    assert [step[0] for step in third.joints[mg.id]] == pytest.approx([1.0, 2.0, 3.0, 3.0])
+    assert third.ios == {mg.id: {"digital_out[0]": False}}
+    assert [timestep for timestep, _action in client._action_queue] == [3, 4]
+    assert client._action_queue[0][1][0] == pytest.approx(3.0)
+    assert client._action_queue[1][1][0] == pytest.approx(3.0)
+    raw_chunks = client.trajectory_trace["raw_action_chunks"]
+    assert len(raw_chunks) == 2
+    assert raw_chunks[0]["first_timestep"] == 0
+    assert [action["timestep"] for action in raw_chunks[0]["actions"]] == [0, 1, 2, 3]
+
+    await client.close()
+
+
+def test_average_aggregation_is_a_true_running_mean_per_timestep() -> None:
+    client = LeRobotPolicyClient(
+        "127.0.0.1:8080",
+        "model",
+        actions_per_chunk=4,
+        use_async_queue=True,
+        async_queue_aggregation=AsyncQueueAggregation.AVERAGE,
+    )
+    client._latest_action_timestep = 0
+    client._action_queue = [(3, np.asarray([2.0], dtype=np.float32))]
+
+    assert client._merge_timed_actions([_TimedAction([10.0], timestep=3)])
+    assert client._merge_timed_actions([_TimedAction([12.0], timestep=3)])
+
+    assert client._action_queue[0][1][0] == pytest.approx((2.0 + 10.0 + 12.0) / 3.0)
+    assert client._action_prediction_counts == {3: 3}
+
+
+def test_async_queue_synchronization_drops_actions_elapsed_on_nova() -> None:
+    client = LeRobotPolicyClient(
+        "127.0.0.1:8080",
+        "model",
+        actions_per_chunk=4,
+        use_async_queue=True,
+    )
+    client._latest_action_timestep = 1
+    client._action_queue = [
+        (2, np.asarray([2.0], dtype=np.float32)),
+        (3, np.asarray([3.0], dtype=np.float32)),
+        (4, np.asarray([4.0], dtype=np.float32)),
+    ]
+
+    client.synchronize_action_timestep(4)
+
+    assert client._latest_action_timestep == 3
+    assert [timestep for timestep, _action in client._action_queue] == [4]
+
+
+@pytest.mark.asyncio
+async def test_async_queue_keeps_sending_observations_while_refill_is_pending(
+    fake_lerobot: _FakeLeRobot,
+) -> None:
+    mg = _mg()
+    client = LeRobotPolicyClient(
+        "127.0.0.1:8080",
+        "model",
+        fps=15,
+        actions_per_chunk=4,
+        use_async_queue=True,
+    )
+    await client.connect([mg.id])
+
+    action_1 = np.asarray([1.0] * 7, dtype=np.float32)
+    action_2 = np.asarray([2.0] * 7, dtype=np.float32)
+    client._action_chunk_size = 4
+    client._action_queue = [(1, action_1), (2, action_2)]
+    client._pending_actions_task = asyncio.create_task(asyncio.sleep(10, result=[]))
+
+    chunk = await client._get_async_queue_actions(
+        {"arm_1": 1.0},
+        [(mg.id, slice(0, 6))],
+        [],
+    )
+
+    assert chunk.joints == {}
+    assert fake_lerobot.stub is not None
+    assert fake_lerobot.stub.observations[-1].timestep == 1
+    assert fake_lerobot.stub.observations[-1].must_go is False
+
+    await client.close()
 
 
 @pytest.mark.asyncio

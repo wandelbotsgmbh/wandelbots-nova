@@ -51,6 +51,35 @@ def test_absolute_mode_scales_both_the_base_and_the_step_spacing():
     assert _joint_timestamps(req) == [200, 220, 240]
 
 
+def test_raw_server_anchor_preserves_an_existing_timeline_without_rescaling_base():
+    clock = JoggingTimeClock(speed_ratio=2.0)
+    steps = [[0.0] * 6, [0.0] * 6, [0.0] * 6]
+    req = make_waypoints_request(
+        clock,
+        "joint",
+        steps=steps,
+        effective_dt_ms=10.0,
+        server_anchor_ms=135,
+    )
+
+    assert _joint_timestamps(req) == [135, 155, 175]
+
+
+def test_controller_timed_policy_spacing_bypasses_client_wall_clock_scaling():
+    clock = JoggingTimeClock(speed_ratio=2.0)
+    steps = [[0.0] * 6, [0.0] * 6, [0.0] * 6]
+    req = make_waypoints_request(
+        clock,
+        "joint",
+        steps=steps,
+        effective_dt_ms=10.0,
+        server_anchor_ms=135,
+        server_dt_ms=10.0,
+    )
+
+    assert _joint_timestamps(req) == [135, 145, 155]
+
+
 # ---------------------------------------------------------------------------
 # "Now" anchor with a +1-step offset: the sequential off-by-one
 # ---------------------------------------------------------------------------
@@ -70,6 +99,28 @@ def test_now_anchor_one_step_ahead_starts_one_dt_after_now_not_at_now():
     )
     # First waypoint is dt in the future, NOT 0 — the server interpolates toward it.
     assert _joint_timestamps(req) == [10, 20, 30]
+
+
+def test_synced_now_anchor_uses_server_clock_without_shared_origin_assumption():
+    """Server NOW is based on the latest server sample, not client elapsed time."""
+    import time as _t
+
+    clock = JoggingTimeClock(speed_ratio=2.0, synced=True)
+    clock._client_start_time = _t.monotonic() - 0.100
+    clock._last_server_ts_ms = 5_000
+    clock._last_server_wall = _t.monotonic()
+    req = make_waypoints_request(
+        clock,
+        "joint",
+        steps=[[0.0] * 6, [0.0] * 6],
+        effective_dt_ms=10.0,
+        anchor_ms=NOW,
+        anchor_offset_steps=1,
+    )
+
+    timestamps = _joint_timestamps(req)
+    assert 5_020 <= timestamps[0] <= 5_022
+    assert timestamps[1] - timestamps[0] == 20
 
 
 # ---------------------------------------------------------------------------
