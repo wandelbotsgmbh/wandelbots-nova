@@ -265,7 +265,7 @@ def log_tcp_pose(
 
     # Log TCP and tool asset
     tcp_entity_path = f"/motion/{motion_group_id}/tcp_position"
-    rr.log(tcp_entity_path, rr.Transform3D(clear=False, axis_length=100))
+    rr.log(tcp_entity_path, rr.TransformAxes3D(axis_length=100))
     if tool_asset:
         rr.log(tcp_entity_path, rr.Asset3D(path=tool_asset), static=True)
 

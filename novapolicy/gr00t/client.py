@@ -121,6 +121,7 @@ class Gr00tPolicyClient(PolicyClient):
         server_state_keys = _extract_modality_keys(config, "state")
         schema_state_keys = {m.key for m in schema.joint_mappings}
         schema_state_keys |= {m.key for m in schema.tcp_mappings}
+        schema_state_keys |= {m.key for m in schema.obs_io_mappings}
         missing_state = server_state_keys - schema_state_keys
         if missing_state:
             errors.append(f"Missing state observations: {sorted(missing_state)}")

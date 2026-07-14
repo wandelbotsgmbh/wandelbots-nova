@@ -1,6 +1,42 @@
 # CHANGELOG
 
 
+## v5.7.4 (2026-07-10)
+
+### Bug Fixes
+
+- Add start_on_io and pause_on_io params to TrajectoryCursor (#445)
+  ([#445](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/445),
+  [`3b997bf`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3b997bf382f77d2a9d4c58db27eb7ea97d56587d))
+
+
+## v5.7.3 (2026-07-08)
+
+### Chores
+
+- Upgrade rerun-sdk to 0.34.0 (#443)
+  ([#443](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/443),
+  [`5c00fa4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5c00fa416c00ea22b61e5fbc534d384ce1d41357))
+
+
+## v5.7.2 (2026-07-06)
+
+### Bug Fixes
+
+- Rerun visualization for DH theta robot meshes (#439)
+  ([#439](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/439),
+  [`bbb8e5e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bbb8e5e55b89be64889ae35c9f7547b36830b257))
+
+
+## v5.7.1 (2026-07-06)
+
+### Bug Fixes
+
+- GR00T schema validation for IO state observations (#438)
+  ([#438](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/438),
+  [`9487296`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/948729631ff075ca547e6af333d526a30c2c8264))
+
+
 ## v5.7.0 (2026-07-01)
 
 ### Features

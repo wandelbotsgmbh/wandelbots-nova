@@ -92,6 +92,22 @@ async def _state_stream_from(
     await asyncio.Future()
 
 
+def _make_start_on_io(io: str = "IN#1") -> api.models.StartOnIO:
+    return api.models.StartOnIO(
+        io=api.models.IOBooleanValue(io=io, value=True),
+        comparator=api.models.Comparator.COMPARATOR_EQUALS,
+        io_origin=api.models.IOOrigin.CONTROLLER,
+    )
+
+
+def _make_pause_on_io(io: str = "OUT#900") -> api.models.PauseOnIO:
+    return api.models.PauseOnIO(
+        io=api.models.IOBooleanValue(io=io, value=True),
+        comparator=api.models.Comparator.COMPARATOR_EQUALS,
+        io_origin=api.models.IOOrigin.CONTROLLER,
+    )
+
+
 def _make_cursor(
     num_actions: int = 3,
     initial_location: float = 0.0,
@@ -586,4 +602,91 @@ class TestCursorDetachBehaviour:
         await asyncio.sleep(0)
 
         assert future.cancelled(), "detach() must cancel the pending operation future"
+        cursor._initialize_task.cancel()
+
+
+# ---------------------------------------------------------------------------
+# Intent.to_commands() – start_on_io / pause_on_io attachment
+# ---------------------------------------------------------------------------
+
+
+class TestIntentToCommandsIoParams:
+    """start_on_io/pause_on_io only exist on StartMovementRequest, never on
+    PauseMovementRequest."""
+
+    def test_forward_intent_carries_start_on_io_and_pause_on_io(self):
+        start_io = _make_start_on_io()
+        pause_io = _make_pause_on_io()
+        intent = Intent(
+            operation_type=OperationType.FORWARD, start_on_io=start_io, pause_on_io=pause_io
+        )
+        commands = intent.to_commands()
+
+        assert len(commands) == 1
+        command = commands[0]
+        assert isinstance(command, api.models.StartMovementRequest)
+        assert command.direction == api.models.Direction.DIRECTION_FORWARD
+        assert command.start_on_io is start_io
+        assert command.pause_on_io is pause_io
+
+    def test_backward_intent_carries_start_on_io_and_pause_on_io(self):
+        start_io = _make_start_on_io()
+        pause_io = _make_pause_on_io()
+        intent = Intent(
+            operation_type=OperationType.BACKWARD, start_on_io=start_io, pause_on_io=pause_io
+        )
+        commands = intent.to_commands()
+
+        assert len(commands) == 1
+        command = commands[0]
+        assert isinstance(command, api.models.StartMovementRequest)
+        assert command.direction == api.models.Direction.DIRECTION_BACKWARD
+        assert command.start_on_io is start_io
+        assert command.pause_on_io is pause_io
+
+    def test_pause_intent_never_carries_io_params(self):
+        """Even if an Intent is (incorrectly) constructed with IO params on a
+        PAUSE operation, to_commands() must not attach them – PauseMovementRequest
+        has no such fields at all."""
+        intent = Intent(
+            operation_type=OperationType.PAUSE,
+            start_on_io=_make_start_on_io(),
+            pause_on_io=_make_pause_on_io(),
+        )
+        commands = intent.to_commands()
+
+        assert len(commands) == 1
+        assert isinstance(commands[0], api.models.PauseMovementRequest)
+        assert not hasattr(commands[0], "start_on_io")
+        assert not hasattr(commands[0], "pause_on_io")
+
+
+# ---------------------------------------------------------------------------
+# forward_to_next_action / backward_to_previous_action – boundary skip
+# ---------------------------------------------------------------------------
+
+
+class TestBoundarySkipIgnoresIoParams:
+    """At trajectory boundaries, forward_to_next_action/backward_to_previous_action
+    return immediately without commanding any movement – start_on_io/pause_on_io
+    must be silently ignored rather than queued for a command that never sends."""
+
+    async def test_forward_to_next_action_at_end_ignores_start_on_io(self):
+        cursor = _make_cursor(num_actions=3, initial_location=3.0)  # already at end
+        future = cursor.forward_to_next_action(start_on_io=_make_start_on_io())
+
+        assert future.done()
+        result = future.result()
+        assert result.final_location == 3.0
+        assert cursor._pending_intent is None
+        cursor._initialize_task.cancel()
+
+    async def test_backward_to_previous_action_at_start_ignores_pause_on_io(self):
+        cursor = _make_cursor(num_actions=3, initial_location=0.0)  # already at start
+        future = cursor.backward_to_previous_action(pause_on_io=_make_pause_on_io())
+
+        assert future.done()
+        result = future.result()
+        assert result.final_location == 0.0
+        assert cursor._pending_intent is None
         cursor._initialize_task.cancel()

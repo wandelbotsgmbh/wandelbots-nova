@@ -1,6 +1,6 @@
 [project]
 name = "wandelbots-nova"
-version = "5.7.0"
+version = "5.7.4"
 description = "Official Python SDK for the Wandelbots Nova"
 authors = [
     { name = "Wandelbots GmbH" },
@@ -35,7 +35,7 @@ dependencies = [
 
 [project.optional-dependencies]
 nova-rerun-bridge = [
-    "rerun-sdk==0.26.2",
+    "rerun-sdk==0.34.0",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",
@@ -57,7 +57,7 @@ novapolicy = [
     "requests>=2.33.1",
 ]
 benchmark = [
-    "rerun-sdk==0.26.2",
+    "rerun-sdk==0.34.0",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",
@@ -70,6 +70,10 @@ create-motion-group-models = "nova.helper_scripts.create_motion_group_models:upd
 wandelscript = "wandelscript.cli:app"
 ws = "wandelscript.cli:app"
 novax = "novax.cli:main"
+
+
+
+
 
 
 
@@ -260,6 +264,10 @@ upload_to_vcs_release = true
 
 [tool.ruff.lint.isort]
 known-first-party = ["nova", "nova_rerun_bridge", "novax"]
+
+
+
+
 
 
 
