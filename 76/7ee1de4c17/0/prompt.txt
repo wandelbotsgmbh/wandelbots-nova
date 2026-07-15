@@ -1,0 +1,321 @@
+tart_here  # noqa: F401  (import registers the program)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/examples/your-nova-app/your_nova_app/start_here.py", line 29, in <module>
+    @nova.program(
+     ~~~~~~~~~~~~^
+        id="start_here",  # Unique identifier of the program. If not provided, the function name will be used.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+        ),
+        ^^
+    )
+    ^
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/examples/your-nova-app/.venv/lib/python3.13/site-packages/nova/program/function.py", line 455, in decorator
+    program_obj = Program.validate(function)
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/examples/your-nova-app/.venv/lib/python3.13/site-packages/nova/program/function.py", line 74, in validate
+    raise TypeError(
+    ...<3 lines>...
+    )
+TypeError: Program function 'start' must have 'ctx' as its first parameter. Define it as 'async def start(ctx, ...):'.
+
+
+in the examples/your-nova-app update to the newest nova version changes. 
+
+also is there a simpler way to run it view uv? e.g. "uv run ." to start the app entry point
+
+---
+
+create a .env.example based on the value in the app NOVA_API=172.31.12.72
+CELL_NAME="cell"
+LOG_LEVEL=info
+
+---
+
+ic                                                                    0.0s
+ => [stage-1 6/7] COPY your_nova_app your_nova_app                                                      0.0s
+ => ERROR [stage-1 7/7] RUN --mount=from=uv,source=/uv,target=/bin/uv     --mount=type=cache,target=/r  7.4s
+------
+ > [stage-1 7/7] RUN --mount=from=uv,source=/uv,target=/bin/uv     --mount=type=cache,target=/root/.cache/uv     uv sync --locked --no-dev:
+1.910 Resolved 70 packages in 78ms
+1.998    Building your-nova-app @ file:///app
+7.144   × Failed to build `your-nova-app @ file:///app`
+7.144   ├─▶ The build backend returned an error
+7.148   ╰─▶ Call to `hatchling.build.build_editable` failed (exit status: 1)
+7.148 
+7.148       [stderr]
+7.148       Traceback (most recent call last):
+7.148         File "<string>", line 11, in <module>
+7.148         File
+7.148       "/root/.cache/uv/builds-v0/.tmpNLox95/lib/python3.12/site-packages/hatchling/build.py",
+7.148       line 83, in build_editable
+7.148           return os.path.basename(next(builder.build(directory=wheel_directory,
+7.148       versions=["editable"])))
+7.148       
+7.148       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7.148         File
+7.148       "/root/.cache/uv/builds-v0/.tmpNLox95/lib/python3.12/site-packages/hatchling/builders/plugin/interface.py",
+7.148       line 92, in build
+7.148           self.metadata.validate_fields()
+7.148         File
+7.148       "/root/.cache/uv/builds-v0/.tmpNLox95/lib/python3.12/site-packages/hatchling/metadata/core.py",
+7.148       line 266, in validate_fields
+7.148           self.core.validate_fields()
+7.148         File
+7.148       "/root/.cache/uv/builds-v0/.tmpNLox95/lib/python3.12/site-packages/hatchling/metadata/core.py",
+7.148       line 1437, in validate_fields
+7.148           getattr(self, attribute)
+7.148         File
+7.148       "/root/.cache/uv/builds-v0/.tmpNLox95/lib/python3.12/site-packages/hatchling/metadata/core.py",
+7.148       line 533, in readme
+7.148           raise OSError(message)
+7.148       OSError: Readme file does not exist: README.md
+7.148 
+7.148       hint: This usually indicates a problem with the package or the build
+7.148       environment.
+------
+Dockerfile:25
+
+getting this error when running nova app install .
+
+---
+
+1 warning found (use docker --debug to expand):
+ - CopyIgnoredFile: Attempting to Copy file "README.md" that is excluded by .dockerignore (line 23)
+Dockerfile:23
+--------------------
+  21 |     
+  22 |     COPY static static
+  23 | >>> COPY README.md ./
+  24 |     COPY your_nova_app your_nova_app
+  25 |     
+--------------------
+ERROR: failed to build: failed to solve: failed to compute cache key: failed to calculate checksum of ref 8cdec62e-b494-47b8-ae8e-2b128b332793::jckl8a3pqdlhxk9q6sj1ey23t: "/README.md": not found
+Error: exit status 1
+
+---
+
+already exists
+03944bf5bf4e: Layer already exists
+latest: digest: sha256:b48bbf9dbb2ebab6269eb68270754f4aa1d5b297838fcb99f7494362bf8a2cee size: 2618
+Error: Get "http://172.31.12.72/api/v1/cells": dial tcp 172.31.12.72:80: i/o timeout
+Usage:
+  nova app install [source] [flags]
+
+Examples:
+# install from the current directory (.nova and Dockerfile must be present)
+nova app install
+
+# install from the current directory (
+
+    do you see how I can define on which instance to deploy with nova cli?
+
+---
+
+1f823b96175: Layer already exists
+latest: digest: sha256:b48bbf9dbb2ebab6269eb68270754f4aa1d5b297838fcb99f7494362bf8a2cee size: 2618
+Error: failed to list cells: 410 Gone {"code":"ApiVersionUnsupported","message":"API v1 is no longer supported. Please migrate your API calls to v2. Refer to the migration guide for more details."}
+Usage:
+  nova app install [source] [flags]
+
+  getting this. where is v1 still used?
+
+---
+
+do we really need fastapi & uvicorn deps in novax. if not we could put novax into the sdk and get rid of the extra install. 
+
+evaluate that
+
+---
+
+Explore the `wandelbots-nova` SDK repo at /Users/cbiering/home/dev/wandelbots/wandelbots-nova to answer an architecture question: does the `novax` package really depend on FastAPI and uvicorn, and could novax be merged into the core SDK to remove the `[novax]` optional-install extra?
+
+Investigate and report thoroughly:
+
+1. **How the `[novax]` extra is defined** in the root /Users/cbiering/home/dev/wandelbots/wandelbots-nova/pyproject.toml. Quote the `[project.optional-dependencies]` (or equivalent) entries — which packages are in the `novax` extra (fastapi, uvicorn, etc.), and any other extras (nova-rerun-bridge, etc.). Also note base `dependencies`.
+
+2. **Every place fastapi / uvicorn / starlette is imported** across the whole repo (novax/, nova/, wandelscript/, novapolicy/). Use grep for `import fastapi`, `from fastapi`, `import uvicorn`, `starlette`, `pydantic`. List each file and what it uses (e.g. APIRouter, FastAPI, Depends, uvicorn.run).
+
+3. **What novax/ actually contains** — list the files in novax/ and summarize each module's purpose (novax.py, program_manager.py, api/, cli.py, config.py). Identify which parts are FastAPI-coupled vs framework-agnostic.
+
+4. **How `nova` core lazily exposes Novax** — look at nova/__init__.py `__getattr__` for Novax and any lazy-import pattern, and whether core `nova` imports novax anywhere at module load (which would create a hard dependency).
+
+5. **Whether uvicorn is used only as a dev/run server** — is `uvicorn.run` called inside novax, or only in the example app's register_programs.py? Is uvicorn actually needed by the library or just the app entrypoint?
+
+6. **Weight of fastapi/uvicorn as always-on deps** — note if fastapi/starlette/uvicorn are heavy or pull large transitive deps, and whether the SDK is meant to be lightweight for non-server users (check README / any comments in nova/__init__.py about keeping novax optional).
+
+7. Any tests or CLI (novax/cli.py, `nova app` scaffolding) that depend on fastapi/uvicorn.
+
+Report file paths with line numbers and quote the key pyproject sections and import lines. Do NOT modify anything — read-only.
+
+---
+
+cant we make the wrapper loose? so that if we import Novax from nova it throws an error when fastapi and uvicorn are not installed?
+
+---
+
+do you see other improvements on how to make the usage easier. I want to add as less steps for the user as possible to get programs into the system. help me brainstorm
+
+---
+
+I'm brainstorming how to reduce friction for developers getting robot programs into the Wandelbots NOVA system via the `novax` app framework. Explore /Users/cbiering/home/dev/wandelbots/wandelbots-nova and map the CURRENT end-to-end developer journey so I can identify friction points. Read-only, report thoroughly with file paths + line numbers and quote key code.
+
+Cover:
+
+1. **`novax` public API** — read /Users/cbiering/home/dev/wandelbots/wandelbots-nova/novax/novax.py fully. What does the `Novax` class do? How does a user register programs (methods like `register_program`, auto-discovery, decorators)? How does `.serve()` work? Does it own/create the FastAPI app or accept an external one? What endpoints does it expose (from novax/api/programs.py)?
+
+2. **The `novax` CLI** — read /Users/cbiering/home/dev/wandelbots/wandelbots-nova/novax/cli.py. What does `novax run <module>` do? Does it auto-discover @nova.program functions in a file/module and serve them without any boilerplate? What args does it take (host, port, cell)?
+
+3. **The scaffold app** the `nova app create` produces — examine /Users/cbiering/home/dev/wandelbots/wandelbots-nova/examples/your-nova-app fully: register_programs.py (the boilerplate FastAPI setup), __main__.py, .nova, Dockerfile, pyproject.toml. How many files / lines of boilerplate must a user touch to add one program and deploy it?
+
+4. **The `@nova.program` decorator** — read /Users/cbiering/home/dev/wandelbots/wandelbots-nova/nova/program/function.py (esp. the decorator, ProgramContext, ProgramPreconditions, preconditions like virtual_controller). What must a user specify (id, name, preconditions, viewer)? What's required vs optional?
+
+5. **Deploy path** — how does `nova app install` connect the built image to programs showing up in the system? Is there any way to register a single program without building a Docker image (dev loop)? Note `novax run` vs `nova app install`.
+
+6. **Auto-registration mechanism** — how do @nova.program functions get discovered? Is it import-side-effect based (importing the module registers into a global registry)? Where is that registry? (search nova/program for a global registry / registration on decoration.)
+
+7. Any existing conveniences: does `Novax` auto-import a programs package/folder? Is there a `Novax(app).include_programs("module")` or directory auto-scan? Does `novax run` accept a directory?
+
+Report the concrete steps a user takes today from "I wrote a plan_and_execute function" to "it runs in the NOVA system", counting files touched and boilerplate lines. Highlight anything that looks like avoidable friction.
+
+---
+
+how do we get rid of fastapi in #2? how does serve work?
+
+---
+
+ok, implement this. also implement the scanning of a dir. on default scan everything under /programs but make this configurable in Novax. also imported programs still should be registered (also when not lying under programs/)
+
+---
+
+[Terminal 05ea625b-9234-4b41-ba04-0ba7e4fdf1e5 notification: command completed. The terminal has been cleaned up.]
+Terminal output:
+
+wandelbots-nova on  fix/nova-app-template [$!] is 📦 v5.7.4 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  PYTHONPATH=. uv run pytest -rs -q tests/novax/test_auto_register.py -m "not integration"
+warning: The package `typer==0.19.2` does not have an extra named `all`
+      Built wandelbots-nova @ file:///Users/cbiering/home/dev/wandelbots/wandelb
+Uninstalled 1 package in 1ms
+Installed 1 package in 2ms
+error: Failed to spawn: `pytest`
+  Caused by: No such file or directory (os error 2)
+
+wandelbots-nova on  fix/nova-app-template [$!] is 📦 v5.7.4 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  PYTHONPATH=. uv run python -m pytest -rs -q tests/novax/test_auto_register.py -m "not integration"
+.........................                                                [100%]
+=============================== warnings summary ===============================
+nova/types/motion_settings.py:8
+  /Users/cbiering/home/dev/wandelbots/wandelbots-nova/nova/types/motion_settings.py:8: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class MotionSettings(pydantic.BaseModel):
+
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+  /Users/cbiering/home/dev/wandelbots/wandelbots-nova/nova/types/motion_settings.py:86: DeprecationWarning: deprecated
+    return self.position_zone_radius
+
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+  /Users/cbiering/home/dev/wandelbots/wandelbots-nova/nova/types/motion_settings.py:91: DeprecationWarning: deprecated
+    return self.min_blending_velocity
+
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+25 passed, 18 warnings in 0.39s
+
+wandelbots-nova on  fix/nova-app-template [$!] is 📦 v5.7.4 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com took 3s 
+❯  uv run ty check novax/novax.py novax/cli.py
+novax/novax.py:305:48: warning[unused-ignore-comment] Unused `ty: ignore` directive
+Found 1 diagnostic
+
+wandelbots-nova on  fix/nova-app-template [$!] is 📦 v5.7.4 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  PYTHONPATH=. uv run python -m pytest -rs -q tests/novax -m "not integration"
+..............................................                           [100%]
+=============================== warnings summary ===============================
+nova/types/motion_settings.py:8
+  /Users/cbiering/home/dev/wandelbots/wandelbots-nova/nova/types/motion_settings.py:8: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class MotionSettings(pydantic.BaseModel):
+
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+  /Users/cbiering/home/dev/wandelbots/wandelbots-nova/nova/types/motion_settings.py:86: DeprecationWarning: deprecated
+    return self.position_zone_radius
+
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+  /Users/cbiering/home/dev/wandelbots/wandelbots-nova/nova/types/motion_settings.py:91: DeprecationWarning: deprecated
+    return self.min_blending_velocity
+
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/novax/api/test_programs.py::test_start_program_without_parameters
+tests/novax/api/test_programs.py::test_start_program_not_found
+tests/novax/api/test_programs.py::test_stop_program_success
+tests/novax/api/test_programs.py::test_stop_program_success
+tests/novax/test_auto_register.py::test_auto_register_registers_all
+tests/novax/test_program_manager.py::test_stop_running_program
+tests/novax/test_program_manager.py::test_stop_running_program
+tests/novax/test_program_manager.py::test_stop_running_program
+tests/novax/test_program_manager.py::test_stop_running_program
+  /Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/lib/python3.12/site-packages/nats/aio/transport.py:205: DeprecationWarning: parameter 'timeout' of type 'float' is deprecated, please use 'timeout=ClientWSTimeout(ws_close=...)'
+    self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+46 passed, 19 deselected, 27 warnings in 40.89s
+2026-07-15 10:33:19 [DEBUG] nova.core.gateway: NOVA API client initialized with user agent Wandelbots-Nova-Python-SDK/5.7.4
+2026-07-15 10:33:19 [WARNING] nova.program.function: The provided NOVA instance is not connected. Use `from nova import run_program` and run your program via `run_program(my_program, ...)`.OR provide an opened NOVA instance via `nova=...`.
+2026-07-15 10:33:19.297 | INFO     | nova.program.runner:_set_program_state:425 - Set state of program long_running_program run 29b6bfe2-df83-4dc9-b95b-598691f0259e to ProgramRunState.PREPARING
+2026-07-15 10:33:19.297 | INFO     | nova.program.runner:_set_program_state:425 - Set state of program long_running_program run 29b6bfe2-df83-4dc9-b95b-598691f0259e to ProgramRunState.RUNNING
+--- Logging error in Loguru Handler #0 ---
+Record was: {'elapsed': datetime.timedelta(seconds=41, microseconds=955264), 'exception': None, 'extra': {}, 'file': (name='runner.py', path='/Users/cbiering/home/dev/wandelbots/wandelbots-nova/nova/program/runner.py'), 'function': '_set_program_state', 'level': (name='INFO', no=20, icon='ℹ️'), 'line': 425, 'message': 'Set state of program long_running_program run 29b6bfe2-df83-4dc9-b95b-598691f0259e to ProgramRunState.COMPLETED', 'module': 'runner', 'name': 'nova.program.runner', 'process': (id=96746, name='MainProcess'), 'thread': (id=6275444736, name='ProgramRunner'), 'time': datetime(2026, 7, 15, 10, 33, 20, 391279, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))}
+Traceback (most recent call last):
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/lib/python3.12/site-packages/loguru/_handler.py", line 206, in emit
+    self._sink.write(str_record)
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/lib/python3.12/site-packages/loguru/_simple_sinks.py", line 16, in write
+    self._stream.write(message)
+ValueError: I/O operation on closed file.
+--- End of logging error ---
+--- Logging error in Loguru Handler #0 ---
+Record was: {'elapsed': datetime.timedelta(seconds=41, microseconds=957644), 'exception': None, 'extra': {}, 'file': (name='runner.py', path='/Users/cbiering/home/dev/wandelbots/wandelbots-nova/nova/program/runner.py'), 'function': '_run_program', 'level': (name='INFO', no=20, icon='ℹ️'), 'line': 565, 'message': 'Program long_running_program run 29b6bfe2-df83-4dc9-b95b-598691f0259e finished. Run teardown routine...', 'module': 'runner', 'name': 'nova.program.runner', 'process': (id=96746, name='MainProcess'), 'thread': (id=6275444736, name='ProgramRunner'), 'time': datetime(2026, 7, 15, 10, 33, 20, 393659, tzinfo=datetime.timezone(datetime.timedelta(seconds=7200), 'CEST'))}
+Traceback (most recent call last):
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/lib/python3.12/site-packages/loguru/_handler.py", line 206, in emit
+    self._sink.write(str_record)
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/lib/python3.12/site-packages/loguru/_simple_sinks.py", line 16, in write
+    self._stream.write(message)
+ValueError: I/O operation on closed file.
+--- End of logging error ---
+
+---
+
+check the ../novaflow repo and the skaffold config. can we have something like this for the app? there I can change something in an actions node and its hot relaoded on the instance. can we do something like this?
+
+---
+
+no, I need the app on nova to make the program available. so we need skaffold to update hte app on changes
