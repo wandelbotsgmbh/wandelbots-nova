@@ -150,6 +150,7 @@ async def replay_episode(ctx: nova.ProgramContext):
         timeout_s=duration_s + 5.0,
         policy_rate_hz=20,
         motion=WaypointConfig(state_rate_ms=10),
+        acceleration_and_braking_override=None,
     )
     print(f"Replaying {len(actions)} steps ({duration_s:.1f}s)...")
     result = await executor.run()

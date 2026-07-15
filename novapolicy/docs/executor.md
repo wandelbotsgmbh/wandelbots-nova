@@ -101,6 +101,7 @@ executor = PolicyExecutor(
     policy_rate_hz=20,
     motion=WaypointConfig(),
     n_action_steps=8,
+    acceleration_and_braking_override=None,
 )
 ```
 
@@ -123,23 +124,31 @@ through `novapolicy.connect_action_chunk(...)` and `novapolicy.create_bridge_chu
 ### Optional acceleration and braking override
 
 A settled executor intentionally lets every submitted waypoint request end, so every request starts
-and finishes at zero velocity. Additional endpoint interpolation is disabled by default. Enable it
-with one grouped override:
+and finishes at zero velocity. By default, the executor replaces the first and final waypoint
+intervals with three same-`dt_ms` intervals for acceleration and braking. Customize or disable this
+through the grouped override:
 
 ```python
 from novapolicy import AccelerationAndBrakingOverride, PolicyExecutor
 
-executor = PolicyExecutor(
+# Use four intervals instead of the default three.
+custom = PolicyExecutor(
     schema,
     policy,
     acceleration_and_braking_override=AccelerationAndBrakingOverride(
-        interpolation_steps=3,
+        interpolation_steps=4,
     ),
+)
+
+# Preserve policy chunks without endpoint interpolation.
+disabled = PolicyExecutor(
+    schema,
+    policy,
+    acceleration_and_braking_override=None,
 )
 ```
 
-The override replaces the first and final waypoint intervals with the configured number of
-same-`dt_ms` intervals:
+The interpolation behaves as follows:
 
 - the first interval uses quadratic ease-in (increasing displacement),
 - the final interval uses quadratic ease-out (decreasing displacement),
@@ -149,9 +158,9 @@ All original waypoints remain in the request. The generic
 `novapolicy.interpolate_action_chunk_ramps(...)` helper returns both the interpolated motion and an
 original-index → interpolated-index mapping. The executor uses that mapping to keep deferred IO and
 computed actions aligned with policy waypoint zero after a bridge. Each added point retains the
-original `dt_ms`, intentionally increasing request duration. Leave
-`acceleration_and_braking_override` as `None` to preserve the policy chunk unchanged. The override
-is for settled chunks only and must not be combined with continuous replacement.
+original `dt_ms`, intentionally increasing request duration. Pass
+`acceleration_and_braking_override=None` to preserve the policy chunk unchanged. Continuous
+replacement must disable the override because its chunks do not end at standstill.
 
 ### Mutable lookahead smoothing
 

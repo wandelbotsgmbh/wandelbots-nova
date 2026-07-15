@@ -15,7 +15,6 @@ from novapolicy import (
     PolicySchema,
     RTCConfig,
     TcpFormat,
-    WaypointConfig,
 )
 
 schema = PolicySchema(
@@ -34,7 +33,11 @@ schema = PolicySchema(
 client = Gr00tPolicyClient(host="gpu-server", port=5555, dt_ms=66.7, rtc=RTCConfig())
 
 executor = PolicyExecutor(
-    schema, client, policy_rate_hz=20, motion=WaypointConfig(n_action_steps=8)
+    schema,
+    client,
+    policy_rate_hz=20,
+    n_action_steps=8,
+    acceleration_and_braking_override=None,
 )
 result = await executor.run()
 ```
@@ -68,7 +71,7 @@ sed -i 's/model_pred = self.model.get_action(\*\*collated_inputs)/model_pred = s
 ### Client-side usage
 
 ```python
-from novapolicy import Gr00tPolicyClient, RTCConfig, PolicyExecutor, WaypointConfig
+from novapolicy import Gr00tPolicyClient, PolicyExecutor, RTCConfig
 
 # Enable RTC
 client = Gr00tPolicyClient(
@@ -80,7 +83,11 @@ client = Gr00tPolicyClient(
 
 # Must use policy_rate_hz > 0 for overlapping chunks
 executor = PolicyExecutor(
-    schema, client, policy_rate_hz=20, motion=WaypointConfig(n_action_steps=8)
+    schema,
+    client,
+    policy_rate_hz=20,
+    n_action_steps=8,
+    acceleration_and_braking_override=None,
 )
 ```
 

@@ -27,6 +27,7 @@ from novapolicy.io import IOStreamManager
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.policy_client import PolicyClient
 from novapolicy.types import (
+    AccelerationAndBrakingOverride,
     ActionChunk,
     EmergencyStopError,
     MotionError,
@@ -41,13 +42,14 @@ if TYPE_CHECKING:
     from nova.types import RobotState
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.schema import PolicySchema
-    from novapolicy.types import AccelerationAndBrakingOverride, StopCondition
+    from novapolicy.types import StopCondition
 
 logger = logging.getLogger(__name__)
 
 _ASYNC_SEAM_STEPS = 4
 _ASYNC_REPLACEMENT_LEAD_STEPS = 1
 _DEFAULT_WAYPOINT_CONFIG = WaypointConfig()
+_DEFAULT_ACCELERATION_AND_BRAKING_OVERRIDE = AccelerationAndBrakingOverride()
 
 
 class Phase(StrEnum):
@@ -109,7 +111,8 @@ class PolicyExecutor:
         motion: WaypointConfig = _DEFAULT_WAYPOINT_CONFIG,
         policy_rate_hz: float = -1,
         n_action_steps: int = 0,
-        acceleration_and_braking_override: AccelerationAndBrakingOverride | None = None,
+        acceleration_and_braking_override: AccelerationAndBrakingOverride
+        | None = _DEFAULT_ACCELERATION_AND_BRAKING_OVERRIDE,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
         trajectory_trace_path: str | Path | None = None,
     ) -> None:
@@ -138,9 +141,10 @@ class PolicyExecutor:
                 have higher prediction uncertainty and are discarded.
                 The policy still predicts the full action_horizon (e.g. 16)
                 which remains available to asynchronous policy clients.
-            acceleration_and_braking_override: Optional endpoint interpolation
-                settings for settled execution. When provided, allocates additional
-                time for acceleration and braking of every submitted action chunk.
+            acceleration_and_braking_override: Endpoint interpolation settings
+                for settled execution. Defaults to three intervals for acceleration
+                and braking. Pass a custom override to change the interval count or
+                ``None`` to disable interpolation.
             start_joint_position: Optional mapping of motion group to joint pose
                 to PTP-move to before starting waypoint jogging.
             trajectory_trace_path: Optional JSON output containing every policy
@@ -174,7 +178,10 @@ class PolicyExecutor:
         # deliberately ends at standstill. It does not apply to continuously
         # replaced chunks.
         if self._acceleration_and_braking_override is not None and self._policy_rate_hz >= 0:
-            msg = "acceleration_and_braking_override requires settled wait-for-chunk mode"
+            msg = (
+                "acceleration_and_braking_override requires settled wait-for-chunk mode; "
+                "pass None for continuous execution"
+            )
             raise ValueError(msg)
 
         if self._policy_rate_hz < 0 and self._policy.rtc is not None:

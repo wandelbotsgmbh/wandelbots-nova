@@ -256,6 +256,7 @@ async def dual_arm_policy(ctx: ProgramContext):
         timeout_s=10.0,
         policy_rate_hz=20,
         n_action_steps=8,
+        acceleration_and_braking_override=None,
     )
 
     print("Running policy for 10s...")

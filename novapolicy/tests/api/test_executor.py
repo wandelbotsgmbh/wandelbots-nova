@@ -264,6 +264,7 @@ async def test_bridge_and_policy_are_sent_as_one_continuous_chunk(robot: _Robot)
         _schema(),
         _callback(policy),
         timeout_s=1.0,
+        acceleration_and_braking_override=None,
     )
 
     await executor.run()
@@ -297,6 +298,7 @@ async def test_continuous_mode_does_not_bridge_chunks(robot: _Robot):
         _callback(policy),
         timeout_s=1.0,
         policy_rate_hz=0,
+        acceleration_and_braking_override=None,
     )
     await executor.run()
 
@@ -317,7 +319,13 @@ async def test_continuous_async_queue_policy_requests_a_measured_state_bridge(ro
         )
 
     policy = _TestPolicy(get_actions, requires_bridge=True)
-    executor = PolicyExecutor(_schema(), policy, timeout_s=1.0, policy_rate_hz=20)
+    executor = PolicyExecutor(
+        _schema(),
+        policy,
+        timeout_s=1.0,
+        policy_rate_hz=20,
+        acceleration_and_braking_override=None,
+    )
     await executor.run()
 
     first_send = robot.session.update_chunk.call_args_list[0].kwargs
@@ -379,7 +387,13 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
     policy = _TestPolicy(get_actions, requires_bridge=True)
     robot.session.speed_ratio = 1.09
     robot.session.update_chunk.side_effect = acknowledge_chunk
-    executor = PolicyExecutor(_schema(), policy, timeout_s=1.0, policy_rate_hz=100)
+    executor = PolicyExecutor(
+        _schema(),
+        policy,
+        timeout_s=1.0,
+        policy_rate_hz=100,
+        acceleration_and_braking_override=None,
+    )
 
     await executor.run()
 
@@ -445,7 +459,6 @@ async def test_connected_chunk_defers_io_and_computed_action_to_policy_boundary(
         schema,
         _callback(policy),
         timeout_s=1.0,
-        acceleration_and_braking_override=AccelerationAndBrakingOverride(),
     )
     run_task = asyncio.create_task(executor.run())
 
@@ -520,6 +533,7 @@ async def test_policy_prepare_time_does_not_count_towards_execution_timeout(robo
         motion=WaypointConfig(),
         timeout_s=0.05,
         policy_rate_hz=0,
+        acceleration_and_braking_override=None,
     )
     policy.executor = executor
 
@@ -749,4 +763,10 @@ def test_rtc_without_overlapping_placement_is_rejected():
 def test_rtc_with_overlapping_placement_is_accepted():
     """RTC + a non-negative policy_rate_hz is the valid combination."""
     policy = _TestPolicy(_hold_action, rtc=object())
-    PolicyExecutor(_schema(), policy, motion=WaypointConfig(), policy_rate_hz=20)  # no raise
+    PolicyExecutor(
+        _schema(),
+        policy,
+        motion=WaypointConfig(),
+        policy_rate_hz=20,
+        acceleration_and_braking_override=None,
+    )  # no raise

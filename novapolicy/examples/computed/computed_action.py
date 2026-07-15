@@ -123,6 +123,7 @@ async def computed_action_example(ctx: ProgramContext):
         CallbackPolicyClient(mock_policy),
         timeout_s=5.0,
         policy_rate_hz=20,
+        acceleration_and_braking_override=None,
     )
 
     print("Running for 5s — watch for [computed action] lines...")

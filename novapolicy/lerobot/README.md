@@ -83,7 +83,6 @@ Optional LeRobot server timing flags:
 from nova import Nova
 from nova.config import NovaConfig
 from novapolicy import (
-    AccelerationAndBrakingOverride,
     BoolMapping,
     LeRobotPolicyClient,
     Observation,
@@ -133,7 +132,6 @@ async with Nova(config=NovaConfig(host="http://<nova-host>")) as nova:
         policy,
         policy_rate_hz=-1,
         n_action_steps=execution.n_action_steps,
-        acceleration_and_braking_override=AccelerationAndBrakingOverride(),
         timeout_s=80,
     )
     result = await executor.run()
@@ -253,7 +251,6 @@ PolicyExecutor(
     policy,
     policy_rate_hz=-1,
     n_action_steps=settings.n_action_steps,
-    acceleration_and_braking_override=AccelerationAndBrakingOverride(),
 )
 ```
 
@@ -300,7 +297,9 @@ The client normally consumes one action each policy control tick, requests a ref
 previous chunk remains by default, and merges overlapping actions using the selected enum mode.
 Refills use LeRobot's `must_go` flag because the server's default one-radian observation similarity
 tolerance would otherwise defer most ACT inference until queue depletion. Configure
-`PolicyExecutor` with `policy_rate_hz=fps` and `n_action_steps=0`.
+`PolicyExecutor` with `policy_rate_hz=fps`, `n_action_steps=0`, and
+`acceleration_and_braking_override=None` because continuously replaced chunks do not brake at each
+endpoint.
 
 NOVA's jogger clock advances independently of the Python control loop. Before consuming an action,
 the executor maps the latest acknowledged raw NOVA controller timestamp to the absolute LeRobot
