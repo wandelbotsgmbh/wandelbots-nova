@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from rerun import RecordingStream
 
 import rerun as rr
 import rerun.blueprint as rrb
@@ -11,6 +14,8 @@ import rerun.blueprint as rrb
 def send_blueprint(
     motion_group_ids: list[str],
     camera_names: list[str],
+    *,
+    recording: RecordingStream | None = None,
 ) -> None:
     """Send a Rerun blueprint with 3D view, camera panels, joints, and text logs."""
 
@@ -60,5 +65,6 @@ def send_blueprint(
             layout,
             rrb.TimePanel(state="expanded", timeline="policy_time"),
             collapse_panels=True,
-        )
+        ),
+        recording=recording,
     )

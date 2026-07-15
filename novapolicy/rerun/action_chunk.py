@@ -6,6 +6,11 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from novapolicy.rerun.constants import (
+    BRIDGE_COLOR_END,
+    BRIDGE_COLOR_START,
+    BRIDGE_ENDPOINT_COLOR,
+    BRIDGE_ENDPOINT_RADIUS_UI,
+    BRIDGE_WIDTH_UI,
     CHUNK_COLOR_END,
     CHUNK_COLOR_START,
     CHUNK_TAIL_COLOR,
@@ -44,6 +49,63 @@ def log_action_chunk(
     )
     _log_tcp_chunk(chunk, step, start_time=start_time, n_action_steps=n_action_steps)
     _log_text(chunk, step, start_time=start_time, n_action_steps=n_action_steps)
+
+
+def log_bridge_chunk(
+    chunk: ActionChunk,
+    step: int,
+    *,
+    start_time: float,
+    dh_robots: dict[str, Any],
+    tcp_offsets: dict[str, Any] | None = None,
+) -> None:
+    """Log an interpolated connector separately from orange policy output."""
+    elapsed = time.monotonic() - start_time
+    rr.set_time("policy_time", duration=elapsed)
+    rr.set_time("policy_step", sequence=step)
+    tcp_offsets = tcp_offsets or {}
+
+    for mg_id, steps in chunk.joints.items():
+        dh_robot = dh_robots.get(mg_id)
+        if dh_robot is None or not steps:
+            continue
+        tcp_offset = tcp_offsets.get(mg_id)
+        positions = [_step_to_tcp(dh_robot, joints, tcp_offset) for joints in steps]
+        _log_bridge_positions(f"policy/{mg_id}/bridge_chunk", positions)
+
+    for mg_id, steps in chunk.tcp.items():
+        positions = [step[:3] for step in steps if len(step) >= MIN_TCP_COMPONENTS]
+        _log_bridge_positions(f"policy/{mg_id}/bridge_chunk_tcp", positions)
+
+    rr.log(
+        "policy/action_chunks",
+        rr.TextLog(
+            f"Step {step} | bridge | dt_ms={chunk.dt_ms} | "
+            f"steps={{{', '.join(f'{group}: {len(steps)}' for group, steps in (*chunk.joints.items(), *chunk.tcp.items()))}}}",
+            level=rr.TextLogLevel.TRACE,
+        ),
+    )
+
+
+def _log_bridge_positions(entity_path: str, positions: list[list[float]]) -> None:
+    if not positions:
+        return
+    _log_line_strip(
+        entity_path,
+        positions,
+        gradient=True,
+        width=BRIDGE_WIDTH_UI,
+        color_start=BRIDGE_COLOR_START,
+        color_end=BRIDGE_COLOR_END,
+    )
+    rr.log(
+        f"{entity_path}_endpoint",
+        rr.Points3D(
+            [positions[-1]],
+            colors=[BRIDGE_ENDPOINT_COLOR],
+            radii=rr.components.Radius.ui_points(BRIDGE_ENDPOINT_RADIUS_UI),
+        ),
+    )
 
 
 def _log_joint_chunk(
@@ -216,15 +278,17 @@ def _log_line_strip(
     *,
     gradient: bool,
     width: float,
+    color_start: tuple[int, int, int] = CHUNK_COLOR_START,
+    color_end: tuple[int, int, int] = CHUNK_COLOR_END,
 ) -> None:
     """Log a line strip with gradient or uniform color."""
 
     if len(positions) >= MIN_LINE_STEPS:
         n = len(positions)
         colors = (
-            [lerp_color(CHUNK_COLOR_START, CHUNK_COLOR_END, i / max(n - 1, 1)) for i in range(n)]
+            [lerp_color(color_start, color_end, i / max(n - 1, 1)) for i in range(n)]
             if gradient
-            else [CHUNK_COLOR_START] * n
+            else [color_start] * n
         )
         rr.log(
             entity_path,
@@ -239,7 +303,7 @@ def _log_line_strip(
             entity_path,
             rr.Points3D(
                 positions,
-                colors=[CHUNK_COLOR_START],
+                colors=[color_start],
                 radii=rr.components.Radius.ui_points(4.0),
             ),
         )

@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from novapolicy.rerun.constants import TEMPORAL_FRAME_NDIM
+from novapolicy.rerun.constants import CAMERA_JPEG_QUALITY, TEMPORAL_FRAME_NDIM
 import rerun as rr
 
 
@@ -19,4 +19,7 @@ def log_images(images: dict[str, Any], *, start_time: float) -> None:
             continue
         if hasattr(frame, "ndim"):
             img = frame[-1] if frame.ndim == TEMPORAL_FRAME_NDIM else frame
-            rr.log(f"policy/cameras/{name}", rr.Image(img))
+            rr.log(
+                f"policy/cameras/{name}",
+                rr.Image(img).compress(jpeg_quality=CAMERA_JPEG_QUALITY),
+            )

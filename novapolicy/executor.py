@@ -49,6 +49,7 @@ _PolicyFn = Callable[[dict[str, Any]], Coroutine[Any, Any, dict[str, float] | Ac
 logger = logging.getLogger(__name__)
 
 _MIN_RAMP_INTERPOLATION_STEPS = 2
+_ASYNC_SEAM_STEPS = 3
 _ASYNC_REPLACEMENT_LEAD_STEPS = 1
 
 
@@ -374,7 +375,8 @@ class PolicyExecutor:
             await self._estop_monitor.start()
             await self._init_rerun()
             if self._rerun is not None:
-                self._rerun.start_streaming(self._sessions)
+                image_reader = self._cameras.read_previews if self._cameras.active else None
+                self._rerun.start_streaming(self._sessions, image_reader=image_reader)
             # Wait for sessions to be ready (server acknowledged init)
             for session in self._sessions.values():
                 await session.wait_ready()
@@ -607,6 +609,8 @@ class PolicyExecutor:
             bridge_steps,
             connected.policy_start_steps,
         )
+        if self._rerun is not None:
+            self._rerun.log_bridge_chunk(connected.bridge, step)
         self._log_policy_action(action, step)
         target_chunks = self._send(connected.motion)
         if self._policy_rate_hz >= 0 and action.action_timestep >= 0:
@@ -753,9 +757,29 @@ class PolicyExecutor:
         return ready
 
     def _log_policy_action(self, action: ActionChunk, step: int) -> None:
-        """Log a full policy prediction including its discarded tail."""
-        if self._rerun is not None:
-            self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
+        """Log a full policy prediction including its retained queue seam."""
+        if self._rerun is None:
+            return
+        if action.action_timestep > 0 and getattr(
+            self._policy, "requires_first_waypoint_bridge", False
+        ):
+            seam = ActionChunk(
+                joints={
+                    group_id: steps[:_ASYNC_SEAM_STEPS]
+                    for group_id, steps in action.joints.items()
+                    if len(steps) >= _ASYNC_SEAM_STEPS
+                },
+                tcp={
+                    group_id: steps[:_ASYNC_SEAM_STEPS]
+                    for group_id, steps in action.tcp.items()
+                    if len(steps) >= _ASYNC_SEAM_STEPS
+                },
+                dt_ms=action.dt_ms,
+                action_timestep=action.action_timestep,
+            )
+            if seam.joints or seam.tcp:
+                self._rerun.log_bridge_chunk(seam, step)
+        self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
 
     def _termination_result(
         self,
@@ -1082,7 +1106,11 @@ class PolicyExecutor:
 
         from novapolicy.rerun import PolicyRerunLogger  # noqa: PLC0415
 
-        self._rerun = PolicyRerunLogger(self._motion_groups, camera_names=self._cameras.names)
+        self._rerun = PolicyRerunLogger(
+            self._motion_groups,
+            camera_names=self._cameras.names,
+            use_tcp_offset_for_joint_actions=True,
+        )
         await self._rerun.initialize()
 
     def _record_policy_chunk(

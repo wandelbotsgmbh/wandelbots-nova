@@ -6,15 +6,20 @@ to focused submodules (observation, action_chunk, streaming, images).
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import logging
 import time
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from novapolicy.rerun.streaming import StateStreamer
     from novapolicy.types import ActionChunk
+    from rerun import RecordingStream
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +28,9 @@ class PolicyRerunLogger:
     """Logs policy execution data to Rerun.
 
     Uses RobotVisualizer from nova_rerun_bridge for 3D mesh rendering,
-    and DH FK for action chunk path visualization (no network calls).
+    and DH FK for action chunk path visualization (no network calls). Policy
+    data and its blueprint use a dedicated recording so NOVA planning can keep
+    its own recording and blueprint.
     """
 
     def __init__(
@@ -44,6 +51,7 @@ class PolicyRerunLogger:
         self._tcp_trail: dict[str, list[list[float]]] = {}  # mg_id -> [[x,y,z], ...]
         self._max_trail_points = 500
         self._streamer: StateStreamer | None = None
+        self._recording: RecordingStream | None = None
 
     async def initialize(self) -> None:  # noqa: C901
         """Fetch DH parameters, create robot visualizers, and send blueprint."""
@@ -63,6 +71,11 @@ class PolicyRerunLogger:
             from novapolicy.rerun.blueprint import send_blueprint  # noqa: PLC0415
 
             self._start_time = time.monotonic()
+            self._recording = rr.RecordingStream(
+                "novapolicy",
+                recording_id=f"policy_{uuid4()}",
+            )
+            self._recording.connect_grpc()
 
             for mg in self._motion_groups:
                 description = await mg.get_description()
@@ -122,13 +135,23 @@ class PolicyRerunLogger:
                 )
                 self._tcp_trail[mg.id] = []
 
-            send_blueprint([mg.id for mg in self._motion_groups], self._camera_names)
+            send_blueprint(
+                [mg.id for mg in self._motion_groups],
+                self._camera_names,
+                recording=self._recording,
+            )
 
             # Set coordinate convention: NOVA uses right-handed Z-up
-            rr.log("/", rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
+            rr.log(
+                "/",
+                rr.ViewCoordinates.RIGHT_HAND_Z_UP,
+                static=True,
+                recording=self._recording,
+            )
             rr.log(
                 "policy/status",
                 rr.TextLog("Policy execution started", level=rr.TextLogLevel.INFO),
+                recording=self._recording,
             )
             self._initialized = True
             logger.info(
@@ -138,6 +161,20 @@ class PolicyRerunLogger:
             )
         except (OSError, RuntimeError, ValueError) as e:
             logger.warning("PolicyRerunLogger initialization failed: %s", e)
+
+    @contextmanager
+    def _recording_scope(self) -> Iterator[None]:
+        """Route legacy/global Rerun calls to the policy recording for one operation."""
+        if self._recording is None:
+            yield
+            return
+        import rerun as rr  # noqa: PLC0415
+
+        previous = rr.set_thread_local_data_recording(self._recording)
+        try:
+            yield
+        finally:
+            rr.set_thread_local_data_recording(previous)
 
     # ------------------------------------------------------------------
     # Per-step logging
@@ -150,17 +187,36 @@ class PolicyRerunLogger:
         try:
             from novapolicy.rerun.observation import log_observation  # noqa: PLC0415
 
-            log_observation(
-                states,
-                step,
-                start_time=self._start_time,
-                dh_robots=self._dh_robots,
-                visualizers=self._visualizers,
-                tcp_trail=self._tcp_trail,
-                max_trail_points=self._max_trail_points,
-            )
+            with self._recording_scope():
+                log_observation(
+                    states,
+                    step,
+                    start_time=self._start_time,
+                    dh_robots=self._dh_robots,
+                    visualizers=self._visualizers,
+                    tcp_trail=self._tcp_trail,
+                    max_trail_points=self._max_trail_points,
+                )
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_observation error: %s", e)
+
+    def log_bridge_chunk(self, chunk: ActionChunk, step: int) -> None:
+        """Log an interpolated connector in Nova Violet."""
+        if not self._initialized:
+            return
+        try:
+            from novapolicy.rerun.action_chunk import log_bridge_chunk  # noqa: PLC0415
+
+            with self._recording_scope():
+                log_bridge_chunk(
+                    chunk,
+                    step,
+                    start_time=self._start_time,
+                    dh_robots=self._dh_robots,
+                    tcp_offsets=self._tcp_offsets,
+                )
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
+            logger.debug("log_bridge_chunk error: %s", e)
 
     def log_action_chunk(self, chunk: ActionChunk, step: int, *, n_action_steps: int = 0) -> None:
         """Log action chunk as TCP path line strips and inspectable text."""
@@ -169,14 +225,15 @@ class PolicyRerunLogger:
         try:
             from novapolicy.rerun.action_chunk import log_action_chunk  # noqa: PLC0415
 
-            log_action_chunk(
-                chunk,
-                step,
-                start_time=self._start_time,
-                dh_robots=self._dh_robots,
-                tcp_offsets=self._tcp_offsets,
-                n_action_steps=n_action_steps,
-            )
+            with self._recording_scope():
+                log_action_chunk(
+                    chunk,
+                    step,
+                    start_time=self._start_time,
+                    dh_robots=self._dh_robots,
+                    tcp_offsets=self._tcp_offsets,
+                    n_action_steps=n_action_steps,
+                )
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_action_chunk error: %s", e)
 
@@ -187,7 +244,8 @@ class PolicyRerunLogger:
         try:
             from novapolicy.rerun.images import log_images  # noqa: PLC0415
 
-            log_images(images, start_time=self._start_time)
+            with self._recording_scope():
+                log_images(images, start_time=self._start_time)
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_images error: %s", e)
 
@@ -204,6 +262,7 @@ class PolicyRerunLogger:
                     f"Policy finished: {reason} ({steps} steps, {duration_s:.1f}s)",
                     level=rr.TextLogLevel.INFO,
                 ),
+                recording=self._recording,
             )
         except (ImportError, OSError, RuntimeError) as e:
             # Completion logging is best-effort; never let it break execution.
@@ -213,8 +272,13 @@ class PolicyRerunLogger:
     # Continuous state streaming (between policy steps)
     # ------------------------------------------------------------------
 
-    def start_streaming(self, sessions: dict[str, Any]) -> None:
-        """Start background task logging robot state at ~100Hz between policy calls."""
+    def start_streaming(
+        self,
+        sessions: dict[str, Any],
+        *,
+        image_reader: Callable[[], dict[str, Any]] | None = None,
+    ) -> None:
+        """Start background state and camera-preview logging."""
         if not self._initialized:
             return
         from novapolicy.rerun.streaming import StateStreamer  # noqa: PLC0415
@@ -225,6 +289,8 @@ class PolicyRerunLogger:
             visualizers=self._visualizers,
             tcp_trail=self._tcp_trail,
             max_trail_points=self._max_trail_points,
+            recording=self._recording,
+            image_reader=image_reader,
         )
         self._streamer.start(sessions)
 

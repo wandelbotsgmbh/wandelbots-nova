@@ -11,16 +11,23 @@ from typing import TYPE_CHECKING, Any
 from novapolicy.rerun.constants import MIN_LINE_STEPS, TCP_TRAIL_COLOR, TRAIL_WIDTH_UI
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from nova.types import RobotState
+    from rerun import RecordingStream
 
 logger = logging.getLogger(__name__)
 
+_STATE_STREAM_PERIOD_S = 1.0 / 30.0
+_IMAGE_STREAM_PERIOD_S = 1.0 / 15.0
+
 
 class StateStreamer:
-    """Polls session states at ~100Hz and logs to Rerun.
+    """Streams robot state and camera previews to Rerun.
 
-    Provides dense robot position data between policy calls, so the Rerun
-    viewer shows smooth robot mesh movement and a complete TCP trail.
+    Robot visualization is capped at 30 Hz so it cannot starve camera updates
+    or overwhelm the live Rerun viewer. Side-effect-free camera previews are
+    logged at 15 Hz independently of the policy inference cadence.
     """
 
     def __init__(
@@ -31,12 +38,16 @@ class StateStreamer:
         visualizers: dict[str, Any],
         tcp_trail: dict[str, list[list[float]]],
         max_trail_points: int,
+        recording: RecordingStream | None = None,
+        image_reader: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
         self._start_time = start_time
         self._dh_robots = dh_robots
         self._visualizers = visualizers
         self._tcp_trail = tcp_trail
         self._max_trail_points = max_trail_points
+        self._recording = recording
+        self._image_reader = image_reader
         self._sessions: dict[str, Any] | None = None
         self._task: asyncio.Task[None] | None = None
         self._running = False
@@ -59,30 +70,49 @@ class StateStreamer:
         self._sessions = None
 
     async def _loop(self) -> None:
-        """Poll session states at ~100Hz and log to Rerun."""
+        """Log live state and image previews without blocking policy execution."""
         import rerun as rr  # noqa: PLC0415
 
+        next_image_time = 0.0
         try:
             while self._running:
                 if self._sessions is None:
                     break
 
-                elapsed = time.monotonic() - self._start_time
-                rr.set_time("policy_time", duration=elapsed)
-                self._tick_counter += 1
-                rr.set_time("state_tick", sequence=self._tick_counter)
+                previous = rr.set_thread_local_data_recording(self._recording)
+                try:
+                    elapsed = time.monotonic() - self._start_time
+                    rr.set_time("policy_time", duration=elapsed)
+                    self._tick_counter += 1
+                    rr.set_time("state_tick", sequence=self._tick_counter)
 
-                for mg_id, session in self._sessions.items():
-                    state = session.current_state
-                    if state is not None:
-                        self._log_state(mg_id, state)
+                    for mg_id, session in self._sessions.items():
+                        state = session.current_state
+                        if state is not None:
+                            self._log_state(mg_id, state)
 
-                await asyncio.sleep(0.01)  # ~100Hz
+                    if self._image_reader is not None and elapsed >= next_image_time:
+                        try:
+                            self._log_images(self._image_reader())
+                        except (OSError, RuntimeError, ValueError, TypeError) as e:
+                            logger.debug("Camera preview logging skipped: %s", e)
+                        next_image_time = elapsed + _IMAGE_STREAM_PERIOD_S
+                finally:
+                    rr.set_thread_local_data_recording(previous)
+
+                await asyncio.sleep(_STATE_STREAM_PERIOD_S)
         except asyncio.CancelledError:
             # Expected on shutdown; stop quietly without logging as an error.
             pass
         except (OSError, RuntimeError) as e:
             logger.debug("State stream logging stopped: %s", e)
+
+    def _log_images(self, images: dict[str, Any]) -> None:
+        if not images:
+            return
+        from novapolicy.rerun.images import log_images  # noqa: PLC0415
+
+        log_images(images, start_time=self._start_time)
 
     def _log_state(self, mg_id: str, state: RobotState) -> None:
         """Log a single state sample for one motion group."""
