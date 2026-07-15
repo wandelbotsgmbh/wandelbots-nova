@@ -17,7 +17,7 @@ from novapolicy.schema import BoolMapping, Observation, PolicySchema
 
 client_module = pytest.importorskip("novapolicy.lerobot.client")
 transport_module = pytest.importorskip("novapolicy.lerobot.transport")
-FlatActionLayout = pytest.importorskip("novapolicy.lerobot.codec").FlatActionLayout
+FlatActionLayout = pytest.importorskip("novapolicy.lerobot.schema").FlatActionLayout
 AsyncQueueAggregation = client_module.AsyncQueueAggregation
 LeRobotPolicyClient = client_module.LeRobotPolicyClient
 

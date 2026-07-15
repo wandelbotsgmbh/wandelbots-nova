@@ -9,7 +9,7 @@ from lerobot.async_inference.helpers import RemotePolicyConfig
 
 from novapolicy.action_queue import AsyncQueueAggregation
 from novapolicy.lerobot.action_queue import LeRobotAsyncActionQueue
-from novapolicy.lerobot.codec import LeRobotCodec
+from novapolicy.lerobot.schema import LeRobotSchema
 from novapolicy.lerobot.transport import LeRobotGrpcTransport
 from novapolicy.policy_client import PolicyClient
 
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from lerobot.configs.types import PolicyFeature
 
     from nova.types import RobotState
-    from novapolicy.lerobot.codec import FlatActionLayout
+    from novapolicy.lerobot.schema import FlatActionLayout
     from novapolicy.schema import PolicySchema
     from novapolicy.types import ActionChunk
 
@@ -88,11 +88,11 @@ class LeRobotPolicyClient(PolicyClient):
         self._device = device
         self._dt_ms = 1000.0 / (fps * playback_speed)
         self._transport = LeRobotGrpcTransport(server_address, timeout_s=timeout_s)
-        self._codec = LeRobotCodec(dt_ms=self._dt_ms)
+        self._lerobot_schema = LeRobotSchema(dt_ms=self._dt_ms)
         self._async_queue = (
             LeRobotAsyncActionQueue(
                 self._transport,
-                self._codec,
+                self._lerobot_schema,
                 aggregation=async_queue_aggregation,
                 refill_threshold=async_queue_refill_threshold,
                 smoothing=async_queue_smoothing,
@@ -140,7 +140,7 @@ class LeRobotPolicyClient(PolicyClient):
 
     async def validate_schema(self, schema: PolicySchema) -> None:
         """Validate schema constraints known without remote model metadata."""
-        self._codec.validate_schema(schema)
+        self._lerobot_schema.validate_schema(schema)
 
     async def prepare(
         self,
@@ -166,7 +166,9 @@ class LeRobotPolicyClient(PolicyClient):
         if not self._transport.connected:
             await self.connect([])
 
-        observation = await self._codec.build_observation(states, schema, images, io_values)
+        observation = await self._lerobot_schema.build_observation(
+            states, schema, images, io_values
+        )
         state_names, layout = self._schema_layout(states, schema)
         await asyncio.to_thread(self._ensure_policy_setup, schema, state_names, images)
 
@@ -180,7 +182,7 @@ class LeRobotPolicyClient(PolicyClient):
             must_go=True,
         )
         self._timestep += len(actions)
-        return self._codec.decode_timed_actions(actions, layout)
+        return self._lerobot_schema.decode_timed_actions(actions, layout)
 
     async def close(self) -> None:
         """Cancel pending inference and close the gRPC channel."""
@@ -194,8 +196,8 @@ class LeRobotPolicyClient(PolicyClient):
         states: dict[str, RobotState],
         schema: PolicySchema,
     ) -> tuple[list[str], FlatActionLayout]:
-        state_names = self._codec.state_names(states, schema)
-        layout = self._codec.action_layout(states, schema)
+        state_names = self._lerobot_schema.state_names(states, schema)
+        layout = self._lerobot_schema.action_layout(states, schema)
         return state_names, layout
 
     def _ensure_policy_setup(
@@ -212,7 +214,7 @@ class LeRobotPolicyClient(PolicyClient):
                 pretrained_name_or_path=self._pretrained_name_or_path,
                 lerobot_features=cast(
                     "dict[str, PolicyFeature]",
-                    self._codec.features(schema, state_names, images),
+                    self._lerobot_schema.features(schema, state_names, images),
                 ),
                 actions_per_chunk=self._actions_per_chunk,
                 device=self._device,

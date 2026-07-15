@@ -1,4 +1,4 @@
-"""Schema-driven observation encoding and action decoding for LeRobot."""
+"""LeRobot feature metadata and flat action layout derived from PolicySchema."""
 
 from __future__ import annotations
 
@@ -33,8 +33,8 @@ class FlatActionLayout:
     ios: list[IOActionSlice]
 
 
-class LeRobotCodec:
-    """Translate between NOVA policy schemas and flat LeRobot tensors."""
+class LeRobotSchema:
+    """Translate PolicySchema observations and actions to LeRobot's flat schema."""
 
     def __init__(self, *, dt_ms: float) -> None:
         self._dt_ms = dt_ms

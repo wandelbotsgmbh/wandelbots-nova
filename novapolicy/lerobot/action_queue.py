@@ -10,11 +10,11 @@ from typing import TYPE_CHECKING, Any
 from novapolicy.action_queue import TimestampedActionQueue
 from novapolicy.chunking import smooth_action_chunk
 from novapolicy.debug import RawActionChunkTrace
-from novapolicy.lerobot.codec import FlatActionLayout
+from novapolicy.lerobot.schema import FlatActionLayout
 
 if TYPE_CHECKING:
     from novapolicy.action_queue import AsyncQueueAggregation
-    from novapolicy.lerobot.codec import LeRobotCodec
+    from novapolicy.lerobot.schema import LeRobotSchema
     from novapolicy.lerobot.transport import LeRobotGrpcTransport
     from novapolicy.types import ActionChunk
 
@@ -29,14 +29,14 @@ class LeRobotAsyncActionQueue:
     def __init__(
         self,
         transport: LeRobotGrpcTransport,
-        codec: LeRobotCodec,
+        schema: LeRobotSchema,
         *,
         aggregation: AsyncQueueAggregation,
         refill_threshold: float,
         smoothing: bool,
     ) -> None:
         self._transport = transport
-        self._codec = codec
+        self._schema = schema
         self._queue = TimestampedActionQueue(
             aggregation=aggregation,
             frozen_steps=_ASYNC_FROZEN_QUEUE_STEPS,
@@ -122,7 +122,7 @@ class LeRobotAsyncActionQueue:
                 action_timestep -= 1
                 retained_prefix_steps = 1 + _ASYNC_FROZEN_QUEUE_STEPS
 
-            action_chunk = self._codec.decode_arrays(
+            action_chunk = self._schema.decode_arrays(
                 [action for _timestep, action in preview],
                 layout,
                 action_timestep=action_timestep,
@@ -136,7 +136,7 @@ class LeRobotAsyncActionQueue:
                 preview = [
                     (
                         entry_timestep,
-                        self._codec.replace_joint_values(
+                        self._schema.replace_joint_values(
                             action,
                             action_chunk,
                             layout,
@@ -145,7 +145,7 @@ class LeRobotAsyncActionQueue:
                     )
                     for index, (entry_timestep, action) in enumerate(preview)
                 ]
-                action_chunk = self._codec.decode_arrays(
+                action_chunk = self._schema.decode_arrays(
                     [action for _timestep, action in preview],
                     layout,
                     action_timestep=action_timestep,
@@ -154,7 +154,7 @@ class LeRobotAsyncActionQueue:
             self._queue.publish(preview)
             return action_chunk
 
-        return self._codec.decode_arrays(
+        return self._schema.decode_arrays(
             [current_action],
             FlatActionLayout(joints=[], ios=layout.ios),
             action_timestep=timestep,
@@ -183,7 +183,7 @@ class LeRobotAsyncActionQueue:
         decoded = [
             (
                 int(timed_action.get_timestep()),
-                self._codec.action_to_array(timed_action.get_action()),
+                self._schema.action_to_array(timed_action.get_action()),
             )
             for timed_action in actions
         ]
