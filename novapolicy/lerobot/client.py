@@ -41,7 +41,9 @@ logger = logging.getLogger(__name__)
 
 _IMAGE_NDIM = 3
 _DEFAULT_ASYNC_QUEUE_REFILL_THRESHOLD = 0.75
-_ASYNC_FROZEN_QUEUE_STEPS = 2
+_ASYNC_FROZEN_QUEUE_STEPS = 3
+_ASYNC_SMOOTHING_PASSES = 2
+_MIN_SMOOTHING_ACTIONS = 2
 
 
 class AsyncQueueAggregation(StrEnum):
@@ -119,6 +121,11 @@ class LeRobotPolicyClient(PolicyClient):
         Fraction of the previous action chunk remaining when asynchronous
         inference starts. Defaults to ``0.75`` so inference overlaps execution
         before the NOVA lookahead is close to empty.
+    async_queue_smoothing:
+        Apply two passes of a three-tap binomial temporal filter to each outgoing
+        aggregated joint-action lookahead. This is equivalent to a five-tap
+        ``[1, 4, 6, 4, 1] / 16`` filter away from chunk boundaries. The active
+        retained prefix and IO actions are never filtered.
 
     Notes
     -----
@@ -148,6 +155,7 @@ class LeRobotPolicyClient(PolicyClient):
         use_async_queue: bool = False,
         async_queue_aggregation: AsyncQueueAggregation = AsyncQueueAggregation.WEIGHTED_AVERAGE,
         async_queue_refill_threshold: float = _DEFAULT_ASYNC_QUEUE_REFILL_THRESHOLD,
+        async_queue_smoothing: bool = False,
     ) -> None:
         if fps <= 0:
             msg = f"fps must be positive, got {fps}"
@@ -178,6 +186,7 @@ class LeRobotPolicyClient(PolicyClient):
         self._use_async_queue = use_async_queue
         self._async_queue_aggregation = AsyncQueueAggregation(async_queue_aggregation)
         self._async_queue_refill_threshold = async_queue_refill_threshold
+        self._async_queue_smoothing = async_queue_smoothing
 
         self._channel: Any | None = None
         self._stub: Any | None = None
@@ -529,14 +538,23 @@ class LeRobotPolicyClient(PolicyClient):
         if queue_updated:
             # The selected action is scheduled at or just after controller now.
             # Prepend its predecessor from NOVA's previously published
-            # trajectory, then retain the selected action and its immutable
-            # successor. The replacement request therefore carries an explicit
-            # past/current/future overlap before fresh aggregated predictions.
+            # trajectory, then retain the selected action and its two immutable
+            # successors. The replacement request therefore carries explicit
+            # position, velocity, and one-step acceleration context before fresh
+            # aggregated predictions.
             predecessor = self._published_actions.get(timestep - 1)
             action_timestep = timestep
+            retained_prefix_steps = 0
             if predecessor is not None:
                 preview_entries.insert(0, (timestep - 1, predecessor))
                 action_timestep -= 1
+                retained_prefix_steps = 1 + _ASYNC_FROZEN_QUEUE_STEPS
+            if self._async_queue_smoothing:
+                preview_entries = self._smooth_joint_action_chunk(
+                    preview_entries,
+                    action_slices,
+                    retained_prefix_steps=retained_prefix_steps,
+                )
             self._published_actions = dict(preview_entries)
             return self._decode_action_arrays(
                 [action for _timestep, action in preview_entries],
@@ -625,13 +643,16 @@ class LeRobotPolicyClient(PolicyClient):
                 continue
             if timestep in current:
                 # The selected action and its successor are already inside
-                # NOVA's active trajectory. Keep both unchanged; together with
-                # the prepended predecessor they preserve the replacement's
-                # past/current/future position and velocity seam. Aggregation
-                # begins only after that fixed prefix.
+                # NOVA's active trajectory. Keep all three unchanged; together
+                # with the prepended predecessor they preserve position, velocity,
+                # and one-step acceleration context. Aggregation begins only after
+                # that fixed prefix.
                 previous_count = self._action_prediction_counts.get(timestep, 1)
                 if timestep <= self._latest_action_timestep + _ASYNC_FROZEN_QUEUE_STEPS:
-                    future[timestep] = current[timestep]
+                    future[timestep] = self._published_actions.get(
+                        timestep,
+                        current[timestep],
+                    )
                     future_counts[timestep] = previous_count
                 elif self._async_queue_aggregation is AsyncQueueAggregation.AVERAGE:
                     future[timestep] = (previous_count * current[timestep] + new_action) / (
@@ -650,6 +671,38 @@ class LeRobotPolicyClient(PolicyClient):
         self._action_queue = sorted(future.items())
         self._action_prediction_counts = future_counts
         return bool(future)
+
+    @staticmethod
+    def _smooth_joint_action_chunk(
+        decoded_actions: list[tuple[int, np.ndarray[Any, Any]]],
+        action_slices: Sequence[tuple[str, slice]],
+        *,
+        retained_prefix_steps: int = 0,
+    ) -> list[tuple[int, np.ndarray[Any, Any]]]:
+        """Smooth an outgoing lookahead while preserving its active prefix."""
+        if len(decoded_actions) < _MIN_SMOOTHING_ACTIONS or not action_slices:
+            return decoded_actions
+
+        values = np.stack([action for _timestep, action in decoded_actions])
+        smoothed = values.copy()
+        for _pass in range(_ASYNC_SMOOTHING_PASSES):
+            padded = np.pad(smoothed, ((1, 1), (0, 0)), mode="edge")
+            for _group_id, action_slice in action_slices:
+                smoothed[:, action_slice] = (
+                    padded[:-2, action_slice]
+                    + 2.0 * padded[1:-1, action_slice]
+                    + padded[2:, action_slice]
+                ) / 4.0
+        if retained_prefix_steps > 0:
+            smoothed[:retained_prefix_steps] = values[:retained_prefix_steps]
+        return [
+            (timestep, action)
+            for (timestep, _raw_action), action in zip(
+                decoded_actions,
+                smoothed,
+                strict=True,
+            )
+        ]
 
     @staticmethod
     def _action_to_array(action: object) -> np.ndarray[Any, Any]:

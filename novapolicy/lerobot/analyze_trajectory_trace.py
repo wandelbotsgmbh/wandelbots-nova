@@ -12,7 +12,7 @@ from typing import Any
 
 import numpy as np
 
-_RETAINED_SEAM_STEPS = 3
+_RETAINED_SEAM_STEPS = 4
 
 
 def _parse_args() -> argparse.Namespace:

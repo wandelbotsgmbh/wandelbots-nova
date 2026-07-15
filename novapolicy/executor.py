@@ -49,7 +49,7 @@ _PolicyFn = Callable[[dict[str, Any]], Coroutine[Any, Any, dict[str, float] | Ac
 logger = logging.getLogger(__name__)
 
 _MIN_RAMP_INTERPOLATION_STEPS = 2
-_ASYNC_SEAM_STEPS = 3
+_ASYNC_SEAM_STEPS = 4
 _ASYNC_REPLACEMENT_LEAD_STEPS = 1
 
 
@@ -516,8 +516,8 @@ class PolicyExecutor:
 
         Queue consumption advances to the immediate successor of the action
         currently due. The async policy client prepends its preceding published
-        action, yielding a retained past/current/future seam even if inference
-        consumes one full policy interval. Queue progress is read from the
+        action, yielding a retained predecessor/current/two-successor seam even
+        if inference consumes one full policy interval. Queue progress is read from the
         latest acknowledged raw NOVA controller timestamp, not extrapolated
         from local policy-loop ticks or a measured transport-delay constant.
         """

@@ -278,6 +278,7 @@ policy = LeRobotPolicyClient(
     use_async_queue=True,
     async_queue_aggregation=AsyncQueueAggregation.WEIGHTED_AVERAGE,
     async_queue_refill_threshold=0.75,
+    async_queue_smoothing=False,
 )
 ```
 
@@ -292,7 +293,11 @@ Aggregation is applied only when an old and a new action target the same future 
 
 The generic client retains LeRobot's weighted-average default. The physical UR3 example defaults to
 `AVERAGE`; repeated plug-task runs showed lower peak path curvature without the delayed transition
-caused by conservative aggregation.
+caused by conservative aggregation. It also enables ``async_queue_smoothing``, two passes of a
+three-tap ``[1, 2, 1] / 4`` temporal filter applied to the outgoing aggregated joint lookahead.
+Away from chunk boundaries this is the five-tap binomial filter ``[1, 4, 6, 4, 1] / 16``. The
+four-point active prefix is restored unchanged after filtering. The generic client leaves this
+disabled, and IO action values are never filtered.
 
 The client normally consumes one action each policy control tick, requests a refill when 75% of the
 previous chunk remains by default, and merges overlapping actions using the selected enum mode.
@@ -306,9 +311,9 @@ timestep; if local work delayed a tick, the client drops every action whose exec
 Threshold-triggered inference remains asynchronous while NOVA executes its published lookahead. It
 is merged on a later controller-synchronized tick instead of blocking after a timestep has already
 been selected. The client then prepends the predecessor from NOVA's published trajectory and retains
-the selected action plus its immutable successor. The replacement therefore contains an exact
-past/current/future seam before aggregation begins. IO remains sourced from the selected current
-action, not the prepended predecessor.
+the selected action plus two immutable successors. The replacement therefore contains an exact
+four-point seam preserving position, velocity, and one-step acceleration context before aggregation
+begins. IO remains sourced from the selected current action, not the prepended predecessor.
 
 Between inference updates the client consumes actions internally without resending a shrinking
 tail, so existing NOVA waypoints keep their original timeline. The initial queue prediction receives
@@ -318,7 +323,7 @@ lookaheads use ``origin + action_timestep * policy_dt`` directly in the raw cont
 Client wall time, server/client speed-ratio estimation, and post-boundary re-origining are not part of
 queue timestamp calculation. Only each integer timestamp sent to NOVA is quantized. The overlapping
 prefix is retained instead of being restarted from a measured-state hold at ``now``. This prevents
-both catch-up motion and repeated zero-velocity braking/acceleration. In Rerun, the three-point
+both catch-up motion and repeated zero-velocity braking/acceleration. In Rerun, the four-point
 retained replacement seam is shown in Nova Violet while fresh policy output remains orange. This is
 still LeRobot async ACT queue execution, not model-side RTC.
 

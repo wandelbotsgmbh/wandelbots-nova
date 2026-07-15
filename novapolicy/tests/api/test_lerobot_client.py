@@ -295,9 +295,9 @@ def test_async_queue_aggregation_modes(
         async_queue_aggregation=aggregation,
     )
     client._latest_action_timestep = 0
-    client._action_queue = [(3, np.asarray([2.0], dtype=np.float32))]
+    client._action_queue = [(4, np.asarray([2.0], dtype=np.float32))]
 
-    assert client._merge_timed_actions([_TimedAction([10.0], timestep=3)])
+    assert client._merge_timed_actions([_TimedAction([10.0], timestep=4)])
     assert client._action_queue[0][1][0] == pytest.approx(expected)
 
 
@@ -374,6 +374,69 @@ async def test_async_queue_refills_and_blends_overlapping_timesteps(
     await client.close()
 
 
+def test_async_queue_smoothing_filters_joints_but_not_io() -> None:
+    client = LeRobotPolicyClient(
+        "127.0.0.1:8080",
+        "model",
+        actions_per_chunk=3,
+        use_async_queue=True,
+        async_queue_smoothing=True,
+    )
+    client.enable_trajectory_trace()
+
+    assert client._merge_timed_actions(
+        [
+            _TimedAction([0.0, 100.0], timestep=0),
+            _TimedAction([4.0, 200.0], timestep=1),
+            _TimedAction([0.0, 300.0], timestep=2),
+        ]
+    )
+    smoothed = client._smooth_joint_action_chunk(
+        client._action_queue,
+        [("arm", slice(0, 1))],
+        retained_prefix_steps=1,
+    )
+
+    assert [action.tolist() for _timestep, action in client._action_queue] == [
+        [0.0, 100.0],
+        [4.0, 200.0],
+        [0.0, 300.0],
+    ]
+    assert [action.tolist() for _timestep, action in smoothed] == [
+        [0.0, 100.0],
+        [1.5, 200.0],
+        [1.25, 300.0],
+    ]
+    assert client.trajectory_trace["raw_action_chunks"][0]["actions"][1]["values"] == [
+        4.0,
+        200.0,
+    ]
+
+
+def test_async_queue_freezes_current_and_two_successors() -> None:
+    client = LeRobotPolicyClient(
+        "127.0.0.1:8080",
+        "model",
+        actions_per_chunk=5,
+        use_async_queue=True,
+    )
+    client._latest_action_timestep = 0
+    client._action_queue = [
+        (timestep, np.asarray([float(timestep)], dtype=np.float32)) for timestep in range(1, 5)
+    ]
+    client._published_actions = {
+        timestep: np.asarray([float(timestep + 10)], dtype=np.float32) for timestep in range(1, 4)
+    }
+
+    assert client._merge_timed_actions(
+        [_TimedAction([10.0], timestep=timestep) for timestep in range(1, 5)]
+    )
+
+    assert [action[0] for _timestep, action in client._action_queue] == pytest.approx(
+        [11.0, 12.0, 13.0, 8.2]
+    )
+
+
 def test_average_aggregation_is_a_true_running_mean_per_timestep() -> None:
     client = LeRobotPolicyClient(
         "127.0.0.1:8080",
@@ -383,13 +446,13 @@ def test_average_aggregation_is_a_true_running_mean_per_timestep() -> None:
         async_queue_aggregation=AsyncQueueAggregation.AVERAGE,
     )
     client._latest_action_timestep = 0
-    client._action_queue = [(3, np.asarray([2.0], dtype=np.float32))]
+    client._action_queue = [(4, np.asarray([2.0], dtype=np.float32))]
 
-    assert client._merge_timed_actions([_TimedAction([10.0], timestep=3)])
-    assert client._merge_timed_actions([_TimedAction([12.0], timestep=3)])
+    assert client._merge_timed_actions([_TimedAction([10.0], timestep=4)])
+    assert client._merge_timed_actions([_TimedAction([12.0], timestep=4)])
 
     assert client._action_queue[0][1][0] == pytest.approx((2.0 + 10.0 + 12.0) / 3.0)
-    assert client._action_prediction_counts == {3: 3}
+    assert client._action_prediction_counts == {4: 3}
 
 
 def test_async_queue_synchronization_drops_actions_elapsed_on_nova() -> None:

@@ -117,11 +117,12 @@ bridge boundary. That timestamp is the immutable action-timestep origin; samplin
 waypoints at ``origin + action_timestep * policy_dt`` without another measured-state bridge or a new
 hold at ``now``. Policy queue timestamps use the raw controller timer and policy spacing directly;
 they never use client wall time or a client/server clock-rate estimate. Each replacement prepends
-the preceding published action and retains the selected action plus its immutable successor,
-creating an explicit past/current/future overlap before newly aggregated targets. Queue consumption
-uses the latest acknowledged raw controller timestamp, so actions elapsed during a delayed local
-tick are dropped. Rerun renders the three-point retained seam in Nova Violet; it is a view of the
-active overlap, not a measured-state re-anchoring request.
+the preceding published action and retains the selected action plus two immutable successors,
+creating a four-point overlap that preserves position, velocity, and one-step acceleration context
+before newly aggregated targets. Queue consumption uses the latest acknowledged raw controller
+timestamp, so actions elapsed during a delayed local tick are dropped. Rerun renders the four-point
+retained seam in Nova Violet; it is a view of the active overlap, not a measured-state re-anchoring
+request.
 
 ```python
 executor = PolicyExecutor(
