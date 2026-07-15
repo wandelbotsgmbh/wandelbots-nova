@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.7.5 (2026-07-15)
+
+### Bug Fixes
+
+- Update virtual env version to fix setuptools cve (#447)
+  ([#447](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/447),
+  [`496f115`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/496f1159a1c81612a746474a76aa8850a5dd3a40))
+
+
 ## v5.7.4 (2026-07-10)
 
 ### Bug Fixes
