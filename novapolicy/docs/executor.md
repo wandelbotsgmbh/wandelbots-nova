@@ -111,44 +111,14 @@ are no separate `wait_for_settle` or `bridge_to_first_waypoint` switches.
 
 ### Bridging a distant first waypoint
 
-Sequential policies can predict a first waypoint farther from the stopped robot than the spacing
-inside the predicted chunk. With the default `policy_rate_hz=-1`, the executor automatically
-prepends an interpolated bridge to the policy motion. Continuously replacing clients do not bridge every
-lookahead because that would reset the active trajectory. An asynchronous action-queue client can
-request a measured-state bridge for its initial lookahead; bridge and policy remain one continuous
-request and NOVA does not stop at their boundary. The initial connector always prepends the measured
-state; when interpolation is unnecessary, it is exactly ``[current, policy waypoint zero]``. The
-executor preserves the exact NOVA timestamp already assigned to policy waypoint zero at the first
-bridge boundary. That timestamp is the immutable action-timestep origin; sampling controller
-``now`` after reaching the boundary would shift and replay the trajectory. Later lookaheads replace
-waypoints at ``origin + action_timestep * policy_dt`` without another measured-state bridge or a new
-hold at ``now``. Policy queue timestamps use the raw controller timer and policy spacing directly;
-they never use client wall time or a client/server clock-rate estimate. Each replacement prepends
-the preceding published action and retains the selected action plus two immutable successors,
-creating a four-point overlap that preserves position, velocity, and one-step acceleration context
-before newly aggregated targets. Queue consumption uses the latest acknowledged raw controller
-timestamp, so actions elapsed during a delayed local tick are dropped. Rerun renders the four-point
-retained seam in Nova Violet; it is a view of the active overlap, not a measured-state re-anchoring
-request.
+When a policy's first waypoint is far from the robot, sequential execution automatically connects
+the current state to the predicted motion. The bridge and policy chunk are sent as one continuous
+request, so NOVA does not stop at the boundary and IO or computed actions remain aligned with policy
+waypoint zero.
 
-The generic `novapolicy.connect_action_chunk(chunk, states)` transform measures the largest spatial
-interval between consecutive policy waypoints. If the robot-to-first-waypoint distance exceeds that
-interval, it creates enough interpolated waypoints that every bridge interval is no larger. The
-first bridge waypoint holds the observed current state; interpolation starts at the following
-timestamp so request transport cannot shorten the first movement interval.
-
-Bridge and policy motion are submitted as one continuous waypoint request using the policy chunk's
-`dt_ms`. Policy waypoint zero appears once at the boundary, so NOVA does not enter standstill there.
-The connected motion carries no IO actions; the executor uses the exact scheduled NOVA timestamp of
-policy waypoint zero to fire the original IO and computed actions at the boundary. It then waits for
-the combined request's final timestamp and standstill. In Rerun, the bridge is a persistent Nova
-Violet line with an endpoint marker; policy output remains orange and the measured TCP trail remains
-green. `novapolicy.create_bridge_chunk` remains available when only the interpolated prefix is
-needed. Joint distance
-is measured in joint space; TCP translation and rotation-vector spacing are handled separately.
-Chunks with fewer than two motion waypoints provide no spacing reference and are not bridged unless
-the client explicitly requires the initial queue anchor. Bridging is part of sequential mode and is
-disabled for continuous replacement after its initial timeline has been established.
+Continuous policies may use this bridge for their initial lookahead only. Later lookaheads replace
+the active trajectory without re-anchoring it to the measured state. The same behavior is available
+through `novapolicy.connect_action_chunk(...)` and `novapolicy.create_bridge_chunk(...)`.
 
 ### Acceleration and braking interpolation
 
