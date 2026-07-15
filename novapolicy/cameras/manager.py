@@ -41,7 +41,28 @@ class CameraManager:
         self._sources.clear()
 
     def read(self) -> dict[str, Any]:
-        """Read one frame from each camera source."""
+        """Read one policy frame from each camera source."""
         return {
             key: source.read(max_age_s=self._max_age_s) for key, source in self._sources.items()
         }
+
+    def read_previews(self) -> dict[str, Any]:
+        """Read side-effect-free preview frames from sources that support them.
+
+        Preview reads must not advance temporal frame-history buffers used by
+        policy observations. Camera backends without a ``get_latest_frame``
+        method are omitted from continuous visualization and remain logged once
+        per policy observation.
+        """
+        previews: dict[str, Any] = {}
+        for key, source in self._sources.items():
+            get_latest_frame = getattr(source, "get_latest_frame", None)
+            if get_latest_frame is None:
+                continue
+            try:
+                previews[key] = get_latest_frame(max_age_s=self._max_age_s)
+            except RuntimeError:
+                # Visualization is best-effort; policy reads still enforce
+                # camera availability and frame freshness.
+                continue
+        return previews

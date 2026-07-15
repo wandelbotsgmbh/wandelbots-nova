@@ -248,6 +248,22 @@ class WebRTCDevice:
         Raises:
             RuntimeError: If not connected, no frame available, or frame is stale.
         """
+        frame = self._read_latest_frame(max_age_s)
+        if self._frame_history <= 1:
+            return frame
+
+        self._buffer.append(frame)
+        if len(self._buffer) > self._frame_history:
+            self._buffer.pop(0)
+        while len(self._buffer) < self._frame_history:
+            self._buffer.insert(0, self._buffer[0])
+        return np.stack(self._buffer, axis=0)
+
+    def get_latest_frame(self, max_age_s: float = 30.0) -> NDArray[Any]:
+        """Return the latest cached frame without advancing policy frame history."""
+        return self._read_latest_frame(max_age_s)
+
+    def _read_latest_frame(self, max_age_s: float) -> NDArray[Any]:
         if self._connection is None:
             msg = f"Camera '{self._config.device_id}' not connected"
             raise RuntimeError(msg)
@@ -264,16 +280,7 @@ class WebRTCDevice:
 
         if self._resize is not None:
             frame = _resize_frame(frame, self._resize[0], self._resize[1])
-
-        if self._frame_history <= 1:
-            return frame
-
-        self._buffer.append(frame)
-        if len(self._buffer) > self._frame_history:
-            self._buffer.pop(0)
-        while len(self._buffer) < self._frame_history:
-            self._buffer.insert(0, self._buffer[0])
-        return np.stack(self._buffer, axis=0)
+        return frame
 
     async def disconnect(self) -> None:
         """Disconnect from the camera stream."""
