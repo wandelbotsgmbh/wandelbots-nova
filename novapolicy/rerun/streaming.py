@@ -79,26 +79,26 @@ class StateStreamer:
                 if self._sessions is None:
                     break
 
-                previous = rr.set_thread_local_data_recording(self._recording)
-                try:
-                    elapsed = time.monotonic() - self._start_time
-                    rr.set_time("policy_time", duration=elapsed)
-                    self._tick_counter += 1
-                    rr.set_time("state_tick", sequence=self._tick_counter)
+                elapsed = time.monotonic() - self._start_time
+                rr.set_time("policy_time", duration=elapsed, recording=self._recording)
+                self._tick_counter += 1
+                rr.set_time(
+                    "state_tick",
+                    sequence=self._tick_counter,
+                    recording=self._recording,
+                )
 
-                    for mg_id, session in self._sessions.items():
-                        state = session.current_state
-                        if state is not None:
-                            self._log_state(mg_id, state)
+                for mg_id, session in self._sessions.items():
+                    state = session.current_state
+                    if state is not None:
+                        self._log_state(mg_id, state)
 
-                    if self._image_reader is not None and elapsed >= next_image_time:
-                        try:
-                            self._log_images(self._image_reader())
-                        except (OSError, RuntimeError, ValueError, TypeError) as e:
-                            logger.debug("Camera frame logging skipped: %s", e)
-                        next_image_time = elapsed + _IMAGE_STREAM_PERIOD_S
-                finally:
-                    rr.set_thread_local_data_recording(previous)
+                if self._image_reader is not None and elapsed >= next_image_time:
+                    try:
+                        self._log_images(self._image_reader())
+                    except (OSError, RuntimeError, ValueError, TypeError) as e:
+                        logger.debug("Camera frame logging skipped: %s", e)
+                    next_image_time = elapsed + _IMAGE_STREAM_PERIOD_S
 
                 await asyncio.sleep(_STATE_STREAM_PERIOD_S)
         except asyncio.CancelledError:
@@ -112,7 +112,11 @@ class StateStreamer:
             return
         from novapolicy.rerun.images import log_images  # noqa: PLC0415
 
-        log_images(images, start_time=self._start_time)
+        log_images(
+            images,
+            start_time=self._start_time,
+            recording=self._recording,
+        )
 
     def _log_state(self, mg_id: str, state: RobotState) -> None:
         """Log a single state sample for one motion group."""
@@ -148,6 +152,7 @@ class StateStreamer:
                         colors=[TCP_TRAIL_COLOR],
                         radii=rr.components.Radius.ui_points(TRAIL_WIDTH_UI),
                     ),
+                    recording=self._recording,
                 )
             rr.log(
                 f"policy/{mg_id}/tcp",
@@ -156,8 +161,13 @@ class StateStreamer:
                     colors=[TCP_TRAIL_COLOR],
                     radii=rr.components.Radius.ui_points(4.0),
                 ),
+                recording=self._recording,
             )
 
         # Log joint scalars on continuous timeline
         for i, j in enumerate(joints):
-            rr.log(f"policy/{mg_id}/joints/j{i}", rr.Scalars(j))
+            rr.log(
+                f"policy/{mg_id}/joints/j{i}",
+                rr.Scalars(j),
+                recording=self._recording,
+            )

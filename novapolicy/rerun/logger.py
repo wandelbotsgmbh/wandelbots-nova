@@ -6,14 +6,13 @@ to focused submodules (observation, action_chunk, streaming, images).
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 import logging
 import time
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
@@ -132,6 +131,7 @@ class PolicyRerunLogger:
                     base_entity_path=mg.id,
                     albedo_factor=[0, 255, 100],
                     model_data=model_data,
+                    recording=self._recording,
                 )
                 self._tcp_trail[mg.id] = []
 
@@ -162,90 +162,75 @@ class PolicyRerunLogger:
         except (OSError, RuntimeError, ValueError) as e:
             logger.warning("PolicyRerunLogger initialization failed: %s", e)
 
-    @contextmanager
-    def _recording_scope(self) -> Iterator[None]:
-        """Route legacy/global Rerun calls to the policy recording for one operation."""
-        if self._recording is None:
-            yield
-            return
-        import rerun as rr  # noqa: PLC0415
-
-        previous = rr.set_thread_local_data_recording(self._recording)
-        try:
-            yield
-        finally:
-            rr.set_thread_local_data_recording(previous)
-
     # ------------------------------------------------------------------
     # Per-step logging
     # ------------------------------------------------------------------
 
     def log_observation(self, states: dict[str, RobotState], step: int) -> None:
         """Log robot state: update 3D mesh positions, joint scalars, TCP trail."""
-        if not self._initialized:
+        if not self._initialized or self._recording is None:
             return
         try:
             from novapolicy.rerun.observation import log_observation  # noqa: PLC0415
 
-            with self._recording_scope():
-                log_observation(
-                    states,
-                    step,
-                    start_time=self._start_time,
-                    dh_robots=self._dh_robots,
-                    visualizers=self._visualizers,
-                    tcp_trail=self._tcp_trail,
-                    max_trail_points=self._max_trail_points,
-                )
+            log_observation(
+                states,
+                step,
+                start_time=self._start_time,
+                dh_robots=self._dh_robots,
+                visualizers=self._visualizers,
+                tcp_trail=self._tcp_trail,
+                max_trail_points=self._max_trail_points,
+                recording=self._recording,
+            )
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_observation error: %s", e)
 
     def log_bridge_chunk(self, chunk: ActionChunk, step: int) -> None:
         """Log an interpolated connector in Nova Violet."""
-        if not self._initialized:
+        if not self._initialized or self._recording is None:
             return
         try:
             from novapolicy.rerun.action_chunk import log_bridge_chunk  # noqa: PLC0415
 
-            with self._recording_scope():
-                log_bridge_chunk(
-                    chunk,
-                    step,
-                    start_time=self._start_time,
-                    dh_robots=self._dh_robots,
-                    tcp_offsets=self._tcp_offsets,
-                )
+            log_bridge_chunk(
+                chunk,
+                step,
+                start_time=self._start_time,
+                dh_robots=self._dh_robots,
+                tcp_offsets=self._tcp_offsets,
+                recording=self._recording,
+            )
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_bridge_chunk error: %s", e)
 
     def log_action_chunk(self, chunk: ActionChunk, step: int, *, n_action_steps: int = 0) -> None:
         """Log action chunk as TCP path line strips and inspectable text."""
-        if not self._initialized:
+        if not self._initialized or self._recording is None:
             return
         try:
             from novapolicy.rerun.action_chunk import log_action_chunk  # noqa: PLC0415
 
-            with self._recording_scope():
-                log_action_chunk(
-                    chunk,
-                    step,
-                    start_time=self._start_time,
-                    dh_robots=self._dh_robots,
-                    tcp_offsets=self._tcp_offsets,
-                    n_action_steps=n_action_steps,
-                )
+            log_action_chunk(
+                chunk,
+                step,
+                start_time=self._start_time,
+                dh_robots=self._dh_robots,
+                tcp_offsets=self._tcp_offsets,
+                n_action_steps=n_action_steps,
+                recording=self._recording,
+            )
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_action_chunk error: %s", e)
 
     def log_images(self, images: dict[str, Any]) -> None:
         """Log camera images to Rerun."""
-        if not self._initialized or not images:
+        if not self._initialized or self._recording is None or not images:
             return
         try:
             from novapolicy.rerun.images import log_images  # noqa: PLC0415
 
-            with self._recording_scope():
-                log_images(images, start_time=self._start_time)
+            log_images(images, start_time=self._start_time, recording=self._recording)
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_images error: %s", e)
 

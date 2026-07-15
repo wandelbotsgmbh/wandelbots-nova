@@ -51,7 +51,6 @@ async def test_state_streamer_logs_latest_camera_frames_between_policy_chunks(
         image_reader=read_images,
     )
     monkeypatch.setattr(streamer, "_log_images", log_images)
-    monkeypatch.setattr(rr, "set_thread_local_data_recording", MagicMock(return_value=None))
     monkeypatch.setattr(rr, "set_time", MagicMock())
 
     streamer.start({})

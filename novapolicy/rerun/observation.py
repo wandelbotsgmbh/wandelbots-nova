@@ -10,6 +10,7 @@ import rerun as rr
 
 if TYPE_CHECKING:
     from nova.types import RobotState
+    from rerun import RecordingStream
 
 
 def log_observation(
@@ -21,11 +22,12 @@ def log_observation(
     visualizers: dict[str, Any],
     tcp_trail: dict[str, list[list[float]]],
     max_trail_points: int,
+    recording: RecordingStream | None,
 ) -> None:
     """Log robot state: update 3D mesh positions, joint scalars, TCP trail."""
     elapsed = time.monotonic() - start_time
-    rr.set_time("policy_time", duration=elapsed)
-    rr.set_time("policy_step", sequence=step)
+    rr.set_time("policy_time", duration=elapsed, recording=recording)
+    rr.set_time("policy_step", sequence=step, recording=recording)
 
     for mg_id, state in states.items():
         if not hasattr(state, "joints"):
@@ -34,7 +36,7 @@ def log_observation(
 
         # Joint timeseries
         for i, j in enumerate(joints):
-            rr.log(f"policy/{mg_id}/joints/j{i}", rr.Scalars(j))
+            rr.log(f"policy/{mg_id}/joints/j{i}", rr.Scalars(j), recording=recording)
 
         # Update 3D robot mesh
         visualizer = visualizers.get(mg_id)
@@ -66,6 +68,7 @@ def log_observation(
                         colors=[TCP_TRAIL_COLOR],
                         radii=rr.components.Radius.ui_points(TRAIL_WIDTH_UI),
                     ),
+                    recording=recording,
                 )
             rr.log(
                 f"policy/{mg_id}/tcp",
@@ -74,4 +77,5 @@ def log_observation(
                     colors=[TCP_TRAIL_COLOR],
                     radii=rr.components.Radius.ui_points(4.0),
                 ),
+                recording=recording,
             )
