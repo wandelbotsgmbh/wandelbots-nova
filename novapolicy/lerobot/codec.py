@@ -182,7 +182,7 @@ class LeRobotCodec:
     @staticmethod
     def action_to_array(action: object) -> NDArray[np.float32]:
         if hasattr(action, "detach"):
-            action = action.detach().cpu().numpy()
+            action = cast("Any", action).detach().cpu().numpy()
         return np.asarray(action, dtype=np.float32).reshape(-1)
 
     @staticmethod

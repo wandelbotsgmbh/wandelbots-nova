@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from nova.cell.motion_group import MotionGroup
+    from nova.core.gateway import ApiGateway
     from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 
 logger = logging.getLogger(__name__)
@@ -127,7 +128,7 @@ class EstopMonitor:
                 t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _watch(self, controller_id: str, api_client: object) -> None:
+    async def _watch(self, controller_id: str, api_client: ApiGateway) -> None:
         cell = get_cell(self._motion_groups[0])
         stream = None
         try:

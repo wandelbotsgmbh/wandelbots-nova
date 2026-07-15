@@ -25,7 +25,7 @@ from novapolicy.jogging.waypoints import PendingChunk, make_waypoints_request
 from novapolicy.types import JoggingNotSupportedError, MotionError, StopContext
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Mapping
 
     from nova.cell.motion_group import MotionGroup
     from novapolicy.debug import WaypointTrajectoryTrace
@@ -331,7 +331,7 @@ class WaypointJoggingSession:
 
         # Request is built later at yield time.
 
-    async def write_ios(self, ios: dict[str, ValueType]) -> None:
+    async def write_ios(self, ios: Mapping[str, ValueType]) -> None:
         """Write IO values (delegated to IOWriter for deduplication)."""
         await self._io_writer.write(ios)
 
@@ -473,6 +473,8 @@ class WaypointJoggingSession:
                 # its current action chunk.
                 pending = self._pending_request
                 self._pending_request = None
+                if pending is None:
+                    continue
 
                 # Start the clock on the first chunk — this is when the
                 # server's internal timer begins (first waypoint message).

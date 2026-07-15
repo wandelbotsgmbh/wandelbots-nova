@@ -317,12 +317,14 @@ class PolicyExecutor:
             tcp = await mg.active_tcp_name() or (await mg.tcp_names())[0]
             setup = await mg.get_setup(tcp)
             setup.collision_setups = api.models.CollisionSetups({})
-            trajectory = await mg.plan([jnt(joints)], tcp, motion_group_setup=setup)
-            await mg.execute(trajectory, tcp, actions=[jnt(joints)])
+            target = tuple(joints)
+            trajectory = await mg.plan([jnt(target)], tcp, motion_group_setup=setup)
+            await mg.execute(trajectory, tcp, actions=[jnt(target)])
 
-        await asyncio.gather(
-            *(ptp(mg, joints) for mg, joints in self._start_joint_position.items())
-        )
+        start_positions = self._start_joint_position
+        if start_positions is None:
+            return
+        await asyncio.gather(*(ptp(mg, joints) for mg, joints in start_positions.items()))
 
     async def _run_episode(self) -> None:
         """Orchestrate one episode: create sessions, loop observe→act, tear down.

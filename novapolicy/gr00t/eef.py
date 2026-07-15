@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from enum import StrEnum
 import math
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from nova.types import Pose
 
 _ANGLE_EPSILON = 1e-8
 
@@ -25,9 +29,7 @@ class TcpFormat(StrEnum):
     """[x, y, z, r1x, r1y, r1z, r2x, r2y, r2z] — 9 values. GR00T format."""
 
 
-def pose_to_eef(
-    pose: object, fmt: TcpFormat | str, *, position_scale: float = 0.001
-) -> list[float]:
+def pose_to_eef(pose: Pose, fmt: TcpFormat | str, *, position_scale: float = 0.001) -> list[float]:
     """Convert a Nova Pose to TCP values in the requested format.
 
     Parameters
@@ -50,8 +52,8 @@ def pose_to_eef(
         - ``quaternion``: [x, y, z, qx, qy, qz, qw] — 7 values
         - ``rot6d``: [x, y, z, r1x, r1y, r1z, r2x, r2y, r2z] — 9 values
     """
-    pos = pose.position  # type: ignore[union-attr]
-    ori = pose.orientation  # type: ignore[union-attr]
+    pos = pose.position
+    ori = pose.orientation
     x = float(pos.x) * position_scale
     y = float(pos.y) * position_scale
     z = float(pos.z) * position_scale

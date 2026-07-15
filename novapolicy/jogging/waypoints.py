@@ -44,7 +44,7 @@ def make_waypoints_request(
     first_timestamp_ms: int | None = None,
     timestamp_offset_steps: int = 0,
     server_dt_ms: float | None = None,
-) -> object:
+) -> api.models.JointWaypointsRequest | api.models.PoseWaypointsRequest:
     """Build a JointWaypointsRequest or PoseWaypointsRequest at stream-yield time.
 
     Every waypoint carries an absolute server-time timestamp laid out as
@@ -76,7 +76,9 @@ def make_waypoints_request(
     return _build_joint_request(timestamps, steps)
 
 
-def _build_joint_request(timestamps: list[int], steps: list[list[float]]) -> object:
+def _build_joint_request(
+    timestamps: list[int], steps: list[list[float]]
+) -> api.models.JointWaypointsRequest:
     """Build a JointWaypointsRequest from timestamps and joint steps.
 
     The request uses the array-of-structs layout: a single ``waypoints``
@@ -90,7 +92,9 @@ def _build_joint_request(timestamps: list[int], steps: list[list[float]]) -> obj
     )
 
 
-def _build_pose_request(timestamps: list[int], steps: list[list[float]]) -> object:
+def _build_pose_request(
+    timestamps: list[int], steps: list[list[float]]
+) -> api.models.PoseWaypointsRequest:
     """Build a PoseWaypointsRequest from timestamps and TCP pose steps.
 
     Each step is [x, y, z, rx, ry, rz] where position is in mm and

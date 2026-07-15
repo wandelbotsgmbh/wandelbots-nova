@@ -71,7 +71,7 @@ class RTCState:
     """Executed steps (motion committed since last inference) from the most
     recent compute_rtc_options() call."""
 
-    latency_queue: deque = field(default_factory=lambda: deque(maxlen=10))
+    latency_queue: deque[float] = field(default_factory=lambda: deque(maxlen=10))
     """Recent inference latency samples in seconds."""
 
     def reset(self) -> None:

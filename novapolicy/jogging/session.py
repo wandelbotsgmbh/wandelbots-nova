@@ -65,10 +65,12 @@ class JoggingStateTracker:
             self._paused_detail = ""
         else:
             self._paused_reason = kind
-            if hasattr(jog_state, "joint_indices"):
-                self._paused_detail = f"joints: {jog_state.joint_indices}"
-            elif hasattr(jog_state, "description"):
-                self._paused_detail = jog_state.description
+            joint_indices = getattr(jog_state, "joint_indices", None)
+            description = getattr(jog_state, "description", None)
+            if joint_indices is not None:
+                self._paused_detail = f"joints: {joint_indices}"
+            elif isinstance(description, str):
+                self._paused_detail = description
             else:
                 self._paused_detail = ""
 

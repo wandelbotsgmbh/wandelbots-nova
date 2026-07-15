@@ -20,7 +20,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, cast, overload
 
 from novapolicy.estop import EstopMonitor, check_estop, check_sessions, triggered_stop_condition
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
@@ -37,6 +37,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _CARTESIAN_DIMS = 6  # x, y, z, rx, ry, rz — fixed by NOVA jogging API
+
+type _TargetValues = list[float] | list[list[float]]
 
 # Safety fallback: if the robot never reports a RUNNING jogging state, anchor
 # the elapsed clock anyway after this many seconds so the loop can't stall.
@@ -164,24 +166,27 @@ class _BaseJogger:
             )
         self._log_target(mg.id, [values], 0.0)
 
-    def _push_target(self, mg: MotionGroup, value: list, dt_ms: float) -> list[float]:
+    def _push_target(self, mg: MotionGroup, value: _TargetValues, dt_ms: float) -> list[float]:
         """Push a single or chunk target to a session. Returns the final target."""
-        session = self._sessions.get(mg)
-        if session is None:
-            return value if not isinstance(value[0], list) else value[-1]
-        if value and isinstance(value[0], list):
-            # Chunked: absolute anchor on the jogger's own session timeline so
-            # overlapping per-tick resends land identical steps at identical
-            # timestamps (one coherent trajectory, no seam jump).
-            session.update_chunk(
-                steps=self._ease_steps(mg, value, dt_ms),
-                dt_ms=dt_ms,
-                first_timestamp_ms=session.estimated_server_timestamp_ms,
-            )
-            self._log_target(mg.id, value, dt_ms)
-            return value[-1]
-        self._validate_and_push(mg, value)
-        return value
+        is_chunk = bool(value) and isinstance(value[0], list)
+        if is_chunk:
+            chunk = cast("list[list[float]]", value)
+            session = self._sessions.get(mg)
+            if session is not None:
+                # Chunked: absolute anchor on the jogger's own session timeline so
+                # overlapping per-tick resends land identical steps at identical
+                # timestamps (one coherent trajectory, no seam jump).
+                session.update_chunk(
+                    steps=self._ease_steps(mg, chunk, dt_ms),
+                    dt_ms=dt_ms,
+                    first_timestamp_ms=session.estimated_server_timestamp_ms,
+                )
+                self._log_target(mg.id, chunk, dt_ms)
+            return chunk[-1]
+
+        target = cast("list[float]", value)
+        self._validate_and_push(mg, target)
+        return target
 
     def _log_target(self, mg_id: str, steps: list[list[float]], dt_ms: float) -> None:
         """Log jogging target to Rerun as an action chunk visualization."""
@@ -283,13 +288,14 @@ class _BaseJogger:
             # PTP-to-home would use).
             setup = await mg.get_setup(tcp)
             setup.collision_setups = api.models.CollisionSetups({})
-            traj = await mg.plan([jnt(joints)], tcp, motion_group_setup=setup)
-            await mg.execute(traj, tcp, actions=[jnt(joints)])
+            target = tuple(joints)
+            traj = await mg.plan([jnt(target)], tcp, motion_group_setup=setup)
+            await mg.execute(traj, tcp, actions=[jnt(target)])
 
-        tasks = [
-            _ptp(mg, joints)
-            for mg, joints in self._start_joint_position.items()  # type: ignore[union-attr]
-        ]
+        start_positions = self._start_joint_position
+        if start_positions is None:
+            return
+        tasks = [_ptp(mg, joints) for mg, joints in start_positions.items()]
         await _asyncio.gather(*tasks)
 
     @property
@@ -457,13 +463,15 @@ class TcpJogger(_BaseJogger):
             else:
                 home_dict = {mg_list[0]: start_joint_position}
         super().__init__(mg_list, sessions, start_joint_position=home_dict, ease_in_s=ease_in_s)
-        self._target: dict[MotionGroup, Pose] | None = None
+        self._target: dict[MotionGroup, Pose | list[float]] | None = None
 
     def _expected_dims(self, mg: MotionGroup) -> int | None:  # noqa: ARG002
         return _CARTESIAN_DIMS
 
     @property
-    def target(self) -> dict[MotionGroup, Pose] | Pose | None:
+    def target(
+        self,
+    ) -> dict[MotionGroup, Pose | list[float]] | Pose | list[float] | None:
         """Current target (read-only). Use :meth:`set_target` to update."""
         if self._target is None:
             return None
@@ -501,8 +509,7 @@ class TcpJogger(_BaseJogger):
                 msg = "For multiple motion groups, pass a dict[MotionGroup, ...]"
                 raise TypeError(msg)
             mg = self._mg_list[0]
-            self._push_target(mg, target, dt_ms)
-            self._target = {mg: target[-1] if target and isinstance(target[0], list) else target}
+            self._target = {mg: self._push_target(mg, target, dt_ms)}
         elif isinstance(target, dict):
             self._target = self._target or {}
             for mg, value in target.items():
@@ -510,8 +517,7 @@ class TcpJogger(_BaseJogger):
                     self._validate_and_push(mg, list(value.position) + list(value.orientation))
                     self._target[mg] = value
                 else:
-                    self._push_target(mg, value, dt_ms)
-                    self._target[mg] = value[-1] if value and isinstance(value[0], list) else value
+                    self._target[mg] = self._push_target(mg, value, dt_ms)
         else:
             msg = f"Expected Pose, list, or dict, got {type(target)}"
             raise TypeError(msg)

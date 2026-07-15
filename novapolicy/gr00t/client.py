@@ -396,7 +396,7 @@ class Gr00tPolicyClient(PolicyClient):
                 val = float(arr.flat[-1])
                 ios.setdefault(mg.id, {})[hw_key] = mapping.to_hardware(val)
             elif key in action:
-                val = float(action[key])  # type: ignore[arg-type]
+                val = float(cast("Any", action[key]))
                 ios.setdefault(mg.id, {})[hw_key] = mapping.to_hardware(val)
 
         # Decode TCP actions

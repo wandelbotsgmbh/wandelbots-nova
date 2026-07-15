@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pickle  # nosec: LeRobot async inference uses trusted pickle payloads.
 import time
-from typing import Any
+from typing import Any, cast
 
 import grpc
 from lerobot.async_inference.helpers import TimedObservation
@@ -32,11 +32,13 @@ class LeRobotGrpcTransport:
         channel = grpc.insecure_channel(self._server_address)
         self._channel = channel
         self._stub = services_pb2_grpc.AsyncInferenceStub(channel)
-        self._stub.Ready(services_pb2.Empty(), timeout=self._timeout_s)
+        protobuf = cast("Any", services_pb2)
+        self._stub.Ready(protobuf.Empty(), timeout=self._timeout_s)
 
     def configure_policy(self, config: object) -> None:
+        protobuf = cast("Any", services_pb2)
         self._require_stub().SendPolicyInstructions(
-            services_pb2.PolicySetup(data=pickle.dumps(config)),
+            protobuf.PolicySetup(data=pickle.dumps(config)),
             timeout=self._timeout_s,
         )
 
@@ -53,18 +55,20 @@ class LeRobotGrpcTransport:
             timestep=timestep,
             must_go=must_go,
         )
+        protobuf = cast("Any", services_pb2)
         self._require_stub().SendObservations(
             send_bytes_in_chunks(
                 pickle.dumps(timed_observation),
-                services_pb2.Observation,
+                protobuf.Observation,
                 silent=True,
             ),
             timeout=self._timeout_s,
         )
 
     def receive_actions(self, *, allow_empty: bool = False) -> list[Any]:
+        protobuf = cast("Any", services_pb2)
         response = self._require_stub().GetActions(
-            services_pb2.Empty(),
+            protobuf.Empty(),
             timeout=self._timeout_s,
         )
         if not response.data:
@@ -96,6 +100,10 @@ class LeRobotGrpcTransport:
             channel.close()
 
     def _require_stub(self) -> services_pb2_grpc.AsyncInferenceStub:
-        if self._stub is None:
+        stub = self._stub
+        if stub is None:
             self.connect()
-        return self._stub
+            stub = self._stub
+        if stub is None:
+            raise RuntimeError("Failed to create LeRobot gRPC stub")
+        return stub

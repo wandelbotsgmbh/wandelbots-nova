@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -120,13 +120,17 @@ class TimestampedActionQueue:
                 future[timestep] = self._published.get(timestep, current[timestep])
                 future_counts[timestep] = previous_count
             elif self._aggregation is AsyncQueueAggregation.AVERAGE:
-                future[timestep] = (previous_count * current[timestep] + new_action) / (
-                    previous_count + 1
+                future[timestep] = cast(
+                    "NDArray[np.float32]",
+                    (previous_count * current[timestep] + new_action) / (previous_count + 1),
                 )
                 future_counts[timestep] = previous_count + 1
             else:
                 old_weight = self._aggregation.old_action_weight
-                future[timestep] = old_weight * current[timestep] + (1.0 - old_weight) * new_action
+                future[timestep] = cast(
+                    "NDArray[np.float32]",
+                    old_weight * current[timestep] + (1.0 - old_weight) * new_action,
+                )
                 future_counts[timestep] = previous_count + 1
 
         self._actions = sorted(future.items())

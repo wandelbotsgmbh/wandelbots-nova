@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from lerobot.async_inference.helpers import RemotePolicyConfig
 
@@ -14,6 +14,8 @@ from novapolicy.lerobot.transport import LeRobotGrpcTransport
 from novapolicy.policy_client import PolicyClient
 
 if TYPE_CHECKING:
+    from lerobot.configs.types import PolicyFeature
+
     from nova.types import RobotState
     from novapolicy.lerobot.codec import FlatActionLayout
     from novapolicy.schema import PolicySchema
@@ -208,7 +210,10 @@ class LeRobotPolicyClient(PolicyClient):
             RemotePolicyConfig(
                 policy_type=self._policy_type,
                 pretrained_name_or_path=self._pretrained_name_or_path,
-                lerobot_features=self._codec.features(schema, state_names, images),
+                lerobot_features=cast(
+                    "dict[str, PolicyFeature]",
+                    self._codec.features(schema, state_names, images),
+                ),
                 actions_per_chunk=self._actions_per_chunk,
                 device=self._device,
             )
