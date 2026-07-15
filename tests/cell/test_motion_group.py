@@ -561,6 +561,7 @@ async def test_forward_kinematics_without_tcp_skips_tcp_offset(mock_motion_group
     request = mock_motion_group._api_client.kinematics_api.forward_kinematics.call_args.kwargs[
         "forward_kinematics_request"
     ]
+    # tcp=None must never populate a tcp_offset on the outgoing request
     assert request.tcp_offset is None
 
 
