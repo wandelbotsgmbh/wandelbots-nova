@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 _MIN_RAMP_INTERPOLATION_STEPS = 2
 _ASYNC_SEAM_STEPS = 4
 _ASYNC_REPLACEMENT_LEAD_STEPS = 1
+_DEFAULT_WAYPOINT_CONFIG = WaypointConfig()
 
 
 class Phase(StrEnum):
@@ -106,7 +107,7 @@ class PolicyExecutor:
         stop_conditions: list[StopCondition] | None = None,
         timeout_s: float = 0,
         camera_max_age_s: float = 30.0,
-        motion: WaypointConfig | None = None,
+        motion: WaypointConfig = _DEFAULT_WAYPOINT_CONFIG,
         policy_rate_hz: float = -1,
         n_action_steps: int = 0,
         interpolate_chunk_ramps: bool = False,
@@ -158,7 +159,7 @@ class PolicyExecutor:
             raise TypeError(msg)
         self._policy = policy
 
-        self._motion: WaypointConfig = motion or WaypointConfig()
+        self._motion = motion
         self._start_joint_position = start_joint_position
         self._trajectory_trace = (
             ExecutionTrajectoryTrace(trajectory_trace_path)

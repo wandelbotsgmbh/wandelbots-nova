@@ -94,7 +94,7 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     0 = no RTC / no backdate."""
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class WaypointConfig:
     """Configuration for NOVA waypoint jogging.
 
