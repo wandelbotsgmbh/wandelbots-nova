@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import pickle  # nosec: LeRobot async inference uses trusted pickle payloads.
+import pickle  # noqa: S403  # nosec: LeRobot uses trusted pickle payloads.
 import time
 from typing import Any, cast
 

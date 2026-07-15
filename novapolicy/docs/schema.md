@@ -14,8 +14,7 @@ values:
 ```python
 # Policy sees 0.0 (closed) or 100.0 (open)
 # Hardware reads/writes True/False on digital_out[0]
-Observation.io("gripper", source=mg, io="digital_out[0]",
-               mapping=BoolMapping(on=100.0))
+Observation.io("gripper", source=mg, io="digital_out[0]", mapping=BoolMapping(on=100.0))
 ```
 
 For read-only sensors, set `action=False`:
@@ -35,8 +34,7 @@ schema = PolicySchema(
         Observation.io("gripper", source=mg, io="analog_in[0]", action=False),
     ],
     actions=[
-        Action.io("gripper", target=mg, io="digital_out[0]",
-                  mapping=BoolMapping(on=1.0)),
+        Action.io("gripper", target=mg, io="digital_out[0]", mapping=BoolMapping(on=1.0)),
     ],
 )
 ```
@@ -80,10 +78,13 @@ async def read_force_sensor(obs: dict) -> dict:
     values = await opcua_client.read(["ns=2;s=ForceZ"])
     return {"force_z": values[0]}
 
-schema = PolicySchema(observations=[
-    Observation.joint_positions("arm", source=mg),
-    Observation.computed(read_force_sensor),
-])
+
+schema = PolicySchema(
+    observations=[
+        Observation.joint_positions("arm", source=mg),
+        Observation.computed(read_force_sensor),
+    ]
+)
 ```
 
 Computed actions trigger external side effects after each policy call, receiving the returned `ActionChunk`:
@@ -91,6 +92,7 @@ Computed actions trigger external side effects after each policy call, receiving
 ```python
 async def journal(chunk: ActionChunk) -> None:
     await db.write(chunk.joints)
+
 
 schema = PolicySchema(
     observations=[Observation.joint_positions("arm", source=mg)],

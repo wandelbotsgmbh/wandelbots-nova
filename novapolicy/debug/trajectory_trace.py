@@ -27,15 +27,12 @@ class RawActionChunkTrace:
         self.chunks.clear()
 
     def record(self, actions: Sequence[tuple[int, np.ndarray]]) -> None:
-        self.chunks.append(
-            {
-                "first_timestep": actions[0][0],
-                "actions": [
-                    {"timestep": timestep, "values": action.tolist()}
-                    for timestep, action in actions
-                ],
-            }
-        )
+        self.chunks.append({
+            "first_timestep": actions[0][0],
+            "actions": [
+                {"timestep": timestep, "values": action.tolist()} for timestep, action in actions
+            ],
+        })
 
     @property
     def data(self) -> dict[str, object]:
@@ -58,13 +55,11 @@ class WaypointTrajectoryTrace:
         joints: list[float],
         tcp: Pose | None,
     ) -> None:
-        self.states.append(
-            {
-                "server_timestamp_ms": server_timestamp_ms,
-                "joints": joints,
-                "tcp": [*tcp.position, *tcp.orientation] if tcp is not None else None,
-            }
-        )
+        self.states.append({
+            "server_timestamp_ms": server_timestamp_ms,
+            "joints": joints,
+            "tcp": [*tcp.position, *tcp.orientation] if tcp is not None else None,
+        })
 
     def record_request(
         self,
@@ -79,19 +74,17 @@ class WaypointTrajectoryTrace:
         timestamps_ms: list[int],
         steps: list[list[float]],
     ) -> None:
-        self.requests.append(
-            {
-                "sequence": sequence,
-                "action_timestep": action_timestep,
-                "policy_dt_ms": policy_dt_ms,
-                "first_timestamp_ms": first_timestamp_ms,
-                "timestamp_offset_steps": timestamp_offset_steps,
-                "server_dt_ms": server_dt_ms,
-                "server_sample_ms": server_sample_ms,
-                "timestamps_ms": timestamps_ms,
-                "steps": steps,
-            }
-        )
+        self.requests.append({
+            "sequence": sequence,
+            "action_timestep": action_timestep,
+            "policy_dt_ms": policy_dt_ms,
+            "first_timestamp_ms": first_timestamp_ms,
+            "timestamp_offset_steps": timestamp_offset_steps,
+            "server_dt_ms": server_dt_ms,
+            "server_sample_ms": server_sample_ms,
+            "timestamps_ms": timestamps_ms,
+            "steps": steps,
+        })
 
     @property
     def data(self) -> dict[str, object]:
@@ -115,7 +108,8 @@ class ExecutionTrajectoryTrace:
         self._policy_chunks.clear()
         self._sessions.clear()
 
-    def enable_policy_client(self, policy: PolicyClient) -> None:
+    @staticmethod
+    def enable_policy_client(policy: PolicyClient) -> None:
         policy.enable_trajectory_trace()
 
     def create_session_trace(
@@ -135,26 +129,24 @@ class ExecutionTrajectoryTrace:
         *,
         step: int,
     ) -> None:
-        self._policy_chunks.append(
-            {
-                "step": step,
-                "action_timestep": action.action_timestep,
-                "dt_ms": action.dt_ms,
-                "joints": action.joints,
-                "tcp": action.tcp,
-                "controller_samples": {
-                    group_id: {
-                        "server_timestamp_ms": server_timestamp,
-                        "joints": (
-                            list(state.joints)
-                            if (state := robot_states.get(group_id)) is not None
-                            else None
-                        ),
-                    }
-                    for group_id, server_timestamp in server_timestamps_ms.items()
-                },
-            }
-        )
+        self._policy_chunks.append({
+            "step": step,
+            "action_timestep": action.action_timestep,
+            "dt_ms": action.dt_ms,
+            "joints": action.joints,
+            "tcp": action.tcp,
+            "controller_samples": {
+                group_id: {
+                    "server_timestamp_ms": server_timestamp,
+                    "joints": (
+                        list(state.joints)
+                        if (state := robot_states.get(group_id)) is not None
+                        else None
+                    ),
+                }
+                for group_id, server_timestamp in server_timestamps_ms.items()
+            },
+        })
 
     def write(
         self,

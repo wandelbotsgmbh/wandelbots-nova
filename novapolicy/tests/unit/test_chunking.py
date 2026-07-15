@@ -153,9 +153,16 @@ def test_endpoint_ramps_preserve_original_waypoints_and_remap_indices():
 
     interpolated = interpolate_action_chunk_ramps(chunk, interpolation_steps=3)
 
-    assert [step[0] for step in interpolated.motion.joints["0@ur5e"]] == pytest.approx(
-        [0.0, 1 / 9, 4 / 9, 1.0, 2.0, 23 / 9, 26 / 9, 3.0]
-    )
+    assert [step[0] for step in interpolated.motion.joints["0@ur5e"]] == pytest.approx([
+        0.0,
+        1 / 9,
+        4 / 9,
+        1.0,
+        2.0,
+        23 / 9,
+        26 / 9,
+        3.0,
+    ])
     assert interpolated.original_step_indices["0@ur5e"] == (0, 3, 4, 7)
     assert interpolated.motion.dt_ms == 50.0
 
@@ -165,9 +172,13 @@ def test_single_interval_uses_smoothstep_when_accelerating_and_braking():
 
     interpolated = interpolate_action_chunk_ramps(chunk, interpolation_steps=4)
 
-    assert [step[0] for step in interpolated.motion.joints["0@ur5e"]] == pytest.approx(
-        [0.0, 0.15625, 0.5, 0.84375, 1.0]
-    )
+    assert [step[0] for step in interpolated.motion.joints["0@ur5e"]] == pytest.approx([
+        0.0,
+        0.15625,
+        0.5,
+        0.84375,
+        1.0,
+    ])
     assert interpolated.original_step_indices["0@ur5e"] == (0, 4)
 
 

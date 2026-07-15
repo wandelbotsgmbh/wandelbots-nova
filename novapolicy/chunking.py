@@ -145,12 +145,10 @@ def _smooth_steps(
         for index, current in enumerate(previous):
             before = previous[max(0, index - 1)]
             after = previous[min(len(previous) - 1, index + 1)]
-            smoothed.append(
-                [
-                    (left + 2.0 * value + right) / 4.0
-                    for left, value, right in zip(before, current, after, strict=True)
-                ]
-            )
+            smoothed.append([
+                (left + 2.0 * value + right) / 4.0
+                for left, value, right in zip(before, current, after, strict=True)
+            ])
 
     prefix_length = min(retained_prefix_steps, len(smoothed))
     smoothed[:prefix_length] = original[:prefix_length]

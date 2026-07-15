@@ -83,10 +83,15 @@ From [NVIDIA/Isaac-GR00T#320](https://github.com/NVIDIA/Isaac-GR00T/pull/320):
 
 ```python
 class RTCPolicyWrapper(BasePolicy):
-    def __init__(self, policy, control_freq, denoising_steps=8,
-                 max_rtc_overlap_factor=0.75, latency_queue_size=10,
-                 systematic_latency_offset=0.02):
-        ...
+    def __init__(
+        self,
+        policy,
+        control_freq,
+        denoising_steps=8,
+        max_rtc_overlap_factor=0.75,
+        latency_queue_size=10,
+        systematic_latency_offset=0.02,
+    ): ...
 
     def get_action(self, observation):
         # On subsequent calls: merge previous action INTO observation
@@ -106,10 +111,12 @@ class RTCPolicyWrapper(BasePolicy):
         executed_steps = int(self.control_freq * between_inference_time)
         max_rtc_steps = self._action_horizon * self._max_rtc_overlap_factor
 
-        overlap_steps = int(max(min(
-            self._action_horizon - executed_steps + frozen_steps,
-            max_rtc_steps
-        ), frozen_steps))
+        overlap_steps = int(
+            max(
+                min(self._action_horizon - executed_steps + frozen_steps, max_rtc_steps),
+                frozen_steps,
+            )
+        )
 
         return {
             "denoising_steps": self.denoising_steps,
@@ -180,11 +187,11 @@ Add RTC parameters to the client/executor:
 client = Gr00tPolicyClient(
     host="gpu-server",
     port=30555,
-    rtc=True,                      # Enable RTC
-    control_freq=20,               # Policy rate (Hz) — matches policy_rate_hz
-    max_rtc_overlap_factor=0.75,   # Max fraction of chunk to overlap
-    rtc_ramp_rate=3.0,             # Denoising ramp rate
-    denoising_steps=8,             # DiT denoising iterations
+    rtc=True,  # Enable RTC
+    control_freq=20,  # Policy rate (Hz) — matches policy_rate_hz
+    max_rtc_overlap_factor=0.75,  # Max fraction of chunk to overlap
+    rtc_ramp_rate=3.0,  # Denoising ramp rate
+    denoising_steps=8,  # DiT denoising iterations
 )
 ```
 
@@ -201,7 +208,7 @@ from gr00t.eval.robot.rtc_policy import RTCPolicyWrapper  # from PR #320
 base_policy = Gr00tPolicy(embodiment_tag=..., model_path=..., device="cuda:0")
 rtc_policy = RTCPolicyWrapper(
     base_policy,
-    control_freq=20,        # must match client policy_rate_hz
+    control_freq=20,  # must match client policy_rate_hz
     denoising_steps=8,
     max_rtc_overlap_factor=0.75,
 )

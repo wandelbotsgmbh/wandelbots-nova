@@ -58,7 +58,7 @@ def _initial_policy_boundary(
     return origin_ms, dt_ms, actions
 
 
-def analyze(  # noqa: C901
+def analyze(  # noqa: C901, PLR0914
     trace: dict[str, Any],
     group_id: str,
 ) -> tuple[dict[str, Any], list[str]]:
@@ -97,14 +97,12 @@ def analyze(  # noqa: C901
     for timestep in sorted(stable_actions):
         canonical_timestamp_ms = int(origin_ms + timestep * dt_ms)
         submitted = [timestamp for timestamp, _joints in publications.get(timestep, [])]
-        actions.append(
-            {
-                "action_timestep": timestep,
-                "timestamp_ms": canonical_timestamp_ms,
-                "submitted_timestamps_ms": submitted,
-                "joints": stable_actions[timestep],
-            }
-        )
+        actions.append({
+            "action_timestep": timestep,
+            "timestamp_ms": canonical_timestamp_ms,
+            "submitted_timestamps_ms": submitted,
+            "joints": stable_actions[timestep],
+        })
 
     first_timestamp_errors = []
     canonical_ahead_at_send = []

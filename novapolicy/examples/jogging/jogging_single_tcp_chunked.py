@@ -43,14 +43,12 @@ async def main(ctx: nova.ProgramContext):
             for i in range(chunk_size):
                 future_t = t + i * dt_s
                 angle = 2 * math.pi * (future_t / duration)
-                chunk.append(
-                    [
-                        center_x + radius * math.cos(angle),
-                        start_pose.position[1],
-                        center_z + radius * math.sin(angle),
-                        *start_pose.orientation,
-                    ]
-                )
+                chunk.append([
+                    center_x + radius * math.cos(angle),
+                    start_pose.position[1],
+                    center_z + radius * math.sin(angle),
+                    *start_pose.orientation,
+                ])
             jogger.set_target(chunk, dt_ms=dt_ms)
 
 

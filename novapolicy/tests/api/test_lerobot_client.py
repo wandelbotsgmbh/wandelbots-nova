@@ -423,9 +423,12 @@ def test_async_queue_freezes_current_and_two_successors() -> None:
     )
 
     assert queue.merge((timestep, np.asarray([10.0], dtype=np.float32)) for timestep in range(1, 5))
-    assert [action[0] for _timestep, action in queue.entries] == pytest.approx(
-        [11.0, 12.0, 13.0, 8.2]
-    )
+    assert [action[0] for _timestep, action in queue.entries] == pytest.approx([
+        11.0,
+        12.0,
+        13.0,
+        8.2,
+    ])
 
 
 def test_average_aggregation_is_a_true_running_mean_per_timestep() -> None:
@@ -466,15 +469,13 @@ async def test_async_queue_keeps_sending_observations_while_refill_is_pending(
     assert client._async_queue is not None
 
     queue = client._async_queue.action_queue
-    queue.merge(
-        [
-            (0, np.asarray([0.0] * 7, dtype=np.float32)),
-            (1, np.asarray([1.0] * 7, dtype=np.float32)),
-            (2, np.asarray([2.0] * 7, dtype=np.float32)),
-            (3, np.asarray([3.0] * 7, dtype=np.float32)),
-            (4, np.asarray([4.0] * 7, dtype=np.float32)),
-        ]
-    )
+    queue.merge([
+        (0, np.asarray([0.0] * 7, dtype=np.float32)),
+        (1, np.asarray([1.0] * 7, dtype=np.float32)),
+        (2, np.asarray([2.0] * 7, dtype=np.float32)),
+        (3, np.asarray([3.0] * 7, dtype=np.float32)),
+        (4, np.asarray([4.0] * 7, dtype=np.float32)),
+    ])
     queue.consume()
     client._async_queue._pending_request = asyncio.create_task(asyncio.sleep(10, result=[]))
 

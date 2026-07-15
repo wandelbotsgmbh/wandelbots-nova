@@ -349,9 +349,8 @@ class Gr00tPolicyClient(PolicyClient):
 
         return state_dict
 
-    async def _fill_computed_state(
-        self, state_dict: dict[str, np.ndarray], schema: PolicySchema
-    ) -> None:
+    @staticmethod
+    async def _fill_computed_state(state_dict: dict[str, np.ndarray], schema: PolicySchema) -> None:
         """Run Observation.computed hooks and merge numeric results into the state.
 
         GR00T's state is a numeric payload, so each computed value must be a
@@ -380,13 +379,14 @@ class Gr00tPolicyClient(PolicyClient):
 
         for key, mgs in schema.joint_action_keys:
             arr = action.get(key)
-            if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM:
-                for mg in mgs:
-                    joint_data = arr[0].astype(np.float32)
-                    actual_dof = self._actual_dof.get(mg.id)
-                    if actual_dof and joint_data.shape[1] > actual_dof:
-                        joint_data = joint_data[:, :actual_dof]
-                    joints[mg.id] = joint_data.tolist()
+            if not isinstance(arr, np.ndarray) or arr.ndim != _ACTION_NDIM:
+                continue
+            for mg in mgs:
+                joint_data = arr[0].astype(np.float32)
+                actual_dof = self._actual_dof.get(mg.id)
+                if actual_dof and joint_data.shape[1] > actual_dof:
+                    joint_data = joint_data[:, :actual_dof]
+                joints[mg.id] = joint_data.tolist()
 
         # Decode IO actions
         for key, mg, hw_key, mapping in schema.io_action_keys:

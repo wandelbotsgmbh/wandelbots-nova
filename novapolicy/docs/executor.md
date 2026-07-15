@@ -60,16 +60,17 @@ from novapolicy import PolicyExecutor, WaypointConfig
 
 # WaypointConfig: how waypoints are sent to the robot
 config = WaypointConfig(
-    state_rate_ms=10,       # state stream update rate
+    state_rate_ms=10,  # state stream update rate
 )
 
 # PolicyExecutor: controls timing and chunk transforms
 executor = PolicyExecutor(
-    schema, policy,
+    schema,
+    policy,
     motion=config,
     # Omit policy_rate_hz for sequential execution.
     # Set 0 for continuous ASAP replacement or >0 for fixed-rate replacement.
-    n_action_steps=8,       # send only first N policy steps (0 = all)
+    n_action_steps=8,  # send only first N policy steps (0 = all)
 )
 ```
 
@@ -87,14 +88,16 @@ executor = PolicyExecutor(
 ```python
 # Sequential inference
 executor = PolicyExecutor(
-    schema, policy,
+    schema,
+    policy,
     motion=WaypointConfig(),
     n_action_steps=8,
 )
 
 # Continuous asynchronous inference at 20 Hz
 executor = PolicyExecutor(
-    schema, policy,
+    schema,
+    policy,
     policy_rate_hz=20,
     motion=WaypointConfig(),
     n_action_steps=8,

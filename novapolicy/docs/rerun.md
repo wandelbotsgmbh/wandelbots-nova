@@ -14,6 +14,7 @@ timeseries — zero overhead when no viewer is active.
 ```python
 from nova import viewers
 
+
 @nova.program(id="my_policy", viewer=viewers.Rerun())
 async def run(ctx):
     ...

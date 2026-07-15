@@ -46,12 +46,17 @@ logger = logging.getLogger(__name__)
 class Mapping:
     """Identity mapping — passes values through unchanged."""
 
-    def to_policy(self, hardware_value: bool | int | float) -> float:  # noqa: FBT001
+    def to_policy(  # noqa: PLR6301
+        self,
+        hardware_value: bool | int | float,  # noqa: FBT001
+    ) -> float:
         if isinstance(hardware_value, bool):
             return 1.0 if hardware_value else 0.0
         return float(hardware_value)
 
-    def to_hardware(self, policy_value: float) -> bool | int | float | str:
+    def to_hardware(  # noqa: PLR6301
+        self, policy_value: float
+    ) -> bool | int | float | str:
         return policy_value
 
 

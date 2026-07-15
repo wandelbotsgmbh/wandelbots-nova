@@ -65,7 +65,7 @@ class JoggingTimeClock:
     @property
     def client_elapsed_ms(self) -> int:
         """Client wall-clock elapsed since session start."""
-        if self._client_start_time == 0.0:
+        if self._client_start_time <= 0.0:
             return 0
         return int((time.monotonic() - self._client_start_time) * 1000)
 

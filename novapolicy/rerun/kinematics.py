@@ -28,7 +28,7 @@ def flange_matrix(dh_robot: DHRobot, joints: list[float]) -> np.ndarray:
     """
     matrix = np.asarray(dh_robot.pose_to_matrix(dh_robot.mounting), dtype=float)
     for dh_param, joint in zip(dh_robot.dh_parameters, joints, strict=False):
-        matrix = matrix @ np.asarray(
+        matrix @= np.asarray(
             dh_robot.dh_transform(dh_param=dh_param, joint_position=joint), dtype=float
         )
     return matrix

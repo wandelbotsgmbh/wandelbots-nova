@@ -110,9 +110,11 @@ async def main():
         ctrl = await cell.controller("ur10e")
         mg = ctrl[0]
 
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+            ]
+        )
 
         executor = PolicyExecutor(
             schema,
@@ -135,14 +137,18 @@ Decouples the policy's **observations** from hardware topology. The policy sees 
 ```python
 from novapolicy import BoolMapping, Observation, PolicySchema
 
-schema = PolicySchema(observations=[
-    Observation.joint_positions("left", source=mg_left),
-    Observation.joint_positions("right", source=mg_right),
-    Observation.io("left_gripper", source=mg_left, io="digital_out[0]",
-                   mapping=BoolMapping(on=100.0)),
-    Observation.io("right_gripper", source=mg_right, io="digital_out[0]",
-                   mapping=BoolMapping(on=100.0)),
-])
+schema = PolicySchema(
+    observations=[
+        Observation.joint_positions("left", source=mg_left),
+        Observation.joint_positions("right", source=mg_right),
+        Observation.io(
+            "left_gripper", source=mg_left, io="digital_out[0]", mapping=BoolMapping(on=100.0)
+        ),
+        Observation.io(
+            "right_gripper", source=mg_right, io="digital_out[0]", mapping=BoolMapping(on=100.0)
+        ),
+    ]
+)
 ```
 
 This produces observations like:
@@ -169,11 +175,13 @@ from novapolicy import Observation, WebRTCCameras
 # Frames are resized to the policy's expected input size on read.
 cameras = WebRTCCameras(api_url="http://<nova-host>:8011/webrtc-streamer", resize=(224, 224))
 
-schema = PolicySchema(observations=[
-    Observation.joint_positions("arm", source=mg),
-    Observation.image("flange", source=cameras.device("315122271048")),
-    Observation.image("left", source=cameras.device("314522065367")),
-])
+schema = PolicySchema(
+    observations=[
+        Observation.joint_positions("arm", source=mg),
+        Observation.image("flange", source=cameras.device("315122271048")),
+        Observation.image("left", source=cameras.device("314522065367")),
+    ]
+)
 ```
 
 Images arrive as `numpy.ndarray` (H×W×3, uint8, RGB) in the observation dict.
@@ -188,9 +196,11 @@ IO stop signal: end the episode when an operator button or PLC sets an input:
 ```python
 from novapolicy import StopContext
 
+
 def stop_on_io(ctx: StopContext) -> bool:
     """Stop the policy when digital_in[3] goes high."""
     return bool(ctx.io_values and ctx.io_values.get("digital_in[3]"))
+
 
 executor = PolicyExecutor(schema, policy, stop_conditions=[stop_on_io])
 result = await executor.run()

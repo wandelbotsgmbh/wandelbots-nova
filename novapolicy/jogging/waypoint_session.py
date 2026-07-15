@@ -41,7 +41,7 @@ _HTTP_NOT_FOUND = 404
 _DISCONTINUITY_WARN_DEG = 10.0
 
 
-class WaypointJoggingSession:
+class WaypointJoggingSession:  # noqa: PLR0904
     """Sends action chunks as timestamped waypoints via the NOVA Jogging API.
 
     Sends raw position waypoints (joint or TCP) with timing info.
@@ -88,6 +88,7 @@ class WaypointJoggingSession:
         # For normal chunks, store raw steps/timing and build the request at
         # yield-time so timestamps are computed as late as possible.
         self._pending_request: PendingChunk | None = None
+        self._pending_request_event = asyncio.Event()
         self._queued_chunk_count = 0
         self._scheduled_chunk_count = 0
         self._scheduled_until_server_ms = 0
@@ -299,6 +300,7 @@ class WaypointJoggingSession:
             action_timestep=action_timestep,
             sequence=self._queued_chunk_count,
         )
+        self._pending_request_event.set()
 
         # Compare current robot position vs chunk first step (joint mode only).
         # Skipped for backdated overlapping chunks: there the robot always
@@ -342,6 +344,7 @@ class WaypointJoggingSession:
             raise RuntimeError(msg)
 
         self._running = True
+        self._pending_request_event.clear()
 
         initial_state = await self._motion_group.get_state()
         self._current_joints = list(initial_state.joints)
@@ -383,7 +386,7 @@ class WaypointJoggingSession:
     async def _stream_state(self) -> None:
         """Continuously read state for guards and observation building."""
         stream = None
-        try:
+        try:  # noqa: PLW0717
             stream = self._motion_group.stream_state(response_rate_msecs=self._config.state_rate_ms)
             async for state in stream:
                 self._current_joints = list(state.joint_position)
@@ -391,18 +394,19 @@ class WaypointJoggingSession:
                     self._current_tcp_pose = Pose(state.tcp_pose)
                 if state.tcp is not None:
                     self._current_tcp_name = state.tcp
-                # Extract server jogger session timestamp for time synchronization
-                ts_ms = JoggingTimeClock.extract_from_state(state)
-                if ts_ms is not None:
-                    self._clock.update(ts_ms)
-                    if self._trajectory_trace is not None:
-                        self._trajectory_trace.record_state(
-                            server_timestamp_ms=ts_ms,
-                            joints=list(self._current_joints),
-                            tcp=self._current_tcp_pose,
-                        )
-                    self._measure_waypoint_tracking(ts_ms)
                 self._jog_tracker.update_from_state(state)
+                # Extract server jogger session timestamp for time synchronization.
+                ts_ms = JoggingTimeClock.extract_from_state(state)
+                if ts_ms is None:
+                    continue
+                self._clock.update(ts_ms)
+                if self._trajectory_trace is not None:
+                    self._trajectory_trace.record_state(
+                        server_timestamp_ms=ts_ms,
+                        joints=list(self._current_joints),
+                        tcp=self._current_tcp_pose,
+                    )
+                self._measure_waypoint_tracking(ts_ms)
         except asyncio.CancelledError:
             # Expected on shutdown; stop quietly without logging as an error.
             pass
@@ -459,9 +463,9 @@ class WaypointJoggingSession:
                 self._check_stop_conditions()
                 self._jog_tracker.check()
 
-                # Wait until a new chunk is available (sleep, don't send junk)
+                # Wait until a new chunk is available (don't send junk).
                 while self._pending_request is None and self._running:
-                    await asyncio.sleep(0.001)
+                    await self._pending_request_event.wait()
 
                 if not self._running:
                     return
@@ -473,6 +477,7 @@ class WaypointJoggingSession:
                 # its current action chunk.
                 pending = self._pending_request
                 self._pending_request = None
+                self._pending_request_event.clear()
                 if pending is None:
                     continue
 

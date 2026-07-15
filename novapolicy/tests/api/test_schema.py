@@ -46,12 +46,10 @@ async def test_dual_arm_observation():
             Observation.joint_positions("right_joints", source=right),
         ]
     )
-    obs = await schema.build_observation(
-        {
-            "0@left": _state((1.0, 2.0)),
-            "0@right": _state((3.0,)),
-        }
-    )
+    obs = await schema.build_observation({
+        "0@left": _state((1.0, 2.0)),
+        "0@right": _state((3.0,)),
+    })
     assert obs == {"left_joints_1": 1.0, "left_joints_2": 2.0, "right_joints_1": 3.0}
 
 
@@ -67,12 +65,10 @@ async def test_concatenated_observation():
             Action.joint_positions("action", target=[left, right]),
         ],
     )
-    obs = await schema.build_observation(
-        {
-            "0@left": _state((1.0, 2.0)),
-            "0@right": _state((3.0, 4.0)),
-        }
-    )
+    obs = await schema.build_observation({
+        "0@left": _state((1.0, 2.0)),
+        "0@right": _state((3.0, 4.0)),
+    })
     assert obs == {"state_1": 1.0, "state_2": 2.0, "state_3": 3.0, "state_4": 4.0}
 
 

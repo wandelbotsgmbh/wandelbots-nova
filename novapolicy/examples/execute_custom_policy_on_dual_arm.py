@@ -49,7 +49,7 @@ def _first_policy_target(home: tuple[float, ...], role_phase: float) -> list[flo
     targets = []
     for i in range(6):
         phase = role_phase + (i + 1) * 0.8
-        amplitude = 0.15 if i in (0, 1, 2) else 0.08
+        amplitude = 0.15 if i in {0, 1, 2} else 0.08
         targets.append(home[i] + amplitude * math.sin(phase))
     return targets
 
@@ -82,7 +82,7 @@ async def mock_policy(obs: dict[str, Any]) -> ActionChunk:
             joint_targets = []
             for i in range(6):
                 phase = role_phase + (i + 1) * 0.8
-                amplitude = 0.15 if i in (0, 1, 2) else 0.08
+                amplitude = 0.15 if i in {0, 1, 2} else 0.08
                 freq = 0.2 + (i + 1) * 0.03
                 joint_targets.append(home[i] + amplitude * math.sin(2 * math.pi * freq * t + phase))
             steps.append(joint_targets)
@@ -222,28 +222,26 @@ async def dual_arm_policy(ctx: ProgramContext):
 
     if CAMERA_SERVER:
         cameras = WebRTCCameras(api_url=CAMERA_SERVER)
-        observations.extend(
-            [
-                Observation.image(
-                    "cam_1",
-                    source=cameras.device(
-                        "World_Robot_Robot_0_R__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_right_wrist_camera_env0"
-                    ),
+        observations.extend([
+            Observation.image(
+                "cam_1",
+                source=cameras.device(
+                    "World_Robot_Robot_0_R__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_right_wrist_camera_env0"
                 ),
-                Observation.image(
-                    "cam_2",
-                    source=cameras.device(
-                        "World_Robot_Robot_0_L__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_left_wrist_camera_env0"
-                    ),
+            ),
+            Observation.image(
+                "cam_2",
+                source=cameras.device(
+                    "World_Robot_Robot_0_L__0_00_robotics_usecase_gripper_asm_tn__00_00_robotics_usecase_gripper_asm__tn__01_00_CAMERA_ASMBLY__INTEL_D405_D405_SOLID_left_wrist_camera_env0"
                 ),
-                Observation.image(
-                    "cam_3",
-                    source=cameras.device(
-                        "World_EnvAssets_rack_env0__3_00_intel_d456_screw_adapter_asm_tn__03_00_intel_d456_screw_adapterasm_io0_D456_Solid_context_camera_rack_env0"
-                    ),
+            ),
+            Observation.image(
+                "cam_3",
+                source=cameras.device(
+                    "World_EnvAssets_rack_env0__3_00_intel_d456_screw_adapter_asm_tn__03_00_intel_d456_screw_adapterasm_io0_D456_Solid_context_camera_rack_env0"
                 ),
-            ]
-        )
+            ),
+        ])
 
     schema = PolicySchema(
         observations=observations,

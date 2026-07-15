@@ -40,8 +40,8 @@ class LeRobotCodec:
         self._dt_ms = dt_ms
         self._logged_action_chunk_shape = False
 
+    @staticmethod
     async def build_observation(
-        self,
         states: dict[str, RobotState],
         schema: PolicySchema,
         images: dict[str, Any] | None,
@@ -52,7 +52,8 @@ class LeRobotCodec:
             observation.update(images)
         return observation
 
-    def state_names(self, states: dict[str, RobotState], schema: PolicySchema) -> list[str]:
+    @staticmethod
+    def state_names(states: dict[str, RobotState], schema: PolicySchema) -> list[str]:
         names: list[str] = []
         for mapping in schema.joint_mappings:
             dof = sum(
@@ -64,8 +65,8 @@ class LeRobotCodec:
         names.extend(mapping.key for mapping in schema.obs_io_mappings)
         return names
 
+    @staticmethod
     def action_layout(
-        self,
         states: dict[str, RobotState],
         schema: PolicySchema,
     ) -> FlatActionLayout:
@@ -86,7 +87,8 @@ class LeRobotCodec:
             offset += 1
         return FlatActionLayout(joints=joint_slices, ios=io_slices)
 
-    def validate_schema(self, schema: PolicySchema) -> None:
+    @staticmethod
+    def validate_schema(schema: PolicySchema) -> None:
         if not schema.joint_action_keys:
             raise ValueError(
                 "LeRobotPolicyClient currently requires at least one joint action target"

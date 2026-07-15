@@ -74,7 +74,7 @@ class StateStreamer:
         import rerun as rr  # noqa: PLC0415
 
         next_image_time = 0.0
-        try:
+        try:  # noqa: PLR1702, PLW0717
             while self._running:
                 if self._sessions is None:
                     break

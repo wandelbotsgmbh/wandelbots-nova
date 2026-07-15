@@ -13,6 +13,7 @@ the server handles velocity profiling, interpolation, and IK internally.
 from __future__ import annotations
 
 import importlib
+from typing import TYPE_CHECKING
 
 from novapolicy.cameras import CameraSource, WebRTCCameras
 from novapolicy.chunking import (
@@ -45,6 +46,9 @@ from novapolicy.types import (
     StopContext,
     WaypointConfig,
 )
+
+if TYPE_CHECKING:
+    from novapolicy.lerobot import LeRobotPolicyClient
 
 
 def __getattr__(name: str) -> object:

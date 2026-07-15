@@ -108,7 +108,6 @@ def _build_pose_request(
 
     waypoints = []
     for ts, step in zip(timestamps, steps, strict=True):
-        # step = [x, y, z, rx, ry, rz]
         pos = Vector3d(root=list(step[:3]))
         orient = RotationVector(root=list(step[3:6]))
         waypoints.append(

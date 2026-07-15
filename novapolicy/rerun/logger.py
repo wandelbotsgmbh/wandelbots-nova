@@ -64,7 +64,7 @@ class PolicyRerunLogger:
             logger.warning("rerun or nova_rerun_bridge not available — visualization disabled")
             return
 
-        try:
+        try:  # noqa: PLR1702, PLW0717
             from nova import api  # noqa: PLC0415
             from novapolicy._sdk import get_api_gateway  # noqa: PLC0415
             from novapolicy.rerun.blueprint import send_blueprint  # noqa: PLC0415
@@ -115,12 +115,9 @@ class PolicyRerunLogger:
                 robot_model_geometries: list[api.models.LinkChain] = []
                 if description.safety_link_colliders is not None:
                     robot_model_geometries = [
-                        api.models.LinkChain(
-                            [
-                                api.models.Link(link.root)
-                                for link in description.safety_link_colliders
-                            ]
-                        )
+                        api.models.LinkChain([
+                            api.models.Link(link.root) for link in description.safety_link_colliders
+                        ])
                     ]
 
                 self._visualizers[mg.id] = RobotVisualizer(

@@ -295,7 +295,7 @@ class PolicyExecutor:
         with contextlib.suppress(OSError, RuntimeError):
             await self._policy.close()
 
-        if self.status.phase not in (Phase.ERROR, Phase.COMPLETED):
+        if self.status.phase not in {Phase.ERROR, Phase.COMPLETED}:
             self.status = ExecutorStatus(phase=Phase.IDLE)
 
         if self.result is not None:
@@ -647,11 +647,12 @@ class PolicyExecutor:
 
             ready_groups = self._policy_boundary_ready_groups(connected, target_chunks)
             for group_id in list(pending_ios):
-                if group_id not in connected.policy_start_steps or group_id in ready_groups:
-                    session = self._sessions.get(group_id)
-                    if session is not None:
-                        await session.write_ios(pending_ios[group_id])
-                    pending_ios.pop(group_id)
+                if group_id in connected.policy_start_steps and group_id not in ready_groups:
+                    continue
+                session = self._sessions.get(group_id)
+                if session is not None:
+                    await session.write_ios(pending_ios[group_id])
+                pending_ios.pop(group_id)
 
             if ready_groups == set(connected.policy_start_steps):
                 await self._schema.run_computed_actions(action)
@@ -775,7 +776,6 @@ class PolicyExecutor:
             sleep_time = fixed_rate_period - elapsed
             if sleep_time > 0:
                 await asyncio.sleep(sleep_time)
-        # else: policy_rate_hz == 0 → no sleep, call as fast as possible
 
     async def _wait_until_sessions_settled(self, exec_start: float) -> None:
         """Wait until each submitted NOVA chunk reaches its exact final timestamp."""

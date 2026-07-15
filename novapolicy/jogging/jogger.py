@@ -317,21 +317,23 @@ class _BaseJogger:
             if triggered_stop_condition(self._sessions) is not None:
                 return
             s = self.state()
-            if s is not None:
-                if self._loop_t0 is None:
-                    now = time.monotonic()
-                    if self._first_yield_t is None:
-                        self._first_yield_t = now
-                    running = all(sess.is_running for sess in self._sessions.values())
-                    # Anchor the clock once the robot is actually executing
-                    # motion, or after a safety fallback so a robot that never
-                    # reports RUNNING can't stall the loop.
-                    if running or now - self._first_yield_t > _ANCHOR_FALLBACK_S:
-                        self._loop_t0 = now
-                        # Baseline the acknowledged clock at the same instant so
-                        # elapsed ticks from zero on the acknowledged timeline.
-                        self._ack0_ms = self._acknowledged_ms()
-                yield s
+            if s is None:
+                await asyncio.sleep(0.01)
+                continue
+            if self._loop_t0 is None:
+                now = time.monotonic()
+                if self._first_yield_t is None:
+                    self._first_yield_t = now
+                running = all(sess.is_running for sess in self._sessions.values())
+                # Anchor the clock once the robot is actually executing
+                # motion, or after a safety fallback so a robot that never
+                # reports RUNNING can't stall the loop.
+                if running or now - self._first_yield_t > _ANCHOR_FALLBACK_S:
+                    self._loop_t0 = now
+                    # Baseline the acknowledged clock at the same instant so
+                    # elapsed ticks from zero on the acknowledged timeline.
+                    self._ack0_ms = self._acknowledged_ms()
+            yield s
             await asyncio.sleep(0.01)
 
 
@@ -465,7 +467,7 @@ class TcpJogger(_BaseJogger):
         super().__init__(mg_list, sessions, start_joint_position=home_dict, ease_in_s=ease_in_s)
         self._target: dict[MotionGroup, Pose | list[float]] | None = None
 
-    def _expected_dims(self, mg: MotionGroup) -> int | None:  # noqa: ARG002
+    def _expected_dims(self, mg: MotionGroup) -> int | None:  # noqa: ARG002, PLR6301
         return _CARTESIAN_DIMS
 
     @property

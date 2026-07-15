@@ -46,7 +46,7 @@ scp -r ./pretrained_model user@gpu-server:/models/my_lerobot_policy
 The NOVA client will later pass that same server-side path:
 
 ```python
-pretrained_name_or_path="/models/my_lerobot_policy"
+pretrained_name_or_path = "/models/my_lerobot_policy"
 ```
 
 ### 3. Start the LeRobot async server
@@ -100,14 +100,16 @@ async with Nova(config=NovaConfig(host="http://<nova-host>")) as nova:
     cell = nova.cell("cell")
     arm = (await cell.controller("cobot"))[0]
 
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("arm", source=arm),
-        Observation.io("gripper", source=arm, io="digital_out[0]", mapping=BoolMapping()),
-        Observation.image(
-            "cam_scene_1",
-            source=cameras.device("<scene-camera-device-id>"),
-        ),
-    ])
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=arm),
+            Observation.io("gripper", source=arm, io="digital_out[0]", mapping=BoolMapping()),
+            Observation.image(
+                "cam_scene_1",
+                source=cameras.device("<scene-camera-device-id>"),
+            ),
+        ]
+    )
 
     from novapolicy.lerobot import load_execution_settings
 
@@ -145,8 +147,8 @@ Address of the LeRobot async inference server in `"host:port"` form.
 Examples:
 
 ```python
-server_address="127.0.0.1:8080"
-server_address="gpu-server.internal:8080"
+server_address = "127.0.0.1:8080"
+server_address = "gpu-server.internal:8080"
 ```
 
 ### `pretrained_name_or_path`
@@ -157,8 +159,8 @@ Important: for a remote server, this is resolved on the server machine, not on t
 The client does not upload model weights.
 
 ```python
-pretrained_name_or_path="/models/my_lerobot_policy"
-pretrained_name_or_path="org/my-policy"
+pretrained_name_or_path = "/models/my_lerobot_policy"
+pretrained_name_or_path = "org/my-policy"
 ```
 
 ### `policy_type`
@@ -166,7 +168,7 @@ pretrained_name_or_path="org/my-policy"
 LeRobot policy type sent to the server, for example:
 
 ```python
-policy_type="act"
+policy_type = "act"
 ```
 
 The NOVA client-side decoder is policy-architecture agnostic as long as the server returns a flat
@@ -177,7 +179,7 @@ joint action vector matching the schema action DOF.
 Control/dataset frequency used by the NOVA client to time returned actions:
 
 ```python
-fps=15  # ActionChunk.dt_ms = 1000 / 15
+fps = 15  # ActionChunk.dt_ms = 1000 / 15
 ```
 
 This should match the policy's intended control rate. This is separate from the LeRobot server's
@@ -191,7 +193,7 @@ tensors into NOVA `ActionChunk`s and sets the chunk `dt_ms` from this client-sid
 Explicit physical playback speed relative to the dataset rate:
 
 ```python
-playback_speed=0.75  # execute 25% slower: 15 Hz dataset actions use 88.89 ms intervals
+playback_speed = 0.75  # execute 25% slower: 15 Hz dataset actions use 88.89 ms intervals
 ```
 
 The dataset frequency remains `fps=15`; only the physical `ActionChunk.dt_ms` is scaled:

@@ -190,7 +190,7 @@ class WebRTCConnection:
         """Receive frames and store the latest (thread-safe)."""
         from aiortc.mediastreams import MediaStreamError  # noqa: PLC0415
 
-        try:
+        try:  # noqa: PLW0717
             while True:
                 frame = cast("VideoFrame", await track.recv())
                 img = frame.to_ndarray(format="rgb24")
