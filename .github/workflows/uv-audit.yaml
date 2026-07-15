@@ -1,0 +1,32 @@
+---
+name: "SAST: uv-audit"
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+  schedule:
+    - cron: "33 4 * * 1" # weekly
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        
+      - name: Install uv
+        uses: actions/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: |
+          uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
+
+      - name: Audit dependencies (experimental with uv audit)
+        run: uv audit --preview-features audit-command
