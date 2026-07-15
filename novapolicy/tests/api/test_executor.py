@@ -20,6 +20,7 @@ from novapolicy.executor import Phase, PolicyExecutor
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.schema import Action, Observation, ObservationEntry, PolicySchema
 from novapolicy.types import (
+    AccelerationAndBrakingOverride,
     ActionChunk,
     ActionMode,
     EmergencyStopError,
@@ -444,7 +445,7 @@ async def test_connected_chunk_defers_io_and_computed_action_to_policy_boundary(
         schema,
         _callback(policy),
         timeout_s=1.0,
-        interpolate_chunk_ramps=True,
+        acceleration_and_braking_override=AccelerationAndBrakingOverride(),
     )
     run_task = asyncio.create_task(executor.run())
 
@@ -465,6 +466,21 @@ async def test_connected_chunk_defers_io_and_computed_action_to_policy_boundary(
     robot.session.last_server_timestamp_ms = 1000
     robot.session.jogging_state = "PAUSED_BY_USER"
     await run_task
+
+
+def test_acceleration_and_braking_override_validates_interpolation_steps() -> None:
+    with pytest.raises(ValueError, match="interpolation_steps must be at least 2"):
+        AccelerationAndBrakingOverride(interpolation_steps=1)
+
+
+def test_acceleration_and_braking_override_requires_settled_execution() -> None:
+    with pytest.raises(ValueError, match="requires settled"):
+        PolicyExecutor(
+            _schema(),
+            _hold,
+            policy_rate_hz=20,
+            acceleration_and_braking_override=AccelerationAndBrakingOverride(),
+        )
 
 
 @pytest.mark.asyncio

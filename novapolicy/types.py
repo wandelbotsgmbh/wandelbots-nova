@@ -20,6 +20,8 @@ ValueType = int | str | bool | float | Pose
 ActionMode = Literal["absolute", "relative"]
 JoggingMode = Literal["joint", "cartesian"]
 
+_MIN_ACCELERATION_AND_BRAKING_STEPS = 2
+
 
 class ActionChunk(pydantic.BaseModel, frozen=True):
     """Action chunk streamed to a waypoint jogging session.
@@ -92,6 +94,19 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     chunk that corresponds to where the robot currently is. (This equals the RTC
     frozen-step count only when overlap is unclamped, hence the field name.)
     0 = no RTC / no backdate."""
+
+
+@dataclass(frozen=True, slots=True)
+class AccelerationAndBrakingOverride:
+    """Optional endpoint interpolation for settled action chunks."""
+
+    interpolation_steps: int = 3
+    """Intervals replacing each endpoint interval. Must be at least two."""
+
+    def __post_init__(self) -> None:
+        if self.interpolation_steps < _MIN_ACCELERATION_AND_BRAKING_STEPS:
+            msg = "interpolation_steps must be at least 2"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)

@@ -83,6 +83,7 @@ Optional LeRobot server timing flags:
 from nova import Nova
 from nova.config import NovaConfig
 from novapolicy import (
+    AccelerationAndBrakingOverride,
     BoolMapping,
     LeRobotPolicyClient,
     Observation,
@@ -132,7 +133,7 @@ async with Nova(config=NovaConfig(host="http://<nova-host>")) as nova:
         policy,
         policy_rate_hz=-1,
         n_action_steps=execution.n_action_steps,
-        interpolate_chunk_ramps=True,
+        acceleration_and_braking_override=AccelerationAndBrakingOverride(),
         timeout_s=80,
     )
     result = await executor.run()
@@ -252,7 +253,7 @@ PolicyExecutor(
     policy,
     policy_rate_hz=-1,
     n_action_steps=settings.n_action_steps,
-    interpolate_chunk_ramps=True,
+    acceleration_and_braking_override=AccelerationAndBrakingOverride(),
 )
 ```
 

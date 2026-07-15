@@ -41,11 +41,10 @@ if TYPE_CHECKING:
     from nova.types import RobotState
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.schema import PolicySchema
-    from novapolicy.types import StopCondition
+    from novapolicy.types import AccelerationAndBrakingOverride, StopCondition
 
 logger = logging.getLogger(__name__)
 
-_MIN_RAMP_INTERPOLATION_STEPS = 2
 _ASYNC_SEAM_STEPS = 4
 _ASYNC_REPLACEMENT_LEAD_STEPS = 1
 _DEFAULT_WAYPOINT_CONFIG = WaypointConfig()
@@ -110,8 +109,7 @@ class PolicyExecutor:
         motion: WaypointConfig = _DEFAULT_WAYPOINT_CONFIG,
         policy_rate_hz: float = -1,
         n_action_steps: int = 0,
-        interpolate_chunk_ramps: bool = False,
-        ramp_interpolation_steps: int = 3,
+        acceleration_and_braking_override: AccelerationAndBrakingOverride | None = None,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
         trajectory_trace_path: str | Path | None = None,
     ) -> None:
@@ -140,11 +138,9 @@ class PolicyExecutor:
                 have higher prediction uncertainty and are discarded.
                 The policy still predicts the full action_horizon (e.g. 16)
                 which remains available to asynchronous policy clients.
-            interpolate_chunk_ramps: Subdivide the first and final motion
-                intervals with acceleration and braking interpolation. Intended
-                for settled execution, where every submitted request ends at standstill.
-            ramp_interpolation_steps: Number of same-``dt_ms`` intervals replacing
-                each endpoint interval when interpolation is enabled. Must be >= 2.
+            acceleration_and_braking_override: Optional endpoint interpolation
+                settings for settled execution. When provided, allocates additional
+                time for acceleration and braking of every submitted action chunk.
             start_joint_position: Optional mapping of motion group to joint pose
                 to PTP-move to before starting waypoint jogging.
             trajectory_trace_path: Optional JSON output containing every policy
@@ -172,16 +168,13 @@ class PolicyExecutor:
         self._timeout_s = timeout_s
         self._policy_rate_hz = policy_rate_hz
         self._n_action_steps_cfg = n_action_steps
-        self._interpolate_chunk_ramps = interpolate_chunk_ramps
-        self._ramp_interpolation_steps = ramp_interpolation_steps
+        self._acceleration_and_braking_override = acceleration_and_braking_override
 
-        # Endpoint ramps add time to a request that deliberately ends at
-        # standstill. They do not apply to continuously replaced chunks.
-        if self._interpolate_chunk_ramps and self._policy_rate_hz >= 0:
-            msg = "interpolate_chunk_ramps requires settled wait-for-chunk mode"
-            raise ValueError(msg)
-        if self._ramp_interpolation_steps < _MIN_RAMP_INTERPOLATION_STEPS:
-            msg = "ramp_interpolation_steps must be at least 2"
+        # Acceleration and braking interpolation adds time to a request that
+        # deliberately ends at standstill. It does not apply to continuously
+        # replaced chunks.
+        if self._acceleration_and_braking_override is not None and self._policy_rate_hz >= 0:
+            msg = "acceleration_and_braking_override requires settled wait-for-chunk mode"
             raise ValueError(msg)
 
         if self._policy_rate_hz < 0 and self._policy.rtc is not None:
@@ -459,7 +452,7 @@ class PolicyExecutor:
                 if boundary_termination is not None:
                     return boundary_termination
             else:
-                sent_chunk = self._interpolate_motion(trimmed)
+                sent_chunk = self._apply_acceleration_and_braking(trimmed)
                 await self._schema.run_computed_actions(action)
                 self._log_policy_action(action, step)
                 self._send(sent_chunk)
@@ -545,25 +538,27 @@ class PolicyExecutor:
         )
         if connected is None:
             return None
-        return self._interpolate_connected_motion(connected)
+        return self._apply_connected_acceleration_and_braking(connected)
 
-    def _interpolate_motion(self, chunk: ActionChunk) -> ActionChunk:
-        if not self._interpolate_chunk_ramps:
+    def _apply_acceleration_and_braking(self, chunk: ActionChunk) -> ActionChunk:
+        override = self._acceleration_and_braking_override
+        if override is None:
             return chunk
         return interpolate_action_chunk_ramps(
             chunk,
-            interpolation_steps=self._ramp_interpolation_steps,
+            interpolation_steps=override.interpolation_steps,
         ).motion
 
-    def _interpolate_connected_motion(
+    def _apply_connected_acceleration_and_braking(
         self,
         connected: ConnectedActionChunk,
     ) -> ConnectedActionChunk:
-        if not self._interpolate_chunk_ramps:
+        override = self._acceleration_and_braking_override
+        if override is None:
             return connected
         interpolated = interpolate_action_chunk_ramps(
             connected.motion,
-            interpolation_steps=self._ramp_interpolation_steps,
+            interpolation_steps=override.interpolation_steps,
         )
         policy_start_steps = {
             group_id: interpolated.original_step_indices[group_id][policy_start_step]

@@ -36,6 +36,7 @@ from novapolicy.schema import (
     PolicySchema,
 )
 from novapolicy.types import (
+    AccelerationAndBrakingOverride,
     ActionChunk,
     ActionMode,
     EmergencyStopError,
@@ -66,6 +67,7 @@ def __getattr__(name: str) -> object:
 
 
 __all__ = [
+    "AccelerationAndBrakingOverride",
     "Action",
     "ActionChunk",
     "ActionMode",

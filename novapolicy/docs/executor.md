@@ -120,11 +120,25 @@ Continuous policies may use this bridge for their initial lookahead only. Later 
 the active trajectory without re-anchoring it to the measured state. The same behavior is available
 through `novapolicy.connect_action_chunk(...)` and `novapolicy.create_bridge_chunk(...)`.
 
-### Acceleration and braking interpolation
+### Optional acceleration and braking override
 
 A settled executor intentionally lets every submitted waypoint request end, so every request starts
-and finishes at zero velocity. Endpoint interpolation is disabled by default. When enabled,
-`interpolate_chunk_ramps=True` replaces the first and final waypoint intervals with three
+and finishes at zero velocity. Additional endpoint interpolation is disabled by default. Enable it
+with one grouped override:
+
+```python
+from novapolicy import AccelerationAndBrakingOverride, PolicyExecutor
+
+executor = PolicyExecutor(
+    schema,
+    policy,
+    acceleration_and_braking_override=AccelerationAndBrakingOverride(
+        interpolation_steps=3,
+    ),
+)
+```
+
+The override replaces the first and final waypoint intervals with the configured number of
 same-`dt_ms` intervals:
 
 - the first interval uses quadratic ease-in (increasing displacement),
@@ -134,10 +148,10 @@ same-`dt_ms` intervals:
 All original waypoints remain in the request. The generic
 `novapolicy.interpolate_action_chunk_ramps(...)` helper returns both the interpolated motion and an
 original-index → interpolated-index mapping. The executor uses that mapping to keep deferred IO and
-computed actions aligned with policy waypoint zero after a bridge. Configure the subdivision count
-with `ramp_interpolation_steps`; each added point retains the original `dt_ms`, intentionally
-increasing request duration. This is for settled chunks only and must not be combined with
-continuous replacement.
+computed actions aligned with policy waypoint zero after a bridge. Each added point retains the
+original `dt_ms`, intentionally increasing request duration. Leave
+`acceleration_and_braking_override` as `None` to preserve the policy chunk unchanged. The override
+is for settled chunks only and must not be combined with continuous replacement.
 
 ### Mutable lookahead smoothing
 
