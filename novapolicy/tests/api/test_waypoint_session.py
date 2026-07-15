@@ -27,6 +27,7 @@ import pytest
 
 from nova import api
 from nova.types import Pose
+from novapolicy.debug import WaypointTrajectoryTrace
 from novapolicy.jogging import jog_tcp
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.types import JoggingNotSupportedError, MotionError, WaypointConfig
@@ -153,14 +154,18 @@ def _build_session(
     gateway = MagicMock()
     gateway.jogging_api.execute_waypoint_jogging = server.execute_waypoint_jogging
 
+    trajectory_trace = (
+        WaypointTrajectoryTrace(motion_group_id=mg.id, mode=mode) if trace_trajectory else None
+    )
     session = WaypointJoggingSession(
         motion_group=mg,
         config=WaypointConfig(),
         tcp="Flange",
         mode=mode,
         stop_conditions=stop_conditions,
-        trace_trajectory=trace_trajectory,
+        trajectory_trace=trajectory_trace,
     )
+    session._test_trajectory_trace = trajectory_trace  # type: ignore[attr-defined]
 
     patches = [
         patch(f"{_SESSION}.get_api_gateway", return_value=gateway),
@@ -219,7 +224,7 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
         session.update_chunk(
             steps=[target],
             dt_ms=50.0,
-            anchor_ms=0,
+            first_timestamp_ms=0,
             action_timestep=7,
         )
 
@@ -230,15 +235,14 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
         sent = waypoint_req.waypoints[0]
         assert list(sent.joints.root) == target
         assert sent.timestamp == 0  # absolute anchor at 0, single step
-        request_trace = session.trajectory_trace["requests"]
-        assert request_trace == [
+        trace = session._test_trajectory_trace  # type: ignore[attr-defined]
+        assert trace.requests == [
             {
                 "sequence": 1,
                 "action_timestep": 7,
                 "policy_dt_ms": 50.0,
-                "anchor_ms": 0,
-                "anchor_offset_steps": 0,
-                "server_timestamp_ms": None,
+                "first_timestamp_ms": 0,
+                "timestamp_offset_steps": 0,
                 "server_dt_ms": None,
                 "server_sample_ms": 0,
                 "timestamps_ms": [0],
@@ -456,13 +460,13 @@ async def test_overlapping_tcp_chunks_share_one_absolute_timeline():
         dt = 50.0
         # Tick 1: anchor at 100ms, poses advancing along +x.
         poses_a = [[float(x), 0.0, 300.0, 0.0, 0.0, 0.0] for x in (10, 20, 30, 40, 50)]
-        session.update_chunk(steps=poses_a, dt_ms=dt, anchor_ms=100)
+        session.update_chunk(steps=poses_a, dt_ms=dt, first_timestamp_ms=100)
         await _wait_until(lambda: len(_pose_requests()) >= 1)
 
         # Tick 2, one dt later: anchor advances by dt, content shifts by one step
         # -> the two chunks overlap by four waypoints.
         poses_b = [[float(x), 0.0, 300.0, 0.0, 0.0, 0.0] for x in (20, 30, 40, 50, 60)]
-        session.update_chunk(steps=poses_b, dt_ms=dt, anchor_ms=150)
+        session.update_chunk(steps=poses_b, dt_ms=dt, first_timestamp_ms=150)
         await _wait_until(lambda: len(_pose_requests()) >= 2)
 
         first, second = _pose_requests()[0], _pose_requests()[1]
@@ -512,12 +516,12 @@ async def test_overlapping_joint_chunks_share_one_absolute_timeline():
         dt = 50.0
         # Tick 1: anchor at 100ms, j0 advancing.
         joints_a = [[v, 0.0, 0.0, 0.0, 0.0, 0.0] for v in (0.1, 0.2, 0.3, 0.4, 0.5)]
-        session.update_chunk(steps=joints_a, dt_ms=dt, anchor_ms=100)
+        session.update_chunk(steps=joints_a, dt_ms=dt, first_timestamp_ms=100)
         await _wait_until(lambda: len(_joint_requests()) >= 1)
 
         # Tick 2, one dt later: anchor +dt, content shifts one step -> 4 overlap.
         joints_b = [[v, 0.0, 0.0, 0.0, 0.0, 0.0] for v in (0.2, 0.3, 0.4, 0.5, 0.6)]
-        session.update_chunk(steps=joints_b, dt_ms=dt, anchor_ms=150)
+        session.update_chunk(steps=joints_b, dt_ms=dt, first_timestamp_ms=150)
         await _wait_until(lambda: len(_joint_requests()) >= 2)
 
         first, second = _joint_requests()[0], _joint_requests()[1]

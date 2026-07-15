@@ -27,12 +27,13 @@ flowchart LR
 6. Go to 1
 ```
 
-### RTC mode (`policy_rate_hz=20`)
+### Continuous async-inference mode (`policy_rate_hz >= 0`)
 
-In RTC mode the executor runs as a **receding horizon controller**: at each tick
-it queries the policy for a fresh chunk and sends it, overlapping the previous
-one. The server replaces waypoints older than the new chunk's first timestamp,
-giving smooth, continuous motion even with variable inference latency.
+In continuous mode the executor runs as a **receding horizon controller**: at
+each tick it queries the policy for a fresh chunk and sends it, overlapping the
+previous one. The server replaces waypoints older than the new chunk's first
+timestamp. This mode supports asynchronous action queues such as ACT as well as
+policies that implement model-side Real-Time Chunking (RTC).
 
 ```
 1. Observe robot state
@@ -49,8 +50,8 @@ first timestamp onward, the previous chunk's still-buffered targets are discarde
 (the faded dashed tail) and the new chunk's values are used verbatim. The robot does
 not teleport — the servo aims from the robot's actual position toward the new targets
 and catches up bounded by the jogger's velocity/acceleration limits (the white line).
-The smoothness comes entirely from those limits, which is why a large jump between
-chunks is dangerous — the problem [Real-Time Chunking](rtc.md) solves on the policy side.
+A client must therefore preserve or smooth the retained overlap. This can come
+from an asynchronous action queue or from model-side [Real-Time Chunking](rtc.md).
 
 ## Configuration
 
@@ -76,19 +77,19 @@ executor = PolicyExecutor(
 
 | Value | Behavior | Use case |
 |---|---|---|
-| `-1` (default) | Wait for exact chunk completion and standstill, bridge to the next prediction, then replan | Sequential policies without RTC |
-| `0` | Continuously replace chunks as fast as inference allows | Continuous/RTC-capable policies |
-| `>0` (e.g. `20`) | Continuously replace chunks at a fixed rate | RTC-capable policies (e.g. GR00T) |
+| `-1` (default) | Wait for exact chunk completion and standstill, bridge to the next prediction, then replan | Sequential inference |
+| `0` | Continuously replace chunks as fast as inference allows | Asynchronous inference or RTC |
+| `>0` (e.g. `20`) | Continuously replace chunks at a fixed rate | Asynchronous inference or RTC |
 
 ```python
-# Sequential (non-RTC policy, e.g. GR00T without RTC)
+# Sequential inference
 executor = PolicyExecutor(
     schema, policy,
     motion=WaypointConfig(),
     n_action_steps=8,
 )
 
-# RTC-capable policy (overlapping chunks at 20 Hz)
+# Continuous asynchronous inference at 20 Hz
 executor = PolicyExecutor(
     schema, policy,
     policy_rate_hz=20,
@@ -106,8 +107,8 @@ are no separate `wait_for_settle` or `bridge_to_first_waypoint` switches.
 
 Sequential policies can predict a first waypoint farther from the stopped robot than the spacing
 inside the predicted chunk. With the default `policy_rate_hz=-1`, the executor automatically
-prepends an interpolated bridge to the policy motion. Genuine RTC clients do not bridge because
-they align overlapping chunks model-side. An asynchronous action-queue client can explicitly
+prepends an interpolated bridge to the policy motion. Continuously replacing clients do not bridge every
+lookahead because that would reset the active trajectory. An asynchronous action-queue client can
 request a measured-state bridge for its initial lookahead; bridge and policy remain one continuous
 request and NOVA does not stop at their boundary. The initial connector always prepends the measured
 state; when interpolation is unnecessary, it is exactly ``[current, policy waypoint zero]``. The
@@ -123,14 +124,6 @@ before newly aggregated targets. Queue consumption uses the latest acknowledged 
 timestamp, so actions elapsed during a delayed local tick are dropped. Rerun renders the four-point
 retained seam in Nova Violet; it is a view of the active overlap, not a measured-state re-anchoring
 request.
-
-```python
-executor = PolicyExecutor(
-    schema,
-    policy,
-    interpolate_chunk_ramps=True,
-)
-```
 
 The generic `novapolicy.connect_action_chunk(chunk, states)` transform measures the largest spatial
 interval between consecutive policy waypoints. If the robot-to-first-waypoint distance exceeds that
@@ -149,13 +142,14 @@ needed. Joint distance
 is measured in joint space; TCP translation and rotation-vector spacing are handled separately.
 Chunks with fewer than two motion waypoints provide no spacing reference and are not bridged unless
 the client explicitly requires the initial queue anchor. Bridging is part of sequential mode and is
-disabled for overlapping RTC execution after its initial timeline has been established.
+disabled for continuous replacement after its initial timeline has been established.
 
 ### Acceleration and braking interpolation
 
 A settled executor intentionally lets every submitted waypoint request end, so every request starts
-and finishes at zero velocity. `interpolate_chunk_ramps=True` replaces the first and final waypoint
-intervals with three same-`dt_ms` intervals by default:
+and finishes at zero velocity. Endpoint interpolation is disabled by default. When enabled,
+`interpolate_chunk_ramps=True` replaces the first and final waypoint intervals with three
+same-`dt_ms` intervals:
 
 - the first interval uses quadratic ease-in (increasing displacement),
 - the final interval uses quadratic ease-out (decreasing displacement),
@@ -167,7 +161,7 @@ original-index → interpolated-index mapping. The executor uses that mapping to
 computed actions aligned with policy waypoint zero after a bridge. Configure the subdivision count
 with `ramp_interpolation_steps`; each added point retains the original `dt_ms`, intentionally
 increasing request duration. This is for settled chunks only and must not be combined with
-fixed-rate/RTC overlap.
+continuous replacement.
 
 ### Mutable lookahead smoothing
 
@@ -234,7 +228,7 @@ offset measured in whole `dt` steps —
 |------|--------|--------|
 | explicit `first_timestamp_ms >= 0` | that value | `0` (exact) |
 | wait-for-chunk (`policy_rate_hz < 0`) | `now` | `+1` step (one dt ahead) |
-| overlapping / RTC (`policy_rate_hz >= 0`) | `now` | `-seam_backdate_steps` (backdated) |
+| continuous replacement (`policy_rate_hz >= 0`) | `now` | `-seam_backdate_steps` (backdated) |
 
 The `now` anchor is resolved at *yield time* (right before the websocket send)
 so it cannot go stale while the chunk waits in the session queue.

@@ -7,9 +7,7 @@ from collections.abc import Callable, Coroutine
 import contextlib
 from dataclasses import dataclass
 from enum import StrEnum
-import json
 import logging
-from pathlib import Path
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +22,7 @@ from novapolicy.chunking import (
     placement,
     trim_chunk,
 )
+from novapolicy.debug import ExecutionTrajectoryTrace
 from novapolicy.estop import EstopMonitor, check_estop, check_sessions, triggered_stop_condition
 from novapolicy.io import IOStreamManager
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
@@ -36,6 +35,8 @@ from novapolicy.types import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from novapolicy.policy_client import PolicyClient
@@ -130,18 +131,18 @@ class PolicyExecutor:
             policy_rate_hz: Controls timing between policy calls.
                 -1 (default): Bridge from the observed state when needed, wait
                     for the exact chunk deadline and NOVA standstill, then call
-                    the policy again. Use for sequential policies without RTC.
+                    the policy again. Use for settled sequential inference.
                 0: Call the policy as fast as possible (no sleep between calls).
                     Each new chunk immediately replaces the previous one.
                 >0: Call the policy at this fixed rate (Hz). Each new chunk
-                    replaces the previous one mid-execution. Use for RTC
-                    policies (e.g. 20 Hz with GR00T RTC enabled).
+                    replaces the previous one mid-execution. Use for continuous
+                    asynchronous inference or model-side RTC.
             n_action_steps: Number of steps from each action chunk to execute.
                 0 (default): Execute all steps returned by the policy.
                 >0: Trim to first N steps (receding horizon). Later steps
                 have higher prediction uncertainty and are discarded.
                 The policy still predicts the full action_horizon (e.g. 16)
-                which is used internally for RTC warm-starting.
+                which remains available to asynchronous policy clients.
             interpolate_chunk_ramps: Subdivide the first and final motion
                 intervals with acceleration and braking interpolation. Intended
                 for settled execution, where every submitted request ends at standstill.
@@ -166,14 +167,13 @@ class PolicyExecutor:
 
         self._motion: WaypointConfig = motion or WaypointConfig()
         self._start_joint_position = start_joint_position
-        self._trajectory_trace_path = (
-            Path(trajectory_trace_path) if trajectory_trace_path is not None else None
+        self._trajectory_trace = (
+            ExecutionTrajectoryTrace(trajectory_trace_path)
+            if trajectory_trace_path is not None
+            else None
         )
-        self._policy_chunk_trace: list[dict[str, object]] = []
-        if self._trajectory_trace_path is not None:
-            enable_trace = getattr(self._policy, "enable_trajectory_trace", None)
-            if callable(enable_trace):
-                enable_trace()
+        if self._trajectory_trace is not None:
+            self._trajectory_trace.enable_policy_client(self._policy)
         self._stop_conditions = stop_conditions or []
         self._timeout_s = timeout_s
         self._policy_rate_hz = policy_rate_hz
@@ -248,7 +248,8 @@ class PolicyExecutor:
         """
         self._stop_event.clear()
         self._policy_timelines.clear()
-        self._policy_chunk_trace.clear()
+        if self._trajectory_trace is not None:
+            self._trajectory_trace.clear()
         self.result = None
         self.status = ExecutorStatus(phase=Phase.CONNECTING, message="Connecting...")
         try:
@@ -366,7 +367,7 @@ class PolicyExecutor:
             await self._estop_monitor.start()
             await self._init_rerun()
             if self._rerun is not None:
-                image_reader = self._cameras.read_previews if self._cameras.active else None
+                image_reader = self._cameras.read_latest_frames if self._cameras.active else None
                 self._rerun.start_streaming(self._sessions, image_reader=image_reader)
             # Wait for sessions to be ready (server acknowledged init)
             for session in self._sessions.values():
@@ -900,7 +901,7 @@ class PolicyExecutor:
     def _send(self, chunk: ActionChunk) -> dict[str, int]:
         """Send an action chunk to the motion groups.
 
-        Placement (relative vs. absolute, with optional RTC seam backdate) is
+        Placement (relative vs. absolute, with optional overlap backdate) is
         decided per session by :func:`novapolicy.chunking.placement`; the "now"
         component is resolved at yield time inside the session. For overlapping
         mode to keep the robot moving, ``(horizon - seam_backdate_steps) *
@@ -924,9 +925,14 @@ class PolicyExecutor:
             session.update_chunk(
                 steps=steps,
                 dt_ms=chunk.dt_ms,
-                anchor_ms=place.anchor_ms,
-                anchor_offset_steps=place.anchor_offset_steps,
-                server_timestamp_ms=server_timestamp_ms,
+                first_timestamp_ms=(
+                    server_timestamp_ms
+                    if server_timestamp_ms is not None
+                    else place.first_timestamp_ms
+                ),
+                timestamp_offset_steps=(
+                    0 if server_timestamp_ms is not None else place.timestamp_offset_steps
+                ),
                 server_dt_ms=server_dt_ms,
                 action_timestep=chunk.action_timestep,
             )
@@ -941,9 +947,14 @@ class PolicyExecutor:
             session.update_chunk(
                 steps=raw_tcp_steps,
                 dt_ms=chunk.dt_ms,
-                anchor_ms=place.anchor_ms,
-                anchor_offset_steps=place.anchor_offset_steps,
-                server_timestamp_ms=server_timestamp_ms,
+                first_timestamp_ms=(
+                    server_timestamp_ms
+                    if server_timestamp_ms is not None
+                    else place.first_timestamp_ms
+                ),
+                timestamp_offset_steps=(
+                    0 if server_timestamp_ms is not None else place.timestamp_offset_steps
+                ),
                 server_dt_ms=server_dt_ms,
                 action_timestep=chunk.action_timestep,
             )
@@ -985,7 +996,11 @@ class PolicyExecutor:
             tcp=tcp,
             stop_conditions=self._stop_conditions,
             mode=mode,
-            trace_trajectory=self._trajectory_trace_path is not None,
+            trajectory_trace=(
+                self._trajectory_trace.create_session_trace(mg.id, mode)
+                if self._trajectory_trace is not None
+                else None
+            ),
         )
 
     @property
@@ -1029,53 +1044,31 @@ class PolicyExecutor:
         *,
         step: int,
     ) -> None:
-        """Collect exact policy output and controller samples for offline analysis."""
-        if self._trajectory_trace_path is None:
+        """Collect policy output and controller samples when tracing is enabled."""
+        if self._trajectory_trace is None:
             return
-        controller_samples = {}
-        for group_id, session in self._sessions.items():
-            state = robot_states.get(group_id)
-            controller_samples[group_id] = {
-                "server_timestamp_ms": session.last_server_timestamp_ms,
-                "joints": list(state.joints) if state is not None else None,
-            }
-        self._policy_chunk_trace.append(
+        self._trajectory_trace.record_policy_chunk(
+            action,
+            robot_states,
             {
-                "step": step,
-                "action_timestep": action.action_timestep,
-                "dt_ms": action.dt_ms,
-                "joints": action.joints,
-                "tcp": action.tcp,
-                "controller_samples": controller_samples,
-            }
+                group_id: session.last_server_timestamp_ms
+                for group_id, session in self._sessions.items()
+            },
+            step=step,
         )
 
     def _write_trajectory_trace(self) -> None:
-        """Write the in-memory trajectory trace after control loops have stopped."""
-        path = self._trajectory_trace_path
-        if path is None:
+        """Write optional diagnostics after control loops have stopped."""
+        if self._trajectory_trace is None:
             return
-        path.parent.mkdir(parents=True, exist_ok=True)
         result = self.result
-        payload = {
-            "format_version": 2,
-            "result": (
-                {
-                    "reason": result.reason,
-                    "steps": result.steps,
-                    "duration_s": result.duration_s,
-                }
-                if result is not None
-                else None
-            ),
-            "policy_chunks": self._policy_chunk_trace,
-            "policy_client": getattr(self._policy, "trajectory_trace", None),
-            "sessions": {
-                group_id: session.trajectory_trace for group_id, session in self._sessions.items()
-            },
-        }
-        path.write_text(json.dumps(payload, separators=(",", ":")))
-        logger.info("Wrote trajectory trace to %s", path)
+        self._trajectory_trace.write(
+            reason=result.reason if result is not None else None,
+            steps=result.steps if result is not None else None,
+            duration_s=result.duration_s if result is not None else None,
+            policy=self._policy,
+        )
+        logger.info("Wrote trajectory trace to %s", self._trajectory_trace.path)
 
     def _log_completion(self) -> None:
         """Log execution result to Rerun."""

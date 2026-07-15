@@ -278,7 +278,7 @@ class PolicyRerunLogger:
         *,
         image_reader: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
-        """Start background state and camera-preview logging."""
+        """Start background state and camera-frame logging."""
         if not self._initialized:
             return
         from novapolicy.rerun.streaming import StateStreamer  # noqa: PLC0415

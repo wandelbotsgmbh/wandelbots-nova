@@ -203,7 +203,7 @@ arm, keyboard, gamepad, spacemouse) in your own script. See
 | Doc                                  | Covers                                                                                                                                                                 |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [docs/jogging.md](docs/jogging.md)   | Standalone jogging: `jog_joints` / `jog_tcp`, joint/TCP modes, chunked targets, dual-arm, and error handling                                                           |
-| [docs/executor.md](docs/executor.md) | Advanced: the `PolicyExecutor` loop (`policy_rate_hz`, RTC) and the client/server timestamp protocol                                                                   |
+| [docs/executor.md](docs/executor.md) | Advanced: the `PolicyExecutor` loop (`policy_rate_hz`, asynchronous inference, RTC) and the client/server timestamp protocol                                           |
 | [docs/schema.md](docs/schema.md)     | Advanced schema: IO mappings, relative actions, TCP actions, computed observations/actions                                                                             |
 | [docs/gr00t.md](docs/gr00t.md)       | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ (and [docs/rtc.md](docs/rtc.md) for real-time chunking) |
 | [lerobot/README.md](lerobot/README.md) | LeRobot async inference, checkpoint-derived `chunk_size` / `n_action_steps`, and remote-checkpoint configuration                                                        |

@@ -160,7 +160,7 @@ class _BaseJogger:
             # Single-step live target: anchor at "now", one step ahead so the
             # server has time to reach it from the robot's current position.
             session.update_chunk(
-                steps=self._ease_steps(mg, [values], 0.0), dt_ms=0.0, anchor_offset_steps=1
+                steps=self._ease_steps(mg, [values], 0.0), dt_ms=0.0, timestamp_offset_steps=1
             )
         self._log_target(mg.id, [values], 0.0)
 
@@ -176,7 +176,7 @@ class _BaseJogger:
             session.update_chunk(
                 steps=self._ease_steps(mg, value, dt_ms),
                 dt_ms=dt_ms,
-                anchor_ms=session.session_elapsed_ms,
+                first_timestamp_ms=session.estimated_server_timestamp_ms,
             )
             self._log_target(mg.id, value, dt_ms)
             return value[-1]

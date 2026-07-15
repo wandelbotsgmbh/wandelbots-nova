@@ -36,8 +36,8 @@ state between calls will *appear* to show no freezing — it's the decode, not R
 2. **Client legacy timestamp placement** — `PolicyExecutor` re-placed every
    chunk at "now" (legacy relative mode). The server's frozen waypoints only
    line up on the **absolute** timeline, so the executor now anchors overlapping
-   chunks on the session timeline (`anchor_ms = session.session_elapsed_ms`,
-   backdated by `seam_backdate_steps`) — see `novapolicy/chunking.py::placement`.
+   chunks on raw NOVA session timestamps, backdated by
+   `seam_backdate_steps` — see `novapolicy/chunking.py::placement`.
 
 ## What is RTC?
 

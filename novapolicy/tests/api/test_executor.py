@@ -340,7 +340,7 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
         robot.session.queued_chunk_count += 1
         robot.session.scheduled_chunk_count = robot.session.queued_chunk_count
         count = len(kwargs["steps"])
-        base = kwargs["server_timestamp_ms"] or 0
+        base = kwargs["first_timestamp_ms"] or 0
         robot.session.scheduled_waypoint_timestamps = tuple(
             base + index * 10 for index in range(count)
         )
@@ -364,8 +364,8 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
         [1.5] * 6,
         [2.5] * 6,
     ]
-    assert first_send.kwargs["anchor_ms"] == -1
-    assert first_send.kwargs["server_timestamp_ms"] is None
+    assert first_send.kwargs["first_timestamp_ms"] is None
+    assert first_send.kwargs["timestamp_offset_steps"] == 0
     assert first_send.kwargs["server_dt_ms"] == 10.0
     assert replacement.kwargs["steps"] == [
         [0.75] * 6,
@@ -376,11 +376,11 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
     # its exact controller timestamp is 10 ms. Every replacement stays on the
     # immutable policy grid; neither client elapsed time nor speed_ratio may
     # move the same absolute action timestep.
-    assert replacement.kwargs["anchor_ms"] == -1
-    assert replacement.kwargs["server_timestamp_ms"] == 30
+    assert replacement.kwargs["first_timestamp_ms"] == 30
+    assert replacement.kwargs["timestamp_offset_steps"] == 0
     assert replacement.kwargs["server_dt_ms"] == 10.0
-    assert second_replacement.kwargs["server_timestamp_ms"] == 50
-    assert third_replacement.kwargs["server_timestamp_ms"] == 70
+    assert second_replacement.kwargs["first_timestamp_ms"] == 50
+    assert third_replacement.kwargs["first_timestamp_ms"] == 70
     policy.synchronize_action_timestep.assert_any_call(3)
 
 

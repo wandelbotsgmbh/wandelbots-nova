@@ -23,11 +23,11 @@ _IMAGE_STREAM_PERIOD_S = 1.0 / 15.0
 
 
 class StateStreamer:
-    """Streams robot state and camera previews to Rerun.
+    """Stream robot state and the latest camera frames to Rerun.
 
     Robot visualization is capped at 30 Hz so it cannot starve camera updates
-    or overwhelm the live Rerun viewer. Side-effect-free camera previews are
-    logged at 15 Hz independently of the policy inference cadence.
+    or overwhelm the live Rerun viewer. Camera frames are logged at 15 Hz
+    independently of the policy inference cadence.
     """
 
     def __init__(
@@ -70,7 +70,7 @@ class StateStreamer:
         self._sessions = None
 
     async def _loop(self) -> None:
-        """Log live state and image previews without blocking policy execution."""
+        """Log live state and camera frames without blocking policy execution."""
         import rerun as rr  # noqa: PLC0415
 
         next_image_time = 0.0
@@ -95,7 +95,7 @@ class StateStreamer:
                         try:
                             self._log_images(self._image_reader())
                         except (OSError, RuntimeError, ValueError, TypeError) as e:
-                            logger.debug("Camera preview logging skipped: %s", e)
+                            logger.debug("Camera frame logging skipped: %s", e)
                         next_image_time = elapsed + _IMAGE_STREAM_PERIOD_S
                 finally:
                     rr.set_thread_local_data_recording(previous)

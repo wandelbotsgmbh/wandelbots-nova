@@ -21,13 +21,14 @@ from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
 from novapolicy.io import IOWriter
 from novapolicy.jogging.clock import JoggingTimeClock
 from novapolicy.jogging.session import JoggingStateTracker
-from novapolicy.jogging.waypoints import NOW, PendingChunk, make_waypoints_request
+from novapolicy.jogging.waypoints import PendingChunk, make_waypoints_request
 from novapolicy.types import JoggingNotSupportedError, MotionError, StopContext
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from nova.cell.motion_group import MotionGroup
+    from novapolicy.debug import WaypointTrajectoryTrace
     from novapolicy.types import JoggingMode, StopCondition, ValueType, WaypointConfig
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ _HTTP_NOT_FOUND = 404
 
 # Joint gap (deg) between a chunk's first step and the robot's current position
 # above which we treat it as a genuine discontinuity worth a WARNING (smaller
-# gaps are normal RTC tracking lag and are logged at DEBUG).
+# gaps are normal continuous-replacement lag and are logged at DEBUG).
 _DISCONTINUITY_WARN_DEG = 10.0
 
 
@@ -55,7 +56,7 @@ class WaypointJoggingSession:
         tcp: str = "",
         mode: JoggingMode = "joint",
         stop_conditions: list[StopCondition] | None = None,
-        trace_trajectory: bool = False,
+        trajectory_trace: WaypointTrajectoryTrace | None = None,
     ) -> None:
         self._motion_group = motion_group
         self._config = config
@@ -92,11 +93,7 @@ class WaypointJoggingSession:
         self._scheduled_until_server_ms = 0
         self._scheduled_waypoint_timestamps: list[int] = []
 
-        # Optional in-memory diagnostic trace. It is written by PolicyExecutor
-        # after the episode, keeping file IO out of the control/state loops.
-        self._trace_trajectory = trace_trajectory
-        self._trajectory_state_trace: list[dict[str, object]] = []
-        self._trajectory_request_trace: list[dict[str, object]] = []
+        self._trajectory_trace = trajectory_trace
 
         # Task management
         self._jogging_task: asyncio.Task[None] | None = None
@@ -225,6 +222,11 @@ class WaypointJoggingSession:
         return self._clock.last_server_timestamp_ms
 
     @property
+    def estimated_server_timestamp_ms(self) -> int:
+        """Estimated current raw NOVA jogger-session timestamp."""
+        return self._clock.estimated_server_timestamp_ms
+
+    @property
     def speed_ratio(self) -> float:
         """Auto-computed ratio: server_time / client_time.
 
@@ -232,16 +234,6 @@ class WaypointJoggingSession:
         Returns 1.0 before server time is available.
         """
         return self._clock.speed_ratio
-
-    @property
-    def trajectory_trace(self) -> dict[str, object]:
-        """Exact controller samples and waypoint requests collected for diagnostics."""
-        return {
-            "motion_group_id": self.motion_group_id,
-            "mode": self._mode,
-            "states": self._trajectory_state_trace,
-            "requests": self._trajectory_request_trace,
-        }
 
     @property
     def failure_reason(self) -> str:
@@ -256,9 +248,8 @@ class WaypointJoggingSession:
         steps: list[list[float]],
         dt_ms: float,
         *,
-        anchor_ms: int = NOW,
-        anchor_offset_steps: int = 0,
-        server_timestamp_ms: int | None = None,
+        first_timestamp_ms: int | None = None,
+        timestamp_offset_steps: int = 0,
         server_dt_ms: float | None = None,
         action_timestep: int = -1,
         **_kwargs: object,
@@ -273,16 +264,12 @@ class WaypointJoggingSession:
         Args:
             steps: Joint waypoints [rad] or TCP poses [x,y,z,rx,ry,rz] (mm/rad).
             dt_ms: Time between consecutive waypoints (ms). 0 = single-step.
-            anchor_ms: Where step 0 sits on the server timeline. ``NOW`` (default)
-                resolves "now" at yield time so the anchor cannot go stale while
-                the chunk waits in the queue; ``>= 0`` is an explicit absolute
-                anchor (replay / scheduled segments), used verbatim.
-            anchor_offset_steps: Shift the anchor by whole ``dt`` steps. ``+1``
-                places step 0 one dt ahead (live single targets); a negative
-                value backdates the anchor so an already-passed step lands at
-                "now" (RTC seam stitching); ``0`` anchors exactly.
-            server_timestamp_ms: Exact raw NOVA jogger-session timestamp for
-                step zero on the timeline established by the initial bridge.
+            first_timestamp_ms: Exact raw NOVA jogger-session timestamp for
+                step zero. When omitted, server "now" is resolved immediately
+                before sending so the timestamp cannot become stale in the queue.
+            timestamp_offset_steps: Shift the selected timestamp by whole
+                ``dt`` steps. ``+1`` places step zero one interval ahead; a
+                negative value backdates an overlapping seam; ``0`` is exact.
             server_dt_ms: Exact raw controller-time waypoint spacing. Policy
                 queues use this to avoid client-wall clock-rate scaling.
             action_timestep: Absolute policy timestep represented by ``steps[0]``.
@@ -306,21 +293,20 @@ class WaypointJoggingSession:
         self._pending_request = PendingChunk(
             steps=steps,
             dt_ms=effective_dt_ms,
-            anchor_ms=anchor_ms,
-            anchor_offset_steps=anchor_offset_steps,
-            server_timestamp_ms=server_timestamp_ms,
+            first_timestamp_ms=first_timestamp_ms,
+            timestamp_offset_steps=timestamp_offset_steps,
             server_dt_ms=server_dt_ms,
             action_timestep=action_timestep,
             sequence=self._queued_chunk_count,
         )
 
         # Compare current robot position vs chunk first step (joint mode only).
-        # Skipped for backdated (overlapping RTC) chunks: there the robot always
+        # Skipped for backdated overlapping chunks: there the robot always
         # lags the freshest prediction's step 0 by a few degrees, which is
         # expected and not worth reporting. For exact/ahead chunks a large
         # first-step gap is a genuine discontinuity worth a WARNING.
         if (
-            anchor_offset_steps >= 0
+            timestamp_offset_steps >= 0
             and self._mode == "joint"
             and self._current_joints is not None
             and len(steps) > 0
@@ -409,18 +395,11 @@ class WaypointJoggingSession:
                 ts_ms = JoggingTimeClock.extract_from_state(state)
                 if ts_ms is not None:
                     self._clock.update(ts_ms)
-                    if self._trace_trajectory:
-                        pose = self._current_tcp_pose
-                        self._trajectory_state_trace.append(
-                            {
-                                "server_timestamp_ms": ts_ms,
-                                "joints": list(self._current_joints),
-                                "tcp": (
-                                    [*pose.position, *pose.orientation]
-                                    if pose is not None
-                                    else None
-                                ),
-                            }
+                    if self._trajectory_trace is not None:
+                        self._trajectory_trace.record_state(
+                            server_timestamp_ms=ts_ms,
+                            joints=list(self._current_joints),
+                            tcp=self._current_tcp_pose,
                         )
                     self._measure_waypoint_tracking(ts_ms)
                 self._jog_tracker.update_from_state(state)
@@ -508,9 +487,8 @@ class WaypointJoggingSession:
                     self._mode,
                     steps=pending.steps,
                     effective_dt_ms=pending.dt_ms,
-                    anchor_ms=pending.anchor_ms,
-                    anchor_offset_steps=pending.anchor_offset_steps,
-                    server_timestamp_ms=pending.server_timestamp_ms,
+                    first_timestamp_ms=pending.first_timestamp_ms,
+                    timestamp_offset_steps=pending.timestamp_offset_steps,
                     server_dt_ms=pending.server_dt_ms,
                 )
                 self._log_waypoint_timing(request)
@@ -519,20 +497,17 @@ class WaypointJoggingSession:
                     waypoint.timestamp for waypoint in request.waypoints
                 ]
                 self._scheduled_until_server_ms = self._scheduled_waypoint_timestamps[-1]
-                if self._trace_trajectory:
-                    self._trajectory_request_trace.append(
-                        {
-                            "sequence": pending.sequence,
-                            "action_timestep": pending.action_timestep,
-                            "policy_dt_ms": pending.dt_ms,
-                            "anchor_ms": pending.anchor_ms,
-                            "anchor_offset_steps": pending.anchor_offset_steps,
-                            "server_timestamp_ms": pending.server_timestamp_ms,
-                            "server_dt_ms": pending.server_dt_ms,
-                            "server_sample_ms": self._clock.last_server_timestamp_ms,
-                            "timestamps_ms": list(self._scheduled_waypoint_timestamps),
-                            "steps": pending.steps,
-                        }
+                if self._trajectory_trace is not None:
+                    self._trajectory_trace.record_request(
+                        sequence=pending.sequence,
+                        action_timestep=pending.action_timestep,
+                        policy_dt_ms=pending.dt_ms,
+                        first_timestamp_ms=pending.first_timestamp_ms,
+                        timestamp_offset_steps=pending.timestamp_offset_steps,
+                        server_dt_ms=pending.server_dt_ms,
+                        server_sample_ms=self._clock.last_server_timestamp_ms,
+                        timestamps_ms=list(self._scheduled_waypoint_timestamps),
+                        steps=pending.steps,
                     )
                 self._start_waypoint_tracking_measurement(request)
 

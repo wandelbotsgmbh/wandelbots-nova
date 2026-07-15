@@ -19,9 +19,6 @@ from novapolicy.types import ActionChunk
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-NOW = -1
-"""Anchor sentinel: resolve "now" at yield time (see :data:`novapolicy.jogging.waypoints.NOW`)."""
-
 logger = logging.getLogger(__name__)
 
 _MIN_SPACING_STEPS = 2
@@ -515,14 +512,14 @@ def apply_relative_mode(
 class Placement:
     """Where a chunk's first step sits on one session's server timeline.
 
-    ``anchor_ms`` is an explicit absolute anchor, or :data:`NOW` to resolve
-    "now" at yield time. ``anchor_offset_steps`` shifts that anchor by whole
-    ``dt`` steps: ``+1`` = one step ahead (sequential), negative = backdated
-    (RTC seam), ``0`` = exact.
+    ``first_timestamp_ms`` is an exact raw NOVA timestamp, or ``None`` to
+    resolve server "now" at yield time. ``timestamp_offset_steps`` shifts that
+    timestamp by whole ``dt`` steps: ``+1`` = one step ahead (sequential),
+    negative = backdated overlap, ``0`` = exact.
     """
 
-    anchor_ms: int
-    anchor_offset_steps: int
+    first_timestamp_ms: int | None
+    timestamp_offset_steps: int
 
 
 def placement(chunk: ActionChunk, *, policy_rate_hz: float) -> Placement:
@@ -531,16 +528,16 @@ def placement(chunk: ActionChunk, *, policy_rate_hz: float) -> Placement:
     The "now" component is intentionally NOT resolved here — it is computed at
     yield time in :func:`novapolicy.jogging.waypoints.make_waypoints_request` so the
     anchor cannot go stale while the chunk waits in the session queue. This
-    matters most for RTC, whose seam alignment is sensitive to that delay.
+    matters most for continuous replacement, whose seam alignment is sensitive to that delay.
 
     * An explicit ``chunk.first_timestamp_ms`` (>=0) set by the policy wins —
       used verbatim, anchored exactly.
     * Wait-for-chunk (``policy_rate_hz < 0``) — "now", one step ahead.
-    * Otherwise (typically RTC) — "now", backdated by ``seam_backdate_steps`` so
+    * Otherwise (continuous replacement) — "now", backdated by ``seam_backdate_steps`` so
       the step matching the robot's current position lands at "now".
     """
     if chunk.first_timestamp_ms >= 0:
         return Placement(chunk.first_timestamp_ms, 0)
     if policy_rate_hz < 0:
-        return Placement(NOW, 1)
-    return Placement(NOW, -chunk.seam_backdate_steps)
+        return Placement(None, 1)
+    return Placement(None, -chunk.seam_backdate_steps)

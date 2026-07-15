@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from novapolicy.cameras.protocol import LatestFrameSource
 
 if TYPE_CHECKING:
-    from novapolicy.cameras.protocol import CameraSource
+    from novapolicy.cameras.protocol import CameraFrame, CameraSource
 
 
 class CameraManager:
@@ -40,29 +42,16 @@ class CameraManager:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._sources.clear()
 
-    def read(self) -> dict[str, Any]:
+    def read(self) -> dict[str, CameraFrame]:
         """Read one policy frame from each camera source."""
         return {
             key: source.read(max_age_s=self._max_age_s) for key, source in self._sources.items()
         }
 
-    def read_previews(self) -> dict[str, Any]:
-        """Read side-effect-free preview frames from sources that support them.
-
-        Preview reads must not advance temporal frame-history buffers used by
-        policy observations. Camera backends without a ``get_latest_frame``
-        method are omitted from continuous visualization and remain logged once
-        per policy observation.
-        """
-        previews: dict[str, Any] = {}
-        for key, source in self._sources.items():
-            get_latest_frame = getattr(source, "get_latest_frame", None)
-            if get_latest_frame is None:
-                continue
-            try:
-                previews[key] = get_latest_frame(max_age_s=self._max_age_s)
-            except RuntimeError:
-                # Visualization is best-effort; policy reads still enforce
-                # camera availability and frame freshness.
-                continue
-        return previews
+    def read_latest_frames(self) -> dict[str, CameraFrame]:
+        """Read the latest frame from camera sources that expose one."""
+        return {
+            key: source.get_latest_frame(max_age_s=self._max_age_s)
+            for key, source in self._sources.items()
+            if isinstance(source, LatestFrameSource)
+        }
