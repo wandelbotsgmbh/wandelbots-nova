@@ -21,6 +21,7 @@ from novapolicy.chunking import (
     connect_action_chunk,
     create_bridge_chunk,
     interpolate_action_chunk_ramps,
+    smooth_action_chunk,
 )
 from novapolicy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
 from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
@@ -94,4 +95,5 @@ __all__ = [
     "interpolate_action_chunk_ramps",
     "jog_joints",
     "jog_tcp",
+    "smooth_action_chunk",
 ]

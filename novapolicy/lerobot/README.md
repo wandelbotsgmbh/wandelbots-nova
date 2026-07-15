@@ -291,11 +291,10 @@ Aggregation is applied only when an old and a new action target the same future 
 
 The generic client retains LeRobot's weighted-average default. Physical UR3 plug-task runs used
 `AVERAGE`, which showed lower peak path curvature without the delayed transition caused by
-conservative aggregation. Those runs also enabled ``async_queue_smoothing``: two passes of a
-three-tap ``[1, 2, 1] / 4`` temporal filter applied to the outgoing aggregated joint lookahead.
-Away from chunk boundaries this is the five-tap binomial filter ``[1, 4, 6, 4, 1] / 16``. The
-four-point active prefix is restored unchanged after filtering. The generic client leaves this
-disabled, and IO action values are never filtered.
+conservative aggregation. Those runs also enabled ``async_queue_smoothing``, which applies the
+generic ``novapolicy.smooth_action_chunk(...)`` transform to the outgoing aggregated
+lookahead. The four-point active prefix is restored unchanged after filtering. The generic client
+leaves this disabled, and IO action values are never filtered.
 
 The client normally consumes one action each policy control tick, requests a refill when 75% of the
 previous chunk remains by default, and merges overlapping actions using the selected enum mode.

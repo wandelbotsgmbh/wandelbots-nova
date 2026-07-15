@@ -169,6 +169,15 @@ with `ramp_interpolation_steps`; each added point retains the original `dt_ms`, 
 increasing request duration. This is for settled chunks only and must not be combined with
 fixed-rate/RTC overlap.
 
+### Mutable lookahead smoothing
+
+`novapolicy.smooth_action_chunk(...)` applies a reusable temporal `[1, 2, 1] / 4` filter to joint
+and TCP target sequences. Two passes, the default, are equivalent to `[1, 4, 6, 4, 1] / 16` away
+from chunk boundaries. Use `retained_prefix_steps` to restore the portion of a replacement that
+NOVA is already executing. TCP position and rotation-vector components are filtered independently;
+IO actions, timing, and action-timestep metadata remain unchanged. Unlike endpoint interpolation,
+smoothing does not add waypoints or change chunk duration.
+
 The policy API currently has no episode-final signal. Consequently, settled execution brakes every
 request endpoint rather than trying to guess which prediction will be the episode's final chunk.
 

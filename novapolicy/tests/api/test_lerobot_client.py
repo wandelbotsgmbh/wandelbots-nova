@@ -374,7 +374,13 @@ async def test_async_queue_refills_and_blends_overlapping_timesteps(
     await client.close()
 
 
-def test_async_queue_smoothing_filters_joints_but_not_io() -> None:
+@pytest.mark.asyncio
+async def test_async_queue_applies_action_chunk_smoothing_after_aggregation(
+    fake_lerobot: _FakeLeRobot,
+) -> None:
+    mg = _mg()
+    schema = _schema(mg)
+    image = np.zeros((120, 160, 3), dtype=np.uint8)
     client = LeRobotPolicyClient(
         "127.0.0.1:8080",
         "model",
@@ -383,34 +389,31 @@ def test_async_queue_smoothing_filters_joints_but_not_io() -> None:
         async_queue_smoothing=True,
     )
     client.enable_trajectory_trace()
+    await client.connect([mg.id])
+    assert fake_lerobot.stub is not None
+    fake_lerobot.stub.action_values = [
+        [value] * 6 + [io] for value, io in [(0.0, 1.0), (4.0, 0.0), (0.0, 1.0)]
+    ]
 
-    assert client._merge_timed_actions(
-        [
-            _TimedAction([0.0, 100.0], timestep=0),
-            _TimedAction([4.0, 200.0], timestep=1),
-            _TimedAction([0.0, 300.0], timestep=2),
-        ]
-    )
-    smoothed = client._smooth_joint_action_chunk(
-        client._action_queue,
-        [("arm", slice(0, 1))],
-        retained_prefix_steps=1,
+    chunk = await client.get_actions(
+        {mg.id: _state((0.0,) * 6)},
+        schema,
+        images={"cam_scene_1": image},
+        io_values={"digital_out[0]": False},
     )
 
-    assert [action.tolist() for _timestep, action in client._action_queue] == [
-        [0.0, 100.0],
-        [4.0, 200.0],
-        [0.0, 300.0],
+    assert [step[0] for step in chunk.joints[mg.id]] == pytest.approx([1.25, 1.5, 1.25])
+    assert chunk.ios == {mg.id: {"digital_out[0]": True}}
+    assert [action[0] for action in client._published_actions.values()] == pytest.approx(
+        [1.25, 1.5, 1.25]
+    )
+    assert [action[-1] for action in client._published_actions.values()] == [1.0, 0.0, 1.0]
+    assert chunk.joints[mg.id] == [
+        action[:6].tolist() for action in client._published_actions.values()
     ]
-    assert [action.tolist() for _timestep, action in smoothed] == [
-        [0.0, 100.0],
-        [1.5, 200.0],
-        [1.25, 300.0],
-    ]
-    assert client.trajectory_trace["raw_action_chunks"][0]["actions"][1]["values"] == [
-        4.0,
-        200.0,
-    ]
+    assert client.trajectory_trace["raw_action_chunks"][0]["actions"][1]["values"][0] == 4.0
+
+    await client.close()
 
 
 def test_async_queue_freezes_current_and_two_successors() -> None:

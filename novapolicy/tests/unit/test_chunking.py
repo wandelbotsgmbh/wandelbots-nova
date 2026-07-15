@@ -21,6 +21,7 @@ from novapolicy.chunking import (
     create_bridge_chunk,
     interpolate_action_chunk_ramps,
     placement,
+    smooth_action_chunk,
     trim_chunk,
 )
 from novapolicy.types import ActionChunk
@@ -92,6 +93,52 @@ def test_trim_shorter_than_n_is_left_alone(caplog):
     trimmed = trim_chunk(chunk, 8)
     assert len(trimmed.joints["0@ur5e"]) == 4
     assert "Policy returned 4 steps" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# smooth_action_chunk — filter mutable motion lookaheads
+# ---------------------------------------------------------------------------
+
+
+def test_smoothing_filters_joint_and_tcp_motion_and_preserves_discrete_actions_and_metadata():
+    chunk = ActionChunk(
+        joints={"0@ur5e": [[0.0], [4.0], [0.0]]},
+        tcp={"0@ur5e": [[0.0] * 6, [4.0] * 6, [0.0] * 6]},
+        ios={"0@ur5e": {"digital_out[0]": True}},
+        dt_ms=50.0,
+        first_timestamp_ms=100,
+        action_timestep=7,
+        seam_backdate_steps=2,
+    )
+
+    smoothed = smooth_action_chunk(chunk, retained_prefix_steps=1)
+
+    assert [step[0] for step in smoothed.joints["0@ur5e"]] == pytest.approx([0.0, 1.5, 1.25])
+    assert [step[0] for step in smoothed.tcp["0@ur5e"]] == pytest.approx([0.0, 1.5, 1.25])
+    assert chunk.joints["0@ur5e"] == [[0.0], [4.0], [0.0]]
+    assert chunk.tcp["0@ur5e"] == [[0.0] * 6, [4.0] * 6, [0.0] * 6]
+    assert smoothed.ios == chunk.ios
+    assert smoothed.dt_ms == 50.0
+    assert smoothed.first_timestamp_ms == 100
+    assert smoothed.action_timestep == 7
+    assert smoothed.seam_backdate_steps == 2
+
+
+def test_smoothing_supports_tcp_only_chunks():
+    chunk = ActionChunk(tcp={"0@ur5e": [[0.0] * 6, [4.0] * 6, [0.0] * 6]})
+
+    smoothed = smooth_action_chunk(chunk, passes=1)
+
+    assert [step[0] for step in smoothed.tcp["0@ur5e"]] == pytest.approx([1.0, 2.0, 1.0])
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [({"passes": -1}, "passes"), ({"retained_prefix_steps": -1}, "retained_prefix_steps")],
+)
+def test_smoothing_rejects_negative_configuration(kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        smooth_action_chunk(ActionChunk(), **kwargs)
 
 
 # ---------------------------------------------------------------------------

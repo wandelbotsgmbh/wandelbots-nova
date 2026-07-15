@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 _MIN_SPACING_STEPS = 2
 _MIN_RAMP_STEPS = 2
+_MIN_SMOOTHING_STEPS = 2
 _SEGMENT_RATIO_EPSILON = 1e-12
 
 
@@ -77,6 +78,86 @@ def trim_chunk(chunk: ActionChunk, n: int) -> ActionChunk:
         action_timestep=chunk.action_timestep,
         seam_backdate_steps=chunk.seam_backdate_steps,
     )
+
+
+def smooth_action_chunk(
+    chunk: ActionChunk,
+    *,
+    passes: int = 2,
+    retained_prefix_steps: int = 0,
+) -> ActionChunk:
+    """Smooth motion lookaheads without changing active or discrete actions.
+
+    Each pass applies the temporal filter ``[1, 2, 1] / 4`` with replicated
+    boundary values. Two passes are equivalent to ``[1, 4, 6, 4, 1] / 16``
+    away from chunk boundaries. ``retained_prefix_steps`` restores an already
+    active prefix after filtering so trajectory replacements remain exact.
+
+    Joint and TCP sequences are filtered independently. TCP position and
+    rotation-vector components are treated component-wise. IO actions, timing,
+    and action-timestep metadata are preserved.
+    """
+    if passes < 0:
+        raise ValueError("passes must be non-negative")
+    if retained_prefix_steps < 0:
+        raise ValueError("retained_prefix_steps must be non-negative")
+    if passes == 0 or (not chunk.joints and not chunk.tcp):
+        return chunk
+
+    joints = {
+        group_id: _smooth_steps(
+            steps,
+            passes=passes,
+            retained_prefix_steps=retained_prefix_steps,
+        )
+        for group_id, steps in chunk.joints.items()
+    }
+    tcp = {
+        group_id: _smooth_steps(
+            steps,
+            passes=passes,
+            retained_prefix_steps=retained_prefix_steps,
+        )
+        for group_id, steps in chunk.tcp.items()
+    }
+    return ActionChunk(
+        joints=joints,
+        tcp=tcp,
+        ios=chunk.ios,
+        dt_ms=chunk.dt_ms,
+        first_timestamp_ms=chunk.first_timestamp_ms,
+        action_timestep=chunk.action_timestep,
+        seam_backdate_steps=chunk.seam_backdate_steps,
+    )
+
+
+def _smooth_steps(
+    steps: list[list[float]],
+    *,
+    passes: int,
+    retained_prefix_steps: int,
+) -> list[list[float]]:
+    if len(steps) < _MIN_SMOOTHING_STEPS:
+        return steps
+
+    original = [list(step) for step in steps]
+    smoothed = original
+    for _pass in range(passes):
+        previous = smoothed
+        smoothed = []
+        for index, current in enumerate(previous):
+            before = previous[max(0, index - 1)]
+            after = previous[min(len(previous) - 1, index + 1)]
+            smoothed.append(
+                [
+                    (left + 2.0 * value + right) / 4.0
+                    for left, value, right in zip(before, current, after, strict=True)
+                ]
+            )
+
+    prefix_length = min(retained_prefix_steps, len(smoothed))
+    smoothed[:prefix_length] = original[:prefix_length]
+    return smoothed
 
 
 @dataclass(frozen=True, slots=True)

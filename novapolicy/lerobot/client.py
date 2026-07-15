@@ -28,6 +28,7 @@ from lerobot.transport.utils import send_bytes_in_chunks
 from lerobot.utils.constants import OBS_IMAGES, OBS_STATE
 import numpy as np
 
+from novapolicy.chunking import smooth_action_chunk
 from novapolicy.policy_client import PolicyClient
 from novapolicy.types import ActionChunk
 
@@ -42,8 +43,6 @@ logger = logging.getLogger(__name__)
 _IMAGE_NDIM = 3
 _DEFAULT_ASYNC_QUEUE_REFILL_THRESHOLD = 0.75
 _ASYNC_FROZEN_QUEUE_STEPS = 3
-_ASYNC_SMOOTHING_PASSES = 2
-_MIN_SMOOTHING_ACTIONS = 2
 
 
 class AsyncQueueAggregation(StrEnum):
@@ -122,10 +121,8 @@ class LeRobotPolicyClient(PolicyClient):
         inference starts. Defaults to ``0.75`` so inference overlaps execution
         before the NOVA lookahead is close to empty.
     async_queue_smoothing:
-        Apply two passes of a three-tap binomial temporal filter to each outgoing
-        aggregated joint-action lookahead. This is equivalent to a five-tap
-        ``[1, 4, 6, 4, 1] / 16`` filter away from chunk boundaries. The active
-        retained prefix and IO actions are never filtered.
+        Apply :func:`novapolicy.chunking.smooth_action_chunk` to each
+        outgoing aggregated lookahead. The active retained prefix remains exact.
 
     Notes
     -----
@@ -549,20 +546,41 @@ class LeRobotPolicyClient(PolicyClient):
                 preview_entries.insert(0, (timestep - 1, predecessor))
                 action_timestep -= 1
                 retained_prefix_steps = 1 + _ASYNC_FROZEN_QUEUE_STEPS
-            if self._async_queue_smoothing:
-                preview_entries = self._smooth_joint_action_chunk(
-                    preview_entries,
-                    action_slices,
-                    retained_prefix_steps=retained_prefix_steps,
-                )
-            self._published_actions = dict(preview_entries)
-            return self._decode_action_arrays(
+            action_chunk = self._decode_action_arrays(
                 [action for _timestep, action in preview_entries],
                 action_slices,
                 io_action_slices,
                 action_timestep=action_timestep,
                 io_action_array=current_action,
             )
+            if self._async_queue_smoothing:
+                action_chunk = smooth_action_chunk(
+                    action_chunk,
+                    retained_prefix_steps=retained_prefix_steps,
+                )
+                preview_entries = [
+                    (
+                        entry_timestep,
+                        self._replace_joint_values(
+                            action,
+                            action_chunk,
+                            action_slices,
+                            step=index,
+                        ),
+                    )
+                    for index, (entry_timestep, action) in enumerate(preview_entries)
+                ]
+                # Return the exact float representation retained for future
+                # replacements, so the active prefix remains bit-identical.
+                action_chunk = self._decode_action_arrays(
+                    [action for _timestep, action in preview_entries],
+                    action_slices,
+                    io_action_slices,
+                    action_timestep=action_timestep,
+                    io_action_array=current_action,
+                )
+            self._published_actions = dict(preview_entries)
+            return action_chunk
 
         # The current joint action is already present in NOVA's previously
         # published lookahead. Return only its IO component so computed actions
@@ -673,36 +691,18 @@ class LeRobotPolicyClient(PolicyClient):
         return bool(future)
 
     @staticmethod
-    def _smooth_joint_action_chunk(
-        decoded_actions: list[tuple[int, np.ndarray[Any, Any]]],
+    def _replace_joint_values(
+        action: np.ndarray[Any, Any],
+        chunk: ActionChunk,
         action_slices: Sequence[tuple[str, slice]],
         *,
-        retained_prefix_steps: int = 0,
-    ) -> list[tuple[int, np.ndarray[Any, Any]]]:
-        """Smooth an outgoing lookahead while preserving its active prefix."""
-        if len(decoded_actions) < _MIN_SMOOTHING_ACTIONS or not action_slices:
-            return decoded_actions
-
-        values = np.stack([action for _timestep, action in decoded_actions])
-        smoothed = values.copy()
-        for _pass in range(_ASYNC_SMOOTHING_PASSES):
-            padded = np.pad(smoothed, ((1, 1), (0, 0)), mode="edge")
-            for _group_id, action_slice in action_slices:
-                smoothed[:, action_slice] = (
-                    padded[:-2, action_slice]
-                    + 2.0 * padded[1:-1, action_slice]
-                    + padded[2:, action_slice]
-                ) / 4.0
-        if retained_prefix_steps > 0:
-            smoothed[:retained_prefix_steps] = values[:retained_prefix_steps]
-        return [
-            (timestep, action)
-            for (timestep, _raw_action), action in zip(
-                decoded_actions,
-                smoothed,
-                strict=True,
-            )
-        ]
+        step: int,
+    ) -> np.ndarray[Any, Any]:
+        """Copy transformed joint targets back into the published flat action."""
+        transformed = action.copy()
+        for group_id, action_slice in action_slices:
+            transformed[action_slice] = chunk.joints[group_id][step]
+        return transformed
 
     @staticmethod
     def _action_to_array(action: object) -> np.ndarray[Any, Any]:
