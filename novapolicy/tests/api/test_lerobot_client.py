@@ -12,9 +12,12 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from novapolicy.action_queue import TimestampedActionQueue
 from novapolicy.schema import BoolMapping, Observation, PolicySchema
 
 client_module = pytest.importorskip("novapolicy.lerobot.client")
+transport_module = pytest.importorskip("novapolicy.lerobot.transport")
+FlatActionLayout = pytest.importorskip("novapolicy.lerobot.codec").FlatActionLayout
 AsyncQueueAggregation = client_module.AsyncQueueAggregation
 LeRobotPolicyClient = client_module.LeRobotPolicyClient
 
@@ -123,20 +126,20 @@ def fake_lerobot(monkeypatch: pytest.MonkeyPatch) -> _FakeLeRobot:
     ) -> list[_Message]:
         return [message_cls(data=data)]
 
-    monkeypatch.setattr(client_module, "grpc", fake.grpc)
+    monkeypatch.setattr(transport_module, "grpc", fake.grpc)
     monkeypatch.setattr(client_module, "RemotePolicyConfig", _RemotePolicyConfig)
-    monkeypatch.setattr(client_module, "TimedObservation", _TimedObservation)
+    monkeypatch.setattr(transport_module, "TimedObservation", _TimedObservation)
     monkeypatch.setattr(
-        client_module,
+        transport_module,
         "services_pb2",
         SimpleNamespace(Empty=_Message, PolicySetup=_Message, Observation=_Message),
     )
     monkeypatch.setattr(
-        client_module,
+        transport_module,
         "services_pb2_grpc",
         SimpleNamespace(AsyncInferenceStub=_AsyncInferenceStub),
     )
-    monkeypatch.setattr(client_module, "send_bytes_in_chunks", send_bytes_in_chunks)
+    monkeypatch.setattr(transport_module, "send_bytes_in_chunks", send_bytes_in_chunks)
     return fake
 
 
@@ -283,22 +286,12 @@ async def test_get_actions_sends_lerobot_async_protocol_and_decodes_chunk(
         (AsyncQueueAggregation.CONSERVATIVE, 4.4),
     ],
 )
-def test_async_queue_aggregation_modes(
-    aggregation: object,
-    expected: float,
-) -> None:
-    client = LeRobotPolicyClient(
-        "127.0.0.1:8080",
-        "model",
-        actions_per_chunk=4,
-        use_async_queue=True,
-        async_queue_aggregation=aggregation,
-    )
-    client._latest_action_timestep = 0
-    client._action_queue = [(4, np.asarray([2.0], dtype=np.float32))]
+def test_async_queue_aggregation_modes(aggregation: object, expected: float) -> None:
+    queue = TimestampedActionQueue(aggregation=aggregation)
+    queue.merge([(4, np.asarray([2.0], dtype=np.float32))])
 
-    assert client._merge_timed_actions([_TimedAction([10.0], timestep=4)])
-    assert client._action_queue[0][1][0] == pytest.approx(expected)
+    assert queue.merge([(4, np.asarray([10.0], dtype=np.float32))])
+    assert queue.entries[0][1][0] == pytest.approx(expected)
 
 
 @pytest.mark.asyncio
@@ -340,32 +333,30 @@ async def test_async_queue_refills_and_blends_overlapping_timesteps(
         images={"cam_scene_1": image},
         io_values={"digital_out[0]": False},
     )
-
-    # Refill runs asynchronously while NOVA executes its published lookahead.
-    # Waiting here would age the controller timestep selected before inference.
     assert second.joints == {}
     assert second.ios == {mg.id: {"digital_out[0]": True}}
 
-    while client._pending_actions_task is not None and not client._pending_actions_task.done():
+    assert client._async_queue is not None
+    while (
+        client._async_queue.pending_request is not None
+        and not client._async_queue.pending_request.done()
+    ):
         await asyncio.sleep(0)
     assert fake_lerobot.stub.observations[-1].timestep == 1
     assert fake_lerobot.stub.observations[-1].must_go is True
+
     third = await client.get_actions(
         {mg.id: _state((2.0,) * 6)},
         schema,
         images={"cam_scene_1": image},
         io_values={"digital_out[0]": False},
     )
-
-    # The next tick publishes the completed refill. Published timestep 1 is
-    # prepended, selected timestep 2 and successor timestep 3 stay frozen, and
-    # timestep 4 extends the queue. IO comes from selected timestep 2.
     assert third.action_timestep == 1
     assert [step[0] for step in third.joints[mg.id]] == pytest.approx([1.0, 2.0, 3.0, 3.0])
     assert third.ios == {mg.id: {"digital_out[0]": False}}
-    assert [timestep for timestep, _action in client._action_queue] == [3, 4]
-    assert client._action_queue[0][1][0] == pytest.approx(3.0)
-    assert client._action_queue[1][1][0] == pytest.approx(3.0)
+    entries = client._async_queue.action_queue.entries
+    assert [timestep for timestep, _action in entries] == [3, 4]
+    assert [action[0] for _timestep, action in entries] == pytest.approx([3.0, 3.0])
     raw_chunks = client.trajectory_trace["raw_action_chunks"]
     assert len(raw_chunks) == 2
     assert raw_chunks[0]["first_timestep"] == 0
@@ -404,78 +395,55 @@ async def test_async_queue_applies_action_chunk_smoothing_after_aggregation(
 
     assert [step[0] for step in chunk.joints[mg.id]] == pytest.approx([1.25, 1.5, 1.25])
     assert chunk.ios == {mg.id: {"digital_out[0]": True}}
-    assert [action[0] for action in client._published_actions.values()] == pytest.approx(
-        [1.25, 1.5, 1.25]
-    )
-    assert [action[-1] for action in client._published_actions.values()] == [1.0, 0.0, 1.0]
-    assert chunk.joints[mg.id] == [
-        action[:6].tolist() for action in client._published_actions.values()
-    ]
+    assert client._async_queue is not None
+    published = client._async_queue.action_queue.published
+    assert [action[0] for action in published.values()] == pytest.approx([1.25, 1.5, 1.25])
+    assert [action[-1] for action in published.values()] == [1.0, 0.0, 1.0]
+    assert chunk.joints[mg.id] == [action[:6].tolist() for action in published.values()]
     assert client.trajectory_trace["raw_action_chunks"][0]["actions"][1]["values"][0] == 4.0
 
     await client.close()
 
 
 def test_async_queue_freezes_current_and_two_successors() -> None:
-    client = LeRobotPolicyClient(
-        "127.0.0.1:8080",
-        "model",
-        actions_per_chunk=5,
-        use_async_queue=True,
+    queue = TimestampedActionQueue(
+        aggregation=AsyncQueueAggregation.WEIGHTED_AVERAGE,
+        frozen_steps=3,
     )
-    client._latest_action_timestep = 0
-    client._action_queue = [
-        (timestep, np.asarray([float(timestep)], dtype=np.float32)) for timestep in range(1, 5)
-    ]
-    client._published_actions = {
-        timestep: np.asarray([float(timestep + 10)], dtype=np.float32) for timestep in range(1, 4)
-    }
-
-    assert client._merge_timed_actions(
-        [_TimedAction([10.0], timestep=timestep) for timestep in range(1, 5)]
+    queue.merge(
+        (timestep, np.asarray([float(timestep)], dtype=np.float32)) for timestep in range(5)
+    )
+    queue.consume()
+    queue.publish(
+        (timestep, np.asarray([float(timestep + 10)], dtype=np.float32)) for timestep in range(1, 4)
     )
 
-    assert [action[0] for _timestep, action in client._action_queue] == pytest.approx(
+    assert queue.merge((timestep, np.asarray([10.0], dtype=np.float32)) for timestep in range(1, 5))
+    assert [action[0] for _timestep, action in queue.entries] == pytest.approx(
         [11.0, 12.0, 13.0, 8.2]
     )
 
 
 def test_average_aggregation_is_a_true_running_mean_per_timestep() -> None:
-    client = LeRobotPolicyClient(
-        "127.0.0.1:8080",
-        "model",
-        actions_per_chunk=4,
-        use_async_queue=True,
-        async_queue_aggregation=AsyncQueueAggregation.AVERAGE,
-    )
-    client._latest_action_timestep = 0
-    client._action_queue = [(4, np.asarray([2.0], dtype=np.float32))]
+    queue = TimestampedActionQueue(aggregation=AsyncQueueAggregation.AVERAGE)
+    queue.merge([(4, np.asarray([2.0], dtype=np.float32))])
 
-    assert client._merge_timed_actions([_TimedAction([10.0], timestep=4)])
-    assert client._merge_timed_actions([_TimedAction([12.0], timestep=4)])
+    assert queue.merge([(4, np.asarray([10.0], dtype=np.float32))])
+    assert queue.merge([(4, np.asarray([12.0], dtype=np.float32))])
 
-    assert client._action_queue[0][1][0] == pytest.approx((2.0 + 10.0 + 12.0) / 3.0)
-    assert client._action_prediction_counts == {4: 3}
+    assert queue.entries[0][1][0] == pytest.approx((2.0 + 10.0 + 12.0) / 3.0)
+    assert queue.prediction_counts == {4: 3}
 
 
 def test_async_queue_synchronization_drops_actions_elapsed_on_nova() -> None:
-    client = LeRobotPolicyClient(
-        "127.0.0.1:8080",
-        "model",
-        actions_per_chunk=4,
-        use_async_queue=True,
+    queue = TimestampedActionQueue()
+    queue.merge(
+        (timestep, np.asarray([float(timestep)], dtype=np.float32)) for timestep in range(2, 5)
     )
-    client._latest_action_timestep = 1
-    client._action_queue = [
-        (2, np.asarray([2.0], dtype=np.float32)),
-        (3, np.asarray([3.0], dtype=np.float32)),
-        (4, np.asarray([4.0], dtype=np.float32)),
-    ]
 
-    client.synchronize_action_timestep(4)
-
-    assert client._latest_action_timestep == 3
-    assert [timestep for timestep, _action in client._action_queue] == [4]
+    assert queue.synchronize(4) == 4
+    assert queue.latest_timestep == 3
+    assert [timestep for timestep, _action in queue.entries] == [4]
 
 
 @pytest.mark.asyncio
@@ -491,17 +459,24 @@ async def test_async_queue_keeps_sending_observations_while_refill_is_pending(
         use_async_queue=True,
     )
     await client.connect([mg.id])
+    assert client._async_queue is not None
 
-    action_1 = np.asarray([1.0] * 7, dtype=np.float32)
-    action_2 = np.asarray([2.0] * 7, dtype=np.float32)
-    client._action_chunk_size = 4
-    client._action_queue = [(1, action_1), (2, action_2)]
-    client._pending_actions_task = asyncio.create_task(asyncio.sleep(10, result=[]))
+    queue = client._async_queue.action_queue
+    queue.merge(
+        [
+            (0, np.asarray([0.0] * 7, dtype=np.float32)),
+            (1, np.asarray([1.0] * 7, dtype=np.float32)),
+            (2, np.asarray([2.0] * 7, dtype=np.float32)),
+            (3, np.asarray([3.0] * 7, dtype=np.float32)),
+            (4, np.asarray([4.0] * 7, dtype=np.float32)),
+        ]
+    )
+    queue.consume()
+    client._async_queue._pending_request = asyncio.create_task(asyncio.sleep(10, result=[]))
 
-    chunk = await client._get_async_queue_actions(
+    chunk = await client._async_queue.get_actions(
         {"arm_1": 1.0},
-        [(mg.id, slice(0, 6))],
-        [],
+        FlatActionLayout(joints=[(mg.id, slice(0, 6))], ios=[]),
     )
 
     assert chunk.joints == {}
