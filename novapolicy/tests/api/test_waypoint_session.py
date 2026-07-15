@@ -238,11 +238,9 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
                 "policy_dt_ms": 50.0,
                 "anchor_ms": 0,
                 "anchor_offset_steps": 0,
-                "server_anchor_ms": None,
+                "server_timestamp_ms": None,
                 "server_dt_ms": None,
                 "server_sample_ms": 0,
-                "estimated_server_now_ms": 0,
-                "speed_ratio": 1.0,
                 "timestamps_ms": [0],
                 "steps": [target],
             }

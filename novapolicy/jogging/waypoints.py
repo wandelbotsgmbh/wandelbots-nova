@@ -33,7 +33,7 @@ class PendingChunk:
     dt_ms: float
     anchor_ms: int = NOW
     anchor_offset_steps: int = 0
-    server_anchor_ms: int | None = None
+    server_timestamp_ms: int | None = None
     server_dt_ms: float | None = None
     action_timestep: int = -1
     sequence: int = 0
@@ -47,7 +47,7 @@ def make_waypoints_request(
     effective_dt_ms: float,
     anchor_ms: int = NOW,
     anchor_offset_steps: int = 0,
-    server_anchor_ms: int | None = None,
+    server_timestamp_ms: int | None = None,
     server_dt_ms: float | None = None,
 ) -> object:
     """Build a JointWaypointsRequest or PoseWaypointsRequest at stream-yield time.
@@ -55,8 +55,8 @@ def make_waypoints_request(
     Every waypoint carries an absolute server-time timestamp laid out as
     ``base + i*dt``. The only decision is where ``base`` (step 0) sits:
 
-    * ``server_anchor_ms`` set: an exact raw NOVA jogger-session timestamp,
-      used for queue replacements that must preserve an existing server timeline.
+    * ``server_timestamp_ms`` set: the exact raw NOVA jogger-session timestamp
+      for step zero on an existing controller timeline.
     * ``server_dt_ms`` set: exact spacing in that raw controller timeline. This
       bypasses client-wall clock-rate scaling for controller-timed policy queues.
     * ``anchor_ms == NOW`` (default): ``base`` is "now", read *here* at yield
@@ -74,8 +74,8 @@ def make_waypoints_request(
     ratio.
     """
     scaled_dt_ms = server_dt_ms if server_dt_ms is not None else clock.scale_dt(effective_dt_ms)
-    if server_anchor_ms is not None:
-        base_ms = server_anchor_ms + int(anchor_offset_steps * scaled_dt_ms)
+    if server_timestamp_ms is not None:
+        base_ms = server_timestamp_ms + int(anchor_offset_steps * scaled_dt_ms)
     elif anchor_ms == NOW:
         # Schedule directly in the server clock domain. Converting through a
         # client-relative session origin assumes both clocks started together;

@@ -205,7 +205,6 @@ class PolicyExecutor:
         self._estop_monitor: EstopMonitor | None = None
         self._io_streams = IOStreamManager(self._motion_groups, schema.io_keys_by_controller())
         self._io_tasks: set[asyncio.Task[None]] = set()
-        self._policy_boundary_task: asyncio.Task[ExecutionResult | None] | None = None
         self._policy_timelines: dict[str, _PolicyTimeline] = {}
         self._rerun: PolicyRerunLogger | None = None
         self._logged_first_images = False
@@ -286,14 +285,6 @@ class PolicyExecutor:
         the jogging sessions, pending IO write tasks, and the policy
         connection. Also performs the final status reset and result logging.
         """
-        boundary_task = self._policy_boundary_task
-        self._policy_boundary_task = None
-        if boundary_task is not None:
-            if not boundary_task.done():
-                boundary_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await boundary_task
-
         for session in self._sessions.values():
             with contextlib.suppress(MotionError, EmergencyStopError, OSError, RuntimeError):
                 await session.stop()
@@ -419,7 +410,6 @@ class PolicyExecutor:
             # even when the policy and sleeps below complete synchronously
             # (e.g. dt_ms=0 with policy_rate_hz<=0, or a local in-process policy).
             await asyncio.sleep(0)
-            self._raise_policy_boundary_error()
 
             termination = self._termination_result(step, start_time, last_obs)
             if termination is not None:
@@ -613,48 +603,7 @@ class PolicyExecutor:
             self._rerun.log_bridge_chunk(connected.bridge, step)
         self._log_policy_action(action, step)
         target_chunks = self._send(connected.motion)
-        if self._policy_rate_hz >= 0 and action.action_timestep >= 0:
-            termination = await self._run_actions_at_policy_boundary(
-                connected,
-                action,
-                target_chunks,
-                step=step,
-                start_time=start_time,
-                last_obs=last_obs,
-            )
-            if termination is None:
-                for group_id, policy_start_step in connected.policy_start_steps.items():
-                    session = self._sessions.get(group_id)
-                    if session is None:
-                        continue
-                    timestamps = session.scheduled_waypoint_timestamps
-                    if len(timestamps) <= policy_start_step:
-                        continue
-                    # Policy waypoint zero already has an exact timestamp on
-                    # NOVA's controller-synchronized jogger timer. Preserve it
-                    # as the immutable queue origin; sampling controller "now"
-                    # after the boundary would shift and replay the trajectory.
-                    self._policy_timelines[group_id] = _PolicyTimeline(
-                        action_timestep=action.action_timestep,
-                        policy_dt_ms=action.dt_ms,
-                        server_timestamp_ms=float(timestamps[policy_start_step]),
-                    )
-                logger.info(
-                    "Policy action timeline initialized: %s",
-                    self._policy_timelines,
-                )
-            return termination
-        if self._policy_rate_hz >= 0:
-            await self._replace_policy_boundary_task(
-                connected,
-                action,
-                target_chunks,
-                step=step,
-                start_time=start_time,
-                last_obs=last_obs,
-            )
-            return None
-        return await self._run_actions_at_policy_boundary(
+        termination = await self._run_actions_at_policy_boundary(
             connected,
             action,
             target_chunks,
@@ -662,44 +611,23 @@ class PolicyExecutor:
             start_time=start_time,
             last_obs=last_obs,
         )
-
-    async def _replace_policy_boundary_task(
-        self,
-        connected: ConnectedActionChunk,
-        action: ActionChunk,
-        target_chunks: dict[str, int],
-        *,
-        step: int,
-        start_time: float,
-        last_obs: dict[str, Any] | None,
-    ) -> None:
-        """Replace a continuous chunk's deferred side effects without pausing its loop."""
-        previous = self._policy_boundary_task
-        if previous is not None:
-            if not previous.done():
-                previous.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await previous
-
-        self._policy_boundary_task = asyncio.create_task(
-            self._run_actions_at_policy_boundary(
-                connected,
-                action,
-                target_chunks,
-                step=step,
-                start_time=start_time,
-                last_obs=last_obs,
-            ),
-            name="policy-boundary-actions",
-        )
-
-    def _raise_policy_boundary_error(self) -> None:
-        """Propagate failures from non-blocking continuous boundary actions."""
-        task = self._policy_boundary_task
-        if task is None or not task.done():
-            return
-        self._policy_boundary_task = None
-        task.result()
+        if termination is None and self._policy_rate_hz >= 0 and action.action_timestep >= 0:
+            for group_id, policy_start_step in connected.policy_start_steps.items():
+                session = self._sessions.get(group_id)
+                if session is None:
+                    continue
+                timestamps = session.scheduled_waypoint_timestamps
+                if len(timestamps) <= policy_start_step:
+                    continue
+                # Policy waypoint zero already has an exact timestamp on NOVA's
+                # jogger timer. Preserve it as the immutable queue origin.
+                self._policy_timelines[group_id] = _PolicyTimeline(
+                    action_timestep=action.action_timestep,
+                    policy_dt_ms=action.dt_ms,
+                    server_timestamp_ms=float(timestamps[policy_start_step]),
+                )
+            logger.info("Policy action timeline initialized: %s", self._policy_timelines)
+        return termination
 
     async def _run_actions_at_policy_boundary(
         self,
@@ -980,20 +908,25 @@ class PolicyExecutor:
         otherwise).
         """
         place = placement(chunk, policy_rate_hz=self._policy_rate_hz)
+        server_dt_ms = (
+            chunk.dt_ms
+            if self._policy_rate_hz >= 0
+            and getattr(self._policy, "requires_first_waypoint_bridge", False)
+            else None
+        )
         target_chunks: dict[str, int] = {}
         for group_id, steps in chunk.joints.items():
             session = self._sessions.get(group_id)
             if session is None:
                 logger.warning("Unknown motion group in chunk: %s", group_id)
                 continue
-            server_anchor_ms = self._policy_server_anchor_ms(chunk, group_id, session)
-            server_dt_ms = self._policy_server_dt_ms(chunk)
+            server_timestamp_ms = self._policy_server_timestamp_ms(chunk, group_id)
             session.update_chunk(
                 steps=steps,
                 dt_ms=chunk.dt_ms,
                 anchor_ms=place.anchor_ms,
                 anchor_offset_steps=place.anchor_offset_steps,
-                server_anchor_ms=server_anchor_ms,
+                server_timestamp_ms=server_timestamp_ms,
                 server_dt_ms=server_dt_ms,
                 action_timestep=chunk.action_timestep,
             )
@@ -1004,14 +937,13 @@ class PolicyExecutor:
             if session is None:
                 logger.warning("Unknown motion group in TCP chunk: %s", group_id)
                 continue
-            server_anchor_ms = self._policy_server_anchor_ms(chunk, group_id, session)
-            server_dt_ms = self._policy_server_dt_ms(chunk)
+            server_timestamp_ms = self._policy_server_timestamp_ms(chunk, group_id)
             session.update_chunk(
                 steps=raw_tcp_steps,
                 dt_ms=chunk.dt_ms,
                 anchor_ms=place.anchor_ms,
                 anchor_offset_steps=place.anchor_offset_steps,
-                server_anchor_ms=server_anchor_ms,
+                server_timestamp_ms=server_timestamp_ms,
                 server_dt_ms=server_dt_ms,
                 action_timestep=chunk.action_timestep,
             )
@@ -1027,40 +959,17 @@ class PolicyExecutor:
                 task.add_done_callback(self._io_tasks.discard)
         return target_chunks
 
-    def _policy_server_anchor_ms(
+    def _policy_server_timestamp_ms(
         self,
         chunk: ActionChunk,
         group_id: str,
-        session: WaypointJoggingSession,
     ) -> int | None:
-        """Exact controller-timer timestamp for a policy queue action timestep."""
+        """Map a policy action timestep onto its immutable NOVA timeline."""
         timeline = self._policy_timelines.get(group_id)
         if chunk.action_timestep < 0 or timeline is None:
             return None
         elapsed_steps = chunk.action_timestep - timeline.action_timestep
-        fractional_anchor_ms = timeline.server_timestamp_ms + elapsed_steps * timeline.policy_dt_ms
-        server_anchor_ms = int(fractional_anchor_ms)
-        controller_now_ms = session.last_server_timestamp_ms
-        logger.info(
-            "%s policy timestamp action=%d origin_action=%d anchor=%dms "
-            "controller_now=%dms ahead=%dms controller_dt=%.3fms",
-            group_id,
-            chunk.action_timestep,
-            timeline.action_timestep,
-            server_anchor_ms,
-            controller_now_ms,
-            server_anchor_ms - controller_now_ms,
-            timeline.policy_dt_ms,
-        )
-        return server_anchor_ms
-
-    def _policy_server_dt_ms(self, chunk: ActionChunk) -> float | None:
-        """Use policy spacing directly for controller-timed asynchronous queues."""
-        if self._policy_rate_hz < 0 or not getattr(
-            self._policy, "requires_first_waypoint_bridge", False
-        ):
-            return None
-        return chunk.dt_ms
+        return int(timeline.server_timestamp_ms + elapsed_steps * timeline.policy_dt_ms)
 
     def _create_session(self, mg: MotionGroup) -> WaypointJoggingSession:
         """Create a waypoint jogging session for a motion group."""
@@ -1128,9 +1037,6 @@ class PolicyExecutor:
             state = robot_states.get(group_id)
             controller_samples[group_id] = {
                 "server_timestamp_ms": session.last_server_timestamp_ms,
-                "session_elapsed_ms": session.session_elapsed_ms,
-                "estimated_server_timestamp_ms": session.estimated_server_timestamp_ms,
-                "speed_ratio": session.speed_ratio,
                 "joints": list(state.joints) if state is not None else None,
             }
         self._policy_chunk_trace.append(
@@ -1152,7 +1058,7 @@ class PolicyExecutor:
         path.parent.mkdir(parents=True, exist_ok=True)
         result = self.result
         payload = {
-            "format_version": 1,
+            "format_version": 2,
             "result": (
                 {
                     "reason": result.reason,

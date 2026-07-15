@@ -107,7 +107,6 @@ def _fake_session() -> MagicMock:
     session.scheduled_until_server_ms = 0
     session.scheduled_waypoint_timestamps = ()
     session.last_server_timestamp_ms = 0
-    session.estimated_server_timestamp_ms = 0
     session.speed_ratio = 1.0
     session.start = AsyncMock()
     session.stop = AsyncMock()
@@ -341,13 +340,12 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
         robot.session.queued_chunk_count += 1
         robot.session.scheduled_chunk_count = robot.session.queued_chunk_count
         count = len(kwargs["steps"])
-        base = kwargs["server_anchor_ms"] or 0
+        base = kwargs["server_timestamp_ms"] or 0
         robot.session.scheduled_waypoint_timestamps = tuple(
             base + index * 10 for index in range(count)
         )
         robot.session.scheduled_until_server_ms = robot.session.scheduled_waypoint_timestamps[-1]
         robot.session.last_server_timestamp_ms = robot.session.scheduled_until_server_ms
-        robot.session.estimated_server_timestamp_ms = robot.session.scheduled_until_server_ms
         robot.session.session_elapsed_ms = 100_000  # must not affect controller-timer placement
 
     policy.get_actions = AsyncMock(side_effect=get_actions)
@@ -367,7 +365,7 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
         [2.5] * 6,
     ]
     assert first_send.kwargs["anchor_ms"] == -1
-    assert first_send.kwargs["server_anchor_ms"] is None
+    assert first_send.kwargs["server_timestamp_ms"] is None
     assert first_send.kwargs["server_dt_ms"] == 10.0
     assert replacement.kwargs["steps"] == [
         [0.75] * 6,
@@ -379,91 +377,11 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
     # immutable policy grid; neither client elapsed time nor speed_ratio may
     # move the same absolute action timestep.
     assert replacement.kwargs["anchor_ms"] == -1
-    assert replacement.kwargs["server_anchor_ms"] == 30
+    assert replacement.kwargs["server_timestamp_ms"] == 30
     assert replacement.kwargs["server_dt_ms"] == 10.0
-    assert second_replacement.kwargs["server_anchor_ms"] == 50
-    assert third_replacement.kwargs["server_anchor_ms"] == 70
+    assert second_replacement.kwargs["server_timestamp_ms"] == 50
+    assert third_replacement.kwargs["server_timestamp_ms"] == 70
     policy.synchronize_action_timestep.assert_any_call(3)
-
-
-@pytest.mark.asyncio
-async def test_continuous_bridge_boundary_wait_does_not_pause_policy_ticks(robot: _Robot):
-    """Async lookahead refresh continues while bridge side effects wait on NOVA time."""
-    policy = MagicMock(requires_first_waypoint_bridge=True)
-    policy.connect = AsyncMock()
-    policy.prepare = None
-    policy.validate_schema = AsyncMock()
-    policy.close = AsyncMock()
-    second_call = asyncio.Event()
-
-    async def get_actions(*_args: object) -> ActionChunk:
-        if policy.get_actions.await_count == 2:
-            second_call.set()
-        return ActionChunk(
-            joints={MG_ID: [[3.0] * 6, [4.0] * 6, [5.0] * 6]},
-            dt_ms=10.0,
-        )
-
-    policy.get_actions = AsyncMock(side_effect=get_actions)
-    executor = PolicyExecutor(_schema(), policy, timeout_s=0.25, policy_rate_hz=100)
-    run_task = asyncio.create_task(executor.run())
-
-    await asyncio.wait_for(second_call.wait(), timeout=0.15)
-    executor.stop()
-    result = await run_task
-
-    assert result.reason == "stopped"
-    assert policy.get_actions.await_count >= 2
-
-
-@pytest.mark.asyncio
-async def test_new_continuous_bridge_cancels_superseded_boundary_actions(robot: _Robot):
-    """Only the latest lookahead may fire side effects after replacing a bridge."""
-    policy = MagicMock(requires_first_waypoint_bridge=True)
-    policy.connect = AsyncMock()
-    policy.prepare = None
-    policy.validate_schema = AsyncMock()
-    policy.close = AsyncMock()
-    second_call = asyncio.Event()
-
-    async def get_actions(*_args: object) -> ActionChunk:
-        call = policy.get_actions.await_count
-        if call == 1:
-            return ActionChunk(
-                joints={MG_ID: [[3.0] * 6, [4.0] * 6, [5.0] * 6]},
-                ios={MG_ID: {"digital_out[0]": True}},
-                dt_ms=10.0,
-            )
-        if call == 2:
-            second_call.set()
-            return ActionChunk(
-                joints={MG_ID: [[6.0] * 6, [7.0] * 6, [8.0] * 6]},
-                ios={MG_ID: {"digital_out[0]": False}},
-                dt_ms=10.0,
-            )
-        return ActionChunk(dt_ms=10.0)
-
-    def schedule_without_progress(*_args: object, **kwargs: object) -> None:
-        robot.session.queued_chunk_count += 1
-        robot.session.scheduled_chunk_count = robot.session.queued_chunk_count
-        count = len(kwargs["steps"])
-        robot.session.scheduled_waypoint_timestamps = tuple(range(100, 100 * (count + 1), 100))
-        robot.session.last_server_timestamp_ms = 0
-
-    policy.get_actions = AsyncMock(side_effect=get_actions)
-    robot.session.update_chunk.side_effect = schedule_without_progress
-    executor = PolicyExecutor(_schema(), policy, timeout_s=0.5, policy_rate_hz=100)
-    run_task = asyncio.create_task(executor.run())
-
-    await asyncio.wait_for(second_call.wait(), timeout=0.15)
-    robot.session.last_server_timestamp_ms = 10_000
-    while robot.session.write_ios.await_count == 0:
-        await asyncio.sleep(0.001)
-
-    executor.stop()
-    await run_task
-
-    robot.session.write_ios.assert_awaited_once_with({"digital_out[0]": False})
 
 
 @pytest.mark.asyncio

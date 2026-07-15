@@ -59,7 +59,7 @@ def test_raw_server_anchor_preserves_an_existing_timeline_without_rescaling_base
         "joint",
         steps=steps,
         effective_dt_ms=10.0,
-        server_anchor_ms=135,
+        server_timestamp_ms=135,
     )
 
     assert _joint_timestamps(req) == [135, 155, 175]
@@ -73,7 +73,7 @@ def test_controller_timed_policy_spacing_bypasses_client_wall_clock_scaling():
         "joint",
         steps=steps,
         effective_dt_ms=10.0,
-        server_anchor_ms=135,
+        server_timestamp_ms=135,
         server_dt_ms=10.0,
     )
 
