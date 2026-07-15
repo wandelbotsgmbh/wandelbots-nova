@@ -13,10 +13,11 @@ CartesianPTP forces the planner to switch into the specified branch.
 
 This example demonstrates:
   1. Switch elbow config at the current pose (UP -> DOWN) — same TCP position,
-     only joints change visibly
+     only joints change visibly (uses get_kinematic_configuration to query current branch)
   2. Plan to a distant target WITHOUT config -> PlanTrajectoryFailed
      (target not reachable in the current branch)
-  3. Plan the same motion WITH explicit config (wrist FLIP) -> succeeds and executes
+  3. Plan the same motion WITH explicit config (wrist FLIP) -> succeeds and executes;
+     verified afterwards with get_kinematic_configuration
 
 Prerequisites:
 - Set env variables (you can specify them in an .env file):
@@ -81,19 +82,25 @@ async def kinematic_configuration(ctx: nova.ProgramContext):
     print("Init: FRONT/UP/NO_FLIP")
     print(f"  Joints: {init_deg}")
 
-    # Step 1: Force a configuration switch at the SAME pose (elbow UP -> DOWN).
+    # Step 1: Query current config, then switch only elbow (UP -> DOWN).
     # The robot stays at the same TCP position, but joints change visibly.
     print("\nStep 1: Switch elbow config at current pose (UP -> DOWN)")
     state = await motion_group.get_state(tcp)
     current_pose = state.pose
-    configured_pose = Pose(
-        current_pose.to_tuple(),
-        kinematic_configuration=api.models.KinematicConfiguration(
-            kinematic_branch=api.models.KinematicBranch(
-                shoulder_branch=Shoulder.FRONT, elbow_branch=Elbow.DOWN, wrist_branch=Wrist.NO_FLIP
-            )
-        ),
+    # Query the current kinematic configuration from joints
+    [current_config] = await motion_group.get_kinematic_configuration([state.joints])
+    print(f"  Current config: shoulder={current_config.kinematic_branch.shoulder_branch.value}, "
+          f"elbow={current_config.kinematic_branch.elbow_branch.value}, "
+          f"wrist={current_config.kinematic_branch.wrist_branch.value}")
+    # Flip only the elbow, keep shoulder and wrist from the queried config
+    switched_config = api.models.KinematicConfiguration(
+        kinematic_branch=api.models.KinematicBranch(
+            shoulder_branch=current_config.kinematic_branch.shoulder_branch,
+            elbow_branch=Elbow.DOWN,
+            wrist_branch=current_config.kinematic_branch.wrist_branch,
+        )
     )
+    configured_pose = Pose(current_pose.to_tuple(), kinematic_configuration=switched_config)
     action = cartesian_ptp(configured_pose, settings=fast)
     traj = await motion_group.plan([action], tcp, motion_group_setup=setup)
     joints_deg = [round(degrees(j), 1) for j in traj.joint_positions[-1]]
@@ -129,6 +136,12 @@ async def kinematic_configuration(ctx: nova.ProgramContext):
     print(f"  Success! Joints: {joints_deg}")
     await motion_group.execute(traj, tcp, actions=[action])
     await asyncio.sleep(3)
+    # Verify the robot actually landed in FLIP config
+    final_joints = await motion_group.joints()
+    [final_config] = await motion_group.get_kinematic_configuration([final_joints])
+    print(f"  Verified: shoulder={final_config.kinematic_branch.shoulder_branch.value}, "
+          f"elbow={final_config.kinematic_branch.elbow_branch.value}, "
+          f"wrist={final_config.kinematic_branch.wrist_branch.value}")
     await move_to_init()
 
     print("\nWithout explicit config, the planner cannot switch branches.")
