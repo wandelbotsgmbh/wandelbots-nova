@@ -16,19 +16,12 @@ class AsyncQueueAggregation(StrEnum):
     """How predictions targeting the same future timestep are merged."""
 
     WEIGHTED_AVERAGE = "weighted_average"
-    LATEST_ONLY = "latest_only"
     AVERAGE = "average"
-    CONSERVATIVE = "conservative"
 
     @property
     def old_action_weight(self) -> float:
         """Weight assigned to the queued action; the new action gets the remainder."""
-        return {
-            AsyncQueueAggregation.WEIGHTED_AVERAGE: 0.3,
-            AsyncQueueAggregation.LATEST_ONLY: 0.0,
-            AsyncQueueAggregation.AVERAGE: 0.5,
-            AsyncQueueAggregation.CONSERVATIVE: 0.7,
-        }[self]
+        return 0.3
 
 
 class TimestampedActionQueue:

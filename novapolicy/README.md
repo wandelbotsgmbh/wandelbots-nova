@@ -81,12 +81,18 @@ error is raised at runtime, install the matching backend extra above.
 
 ## Quick Start
 
-A policy is just an async function: observations in, an action chunk out.
+A local policy callback is an async function wrapped by `CallbackPolicyClient`: observations in, an action chunk out.
 
 ```python
 import asyncio
 from nova import Nova
-from novapolicy import ActionChunk, Observation, PolicyExecutor, PolicySchema
+from novapolicy import (
+    ActionChunk,
+    CallbackPolicyClient,
+    Observation,
+    PolicyExecutor,
+    PolicySchema,
+)
 
 
 async def my_policy(obs) -> ActionChunk:
@@ -108,7 +114,11 @@ async def main():
             Observation.joint_positions("arm", source=mg),
         ])
 
-        executor = PolicyExecutor(schema, my_policy, timeout_s=10.0)
+        executor = PolicyExecutor(
+            schema,
+            CallbackPolicyClient(my_policy),
+            timeout_s=10.0,
+        )
         result = await executor.run()
         print(f"Done: {result.reason}, {result.steps} steps, {result.duration_s:.1f}s")
 
@@ -116,7 +126,7 @@ async def main():
 asyncio.run(main())
 ```
 
-Any async callable that maps a feature `dict` to an `ActionChunk` works: call a remote GPU server, run a local model, or replay a trajectory. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
+Use `CallbackPolicyClient` to adapt an async callable that maps a feature `dict` to an `ActionChunk`; service integrations implement `PolicyClient` directly. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
 
 ## PolicySchema
 

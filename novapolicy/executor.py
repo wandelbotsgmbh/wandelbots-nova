@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Coroutine
 import contextlib
 from dataclasses import dataclass
 from enum import StrEnum
@@ -26,6 +25,7 @@ from novapolicy.debug import ExecutionTrajectoryTrace
 from novapolicy.estop import EstopMonitor, check_estop, check_sessions, triggered_stop_condition
 from novapolicy.io import IOStreamManager
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
+from novapolicy.policy_client import PolicyClient
 from novapolicy.types import (
     ActionChunk,
     EmergencyStopError,
@@ -39,13 +39,9 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
-    from novapolicy.policy_client import PolicyClient
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.schema import PolicySchema
     from novapolicy.types import StopCondition
-
-# Type for bare async policy functions
-_PolicyFn = Callable[[dict[str, Any]], Coroutine[Any, Any, dict[str, float] | ActionChunk]]
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +101,7 @@ class PolicyExecutor:
     def __init__(
         self,
         schema: PolicySchema,
-        policy: _PolicyFn | PolicyClient,
+        policy: PolicyClient,
         *,
         stop_conditions: list[StopCondition] | None = None,
         timeout_s: float = 0,
@@ -122,7 +118,7 @@ class PolicyExecutor:
 
         Args:
             schema: Observation/action schema defining robot topology.
-            policy: Async callable or PolicyClient that maps observations to actions.
+            policy: PolicyClient that maps observations to actions.
             stop_conditions: Optional checks run each tick; one returning ``True``
                 stops the run normally (its name appears in ``result.reason``).
             timeout_s: Maximum execution duration in seconds. 0 = no timeout.
@@ -157,13 +153,10 @@ class PolicyExecutor:
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
 
-        # Accept bare async function as policy (no wrapper needed)
-        if callable(policy) and not hasattr(policy, "get_actions"):
-            from novapolicy.policy_client import CallbackPolicyClient  # noqa: PLC0415
-
-            self._policy: PolicyClient = CallbackPolicyClient(policy)
-        else:
-            self._policy = policy
+        if not isinstance(policy, PolicyClient):
+            msg = "policy must be a PolicyClient; wrap callbacks with CallbackPolicyClient"
+            raise TypeError(msg)
+        self._policy = policy
 
         self._motion: WaypointConfig = motion or WaypointConfig()
         self._start_joint_position = start_joint_position
@@ -190,7 +183,7 @@ class PolicyExecutor:
             msg = "ramp_interpolation_steps must be at least 2"
             raise ValueError(msg)
 
-        if self._policy_rate_hz < 0 and getattr(self._policy, "rtc", None) is not None:
+        if self._policy_rate_hz < 0 and self._policy.rtc is not None:
             msg = (
                 f"RTC is enabled on the policy but policy_rate_hz={self._policy_rate_hz} "
                 "(wait-for-chunk). RTC requires overlapping placement: set "
@@ -512,8 +505,7 @@ class PolicyExecutor:
         latest acknowledged raw NOVA controller timestamp, not extrapolated
         from local policy-loop ticks or a measured transport-delay constant.
         """
-        synchronize = getattr(self._policy, "synchronize_action_timestep", None)
-        if not callable(synchronize) or not self._policy_timelines:
+        if not self._policy_timelines:
             return
 
         replaceable_timesteps: list[int] = []
@@ -530,14 +522,14 @@ class PolicyExecutor:
             )
             replaceable_timesteps.append(currently_due_timestep + _ASYNC_REPLACEMENT_LEAD_STEPS)
         if replaceable_timesteps:
-            synchronize(max(replaceable_timesteps))
+            self._policy.synchronize_action_timestep(max(replaceable_timesteps))
 
     def _connected_motion(
         self,
         chunk: ActionChunk,
         robot_states: dict[str, RobotState],
     ) -> ConnectedActionChunk | None:
-        continuous_bridge = bool(getattr(self._policy, "requires_first_waypoint_bridge", False))
+        continuous_bridge = self._policy.requires_first_waypoint_bridge
         needs_continuous_bridge = continuous_bridge and (
             chunk.action_timestep < 0 or not self._policy_timelines
         )
@@ -689,9 +681,7 @@ class PolicyExecutor:
         """Log a full policy prediction including its retained queue seam."""
         if self._rerun is None:
             return
-        if action.action_timestep > 0 and getattr(
-            self._policy, "requires_first_waypoint_bridge", False
-        ):
+        if action.action_timestep > 0 and self._policy.requires_first_waypoint_bridge:
             seam = ActionChunk(
                 joints={
                     group_id: steps[:_ASYNC_SEAM_STEPS]
@@ -737,11 +727,14 @@ class PolicyExecutor:
         robot_states: dict[str, RobotState],
         images: dict[str, Any] | None,
     ) -> None:
-        """Run optional policy setup before the execution timeout starts."""
+        """Run policy setup before the execution timeout starts."""
         self._log_first_image_shapes(images)
-        prepare = getattr(self._policy, "prepare", None)
-        if prepare is not None:
-            await prepare(robot_states, self._schema, images, self._all_io_values or None)
+        await self._policy.prepare(
+            robot_states,
+            self._schema,
+            images,
+            self._all_io_values or None,
+        )
 
     def _log_policy_observation(
         self,
@@ -911,8 +904,7 @@ class PolicyExecutor:
         place = placement(chunk, policy_rate_hz=self._policy_rate_hz)
         server_dt_ms = (
             chunk.dt_ms
-            if self._policy_rate_hz >= 0
-            and getattr(self._policy, "requires_first_waypoint_bridge", False)
+            if self._policy_rate_hz >= 0 and self._policy.requires_first_waypoint_bridge
             else None
         )
         target_chunks: dict[str, int] = {}

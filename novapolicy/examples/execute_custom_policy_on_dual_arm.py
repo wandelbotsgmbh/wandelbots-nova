@@ -30,6 +30,7 @@ from novapolicy import (
     Action,
     ActionChunk,
     BoolMapping,
+    CallbackPolicyClient,
     EmergencyStopError,
     MotionError,
     Observation,
@@ -252,7 +253,7 @@ async def dual_arm_policy(ctx: ProgramContext):
 
     executor = PolicyExecutor(
         schema,
-        mock_policy,
+        CallbackPolicyClient(mock_policy),
         stop_conditions=[stop_on_speed, stop_on_io],
         timeout_s=10.0,
         policy_rate_hz=20,

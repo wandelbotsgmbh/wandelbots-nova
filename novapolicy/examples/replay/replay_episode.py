@@ -32,7 +32,14 @@ from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
-from novapolicy import ActionChunk, Observation, PolicyExecutor, PolicySchema, WaypointConfig
+from novapolicy import (
+    ActionChunk,
+    CallbackPolicyClient,
+    Observation,
+    PolicyExecutor,
+    PolicySchema,
+    WaypointConfig,
+)
 
 # Recording rate of the bundled sample (LeRobot info.json "fps").
 FPS = 15.0
@@ -139,7 +146,7 @@ async def replay_episode(ctx: nova.ProgramContext):
     # Run
     executor = PolicyExecutor(
         schema,
-        replay,
+        CallbackPolicyClient(replay),
         timeout_s=duration_s + 5.0,
         policy_rate_hz=20,
         motion=WaypointConfig(state_rate_ms=10),

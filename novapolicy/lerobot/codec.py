@@ -12,8 +12,6 @@ import numpy as np
 from novapolicy.types import ActionChunk
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
     from numpy.typing import NDArray
 
     from nova.types import RobotState
@@ -34,34 +32,12 @@ class FlatActionLayout:
     joints: list[JointActionSlice]
     ios: list[IOActionSlice]
 
-    @property
-    def dimension(self) -> int:
-        return max(
-            [action_slice.stop for _group_id, action_slice in self.joints]
-            + [action_slice.stop for _group_id, _io, _mapping, action_slice in self.ios],
-            default=0,
-        )
-
 
 class LeRobotCodec:
     """Translate between NOVA policy schemas and flat LeRobot tensors."""
 
-    def __init__(
-        self,
-        *,
-        dt_ms: float,
-        extra_state_keys: Sequence[str] = (),
-        state_overrides: Mapping[str, float] | None = None,
-        expected_state_dim: int | None = None,
-        expected_action_dim: int | None = None,
-        expected_image_keys: set[str] | None = None,
-    ) -> None:
+    def __init__(self, *, dt_ms: float) -> None:
         self._dt_ms = dt_ms
-        self._extra_state_keys = list(extra_state_keys)
-        self._state_overrides = dict(state_overrides or {})
-        self._expected_state_dim = expected_state_dim
-        self._expected_action_dim = expected_action_dim
-        self._expected_image_keys = expected_image_keys
         self._logged_action_chunk_shape = False
 
     async def build_observation(
@@ -72,7 +48,6 @@ class LeRobotCodec:
         io_values: dict[str, object] | None,
     ) -> dict[str, Any]:
         observation = await schema.build_observation(states, io_values)
-        observation.update(self._state_overrides)
         if images:
             observation.update(images)
         return observation
@@ -87,7 +62,6 @@ class LeRobotCodec:
             )
             names.extend(f"{mapping.key}_{index}" for index in range(1, dof + 1))
         names.extend(mapping.key for mapping in schema.obs_io_mappings)
-        names.extend(self._extra_state_keys)
         return names
 
     def action_layout(
@@ -113,32 +87,10 @@ class LeRobotCodec:
         return FlatActionLayout(joints=joint_slices, ios=io_slices)
 
     def validate_schema(self, schema: PolicySchema) -> None:
-        if self._expected_image_keys is not None:
-            missing = self._expected_image_keys - set(schema.image_sources)
-            if missing:
-                msg = f"LeRobot policy expects image observations missing from schema: {sorted(missing)}"
-                raise ValueError(msg)
         if not schema.joint_action_keys:
             raise ValueError(
                 "LeRobotPolicyClient currently requires at least one joint action target"
             )
-
-    def validate_dimensions(self, state_names: list[str], layout: FlatActionLayout) -> None:
-        if self._expected_state_dim is not None and len(state_names) != self._expected_state_dim:
-            msg = (
-                "LeRobot policy state dimension mismatch: "
-                f"checkpoint expects {self._expected_state_dim}, schema produced {len(state_names)} "
-                f"({state_names})."
-            )
-            raise ValueError(msg)
-        if self._expected_action_dim is not None and layout.dimension != self._expected_action_dim:
-            msg = (
-                "LeRobot policy action dimension mismatch: "
-                f"checkpoint expects {self._expected_action_dim}, schema actions produce "
-                f"{layout.dimension}. This client decodes flat LeRobot actions as joint targets "
-                "followed by IO actions."
-            )
-            raise ValueError(msg)
 
     def features(
         self,
@@ -153,8 +105,7 @@ class LeRobotCodec:
                 "names": state_names,
             }
         }
-        expected_image_keys = self._expected_image_keys or set(schema.image_sources)
-        for key in sorted(expected_image_keys):
+        for key in sorted(schema.image_sources):
             features[f"{OBS_IMAGES}.{key}"] = {
                 "dtype": "image",
                 "shape": self._image_shape(key, images),

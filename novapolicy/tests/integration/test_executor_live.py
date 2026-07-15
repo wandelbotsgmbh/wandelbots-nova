@@ -17,6 +17,7 @@ import uuid
 import pytest
 
 from novapolicy.executor import PolicyExecutor
+from novapolicy.policy_client import CallbackPolicyClient
 from novapolicy.schema import Observation, PolicySchema
 from novapolicy.types import ActionChunk, StopContext
 
@@ -87,7 +88,11 @@ async def test_executor_jogs_both_arms_for_the_full_timeout():
                 Observation.joint_positions(f"arm{i}", source=mg) for i, mg in enumerate(mgs)
             ]
         )
-        executor = PolicyExecutor(schema, dual_wiggle, timeout_s=5.0)
+        executor = PolicyExecutor(
+            schema,
+            CallbackPolicyClient(dual_wiggle),
+            timeout_s=5.0,
+        )
 
         wall_start = time.monotonic()
         result = await executor.run()
@@ -139,7 +144,7 @@ async def test_stop_condition_ends_dual_arm_run_normally():
         )
         executor = PolicyExecutor(
             schema,
-            hold,
+            CallbackPolicyClient(hold),
             stop_conditions=[stop_after_a_few_ticks],
             timeout_s=10.0,
         )

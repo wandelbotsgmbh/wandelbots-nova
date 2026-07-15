@@ -33,7 +33,14 @@ from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
-from novapolicy import Action, ActionChunk, Observation, PolicyExecutor, PolicySchema
+from novapolicy import (
+    Action,
+    ActionChunk,
+    CallbackPolicyClient,
+    Observation,
+    PolicyExecutor,
+    PolicySchema,
+)
 
 HOME = (0.0, -1.57, 1.57, -1.57, -1.57, 0.0)
 MG_ID = "0@ur5e"
@@ -111,7 +118,12 @@ async def computed_action_example(ctx: ProgramContext):
         actions=[Action.computed(report_action)],
     )
 
-    executor = PolicyExecutor(schema, mock_policy, timeout_s=5.0, policy_rate_hz=20)
+    executor = PolicyExecutor(
+        schema,
+        CallbackPolicyClient(mock_policy),
+        timeout_s=5.0,
+        policy_rate_hz=20,
+    )
 
     print("Running for 5s — watch for [computed action] lines...")
     result = await executor.run()

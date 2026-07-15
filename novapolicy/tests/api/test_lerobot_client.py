@@ -281,9 +281,7 @@ async def test_get_actions_sends_lerobot_async_protocol_and_decodes_chunk(
     ("aggregation", "expected"),
     [
         (AsyncQueueAggregation.WEIGHTED_AVERAGE, 7.6),
-        (AsyncQueueAggregation.LATEST_ONLY, 10.0),
         (AsyncQueueAggregation.AVERAGE, 6.0),
-        (AsyncQueueAggregation.CONSERVATIVE, 4.4),
     ],
 )
 def test_async_queue_aggregation_modes(aggregation: object, expected: float) -> None:
@@ -292,6 +290,12 @@ def test_async_queue_aggregation_modes(aggregation: object, expected: float) -> 
 
     assert queue.merge([(4, np.asarray([10.0], dtype=np.float32))])
     assert queue.entries[0][1][0] == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("aggregation", ["latest_only", "conservative"])
+def test_removed_async_queue_aggregation_modes_are_rejected(aggregation: str) -> None:
+    with pytest.raises(ValueError):
+        TimestampedActionQueue(aggregation=aggregation)  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio
@@ -516,32 +520,6 @@ async def test_prepare_sends_policy_instructions_before_first_inference(
 
     assert fake_lerobot.stub.policy_setup_calls == 1
     assert len(fake_lerobot.stub.observations) == 1
-
-
-@pytest.mark.asyncio
-async def test_get_actions_applies_state_overrides_to_sent_observation(
-    fake_lerobot: _FakeLeRobot,
-) -> None:
-    mg = _mg()
-    client = LeRobotPolicyClient(
-        "127.0.0.1:8080",
-        "model",
-        fps=15,
-        actions_per_chunk=8,
-        state_overrides={f"arm_{idx}": 0.0 for idx in range(1, 7)},
-    )
-
-    await client.get_actions(
-        {mg.id: _state((1.0, 2.0, 3.0, 4.0, 5.0, 6.0))},
-        _schema(mg),
-        images={"cam_scene_1": np.zeros((240, 320, 3), dtype=np.uint8)},
-        io_values={"digital_out[0]": False},
-    )
-
-    assert fake_lerobot.stub is not None
-    observation = fake_lerobot.stub.observations[0].observation
-    assert [observation[f"arm_{idx}"] for idx in range(1, 7)] == [0.0] * 6
-    assert observation["gripper"] == 0.0
 
 
 @pytest.mark.asyncio

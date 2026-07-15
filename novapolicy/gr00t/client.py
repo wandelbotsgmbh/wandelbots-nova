@@ -261,18 +261,17 @@ class Gr00tPolicyClient(PolicyClient):
         # Extract action horizon from delta_indices
         action_horizon = 0
         action_configs: list[dict[str, str]] = []
-        action_section = config.get("action")
-        if isinstance(action_section, dict):
-            as_json = action_section.get("as_json", action_section)
-            if isinstance(as_json, dict):
-                deltas = as_json.get("delta_indices", [])
-                if isinstance(deltas, list):
-                    action_horizon = len(deltas)
-                cfgs = as_json.get("action_configs", [])
-                if isinstance(cfgs, list):
-                    action_configs = [
-                        {k: str(v) for k, v in c.items()} for c in cfgs if isinstance(c, dict)
-                    ]
+        action_metadata = _modality_metadata(config, "action")
+        deltas = action_metadata.get("delta_indices", [])
+        if isinstance(deltas, list):
+            action_horizon = len(deltas)
+        configs = action_metadata.get("action_configs", [])
+        if isinstance(configs, list):
+            action_configs = [
+                {key: str(value) for key, value in config.items()}
+                for config in configs
+                if isinstance(config, dict)
+            ]
 
         return {
             "state_keys": state_keys,
@@ -434,15 +433,21 @@ def _build_video(obs: dict[str, Any]) -> dict[str, np.ndarray]:
     return video
 
 
-def _extract_modality_keys(config: dict[str, object], modality: str) -> set[str]:
-    """Extract ``modality_keys`` from a GR00T ``get_modality_config`` response."""
+def _modality_metadata(config: dict[str, object], modality: str) -> dict[str, object]:
+    """Return one modality's required ``as_json`` metadata payload."""
     entry = config.get(modality)
-    if not isinstance(entry, dict):
-        return set()
-    as_json = entry.get("as_json")
-    if not isinstance(as_json, dict):
-        return set()
-    keys = as_json.get("modality_keys")
+    if entry is None:
+        return {}
+    entry_dict = require_dict(entry, name=f"GR00T {modality} modality")
+    return require_dict(
+        entry_dict.get("as_json"),
+        name=f"GR00T {modality} modality as_json",
+    )
+
+
+def _extract_modality_keys(config: dict[str, object], modality: str) -> set[str]:
+    """Extract ``modality_keys`` from a GR00T modality payload."""
+    keys = _modality_metadata(config, modality).get("modality_keys")
     if not isinstance(keys, list):
         return set()
-    return {str(k) for k in keys}
+    return {str(key) for key in keys}

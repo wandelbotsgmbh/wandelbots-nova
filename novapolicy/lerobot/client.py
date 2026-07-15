@@ -14,8 +14,6 @@ from novapolicy.lerobot.transport import LeRobotGrpcTransport
 from novapolicy.policy_client import PolicyClient
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
     from nova.types import RobotState
     from novapolicy.lerobot.codec import FlatActionLayout
     from novapolicy.schema import PolicySchema
@@ -40,9 +38,6 @@ class LeRobotPolicyClient(PolicyClient):
         fps: Dataset/control frequency used for action timing.
         playback_speed: Physical playback speed relative to the dataset rate.
         device: Torch device used by the inference server.
-        extra_state_keys: Additional flat observation keys appended after
-            schema-derived joints and IO values.
-        state_overrides: Observation values replaced before inference.
         timeout_s: Deadline for individual gRPC calls.
         use_async_queue: Use timestamp-aligned asynchronous inference.
         async_queue_aggregation: How predictions for an existing future
@@ -66,8 +61,6 @@ class LeRobotPolicyClient(PolicyClient):
         fps: float = 15.0,
         playback_speed: float = 1.0,
         device: str = "cpu",
-        extra_state_keys: Sequence[str] = (),
-        state_overrides: Mapping[str, float] | None = None,
         timeout_s: float = 15.0,
         use_async_queue: bool = False,
         async_queue_aggregation: AsyncQueueAggregation = AsyncQueueAggregation.WEIGHTED_AVERAGE,
@@ -93,11 +86,7 @@ class LeRobotPolicyClient(PolicyClient):
         self._device = device
         self._dt_ms = 1000.0 / (fps * playback_speed)
         self._transport = LeRobotGrpcTransport(server_address, timeout_s=timeout_s)
-        self._codec = LeRobotCodec(
-            dt_ms=self._dt_ms,
-            extra_state_keys=extra_state_keys,
-            state_overrides=state_overrides,
-        )
+        self._codec = LeRobotCodec(dt_ms=self._dt_ms)
         self._async_queue = (
             LeRobotAsyncActionQueue(
                 self._transport,
@@ -205,7 +194,6 @@ class LeRobotPolicyClient(PolicyClient):
     ) -> tuple[list[str], FlatActionLayout]:
         state_names = self._codec.state_names(states, schema)
         layout = self._codec.action_layout(states, schema)
-        self._codec.validate_dimensions(state_names, layout)
         return state_names, layout
 
     def _ensure_policy_setup(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -13,19 +13,8 @@ if TYPE_CHECKING:
     import numpy as np
 
     from nova.types import Pose, RobotState
+    from novapolicy.policy_client import PolicyClient
     from novapolicy.types import ActionChunk, JoggingMode
-
-
-@runtime_checkable
-class TrajectoryTraceSource(Protocol):
-    """Optional policy-client diagnostics consumed by an execution trace."""
-
-    def enable_trajectory_trace(self) -> None:
-        """Enable trace collection for the next episode."""
-
-    @property
-    def trajectory_trace(self) -> dict[str, object]:
-        """Return JSON-serializable client diagnostics."""
 
 
 @dataclass(slots=True)
@@ -126,9 +115,8 @@ class ExecutionTrajectoryTrace:
         self._policy_chunks.clear()
         self._sessions.clear()
 
-    def enable_policy_client(self, policy: object) -> None:
-        if isinstance(policy, TrajectoryTraceSource):
-            policy.enable_trajectory_trace()
+    def enable_policy_client(self, policy: PolicyClient) -> None:
+        policy.enable_trajectory_trace()
 
     def create_session_trace(
         self,
@@ -174,11 +162,9 @@ class ExecutionTrajectoryTrace:
         reason: str | None,
         steps: int | None,
         duration_s: float | None,
-        policy: object,
+        policy: PolicyClient,
     ) -> None:
-        policy_trace = (
-            policy.trajectory_trace if isinstance(policy, TrajectoryTraceSource) else None
-        )
+        policy_trace = policy.trajectory_trace
         payload = {
             "format_version": 3,
             "result": (

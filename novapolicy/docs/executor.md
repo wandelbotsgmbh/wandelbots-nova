@@ -73,6 +73,9 @@ executor = PolicyExecutor(
 )
 ```
 
+`PolicyExecutor` accepts `PolicyClient` instances only. Wrap local async callbacks with
+`CallbackPolicyClient`; backend clients such as GR00T and LeRobot implement the interface directly.
+
 ### policy_rate_hz
 
 | Value | Behavior | Use case |

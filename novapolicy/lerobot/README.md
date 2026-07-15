@@ -285,13 +285,10 @@ Aggregation is applied only when an old and a new action target the same future 
 | Mode | Merge |
 |---|---|
 | `WEIGHTED_AVERAGE` | `0.3 * old + 0.7 * new` (LeRobot default) |
-| `LATEST_ONLY` | `new` |
 | `AVERAGE` | arithmetic mean of every prediction received for the timestep |
-| `CONSERVATIVE` | `0.7 * old + 0.3 * new` |
 
 The generic client retains LeRobot's weighted-average default. Physical UR3 plug-task runs used
-`AVERAGE`, which showed lower peak path curvature without the delayed transition caused by
-conservative aggregation. Those runs also enabled ``async_queue_smoothing``, which applies the
+`AVERAGE`, which showed lower peak path curvature. Those runs also enabled ``async_queue_smoothing``, which applies the
 generic ``novapolicy.smooth_action_chunk(...)`` transform to the outgoing aggregated
 lookahead. The four-point active prefix is restored unchanged after filtering. The generic client
 leaves this disabled, and IO action values are never filtered.
@@ -323,19 +320,6 @@ prefix is retained instead of being restarted from a measured-state hold at ``no
 both catch-up motion and repeated zero-velocity braking/acceleration. In Rerun, the four-point
 retained replacement seam is shown in Nova Violet while fresh policy output remains orange. This is
 still LeRobot async ACT queue execution, not model-side RTC.
-
-### `state_overrides`
-
-Optional raw observation values to replace before sending to LeRobot.
-
-Use this only for checkpoints whose training data expects constants or special values in
-`observation.state`. For example, if a legacy dataset stored zero instead of measured arm joints:
-
-```python
-state_overrides={f"arm_{idx}": 0.0 for idx in range(1, 7)}
-```
-
-Do not use overrides for normal datasets trained with real joint observations.
 
 ## Observation and action mapping
 

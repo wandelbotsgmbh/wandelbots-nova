@@ -19,10 +19,19 @@ import numpy as np
 import pytest
 
 from novapolicy.gr00t import Gr00tMsgSerializer, Gr00tPolicyClient
+from novapolicy.gr00t.client import _extract_modality_keys
 from novapolicy.schema import Observation, PolicySchema
 from novapolicy.types import ActionChunk
 
 zmq = pytest.importorskip("zmq")
+
+
+def test_modality_metadata_requires_as_json_payload() -> None:
+    with pytest.raises(TypeError, match="as_json"):
+        _extract_modality_keys(
+            {"state": {"modality_keys": ["arm"]}},
+            "state",
+        )
 
 
 def _find_free_port() -> int:

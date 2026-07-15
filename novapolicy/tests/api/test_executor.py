@@ -10,13 +10,14 @@ robot in a unit test. Nothing reaches into the executor's private fields.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from novapolicy.executor import Phase, PolicyExecutor
+from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.schema import Action, Observation, ObservationEntry, PolicySchema
 from novapolicy.types import (
     ActionChunk,
@@ -49,12 +50,41 @@ def _schema(mode: ActionMode = "absolute") -> PolicySchema:
     return PolicySchema(observations=obs)
 
 
-async def _hold(_obs: object) -> ActionChunk:
+async def _hold_action(_obs: object) -> ActionChunk:
     """A trivial policy: hold all six joints at zero."""
     return ActionChunk(joints={MG_ID: [[0.0] * 6]})
 
 
-class _SlowSetupPolicy:
+def _callback(fn: Callable[[object], Awaitable[ActionChunk]]) -> CallbackPolicyClient:
+    return CallbackPolicyClient(fn)
+
+
+_hold = _callback(_hold_action)
+
+
+class _TestPolicy(CallbackPolicyClient):
+    def __init__(
+        self,
+        fn: Callable[[object], Awaitable[ActionChunk]],
+        *,
+        requires_bridge: bool = False,
+        rtc: object | None = None,
+    ) -> None:
+        super().__init__(fn)
+        self._requires_bridge = requires_bridge
+        self._rtc = rtc
+        self.synchronize_action_timestep = MagicMock()
+
+    @property
+    def requires_first_waypoint_bridge(self) -> bool:
+        return self._requires_bridge
+
+    @property
+    def rtc(self) -> object | None:
+        return self._rtc
+
+
+class _SlowSetupPolicy(PolicyClient):
     def __init__(self) -> None:
         self.prepare_calls = 0
         self.phase_during_prepare: object | None = None
@@ -180,7 +210,7 @@ async def test_sequential_mode_delays_next_inference_until_chunk_deadline_and_pa
 
     executor = PolicyExecutor(
         _schema(),
-        policy,
+        _callback(policy),
         timeout_s=1.0,
     )
     run_task = asyncio.create_task(executor.run())
@@ -231,7 +261,7 @@ async def test_bridge_and_policy_are_sent_as_one_continuous_chunk(robot: _Robot)
     robot.session.update_chunk.side_effect = acknowledge_chunk
     executor = PolicyExecutor(
         _schema(),
-        policy,
+        _callback(policy),
         timeout_s=1.0,
     )
 
@@ -261,7 +291,12 @@ async def test_continuous_mode_does_not_bridge_chunks(robot: _Robot):
             dt_ms=10.0,
         )
 
-    executor = PolicyExecutor(_schema(), policy, timeout_s=1.0, policy_rate_hz=0)
+    executor = PolicyExecutor(
+        _schema(),
+        _callback(policy),
+        timeout_s=1.0,
+        policy_rate_hz=0,
+    )
     await executor.run()
 
     first_send = robot.session.update_chunk.call_args_list[0].kwargs
@@ -272,20 +307,15 @@ async def test_continuous_mode_does_not_bridge_chunks(robot: _Robot):
 async def test_continuous_async_queue_policy_requests_a_measured_state_bridge(robot: _Robot):
     """Async ACT lookahead connects to the robot even though its executor rate is continuous."""
     executor: PolicyExecutor
-    policy = MagicMock(requires_first_waypoint_bridge=True)
-    policy.connect = AsyncMock()
-    policy.prepare = None
-    policy.validate_schema = AsyncMock()
-    policy.close = AsyncMock()
 
-    async def get_actions(*_args: object) -> ActionChunk:
+    async def get_actions(_obs: object) -> ActionChunk:
         executor.stop()
         return ActionChunk(
             joints={MG_ID: [[0.5] * 6, [1.5] * 6, [2.5] * 6]},
             dt_ms=10.0,
         )
 
-    policy.get_actions = AsyncMock(side_effect=get_actions)
+    policy = _TestPolicy(get_actions, requires_bridge=True)
     executor = PolicyExecutor(_schema(), policy, timeout_s=1.0, policy_rate_hz=20)
     await executor.run()
 
@@ -301,28 +331,25 @@ async def test_continuous_async_queue_policy_requests_a_measured_state_bridge(ro
 @pytest.mark.asyncio
 async def test_async_queue_replacements_preserve_the_initial_policy_timeline(robot: _Robot):
     """Only timestep zero bridges; later lookaheads retain absolute queue timing."""
-    policy = MagicMock(requires_first_waypoint_bridge=True)
-    policy.connect = AsyncMock()
-    policy.prepare = None
-    policy.validate_schema = AsyncMock()
-    policy.close = AsyncMock()
     executor: PolicyExecutor
+    call_count = 0
 
-    async def get_actions(*_args: object) -> ActionChunk:
-        call = policy.get_actions.await_count
-        if call == 1:
+    async def get_actions(_obs: object) -> ActionChunk:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
             return ActionChunk(
                 joints={MG_ID: [[0.5] * 6, [1.5] * 6, [2.5] * 6]},
                 dt_ms=10.0,
                 action_timestep=0,
             )
-        if call == 2:
+        if call_count == 2:
             return ActionChunk(
                 joints={MG_ID: [[0.75] * 6, [1.75] * 6, [2.75] * 6]},
                 dt_ms=10.0,
                 action_timestep=2,
             )
-        if call == 3:
+        if call_count == 3:
             robot.session.speed_ratio = 1.12
             return ActionChunk(
                 joints={MG_ID: [[1.0] * 6, [2.0] * 6, [3.0] * 6]},
@@ -348,7 +375,7 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
         robot.session.last_server_timestamp_ms = robot.session.scheduled_until_server_ms
         robot.session.session_elapsed_ms = 100_000  # must not affect controller-timer placement
 
-    policy.get_actions = AsyncMock(side_effect=get_actions)
+    policy = _TestPolicy(get_actions, requires_bridge=True)
     robot.session.speed_ratio = 1.09
     robot.session.update_chunk.side_effect = acknowledge_chunk
     executor = PolicyExecutor(_schema(), policy, timeout_s=1.0, policy_rate_hz=100)
@@ -415,7 +442,7 @@ async def test_connected_chunk_defers_io_and_computed_action_to_policy_boundary(
     robot.session.update_chunk.side_effect = schedule_without_progress
     executor = PolicyExecutor(
         schema,
-        policy,
+        _callback(policy),
         timeout_s=1.0,
         interpolate_chunk_ramps=True,
     )
@@ -457,13 +484,14 @@ async def test_calling_stop_ends_the_run_with_stopped(robot: _Robot):
     assert result.steps > 0
 
 
-@pytest.mark.asyncio
-async def test_a_plain_async_function_is_accepted_as_a_policy(robot: _Robot):
-    """A bare ``async def obs -> action`` works without a PolicyClient wrapper."""
-    executor = PolicyExecutor(_schema(), _hold, motion=WaypointConfig(), timeout_s=0.1)
-    result = await executor.run()
-    assert result.reason == "timeout"
-    assert result.steps > 0
+def test_a_plain_async_function_requires_an_explicit_adapter() -> None:
+    with pytest.raises(TypeError, match="CallbackPolicyClient"):
+        PolicyExecutor(
+            _schema(),
+            _hold_action,  # type: ignore[arg-type]
+            motion=WaypointConfig(),
+            timeout_s=0.1,
+        )
 
 
 @pytest.mark.asyncio
@@ -505,7 +533,7 @@ async def test_a_stop_condition_halts_the_run_before_any_motion_is_sent(robot: _
 
     executor = PolicyExecutor(
         _schema(),
-        reach_far,
+        _callback(reach_far),
         motion=WaypointConfig(),
         timeout_s=5.0,
         stop_conditions=[joints_out_of_bounds],
@@ -528,7 +556,7 @@ async def test_a_stop_condition_can_veto_an_io_write_before_it_fires(robot: _Rob
 
     executor = PolicyExecutor(
         _schema(),
-        set_forbidden_output,
+        _callback(set_forbidden_output),
         motion=WaypointConfig(),
         timeout_s=5.0,
         stop_conditions=[forbids_output_7],
@@ -617,7 +645,7 @@ async def test_a_tcp_action_schema_opens_a_cartesian_session_and_sends_pose_wayp
         patch("novapolicy.executor.WaypointJoggingSession", return_value=session) as session_cls,
         patch("novapolicy.executor.EstopMonitor", return_value=estop),
     ):
-        await PolicyExecutor(schema, pose_policy, timeout_s=0.05).run()
+        await PolicyExecutor(schema, _callback(pose_policy), timeout_s=0.05).run()
 
     # (1) The session was opened in cartesian mode.
     assert session_cls.call_args.kwargs["mode"] == "cartesian"
@@ -675,7 +703,7 @@ async def test_send_routes_joint_and_tcp_targets_to_their_own_sessions():
         patch("novapolicy.executor.WaypointJoggingSession", side_effect=make_session),
         patch("novapolicy.executor.EstopMonitor", return_value=estop),
     ):
-        await PolicyExecutor(schema, mixed_policy, timeout_s=0.05).run()
+        await PolicyExecutor(schema, _callback(mixed_policy), timeout_s=0.05).run()
 
     # Joint arm: joint mode, six joint radians, routed via the joints branch.
     joint_session = sessions["0@ur5e-left"]
@@ -697,12 +725,12 @@ async def test_send_routes_joint_and_tcp_targets_to_their_own_sessions():
 
 def test_rtc_without_overlapping_placement_is_rejected():
     """RTC + wait-for-chunk would silently drop the seam backdate — reject it."""
-    policy = MagicMock(get_actions=AsyncMock(), rtc=object())
+    policy = _TestPolicy(_hold_action, rtc=object())
     with pytest.raises(ValueError, match="RTC"):
         PolicyExecutor(_schema(), policy, motion=WaypointConfig(), policy_rate_hz=-1)
 
 
 def test_rtc_with_overlapping_placement_is_accepted():
     """RTC + a non-negative policy_rate_hz is the valid combination."""
-    policy = MagicMock(get_actions=AsyncMock(), rtc=object())
+    policy = _TestPolicy(_hold_action, rtc=object())
     PolicyExecutor(_schema(), policy, motion=WaypointConfig(), policy_rate_hz=20)  # no raise
