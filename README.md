@@ -15,21 +15,31 @@ The SDK will help you to build your own apps and services using Python on top of
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Prerequisites](#prerequisites)
-- [Quickstart](#quickstart)
-- [Installation](#installation)
-  - [Install with pip](#install-with-pip)
-  - [Install with uv and rerun visualization](#install-with-uv-and-rerun-visualization)
-  - [Configure environment variables](#configure-environment-variables)
-- [Using the SDK](#using-the-sdk)
-  - [API essentials](#api-essentials)
-  - [Example gallery](#example-gallery)
-- [Wandelscript](#wandelscript)
-- [NOVAx](#novax)
-- [Development](#development)
-- [Release process](#release-process)
-- [Additional resources](#additional-resources)
+- [wandelbots-nova (Python SDK)](#wandelbots-nova-python-sdk)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Prerequisites](#prerequisites)
+  - [Quickstart](#quickstart)
+  - [Installation](#installation)
+    - [Install with pip](#install-with-pip)
+    - [Install with uv and rerun visualization](#install-with-uv-and-rerun-visualization)
+    - [Configure Environment Variables](#configure-environment-variables)
+  - [Using the SDK](#using-the-sdk)
+    - [API essentials](#api-essentials)
+    - [Example gallery](#example-gallery)
+  - [Wandelscript (deprecated)](#wandelscript-deprecated)
+  - [NOVAx](#novax)
+    - [Registering programs](#registering-programs)
+  - [Development](#development)
+    - [Formatting](#formatting)
+    - [Yaml linting](#yaml-linting)
+    - [Branch versions for testing](#branch-versions-for-testing)
+  - [Release process](#release-process)
+    - [Branch behaviour overview](#branch-behaviour-overview)
+    - [Stable releases from `main`](#stable-releases-from-main)
+    - [LTS releases from `release/\*`](#lts-releases-from-release)
+    - [Create a dev build (manual)](#create-a-dev-build-manual)
+  - [Additional resources](#additional-resources)
 
 ## Overview
 
@@ -196,6 +206,35 @@ nova app create "your-nova-app" -g python_app
 For more information on using NOVAx see the [README](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/README.md). Explore [this example](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/your-nova-app/app.py) to use the NOVAx entry point.
 
 > **Important:** When using NOVAx, you must import the actual program functions from their respective Python files. Only importing the program files won't suffice. This ensures proper function registration and execution within the NOVAx runtime environment.
+
+### Registering programs
+
+Programs register themselves with a global registry when decorated with `@nova.program`, so NOVAx just needs the modules that define them to be imported. There are three ways to get them registered, and they can be combined:
+
+- **Directory scanning (default):** NOVAx scans a `programs` directory and imports every `.py` file under it (recursively), so dropping a new file in `programs/` is enough — no manual import needed. Files whose name starts with `_` (e.g. `__init__.py`) are skipped, and a missing directory is ignored. Configure or disable it via the constructor:
+
+  ```python
+  from nova import Novax
+
+  Novax(app, programs="programs")  # default; scans ./programs
+  Novax(app, programs="my_pkg/robot_programs")  # custom directory
+  Novax(app, programs=None)  # disable scanning
+  ```
+
+- **Plain import:** any program imported elsewhere (inside or outside `programs/`) is still registered.
+
+  ```python
+  import my_pkg.special_program  # noqa: F401  (registers on import)
+  ```
+
+- **Explicit:** `novax.register_module("my_pkg.programs")` imports a module/file and registers its programs on demand.
+
+For local development you can serve everything without any FastAPI boilerplate:
+
+```bash
+novax run                       # scan ./programs and serve
+novax run my_pkg/one_program.py # also import a specific file, then scan ./programs
+```
 
 ## Development
 
