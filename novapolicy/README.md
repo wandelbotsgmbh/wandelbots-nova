@@ -213,5 +213,4 @@ arm, keyboard, gamepad, spacemouse) in your own script. See
 
 ▶ [`execute_custom_policy_on_dual_arm.py`](examples/execute_custom_policy_on_dual_arm.py): two UR5e robots with cameras, IOs, and stop conditions\
 ▶ [`execute_gr00t_dual_arm.py`](examples/execute_gr00t_dual_arm.py): dual arm with GR00T ZMQ + 4 cameras\
-▶ [`execute_lerobot_ur3.py`](examples/execute_lerobot_ur3.py): UR3e with checkpoint-derived ACT execution settings\
 ▶ [`jogging/`](examples/jogging/): standalone jogging (single/dual arm, joint/TCP, chunked), no policy

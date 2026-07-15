@@ -226,11 +226,9 @@ model id. If `pretrained_name_or_path` names a path that exists only on a remote
 the NOVA client cannot inspect it: LeRobot's current async RPC has no checkpoint-metadata method.
 Provide a client-local copy of `config.json` or set both values explicitly.
 
-The UR3 example performs this discovery automatically. Explicit CLI values take precedence:
-
-```text
---actions-per-chunk 11 --n-action-steps 8
-```
+Applications should pass these values to ``LeRobotPolicyClient.actions_per_chunk`` and
+``PolicyExecutor.n_action_steps``. Explicit application configuration may override checkpoint
+metadata.
 
 ### `actions_per_chunk`
 
@@ -291,9 +289,9 @@ Aggregation is applied only when an old and a new action target the same future 
 | `AVERAGE` | arithmetic mean of every prediction received for the timestep |
 | `CONSERVATIVE` | `0.7 * old + 0.3 * new` |
 
-The generic client retains LeRobot's weighted-average default. The physical UR3 example defaults to
-`AVERAGE`; repeated plug-task runs showed lower peak path curvature without the delayed transition
-caused by conservative aggregation. It also enables ``async_queue_smoothing``, two passes of a
+The generic client retains LeRobot's weighted-average default. Physical UR3 plug-task runs used
+`AVERAGE`, which showed lower peak path curvature without the delayed transition caused by
+conservative aggregation. Those runs also enabled ``async_queue_smoothing``: two passes of a
 three-tap ``[1, 2, 1] / 4`` temporal filter applied to the outgoing aggregated joint lookahead.
 Away from chunk boundaries this is the five-tap binomial filter ``[1, 4, 6, 4, 1] / 16``. The
 four-point active prefix is restored unchanged after filtering. The generic client leaves this

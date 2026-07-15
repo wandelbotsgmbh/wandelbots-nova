@@ -188,3 +188,4 @@ policy/examples/apps/gr00t/
 
 # Local-only clone examples (real-robot dry-runs, not for the repo)
 policy/examples/**/*_clone.py
+novapolicy/examples/execute_lerobot_ur3.py
