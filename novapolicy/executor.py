@@ -30,6 +30,7 @@ from novapolicy.types import (
     ActionChunk,
     ContinuousExecution,
     EmergencyStopError,
+    ExecutionMode,
     MotionError,
     SequentialExecution,
     StopContext,
@@ -43,7 +44,7 @@ if TYPE_CHECKING:
     from nova.types import RobotState
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.schema import PolicySchema
-    from novapolicy.types import ExecutionMode, StopCondition
+    from novapolicy.types import StopCondition
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +161,7 @@ class PolicyExecutor:
             self._trajectory_trace.enable_policy_client(self._policy)
         self._stop_conditions = stop_conditions or []
         self._timeout_s = timeout_s
-        if not isinstance(execution, (SequentialExecution, ContinuousExecution)):
+        if not isinstance(execution, ExecutionMode):
             raise TypeError("execution must be SequentialExecution or ContinuousExecution")
         self._execution = execution
         self._n_action_steps_cfg = n_action_steps
