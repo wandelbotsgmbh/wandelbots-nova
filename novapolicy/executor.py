@@ -429,6 +429,8 @@ class PolicyExecutor:
                 return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
 
             trimmed = trim_chunk(action, self._n_action_steps)
+            if self._rerun is not None:
+                self._rerun.log_target_tracking(trimmed, robot_states, step)
             connected = self._connected_motion(trimmed, robot_states)
             if connected is not None:
                 boundary_termination = await self._send_connected_policy_chunk(

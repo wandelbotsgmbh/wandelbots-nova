@@ -52,6 +52,24 @@ async with jog_joints(mg) as jogger:
         jogger.set_target(chunk, dt_ms=33.0)
 ```
 
+## Buffered teleop targets (`buffer_ms`)
+
+For live teleoperation, pass `buffer_ms` to `jog_joints(...)` or `jog_tcp(...)`.
+Keep calling `set_target(...)`; the jogger first fills a small time-based buffer,
+then sends a rolling chunk. This adds fixed latency but prevents the controller
+from running out of waypoints. The default `buffer_ms=0.0` preserves immediate
+one-target jogging.
+
+When `dt_ms` is omitted, input arrival time is used only while priming, because
+`jogger.elapsed` cannot advance before the first chunk is sent. After jogging
+starts, timing follows acknowledged controller time.
+
+```python
+async with jog_tcp(mg, tcp="Flange", buffer_ms=100.0) as jogger:
+    async for state in jogger:
+        jogger.set_target(read_controller_pose())
+```
+
 ## Timing targets (`jogger.elapsed`)
 
 For time-parameterised motion (e.g. a sinusoid), drive it with `jogger.elapsed`

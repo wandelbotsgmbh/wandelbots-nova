@@ -63,11 +63,16 @@ class FakeJoggingServer:
     """
 
     def __init__(
-        self, *, fault: object | None = None, raise_exc: BaseException | None = None
+        self,
+        *,
+        fault: object | None = None,
+        raise_exc: BaseException | None = None,
+        response_delay: float = 0.003,
     ) -> None:
         self.requests: list[object] = []
         self._fault = fault
         self._raise_exc = raise_exc
+        self._response_delay = response_delay
         self._stop = asyncio.Event()
 
     async def execute_waypoint_jogging(
@@ -92,7 +97,7 @@ class FakeJoggingServer:
                 return
             while not self._stop.is_set():
                 yield _ok()
-                await asyncio.sleep(0.003)
+                await asyncio.sleep(self._response_delay)
 
         async for request in client_request_generator(responses()):
             self.requests.append(request)
@@ -134,8 +139,14 @@ def _build_session(
     stop_conditions: list[object] | None = None,
     mode: str = "joint",
     trace_trajectory: bool = False,
+    config: WaypointConfig | None = None,
+    response_delay: float = 0.003,
 ) -> tuple[WaypointJoggingSession, FakeJoggingServer]:
-    server = FakeJoggingServer(fault=fault, raise_exc=raise_exc)
+    server = FakeJoggingServer(
+        fault=fault,
+        raise_exc=raise_exc,
+        response_delay=response_delay,
+    )
 
     async def state_stream(**_kw: object) -> AsyncGenerator[object, None]:
         for s in states:
@@ -159,7 +170,7 @@ def _build_session(
     )
     session = WaypointJoggingSession(
         motion_group=mg,
-        config=WaypointConfig(),
+        config=config or WaypointConfig(),
         tcp="Flange",
         mode=mode,
         stop_conditions=stop_conditions,
@@ -216,7 +227,10 @@ async def test_it_initializes_the_jogging_session_before_any_waypoints():
 @pytest.mark.asyncio
 async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
     """update_chunk(step) reaches the server as a JointWaypointsRequest."""
-    session, server = _build_session(trace_trajectory=True)
+    session, server = _build_session(
+        trace_trajectory=True,
+        config=WaypointConfig(min_buffer_ms=0),
+    )
     try:
         await session.start()
         await session.wait_ready()
@@ -249,6 +263,60 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
                 "steps": [target],
             }
         ]
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_short_chunk_holds_its_final_target_to_fill_the_buffer():
+    session, server = _build_session(config=WaypointConfig(min_buffer_ms=100.0))
+    target = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    try:
+        await session.start()
+        await session.wait_ready()
+        session.update_chunk(steps=[target], dt_ms=50.0, first_timestamp_ms=0)
+
+        await _wait_until(lambda: len(server.requests) >= 2)
+        request = _inner(server.requests[1])
+        assert isinstance(request, api.models.JointWaypointsRequest)
+        assert [list(waypoint.joints.root) for waypoint in request.waypoints] == [target, target]
+        assert [waypoint.timestamp for waypoint in request.waypoints] == [0, 50]
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_live_updates_are_coalesced_while_a_request_is_in_flight():
+    session, server = _build_session(
+        config=WaypointConfig(min_buffer_ms=0),
+        response_delay=0.05,
+    )
+    first = [0.1, 0.0, 0.0, 0.0, 0.0, 0.0]
+    stale = [0.2, 0.0, 0.0, 0.0, 0.0, 0.0]
+    freshest = [0.3, 0.0, 0.0, 0.0, 0.0, 0.0]
+    try:
+        await session.start()
+        await session.wait_ready()
+
+        session.update_chunk(steps=[first], dt_ms=100.0)
+        await _wait_until(lambda: len(server.requests) >= 2)
+
+        session.update_chunk(steps=[stale], dt_ms=100.0)
+        await asyncio.sleep(0.01)
+        assert len(server.requests) == 2
+
+        session.update_chunk(steps=[freshest], dt_ms=100.0)
+        await _wait_until(lambda: len(server.requests) >= 3)
+
+        sent = _inner(server.requests[2])
+        assert isinstance(sent, api.models.JointWaypointsRequest)
+        assert [list(waypoint.joints.root) for waypoint in sent.waypoints] == [freshest]
     finally:
         server.stop()
         await session.stop()

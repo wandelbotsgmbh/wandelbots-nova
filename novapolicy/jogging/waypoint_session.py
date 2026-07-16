@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import math
 import time
 from typing import TYPE_CHECKING
 
@@ -130,6 +131,11 @@ class WaypointJoggingSession:  # noqa: PLR0904
     def mode(self) -> JoggingMode:
         """Jogging mode: 'joint' or 'cartesian'."""
         return self._mode
+
+    @property
+    def config(self) -> WaypointConfig:
+        """Waypoint jogging configuration used by this session."""
+        return self._config
 
     @property
     def current_state(self) -> RobotState | None:
@@ -253,6 +259,7 @@ class WaypointJoggingSession:  # noqa: PLR0904
         timestamp_offset_steps: int = 0,
         server_dt_ms: float | None = None,
         action_timestep: int = -1,
+        extend_buffer: bool = True,
         **_kwargs: object,
     ) -> None:
         """Queue a new action chunk as waypoints.
@@ -279,20 +286,22 @@ class WaypointJoggingSession:  # noqa: PLR0904
         if not steps:
             return
 
-        # Single-step target: use a default step time
-        effective_dt_ms = dt_ms if dt_ms > 0 else 100.0
+        effective_dt_ms = dt_ms if dt_ms > 0 else self._config.single_step_dt_ms
+        buffered_steps = (
+            self._extend_to_min_buffer(steps, effective_dt_ms) if extend_buffer else steps
+        )
 
         # Cap how far the session clock may run ahead of acknowledged server
         # time at this chunk's horizon, so a stalled link drifts at most one
         # lookahead window before "now" freezes (see acknowledged_elapsed_ms).
-        self._clock.max_lookahead_ms = len(steps) * effective_dt_ms
+        self._clock.max_lookahead_ms = len(buffered_steps) * effective_dt_ms
 
         # Store raw chunk data. Timestamps are computed in _jogging_loop
         # immediately before yielding to the server, avoiding drift from any
         # internal await/scheduling delay between policy and stream send.
         self._queued_chunk_count += 1
         self._pending_request = PendingChunk(
-            steps=steps,
+            steps=buffered_steps,
             dt_ms=effective_dt_ms,
             first_timestamp_ms=first_timestamp_ms,
             timestamp_offset_steps=timestamp_offset_steps,
@@ -311,10 +320,11 @@ class WaypointJoggingSession:  # noqa: PLR0904
             timestamp_offset_steps >= 0
             and self._mode == "joint"
             and self._current_joints is not None
-            and len(steps) > 0
+            and len(buffered_steps) > 0
         ):
             delta = [
-                abs(steps[0][j] - self._current_joints[j]) for j in range(min(3, len(steps[0])))
+                abs(buffered_steps[0][j] - self._current_joints[j])
+                for j in range(min(3, len(buffered_steps[0])))
             ]
             max_delta = max(delta) * 57.3
             log = logger.warning if max_delta > _DISCONTINUITY_WARN_DEG else logger.debug
@@ -326,12 +336,26 @@ class WaypointJoggingSession:  # noqa: PLR0904
                 self._current_joints[0],
                 self._current_joints[1],
                 self._current_joints[2],
-                steps[0][0],
-                steps[0][1],
-                steps[0][2],
+                buffered_steps[0][0],
+                buffered_steps[0][1],
+                buffered_steps[0][2],
             )
 
         # Request is built later at yield time.
+
+    def _extend_to_min_buffer(
+        self, steps: list[list[float]], effective_dt_ms: float
+    ) -> list[list[float]]:
+        """Extend a short chunk by holding its final caller-provided target."""
+        min_buffer_ms = max(0.0, self._config.min_buffer_ms)
+        if min_buffer_ms <= 0 or effective_dt_ms <= 0:
+            return steps
+
+        min_steps = max(1, math.ceil(min_buffer_ms / effective_dt_ms))
+        if len(steps) >= min_steps:
+            return steps
+
+        return [*steps, *[list(steps[-1]) for _ in range(min_steps - len(steps))]]
 
     async def write_ios(self, ios: Mapping[str, ValueType]) -> None:
         """Write IO values (delegated to IOWriter for deduplication)."""

@@ -48,6 +48,7 @@ class PolicyRerunLogger:
         self._initialized = False
         self._start_time: float = 0.0
         self._tcp_trail: dict[str, list[list[float]]] = {}  # mg_id -> [[x,y,z], ...]
+        self._tcp_target_trail: dict[str, list[list[float]]] = {}
         self._max_trail_points = 500
         self._streamer: StateStreamer | None = None
         self._recording: RecordingStream | None = None
@@ -131,6 +132,7 @@ class PolicyRerunLogger:
                     recording=self._recording,
                 )
                 self._tcp_trail[mg.id] = []
+                self._tcp_target_trail[mg.id] = []
 
             send_blueprint(
                 [mg.id for mg in self._motion_groups],
@@ -219,6 +221,86 @@ class PolicyRerunLogger:
             )
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_action_chunk error: %s", e)
+
+    def log_target_tracking(
+        self, chunk: ActionChunk, states: dict[str, RobotState], step: int
+    ) -> None:
+        """Log each first commanded target against the latest actual state."""
+        for mg_id, steps in chunk.joints.items():
+            state = states.get(mg_id)
+            if steps and state is not None:
+                self.log_joint_tracking(mg_id, steps[0], state, step)
+        for mg_id, steps in chunk.tcp.items():
+            state = states.get(mg_id)
+            if steps and state is not None:
+                self.log_tcp_tracking(mg_id, steps[0], state, step)
+
+    def log_joint_tracking(
+        self, mg_id: str, target: list[float], actual: RobotState, step: int
+    ) -> None:
+        """Log commanded/actual joints and the derived TCP position error."""
+        if not self._initialized or self._recording is None:
+            return
+        try:  # noqa: PLW0717
+            from novapolicy.rerun.kinematics import joint_tcp_position  # noqa: PLC0415
+            from novapolicy.rerun.target_tracking import (  # noqa: PLC0415
+                log_joint_tcp_tracking,
+                log_joint_tracking,
+            )
+
+            log_joint_tracking(
+                mg_id,
+                target,
+                list(actual.joints),
+                step,
+                start_time=self._start_time,
+                recording=self._recording,
+            )
+            pose = getattr(actual, "pose", None)
+            dh_robot = self._dh_robots.get(mg_id)
+            if pose is not None and dh_robot is not None:
+                target_position = joint_tcp_position(
+                    dh_robot,
+                    target,
+                    self._tcp_offsets.get(mg_id),
+                )
+                log_joint_tcp_tracking(
+                    mg_id,
+                    target_position,
+                    pose,
+                    step,
+                    start_time=self._start_time,
+                    recording=self._recording,
+                    target_trail=self._tcp_target_trail.get(mg_id),
+                    max_trail_points=self._max_trail_points,
+                )
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
+            logger.debug("log_joint_tracking error: %s", e)
+
+    def log_tcp_tracking(
+        self, mg_id: str, target: list[float], actual: RobotState, step: int
+    ) -> None:
+        """Log commanded/actual TCP pose and tracking error."""
+        if not self._initialized or self._recording is None:
+            return
+        pose = getattr(actual, "pose", None)
+        if pose is None:
+            return
+        try:
+            from novapolicy.rerun.target_tracking import log_tcp_tracking  # noqa: PLC0415
+
+            log_tcp_tracking(
+                mg_id,
+                target,
+                pose,
+                step,
+                start_time=self._start_time,
+                recording=self._recording,
+                target_trail=self._tcp_target_trail.get(mg_id),
+                max_trail_points=self._max_trail_points,
+            )
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
+            logger.debug("log_tcp_tracking error: %s", e)
 
     def log_images(self, images: dict[str, Any]) -> None:
         """Log camera images to Rerun."""
