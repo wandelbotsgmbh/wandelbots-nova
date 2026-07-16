@@ -51,9 +51,12 @@ pretrained_name_or_path = "/models/my_lerobot_policy"
 
 ### 3. Start the LeRobot async server
 
-Run this on the machine that should execute inference:
+Run the server on the machine that has the checkpoint and should execute model inference. The server
+starts without a checkpoint argument; it loads the checkpoint path sent by the NOVA client when that
+client connects.
 
 ```bash
+# Terminal 1 — inference host
 conda activate lerobot-server
 
 python -m lerobot.async_inference.policy_server \
@@ -61,30 +64,28 @@ python -m lerobot.async_inference.policy_server \
   --port=8080
 ```
 
-The server listens first. It loads the policy only after `LeRobotPolicyClient` connects and sends
-`SendPolicyInstructions`. `PolicyExecutor` does not know about the LeRobot protocol directly; it
-only calls the generic policy-client API. For LeRobot, `SendPolicyInstructions` is sent while the
-executor is still in its `CONNECTING` phase, so model-loading/setup latency does not consume the
-execution timeout.
+Keep this process running. A successful startup logs that the gRPC server is listening on port 8080.
+The first client connection sends `policy_type`, checkpoint path, action-chunk size, and inference
+device. Loading happens while `PolicyExecutor` is in `CONNECTING`, before its execution timeout
+starts.
 
-Optional LeRobot server timing flags:
+The server also accepts `--fps`, `--inference_latency`, and `--obs_queue_timeout`. They are not
+required for the basic setup. If you set server `--fps`, keep it aligned with the client's `fps`.
 
-- `--fps`: controls LeRobot's server-side `TimedAction` timestamps. `LeRobotPolicyClient`
-  ignores those timestamps and sets `ActionChunk.dt_ms = 1000 / fps`; `PolicyExecutor` then uses
-  that `dt_ms` when scheduling waypoints. Keep the server flag aligned with the client `fps` if you
-  set both.
-- `--inference_latency`: adds a target response delay in `GetActions`. Leave it at the LeRobot
-  default unless you intentionally want the server to pace responses.
-- `--obs_queue_timeout`: how long `GetActions` waits for an observation before returning empty.
+### 4. Execute the policy through NOVA
 
-### 4. Configure the NOVA policy client
+Save the following as `run_lerobot_policy.py` on the NOVA client machine. Replace the host names,
+controller, camera device, checkpoint paths, and IO key with values for your cell and checkpoint.
+The checkpoint's `config.json` must be readable by the client; model weights only need to exist on
+the inference server.
 
 ```python
+import asyncio
+
 from nova import Nova
 from nova.config import NovaConfig
 from novapolicy import (
     BoolMapping,
-    ContinuousExecution,
     LeRobotPolicyClient,
     Observation,
     PolicyExecutor,
@@ -92,52 +93,108 @@ from novapolicy import (
     SequentialExecution,
     WebRTCCameras,
 )
+from novapolicy.lerobot import load_execution_settings
 
-cameras = WebRTCCameras(
-    api_url="http://<nova-or-camera-host>:8011/webrtc-streamer",
-    resize=(320, 240),  # width, height expected by your policy/cameras
-)
+NOVA_HOST = "http://<nova-host>"
+LEROBOT_SERVER = "<lerobot-server-host>:8080"
+SERVER_CHECKPOINT = "/models/my_lerobot_policy"
+CLIENT_CHECKPOINT_CONFIG = "./my_lerobot_policy/config.json"
+CAMERA_API = "http://<camera-host>:8011/webrtc-streamer"
+CAMERA_DEVICE = "<scene-camera-device-id>"
+FPS = 15.0
+PLAYBACK_SPEED = 1.0
 
-async with Nova(config=NovaConfig(host="http://<nova-host>")) as nova:
-    cell = nova.cell("cell")
-    arm = (await cell.controller("cobot"))[0]
 
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("arm", source=arm),
-            Observation.io("gripper", source=arm, io="digital_out[0]", mapping=BoolMapping()),
-            Observation.image(
-                "cam_scene_1",
-                source=cameras.device("<scene-camera-device-id>"),
-            ),
-        ]
-    )
+async def main() -> None:
+    settings = load_execution_settings(CLIENT_CHECKPOINT_CONFIG)
+    cameras = WebRTCCameras(api_url=CAMERA_API, resize=(320, 240))
 
-    from novapolicy.lerobot import load_execution_settings
+    async with Nova(config=NovaConfig(host=NOVA_HOST)) as nova:
+        arm = (await nova.cell("cell").controller("cobot"))[0]
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=arm),
+                Observation.io(
+                    "gripper",
+                    source=arm,
+                    io="digital_out[0]",
+                    mapping=BoolMapping(),
+                ),
+                Observation.image(
+                    "cam_scene_1",
+                    source=cameras.device(CAMERA_DEVICE),
+                ),
+            ]
+        )
+        policy = LeRobotPolicyClient(
+            server_address=LEROBOT_SERVER,
+            pretrained_name_or_path=SERVER_CHECKPOINT,
+            policy_type=settings.policy_type,
+            fps=FPS,
+            playback_speed=PLAYBACK_SPEED,
+            actions_per_chunk=settings.chunk_size,
+            device="cuda",
+        )
+        executor = PolicyExecutor(
+            schema,
+            policy,
+            execution=SequentialExecution(),
+            n_action_steps=settings.n_action_steps,
+            timeout_s=80,
+        )
+        result = await executor.run()
+        print(f"Stopped: {result.reason}; steps={result.steps}; duration={result.duration_s:.1f}s")
 
-    # This config must be visible to the NOVA client. The model weights may
-    # remain at a server-only path.
-    settings = load_execution_settings("./my_lerobot_policy/config.json")
 
-    policy = LeRobotPolicyClient(
-        server_address="<lerobot-server-host>:8080",
-        pretrained_name_or_path="/models/my_lerobot_policy",  # path on the LeRobot server
-        policy_type="act",
-        fps=15,
-        playback_speed=1.0,
-        actions_per_chunk=settings.chunk_size,
-        device="cuda",
-    )
-
-    executor = PolicyExecutor(
-        schema,
-        policy,
-        execution=SequentialExecution(),
-        n_action_steps=settings.n_action_steps,
-        timeout_s=80,
-    )
-    result = await executor.run()
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
+
+Run it while the async server is still listening:
+
+```bash
+# Terminal 2 — NOVA client host
+python run_lerobot_policy.py
+```
+
+This example uses settled ACT execution: infer a chunk, execute the checkpoint-defined action
+horizon, reach standstill, and infer again. If the checkpoint has no camera input, remove
+`WebRTCCameras` and `Observation.image(...)`. Observation names and ordering must still match the
+checkpoint dataset.
+
+### Continuous asynchronous execution
+
+To keep a fixed-rate LeRobot action queue while NOVA continuously replaces the active lookahead,
+keep the same schema and use the following policy and executor options:
+
+```python
+from novapolicy import ContinuousExecution
+from novapolicy.lerobot import AsyncQueueAggregation
+
+policy = LeRobotPolicyClient(
+    server_address=LEROBOT_SERVER,
+    pretrained_name_or_path=SERVER_CHECKPOINT,
+    policy_type=settings.policy_type,
+    fps=FPS,
+    playback_speed=PLAYBACK_SPEED,
+    actions_per_chunk=settings.chunk_size,
+    device="cuda",
+    use_async_queue=True,
+    async_queue_aggregation=AsyncQueueAggregation.AVERAGE,
+    async_queue_smoothing=True,
+)
+executor = PolicyExecutor(
+    schema,
+    policy,
+    execution=ContinuousExecution(rate_hz=FPS * PLAYBACK_SPEED),
+    n_action_steps=0,
+    timeout_s=80,
+)
+result = await executor.run()
+```
+
+Use sequential execution first. Enable the continuous queue only when the checkpoint and robot task
+have been validated with overlapping action chunks.
 
 ## Configuration reference
 
