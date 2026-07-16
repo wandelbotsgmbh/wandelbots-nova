@@ -60,7 +60,9 @@ def _fake_session(num_joints: int = 6, *, mode: str = "joint") -> MagicMock:
     return session
 
 
-def _build_joint_jogger(*mg_ids: str, num_joints: int = 6, ease_in_s: float = 0.0) -> _JointSetup:
+def _build_joint_jogger(
+    *mg_ids: str, num_joints: int = 6, ease_in_s: float = 0.0, buffer_ms: float = 0.0
+) -> _JointSetup:
     """Build a real joint jogger over fake robot transports.
 
     The transport is only patched while the jogger is being constructed (that
@@ -75,11 +77,15 @@ def _build_joint_jogger(*mg_ids: str, num_joints: int = 6, ease_in_s: float = 0.
         return sessions[motion_group]
 
     with patch("novapolicy.jogging.jogger.WaypointJoggingSession", side_effect=make_session):
-        jogger = jog_joints(mgs if len(mgs) > 1 else mgs[0], ease_in_s=ease_in_s)
+        jogger = jog_joints(
+            mgs if len(mgs) > 1 else mgs[0], ease_in_s=ease_in_s, buffer_ms=buffer_ms
+        )
     return jogger, mgs, sessions
 
 
-def _build_tcp_jogger(mg_id: str, tcp: str = "Flange", *, num_joints: int = 6) -> _TcpSetup:
+def _build_tcp_jogger(
+    mg_id: str, tcp: str = "Flange", *, num_joints: int = 6, buffer_ms: float = 0.0
+) -> _TcpSetup:
     """Build a real single-arm TCP jogger over a fake robot transport."""
     mg = _mg(mg_id)
     sessions: dict[object, MagicMock] = {}
@@ -89,7 +95,7 @@ def _build_tcp_jogger(mg_id: str, tcp: str = "Flange", *, num_joints: int = 6) -
         return sessions[motion_group]
 
     with patch("novapolicy.jogging.jogger.WaypointJoggingSession", side_effect=make_session):
-        jogger = jog_tcp(mg, tcp=tcp)
+        jogger = jog_tcp(mg, tcp=tcp, buffer_ms=buffer_ms)
     return jogger, mg, sessions
 
 
@@ -130,15 +136,15 @@ def test_setting_a_chunk_streams_every_step_and_tracks_the_last():
     assert jogger.target == chunk[-1]
 
 
-def test_appending_joint_targets_primes_then_sends_a_rolling_buffer():
-    """append_target adds latency, then streams a moving buffered chunk."""
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
+def test_buffered_joint_set_target_primes_then_sends_a_rolling_buffer():
+    """With buffer_ms configured, set_target streams a moving buffered chunk."""
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", buffer_ms=30.0)
 
-    assert jogger.append_target([1.0] * 6, dt_ms=10.0) is False
-    assert jogger.append_target([2.0] * 6, dt_ms=10.0) is False
+    jogger.set_target([1.0] * 6, dt_ms=10.0)
+    jogger.set_target([2.0] * 6, dt_ms=10.0)
     sessions[mg].update_chunk.assert_not_called()
 
-    assert jogger.append_target([3.0] * 6, dt_ms=10.0) is True
+    jogger.set_target([3.0] * 6, dt_ms=10.0)
     sessions[mg].update_chunk.assert_called_once_with(
         steps=[[1.0] * 6, [2.0] * 6, [3.0] * 6],
         dt_ms=10.0,
@@ -146,7 +152,7 @@ def test_appending_joint_targets_primes_then_sends_a_rolling_buffer():
         extend_buffer=False,
     )
 
-    assert jogger.append_target([4.0] * 6, dt_ms=10.0) is True
+    jogger.set_target([4.0] * 6, dt_ms=10.0)
     assert sessions[mg].update_chunk.call_args.kwargs["steps"] == [
         [2.0] * 6,
         [3.0] * 6,
@@ -154,23 +160,23 @@ def test_appending_joint_targets_primes_then_sends_a_rolling_buffer():
     ]
 
 
-def test_set_target_clears_append_target_buffer():
-    """Switching to immediate targets must not reuse stale buffered samples."""
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
+def test_explicit_chunk_clears_buffered_set_target_samples():
+    """An explicit chunk must not reuse stale buffered live-target samples."""
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", buffer_ms=30.0)
 
-    assert jogger.append_target([1.0] * 6, dt_ms=10.0) is False
-    assert jogger.append_target([2.0] * 6, dt_ms=10.0) is False
-    assert jogger.append_target([3.0] * 6, dt_ms=10.0) is True
+    jogger.set_target([1.0] * 6, dt_ms=10.0)
+    jogger.set_target([2.0] * 6, dt_ms=10.0)
+    jogger.set_target([3.0] * 6, dt_ms=10.0)
     assert sessions[mg].update_chunk.call_count == 1
 
-    jogger.set_target([9.0] * 6)
+    jogger.set_target([[9.0] * 6, [9.0] * 6], dt_ms=10.0)
     assert sessions[mg].update_chunk.call_count == 2
 
-    assert jogger.append_target([10.0] * 6, dt_ms=10.0) is False
-    assert jogger.append_target([11.0] * 6, dt_ms=10.0) is False
+    jogger.set_target([10.0] * 6, dt_ms=10.0)
+    jogger.set_target([11.0] * 6, dt_ms=10.0)
     assert sessions[mg].update_chunk.call_count == 2
 
-    assert jogger.append_target([12.0] * 6, dt_ms=10.0) is True
+    jogger.set_target([12.0] * 6, dt_ms=10.0)
     assert sessions[mg].update_chunk.call_args.kwargs["steps"] == [
         [10.0] * 6,
         [11.0] * 6,
@@ -271,17 +277,17 @@ def test_tcp_jogging_streams_a_chunk_of_future_poses():
     sessions[mg].update_chunk.assert_called_once_with(steps=chunk, dt_ms=33.0, anchor_ms=0)
 
 
-def test_appending_tcp_targets_primes_then_sends_a_rolling_buffer():
-    """TCP append_target buffers samples before sending a rolling chunk."""
+def test_buffered_tcp_set_target_primes_then_sends_a_rolling_buffer():
+    """TCP set_target buffers samples before sending a rolling chunk."""
     from nova.types import Pose
 
-    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange")
+    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange", buffer_ms=30.0)
 
-    assert jogger.append_target(Pose(500, 200, 300, 0, 3.14, 0), dt_ms=10.0) is False
-    assert jogger.append_target(Pose(510, 200, 300, 0, 3.14, 0), dt_ms=10.0) is False
+    jogger.set_target(Pose(500, 200, 300, 0, 3.14, 0), dt_ms=10.0)
+    jogger.set_target(Pose(510, 200, 300, 0, 3.14, 0), dt_ms=10.0)
     sessions[mg].update_chunk.assert_not_called()
 
-    assert jogger.append_target(Pose(520, 200, 300, 0, 3.14, 0), dt_ms=10.0) is True
+    jogger.set_target(Pose(520, 200, 300, 0, 3.14, 0), dt_ms=10.0)
     sessions[mg].update_chunk.assert_called_once_with(
         steps=[
             [500, 200, 300, 0, 3.14, 0],
@@ -294,22 +300,24 @@ def test_appending_tcp_targets_primes_then_sends_a_rolling_buffer():
     )
 
 
-def test_appending_tcp_targets_uses_wall_time_only_to_prime_before_elapsed_advances(monkeypatch):
+def test_buffered_tcp_set_target_uses_wall_time_only_to_prime_before_elapsed_advances(
+    monkeypatch,
+):
     """Startup cannot wait for elapsed: first chunk is needed before RUNNING."""
     from nova.types import Pose
 
     times = iter([0.00, 0.01, 0.02])
     monkeypatch.setattr("novapolicy.jogging.jogger.time.monotonic", lambda: next(times))
 
-    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange")
+    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange", buffer_ms=30.0)
     # elapsed stays at zero before the first chunk makes the robot RUNNING.
     jogger._loop_t0 = 0.0  # type: ignore[attr-defined]
     jogger._ack0_ms = 0.0  # type: ignore[attr-defined]
     sessions[mg].session_elapsed_ms = 0
 
-    assert jogger.append_target(Pose(500, 200, 300, 0, 3.14, 0)) is False
-    assert jogger.append_target(Pose(510, 200, 300, 0, 3.14, 0)) is False
-    assert jogger.append_target(Pose(520, 200, 300, 0, 3.14, 0)) is True
+    jogger.set_target(Pose(500, 200, 300, 0, 3.14, 0))
+    jogger.set_target(Pose(510, 200, 300, 0, 3.14, 0))
+    jogger.set_target(Pose(520, 200, 300, 0, 3.14, 0))
 
     sessions[mg].update_chunk.assert_called_once_with(
         steps=[
@@ -323,63 +331,73 @@ def test_appending_tcp_targets_uses_wall_time_only_to_prime_before_elapsed_advan
     )
 
 
-def test_append_target_does_not_use_wall_time_after_first_buffered_chunk(monkeypatch):
+def test_buffered_set_target_does_not_use_wall_time_after_first_chunk(monkeypatch):
     """After priming, automatic timing waits for acknowledged jogger time."""
     from nova.types import Pose
 
     times = iter([0.00, 0.01, 0.02, 0.03, 0.04, 0.05])
     monkeypatch.setattr("novapolicy.jogging.jogger.time.monotonic", lambda: next(times))
 
-    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange")
+    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange", buffer_ms=30.0)
     jogger._loop_t0 = 0.0  # type: ignore[attr-defined]
     jogger._ack0_ms = 0.0  # type: ignore[attr-defined]
     sessions[mg].session_elapsed_ms = 0
 
-    assert jogger.append_target(Pose(500, 200, 300, 0, 3.14, 0)) is False
-    assert jogger.append_target(Pose(510, 200, 300, 0, 3.14, 0)) is False
-    assert jogger.append_target(Pose(520, 200, 300, 0, 3.14, 0)) is True
+    jogger.set_target(Pose(500, 200, 300, 0, 3.14, 0))
+    jogger.set_target(Pose(510, 200, 300, 0, 3.14, 0))
+    jogger.set_target(Pose(520, 200, 300, 0, 3.14, 0))
     sessions[mg].update_chunk.reset_mock()
 
-    assert jogger.append_target(Pose(530, 200, 300, 0, 3.14, 0)) is False
-    assert jogger.append_target(Pose(540, 200, 300, 0, 3.14, 0)) is False
-    assert jogger.append_target(Pose(550, 200, 300, 0, 3.14, 0)) is False
+    jogger.set_target(Pose(530, 200, 300, 0, 3.14, 0))
+    jogger.set_target(Pose(540, 200, 300, 0, 3.14, 0))
+    jogger.set_target(Pose(550, 200, 300, 0, 3.14, 0))
     sessions[mg].update_chunk.assert_not_called()
     assert len(jogger._target_buffers[mg]) == 3  # type: ignore[attr-defined]
 
 
-def test_append_target_uses_each_motion_groups_default_buffer_horizon():
-    """Default append buffering comes from the matching motion group's session."""
-    jogger, (left, right), sessions = _build_joint_jogger("0@ur5e-left", "0@ur5e-right")
-    sessions[left].config = WaypointConfig(min_buffer_ms=10.0)
-    sessions[right].config = WaypointConfig(min_buffer_ms=30.0)
+def test_buffered_set_target_uses_configured_buffer_for_all_motion_groups():
+    """Constructor-level buffering applies equally to every motion group."""
+    jogger, (left, right), sessions = _build_joint_jogger(
+        "0@ur5e-left", "0@ur5e-right", buffer_ms=30.0
+    )
 
-    sent = jogger.append_target(
+    for i in range(2):
+        jogger.set_target(
+            {
+                left: [float(i)] * 6,
+                right: [float(i + 10)] * 6,
+            },
+            dt_ms=10.0,
+        )
+    sessions[left].update_chunk.assert_not_called()
+    sessions[right].update_chunk.assert_not_called()
+
+    jogger.set_target(
         {
-            left: [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-            right: [7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+            left: [2.0] * 6,
+            right: [12.0] * 6,
         },
         dt_ms=10.0,
     )
 
-    assert sent is True
     sessions[left].update_chunk.assert_called_once()
-    sessions[right].update_chunk.assert_not_called()
+    sessions[right].update_chunk.assert_called_once()
 
 
-def test_appending_tcp_targets_can_infer_dt_from_jogger_elapsed():
-    """After startup, append_target uses acknowledged jogger time between samples."""
+def test_buffered_tcp_set_target_can_infer_dt_from_jogger_elapsed():
+    """After startup, buffered set_target uses acknowledged jogger time."""
     from nova.types import Pose
 
-    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange")
+    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange", buffer_ms=30.0)
     jogger._loop_t0 = 0.0  # type: ignore[attr-defined]
     jogger._ack0_ms = 0.0  # type: ignore[attr-defined]
 
     sessions[mg].session_elapsed_ms = 0
-    assert jogger.append_target(Pose(500, 200, 300, 0, 3.14, 0)) is False
+    jogger.set_target(Pose(500, 200, 300, 0, 3.14, 0))
     sessions[mg].session_elapsed_ms = 10
-    assert jogger.append_target(Pose(510, 200, 300, 0, 3.14, 0)) is False
+    jogger.set_target(Pose(510, 200, 300, 0, 3.14, 0))
     sessions[mg].session_elapsed_ms = 20
-    assert jogger.append_target(Pose(520, 200, 300, 0, 3.14, 0)) is True
+    jogger.set_target(Pose(520, 200, 300, 0, 3.14, 0))
 
     sessions[mg].update_chunk.assert_called_once_with(
         steps=[
