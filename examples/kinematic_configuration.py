@@ -89,9 +89,11 @@ async def kinematic_configuration(ctx: nova.ProgramContext):
     current_pose = state.pose
     # Query the current kinematic configuration from joints
     [current_config] = await motion_group.get_kinematic_configuration([state.joints])
-    print(f"  Current config: shoulder={current_config.kinematic_branch.shoulder_branch.value}, "
-          f"elbow={current_config.kinematic_branch.elbow_branch.value}, "
-          f"wrist={current_config.kinematic_branch.wrist_branch.value}")
+    print(
+        f"  Current config: shoulder={current_config.kinematic_branch.shoulder_branch.value}, "
+        f"elbow={current_config.kinematic_branch.elbow_branch.value}, "
+        f"wrist={current_config.kinematic_branch.wrist_branch.value}"
+    )
     # Flip only the elbow, keep shoulder and wrist from the queried config
     switched_config = api.models.KinematicConfiguration(
         kinematic_branch=api.models.KinematicBranch(
@@ -139,9 +141,11 @@ async def kinematic_configuration(ctx: nova.ProgramContext):
     # Verify the robot actually landed in FLIP config
     final_joints = await motion_group.joints()
     [final_config] = await motion_group.get_kinematic_configuration([final_joints])
-    print(f"  Verified: shoulder={final_config.kinematic_branch.shoulder_branch.value}, "
-          f"elbow={final_config.kinematic_branch.elbow_branch.value}, "
-          f"wrist={final_config.kinematic_branch.wrist_branch.value}")
+    print(
+        f"  Verified: shoulder={final_config.kinematic_branch.shoulder_branch.value}, "
+        f"elbow={final_config.kinematic_branch.elbow_branch.value}, "
+        f"wrist={final_config.kinematic_branch.wrist_branch.value}"
+    )
     await move_to_init()
 
     print("\nWithout explicit config, the planner cannot switch branches.")

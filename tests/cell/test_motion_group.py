@@ -610,7 +610,7 @@ async def test_get_kinematic_configuration_happy_path(mock_motion_group):
             shoulder_branch=api.models.KinematicBranchShoulder.FRONT,
             elbow_branch=api.models.KinematicBranchElbow.UP,
             wrist_branch=api.models.KinematicBranchWrist.NO_FLIP,
-        ),
+        )
     )
     mock_motion_group._api_client.motion_group_api.get_motion_group_description.return_value = (
         api.models.MotionGroupDescription(
@@ -620,8 +620,8 @@ async def test_get_kinematic_configuration_happy_path(mock_motion_group):
             tcps={},
         )
     )
-    mock_motion_group._api_client.kinematics_api.get_kinematic_configuration.return_value = MagicMock(
-        kinematic_configurations=[kin_config]
+    mock_motion_group._api_client.kinematics_api.get_kinematic_configuration.return_value = (
+        MagicMock(kinematic_configurations=[kin_config])
     )
 
     result = await mock_motion_group.get_kinematic_configuration(joints=[(0, 0, 0, 0, 0, 0)])
@@ -643,8 +643,8 @@ async def test_get_kinematic_configuration_request_construction(mock_motion_grou
             tcps={},
         )
     )
-    mock_motion_group._api_client.kinematics_api.get_kinematic_configuration.return_value = MagicMock(
-        kinematic_configurations=[]
+    mock_motion_group._api_client.kinematics_api.get_kinematic_configuration.return_value = (
+        MagicMock(kinematic_configurations=[])
     )
 
     await mock_motion_group.get_kinematic_configuration(joints=[(1, 2, 3, 4, 5, 6)])
