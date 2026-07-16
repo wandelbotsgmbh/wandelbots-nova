@@ -14,6 +14,7 @@ from novapolicy.rerun.constants import (
 )
 import rerun as rr
 
+_TCP_POSITION_DIMS = 3
 _TCP_DIMS = 6
 
 if TYPE_CHECKING:
@@ -47,6 +48,44 @@ def log_joint_tracking(
     rr.log(
         f"policy/{mg_id}/joint_error/norm_rad",
         rr.Scalars(math.dist(target_joints, actual_joints)),
+    )
+
+
+def log_joint_tcp_tracking(
+    mg_id: str,
+    target_position: list[float],
+    actual: Pose,
+    step: int,
+    *,
+    start_time: float,
+    target_trail: list[list[float]] | None = None,
+    max_trail_points: int = 500,
+) -> None:
+    """Log TCP position/error derived from a commanded joint target."""
+    if len(target_position) < _TCP_POSITION_DIMS:
+        return
+
+    target_position = target_position[:_TCP_POSITION_DIMS]
+    actual_position = list(actual.position)
+    position_error = [target_position[i] - actual_position[i] for i in range(3)]
+
+    _set_time(step, start_time)
+    for name, value in zip(("x", "y", "z"), target_position, strict=True):
+        rr.log(f"policy/{mg_id}/tcp_target/position/{name}", rr.Scalars(value))
+    for name, value in zip(("x", "y", "z"), actual_position, strict=True):
+        rr.log(f"policy/{mg_id}/tcp_actual/position/{name}", rr.Scalars(value))
+    for name, value in zip(("dx", "dy", "dz"), position_error, strict=True):
+        rr.log(f"policy/{mg_id}/tcp_error/position/{name}", rr.Scalars(value))
+    rr.log(
+        f"policy/{mg_id}/tcp_error/position_norm_mm",
+        rr.Scalars(math.dist(target_position, actual_position)),
+    )
+    _log_tcp_3d(
+        mg_id,
+        target_position,
+        actual_position,
+        target_trail=target_trail,
+        max_trail_points=max_trail_points,
     )
 
 

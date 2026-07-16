@@ -32,7 +32,13 @@ def send_blueprint(
         rrb.Spatial2DView(contents=[f"policy/cameras/{n}"], name=n) for n in camera_names
     ]
     joint_views = [
-        rrb.TimeSeriesView(contents=[f"policy/{mg_id}/joints/**"], name=f"Joints {mg_id}")
+        rrb.TimeSeriesView(
+            contents=[
+                f"policy/{mg_id}/joints/**",
+                f"policy/{mg_id}/joint_target/**",
+            ],
+            name=f"Joints target/actual {mg_id}",
+        )
         for mg_id in escaped_ids
     ]
     tcp_tracking_views = []

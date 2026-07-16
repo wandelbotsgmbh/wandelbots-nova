@@ -209,6 +209,29 @@ class PolicyRerunLogger:
                 step,
                 start_time=self._start_time,
             )
+
+            pose = getattr(actual, "pose", None)
+            dh_robot = self._dh_robots.get(mg_id)
+            if pose is not None and dh_robot is not None:
+                from novapolicy.rerun.kinematics import joint_tcp_position  # noqa: PLC0415
+                from novapolicy.rerun.target_tracking import (  # noqa: PLC0415
+                    log_joint_tcp_tracking,
+                )
+
+                target_position = joint_tcp_position(
+                    dh_robot,
+                    target,
+                    self._tcp_offsets.get(mg_id),
+                )
+                log_joint_tcp_tracking(
+                    mg_id,
+                    target_position,
+                    pose,
+                    step,
+                    start_time=self._start_time,
+                    target_trail=self._tcp_target_trail.get(mg_id),
+                    max_trail_points=self._max_trail_points,
+                )
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_joint_tracking error: %s", e)
 

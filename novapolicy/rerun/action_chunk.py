@@ -97,12 +97,9 @@ def _step_to_tcp(
     dh_robot: DHRobot, joint_target: list[float], tcp_offset: np.ndarray | None
 ) -> list[float]:
     """TCP position for a joint target: flange FK, then the TCP offset if known."""
-    if tcp_offset is None:
-        return dh_robot.calculate_joint_positions(joint_target)[-1]
-    from novapolicy.rerun.kinematics import flange_matrix  # noqa: PLC0415
+    from novapolicy.rerun.kinematics import joint_tcp_position  # noqa: PLC0415
 
-    flange = flange_matrix(dh_robot, joint_target)
-    return (flange @ tcp_offset)[:3, 3].tolist()
+    return joint_tcp_position(dh_robot, joint_target, tcp_offset)
 
 
 def _log_tcp_chunk(

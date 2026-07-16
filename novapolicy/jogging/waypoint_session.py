@@ -375,7 +375,7 @@ class WaypointJoggingSession:
         controller_id = get_controller_id(self._motion_group)
         tcp = await self._resolve_tcp()
 
-        async def client_request_generator(  # noqa: C901
+        async def client_request_generator(
             response_stream: AsyncGenerator[api.models.ExecuteWaypointJoggingResponse, None],
         ) -> AsyncGenerator[api.models.ExecuteWaypointJoggingRequest, None]:
             # 1. Initialize the jogging session.
@@ -385,72 +385,50 @@ class WaypointJoggingSession:
                 api.models.InitializeJoggingRequest(motion_group=self._motion_group.id, tcp=tcp)
             )
 
-            async def consume_responses() -> None:
-                async for response in response_stream:
-                    if not self._running:
-                        return
-                    if not self._ready.is_set():
-                        self._ready.set()
-                    if hasattr(response.root, "kind") and response.root.kind == "MOTION_ERROR":
-                        msg = getattr(response.root, "message", "unknown motion error")
-                        raise MotionError(self.motion_group_id, msg)
-                    self._check_stop_conditions()
-                    self._jog_tracker.check()
-
-            response_task = asyncio.create_task(
-                consume_responses(), name=f"wp-jog-responses-{self.motion_group_id}"
-            )
+            # 2. Send at most one request per server acknowledgement. Updates
+            # that arrive while a request is in flight overwrite
+            # _pending_request, so the next send uses the freshest target
+            # instead of building a websocket backlog of stale targets.
             first_chunk = True
-            try:
-                # 2. Main loop: send chunks as soon as they are queued. Do not
-                # gate outgoing waypoints on incoming response cadence; a weak
-                # response stream must not make the controller run out of
-                # already-prepared waypoints.
-                while self._running:
-                    if response_task.done():
-                        exc = response_task.exception()
-                        if exc is not None:
-                            raise exc
-                        return
+            async for response in response_stream:
+                if not self._running:
+                    return
 
-                    self._check_stop_conditions()
-                    self._jog_tracker.check()
+                if not self._ready.is_set():
+                    self._ready.set()
 
-                    if not self._ready.is_set() or self._pending_request is None:
-                        await asyncio.sleep(0.001)
-                        continue
+                if hasattr(response.root, "kind") and response.root.kind == "MOTION_ERROR":
+                    msg = getattr(response.root, "message", "unknown motion error")
+                    raise MotionError(self.motion_group_id, msg)
 
-                    # Capture and clear BEFORE yielding: while this async
-                    # generator is suspended at yield, the executor may write
-                    # the next _pending_request. Clearing after yield would
-                    # delete that fresh chunk and create gaps that let the
-                    # server exhaust its current action chunk.
-                    pending = self._pending_request
-                    self._pending_request = None
+                self._check_stop_conditions()
+                self._jog_tracker.check()
 
-                    # Start the clock on the first chunk — this is when the
-                    # server's internal timer begins (first waypoint message).
-                    if first_chunk:
-                        self._clock.start()
-                        first_chunk = False
+                while self._pending_request is None and self._running:
+                    await asyncio.sleep(0.001)
 
-                    # Build the request now so timestamps are aligned to the
-                    # server session timer at the last possible moment.
-                    request = make_waypoints_request(
-                        self._clock,
-                        self._mode,
-                        steps=pending.steps,
-                        effective_dt_ms=pending.dt_ms,
-                        anchor_ms=pending.anchor_ms,
-                        anchor_offset_steps=pending.anchor_offset_steps,
-                    )
+                if not self._running:
+                    return
 
-                    yield api.models.ExecuteWaypointJoggingRequest(request)
-            finally:
-                if not response_task.done():
-                    response_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
-                    await response_task
+                # Clear before yielding so a target queued while this request is
+                # in flight remains pending for the next acknowledgement.
+                pending = self._pending_request
+                self._pending_request = None
+
+                if first_chunk:
+                    self._clock.start()
+                    first_chunk = False
+
+                request = make_waypoints_request(
+                    self._clock,
+                    self._mode,
+                    steps=pending.steps,
+                    effective_dt_ms=pending.dt_ms,
+                    anchor_ms=pending.anchor_ms,
+                    anchor_offset_steps=pending.anchor_offset_steps,
+                )
+
+                yield api.models.ExecuteWaypointJoggingRequest(request)
 
         try:
             await api_gateway.jogging_api.execute_waypoint_jogging(
