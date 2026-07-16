@@ -171,7 +171,7 @@ policy_type = "act"
 ```
 
 The NOVA client-side decoder is policy-architecture agnostic as long as the server returns a flat
-joint action vector matching the schema action DOF.
+action vector matching the schema-derived joint, TCP, and IO layout.
 
 ### `fps`
 
@@ -359,9 +359,25 @@ example:
 WebRTCCameras(..., resize=(320, 240))
 ```
 
-Returned LeRobot actions are decoded as flat joint targets followed by IO actions. Joint targets are
-split according to the schema's joint action motion groups. IO actions are written once per returned
-chunk using the first action step. TCP actions from a flat LeRobot action vector are not decoded yet.
+Returned LeRobot actions use a fixed flat layout: joint targets first, then TCP targets, then IO
+actions. Joint targets are split according to the schema's joint action motion groups. Each TCP
+target contributes six values in NOVA's native format: `[x, y, z, rx, ry, rz]` in millimetres and
+rotation-vector radians. IO actions are written once per returned chunk using the first action step.
+
+A motion group can be controlled through joints or TCP, but not both. To observe joints while
+controlling the same robot in Cartesian space, disable the inferred joint action explicitly:
+
+```python
+schema = PolicySchema(
+    observations=[
+        Observation.joint_positions("arm", source=arm, action=False),
+        Observation.tcp("eef", source=arm, tcp="Flange", action=True),
+        Observation.io("gripper", source=arm, io="digital_out[0]", mapping=BoolMapping()),
+    ]
+)
+```
+
+For this schema the action vector is `[eef_x, eef_y, eef_z, eef_rx, eef_ry, eef_rz, gripper]`.
 
 ## Protocol notes
 
@@ -405,6 +421,7 @@ the checkpoint.
 
 ### Actions are the wrong dimension
 
-The returned flat action vector must match the total DOF of the schema's joint action motion groups
-plus any schema IO actions. For a single 6-axis arm with one gripper IO action, the policy should
-return seven action values per step.
+The returned flat action vector must contain the total DOF of all joint action motion groups, six
+values for every TCP action target, and one value for every IO action. For a single 6-axis arm with
+one gripper IO action, the policy should return seven action values per step. A TCP-controlled arm
+with one gripper IO also returns seven values: six Cartesian components followed by the IO value.

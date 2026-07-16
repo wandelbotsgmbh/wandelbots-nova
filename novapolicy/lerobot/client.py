@@ -29,7 +29,7 @@ class LeRobotPolicyClient(PolicyClient):
 
     The client supports sequential inference and LeRobot's asynchronous action
     queue. Observation/action ordering is derived from ``PolicySchema``. Flat
-    actions contain joint targets followed by optional IO values.
+    actions contain joint targets, then TCP targets, then optional IO values.
 
     Args:
         server_address: LeRobot server address in ``host:port`` form.

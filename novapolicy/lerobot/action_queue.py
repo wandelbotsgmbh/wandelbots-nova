@@ -136,7 +136,7 @@ class LeRobotAsyncActionQueue:
                 preview = [
                     (
                         entry_timestep,
-                        self._schema.replace_joint_values(
+                        self._schema.replace_motion_values(
                             action,
                             action_chunk,
                             layout,
@@ -156,7 +156,7 @@ class LeRobotAsyncActionQueue:
 
         return self._schema.decode_arrays(
             [current_action],
-            FlatActionLayout(joints=[], ios=layout.ios),
+            FlatActionLayout(joints=[], tcp=[], ios=layout.ios),
             action_timestep=timestep,
         )
 

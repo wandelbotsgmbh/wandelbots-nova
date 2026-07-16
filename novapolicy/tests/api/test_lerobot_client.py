@@ -17,7 +17,9 @@ from novapolicy.schema import BoolMapping, Observation, PolicySchema
 
 client_module = pytest.importorskip("novapolicy.lerobot.client")
 transport_module = pytest.importorskip("novapolicy.lerobot.transport")
-FlatActionLayout = pytest.importorskip("novapolicy.lerobot.schema").FlatActionLayout
+schema_module = pytest.importorskip("novapolicy.lerobot.schema")
+FlatActionLayout = schema_module.FlatActionLayout
+LeRobotSchema = schema_module.LeRobotSchema
 AsyncQueueAggregation = client_module.AsyncQueueAggregation
 LeRobotPolicyClient = client_module.LeRobotPolicyClient
 
@@ -159,12 +161,27 @@ def _state(joints: tuple[float, ...]) -> MagicMock:
     return state
 
 
+def _tcp_state(values: tuple[float, float, float, float, float, float]) -> MagicMock:
+    state = _state((0.0,) * 6)
+    state.pose = SimpleNamespace(position=values[:3], orientation=values[3:])
+    return state
+
+
 def _schema(mg: MagicMock, image_source: object | None = None) -> PolicySchema:
     return PolicySchema(
         observations=[
             Observation.joint_positions("arm", source=mg),
             Observation.io("gripper", source=mg, io="digital_out[0]", mapping=BoolMapping()),
             Observation.image("cam_scene_1", source=image_source or MagicMock()),
+        ]
+    )
+
+
+def _tcp_schema(mg: MagicMock) -> PolicySchema:
+    return PolicySchema(
+        observations=[
+            Observation.tcp("eef", source=mg, action=True),
+            Observation.io("gripper", source=mg, io="digital_out[0]", mapping=BoolMapping()),
         ]
     )
 
@@ -275,6 +292,56 @@ async def test_get_actions_sends_lerobot_async_protocol_and_decodes_chunk(
         6.0,
     ]
     np.testing.assert_array_equal(observation.observation["cam_scene_1"], image)
+
+
+@pytest.mark.asyncio
+async def test_get_actions_decodes_tcp_targets_and_tcp_state_features(
+    fake_lerobot: _FakeLeRobot,
+) -> None:
+    mg = _mg()
+    schema = _tcp_schema(mg)
+    client = LeRobotPolicyClient(
+        "127.0.0.1:8080",
+        "model",
+        fps=20,
+        actions_per_chunk=2,
+    )
+    state = _tcp_state((100.0, 200.0, 300.0, 0.1, 0.2, 0.3))
+
+    await client.connect([mg.id])
+    await client.validate_schema(schema)
+    chunk = await client.get_actions(
+        {mg.id: state},
+        schema,
+        io_values={"digital_out[0]": False},
+    )
+
+    assert chunk.joints == {}
+    assert chunk.tcp == {
+        mg.id: [
+            [10.0, 11.0, 12.0, 13.0, 14.0, 15.0],
+            [20.0, 21.0, 22.0, 23.0, 24.0, 25.0],
+        ]
+    }
+    assert chunk.ios == {mg.id: {"digital_out[0]": True}}
+    assert chunk.dt_ms == pytest.approx(50.0)
+
+    assert fake_lerobot.stub is not None
+    assert fake_lerobot.stub.policy_setup is not None
+    assert fake_lerobot.stub.policy_setup.lerobot_features["observation.state"] == {
+        "dtype": "float32",
+        "shape": (7,),
+        "names": ["eef_x", "eef_y", "eef_z", "eef_rx", "eef_ry", "eef_rz", "gripper"],
+    }
+    observation = fake_lerobot.stub.observations[0].observation
+    assert [observation[f"eef_{suffix}"] for suffix in ("x", "y", "z", "rx", "ry", "rz")] == [
+        100.0,
+        200.0,
+        300.0,
+        0.1,
+        0.2,
+        0.3,
+    ]
 
 
 @pytest.mark.parametrize(
@@ -409,6 +476,41 @@ async def test_async_queue_applies_action_chunk_smoothing_after_aggregation(
     await client.close()
 
 
+@pytest.mark.asyncio
+async def test_async_queue_smoothing_updates_tcp_values(
+    fake_lerobot: _FakeLeRobot,
+) -> None:
+    mg = _mg()
+    schema = _tcp_schema(mg)
+    client = LeRobotPolicyClient(
+        "127.0.0.1:8080",
+        "model",
+        actions_per_chunk=3,
+        use_async_queue=True,
+        async_queue_smoothing=True,
+    )
+    await client.connect([mg.id])
+    assert fake_lerobot.stub is not None
+    fake_lerobot.stub.action_values = [
+        [value] * 6 + [io] for value, io in [(0.0, 1.0), (4.0, 0.0), (0.0, 1.0)]
+    ]
+
+    chunk = await client.get_actions(
+        {mg.id: _tcp_state((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))},
+        schema,
+        io_values={"digital_out[0]": False},
+    )
+
+    assert chunk.joints == {}
+    assert [step[0] for step in chunk.tcp[mg.id]] == pytest.approx([1.25, 1.5, 1.25])
+    assert chunk.ios == {mg.id: {"digital_out[0]": True}}
+    assert client._async_queue is not None
+    published = client._async_queue.action_queue.published
+    assert chunk.tcp[mg.id] == [action[:6].tolist() for action in published.values()]
+
+    await client.close()
+
+
 def test_async_queue_freezes_current_and_two_successors() -> None:
     queue = TimestampedActionQueue(
         aggregation=AsyncQueueAggregation.WEIGHTED_AVERAGE,
@@ -481,7 +583,7 @@ async def test_async_queue_keeps_sending_observations_while_refill_is_pending(
 
     chunk = await client._async_queue.get_actions(
         {"arm_1": 1.0},
-        FlatActionLayout(joints=[(mg.id, slice(0, 6))], ios=[]),
+        FlatActionLayout(joints=[(mg.id, slice(0, 6))], tcp=[], ios=[]),
     )
 
     assert chunk.joints == {}
@@ -547,8 +649,106 @@ async def test_validate_schema_rejects_schema_without_joint_action(
     client = LeRobotPolicyClient("127.0.0.1:8080", "model", fps=15, actions_per_chunk=8)
     schema = PolicySchema(observations=[Observation.image("cam_scene_1", source=MagicMock())])
 
-    with pytest.raises(ValueError, match="requires at least one joint action"):
+    with pytest.raises(ValueError, match="requires at least one joint or TCP action"):
         await client.validate_schema(schema)
+
+
+def test_flat_action_layout_orders_joints_then_tcp_then_ios() -> None:
+    joint_mg = _mg("0@joint", "joint")
+    tcp_mg = _mg("0@tcp", "tcp")
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=joint_mg),
+            Observation.tcp("eef", source=tcp_mg, action=True),
+            Observation.io("gripper", source=joint_mg, io="digital_out[0]"),
+        ]
+    )
+
+    LeRobotSchema.validate_schema(schema)
+    layout = LeRobotSchema(dt_ms=50.0).action_layout(
+        {
+            joint_mg.id: _state((0.0,) * 6),
+            tcp_mg.id: _tcp_state((0.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
+        },
+        schema,
+    )
+
+    assert layout.joints == [(joint_mg.id, slice(0, 6))]
+    assert layout.tcp == [(tcp_mg.id, slice(6, 12))]
+    assert [
+        (group_id, io, action_slice) for group_id, io, _mapping, action_slice in layout.ios
+    ] == [(joint_mg.id, "digital_out[0]", slice(12, 13))]
+
+
+def test_decode_tcp_action_requires_six_values() -> None:
+    schema = LeRobotSchema(dt_ms=50.0)
+    layout = FlatActionLayout(joints=[], tcp=[("0@tcp", slice(0, 6))], ios=[])
+
+    with pytest.raises(ValueError, match="expected 6 values, got 5"):
+        schema.decode_arrays([np.asarray([1.0, 2.0, 3.0, 0.1, 0.2], dtype=np.float32)], layout)
+
+
+@pytest.mark.asyncio
+async def test_validate_schema_rejects_joint_and_tcp_control_for_the_same_group() -> None:
+    mg = _mg()
+    client = LeRobotPolicyClient("127.0.0.1:8080", "model", fps=15, actions_per_chunk=8)
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=mg),
+            Observation.tcp("eef", source=mg, action=True),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="both joint and TCP actions"):
+        await client.validate_schema(schema)
+
+
+def test_validate_schema_accepts_joint_targets_for_different_groups() -> None:
+    left = _mg("0@left", "left")
+    right = _mg("0@right", "right")
+    schema = PolicySchema(observations=[Observation.joint_positions("arms", source=[left, right])])
+
+    LeRobotSchema.validate_schema(schema)
+
+
+def test_validate_schema_rejects_duplicate_joint_targets_for_one_group() -> None:
+    mg = _mg()
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("first", source=mg),
+            Observation.joint_positions("second", source=mg),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="multiple joint action targets"):
+        LeRobotSchema.validate_schema(schema)
+
+
+def test_validate_schema_rejects_duplicate_tcp_targets_for_one_group() -> None:
+    mg = _mg()
+    schema = PolicySchema(
+        observations=[
+            Observation.tcp("first", source=mg, action=True),
+            Observation.tcp("second", source=mg, action=True),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="multiple TCP action targets"):
+        LeRobotSchema.validate_schema(schema)
+
+
+def test_validate_schema_rejects_duplicate_io_targets_for_one_group() -> None:
+    mg = _mg()
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=mg),
+            Observation.io("first", source=mg, io="digital_out[0]"),
+            Observation.io("second", source=mg, io="digital_out[0]"),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="multiple actions for the same IO target"):
+        LeRobotSchema.validate_schema(schema)
 
 
 @pytest.mark.asyncio
