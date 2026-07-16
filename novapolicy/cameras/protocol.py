@@ -9,10 +9,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from typing import TypeAlias
+
     import numpy as np
     from numpy.typing import NDArray
 
-    type CameraFrame = NDArray[np.uint8]
+    CameraFrame: TypeAlias = NDArray[np.uint8]
 
 
 @runtime_checkable
@@ -21,7 +23,7 @@ class LatestFrameSource(Protocol):
 
     def get_latest_frame(self, max_age_s: float = 5.0) -> CameraFrame:
         """Return the latest frame cached by the camera source."""
-        ...
+        raise NotImplementedError
 
 
 @runtime_checkable
@@ -68,7 +70,7 @@ class CameraSource(Protocol):
         Raises:
             RuntimeError: If no frame available or frame is stale.
         """
-        ...
+        raise NotImplementedError
 
     async def disconnect(self) -> None:
         """Release camera resources. Called after execution ends."""

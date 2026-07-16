@@ -16,14 +16,13 @@ from dataclasses import dataclass
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import requests
 
 if TYPE_CHECKING:
     from aiortc import MediaStreamTrack
-    from av import VideoFrame
     from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
@@ -192,7 +191,7 @@ class WebRTCConnection:
 
         try:  # noqa: PLW0717
             while True:
-                frame = cast("VideoFrame", await track.recv())
+                frame = await track.recv()
                 img = frame.to_ndarray(format="rgb24")
 
                 with self._frame_lock:

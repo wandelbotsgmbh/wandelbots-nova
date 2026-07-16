@@ -14,8 +14,6 @@ from novapolicy.lerobot.transport import LeRobotGrpcTransport
 from novapolicy.policy_client import PolicyClient
 
 if TYPE_CHECKING:
-    from lerobot.configs.types import PolicyFeature
-
     from nova.types import RobotState
     from novapolicy.lerobot.schema import FlatActionLayout
     from novapolicy.schema import PolicySchema
@@ -213,7 +211,7 @@ class LeRobotPolicyClient(PolicyClient):
                 policy_type=self._policy_type,
                 pretrained_name_or_path=self._pretrained_name_or_path,
                 lerobot_features=cast(
-                    "dict[str, PolicyFeature]",
+                    "dict[str, Any]",
                     self._lerobot_schema.features(schema, state_names, images),
                 ),
                 actions_per_chunk=self._actions_per_chunk,

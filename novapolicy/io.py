@@ -26,7 +26,8 @@ logger = logging.getLogger(__name__)
 
 
 class _IOValuesTarget(Protocol):
-    def set_io_values_ref(self, values: dict[str, object]) -> None: ...
+    def set_io_values_ref(self, values: dict[str, object]) -> None:
+        raise NotImplementedError
 
 
 class IOStreamCache:

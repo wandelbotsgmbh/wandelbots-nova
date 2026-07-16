@@ -74,7 +74,7 @@ class LeRobotAsyncActionQueue:
             if not pending.done():
                 pending.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await pending
+                _ = await pending
         self.reset()
 
     def synchronize(self, timestep: int) -> None:

@@ -20,7 +20,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from typing import TYPE_CHECKING, cast, overload
+from typing import TYPE_CHECKING, TypeAlias, cast, overload
 
 from novapolicy.estop import EstopMonitor, check_estop, check_sessions, triggered_stop_condition
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 _CARTESIAN_DIMS = 6  # x, y, z, rx, ry, rz — fixed by NOVA jogging API
 
-type _TargetValues = list[float] | list[list[float]]
+_TargetValues: TypeAlias = list[float] | list[list[float]]
 
 # Safety fallback: if the robot never reports a RUNNING jogging state, anchor
 # the elapsed clock anyway after this many seconds so the loop can't stall.
