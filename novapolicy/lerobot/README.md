@@ -84,10 +84,12 @@ from nova import Nova
 from nova.config import NovaConfig
 from novapolicy import (
     BoolMapping,
+    ContinuousExecution,
     LeRobotPolicyClient,
     Observation,
     PolicyExecutor,
     PolicySchema,
+    SequentialExecution,
     WebRTCCameras,
 )
 
@@ -115,7 +117,7 @@ async with Nova(config=NovaConfig(host="http://<nova-host>")) as nova:
 
     # This config must be visible to the NOVA client. The model weights may
     # remain at a server-only path.
-    execution = load_execution_settings("./my_lerobot_policy/config.json")
+    settings = load_execution_settings("./my_lerobot_policy/config.json")
 
     policy = LeRobotPolicyClient(
         server_address="<lerobot-server-host>:8080",
@@ -123,15 +125,15 @@ async with Nova(config=NovaConfig(host="http://<nova-host>")) as nova:
         policy_type="act",
         fps=15,
         playback_speed=1.0,
-        actions_per_chunk=execution.chunk_size,
+        actions_per_chunk=settings.chunk_size,
         device="cuda",
     )
 
     executor = PolicyExecutor(
         schema,
         policy,
-        policy_rate_hz=-1,
-        n_action_steps=execution.n_action_steps,
+        execution=SequentialExecution(),
+        n_action_steps=settings.n_action_steps,
         timeout_s=80,
     )
     result = await executor.run()
@@ -249,15 +251,15 @@ to report that its waypoint buffer reached standstill before the next inference:
 PolicyExecutor(
     schema,
     policy,
-    policy_rate_hz=-1,
+    execution=SequentialExecution(),
     n_action_steps=settings.n_action_steps,
 )
 ```
 
 This prevents the policy observation from being captured while the robot is still moving and avoids
 executing the lower-confidence tail beyond the checkpoint's configured execution horizon. The
-default sequential mode (`policy_rate_hz=-1`) automatically waits for exact NOVA standstill and, if
-ACT's first target is farther away than the spacing inside its executed horizon, prepends a
+`SequentialExecution` automatically waits for exact NOVA standstill and, if ACT's first target is
+farther away than the spacing inside its executed horizon, prepends a
 same-`dt_ms` interpolated bridge to one continuous motion request. IO and computed actions fire when
 NOVA's server clock reaches policy waypoint zero; the
 robot does not stop at that boundary. Endpoint interpolation allocates additional same-`dt_ms`
@@ -296,10 +298,9 @@ leaves this disabled, and IO action values are never filtered.
 The client normally consumes one action each policy control tick, requests a refill when 75% of the
 previous chunk remains by default, and merges overlapping actions using the selected enum mode.
 Refills use LeRobot's `must_go` flag because the server's default one-radian observation similarity
-tolerance would otherwise defer most ACT inference until queue depletion. Configure
-`PolicyExecutor` with `policy_rate_hz=fps`, `n_action_steps=0`, and
-`acceleration_and_braking_override=None` because continuously replaced chunks do not brake at each
-endpoint.
+tolerance would otherwise defer most ACT inference until queue depletion. Configure `PolicyExecutor` with
+`execution=ContinuousExecution(rate_hz=fps * playback_speed)` and `n_action_steps=0`.
+Continuously replaced chunks do not expose per-chunk endpoint ramps.
 
 NOVA's jogger clock advances independently of the Python control loop. Before consuming an action,
 the executor maps the latest acknowledged raw NOVA controller timestamp to the absolute LeRobot

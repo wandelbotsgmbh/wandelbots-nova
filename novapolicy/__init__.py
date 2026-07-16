@@ -36,13 +36,16 @@ from novapolicy.schema import (
     PolicySchema,
 )
 from novapolicy.types import (
-    AccelerationAndBrakingOverride,
     ActionChunk,
     ActionMode,
+    ContinuousExecution,
     EmergencyStopError,
+    EndpointRamp,
+    ExecutionMode,
     JoggingMode,
     JoggingNotSupportedError,
     MotionError,
+    SequentialExecution,
     StopCondition,
     StopContext,
     WaypointConfig,
@@ -67,7 +70,6 @@ def __getattr__(name: str) -> object:
 
 
 __all__ = [
-    "AccelerationAndBrakingOverride",
     "Action",
     "ActionChunk",
     "ActionMode",
@@ -75,7 +77,10 @@ __all__ = [
     "CallbackPolicyClient",
     "CameraSource",
     "ConnectedActionChunk",
+    "ContinuousExecution",
     "EmergencyStopError",
+    "EndpointRamp",
+    "ExecutionMode",
     "ExecutionResult",
     "ExecutorStatus",
     "Gr00tPolicyClient",
@@ -91,6 +96,7 @@ __all__ = [
     "PolicyExecutor",
     "PolicySchema",
     "RTCConfig",
+    "SequentialExecution",
     "StopCondition",
     "StopContext",
     "TcpJogger",

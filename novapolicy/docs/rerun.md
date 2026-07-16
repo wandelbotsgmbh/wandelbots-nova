@@ -13,12 +13,18 @@ timeseries — zero overhead when no viewer is active.
 
 ```python
 from nova import viewers
+from novapolicy import SequentialExecution
 
 
 @nova.program(id="my_policy", viewer=viewers.Rerun())
 async def run(ctx):
     ...
-    executor = PolicyExecutor(schema, policy, timeout_s=10.0)
+    executor = PolicyExecutor(
+        schema,
+        policy,
+        execution=SequentialExecution(),
+        timeout_s=10.0,
+    )
     await executor.run()  # data streams to Rerun viewer automatically
 ```
 

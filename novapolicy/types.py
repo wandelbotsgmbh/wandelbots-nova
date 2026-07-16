@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+import math
+from typing import TYPE_CHECKING, Literal, TypeAlias
 
 import pydantic
 
@@ -20,7 +21,7 @@ ValueType = int | str | bool | float | Pose
 ActionMode = Literal["absolute", "relative"]
 JoggingMode = Literal["joint", "cartesian"]
 
-_MIN_ACCELERATION_AND_BRAKING_STEPS = 2
+_MIN_ENDPOINT_RAMP_STEPS = 2
 
 
 class ActionChunk(pydantic.BaseModel, frozen=True):
@@ -97,16 +98,38 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
 
 
 @dataclass(frozen=True, slots=True)
-class AccelerationAndBrakingOverride:
-    """Optional endpoint interpolation for settled action chunks."""
+class EndpointRamp:
+    """Endpoint interpolation applied to each settled sequential chunk."""
 
     interpolation_steps: int = 3
     """Intervals replacing each endpoint interval. Must be at least two."""
 
     def __post_init__(self) -> None:
-        if self.interpolation_steps < _MIN_ACCELERATION_AND_BRAKING_STEPS:
-            msg = "interpolation_steps must be at least 2"
-            raise ValueError(msg)
+        if self.interpolation_steps < _MIN_ENDPOINT_RAMP_STEPS:
+            raise ValueError("interpolation_steps must be at least 2")
+
+
+@dataclass(frozen=True, slots=True)
+class SequentialExecution:
+    """Execute one complete chunk, reach standstill, then infer again."""
+
+    endpoint_ramp: EndpointRamp | None = EndpointRamp()
+    """Per-chunk acceleration/braking interpolation, or ``None`` to disable."""
+
+
+@dataclass(frozen=True, slots=True)
+class ContinuousExecution:
+    """Continuously replace the active lookahead without per-chunk braking."""
+
+    rate_hz: float | None = None
+    """Fixed inference rate, or ``None`` to run as fast as inference allows."""
+
+    def __post_init__(self) -> None:
+        if self.rate_hz is not None and (not math.isfinite(self.rate_hz) or self.rate_hz <= 0):
+            raise ValueError("rate_hz must be a positive finite value or None")
+
+
+ExecutionMode: TypeAlias = SequentialExecution | ContinuousExecution
 
 
 @dataclass(frozen=True, slots=True)

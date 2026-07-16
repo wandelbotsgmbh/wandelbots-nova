@@ -14,10 +14,12 @@ import logging
 import math
 from typing import TYPE_CHECKING, Any
 
-from novapolicy.types import ActionChunk
+from novapolicy.types import ActionChunk, ContinuousExecution
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from novapolicy.types import ExecutionMode
 
 logger = logging.getLogger(__name__)
 
@@ -520,22 +522,23 @@ class Placement:
     timestamp_offset_steps: int
 
 
-def placement(chunk: ActionChunk, *, policy_rate_hz: float) -> Placement:
+def placement(chunk: ActionChunk, *, execution: ExecutionMode) -> Placement:
     """Decide how a chunk is anchored on one session's timeline.
 
     The "now" component is intentionally NOT resolved here — it is computed at
     yield time in :func:`novapolicy.jogging.waypoints.make_waypoints_request` so the
-    anchor cannot go stale while the chunk waits in the session queue. This
-    matters most for continuous replacement, whose seam alignment is sensitive to that delay.
+    timestamp cannot go stale while the chunk waits in the session queue. This
+    matters most for continuous replacement, whose seam alignment is sensitive
+    to that delay.
 
     * An explicit ``chunk.first_timestamp_ms`` (>=0) set by the policy wins —
       used verbatim, anchored exactly.
-    * Wait-for-chunk (``policy_rate_hz < 0``) — "now", one step ahead.
-    * Otherwise (continuous replacement) — "now", backdated by ``seam_backdate_steps`` so
+    * Sequential execution — "now", one step ahead.
+    * Continuous execution — "now", backdated by ``seam_backdate_steps`` so
       the step matching the robot's current position lands at "now".
     """
     if chunk.first_timestamp_ms >= 0:
         return Placement(chunk.first_timestamp_ms, 0)
-    if policy_rate_hz < 0:
-        return Placement(None, 1)
-    return Placement(None, -chunk.seam_backdate_steps)
+    if isinstance(execution, ContinuousExecution):
+        return Placement(None, -chunk.seam_backdate_steps)
+    return Placement(None, 1)

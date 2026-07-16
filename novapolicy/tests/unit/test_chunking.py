@@ -23,7 +23,7 @@ from novapolicy.chunking import (
     smooth_action_chunk,
     trim_chunk,
 )
-from novapolicy.types import ActionChunk
+from novapolicy.types import ActionChunk, ContinuousExecution, SequentialExecution
 
 # Strategies for generated chunks --------------------------------------------
 
@@ -385,37 +385,32 @@ def test_relative_mode_with_no_groups_is_identity(steps):
 # placement -----------------------------------------------------------------
 
 
-@given(
-    explicit=st.integers(min_value=0, max_value=100_000),
-    rate=st.floats(-5.0, 60.0),
-)
-@settings(max_examples=200, deadline=None)
-def test_an_explicit_start_time_always_wins(explicit, rate):
+@given(explicit=st.integers(min_value=0, max_value=100_000))
+def test_an_explicit_start_time_always_wins(explicit):
     """A first_timestamp_ms the policy set (>= 0) becomes an exact anchor in every mode."""
     chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]}, first_timestamp_ms=explicit)
-    place = placement(chunk, policy_rate_hz=rate)
-    assert place.first_timestamp_ms == explicit
-    assert place.timestamp_offset_steps == 0
+    for execution in (
+        SequentialExecution(),
+        ContinuousExecution(),
+        ContinuousExecution(rate_hz=20),
+    ):
+        place = placement(chunk, execution=execution)
+        assert place.first_timestamp_ms == explicit
+        assert place.timestamp_offset_steps == 0
 
 
-@given(rate=st.floats(-5.0, -0.001))
-@settings(max_examples=100, deadline=None)
-def test_wait_for_chunk_mode_always_anchors_at_now_one_step_ahead(rate):
-    """Sequential mode with no explicit start resolves now one step ahead."""
+def test_sequential_execution_anchors_at_now_one_step_ahead():
+    """Sequential execution with no explicit start resolves now one step ahead."""
     chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]})
-    place = placement(chunk, policy_rate_hz=rate)
+    place = placement(chunk, execution=SequentialExecution())
     assert place.first_timestamp_ms is None
     assert place.timestamp_offset_steps == 1
 
 
-@given(
-    rate=st.floats(0.0, 60.0),
-    seam=st.integers(min_value=0, max_value=64),
-)
-@settings(max_examples=200, deadline=None)
-def test_overlapping_mode_anchors_at_now_backdated_by_the_seam_property(rate, seam):
-    """Overlapping mode resolves now, backdated by the seam steps."""
+@given(seam=st.integers(min_value=0, max_value=64))
+def test_continuous_execution_anchors_at_now_backdated_by_the_seam(seam):
+    """Continuous execution resolves now, backdated by the seam steps."""
     chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]}, seam_backdate_steps=seam)
-    place = placement(chunk, policy_rate_hz=rate)
+    place = placement(chunk, execution=ContinuousExecution())
     assert place.first_timestamp_ms is None
     assert place.timestamp_offset_steps == -seam

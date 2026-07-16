@@ -188,7 +188,7 @@ client = Gr00tPolicyClient(
     host="gpu-server",
     port=30555,
     rtc=True,  # Enable RTC
-    control_freq=20,  # Policy rate (Hz) — matches policy_rate_hz
+    control_freq=20,  # Policy rate (Hz) — matches ContinuousExecution.rate_hz
     max_rtc_overlap_factor=0.75,  # Max fraction of chunk to overlap
     rtc_ramp_rate=3.0,  # Denoising ramp rate
     denoising_steps=8,  # DiT denoising iterations
@@ -208,7 +208,7 @@ from gr00t.eval.robot.rtc_policy import RTCPolicyWrapper  # from PR #320
 base_policy = Gr00tPolicy(embodiment_tag=..., model_path=..., device="cuda:0")
 rtc_policy = RTCPolicyWrapper(
     base_policy,
-    control_freq=20,  # must match client policy_rate_hz
+    control_freq=20,  # must match ContinuousExecution.rate_hz
     denoising_steps=8,
     max_rtc_overlap_factor=0.75,
 )
@@ -243,7 +243,7 @@ This is what PR #320's design implies: the wrapper lives wherever latency is mea
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| `control_freq` | 20 | Matches our `policy_rate_hz=20` |
+| `control_freq` | 20 | Matches `ContinuousExecution(rate_hz=20)` |
 | `action_horizon` | 16 | GR00T N1.7 default |
 | `n_action_steps` | 8 | Receding horizon (only execute first 8 of 16) |
 | `denoising_steps` | 8 | Default; can try 4 for lower latency |

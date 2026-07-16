@@ -37,6 +37,7 @@ from novapolicy import (
     Action,
     ActionChunk,
     CallbackPolicyClient,
+    ContinuousExecution,
     Observation,
     PolicyExecutor,
     PolicySchema,
@@ -122,8 +123,7 @@ async def computed_action_example(ctx: ProgramContext):
         schema,
         CallbackPolicyClient(mock_policy),
         timeout_s=5.0,
-        policy_rate_hz=20,
-        acceleration_and_braking_override=None,
+        execution=ContinuousExecution(rate_hz=20),
     )
 
     print("Running for 5s — watch for [computed action] lines...")

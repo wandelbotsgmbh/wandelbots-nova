@@ -16,7 +16,7 @@ flowchart LR
 
 ## Execution Loop
 
-### Sequential mode (`policy_rate_hz=-1`, default)
+### `SequentialExecution` (default)
 
 ```
 1. Observe robot state
@@ -27,7 +27,7 @@ flowchart LR
 6. Go to 1
 ```
 
-### Continuous async-inference mode (`policy_rate_hz >= 0`)
+### `ContinuousExecution`
 
 In continuous mode the executor runs as a **receding horizon controller**: at
 each tick it queries the policy for a fresh chunk and sends it, overlapping the
@@ -39,7 +39,7 @@ policies that implement model-side Real-Time Chunking (RTC).
 1. Observe robot state
 2. Query policy → get action chunk
 3. Send waypoints to server (overrides previous chunk)
-4. Sleep until next tick (1/policy_rate_hz)
+4. If `rate_hz` is set, sleep until the next fixed-rate tick
 5. Go to 1
 ```
 
@@ -55,60 +55,55 @@ from an asynchronous action queue or from model-side [Real-Time Chunking](rtc.md
 
 ## Configuration
 
-```python
-from novapolicy import PolicyExecutor, WaypointConfig
+Execution behavior is selected with an explicit mode object:
 
-# WaypointConfig: how waypoints are sent to the robot
-config = WaypointConfig(
-    state_rate_ms=10,  # state stream update rate
+```python
+from novapolicy import (
+    ContinuousExecution,
+    PolicyExecutor,
+    SequentialExecution,
+    WaypointConfig,
 )
 
-# PolicyExecutor: controls timing and chunk transforms
-executor = PolicyExecutor(
+config = WaypointConfig(state_rate_ms=10)
+
+# Complete and settle every chunk before the next inference.
+sequential = PolicyExecutor(
     schema,
     policy,
     motion=config,
-    # Omit policy_rate_hz for sequential execution.
-    # Set 0 for continuous ASAP replacement or >0 for fixed-rate replacement.
-    n_action_steps=8,  # send only first N policy steps (0 = all)
+    execution=SequentialExecution(),
+    n_action_steps=8,
+)
+
+# Replace lookaheads continuously at 20 Hz.
+continuous_fixed = PolicyExecutor(
+    schema,
+    policy,
+    motion=config,
+    execution=ContinuousExecution(rate_hz=20),
+    n_action_steps=8,
+)
+
+# Replace lookaheads as fast as inference allows.
+continuous_asap = PolicyExecutor(
+    schema,
+    policy,
+    execution=ContinuousExecution(),
 )
 ```
 
 `PolicyExecutor` accepts `PolicyClient` instances only. Wrap local async callbacks with
 `CallbackPolicyClient`; backend clients such as GR00T and LeRobot implement the interface directly.
 
-### policy_rate_hz
-
-| Value | Behavior | Use case |
+| Mode | Behavior | Use case |
 |---|---|---|
-| `-1` (default) | Wait for exact chunk completion and standstill, bridge to the next prediction, then replan | Sequential inference |
-| `0` | Continuously replace chunks as fast as inference allows | Asynchronous inference or RTC |
-| `>0` (e.g. `20`) | Continuously replace chunks at a fixed rate | Asynchronous inference or RTC |
+| `SequentialExecution()` | Wait for exact chunk completion and standstill, bridge to the next prediction, then replan | Settled sequential inference |
+| `ContinuousExecution()` | Replace chunks as fast as inference allows | Asynchronous inference or RTC |
+| `ContinuousExecution(rate_hz=20)` | Replace chunks at a positive fixed rate | Rate-controlled asynchronous inference or RTC |
 
-```python
-# Sequential inference
-executor = PolicyExecutor(
-    schema,
-    policy,
-    motion=WaypointConfig(),
-    n_action_steps=8,
-)
-
-# Continuous asynchronous inference at 20 Hz
-executor = PolicyExecutor(
-    schema,
-    policy,
-    policy_rate_hz=20,
-    motion=WaypointConfig(),
-    n_action_steps=8,
-    acceleration_and_braking_override=None,
-)
-```
-
-For a sequential policy there is no reason to specify `policy_rate_hz`: its default already means
-“execute the chunk, reach standstill, observe, and infer again.” Set a non-negative value only when
-chunks are intentionally replaced continuously. The execution mode also controls bridging; there
-are no separate `wait_for_settle` or `bridge_to_first_waypoint` switches.
+The mode owns every setting that is meaningful to it. In particular, endpoint ramps belong to
+`SequentialExecution`; a continuously replaced chunk has no final endpoint to brake at.
 
 ### Bridging a distant first waypoint
 
@@ -121,30 +116,27 @@ Continuous policies may use this bridge for their initial lookahead only. Later 
 the active trajectory without re-anchoring it to the measured state. The same behavior is available
 through `novapolicy.connect_action_chunk(...)` and `novapolicy.create_bridge_chunk(...)`.
 
-### Optional acceleration and braking override
+### Sequential endpoint ramps
 
 A settled executor intentionally lets every submitted waypoint request end, so every request starts
-and finishes at zero velocity. By default, the executor replaces the first and final waypoint
-intervals with three same-`dt_ms` intervals for acceleration and braking. Customize or disable this
-through the grouped override:
+and finishes at zero velocity. `SequentialExecution` replaces the first and final waypoint
+intervals with three same-`dt_ms` intervals by default. Customize or disable this mode-owned setting:
 
 ```python
-from novapolicy import AccelerationAndBrakingOverride, PolicyExecutor
+from novapolicy import EndpointRamp, PolicyExecutor, SequentialExecution
 
-# Use four intervals instead of the default three.
 custom = PolicyExecutor(
     schema,
     policy,
-    acceleration_and_braking_override=AccelerationAndBrakingOverride(
-        interpolation_steps=4,
+    execution=SequentialExecution(
+        endpoint_ramp=EndpointRamp(interpolation_steps=4),
     ),
 )
 
-# Preserve policy chunks without endpoint interpolation.
 disabled = PolicyExecutor(
     schema,
     policy,
-    acceleration_and_braking_override=None,
+    execution=SequentialExecution(endpoint_ramp=None),
 )
 ```
 
@@ -158,9 +150,9 @@ All original waypoints remain in the request. The generic
 `novapolicy.interpolate_action_chunk_ramps(...)` helper returns both the interpolated motion and an
 original-index → interpolated-index mapping. The executor uses that mapping to keep deferred IO and
 computed actions aligned with policy waypoint zero after a bridge. Each added point retains the
-original `dt_ms`, intentionally increasing request duration. Pass
-`acceleration_and_braking_override=None` to preserve the policy chunk unchanged. Continuous
-replacement must disable the override because its chunks do not end at standstill.
+original `dt_ms`, intentionally increasing request duration. Continuous execution does not expose
+this setting because every chunk tail is provisional. Its policy client must provide a coherent
+initial lookahead and preserve continuity across replacement seams.
 
 ### Mutable lookahead smoothing
 
@@ -226,8 +218,8 @@ offset measured in whole `dt` steps —
 | case | anchor | offset |
 |------|--------|--------|
 | explicit `first_timestamp_ms >= 0` | that value | `0` (exact) |
-| wait-for-chunk (`policy_rate_hz < 0`) | `now` | `+1` step (one dt ahead) |
-| continuous replacement (`policy_rate_hz >= 0`) | `now` | `-seam_backdate_steps` (backdated) |
+| `SequentialExecution` | `now` | `+1` step (one dt ahead) |
+| `ContinuousExecution` | `now` | `-seam_backdate_steps` (backdated) |
 
 The `now` anchor is resolved at *yield time* (right before the websocket send)
 so it cannot go stale while the chunk waits in the session queue.

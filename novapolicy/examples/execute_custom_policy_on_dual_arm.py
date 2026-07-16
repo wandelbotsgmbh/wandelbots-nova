@@ -31,6 +31,7 @@ from novapolicy import (
     ActionChunk,
     BoolMapping,
     CallbackPolicyClient,
+    ContinuousExecution,
     EmergencyStopError,
     MotionError,
     Observation,
@@ -254,9 +255,8 @@ async def dual_arm_policy(ctx: ProgramContext):
         CallbackPolicyClient(mock_policy),
         stop_conditions=[stop_on_speed, stop_on_io],
         timeout_s=10.0,
-        policy_rate_hz=20,
+        execution=ContinuousExecution(rate_hz=20),
         n_action_steps=8,
-        acceleration_and_braking_override=None,
     )
 
     print("Running policy for 10s...")

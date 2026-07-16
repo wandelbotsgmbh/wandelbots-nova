@@ -27,10 +27,11 @@ from novapolicy.io import IOStreamManager
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.policy_client import PolicyClient
 from novapolicy.types import (
-    AccelerationAndBrakingOverride,
     ActionChunk,
+    ContinuousExecution,
     EmergencyStopError,
     MotionError,
+    SequentialExecution,
     StopContext,
     WaypointConfig,
 )
@@ -42,14 +43,14 @@ if TYPE_CHECKING:
     from nova.types import RobotState
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.schema import PolicySchema
-    from novapolicy.types import StopCondition
+    from novapolicy.types import ExecutionMode, StopCondition
 
 logger = logging.getLogger(__name__)
 
 _ASYNC_SEAM_STEPS = 4
 _ASYNC_REPLACEMENT_LEAD_STEPS = 1
 _DEFAULT_WAYPOINT_CONFIG = WaypointConfig()
-_DEFAULT_ACCELERATION_AND_BRAKING_OVERRIDE = AccelerationAndBrakingOverride()
+_DEFAULT_EXECUTION = SequentialExecution()
 
 
 class Phase(StrEnum):
@@ -109,10 +110,8 @@ class PolicyExecutor:
         timeout_s: float = 0,
         camera_max_age_s: float = 30.0,
         motion: WaypointConfig = _DEFAULT_WAYPOINT_CONFIG,
-        policy_rate_hz: float = -1,
+        execution: ExecutionMode = _DEFAULT_EXECUTION,
         n_action_steps: int = 0,
-        acceleration_and_braking_override: AccelerationAndBrakingOverride
-        | None = _DEFAULT_ACCELERATION_AND_BRAKING_OVERRIDE,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
         trajectory_trace_path: str | Path | None = None,
     ) -> None:
@@ -126,25 +125,16 @@ class PolicyExecutor:
             timeout_s: Maximum execution duration in seconds. 0 = no timeout.
             camera_max_age_s: Maximum allowed age of a camera frame before raising.
             motion: Waypoint jogging configuration. Defaults to WaypointConfig().
-            policy_rate_hz: Controls timing between policy calls.
-                -1 (default): Bridge from the observed state when needed, wait
-                    for the exact chunk deadline and NOVA standstill, then call
-                    the policy again. Use for settled sequential inference.
-                0: Call the policy as fast as possible (no sleep between calls).
-                    Each new chunk immediately replaces the previous one.
-                >0: Call the policy at this fixed rate (Hz). Each new chunk
-                    replaces the previous one mid-execution. Use for continuous
-                    asynchronous inference or model-side RTC.
+            execution: Explicit execution strategy. ``SequentialExecution``
+                completes and settles each chunk before the next inference;
+                ``ContinuousExecution`` replaces the active lookahead either as
+                fast as possible or at its configured fixed rate.
             n_action_steps: Number of steps from each action chunk to execute.
                 0 (default): Execute all steps returned by the policy.
                 >0: Trim to first N steps (receding horizon). Later steps
                 have higher prediction uncertainty and are discarded.
                 The policy still predicts the full action_horizon (e.g. 16)
                 which remains available to asynchronous policy clients.
-            acceleration_and_braking_override: Endpoint interpolation settings
-                for settled execution. Defaults to three intervals for acceleration
-                and braking. Pass a custom override to change the interval count or
-                ``None`` to disable interpolation.
             start_joint_position: Optional mapping of motion group to joint pose
                 to PTP-move to before starting waypoint jogging.
             trajectory_trace_path: Optional JSON output containing every policy
@@ -170,27 +160,13 @@ class PolicyExecutor:
             self._trajectory_trace.enable_policy_client(self._policy)
         self._stop_conditions = stop_conditions or []
         self._timeout_s = timeout_s
-        self._policy_rate_hz = policy_rate_hz
+        if not isinstance(execution, (SequentialExecution, ContinuousExecution)):
+            raise TypeError("execution must be SequentialExecution or ContinuousExecution")
+        self._execution = execution
         self._n_action_steps_cfg = n_action_steps
-        self._acceleration_and_braking_override = acceleration_and_braking_override
 
-        # Acceleration and braking interpolation adds time to a request that
-        # deliberately ends at standstill. It does not apply to continuously
-        # replaced chunks.
-        if self._acceleration_and_braking_override is not None and self._policy_rate_hz >= 0:
-            msg = (
-                "acceleration_and_braking_override requires settled wait-for-chunk mode; "
-                "pass None for continuous execution"
-            )
-            raise ValueError(msg)
-
-        if self._policy_rate_hz < 0 and self._policy.rtc is not None:
-            msg = (
-                f"RTC is enabled on the policy but policy_rate_hz={self._policy_rate_hz} "
-                "(wait-for-chunk). RTC requires overlapping placement: set "
-                "policy_rate_hz to 0 (ASAP) or a fixed rate (>0 Hz)."
-            )
-            raise ValueError(msg)
+        if isinstance(execution, SequentialExecution) and self._policy.rtc is not None:
+            raise ValueError("RTC requires ContinuousExecution")
 
         self._sessions: dict[str, WaypointJoggingSession] = {}
         self._cameras = CameraManager(camera_max_age_s)
@@ -401,14 +377,17 @@ class PolicyExecutor:
 
         self.status.message = "Preparing policy..."
 
-        # Determine timing mode
-        # -1 = wait for chunk, 0 = as fast as possible, >0 = fixed rate
-        fixed_rate_period = 1.0 / self._policy_rate_hz if self._policy_rate_hz > 0 else 0.0
+        fixed_rate_period = (
+            1.0 / self._execution.rate_hz
+            if isinstance(self._execution, ContinuousExecution)
+            and self._execution.rate_hz is not None
+            else 0.0
+        )
 
         while not self._stop_event.is_set():
             # Always yield once per iteration so stop()/other tasks make progress
             # even when the policy and sleeps below complete synchronously
-            # (e.g. dt_ms=0 with policy_rate_hz<=0, or a local in-process policy).
+            # (e.g. dt_ms=0 or a local in-process policy).
             await asyncio.sleep(0)
 
             termination = self._termination_result(step, start_time, last_obs)
@@ -462,7 +441,7 @@ class PolicyExecutor:
                 if boundary_termination is not None:
                     return boundary_termination
             else:
-                sent_chunk = self._apply_acceleration_and_braking(trimmed)
+                sent_chunk = self._apply_endpoint_ramp(trimmed)
                 await self._schema.run_computed_actions(action)
                 self._log_policy_action(action, step)
                 self._send(sent_chunk)
@@ -539,7 +518,7 @@ class PolicyExecutor:
         needs_continuous_bridge = continuous_bridge and (
             chunk.action_timestep < 0 or not self._policy_timelines
         )
-        if self._policy_rate_hz >= 0 and not needs_continuous_bridge:
+        if isinstance(self._execution, ContinuousExecution) and not needs_continuous_bridge:
             return None
         connected = connect_action_chunk(
             chunk,
@@ -548,27 +527,35 @@ class PolicyExecutor:
         )
         if connected is None:
             return None
-        return self._apply_connected_acceleration_and_braking(connected)
+        return self._apply_connected_endpoint_ramp(connected)
 
-    def _apply_acceleration_and_braking(self, chunk: ActionChunk) -> ActionChunk:
-        override = self._acceleration_and_braking_override
-        if override is None:
+    def _apply_endpoint_ramp(self, chunk: ActionChunk) -> ActionChunk:
+        ramp = (
+            self._execution.endpoint_ramp
+            if isinstance(self._execution, SequentialExecution)
+            else None
+        )
+        if ramp is None:
             return chunk
         return interpolate_action_chunk_ramps(
             chunk,
-            interpolation_steps=override.interpolation_steps,
+            interpolation_steps=ramp.interpolation_steps,
         ).motion
 
-    def _apply_connected_acceleration_and_braking(
+    def _apply_connected_endpoint_ramp(
         self,
         connected: ConnectedActionChunk,
     ) -> ConnectedActionChunk:
-        override = self._acceleration_and_braking_override
-        if override is None:
+        ramp = (
+            self._execution.endpoint_ramp
+            if isinstance(self._execution, SequentialExecution)
+            else None
+        )
+        if ramp is None:
             return connected
         interpolated = interpolate_action_chunk_ramps(
             connected.motion,
-            interpolation_steps=override.interpolation_steps,
+            interpolation_steps=ramp.interpolation_steps,
         )
         policy_start_steps = {
             group_id: interpolated.original_step_indices[group_id][policy_start_step]
@@ -612,7 +599,11 @@ class PolicyExecutor:
             start_time=start_time,
             last_obs=last_obs,
         )
-        if termination is None and self._policy_rate_hz >= 0 and action.action_timestep >= 0:
+        if (
+            termination is None
+            and isinstance(self._execution, ContinuousExecution)
+            and action.action_timestep >= 0
+        ):
             for group_id, policy_start_step in connected.policy_start_steps.items():
                 session = self._sessions.get(group_id)
                 if session is None:
@@ -773,11 +764,10 @@ class PolicyExecutor:
         fixed_rate_period: float,
     ) -> None:
         """Pace the loop after a chunk is sent, per the configured timing mode."""
-        if self._policy_rate_hz < 0:
+        if isinstance(self._execution, SequentialExecution):
             await self._wait_until_sessions_settled(start_time)
-        elif self._policy_rate_hz > 0:
-            # Fixed-rate: sleep for the remainder of the period.
-            # Each new chunk replaces the previous one mid-execution.
+        elif fixed_rate_period > 0:
+            # Fixed-rate continuous execution sleeps for the remainder of the period.
             elapsed = time.monotonic() - tick_start
             sleep_time = fixed_rate_period - elapsed
             if sleep_time > 0:
@@ -913,10 +903,11 @@ class PolicyExecutor:
         dt_ms`` must exceed the inference latency (increase dt_ms or cut latency
         otherwise).
         """
-        place = placement(chunk, policy_rate_hz=self._policy_rate_hz)
+        place = placement(chunk, execution=self._execution)
         server_dt_ms = (
             chunk.dt_ms
-            if self._policy_rate_hz >= 0 and self._policy.requires_first_waypoint_bridge
+            if isinstance(self._execution, ContinuousExecution)
+            and self._policy.requires_first_waypoint_bridge
             else None
         )
         target_chunks: dict[str, int] = {}

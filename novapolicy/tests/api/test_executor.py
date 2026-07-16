@@ -22,11 +22,13 @@ from novapolicy.executor import Phase, PolicyExecutor
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.schema import Action, Observation, ObservationEntry, PolicySchema
 from novapolicy.types import (
-    AccelerationAndBrakingOverride,
     ActionChunk,
     ActionMode,
+    ContinuousExecution,
     EmergencyStopError,
+    EndpointRamp,
     MotionError,
+    SequentialExecution,
     StopContext,
     WaypointConfig,
 )
@@ -288,7 +290,7 @@ async def test_bridge_and_policy_are_sent_as_one_continuous_chunk(robot: _Robot)
         _schema(),
         _callback(policy),
         timeout_s=1.0,
-        acceleration_and_braking_override=None,
+        execution=SequentialExecution(endpoint_ramp=None),
     )
 
     await executor.run()
@@ -321,8 +323,7 @@ async def test_continuous_mode_does_not_bridge_chunks(robot: _Robot):
         _schema(),
         _callback(policy),
         timeout_s=1.0,
-        policy_rate_hz=0,
-        acceleration_and_braking_override=None,
+        execution=ContinuousExecution(),
     )
     await executor.run()
 
@@ -347,8 +348,7 @@ async def test_continuous_async_queue_policy_requests_a_measured_state_bridge(ro
         _schema(),
         policy,
         timeout_s=1.0,
-        policy_rate_hz=20,
-        acceleration_and_braking_override=None,
+        execution=ContinuousExecution(rate_hz=20),
     )
     await executor.run()
 
@@ -415,8 +415,7 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
         _schema(),
         policy,
         timeout_s=1.0,
-        policy_rate_hz=100,
-        acceleration_and_braking_override=None,
+        execution=ContinuousExecution(rate_hz=100),
     )
 
     await executor.run()
@@ -504,19 +503,15 @@ async def test_connected_chunk_defers_io_and_computed_action_to_policy_boundary(
     _ = await run_task
 
 
-def test_acceleration_and_braking_override_validates_interpolation_steps() -> None:
+def test_endpoint_ramp_validates_interpolation_steps() -> None:
     with pytest.raises(ValueError, match="interpolation_steps must be at least 2"):
-        AccelerationAndBrakingOverride(interpolation_steps=1)
+        EndpointRamp(interpolation_steps=1)
 
 
-def test_acceleration_and_braking_override_requires_settled_execution() -> None:
-    with pytest.raises(ValueError, match="requires settled"):
-        PolicyExecutor(
-            _schema(),
-            _hold,
-            policy_rate_hz=20,
-            acceleration_and_braking_override=AccelerationAndBrakingOverride(),
-        )
+def test_continuous_execution_rejects_invalid_fixed_rates() -> None:
+    for rate_hz in (0.0, -1.0, float("inf"), float("nan")):
+        with pytest.raises(ValueError, match="positive finite"):
+            ContinuousExecution(rate_hz=rate_hz)
 
 
 @pytest.mark.asyncio
@@ -555,8 +550,7 @@ async def test_policy_prepare_time_does_not_count_towards_execution_timeout(robo
         policy,
         motion=WaypointConfig(),
         timeout_s=0.05,
-        policy_rate_hz=0,
-        acceleration_and_braking_override=None,
+        execution=ContinuousExecution(),
     )
     policy.executor = executor
 
@@ -791,16 +785,20 @@ def test_rtc_without_overlapping_placement_is_rejected():
     """RTC + wait-for-chunk would silently drop the seam backdate — reject it."""
     policy = _TestPolicy(_hold_action, rtc=object())
     with pytest.raises(ValueError, match="RTC"):
-        PolicyExecutor(_schema(), policy, motion=WaypointConfig(), policy_rate_hz=-1)
+        PolicyExecutor(
+            _schema(),
+            policy,
+            motion=WaypointConfig(),
+            execution=SequentialExecution(),
+        )
 
 
-def test_rtc_with_overlapping_placement_is_accepted():
-    """RTC + a non-negative policy_rate_hz is the valid combination."""
+def test_rtc_with_continuous_execution_is_accepted():
+    """RTC and continuous replacement are a valid combination."""
     policy = _TestPolicy(_hold_action, rtc=object())
     PolicyExecutor(
         _schema(),
         policy,
         motion=WaypointConfig(),
-        policy_rate_hz=20,
-        acceleration_and_braking_override=None,
+        execution=ContinuousExecution(rate_hz=20),
     )  # no raise

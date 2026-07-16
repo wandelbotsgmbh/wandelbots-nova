@@ -92,6 +92,7 @@ from novapolicy import (
     Observation,
     PolicyExecutor,
     PolicySchema,
+    SequentialExecution,
 )
 
 
@@ -119,6 +120,7 @@ async def main():
         executor = PolicyExecutor(
             schema,
             CallbackPolicyClient(my_policy),
+            execution=SequentialExecution(),
             timeout_s=10.0,
         )
         result = await executor.run()
@@ -194,7 +196,7 @@ synchronous check that runs on every tick; returning `True` ends the run normall
 IO stop signal: end the episode when an operator button or PLC sets an input:
 
 ```python
-from novapolicy import StopContext
+from novapolicy import SequentialExecution, StopContext
 
 
 def stop_on_io(ctx: StopContext) -> bool:
@@ -202,7 +204,12 @@ def stop_on_io(ctx: StopContext) -> bool:
     return bool(ctx.io_values and ctx.io_values.get("digital_in[3]"))
 
 
-executor = PolicyExecutor(schema, policy, stop_conditions=[stop_on_io])
+executor = PolicyExecutor(
+    schema,
+    policy,
+    execution=SequentialExecution(),
+    stop_conditions=[stop_on_io],
+)
 result = await executor.run()
 # result.reason == "stop condition: stop_on_io"
 ```
@@ -223,7 +230,7 @@ arm, keyboard, gamepad, spacemouse) in your own script. See
 | Doc                                  | Covers                                                                                                                                                                 |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [docs/jogging.md](docs/jogging.md)   | Standalone jogging: `jog_joints` / `jog_tcp`, joint/TCP modes, chunked targets, dual-arm, and error handling                                                           |
-| [docs/executor.md](docs/executor.md) | Advanced: the `PolicyExecutor` loop (`policy_rate_hz`, asynchronous inference, RTC) and the client/server timestamp protocol                                           |
+| [docs/executor.md](docs/executor.md) | Advanced: explicit sequential/continuous execution modes, asynchronous inference, RTC, and the client/server timestamp protocol                                |
 | [docs/schema.md](docs/schema.md)     | Advanced schema: IO mappings, relative actions, TCP actions, computed observations/actions                                                                             |
 | [docs/gr00t.md](docs/gr00t.md)       | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ (and [docs/rtc.md](docs/rtc.md) for real-time chunking) |
 | [lerobot/README.md](lerobot/README.md) | LeRobot async inference, checkpoint-derived `chunk_size` / `n_action_steps`, and remote-checkpoint configuration                                                        |
