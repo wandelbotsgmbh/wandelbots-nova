@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.7.6 (2026-07-16)
+
+### Chores
+
+- Generate motion group models from api (#440)
+  ([#440](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/440),
+  [`5eadb32`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5eadb32467ed8a0c4511ce3b424f2b797d1c6155))
+
+
 ## v5.7.5 (2026-07-15)
 
 ### Bug Fixes

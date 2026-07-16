@@ -1,6 +1,6 @@
 [project]
 name = "wandelbots-nova"
-version = "5.7.5"
+version = "5.7.6"
 description = "Official Python SDK for the Wandelbots Nova"
 authors = [
     { name = "Wandelbots GmbH" },
@@ -72,6 +72,7 @@ create-motion-group-models = "nova.helper_scripts.create_motion_group_models:upd
 wandelscript = "wandelscript.cli:app"
 ws = "wandelscript.cli:app"
 novax = "novax.cli:main"
+
 
 
 
@@ -267,6 +268,7 @@ upload_to_vcs_release = true
 
 [tool.ruff.lint.isort]
 known-first-party = ["nova", "nova_rerun_bridge", "novax"]
+
 
 
 
