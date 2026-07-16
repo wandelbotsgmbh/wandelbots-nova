@@ -132,6 +132,7 @@ def _build_session(
     states: Sequence[object] = (),
     stop_conditions: list[object] | None = None,
     mode: str = "joint",
+    config: WaypointConfig | None = None,
 ) -> tuple[WaypointJoggingSession, FakeJoggingServer]:
     server = FakeJoggingServer(fault=fault, raise_exc=raise_exc)
 
@@ -154,7 +155,7 @@ def _build_session(
 
     session = WaypointJoggingSession(
         motion_group=mg,
-        config=WaypointConfig(),
+        config=config or WaypointConfig(),
         tcp="Flange",
         mode=mode,
         stop_conditions=stop_conditions,
@@ -219,10 +220,10 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
         await _wait_until(lambda: len(server.requests) >= 2)
         waypoint_req = _inner(server.requests[1])
         assert isinstance(waypoint_req, api.models.JointWaypointsRequest)
-        assert len(waypoint_req.waypoints) == 1
-        sent = waypoint_req.waypoints[0]
-        assert list(sent.joints.root) == target
-        assert sent.timestamp == 0  # absolute anchor at 0, single step
+        assert len(waypoint_req.waypoints) == 2
+        for sent in waypoint_req.waypoints:
+            assert list(sent.joints.root) == target
+        assert [w.timestamp for w in waypoint_req.waypoints] == [0, 50]
     finally:
         server.stop()
         await session.stop()
@@ -386,9 +387,11 @@ async def test_jog_tcp_chunk_is_sent_as_evenly_spaced_pose_waypoints():
         )
         waypoints = pose_req.waypoints
 
-        # Every chunk step became one pose waypoint, in order.
+        # The requested chunk already covers the default 100ms controller buffer,
+        # so no padding is needed.
         assert len(waypoints) == len(chunk)
-        for sent, expected in zip(waypoints, chunk, strict=True):
+        expected_steps = chunk
+        for sent, expected in zip(waypoints, expected_steps, strict=True):
             assert [sent.pose.position.root[k] for k in range(3)] == expected[:3]
             assert [sent.pose.orientation.root[k] for k in range(3)] == expected[3:6]
 
@@ -418,7 +421,7 @@ async def test_overlapping_tcp_chunks_share_one_absolute_timeline():
     were instead re-sequenced from "now" every tick, the overlap would land on
     different timestamps and the server would keep restarting the trajectory.
     """
-    session, server = _build_session(mode="cartesian")
+    session, server = _build_session(mode="cartesian", config=WaypointConfig(min_buffer_ms=0))
 
     def _pose_requests() -> list[object]:
         return [
@@ -474,7 +477,7 @@ async def test_overlapping_joint_chunks_share_one_absolute_timeline():
     ``JointWaypointsRequest`` messages. The absolute-timeline guarantee is
     mode-independent, so the overlap must coincide here too.
     """
-    session, server = _build_session(mode="joint")
+    session, server = _build_session(mode="joint", config=WaypointConfig(min_buffer_ms=0))
 
     def _joint_requests() -> list[object]:
         return [

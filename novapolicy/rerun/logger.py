@@ -39,6 +39,7 @@ class PolicyRerunLogger:
         self._initialized = False
         self._start_time: float = 0.0
         self._tcp_trail: dict[str, list[list[float]]] = {}  # mg_id -> [[x,y,z], ...]
+        self._tcp_target_trail: dict[str, list[list[float]]] = {}
         self._max_trail_points = 500
         self._streamer: StateStreamer | None = None
 
@@ -117,6 +118,7 @@ class PolicyRerunLogger:
                     model_data=model_data,
                 )
                 self._tcp_trail[mg.id] = []
+                self._tcp_target_trail[mg.id] = []
 
             send_blueprint([mg.id for mg in self._motion_groups], self._camera_names)
 
@@ -175,6 +177,64 @@ class PolicyRerunLogger:
             )
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_action_chunk error: %s", e)
+
+    def log_target_tracking(
+        self, chunk: ActionChunk, states: dict[str, RobotState], step: int
+    ) -> None:
+        """Log first commanded target in ``chunk`` against the latest actual state."""
+        if not self._initialized:
+            return
+        for mg_id, steps in chunk.joints.items():
+            state = states.get(mg_id)
+            if steps and state is not None:
+                self.log_joint_tracking(mg_id, steps[0], state, step)
+        for mg_id, steps in chunk.tcp.items():
+            state = states.get(mg_id)
+            if steps and state is not None:
+                self.log_tcp_tracking(mg_id, steps[0], state, step)
+
+    def log_joint_tracking(
+        self, mg_id: str, target: list[float], actual: RobotState, step: int
+    ) -> None:
+        """Log commanded/actual joint positions and tracking error."""
+        if not self._initialized:
+            return
+        try:
+            from novapolicy.rerun.target_tracking import log_joint_tracking  # noqa: PLC0415
+
+            log_joint_tracking(
+                mg_id,
+                target,
+                list(actual.joints),
+                step,
+                start_time=self._start_time,
+            )
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
+            logger.debug("log_joint_tracking error: %s", e)
+
+    def log_tcp_tracking(
+        self, mg_id: str, target: list[float], actual: RobotState, step: int
+    ) -> None:
+        """Log commanded/actual TCP pose and tracking error."""
+        if not self._initialized:
+            return
+        pose = getattr(actual, "pose", None)
+        if pose is None:
+            return
+        try:
+            from novapolicy.rerun.target_tracking import log_tcp_tracking  # noqa: PLC0415
+
+            log_tcp_tracking(
+                mg_id,
+                target,
+                pose,
+                step,
+                start_time=self._start_time,
+                target_trail=self._tcp_target_trail.get(mg_id),
+                max_trail_points=self._max_trail_points,
+            )
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
+            logger.debug("log_tcp_tracking error: %s", e)
 
     def log_images(self, images: dict[str, Any]) -> None:
         """Log camera images to Rerun."""
