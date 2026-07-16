@@ -277,7 +277,17 @@ class PolicyRerunLogger:
         self._streamer.start(sessions)
 
     async def stop_streaming(self) -> None:
-        """Stop the background state streaming task."""
-        if self._streamer is not None:
-            await self._streamer.stop()
+        """Stop background streaming and disconnect the dedicated recording."""
+        try:
+            if self._streamer is not None:
+                await self._streamer.stop()
+        finally:
             self._streamer = None
+            recording = self._recording
+            self._recording = None
+            self._initialized = False
+            if recording is not None:
+                try:
+                    recording.disconnect()
+                except (OSError, RuntimeError) as e:
+                    logger.debug("Failed to disconnect policy Rerun recording: %s", e)

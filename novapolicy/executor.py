@@ -284,7 +284,10 @@ class PolicyExecutor:
             with contextlib.suppress(MotionError, EmergencyStopError, OSError, RuntimeError):
                 await session.stop()
 
-        self._write_trajectory_trace()
+        try:
+            self._write_trajectory_trace()
+        except (OSError, TypeError, ValueError):
+            logger.exception("Failed to write policy trajectory trace")
 
         # Wait for pending IO tasks
         if self._io_tasks:
@@ -874,7 +877,11 @@ class PolicyExecutor:
         if not self._stop_conditions:
             return None
 
-        for group_id in {*chunk.joints, *chunk.tcp}:
+        group_ids = {*chunk.joints, *chunk.tcp}
+        if chunk.ios:
+            group_ids.update(chunk.ios)
+
+        for group_id in group_ids:
             state = robot_states.get(group_id)
             if state is None:
                 continue

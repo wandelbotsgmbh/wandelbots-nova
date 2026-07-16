@@ -598,6 +598,51 @@ async def test_a_stop_condition_can_veto_an_io_write_before_it_fires(robot: _Rob
 
 
 @pytest.mark.asyncio
+async def test_a_stop_condition_can_veto_an_io_only_chunk(robot: _Robot):
+    """IO-only queue ticks receive the same pre-send guard checks as motion chunks."""
+
+    async def set_forbidden_output(_obs: object) -> ActionChunk:
+        return ActionChunk(ios={MG_ID: {"digital_out[7]": True}})
+
+    def forbids_output_7(ctx: StopContext) -> bool:
+        return bool(ctx.target_ios and ctx.target_ios.get("digital_out[7]"))
+
+    executor = PolicyExecutor(
+        _schema(),
+        _callback(set_forbidden_output),
+        timeout_s=5.0,
+        stop_conditions=[forbids_output_7],
+    )
+    result = await executor.run()
+
+    assert result.reason == "stop condition: forbids_output_7"
+    robot.session.update_chunk.assert_not_called()
+    robot.session.write_ios.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_trajectory_trace_failure_does_not_skip_policy_cleanup(robot: _Robot, tmp_path):
+    """Best-effort diagnostics must not mask a run result or leak the policy connection."""
+
+    def stop_immediately(_ctx: StopContext) -> bool:
+        return True
+
+    policy = _TestPolicy(_hold_action)
+    policy.close = AsyncMock()
+    executor = PolicyExecutor(
+        _schema(),
+        policy,
+        stop_conditions=[stop_immediately],
+        trajectory_trace_path=tmp_path,
+    )
+
+    result = await executor.run()
+
+    assert result.reason == "stop condition: stop_immediately"
+    policy.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_a_stop_condition_fired_mid_run_ends_the_run_and_names_itself(robot: _Robot):
     """A condition evaluated against live robot state (after a chunk was sent)
     ends the run normally, naming itself in ``result.reason``."""
